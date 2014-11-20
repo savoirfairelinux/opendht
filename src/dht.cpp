@@ -43,6 +43,7 @@ extern "C" {
 #endif
 
 #include <algorithm>
+#include <random> //binomial_distribution
 #include <sstream>
 
 #include <unistd.h>

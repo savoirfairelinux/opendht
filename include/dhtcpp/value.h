@@ -79,7 +79,7 @@ private:
 /**
  * Dummy function used to disable logging
  */
-constexpr int NOLOG(char const*, va_list) { return 0; }
+inline void NOLOG(char const*, va_list) {}
 
 
 class Value;
