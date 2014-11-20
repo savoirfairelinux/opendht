@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "infohash.h"
 #include "serialize.h"
 
 extern "C" {
