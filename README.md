@@ -5,9 +5,10 @@ A lightweight C++11 Distributed Hash Table implementation
  * Light C++11 Kademlia DHT library
  * Simple API
  * Support for arbitrary value types (with common types built-in)
- * Optional crypto layer with data signature and encryption (using GnuTLS)
+ * Optional crypto/identity layer with data signature and encryption (using GnuTLS)
  * Value edition authentified by the crypto layer or with custom per-value-type hooks
  * Fast bootstrap and announce time
+ * Not compatible with Bittorrent DHT (mainline).
  * Originally based on https://github.com/jech/dht by Juliusz Chroboczek
 
 ***work in progress***
@@ -37,13 +38,16 @@ Examples
 int main() {
     dht::DhtRunner node;
 
-    // Launch a dht node on a new thread, using
-    // generated RSA keys, and listen on port 4222.
+    // Launch a dht node on a new thread, using a
+    // generated RSA key pair, and listen on port 4222.
     node.run(4222, dht::crypto::generateIdentity(), true);
 
     // put some data on the dht
     std::vector<uint8_t> some_data(5, 10);
     node.put("unique_key", some_data);
+
+    // put some data on the dht, signed with our generated private key
+    node.putSigned("unique_key_42", some_data);
 
     // get data from the dht
     node.get("other_unique_key", [](const std::vector<std::shared_ptr<Value>>& values) {
