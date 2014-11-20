@@ -695,7 +695,7 @@ Dht::searchStep(Search& sr)
                                        TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
                                        n.token, n.reply_time >= now.tv_sec - 15);
                     if (a_status == n.acked.end()) {
-                        n.acked[vid] = { .request_time = now.tv_sec };
+                        n.acked[vid] = { .request_time = now.tv_sec, .reply_time = 0 };
                     } else {
                         a_status->second.request_time = now.tv_sec;
                     }
@@ -1085,6 +1085,7 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
                 ++it;
         }
     }
+    return canceled;
 }
 
 /* A struct storage stores all the stored peer addresses for a given info
@@ -1689,14 +1690,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 newNode(id, from, fromlen, 2);
                 for (auto& sn : sr->nodes)
                     if (sn.id == id) {
-                        auto it = sn.acked.insert({value_id, {}});
-                        it.first->second.request_time = 0;
-                        it.first->second.reply_time = now.tv_sec;
+                        sn.acked.insert({value_id, {.request_time = 0, .reply_time = now.tv_sec}});
                         sn.request_time = 0;
-                        //sn.reply_time = now.tv_sec;
-                        //sn.acked[value_id] = now.tv_sec;
                         sn.pinged = 0;
-
                         break;
                     }
                 /* See comment for gp above. */
