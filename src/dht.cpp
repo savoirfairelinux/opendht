@@ -43,7 +43,7 @@ extern "C" {
 #endif
 
 #include <algorithm>
-#include <random> //binomial_distribution
+#include <random>
 #include <sstream>
 
 #include <unistd.h>
@@ -1435,7 +1435,7 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
     InfoHash id = myid;
     id[HASH_LEN-1] = rand_byte(rd);
 
-    std::binomial_distribution<bool> rand_trial(1, 1./8.);
+    std::bernoulli_distribution rand_trial(1./8.);
     auto q = b;
     if (std::next(q) != list.end() && (q->nodes.empty() || rand_trial(rd)))
         q = std::next(q);
@@ -1463,8 +1463,8 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
 bool
 Dht::bucketMaintenance(RoutingTable& list)
 {
-    std::binomial_distribution<bool> rand_trial(1, 1./8.);
-    std::binomial_distribution<bool> rand_trial_38(1, 1./38.);
+    std::bernoulli_distribution rand_trial(1./8.);
+    std::bernoulli_distribution rand_trial_38(1./38.);
 
     for (auto b = list.begin(); b != list.end(); ++b) {
         if (b->time < now.tv_sec - 600 || b->nodes.empty()) {
