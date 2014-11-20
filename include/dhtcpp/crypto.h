@@ -126,10 +126,10 @@ struct Certificate : public Serializable {
     void pack(Blob& b) const override;
     void unpack(Blob::const_iterator& begin, Blob::const_iterator& end) override;
 
+    gnutls_x509_crt_t cert {};
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
-    gnutls_x509_crt_t cert {};
 
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity);
 };
