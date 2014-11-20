@@ -247,14 +247,14 @@ private:
     };
 
     struct Bucket {
-        Bucket() {}
+        Bucket() : cached() {}
         Bucket(sa_family_t af, const InfoHash& f = {}, time_t t = 0)
-            : af(af), first(f), time(t) {}
+            : af(af), first(f), time(t), cached() {}
         sa_family_t af {0};
         InfoHash first {};
         time_t time {0};             /* time of last reply in this bucket */
         std::list<Node> nodes {};
-        sockaddr_storage cached {};  /* the address of a likely candidate */
+        sockaddr_storage cached;  /* the address of a likely candidate */
         socklen_t cachedlen {0};
 
         /** Return a random node in a bucket. */
@@ -290,8 +290,8 @@ private:
     };
 
     struct SearchNode {
-        SearchNode() {}
-        SearchNode(const InfoHash& id) : id(id) {}
+        SearchNode() : ss() {}
+        SearchNode(const InfoHash& id) : id(id), ss() {}
 
         struct AnnounceStatus {
             time_t request_time;    /* the time of the last unanswered announce request */
@@ -316,7 +316,7 @@ private:
         }
 
         InfoHash id {};
-        sockaddr_storage ss {};
+        sockaddr_storage ss;
         socklen_t sslen {0};
         time_t request_time {0};    /* the time of the last unanswered request */
         time_t reply_time {0};      /* the time of the last reply with a token */
@@ -470,7 +470,7 @@ private:
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
 
-    struct timeval now {};
+    struct timeval now {0, 0};
     time_t mybucket_grow_time {0}, mybucket6_grow_time {0};
     time_t expire_stuff_time {0};
     time_t rate_limit_time {0};
