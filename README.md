@@ -4,13 +4,19 @@ A lightweight C++11 Distributed Hash Table implementation
 
  * Light C++11 Kademlia DHT library
  * Simple API
- * Support for arbitrary value types with common types built-in: simple blob (user data) or bittorrent-style "service announcement"
- * "Identity" layer with data signature and encryption (using GnuTLS)
- * Value edition authentified by the identity layer or with custom per-value-type hooks
+ * Support for arbitrary value types (with common types built-in)
+ * Optional crypto layer with data signature and encryption (using GnuTLS)
+ * Value edition authentified by the crypto layer or with custom per-value-type hooks
  * Fast bootstrap and announce time
  * Originally based on https://github.com/jech/dht by Juliusz Chroboczek
 
 ***work in progress***
+
+Licence
+-
+Copyright (C) 2014 Savoir-Faire Linux Inc.
+
+Licenced under the GNU General Public License version 3, though the core routing library (dht.cpp) is licenced under the MIT licence.
 
 Dependencies
 -
@@ -19,28 +25,57 @@ Dependencies
 TODO
 -
  * Event listening
+ * Long term value persistance
  * Documention
  * ...
 
 Examples
 -
 ```c++
-dht::DhtRunner node;
+#include <dht.h>
 
-// Launch a new dht node using generated RSA keys,
-// and listen on port 4222.
-node.run(4222, dht::crypto::generateIdentity());
+int main() {
+    dht::DhtRunner node;
 
-// put some data on the dht
-std::vector<uint8_t> some_data(5, 10);
-node.put("unique_key", some_data);
+    // Launch a dht node on a new thread, using
+    // generated RSA keys, and listen on port 4222.
+    node.run(4222, dht::crypto::generateIdentity(), true);
 
-// get data from the dht
-node.get("other_unique_key", [](const std::vector<std::shared_ptr<Value>>& values) {
-    // Callback called when values are found
-    for (const auto& value : values)
-        std::cout << "Found value: " << value << std::endl;
-    return true; // return false to stop the search
-});
+    // put some data on the dht
+    std::vector<uint8_t> some_data(5, 10);
+    node.put("unique_key", some_data);
 
+    // get data from the dht
+    node.get("other_unique_key", [](const std::vector<std::shared_ptr<Value>>& values) {
+        // Callback called when values are found
+        for (const auto& value : values)
+            std::cout << "Found value: " << value << std::endl;
+        return true; // return false to stop the search
+    });
+    
+    // here we could wait for some operations to complete
+    // instead of ending now.
+
+    // wait for dht threads to end
+    node.join();
+}
+```
+
+How-to install the library
+-
+```bash
+# clone the repo
+git clone https://github.com/aberaud/dht.git
+
+# build and install
+cd dht
+./autogen.sh && ./configure
+make
+sudo make install
+```
+
+How-to build a simple client app
+-
+```bash
+g++ main.cpp -std=c++11 -ldhtcpp -lgnutls
 ```
