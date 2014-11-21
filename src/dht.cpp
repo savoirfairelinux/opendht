@@ -1085,6 +1085,7 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
                 ++it;
         }
     }
+    return canceled;
 }
 
 /* A struct storage stores all the stored peer addresses for a given info
