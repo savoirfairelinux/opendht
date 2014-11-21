@@ -13,24 +13,7 @@ A lightweight C++11 Distributed Hash Table implementation
 
 ***work in progress***
 
-Licence
--
-Copyright (C) 2014 Savoir-Faire Linux Inc.
-
-Licenced under the GNU General Public License version 3, though the core routing library (dht.cpp) is licenced under the MIT licence.
-
-Dependencies
--
-- GnuTLS 3.1+, used to compute hashes and for the identity layer.
-
-TODO
--
- * Event listening
- * Long term value persistance
- * Documention
- * ...
-
-Examples
+Example
 -
 ```c++
 #include <opendht.h>
@@ -65,7 +48,7 @@ int main() {
 }
 ```
 
-How-to install the library
+How-to build and install
 -
 ```bash
 # clone the repo
@@ -83,3 +66,20 @@ How-to build a simple client app
 ```bash
 g++ main.cpp -std=c++11 -lopendht -lgnutls
 ```
+
+Licence
+-
+Copyright (C) 2014 Savoir-Faire Linux Inc.
+
+Licenced under the GNU General Public License version 3, though the core routing library (dht.cpp) is licenced under the MIT licence.
+
+Dependencies
+-
+- GnuTLS 3.1+, used to compute hashes and for the identity layer.
+
+TODO
+-
+ * Event listening
+ * Long term value persistance
+ * Documention
+ * ...
