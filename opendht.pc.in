@@ -1,0 +1,9 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+Name: OpenDHT
+Description: C++ Distributed Hash Table library
+Version: @VERSION@
+Libs: -L${libdir} -lopendht
+Cflags: -I${includedir}

@@ -9,4 +9,4 @@ EXTRA_DIST = \
 			$(DOC_FILES)
 
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA = dhtcpp.pc
+pkgconfig_DATA = opendht.pc

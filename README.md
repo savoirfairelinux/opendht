@@ -1,4 +1,4 @@
-DhtCpp
+OpenDHT
 ===
 A lightweight C++11 Distributed Hash Table implementation
 
@@ -33,7 +33,7 @@ TODO
 Examples
 -
 ```c++
-#include <dht.h>
+#include <opendht.h>
 
 int main() {
     dht::DhtRunner node;
@@ -81,5 +81,5 @@ sudo make install
 How-to build a simple client app
 -
 ```bash
-g++ main.cpp -std=c++11 -ldhtcpp -lgnutls
+g++ main.cpp -std=c++11 -lopendht -lgnutls
 ```

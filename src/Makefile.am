@@ -1,9 +1,9 @@
-lib_LTLIBRARIES = libdhtcpp.la
+lib_LTLIBRARIES = libopendht.la
 
-AM_CPPFLAGS = -I../include/dhtcpp
-libdhtcpp_la_CXXFLAGS = @CXXFLAGS@
+AM_CPPFLAGS = -I../include/opendht
+libopendht_la_CXXFLAGS = @CXXFLAGS@
 
-libdhtcpp_la_SOURCES = \
+libopendht_la_SOURCES = \
         dht.cpp \
         infohash.cpp \
         value.cpp \
@@ -12,11 +12,11 @@ libdhtcpp_la_SOURCES = \
         dhtrunner.cpp
 
 nobase_include_HEADERS = \
-        ../include/dht.h \
-        ../include/dhtcpp/dht.h \
-        ../include/dhtcpp/infohash.h \
-        ../include/dhtcpp/value.h \
-        ../include/dhtcpp/crypto.h \
-        ../include/dhtcpp/securedht.h \
-        ../include/dhtcpp/dhtrunner.h \
-        ../include/dhtcpp/serialize.h
+        ../include/opendht.h \
+        ../include/opendht/dht.h \
+        ../include/opendht/infohash.h \
+        ../include/opendht/value.h \
+        ../include/opendht/crypto.h \
+        ../include/opendht/securedht.h \
+        ../include/opendht/dhtrunner.h \
+        ../include/opendht/serialize.h

@@ -30,8 +30,8 @@
 
 #pragma once
 
-#include "dhtcpp/dht.h"
-#include "dhtcpp/value.h"
-#include "dhtcpp/infohash.h"
-#include "dhtcpp/securedht.h"
-#include "dhtcpp/dhtrunner.h"
+#include "opendht/dht.h"
+#include "opendht/value.h"
+#include "opendht/infohash.h"
+#include "opendht/securedht.h"
+#include "opendht/dhtrunner.h"
