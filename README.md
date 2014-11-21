@@ -33,7 +33,7 @@ int main() {
     node.putSigned("unique_key_42", some_data);
 
     // get data from the dht
-    node.get("other_unique_key", [](const std::vector<std::shared_ptr<Value>>& values) {
+    node.get("other_unique_key", [](const std::vector<std::shared_ptr<dht::Value>>& values) {
         // Callback called when values are found
         for (const auto& value : values)
             std::cout << "Found value: " << value << std::endl;
