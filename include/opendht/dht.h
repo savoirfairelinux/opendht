@@ -455,8 +455,8 @@ private:
 
     InfoHash myid {};
     static const uint8_t my_v[9];
-    std::array<uint8_t, 8> secret {};
-    std::array<uint8_t, 8> oldsecret {};
+    std::array<uint8_t, 8> secret {{}};
+    std::array<uint8_t, 8> oldsecret {{}};
 
     std::map<ValueType::Id, ValueType> types;
 
