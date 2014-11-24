@@ -34,8 +34,11 @@
 #include "crypto.h"
 #include "serialize.h"
 
-#include <sys/socket.h>
+#include <netinet/in.h>
 #include <netdb.h>
+#ifdef __ANDROID__
+typedef uint16_t in_port_t;
+#endif
 
 #include <string>
 #include <sstream>

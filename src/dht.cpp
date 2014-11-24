@@ -63,8 +63,6 @@ set_nonblocking(int fd, int nonblocking)
 {
     unsigned long mode = !!nonblocking;
     int rc = ioctlsocket(fd, FIONBIO, &mode);
-    if (rc != 0)
-        errno = WSAGetLastError();
     return rc == 0;
 }
 
@@ -874,10 +872,8 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         }), sr->nodes.end());
     } else {
         sr = newSearch();
-        if (sr == searches.end()) {
-            errno = ENOSPC;
+        if (sr == searches.end())
             return nullptr;
-        }
         sr->af = af;
         sr->tid = search_id++;
         sr->step_time = 0;
@@ -1558,7 +1554,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         if (message != MessageType::Error && id == zeroes)
             throw DhtException("no or invalid InfoHash");
     } catch (const std::exception& e) {
-        DHT_DEBUG("Can't process message of size %lu: %s.", buflen, e.what());
+        DHT_WARN("Can't process message of size %lu: %s.", buflen, e.what());
         DHT_DEBUG.logPrintable(buf, buflen);
         return;
     }
@@ -1571,7 +1567,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     if (message > MessageType::Reply) {
         /* Rate limit requests. */
         if (!rateLimit()) {
-            DHT_DEBUG("Dropping request due to rate limiting.");
+            DHT_WARN("Dropping request due to rate limiting.");
             return;
         }
     }
@@ -1691,7 +1687,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 newNode(id, from, fromlen, 2);
                 for (auto& sn : sr->nodes)
                     if (sn.id == id) {
-                        sn.acked.insert({value_id, {.request_time = 0, .reply_time = now.tv_sec}});
+                        auto it = sn.acked.insert({value_id, {}});
+                        it.first->second.reply_time = now.tv_sec;
                         sn.request_time = 0;
                         sn.pinged = 0;
                         break;
@@ -1720,7 +1717,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         DHT_DEBUG("Got \"get values\" request");
         newNode(id, from, fromlen, 1);
         if (info_hash == zeroes) {
-            DHT_DEBUG("Eek!  Got get_values with no info_hash.");
+            DHT_WARN("Eek!  Got get_values with no info_hash.");
             sendError(from, fromlen, tid, 203, "Get_values with no info_hash");
             break;
         } else {
@@ -1739,18 +1736,18 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         DHT_DEBUG("Got \"announce value\" request!");
         newNode(id, from, fromlen, 1);
         if (info_hash == zeroes) {
-            DHT_DEBUG("Announce_value with no info_hash.");
+            DHT_WARN("Announce_value with no info_hash.");
             sendError(from, fromlen, tid, 203, "Announce_value with no info_hash");
             break;
         }
         if (!tokenMatch(token, from)) {
-            DHT_DEBUG("Incorrect token %s for announce_values.", to_hex(token.data(), token.size()).c_str());
+            DHT_WARN("Incorrect token %s for announce_values.", to_hex(token.data(), token.size()).c_str());
             sendError(from, fromlen, tid, 401, "Announce_value with wrong token");
             break;
         }
         for (const auto& v : values) {
             if (v->id == Value::INVALID_ID) {
-                DHT_DEBUG("Incorrect value id ");
+                DHT_WARN("Incorrect value id ");
                 sendError(from, fromlen, tid, 203, "Announce_value with invalid id");
                 continue;
             }
@@ -1946,10 +1943,8 @@ Dht::exportNodes()
 bool
 Dht::insertNode(const InfoHash& id, const sockaddr *sa, socklen_t salen)
 {
-    if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6) {
-        errno = EAFNOSUPPORT;
+    if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
         return false;
-    }
     Node *n = newNode(id, sa, salen, 0);
     return !!n;
 }
@@ -1988,7 +1983,6 @@ Dht::send(const void *buf, size_t len, int flags, const sockaddr *sa, socklen_t 
 
     if (isNodeBlacklisted(sa, salen)) {
         DHT_DEBUG("Attempting to send to blacklisted node.");
-        errno = EPERM;
         return -1;
     }
 
@@ -2000,10 +1994,8 @@ Dht::send(const void *buf, size_t len, int flags, const sockaddr *sa, socklen_t 
     else
         s = -1;
 
-    if (s < 0) {
-        errno = EAFNOSUPPORT;
+    if (s < 0)
         return -1;
-    }
     return sendto(s, buf, len, flags, sa, salen);
 }
 
