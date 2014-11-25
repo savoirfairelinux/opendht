@@ -1,4 +1,4 @@
-SUBDIRS = src
+SUBDIRS = src tools
 ACLOCAL_AMFLAGS = -I m4
 
 DOC_FILES = \

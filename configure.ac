@@ -18,5 +18,5 @@ AX_CXX_COMPILE_STDCXX_11([noext],[mandatory])
 PKG_PROG_PKG_CONFIG()
 PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
 
-AC_CONFIG_FILES([Makefile src/Makefile opendht.pc])
+AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile opendht.pc])
 AC_OUTPUT
