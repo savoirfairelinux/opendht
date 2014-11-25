@@ -69,6 +69,8 @@ public:
         socklen_t sslen;
     };
 
+    typedef int_fast8_t want_t;
+
     Dht() {}
 
     /**
@@ -168,6 +170,16 @@ public:
      * for values with the given id.
      */
     bool cancelPut(const InfoHash&, const Value::Id&);
+
+    /**
+     * Listen for any changes involving a specified hash.
+     * The node will register to receive updates from relevent nodes when
+     * new values are added or removed.
+     *
+     * @return a token to cancel the listener later.
+     */
+    size_t listen(const InfoHash&, GetCallback, Value::Filter = Value::AllFilter());
+    bool cancelListen(const InfoHash&, size_t token);
 
     /**
      * Get the list of good nodes for local storage saving purposes
@@ -293,14 +305,14 @@ private:
         SearchNode() : ss() {}
         SearchNode(const InfoHash& id) : id(id), ss() {}
 
-        struct AnnounceStatus {
+        struct RequestStatus {
             time_t request_time;    /* the time of the last unanswered announce request */
             time_t reply_time;      /* the time of the last announce confirmation */
         };
-        typedef std::map<Value::Id, AnnounceStatus> AnnounceStatusMap;
+        typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
 
         /**
-         * Can we use this node to announce ?
+         * Can we use this node to listen/announce ?
          */
         bool isSynced(time_t now) const {
             return /*pinged < 3 && replied &&*/ reply_time > now - 15 * 60;
@@ -321,6 +333,9 @@ private:
         time_t request_time {0};    /* the time of the last unanswered request */
         time_t reply_time {0};      /* the time of the last reply with a token */
         unsigned pinged {0};
+
+        RequestStatus listenStatus {0, 0};
+
         Blob token {};
 
         AnnounceStatusMap acked {};  /* announcement status for a given value id */
@@ -345,15 +360,22 @@ private:
      * - Announcing (Some announces not performed on all nodes)
      */
     struct Search {
-        uint16_t tid;
-        sa_family_t af;
-        time_t step_time {0};           /* the time of the last search_step */
         InfoHash id {};
-        std::vector<Announce> announce {};
-        std::vector<std::pair<Value::Filter, GetCallback>> callbacks {};
-        DoneCallback done_callback {nullptr};
+        sa_family_t af;
+
+        uint16_t tid;
+        time_t step_time {0};           /* the time of the last search_step */
+
         bool done {false};
         std::vector<SearchNode> nodes {SEARCH_NODES+1};
+
+        std::vector<Announce> announce {};
+
+        std::vector<std::pair<Value::Filter, GetCallback>> callbacks {};
+        DoneCallback done_callback {nullptr};
+
+        std::map<size_t, std::pair<Value::Filter, GetCallback>> listeners {};
+        size_t listener_token = 1;
 
         bool insertNode(const InfoHash& id, const sockaddr*, socklen_t, time_t now, bool confirmed=false, const Blob& token={});
         void insertBucket(const Bucket&, time_t now);
@@ -364,18 +386,16 @@ private:
         bool isSynced(time_t now) const;
 
         /**
-         * Are all values that are registred for announcement announced ?
-         */
-        bool isAnnounced(const std::map<ValueType::Id, ValueType>& types, time_t now) const {
-            auto at = getAnnounceTime(types);
-            return at && at < now;
-        }
-
-        /**
          * ret = 0 : no announce required.
          * ret > 0 : (re-)announce required at time ret.
          */
         time_t getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) const;
+
+        /**
+         * ret = 0 : no listen required.
+         * ret > 0 : (re-)announce required at time ret.
+         */
+        time_t getListenTime(time_t now) const;
 
         time_t getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_t now) const;
     };
@@ -388,9 +408,26 @@ private:
         ValueStorage(const std::shared_ptr<Value>& v, time_t t) : data(v), time(t) {}
     };
 
+    /**
+     * Foreign nodes asking for updates about an InfoHash.
+     */
+    struct Listener {
+        InfoHash id {};
+        sockaddr_storage ss;
+        socklen_t sslen {};
+        time_t time {};
+        uint16_t tid;
+
+        Listener() : ss(), sslen() {}
+        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t tid) : id(id), sslen(fromlen), tid(tid) {
+            memcpy(&ss, from, fromlen);
+        }
+    };
+
     struct Storage {
         InfoHash id;
         std::vector<ValueStorage> values;
+        std::vector<Listener> listeners;
     };
 
     enum class MessageType {
@@ -399,7 +436,8 @@ private:
         Ping,
         FindNode,
         GetValues,
-        AnnounceValue
+        AnnounceValue,
+        Listen
     };
 
     struct TransPrefix : public  std::array<uint8_t, 2>  {
@@ -408,6 +446,7 @@ private:
         static const TransPrefix FIND_NODE;
         static const TransPrefix GET_VALUES;
         static const TransPrefix ANNOUNCE_VALUES;
+        static const TransPrefix LISTEN;
     };
 
     /* Transaction-ids are 4-bytes long, with the first two bytes identifying
@@ -446,18 +485,16 @@ private:
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
+    // socket descriptors
     int dht_socket {-1};
     int dht_socket6 {-1};
-
-    time_t search_time {0};
-    time_t confirm_nodes_time {0};
-    time_t rotate_secrets_time {0};
 
     InfoHash myid {};
     static const uint8_t my_v[9];
     std::array<uint8_t, 8> secret {{}};
     std::array<uint8_t, 8> oldsecret {{}};
 
+    // registred types
     std::map<ValueType::Id, ValueType> types;
 
     // the stuff
@@ -466,6 +503,8 @@ private:
     std::vector<Storage> store {};
     std::list<Search> searches {};
     uint16_t search_id {0};
+    std::map<size_t, std::pair<size_t, size_t>> listeners {};
+    size_t listener_token {0};
 
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
@@ -473,8 +512,12 @@ private:
     struct timeval now {0, 0};
     time_t mybucket_grow_time {0}, mybucket6_grow_time {0};
     time_t expire_stuff_time {0};
+    time_t search_time {0};
+    time_t confirm_nodes_time {0};
+    time_t rotate_secrets_time {0};
     time_t rate_limit_time {0};
 
+    // remaining requests for this second
     long unsigned rate_limit_tokens {MAX_REQUESTS_PER_SEC};
 
     // Networking & packet handling
@@ -483,7 +526,7 @@ private:
     int sendPong(const sockaddr*, socklen_t, TransId tid);
 
     int sendFindNode(const sockaddr*, socklen_t, TransId tid,
-                        const InfoHash& target, int want, int confirm);
+                        const InfoHash& target, want_t want, int confirm);
 
     int sendNodesValues(const sockaddr*, socklen_t, TransId tid,
                               const uint8_t *nodes, unsigned nodes_len,
@@ -491,14 +534,19 @@ private:
                               Storage *st, const Blob& token);
 
     int sendClosestNodes(const sockaddr*, socklen_t, TransId tid,
-                               const InfoHash& id, int want, const Blob& token={},
+                               const InfoHash& id, want_t want, const Blob& token={},
                                Storage *st=nullptr);
 
     int sendGetValues(const sockaddr*, socklen_t, TransId tid,
-                            const InfoHash& infohash, int want, int confirm);
+                            const InfoHash& infohash, want_t want, int confirm);
 
-    int sendAnnounceValue(const sockaddr*, socklen_t, TransId tid,
-                            const InfoHash& infohas, const Value& data,
+    int sendListen(const sockaddr*, socklen_t, TransId,
+                            const InfoHash&, const Blob& token, int confirm);
+
+    int sendListenConfirmation(const sockaddr*, socklen_t, TransId);
+
+    int sendAnnounceValue(const sockaddr*, socklen_t, TransId,
+                            const InfoHash&, const Value&,
                             const Blob& token, int confirm);
 
     int sendValueAnnounced(const sockaddr*, socklen_t, TransId, Value::Id);
@@ -514,7 +562,7 @@ private:
                   uint8_t *nodes_return, unsigned *nodes_len,
                   uint8_t *nodes6_return, unsigned *nodes6_len,
                   std::vector<std::shared_ptr<Value>>& values_return,
-                  int *want_return, uint16_t& error_code);
+                  want_t* want_return, uint16_t& error_code);
 
     void rotateSecrets();
 
@@ -527,8 +575,10 @@ private:
         return const_cast<Dht*>(this)->findStorage(id);
     }
 
+    void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
     ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value);
     void expireStorage();
+    void storageChanged(Storage& st);
 
     // Buckets
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
@@ -575,6 +625,7 @@ private:
      */
     Search* search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
     void announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& value, DoneCallback callback);
+    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
     std::list<Search>::iterator newSearch();
     void bootstrapSearch(Search& sr);

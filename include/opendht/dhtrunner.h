@@ -62,6 +62,9 @@ public:
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
     void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
 
+    void listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+    void listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
 
@@ -148,6 +151,7 @@ private:
 
     // IPC temporary storage
     std::vector<std::tuple<InfoHash, Dht::GetCallback, Dht::DoneCallback, Value::Filter>> dht_gets {};
+    std::vector<std::tuple<InfoHash, Dht::GetCallback, Value::Filter>> dht_listen {};
     std::vector<std::tuple<InfoHash, Value, Dht::DoneCallback>> dht_puts {};
     std::vector<std::tuple<InfoHash, Value, Dht::DoneCallback>> dht_sputs {};
     std::vector<std::tuple<InfoHash, InfoHash, Value, Dht::DoneCallback>> dht_eputs {};

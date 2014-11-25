@@ -111,6 +111,12 @@ DhtRunner::loop_()
         }
         dht_gets.clear();
 
+        for (auto& list : dht_listen) {
+            std::cout << "Processing listen (" <<  std::get<0>(list) << ")" << std::endl;
+            dht->listen(std::get<0>(list), std::move(std::get<1>(list)), std::move(std::get<2>(list)));
+        }
+        dht_listen.clear();
+
         for (auto& put : dht_eputs) {
             auto& id = std::get<0>(put);
             auto& val = std::get<2>(put);
@@ -265,6 +271,20 @@ void
 DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f)
 {
     get(InfoHash::get(key), vcb, dcb, f);
+}
+
+void
+DhtRunner::listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f)
+{
+    std::unique_lock<std::mutex> lck(storage_mtx);
+    dht_listen.emplace_back(hash, vcb, f);
+    cv.notify_all();
+}
+
+void
+DhtRunner::listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f)
+{
+    listen(InfoHash::get(key), vcb, f);
 }
 
 void

@@ -95,6 +95,8 @@ public:
      */
     void get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter = Value::AllFilter());
 
+    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter = Value::AllFilter());
+
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
      */
@@ -128,6 +130,8 @@ private:
     // prevent copy
     SecureDht(const SecureDht&) = delete;
     SecureDht& operator=(const SecureDht&) = delete;
+
+    GetCallback getCallbackFilter(GetCallback);
 
     std::shared_ptr<crypto::PrivateKey> key_ {};
     std::shared_ptr<crypto::Certificate> certificate_ {};

@@ -178,42 +178,55 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 }
 
 
+Dht::GetCallback
+SecureDht::getCallbackFilter(GetCallback cb)
+{
+    return [=](const std::vector<std::shared_ptr<Value>>& values) {
+        std::vector<std::shared_ptr<Value>> tmpvals {};
+        for (const auto& v : values) {
+            // Decrypt encrypted values
+            if (v->isEncrypted()) {
+                try {
+                    Value decrypted_val (decrypt(*v));
+                    if (decrypted_val.recipient == getId()) {
+                        if (decrypted_val.owner.checkSignature(decrypted_val.getToSign(), decrypted_val.signature))
+                            tmpvals.push_back(std::make_shared<Value>(std::move(decrypted_val)));
+                        else
+                            DHT_WARN("Signature verification failed for %s", v->toString().c_str());
+                    }
+                    // Ignore values belonging to other people
+                } catch (const std::exception& e) {
+                    DHT_WARN("Could not decrypt value %s", v->toString().c_str());
+                }
+            }
+            // Check signed values
+            else if (v->isSigned()) {
+                if (v->owner.checkSignature(v->getToSign(), v->signature))
+                    tmpvals.push_back(v);
+                else
+                    DHT_WARN("Signature verification failed for %s", v->toString().c_str());
+            }
+            // Forward normal values
+            else {
+                tmpvals.push_back(v);
+            }
+        }
+        if (not tmpvals.empty())
+            cb(tmpvals);
+        return true;
+    };
+}
+
 void
 SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter filter)
 {
-    Dht::get(id,
-        [=](const std::vector<std::shared_ptr<Value>>& values) {
-            std::vector<std::shared_ptr<Value>> tmpvals {};
-            for (const auto& v : values) {
-                if (v->isEncrypted()) {
-                    try {
-                        Value decrypted_val = std::move(decrypt(*v));
-                        if (decrypted_val.recipient == getId()) {
-                            auto dv = std::make_shared<Value>(std::move(decrypted_val));
-                            if (dv->owner.checkSignature(dv->getToSign(), dv->signature))
-                                tmpvals.push_back(v);
-                            else
-                                DHT_WARN("Signature verification failed for %s", id.toString().c_str());
-                        }
-                    } catch (const std::exception& e) {
-                        DHT_WARN("Could not decrypt value %s at infohash %s", v->toString().c_str(), id.toString().c_str());
-                        continue;
-                    }
-                } else if (v->isSigned()) {
-                    if (v->owner.checkSignature(v->getToSign(), v->signature))
-                        tmpvals.push_back(v);
-                    else
-                        DHT_WARN("Signature verification failed for %s", id.toString().c_str());
-                } else {
-                    tmpvals.push_back(v);
-                }
-            }
-            if (not tmpvals.empty())
-                cb(tmpvals);
-            return true;
-        },
-        donecb,
-        filter);
+    Dht::get(id, getCallbackFilter(cb), donecb, filter);
+}
+
+size_t
+SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter filter)
+{
+    return Dht::listen(id, getCallbackFilter(cb), filter);
 }
 
 void
