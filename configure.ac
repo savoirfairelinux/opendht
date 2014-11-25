@@ -18,5 +18,8 @@ AX_CXX_COMPILE_STDCXX_11([noext],[mandatory])
 PKG_PROG_PKG_CONFIG()
 PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
 
+AC_ARG_ENABLE([tools], AS_HELP_STRING([--enable-tools], [Enable tools (CLI DHT node)]),build_tools=yes,)
+AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
+
 AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile opendht.pc])
 AC_OUTPUT
