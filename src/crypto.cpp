@@ -80,15 +80,18 @@ PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
 PrivateKey::PrivateKey(const Blob& import)
 {
     const gnutls_datum_t dt {(unsigned char*)import.data(), static_cast<unsigned>(import.size())};
-    gnutls_x509_privkey_init(&x509_key);
-    int err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_PEM);
-    if (err != GNUTLS_E_SUCCESS) {
+    int err = gnutls_x509_privkey_init(&x509_key);
+    if (err != GNUTLS_E_SUCCESS)
+        throw DhtException("Can't initialize private key !");
+
+    err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_PEM);
+    if (err != GNUTLS_E_SUCCESS)
         err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_DER);
-    }
     if (err != GNUTLS_E_SUCCESS) {
         gnutls_x509_privkey_deinit(x509_key);
         throw DhtException("Can't load private key !");
     }
+
     gnutls_privkey_init(&key);
     if (gnutls_privkey_import_x509(key, x509_key, GNUTLS_PRIVKEY_IMPORT_COPY) != GNUTLS_E_SUCCESS) {
         throw DhtException("Can't load private key !");
