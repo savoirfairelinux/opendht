@@ -326,6 +326,10 @@ private:
         time_t getAnnounceTime(Value::Id vid, const ValueType& type) const {
             return getAnnounceTime(acked.find(vid), type);
         }
+        time_t getListenTime() const {
+            time_t min_t = listenStatus.request_time + 15;
+            return listenStatus.reply_time ? std::max(listenStatus.reply_time + 15*60, min_t) : min_t;
+        }
 
         InfoHash id {};
         sockaddr_storage ss;

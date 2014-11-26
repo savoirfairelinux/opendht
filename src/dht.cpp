@@ -666,18 +666,6 @@ Dht::searchStep(Search& sr)
         bool in = sr.id.xorCmp(myid, sr.nodes.back().id) < 0;
 
         DHT_DEBUG("searchStep (synced%s).", in ? ", in" : "");
-        //
-        /*auto list_t = sr.getListenTime();
-        if (list_t && list_t < now.tv_sec) {
-            DHT_WARN("Send listen %u", sr.listeners.size());
-            for (const auto& n : sr.nodes) {
-                if (n.pinged >= 3 && !n.isSynced(now.tv_sec))
-                    continue;
-                sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.reply_time >= now.tv_sec - 15);
-                sr.listen_time = now.tv_sec;
-                break;
-            }
-        }*/
 
         if (not sr.listeners.empty()) {
             DHT_WARN("Send listen %u", sr.listeners.size());
@@ -685,7 +673,8 @@ Dht::searchStep(Search& sr)
             for (auto& n : sr.nodes) {
                 if (n.pinged >= 3)
                     continue;
-                if (n.listenStatus.reply_time + 15*60 < now.tv_sec && n.listenStatus.request_time + 15 < now.tv_sec) {
+                if (n.getListenTime() <= now.tv_sec) {
+                    DHT_WARN("-- Send listen");
                     sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.reply_time >= now.tv_sec - 15);
                     n.listenStatus.request_time = now.tv_sec;
                 }
@@ -863,10 +852,7 @@ Dht::Search::getListenTime(time_t /* now */) const
     for (const auto& sn : nodes) {
         if (sn.pinged >= 3)
             continue;
-        time_t next_req_min = sn.listenStatus.request_time + 15;
-        time_t  lt = sn.listenStatus.reply_time ?
-            std::max(sn.listenStatus.reply_time + 15*60, next_req_min) :
-            next_req_min;
+        time_t lt = sn.getListenTime();
         listen_time = listen_time ? std::min(listen_time, lt) : lt;
         if (++i == 2)
             break;
@@ -1282,6 +1268,15 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
             return;
         store.push_back(Storage {id, {}, {}});
         st = &store.back();
+    }
+    sa_family_t af = from->sa_family;
+    for (auto& l : st->listeners) {
+        if (l.ss.ss_family != af || l.id != node)
+            continue;
+        memcpy(&l.ss, from, fromlen);
+        l.sslen = fromlen;
+        l.tid = tid;
+        return;
     }
     st->listeners.emplace_back(node, from, fromlen, tid);
 }
@@ -1878,7 +1873,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else if (tid.matches(TransPrefix::LISTEN, &ttid)) { 
             DHT_DEBUG("Got reply to listen.");
             Search *sr = findSearch(ttid, from->sa_family);
-            if (!sr || value_id == Value::INVALID_ID) {
+            if (!sr) {
                 DHT_DEBUG("Unknown search or announce!");
                 newNode(id, from, fromlen, 1);
             } else {
@@ -1893,7 +1888,6 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 /* See comment for gp above. */
                 searchSendGetValues(*sr);
             }
-
         } else {
             DHT_WARN("Unexpected reply: ");
             DHT_WARN.logPrintable(buf, buflen);
