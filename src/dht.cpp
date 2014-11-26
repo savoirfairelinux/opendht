@@ -34,11 +34,7 @@ extern "C" {
 
 #ifndef _WIN32
 #include <arpa/inet.h>
-#include <sys/types.h>
-
 #else
-#include <w32api.h>
-#define WINVER WindowsXP
 #include <ws2tcpip.h>
 #endif
 
@@ -57,7 +53,6 @@ extern "C" {
 
 #ifdef _WIN32
 
-#define EAFNOSUPPORT WSAEAFNOSUPPORT
 static bool
 set_nonblocking(int fd, int nonblocking)
 {
@@ -2192,7 +2187,7 @@ Dht::pingNode(const sockaddr *sa, socklen_t salen)
     COPY(buf, offset, my_v, sizeof(my_v), size);
 
 int
-Dht::send(const void *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen)
+Dht::send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen)
 {
     if (salen == 0)
         return -1;

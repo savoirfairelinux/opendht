@@ -216,7 +216,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 
                 struct timeval tv;
                 fd_set readfds;
-                tv.tv_sec = std::min(tosleep.load(), 10l);
+                tv.tv_sec = std::min<time_t>(tosleep.load(), 10);
                 tv.tv_usec = rand_delay();
                 //std::cout << "Dht::rcv_thread loop " << tv.tv_sec << "." << tv.tv_usec << std::endl;
 
@@ -239,9 +239,9 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
                 if(rc > 0) {
                     fromlen = sizeof(from);
                     if(s >= 0 && FD_ISSET(s, &readfds))
-                        rc = recvfrom(s, buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s6, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
                     else
                         break;
                     if (rc > 0) {

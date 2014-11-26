@@ -29,10 +29,6 @@ THE SOFTWARE.
 #include "infohash.h"
 #include "value.h"
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-
 #include <string>
 #include <array>
 #include <vector>
@@ -525,7 +521,7 @@ private:
     long unsigned rate_limit_tokens {MAX_REQUESTS_PER_SEC};
 
     // Networking & packet handling
-    int send(const void* buf, size_t len, int flags, const sockaddr*, socklen_t);
+    int send(const char* buf, size_t len, int flags, const sockaddr*, socklen_t);
     int sendPing(const sockaddr*, socklen_t, TransId tid);
     int sendPong(const sockaddr*, socklen_t, TransId tid);
 
