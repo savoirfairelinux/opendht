@@ -202,6 +202,7 @@ main(int argc, char **argv)
         }
     }
 
+    std::cout <<  "Stopping node..." << std::endl;
     dht.join();
 
     gnutls_global_deinit();

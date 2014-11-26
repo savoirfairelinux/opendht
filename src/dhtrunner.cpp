@@ -56,7 +56,12 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, S
                 }
                 {
                     std::unique_lock<std::mutex> lck(storage_mtx);
-                    if (!dht_gets.empty() || !dht_puts.empty() || !bootstrap_nodes.empty())
+                    if (!dht_gets.empty()
+                     || !dht_puts.empty()
+                     || !dht_eputs.empty()
+                     || !dht_sputs.empty()
+                     || !dht_listen.empty()
+                     || !bootstrap_nodes.empty())
                         return true;
                 }
                 return false;
@@ -211,7 +216,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 
                 struct timeval tv;
                 fd_set readfds;
-                tv.tv_sec = tosleep / 5;
+                tv.tv_sec = std::min(tosleep.load(), 10l);
                 tv.tv_usec = rand_delay();
                 //std::cout << "Dht::rcv_thread loop " << tv.tv_sec << "." << tv.tv_usec << std::endl;
 

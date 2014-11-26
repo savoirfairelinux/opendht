@@ -978,6 +978,11 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
         }
         a_sr->callback = callback;
     }
+    if (not sr->nodes.empty()) {
+        time_t tm = sr->getNextStepTime(types, now.tv_sec);
+        if (tm != 0 && (search_time == 0 || search_time > tm))
+            search_time = tm;
+    }
 }
 
 size_t
@@ -1749,9 +1754,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     switch (message) {
     case MessageType::Error:
         if (tid.length != 4) return;
-        DHT_WARN("Received error message:");
+        DHT_WARN("Received error message %u from %s:", error_code, id.toString().c_str());
         DHT_WARN.logPrintable(buf, buflen);
-        if (error_code == 401 && id != zeroes && tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)) {
+        if (error_code == 401 && id != zeroes && (tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || tid.matches(TransPrefix::LISTEN, &ttid))) {
             auto sr = findSearch(ttid, from->sa_family);
             if (!sr) return;
             DHT_WARN("Received wrong token error for known search %s", sr->id.toString().c_str());
