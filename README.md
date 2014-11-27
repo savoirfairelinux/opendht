@@ -76,7 +76,7 @@ Licenced under the GNU General Public License version 3, though the core routing
 Dependencies
 -
 - GnuTLS 3.1+, used to compute hashes and for the identity layer.
-- Build tested with GCC 4.8+ (Linux, Windows with MinGW), Clang/LLVM (Linux, OS X).
+- Build tested with GCC 4.8+ (Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
 
 TODO
 -
