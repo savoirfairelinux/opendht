@@ -1192,7 +1192,7 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
     for (auto& search: searches) {
         if (search.id != id)
             continue;
-        for (auto it = search.announce.begin(); it != search.announce.end();) {
+        for (auto it = search.announce.cbegin(); it != search.announce.cend();) {
             if (it->value->id == vid) {
                 canceled = true;
                 it = search.announce.erase(it);

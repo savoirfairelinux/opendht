@@ -91,7 +91,7 @@ void
 DhtRunner::loop_()
 {
     if (!dht) return;
-    time_t tosl;
+    time_t tosl = 5;
     {
         std::unique_lock<std::mutex> lck(sock_mtx);
         if (!dht) return;
