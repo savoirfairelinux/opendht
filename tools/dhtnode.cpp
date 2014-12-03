@@ -148,7 +148,7 @@ main(int argc, char **argv)
         std::string op, idstr, value;
         iss >> op >> idstr;
 
-        if (op == "x") {
+        if (op == "x" || op == "q" || op == "exit" || op == "quit") {
             break;
         }
 
