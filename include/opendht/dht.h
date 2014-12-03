@@ -551,7 +551,7 @@ private:
 
     int sendValueAnnounced(const sockaddr*, socklen_t, TransId, Value::Id);
 
-    int sendError(const sockaddr*, socklen_t, TransId tid, int code, const char *message);
+    int sendError(const sockaddr*, socklen_t, TransId tid, uint16_t code, const char *message, bool include_id=false);
 
     void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
     MessageType parseMessage(const uint8_t *buf, size_t buflen,

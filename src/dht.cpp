@@ -1936,7 +1936,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         if (!tokenMatch(token, from)) {
             DHT_WARN("Incorrect token %s for announce_values.", to_hex(token.data(), token.size()).c_str());
-            sendError(from, fromlen, tid, 401, "Announce_value with wrong token");
+            sendError(from, fromlen, tid, 401, "Announce_value with wrong token", true);
             break;
         }
         for (const auto& v : values) {
@@ -1981,7 +1981,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         if (!tokenMatch(token, from)) {
             DHT_WARN("Incorrect token %s for announce_values.", to_hex(token.data(), token.size()).c_str());
-            sendError(from, fromlen, tid, 401, "Listen with wrong token");
+            sendError(from, fromlen, tid, 401, "Listen with wrong token", true);
             break;
         }
         if (!tid.matches(TransPrefix::LISTEN, &ttid)) {
@@ -2537,18 +2537,25 @@ Dht::sendValueAnnounced(const sockaddr *sa, socklen_t salen, TransId tid, Value:
 }
 
 int
-Dht::sendError(const sockaddr *sa, socklen_t salen, TransId tid, int code, const char *message)
+Dht::sendError(const sockaddr *sa, socklen_t salen, TransId tid, uint16_t code, const char *message, bool include_id)
 {
-    char buf[512];
+    constexpr const size_t BUF_SZ = 512;
+    char buf[BUF_SZ];
     int i = 0, rc;
 
-    rc = snprintf(buf + i, 512 - i, "d1:eli%de%d:", code, (int)strlen(message));
-    INC(i, rc, 512);
-    COPY(buf, i, message, (int)strlen(message), 512);
-    rc = snprintf(buf + i, 512 - i, "e1:t%d:", tid.length); INC(i, rc, 512);
-    COPY(buf, i, tid.data(), tid.length, 512);
-    ADD_V(buf, i, 512);
-    rc = snprintf(buf + i, 512 - i, "1:y1:ee"); INC(i, rc, 512);
+    size_t msg_len = strlen(message);
+    rc = snprintf(buf + i, BUF_SZ - i, "d1:eli%ue%lu:", code, msg_len);
+    INC(i, rc, BUF_SZ);
+    COPY(buf, i, message, msg_len, BUF_SZ);
+    rc = snprintf(buf + i, BUF_SZ - i, "e1:t%d:", tid.length); INC(i, rc, BUF_SZ);
+    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
+    ADD_V(buf, i, BUF_SZ);
+    if (include_id) {
+        rc = snprintf(buf + i, BUF_SZ - i, "1:rd2:id20:"); INC(i, rc, BUF_SZ);
+        COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
+        COPY(buf, i, "e", 1u, BUF_SZ);
+    }
+    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:ee"); INC(i, rc, BUF_SZ);
     return send(buf, i, 0, sa, salen);
 }
 
