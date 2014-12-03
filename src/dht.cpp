@@ -778,8 +778,10 @@ Dht::newSearch()
     }
 
     /* The oldest slot is expired. */
-    if (oldest != searches.end() && oldest->announce.empty() && oldest->step_time < now.tv_sec - SEARCH_EXPIRE_TIME)
+    if (oldest != searches.end() && oldest->announce.empty() && oldest->listeners.empty() && oldest->step_time < now.tv_sec - SEARCH_EXPIRE_TIME) {
+        DHT_WARN("Reusing expired search %s", oldest->id.toString().c_str());
         return oldest;
+    }
 
     /* Allocate a new slot. */
     if (searches.size() < MAX_SEARCHES) {
@@ -2713,8 +2715,10 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
 
     p = (uint8_t*)dht_memmem(buf, buflen, "1:eli", 5);
     if (p) {
-        CHECK(p + 5, sizeof(error_code));
-        memcpy(&error_code, p + 5, sizeof(error_code));
+        char *q;
+        unsigned long l = strtoul((char*)p + 5, &q, 10);
+        if (q && *q == 'e' && l < 0x10000)
+            error_code = l;
     } else {
         error_code = 0;
     }
