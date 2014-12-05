@@ -553,6 +553,10 @@ Dht::Search::insertNode(const InfoHash& nid,
     if (nodes.size() == SEARCH_NODES && id.xorCmp(nid, nodes.back().id) > 0)
         return false;
 
+    // Reset search timer if it was empty
+    if (nodes.empty())
+        step_time = 0;
+
     bool found = false;
     auto n = std::find_if(nodes.begin(), nodes.end(), [=,&found](const SearchNode& sn) {
         if (sn.id == nid) {
@@ -640,17 +644,19 @@ Dht::searchStep(Search& sr)
     if (sr.nodes.empty()) {
         // No nodes... yet ?
         // Nothing to do, wait for the timeout.
-        /*
         if (sr.step_time == 0)
             sr.step_time = now.tv_sec;
-        if (now.tv_sec - sr.step_time > SEARCH_TIMEOUT) {
+        if (now.tv_sec - sr.step_time >= SEARCH_TIMEOUT) {
             DHT_WARN("Search timed out.");
-            if (sr.done_callback)
+            sr.step_time = now.tv_sec;
+            sr.callbacks.clear();
+            if (sr.done_callback) {
                 sr.done_callback(false);
-            if (sr.announce.empty())
+                sr.done_callback = nullptr;
+            }
+            if (sr.announce.empty() && sr.listeners.empty())
                 sr.done = true;
         }
-        */
         return;
     }
 
@@ -663,13 +669,17 @@ Dht::searchStep(Search& sr)
         DHT_DEBUG("searchStep (synced%s).", in ? ", in" : "");
 
         if (not sr.listeners.empty()) {
-            DHT_WARN("Send listen %u", sr.listeners.size());
             unsigned i = 0;
             for (auto& n : sr.nodes) {
                 if (n.pinged >= 3)
                     continue;
                 if (n.getListenTime() <= now.tv_sec) {
-                    DHT_WARN("-- Send listen");
+                    {
+                        char hbuf[NI_MAXHOST];
+                        char sbuf[NI_MAXSERV];
+                        getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+                        DHT_DEBUG("Sending listen to %s:%s (%s).", hbuf, sbuf, n.id.toString().c_str());
+                    }
                     sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.reply_time >= now.tv_sec - 15);
                     n.listenStatus.request_time = now.tv_sec;
                 }
@@ -695,22 +705,15 @@ Dht::searchStep(Search& sr)
             for (auto& n : sr.nodes) {
                 if (n.pinged >= 3)
                     continue;
-                // A proposed extension to the protocol consists in
-                // omitting the token when storage tables are full.  While
-                // I don't think this makes a lot of sense -- just sending
-                // a positive reply is just as good --, let's deal with it.
-                // if (n.token.empty())
-                //    n.acked[vid] = now.tv_sec;
                 auto a_status = n.acked.find(vid);
                 auto at = n.getAnnounceTime(a_status, type);
                 if ( at <= now.tv_sec ) {
                     all_acked = false;
-                    //storageStore(sr.id, a.value);
                     {
                         char hbuf[NI_MAXHOST];
                         char sbuf[NI_MAXSERV];
                         getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-                        DHT_WARN("Sending announce_value to %s:%s (%s).", hbuf, sbuf, n.id.toString().c_str());
+                        DHT_DEBUG("Sending announce_value to %s:%s (%s).", hbuf, sbuf, n.id.toString().c_str());
                     }
                     sendAnnounceValue((sockaddr*)&n.ss, sizeof(sockaddr_storage),
                                        TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
@@ -858,10 +861,22 @@ Dht::Search::getListenTime(time_t /* now */) const
 }
 
 time_t
+Dht::Search::getExpireTime() const
+{
+    if (nodes.empty() && (not callbacks.empty() || done_callback))
+        return step_time + SEARCH_TIMEOUT;
+    return 0;
+}
+
+time_t
 Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_t now) const
 {
-    if (done || nodes.empty())
+    if (done)
         return 0;
+
+    if (nodes.empty())
+        return getExpireTime();
+
     if (!isSynced(now))
         return step_time + SEARCH_GET_STEP + 1;
 
@@ -1099,11 +1114,15 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     auto done = std::make_shared<bool>(false);
     auto done4 = std::make_shared<bool>(false);
     auto done6 = std::make_shared<bool>(false);
+    auto ok4 = std::make_shared<bool>(false);
+    auto ok6 = std::make_shared<bool>(false);
     auto vals = std::make_shared<std::vector<std::shared_ptr<Value>>>();
     auto done_l = [=]() {
         if ((*done4 && *done6) || *done) {
+            bool ok = *done || *ok4 || *ok6;
             *done = true;
-            donecb(true);
+            if (donecb)
+                donecb(ok);
         }
     };
     auto cb = [=](const std::vector<std::shared_ptr<Value>>& values) {
@@ -1126,15 +1145,16 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
         done_l();
         return !*done;
     };
-    Dht::search(id, AF_INET, cb, [=](bool) {
+    Dht::search(id, AF_INET, cb, [=](bool ok) {
         *done4 = true;
+        *ok4 = ok;
         done_l();
     });
-    Dht::search(id, AF_INET6, cb, [=](bool) {
+    Dht::search(id, AF_INET6, cb, [=](bool ok) {
         *done6 = true;
+        *ok6 = ok;
         done_l();
     });
-
 }
 
 std::vector<std::shared_ptr<Value>>
@@ -1783,9 +1803,11 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else if (tid.matches(TransPrefix::FIND_NODE) or tid.matches(TransPrefix::GET_VALUES)) {
             bool gp = false;
             Search *sr = nullptr;
+            bool synced = false;
             if (tid.matches(TransPrefix::GET_VALUES, &ttid)) {
                 gp = true;
                 sr = findSearch(ttid, from->sa_family);
+                synced = sr->isSynced(now.tv_sec);
             }
             DHT_DEBUG("Nodes found (%u+%u)%s!", nodes_len/26, nodes6_len/38, gp ? " for get_values" : "");
             if (nodes_len % 26 != 0 || nodes6_len % 38 != 0) {
@@ -1849,7 +1871,16 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                             cb.second(tmp);
                     }
                 }
-                if (sr->isSynced(now.tv_sec)) {
+                bool synced_new = sr->isSynced(now.tv_sec);
+                if (!synced && synced_new) {
+                    DHT_DEBUG("Search just completed: calling done callback");
+                    if (sr->done_callback) {
+                        sr->done_callback(true);
+                        sr->done_callback = nullptr;
+                    }
+                }
+                if (synced_new) {
+
                     search_time = now.tv_sec;
                 }
             }

@@ -215,7 +215,7 @@ private:
     static const unsigned MAX_SEARCHES {1024};
 
     /* A search with no nodes will timeout after this time. */
-    static const time_t SEARCH_TIMEOUT {60};
+    static const time_t SEARCH_TIMEOUT {10};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
@@ -396,6 +396,12 @@ private:
          * ret > 0 : (re-)announce required at time ret.
          */
         time_t getListenTime(time_t now) const;
+
+        /**
+         * ret = 0 : no expiration
+         * ret > 0 : search will expire at time ret
+         */
+        time_t getExpireTime() const;
 
         time_t getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_t now) const;
     };
