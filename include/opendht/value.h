@@ -156,6 +156,12 @@ struct Value : public Serializable
         };
     }
 
+    static Filter IdFilter(const Id id) {
+        return [id](const Value& v) {
+            return v.id == id;
+        };
+    }
+
     static Filter chainFilters(Filter& f1, Filter& f2) {
         return [f1,f2](const Value& v){
             return f1(v) && f2(v);
