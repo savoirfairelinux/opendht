@@ -72,7 +72,7 @@ const Color::Modifier red(Color::FG_RED);
 const Color::Modifier yellow(Color::FG_YELLOW);
 
 void printLog(std::ostream& s, char const* m, va_list args) {
-    static constexpr int BUF_SZ = 4096;
+    static constexpr int BUF_SZ = 8192;
     char buffer[BUF_SZ];
     int ret = vsnprintf(buffer, sizeof(buffer), m, args);
     if (ret < 0)
@@ -161,6 +161,8 @@ main(int argc, char **argv)
                     std::cout << "\t" << *a << std::endl;
                 }
                 return true;
+            }, [](bool ok) {
+                std::cout << "Get - done : " << (ok ? "success" : "failure") << std::endl;
             });
         }
         else if (op == "l") {
@@ -180,6 +182,16 @@ main(int argc, char **argv)
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [](bool ok) {
                 std::cout << "Put done !" << ok << std::endl;
+            });
+        }
+        else if (op == "s") {
+            std::string v;
+            iss >> v;
+            dht.putSigned(id, dht::Value {
+                dht::ValueType::USER_DATA.id,
+                std::vector<uint8_t> {v.begin(), v.end()}
+            }, [](bool ok) {
+                std::cout << "Put signed done !" << ok << std::endl;
             });
         }
         else if (op == "e") {
