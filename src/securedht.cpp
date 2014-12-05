@@ -60,7 +60,8 @@ SecureDht::SecureDht(int s, int s6, crypto::Identity id)
 
     Dht::put(certId, Value {
         CERTIFICATE_TYPE,
-        *certificate_
+        *certificate_,
+        1
     }, [this](bool ok) {
         if (ok)
             DHT_DEBUG("SecureDht: public key announced successfully");
