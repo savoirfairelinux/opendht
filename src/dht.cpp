@@ -1873,8 +1873,17 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
                             return cb.first(*v);
                         });
-                        if (cb.second and not tmp.empty())
+                        if (not tmp.empty())
                             cb.second(tmp);
+                    }
+                    for (auto& l : sr->listeners) {
+                        if (!l.second.second) continue;
+                        std::vector<std::shared_ptr<Value>> tmp;
+                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
+                            return l.second.first(*v);
+                        });
+                        if (not tmp.empty())
+                            l.second.second(tmp);
                     }
                 }
                 bool synced_new = sr->isSynced(now.tv_sec);
