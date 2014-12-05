@@ -1000,6 +1000,8 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
 size_t
 Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f)
 {
+    if (!isRunning(af))
+        return 0;
     DHT_WARN("listenTo %s", id.toString().c_str());
     auto sri = std::find_if (searches.begin(), searches.end(), [id,af](const Search& s) {
         return s.id == id && s.af == af;
@@ -1037,6 +1039,8 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
         return true;
     };
 
+    gcb(getLocal(id, f));
+
     auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
     auto token = ++listener_token;
@@ -1053,6 +1057,8 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     for (auto& s : searches) {
         if (s.id != id) continue;
         auto af_token = s.af == AF_INET ? it->second.first : it->second.second;
+        if (af_token == 0)
+            continue;
         auto sit = s.listeners.find(af_token);
         if (sit == s.listeners.end())
             continue;

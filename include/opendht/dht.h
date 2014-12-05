@@ -509,8 +509,11 @@ private:
     std::vector<Storage> store {};
     std::list<Search> searches {};
     uint16_t search_id {0};
+
+    // map a global listen token to IPv4, IPv6 specific listen tokens.
+    // 0 is the invalid token.
     std::map<size_t, std::pair<size_t, size_t>> listeners {};
-    size_t listener_token {0};
+    size_t listener_token {1};
 
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
