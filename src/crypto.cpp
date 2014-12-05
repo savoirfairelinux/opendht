@@ -68,8 +68,16 @@ static gnutls_digest_algorithm_t get_dig(gnutls_x509_crt_t crt)
 namespace dht {
 namespace crypto {
 
+PrivateKey::PrivateKey()
+{
+    if (gnutls_global_init() != GNUTLS_E_SUCCESS)
+        throw std::runtime_error("Can't initialize GnuTLS.");
+}
+
 PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
 {
+    if (gnutls_global_init() != GNUTLS_E_SUCCESS)
+        throw std::runtime_error("Can't initialize GnuTLS.");
     gnutls_privkey_init(&key);
     if (gnutls_privkey_import_x509(key, k, GNUTLS_PRIVKEY_IMPORT_COPY) != GNUTLS_E_SUCCESS) {
         key = nullptr;
@@ -79,6 +87,8 @@ PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
 
 PrivateKey::PrivateKey(const Blob& import)
 {
+    if (gnutls_global_init() != GNUTLS_E_SUCCESS)
+        throw std::runtime_error("Can't initialize GnuTLS.");
     const gnutls_datum_t dt {(unsigned char*)import.data(), static_cast<unsigned>(import.size())};
     int err = gnutls_x509_privkey_init(&x509_key);
     if (err != GNUTLS_E_SUCCESS)
@@ -108,6 +118,7 @@ PrivateKey::~PrivateKey()
         gnutls_x509_privkey_deinit(x509_key);
         x509_key = nullptr;
     }
+    gnutls_global_deinit();
 }
 
 PrivateKey&
@@ -145,12 +156,28 @@ PrivateKey::decrypt(const Blob& cipher) const
 {
     if (!key)
         throw DhtException("Can't decrypt data without private key !");
-    const gnutls_datum_t dat {(uint8_t*)cipher.data(), (unsigned)cipher.size()};
-    gnutls_datum_t out;
-    if (gnutls_privkey_decrypt_data(key, 0, &dat, &out) != GNUTLS_E_SUCCESS)
-        throw DhtException("Can't decrypt data !");
-    Blob ret {out.data, out.data+out.size};
-    gnutls_free(out.data);
+
+    unsigned key_len = 0;
+    int err = gnutls_privkey_get_pk_algorithm(key, &key_len);
+    if (err < 0)
+        throw DhtException("Can't read public key length !");
+    if (err != GNUTLS_PK_RSA)
+        throw DhtException("Must be an RSA key");
+
+    unsigned cypher_block_sz = key_len / 8;
+    if (cipher.size() % cypher_block_sz)
+        throw DhtException("Unexpected cipher length");
+
+    Blob ret;
+    for (auto cb = cipher.cbegin(), ce = cipher.cend(); cb < ce; cb += cypher_block_sz) {
+        const gnutls_datum_t dat {(uint8_t*)(&(*cb)), cypher_block_sz};
+        gnutls_datum_t out;
+        int err = gnutls_privkey_decrypt_data(key, 0, &dat, &out);
+        if (err != GNUTLS_E_SUCCESS)
+            throw DhtException(std::string("Can't decrypt data: ") + gnutls_strerror(err));
+        ret.insert(ret.end(), out.data, out.data+out.size);
+        gnutls_free(out.data);
+    }
     return ret;
 }
 
@@ -245,13 +272,35 @@ PublicKey::encrypt(const Blob& data) const
 {
     if (!pk)
         throw DhtException("Can't read public key !");
-    const gnutls_datum_t dat {(uint8_t*)data.data(), (unsigned)data.size()};
-    gnutls_datum_t encrypted;
-    int err = gnutls_pubkey_encrypt_data(pk, 0, &dat, &encrypted);
-    if (err != GNUTLS_E_SUCCESS)
-        throw DhtException(std::string("Can't encrypt data: ") + gnutls_strerror(err));
-    Blob ret {encrypted.data, encrypted.data+encrypted.size};
-    gnutls_free(encrypted.data);
+
+    unsigned key_len = 0;
+    int err = gnutls_pubkey_get_pk_algorithm(pk, &key_len);
+    if (err < 0)
+        throw DhtException("Can't read public key length !");
+    if (err != GNUTLS_PK_RSA)
+        throw DhtException("Must be an RSA key");
+
+    unsigned max_block_sz = key_len / 8 - 11;
+    unsigned cypher_block_sz = key_len / 8;
+    unsigned block_num = data.size() / max_block_sz;
+
+    Blob ret;
+    auto eb = data.cbegin();
+    auto ee = data.cend();
+    for (unsigned i=0; i<block_num; i++) {
+        auto blk_sz = std::min<unsigned>(ee - eb, max_block_sz);
+        const gnutls_datum_t dat {(uint8_t*)&(*eb), blk_sz};
+        gnutls_datum_t encrypted;
+        err = gnutls_pubkey_encrypt_data(pk, 0, &dat, &encrypted);
+        if (err != GNUTLS_E_SUCCESS)
+            throw DhtException(std::string("Can't encrypt data: ") + gnutls_strerror(err));
+        if (encrypted.size != cypher_block_sz)
+            throw DhtException("Unexpected cypherblock size");
+        ret.insert(ret.end(), encrypted.data, encrypted.data+encrypted.size);
+        eb += blk_sz;
+        gnutls_free(encrypted.data);
+    }
+
     return ret;
 }
 
@@ -329,6 +378,8 @@ Certificate::getPublicKey() const
 PrivateKey
 PrivateKey::generate()
 {
+    if (gnutls_global_init() != GNUTLS_E_SUCCESS)
+        throw std::runtime_error("Can't initialize GnuTLS.");
     gnutls_x509_privkey_t key;
     if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
         throw std::runtime_error("Can't initialize private key.");

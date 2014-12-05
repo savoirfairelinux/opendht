@@ -85,7 +85,7 @@ private:
 
 struct PrivateKey
 {
-    PrivateKey() {}
+    PrivateKey();
     //PrivateKey(gnutls_privkey_t k) : key(k) {}
     PrivateKey(gnutls_x509_privkey_t k);
     PrivateKey(PrivateKey&& o) noexcept : key(o.key), x509_key(o.x509_key)
