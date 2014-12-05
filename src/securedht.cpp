@@ -242,7 +242,7 @@ SecureDht::putSigned(const InfoHash& hash, Value&& val, DoneCallback callback)
 
     // Check if we are already announcing a value
     auto p = getPut(hash, val.id);
-    if (p) {
+    if (p && val.seq <= p->seq) {
         DHT_DEBUG("Found previous value being announced.");
         val.seq = p->seq + 1;
     }
@@ -257,12 +257,12 @@ SecureDht::putSigned(const InfoHash& hash, Value&& val, DoneCallback callback)
                     DHT_ERROR("Existing non-signed value seems to exists at this location.");
                 else if (v->owner.getId() != getId())
                     DHT_ERROR("Existing signed value belonging to someone else seems to exists at this location.");
-                else
+                else if (sval->seq <= v->seq)
                     sval->seq = v->seq + 1;
             }
             return true;
         },
-        [hash,sval,this,callback] (bool ok) {
+        [hash,sval,this,callback] (bool /* ok */) {
             sign(*sval);
             put(hash, std::move(*sval), callback);
         },
