@@ -189,7 +189,7 @@ PrivateKey::serialize() const
     size_t buf_sz = 8192;
     Blob buffer;
     buffer.resize(buf_sz);
-    int err = gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz);
+    int err = gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_DER, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz);
     if (err != GNUTLS_E_SUCCESS) {
         std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
         return {};
@@ -252,7 +252,9 @@ PublicKey::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
         gnutls_pubkey_deinit(pk);
     gnutls_pubkey_init(&pk);
     const gnutls_datum_t dat {(uint8_t*)tmp.data(), (unsigned)tmp.size()};
-    int err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_DER);
+    int err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_PEM);
+    if (err != GNUTLS_E_SUCCESS)
+        err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_DER);
     if (err != GNUTLS_E_SUCCESS)
         throw std::invalid_argument(std::string("Could not read public key: ") + gnutls_strerror(err));
 }
@@ -336,6 +338,8 @@ Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
     gnutls_x509_crt_init(&cert);
     const gnutls_datum_t crt_dt {(uint8_t*)&(*begin), (unsigned)(end-begin)};
     int err = gnutls_x509_crt_import(cert, &crt_dt, GNUTLS_X509_FMT_PEM);
+    if (err != GNUTLS_E_SUCCESS)
+        err = gnutls_x509_crt_import(cert, &crt_dt, GNUTLS_X509_FMT_DER);
     if (err != GNUTLS_E_SUCCESS) {
         cert = nullptr;
         throw std::invalid_argument(std::string("Could not read certificate - ") + gnutls_strerror(err));
@@ -348,7 +352,7 @@ Certificate::pack(Blob& b) const
     auto b_size = b.size();
     size_t buf_sz = 8192;
     b.resize(b_size + buf_sz);
-    int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_PEM, b.data()+b_size, &buf_sz);
+    int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_DER, b.data()+b_size, &buf_sz);
     if (err != GNUTLS_E_SUCCESS) {
         std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
         b.resize(b_size);
