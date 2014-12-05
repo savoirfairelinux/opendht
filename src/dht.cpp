@@ -880,6 +880,10 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
     if (!isSynced(now))
         return step_time + SEARCH_GET_STEP + 1;
 
+    // The search just completed : call the callback
+    if (done_callback)
+        return now;
+
     auto at = getAnnounceTime(types);
     auto lt = getListenTime(now);
     if (at && lt)
@@ -1809,11 +1813,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else if (tid.matches(TransPrefix::FIND_NODE) or tid.matches(TransPrefix::GET_VALUES)) {
             bool gp = false;
             Search *sr = nullptr;
-            bool synced = false;
             if (tid.matches(TransPrefix::GET_VALUES, &ttid)) {
                 gp = true;
                 sr = findSearch(ttid, from->sa_family);
-                synced = sr->isSynced(now.tv_sec);
             }
             DHT_DEBUG("Nodes found (%u+%u)%s!", nodes_len/26, nodes6_len/38, gp ? " for get_values" : "");
             if (nodes_len % 26 != 0 || nodes6_len % 38 != 0) {
@@ -1886,18 +1888,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                             l.second.second(tmp);
                     }
                 }
-                bool synced_new = sr->isSynced(now.tv_sec);
-                if (!synced && synced_new) {
-                    DHT_DEBUG("Search just completed: calling done callback");
-                    if (sr->done_callback) {
-                        sr->done_callback(true);
-                        sr->done_callback = nullptr;
-                    }
-                }
-                if (synced_new) {
-
+                // Force to recompute the next step time
+                if (sr->isSynced(now.tv_sec))
                     search_time = now.tv_sec;
-                }
             }
         } else if (tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)) {
             DHT_DEBUG("Got reply to announce_values.");
