@@ -376,16 +376,17 @@ Certificate::getPublicKey() const
 }
 
 PrivateKey
-PrivateKey::generate()
+PrivateKey::generate(unsigned key_length)
 {
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw std::runtime_error("Can't initialize GnuTLS.");
     gnutls_x509_privkey_t key;
     if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
         throw std::runtime_error("Can't initialize private key.");
-    if (gnutls_x509_privkey_generate(key, GNUTLS_PK_RSA, 2048, 0) != GNUTLS_E_SUCCESS) {
+    int err = gnutls_x509_privkey_generate(key, GNUTLS_PK_RSA, key_length, 0);
+    if (err != GNUTLS_E_SUCCESS) {
         gnutls_x509_privkey_deinit(key);
-        throw std::runtime_error("Can't initialize RSA key pair.");
+        throw std::runtime_error(std::string("Can't generate RSA key pair: ") + gnutls_strerror(err));
     }
     return PrivateKey{key};
 }

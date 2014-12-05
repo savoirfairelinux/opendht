@@ -102,8 +102,10 @@ struct PrivateKey
 
     /**
      * Generate a new RSA key pair
+     * @param key_length : size of the modulus in bits
+     *      Recommended values: 2048, 4096, 8192
      */
-    static PrivateKey generate();
+    static PrivateKey generate(unsigned key_length = 2048);
 
 private:
     PrivateKey(const PrivateKey&) = delete;
