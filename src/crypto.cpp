@@ -81,7 +81,7 @@ PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
     gnutls_privkey_init(&key);
     if (gnutls_privkey_import_x509(key, k, GNUTLS_PRIVKEY_IMPORT_COPY) != GNUTLS_E_SUCCESS) {
         key = nullptr;
-        throw DhtException("Can't load private key !");
+        throw DhtException("Can't load generic private key !");
     }
 }
 
@@ -89,11 +89,11 @@ PrivateKey::PrivateKey(const Blob& import)
 {
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw std::runtime_error("Can't initialize GnuTLS.");
-    const gnutls_datum_t dt {(unsigned char*)import.data(), static_cast<unsigned>(import.size())};
     int err = gnutls_x509_privkey_init(&x509_key);
     if (err != GNUTLS_E_SUCCESS)
         throw DhtException("Can't initialize private key !");
 
+    const gnutls_datum_t dt {(uint8_t*)import.data(), static_cast<unsigned>(import.size())};
     err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_PEM);
     if (err != GNUTLS_E_SUCCESS)
         err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_DER);
@@ -104,7 +104,7 @@ PrivateKey::PrivateKey(const Blob& import)
 
     gnutls_privkey_init(&key);
     if (gnutls_privkey_import_x509(key, x509_key, GNUTLS_PRIVKEY_IMPORT_COPY) != GNUTLS_E_SUCCESS) {
-        throw DhtException("Can't load private key !");
+        throw DhtException("Can't load generic private key !");
     }
 }
 
@@ -189,9 +189,9 @@ PrivateKey::serialize() const
     size_t buf_sz = 8192;
     Blob buffer;
     buffer.resize(buf_sz);
-    int err = gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_DER, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz);
+    int err = gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz);
     if (err != GNUTLS_E_SUCCESS) {
-        std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
+        std::cerr << "Could not export private key - " << gnutls_strerror(err) << std::endl;
         return {};
     }
     buffer.resize(buf_sz);
