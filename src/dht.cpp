@@ -723,6 +723,8 @@ Dht::searchStep(Search& sr)
                     } else {
                         a_status->second.request_time = now.tv_sec;
                     }
+                    // use the "pending" flag so we update the "request_time"
+                    // fields after sending the announce requests for every value to announce
                     n.pending = true;
                 }
                 if (++i == 8)
@@ -800,8 +802,10 @@ Dht::newSearch()
 void
 Dht::Search::insertBucket(const Bucket& b, time_t now)
 {
-    for (auto& n : b.nodes)
-        insertNode(n.id, (sockaddr*)&n.ss, n.sslen, now);
+    for (auto& n : b.nodes) {
+        if (n.time > now - NODE_EXPIRE_TIME && n.pinged < 3)
+            insertNode(n.id, (sockaddr*)&n.ss, n.sslen, now);
+    }
 }
 
 bool
