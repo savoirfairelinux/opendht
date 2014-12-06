@@ -641,6 +641,10 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n)
 void
 Dht::searchStep(Search& sr)
 {
+    sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
+        return n.pinged >= 3 && n.reply_time < now.tv_sec - 7200;
+    }), sr.nodes.end());
+
     if (sr.nodes.empty()) {
         // No nodes... yet ?
         // Nothing to do, wait for the timeout.
