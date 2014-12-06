@@ -214,6 +214,9 @@ private:
     /* The maximum number of searches we keep data about. */
     static const unsigned MAX_SEARCHES {1024};
 
+    /* Time for a request to timeout */
+    static const time_t MAX_RESPONSE_TIME {15};
+
     /* A search with no nodes will timeout after this time. */
     static const time_t SEARCH_TIMEOUT {10};
 
@@ -223,6 +226,9 @@ private:
 
     /* The time after which we consider a search to be expirable. */
     static const time_t SEARCH_EXPIRE_TIME {62 * 60};
+
+    /* The time after which we consider a node to be expirable. */
+    static const time_t NODE_EXPIRE_TIME {15 * 60};
 
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
@@ -311,7 +317,7 @@ private:
          * Can we use this node to listen/announce ?
          */
         bool isSynced(time_t now) const {
-            return /*pinged < 3 && replied &&*/ reply_time > now - 15 * 60;
+            return /*pinged < 3 && replied &&*/ reply_time > now - NODE_EXPIRE_TIME;
         }
 
         time_t getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
@@ -323,8 +329,8 @@ private:
             return getAnnounceTime(acked.find(vid), type);
         }
         time_t getListenTime() const {
-            time_t min_t = listenStatus.request_time + 15;
-            return listenStatus.reply_time ? std::max(listenStatus.reply_time + 15*60, min_t) : min_t;
+            time_t min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
+            return listenStatus.reply_time ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME, min_t) : min_t;
         }
 
         InfoHash id {};

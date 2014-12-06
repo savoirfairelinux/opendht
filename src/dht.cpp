@@ -281,7 +281,7 @@ Dht::Node::isGood(time_t now) const
     return
         pinged <= 2 &&
         reply_time >= now - 7200 &&
-        time >= now - 15 * 60;
+        time >= now - NODE_EXPIRE_TIME;
 }
 
 /* Every bucket caches the address of a likely node.  Ping it. */
@@ -401,25 +401,25 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
 
     for (auto& n : b->nodes) {
         if (n.id != id) continue;
-        if (confirm || n.time < now.tv_sec - 15 * 60) {
-            /* Known node.  Update stuff. */
+        /* Known node.  Update stuff. */
+
+        if (confirm || n.time < now.tv_sec - NODE_EXPIRE_TIME) {
             memcpy((sockaddr*)&n.ss, sa, salen);
-            if (confirm)
-                n.time = now.tv_sec;
-            if (confirm >= 2) {
-                n.reply_time = now.tv_sec;
-                n.pinged = 0;
-                n.pinged_time = 0;
-            }
-            if (confirm) {
-                /* If this node existed in searches but was expired, give it another chance. */
-                for (auto& s : searches) {
-                    if (s.af != sa->sa_family) continue;
-                    if (s.insertNode(id, sa, salen, now.tv_sec, true)) {
-                        time_t tm = s.getNextStepTime(types, now.tv_sec);
-                        if (tm != 0 && (search_time == 0 || search_time > tm))
-                            search_time = tm;
-                    }
+        }
+        if (confirm >= 2) {
+            n.reply_time = now.tv_sec;
+            n.pinged = 0;
+            n.pinged_time = 0;
+        }
+        if (confirm) {
+            n.time = now.tv_sec;
+            /* If this node existed in searches but was expired, give it another chance. */
+            for (auto& s : searches) {
+                if (s.af != sa->sa_family) continue;
+                if (s.insertNode(id, sa, salen, now.tv_sec, true)) {
+                    time_t tm = s.getNextStepTime(types, now.tv_sec);
+                    if (tm != 0 && (search_time == 0 || search_time > tm))
+                        search_time = tm;
                 }
             }
         }
@@ -447,7 +447,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
 
     /* First, try to get rid of a known-bad node. */
     for (auto& n : b->nodes) {
-        if (n.pinged < 3 || n.pinged_time >= now.tv_sec - 15)
+        if (n.pinged < 3 || n.pinged_time >= now.tv_sec - MAX_RESPONSE_TIME)
             continue;
         n.id = id;
         memcpy((sockaddr*)&n.ss, sa, salen);
@@ -468,7 +468,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                of bad nodes fast. */
             if (!n.isGood(now.tv_sec)) {
                 dubious = true;
-                if (n.pinged_time < now.tv_sec - 15) {
+                if (n.pinged_time < now.tv_sec - MAX_RESPONSE_TIME) {
                     DHT_DEBUG("Sending ping to dubious node.");
                     sendPing((sockaddr*)&n.ss, n.sslen, TransId {TransPrefix::PING});
                     n.pinged++;
@@ -610,13 +610,13 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n)
     time_t t = now.tv_sec;
     if (!n) {
         auto ni = std::find_if(sr.nodes.begin(), sr.nodes.end(), [t](const SearchNode& sn) {
-            return sn.pinged < 3 && !sn.isSynced(t) && sn.request_time < t - 15;
+            return sn.pinged < 3 && !sn.isSynced(t) && sn.request_time < t - MAX_RESPONSE_TIME;
         });
         if (ni != sr.nodes.end())
             n = &*ni;
     }
 
-    if (!n || n->pinged >= 3 || n->isSynced(t) || n->request_time >= t - 15)
+    if (!n || n->pinged >= 3 || n->isSynced(t) || n->request_time >= t - MAX_RESPONSE_TIME)
         return false;
 
     {
@@ -647,7 +647,7 @@ Dht::searchStep(Search& sr)
         if (sr.step_time == 0)
             sr.step_time = now.tv_sec;
         if (now.tv_sec - sr.step_time >= SEARCH_TIMEOUT) {
-            DHT_WARN("Search timed out.");
+            DHT_WARN("Search IPv%c %s timed out.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
             sr.step_time = now.tv_sec;
             sr.callbacks.clear();
             if (sr.done_callback) {
@@ -1325,7 +1325,7 @@ Dht::expireStorage()
             std::partition(i->listeners.begin(), i->listeners.end(),
                 [&](const Listener& l)
                 {
-                    bool expired = l.time + 15*60 < now.tv_sec;
+                    bool expired = l.time + NODE_EXPIRE_TIME < now.tv_sec;
                     if (expired)
                         DHT_DEBUG("Discarding expired listener %s", l.id.toString().c_str());
                     // return false if the element should be removed
