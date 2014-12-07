@@ -631,7 +631,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
         char hbuf[NI_MAXHOST];
         char sbuf[NI_MAXSERV];
         getnameinfo((sockaddr*)&n->ss, n->sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-        DHT_WARN("Sending get_values to %s:%s for %s.", hbuf, sbuf, n->id.toString().c_str());
+        DHT_WARN("Sending get_values to %s:%s (%s) for %s.", hbuf, sbuf, n->id.toString().c_str(), sr.id.toString().c_str());
     }
     sendGetValues((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->reply_time >= t - 15);
     n->pinged++;
@@ -1899,7 +1899,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 }
             }
             if (cleared) {
-                DHT_WARN("Token flush for node %s (%d searches affected)", esr->id.toString().c_str(), cleared);
+                DHT_WARN("Token flush for node %s (%d searches affected)", id.toString().c_str(), cleared);
                 newNode(id, from, fromlen, 2);
             }
         } else {
