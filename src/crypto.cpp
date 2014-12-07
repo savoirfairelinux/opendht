@@ -28,7 +28,7 @@
  *  as that of the covered work.
  */
 
-#include "securedht.h"
+#include "crypto.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
@@ -39,6 +39,7 @@ extern "C" {
 #include <random>
 #include <sstream>
 #include <random>
+#include <stdexcept>
 
 static gnutls_digest_algorithm_t get_dig_for_pub(gnutls_pubkey_t pubkey)
 {

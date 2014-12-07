@@ -35,6 +35,7 @@ extern "C" {
 }
 
 #include <sstream>
+#include <cstdio>
 
 namespace dht {
 
