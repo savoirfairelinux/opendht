@@ -317,7 +317,7 @@ private:
          * Can we use this node to listen/announce ?
          */
         bool isSynced(time_t now) const {
-            return /*pinged < 3 && replied &&*/ reply_time > now - NODE_EXPIRE_TIME;
+            return /*pinged < 3 && replied &&*/ reply_time >= now - NODE_EXPIRE_TIME;
         }
 
         time_t getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
@@ -330,7 +330,7 @@ private:
         }
         time_t getListenTime() const {
             time_t min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
-            return listenStatus.reply_time ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME, min_t) : min_t;
+            return listenStatus.reply_time ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - 5, min_t) : min_t;
         }
 
         InfoHash id {};
@@ -349,6 +349,13 @@ private:
         // Generic temporary flag.
         // Must be reset to false after use by the algorithm.
         bool pending {false};
+    };
+
+    struct Get {
+        time_t start;
+        Value::Filter filter;
+        GetCallback get_cb;
+        DoneCallback done_cb;
     };
 
     struct Announce {
@@ -374,11 +381,8 @@ private:
 
         bool done {false};
         std::vector<SearchNode> nodes {SEARCH_NODES+1};
-
         std::vector<Announce> announce {};
-
-        std::vector<std::pair<Value::Filter, GetCallback>> callbacks {};
-        DoneCallback done_callback {nullptr};
+        std::vector<Get> callbacks {};
 
         std::map<size_t, std::pair<Value::Filter, GetCallback>> listeners {};
         size_t listener_token = 1;
@@ -390,6 +394,17 @@ private:
          * Can we use this search to announce ?
          */
         bool isSynced(time_t now) const;
+
+        time_t getLastGetTime() const;
+
+        bool isUpdated(const SearchNode& sn) const;
+
+        /**
+         * Is this get operation done ?
+         */
+        bool isDone(const Get& get, time_t now) const;
+
+        time_t getUpdateTime(time_t now) const;
 
         /**
          * ret = 0 : no announce required.
@@ -427,12 +442,18 @@ private:
         InfoHash id {};
         sockaddr_storage ss;
         socklen_t sslen {};
+        uint16_t tid {};
         time_t time {};
-        uint16_t tid;
 
-        Listener() : ss(), sslen() {}
-        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t tid) : id(id), sslen(fromlen), tid(tid) {
+        constexpr Listener() : ss() {}
+        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_t t) : id(id), ss(), sslen(fromlen), tid(ttid), time(t) {
             memcpy(&ss, from, fromlen);
+        }
+        void refresh(const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_t t) {
+            memcpy(&ss, from, fromlen);
+            sslen = fromlen;
+            tid = ttid;
+            time = t;
         }
     };
 
@@ -646,7 +667,12 @@ private:
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
-    bool searchSendGetValues(Search& sr, SearchNode *n = nullptr);
+
+    /**
+     * If update is true, this method will also send message to synced but non-updated search nodes.
+     */
+    bool searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = false);
+
     void searchStep(Search& sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
