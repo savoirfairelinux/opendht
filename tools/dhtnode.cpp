@@ -87,18 +87,16 @@ int
 main(int argc, char **argv)
 {
     int i = 1;
-    int p = 0;
+    in_port_t port = 0;
     if (argc >= 2) {
-        int a = atoi(argv[i]);
-        if (a > 0 && a < 0x10000) {
-            p = a;
+        int p = atoi(argv[i]);
+        if (p > 0 && p < 0x10000) {
+            port = p;
             i++;
         }
     }
-    if (!p)
-        p = 4222;
-
-    in_port_t port = p;
+    if (!port)
+        port = 4222;
 
     std::vector<sockaddr_storage> bootstrap_nodes {};
     while (i < argc) {
@@ -140,6 +138,7 @@ main(int argc, char **argv)
 
     std::cout << "OpenDht node " << dht.getRoutingId() << " running on port " <<  port<<  std::endl;
     std::cout << "Public key ID " << dht.getId() << std::endl;
+    std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
     while (true)
     {
@@ -177,7 +176,7 @@ main(int argc, char **argv)
             unsigned good6, dubious6, cached6, incoming6;
             dht.getNodesStats(AF_INET, &good4, &dubious4, &cached4, &incoming4);
             dht.getNodesStats(AF_INET6, &good6, &dubious6, &cached6, &incoming6);
-            std::cout << "OpenDht node " << dht.getRoutingId() << std::endl;
+            std::cout << "OpenDht node " << dht.getRoutingId() << " running on port " <<  port<<  std::endl;
             std::cout << "Public key ID " << dht.getId() << std::endl;
             std::cout << "IPv4 nodes : " << good4 << " good, " << dubious4 << " dubious, " << incoming4 << " incoming." << std::endl;
             std::cout << "IPv6 nodes : " << good6 << " good, " << dubious6 << " dubious, " << incoming6 << " incoming." << std::endl;
@@ -198,6 +197,11 @@ main(int argc, char **argv)
         }
 
         dht::InfoHash id {idstr};
+        static constexpr dht::InfoHash INVALID_ID {};
+        if (id == INVALID_ID) {
+            std::cout << "Syntax error: invalid InfoHash." << std::endl;
+            continue;
+        }
 
         if (op == "g") {
             dht.get(id, [](const std::vector<std::shared_ptr<Value>>& values) {
@@ -211,6 +215,7 @@ main(int argc, char **argv)
             });
         }
         else if (op == "l") {
+            std::cout << id << std::endl;
             dht.listen(id, [](const std::vector<std::shared_ptr<Value>>& values) {
                 std::cout << "Listen - found values : " << std::endl;
                 for (const auto& a : values) {
@@ -256,9 +261,9 @@ main(int argc, char **argv)
             dht.put(id, dht::Value {dht::ServiceAnnouncement::TYPE.id, dht::ServiceAnnouncement(port)}, [](bool ok) {
                 std::cout << "Announce done !" << ok << std::endl;
             });
-        } else {
+        } else if (op != "") {
             std::cout << "Unknown command: " << op << std::endl;
-            std::cout << " (type 'h' or 'help' for help)" << std::endl;
+            std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
         }
     }
 
