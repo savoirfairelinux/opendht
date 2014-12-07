@@ -216,7 +216,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 
                 struct timeval tv;
                 fd_set readfds;
-                tv.tv_sec = std::min<time_t>(tosleep.load(), 10);
+                tv.tv_sec = std::min<time_t>(tosleep.load(), 5);
                 tv.tv_usec = rand_delay();
                 //std::cout << "Dht::rcv_thread loop " << tv.tv_sec << "." << tv.tv_usec << std::endl;
 
