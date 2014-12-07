@@ -67,6 +67,10 @@ public:
 
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
+    void cancelPut(const InfoHash& h , const Value::Id& id) {
+        std::unique_lock<std::mutex> lck(dht_mtx);
+        dht->cancelPut(h, id);
+    }
 
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
