@@ -1663,6 +1663,38 @@ Dht::dumpTables() const
     DHT_DEBUG("%s", out.str().c_str());
 }
 
+std::string
+Dht::getStorageLog() const
+{
+    std::stringstream out;
+    for (const auto& st : store) {
+        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values:" << std::endl;
+        for (const auto& v : st.values)
+            out << "   " << *v.data << " (" << (now.tv_sec - v.time) << "s)" << std::endl;
+    }
+    return out.str();
+}
+
+
+std::string 
+Dht::getRoutingTablesLog(sa_family_t af) const
+{
+    auto& list = (af == AF_INET) ? buckets : buckets6;
+    std::stringstream out;
+    for (const auto& b : list)
+        dumpBucket(b, out);
+    return out.str();
+}
+
+std::string 
+Dht::getSearchesLog(sa_family_t af) const
+{
+    auto& list = (af == AF_INET) ? buckets : buckets6;
+    std::stringstream out;
+    for (const auto& sr : searches)
+        dumpSearch(sr, out);
+    return out.str();
+}
 
 Dht::Dht(int s, int s6, const InfoHash& id)
  : dht_socket(s), dht_socket6(s6), myid(id)

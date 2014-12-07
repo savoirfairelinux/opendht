@@ -89,6 +89,12 @@ public:
         return dht->getId();
     }
 
+    InfoHash getRoutingId() const {
+        if (!dht)
+            return {};
+        return dht->getRoutingId();
+    }
+
     std::vector<Dht::NodeExport> exportNodes() const {
         std::unique_lock<std::mutex> lck(dht_mtx);
         if (!dht)
@@ -120,6 +126,28 @@ public:
 
     bool isRunning() const {
         return running;
+    }
+
+    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
+    {
+        std::unique_lock<std::mutex> lck(dht_mtx);
+        return dht->getNodesStats(af, good_return, dubious_return, cached_return, incoming_return);
+    }
+
+    std::string getStorageLog() const
+    {
+        std::unique_lock<std::mutex> lck(dht_mtx);
+        return dht->getStorageLog();
+    }
+    std::string getRoutingTablesLog(sa_family_t af) const
+    {
+        std::unique_lock<std::mutex> lck(dht_mtx);
+        return dht->getRoutingTablesLog(af);
+    }
+    std::string getSearchesLog(sa_family_t af) const
+    {
+        std::unique_lock<std::mutex> lck(dht_mtx);
+        return dht->getSearchesLog(af);
     }
 
     /**

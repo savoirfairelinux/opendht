@@ -86,13 +86,18 @@ void printLog(std::ostream& s, char const* m, va_list args) {
 int
 main(int argc, char **argv)
 {
-    if (argc < 2)
-        throw std::invalid_argument("Entrez un port");
-
     int i = 1;
-    int p = atoi(argv[i++]);
-    if (p <= 0 || p >= 0x10000)
-        throw std::invalid_argument("Port invalide: " + std::to_string(p));
+    int p = 0;
+    if (argc >= 2) {
+        int a = atoi(argv[i]);
+        if (a > 0 && a < 0x10000) {
+            p = a;
+            i++;
+        }
+    }
+    if (!p)
+        p = 4222;
+
     in_port_t port = p;
 
     std::vector<sockaddr_storage> bootstrap_nodes {};
@@ -128,28 +133,68 @@ main(int argc, char **argv)
     auto crt_tmp = dht::crypto::generateIdentity("DHT Node", ca_tmp);
 
     DhtRunner dht;
-    dht.run(port, crt_tmp, true, [](dht::Dht::Status ipv4, dht::Dht::Status ipv6) {
-        std::cout << (int)ipv4 << (int)ipv6 << std::endl;
+    dht.run(port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {
     });
-
-    dht.setLoggers(
-        [](char const* m, va_list args){ std::cerr << red; printLog(std::cerr, m, args); std::cerr << def; },
-        [](char const* m, va_list args){ std::cout << yellow; printLog(std::cout, m, args); std::cout << def; },
-        [](char const* m, va_list args){ printLog(std::cout, m, args); }
-    );
 
     dht.bootstrap(bootstrap_nodes);
 
+    std::cout << "OpenDht node " << dht.getRoutingId() << " running on port " <<  port<<  std::endl;
+    std::cout << "Public key ID " << dht.getId() << std::endl;
+
     while (true)
     {
+        std::cout << ">> ";
         std::string line;
         std::getline(std::cin, line);
         std::istringstream iss(line);
         std::string op, idstr, value;
         iss >> op >> idstr;
 
-        if (op == "x" || op == "q" || op == "exit" || op == "quit") {
+        if (std::cin.eof() || op == "x" || op == "q" || op == "exit" || op == "quit") {
             break;
+        } else if (op == "h" || op == "help") {
+            std::cout << "OpenDht command line interface (CLI)" << std::endl;
+            std::cout << "Possible commands:" << std::endl;
+            std::cout << "  h, help    Print this help message." << std::endl;
+            std::cout << "  q, quit    Quit the program." << std::endl;
+
+            std::cout << std::endl << "Node information:" << std::endl;
+            std::cout << "  ll         Print basic information and stats about the current node." << std::endl;
+            std::cout << "  ls         Print basic information about current searches." << std::endl;
+            std::cout << "  ld         Print basic information about currenty stored values on this node." << std::endl;
+            std::cout << "  lr         Print the full current routing table of this node" << std::endl;
+
+            std::cout << std::endl << "Operations on the DHT:" << std::endl;
+            std::cout << "  g [key]               Get values at [key]." << std::endl;
+            std::cout << "  l [key]               Listen for value changes at [key]." << std::endl;
+            std::cout << "  p [key] [str]         Put string value at [key]." << std::endl;
+            std::cout << "  s [key] [str]         Put string value at [key], signed with our generated private key." << std::endl;
+            std::cout << "  e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with its public key (if found)." << std::endl;
+            std::cout << std::endl;
+            continue;
+        } else if (op == "ll") {
+            unsigned good4, dubious4, cached4, incoming4;
+            unsigned good6, dubious6, cached6, incoming6;
+            dht.getNodesStats(AF_INET, &good4, &dubious4, &cached4, &incoming4);
+            dht.getNodesStats(AF_INET6, &good6, &dubious6, &cached6, &incoming6);
+            std::cout << "OpenDht node " << dht.getRoutingId() << std::endl;
+            std::cout << "Public key ID " << dht.getId() << std::endl;
+            std::cout << "IPv4 nodes : " << good4 << " good, " << dubious4 << " dubious, " << incoming4 << " incoming." << std::endl;
+            std::cout << "IPv6 nodes : " << good6 << " good, " << dubious6 << " dubious, " << incoming6 << " incoming." << std::endl;
+            continue;
+        } else if (op == "lr") {
+            std::cout << "IPv4 routing table:" << std::endl;
+            std::cout << dht.getRoutingTablesLog(AF_INET) << std::endl;
+            std::cout << "IPv6 routing table:" << std::endl;
+            std::cout << dht.getRoutingTablesLog(AF_INET6) << std::endl;
+            continue;
+        } else if (op == "ld") {
+            std::cout << dht.getStorageLog() << std::endl;
+            continue;
+        } else if (op == "ls") {
+            std::cout << "Searches:" << std::endl;
+            std::cout << dht.getSearchesLog(AF_INET) << std::endl;
+            continue;
         }
 
         dht::InfoHash id {idstr};
@@ -211,10 +256,13 @@ main(int argc, char **argv)
             dht.put(id, dht::Value {dht::ServiceAnnouncement::TYPE.id, dht::ServiceAnnouncement(port)}, [](bool ok) {
                 std::cout << "Announce done !" << ok << std::endl;
             });
+        } else {
+            std::cout << "Unknown command: " << op << std::endl;
+            std::cout << " (type 'h' or 'help' for help)" << std::endl;
         }
     }
 
-    std::cout <<  "Stopping node..." << std::endl;
+    std::cout << std::endl <<  "Stopping node..." << std::endl;
     dht.join();
 
     gnutls_global_deinit();

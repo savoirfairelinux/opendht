@@ -188,6 +188,10 @@ public:
     void importValues(const std::vector<ValuesExport>&);
 
     int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const;
+    std::string getStorageLog() const;
+    std::string getRoutingTablesLog(sa_family_t af) const;
+    std::string getSearchesLog(sa_family_t af) const;
+
     void dumpTables() const;
 
     /* This must be provided by the user. */
