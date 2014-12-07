@@ -40,10 +40,12 @@ extern "C" {
 namespace dht {
 
 InfoHash::InfoHash(const std::string& hex) {
-    unsigned in = std::min((size_t)HASH_LEN, hex.size()/2);
-    for (unsigned i = 0; i < in; i++) {
-        sscanf(hex.data() + 2*i, "%02x", (unsigned*)(&((*this)[i])));
+    if (hex.size()/2 < HASH_LEN) {
+        fill(0);
+        return;
     }
+    for (unsigned i = 0; i < HASH_LEN; i++)
+        sscanf(hex.data() + 2*i, "%02x", (unsigned*)(&((*this)[i])));
 }
 
 InfoHash

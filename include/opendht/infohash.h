@@ -34,7 +34,7 @@
 #include <iomanip>
 #include <array>
 #include <vector>
-
+#include <algorithm>
 #include <cstring>
 
 // bytes
@@ -58,8 +58,11 @@ class InfoHash final : public std::array<uint8_t, HASH_LEN> {
 public:
     constexpr InfoHash() : std::array<uint8_t, HASH_LEN>() {}
     constexpr InfoHash(const std::array<uint8_t, HASH_LEN>& h) : std::array<uint8_t, HASH_LEN>(h) {}
-    InfoHash(const uint8_t* h, size_t h_len=HASH_LEN) : std::array<uint8_t, HASH_LEN>() {
-        memcpy(data(), h, std::min((size_t)HASH_LEN, h_len));
+    InfoHash(const uint8_t* h, size_t h_len) : std::array<uint8_t, HASH_LEN>() {
+        if (h_len < HASH_LEN)
+            fill(0);
+        else
+            std::copy_n(h, HASH_LEN, begin());
     }
 
     /**
