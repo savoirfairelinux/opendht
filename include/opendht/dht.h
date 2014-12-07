@@ -215,14 +215,14 @@ private:
     static const unsigned MAX_SEARCHES {1024};
 
     /* Time for a request to timeout */
-    static const time_t MAX_RESPONSE_TIME {15};
+    static const time_t MAX_RESPONSE_TIME {6};
 
     /* A search with no nodes will timeout after this time. */
     static const time_t SEARCH_TIMEOUT {10};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
-    static const time_t SEARCH_GET_STEP {15};
+    static const time_t SEARCH_GET_STEP {6};
 
     /* The time after which we consider a search to be expirable. */
     static const time_t SEARCH_EXPIRE_TIME {62 * 60};
