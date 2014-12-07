@@ -1883,20 +1883,28 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     switch (message) {
     case MessageType::Error:
         if (tid.length != 4) return;
-        DHT_WARN("Received error message %u from %s:", error_code, id.toString().c_str());
-        DHT_WARN.logPrintable(buf, buflen);
         if (error_code == 401 && id != zeroes && (tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || tid.matches(TransPrefix::LISTEN, &ttid))) {
-            auto sr = findSearch(ttid, from->sa_family);
-            if (!sr) return;
-            DHT_WARN("Received wrong token error for known search %s", sr->id.toString().c_str());
-            for (auto& n : sr->nodes) {
-                if (n.id != id) continue;
-                newNode(id, from, fromlen, 2);
-                n.request_time = 0;
-                n.reply_time = 0;
-                n.pinged = 0;
+            auto esr = findSearch(ttid, from->sa_family);
+            if (!esr) return;
+            unsigned cleared = 0;
+            for (auto& sr : searches) {
+                for (auto& n : sr.nodes) {
+                    if (n.id != id) continue;
+                    cleared++;
+                    n.request_time = 0;
+                    n.reply_time = 0;
+                    n.pinged = 0;
+                    searchSendGetValues(sr);
+                    break;
+                }
             }
-            searchSendGetValues(*sr);
+            if (cleared) {
+                DHT_WARN("Token flush for node %s (%d searches affected)", esr->id.toString().c_str(), cleared);
+                newNode(id, from, fromlen, 2);
+            }
+        } else {
+            DHT_WARN("Received unknown error message %u from %s:", error_code, id.toString().c_str());
+            DHT_WARN.logPrintable(buf, buflen);
         }
         break;
     case MessageType::Reply:
