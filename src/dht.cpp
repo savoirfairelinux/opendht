@@ -134,7 +134,7 @@ Dht::getStatus(sa_family_t af) const
     int tot = getNodesStats(af, &good, &dubious, &cached, &incoming);
     if (tot < 1)
         return Status::Disconnected;
-    else if (good < 4)
+    else if (good < 1)
         return Status::Connecting;
     return Status::Connected;
 }
