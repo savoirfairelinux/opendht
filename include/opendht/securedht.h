@@ -39,7 +39,7 @@
 
 namespace dht {
 
-class SecureDht : private Dht {
+class SecureDht : public Dht {
 public:
 
     typedef std::function<void(bool)> SignatureCheckCallback;
@@ -56,19 +56,12 @@ public:
 
     virtual ~SecureDht();
 
-    using Dht::periodic;
-    using Dht::pingNode;
-    using Dht::insertNode;
-    using Dht::exportNodes;
-    using Dht::exportValues;
-    using Dht::importValues;
-    using Dht::getStatus;
-    using Dht::dumpTables;
-    using Dht::put;
-    using Dht::setLoggers;
-
     InfoHash getId() const {
         return key_->getPublicKey().getId();
+    }
+
+    InfoHash getRoutingId() const {
+        return Dht::getId();
     }
 
     ValueType secureType(ValueType&& type);
