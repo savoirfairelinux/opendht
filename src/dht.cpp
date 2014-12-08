@@ -1558,27 +1558,16 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
         out << " (cached)";
     out  << std::endl;
     for (auto& n : b.nodes) {
-        std::string buf(INET6_ADDRSTRLEN, '\0');
-        unsigned short port;
+        char hbuf[NI_MAXHOST];
+        char sbuf[NI_MAXSERV];
         out << "    Node " << n.id << " ";
-        if (n.ss.ss_family == AF_INET) {
-            sockaddr_in *sin = (sockaddr_in*)&n.ss;
-            inet_ntop(AF_INET, &sin->sin_addr, (char*)buf.data(), buf.size());
-            port = ntohs(sin->sin_port);
-        } else if (n.ss.ss_family == AF_INET6) {
-            sockaddr_in6 *sin6 = (sockaddr_in6*)&n.ss;
-            inet_ntop(AF_INET6, &sin6->sin6_addr, (char*)buf.data(), buf.size());
-            port = ntohs(sin6->sin6_port);
-        } else {
-            out << "unknown(" << (unsigned)n.ss.ss_family << ")";
-            port = 0;
-        }
-        buf.resize(std::char_traits<char>::length(buf.c_str()));
-
-        if (n.ss.ss_family == AF_INET6)
-            out << "[" << buf << "]:" << port;
-        else
-            out << buf << ":" << port;
+        if (!getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+            if (n.ss.ss_family == AF_INET6)
+                out << "[" << hbuf << "]:" << sbuf;
+            else
+                out << hbuf << ":" << sbuf;
+        } else
+            out << " [invalid address]";
         if (n.time != n.reply_time)
             out << " age " << (now.tv_sec - n.time) << ", " << (now.tv_sec - n.reply_time);
         else
@@ -1654,11 +1643,7 @@ Dht::dumpTables() const
         dumpSearch(sr, out);
     out << std::endl;
 
-    for (const auto& st : store) {
-        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values:" << std::endl;
-        for (const auto& v : st.values)
-            out << "   " << *v.data << " (" << (now.tv_sec - v.time) << "s)" << std::endl;
-    }
+    out << getStorageLog() << std::endl;
 
     DHT_DEBUG("%s", out.str().c_str());
 }
@@ -1669,8 +1654,25 @@ Dht::getStorageLog() const
     std::stringstream out;
     for (const auto& st : store) {
         out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values:" << std::endl;
-        for (const auto& v : st.values)
-            out << "   " << *v.data << " (" << (now.tv_sec - v.time) << "s)" << std::endl;
+        for (const auto& l : st.listeners) {
+            out << "   " << "Listener " << l.id << " ";
+            char hbuf[NI_MAXHOST];
+            char sbuf[NI_MAXSERV];
+            if (!getnameinfo((sockaddr*)&l.ss, l.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+                if (l.ss.ss_family == AF_INET6)
+                    out << "[" << hbuf << "]:" << sbuf;
+                else
+                    out << hbuf << ":" << sbuf;
+            } else
+                out << " [invalid address]";
+            size_t expires = l.time + NODE_EXPIRE_TIME - now.tv_sec;
+            out << " (since " << (now.tv_sec - l.time) << "s, exp in " << expires << "s)" << std::endl;
+        }
+        for (const auto& v : st.values) {
+            const auto& type = getType(v.data->type);
+            size_t expires = v.time + type.expiration - now.tv_sec;
+            out << "   " << *v.data << " (since " << (now.tv_sec - v.time) << "s, exp in " << expires << "s)" << std::endl;
+        }
     }
     return out.str();
 }
