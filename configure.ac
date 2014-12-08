@@ -7,7 +7,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Build in debug mode, adds stricter warnings, disables optimization]))
 AS_IF([test "x$enable_debug" = "xyes"],
       [CXXFLAGS="${CXXFLAGS} -g -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -O0"],
-      [CXXFLAGS="${CXXFLAGS} -O3 -flto"])
+      [CXXFLAGS="${CXXFLAGS} -O3"])
 
 AC_PROG_CC
 AC_PROG_CXX
