@@ -41,6 +41,7 @@ extern "C" {
 #include <string>
 #include <sstream>
 #include <chrono>
+#include <set>
 
 using namespace dht;
 
@@ -196,7 +197,16 @@ main(int argc, char **argv)
             continue;
         }
 
+        if (op.empty())
+            continue;
+
         dht::InfoHash id {idstr};
+        static const std::set<std::string> VALID_OPS {"g", "l", "p", "s", "e", "a"};
+        if (VALID_OPS.find(op) == VALID_OPS.cend()) {
+            std::cout << "Unknown command: " << op << std::endl;
+            std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
+            continue;
+        }
         static constexpr dht::InfoHash INVALID_ID {};
         if (id == INVALID_ID) {
             std::cout << "Syntax error: invalid InfoHash." << std::endl;
@@ -261,9 +271,6 @@ main(int argc, char **argv)
             dht.put(id, dht::Value {dht::ServiceAnnouncement::TYPE.id, dht::ServiceAnnouncement(port)}, [](bool ok) {
                 std::cout << "Announce done !" << ok << std::endl;
             });
-        } else if (op != "") {
-            std::cout << "Unknown command: " << op << std::endl;
-            std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
         }
     }
 
