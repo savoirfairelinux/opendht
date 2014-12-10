@@ -157,6 +157,7 @@ main(int argc, char **argv)
             std::cout << "Possible commands:" << std::endl;
             std::cout << "  h, help    Print this help message." << std::endl;
             std::cout << "  q, quit    Quit the program." << std::endl;
+            std::cout << "  log        Print the full DHT log." << std::endl;
 
             std::cout << std::endl << "Node information:" << std::endl;
             std::cout << "  ll         Print basic information and stats about the current node." << std::endl;
@@ -194,6 +195,13 @@ main(int argc, char **argv)
         } else if (op == "ls") {
             std::cout << "Searches:" << std::endl;
             std::cout << dht.getSearchesLog(AF_INET) << std::endl;
+            continue;
+        } else if (op == "log") {
+            dht.setLoggers(
+                [](char const* m, va_list args){ std::cerr << red; printLog(std::cerr, m, args); std::cerr << def; },
+                [](char const* m, va_list args){ std::cout << yellow; printLog(std::cout, m, args); std::cout << def; },
+                [](char const* m, va_list args){ printLog(std::cout, m, args); }
+            );
             continue;
         }
 
