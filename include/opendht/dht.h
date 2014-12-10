@@ -324,6 +324,14 @@ private:
             return /*pinged < 3 && replied &&*/ reply_time >= now - NODE_EXPIRE_TIME;
         }
 
+        bool isAnnounced(Value::Id vid, const ValueType& type, time_t now) const {
+            auto ack = acked.find(vid);
+            if (ack == acked.end()) {
+
+                return false;
+            }
+            return ack->second.reply_time + type.expiration > now;
+        }
         time_t getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
                 return request_time + 5;
@@ -409,6 +417,8 @@ private:
         bool isDone(const Get& get, time_t now) const;
 
         time_t getUpdateTime(time_t now) const;
+
+        bool isAnnounced(Value::Id id, const ValueType& type, time_t now) const;
 
         /**
          * ret = 0 : no announce required.

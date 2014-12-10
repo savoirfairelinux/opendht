@@ -662,11 +662,22 @@ Dht::searchStep(Search& sr)
         if (now.tv_sec - sr.step_time >= SEARCH_TIMEOUT) {
             DHT_WARN("Search IPv%c %s timed out.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
             sr.step_time = now.tv_sec;
-            for (const auto& g : sr.callbacks) {
-                if (g.done_cb)
-                    g.done_cb(false);
+            {
+                auto get_cbs = std::move(sr.callbacks);
+                for (const auto& g : get_cbs) {
+                    if (g.done_cb)
+                        g.done_cb(false);
+                }
             }
-            sr.callbacks.clear();
+            {
+                std::vector<DoneCallback> a_cbs;
+                a_cbs.reserve(sr.announce.size());
+                for (const auto& a : sr.announce)
+                    if (a.callback)
+                        a_cbs.emplace_back(std::move(a.callback));
+                for (const auto& a : a_cbs)
+                    a(false);
+            }
             if (sr.announce.empty() && sr.listeners.empty())
                 sr.done = true;
         }
@@ -731,7 +742,6 @@ Dht::searchStep(Search& sr)
                     DHT_ERROR("Trying to announce a null value !");
                 }
                 unsigned i = 0;
-                bool all_acked = true;
                 auto vid = a.value->id;
                 const auto& type = getType(a.value->type);
                 if (in) {
@@ -744,7 +754,6 @@ Dht::searchStep(Search& sr)
                     auto a_status = n.acked.find(vid);
                     auto at = n.getAnnounceTime(a_status, type);
                     if ( at <= now.tv_sec ) {
-                        all_acked = false;
                         {
                             char hbuf[NI_MAXHOST];
                             char sbuf[NI_MAXSERV];
@@ -766,10 +775,6 @@ Dht::searchStep(Search& sr)
                     if (++i == 8)
                         break;
                 }
-                if (all_acked && a.callback) {
-                    a.callback(true);
-                    a.callback = nullptr;
-                }
             }
             for (auto& n : sr.nodes) {
                 if (n.pending) {
@@ -780,13 +785,9 @@ Dht::searchStep(Search& sr)
                         pinged(*node);
                 }
             }
-            DHT_DEBUG("Search done.");
-            /*if (sr.done_callback) {
-                sr.done_callback(true);
-                sr.done_callback = nullptr;
-            }*/
             if (sr.announce.empty() && sr.listeners.empty())
                 sr.done = true;
+            DHT_DEBUG("Searchstep done.");
         }
 
     } else {
@@ -913,6 +914,23 @@ Dht::Search::getUpdateTime(time_t now) const
     }
     // If all synced/updated but some callbacks remain, step now to clear them
     return ut == STEP_INVALID ? (callbacks.empty() ? 0 : now) : ut;
+}
+
+bool
+Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_t now) const
+{
+    if (nodes.empty())
+        return false;
+    unsigned i = 0;
+    for (const auto& n : nodes) {
+        if (n.pinged >= 3)
+            continue;
+        if (!n.isAnnounced(id, type, now))
+            return false;
+        if (++i == 8)
+            break;
+    }
+    return i;
 }
 
 time_t
@@ -1101,13 +1119,13 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
             for (auto& n : sr->nodes)
                 n.acked[value->id] = {0, 0};
         }
+        if (a_sr->callback)
+            a_sr->callback(false);
         a_sr->callback = callback;
     }
-    if (not sr->nodes.empty()) {
-        time_t tm = sr->getNextStepTime(types, now.tv_sec);
-        if (tm != 0 && (search_time == 0 || search_time > tm))
-            search_time = tm;
-    }
+    time_t tm = sr->getNextStepTime(types, now.tv_sec);
+    if (tm != 0 && (search_time == 0 || search_time > tm))
+        search_time = tm;
 }
 
 size_t
@@ -1126,10 +1144,8 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     auto token = ++sr->listener_token;
     sr->listeners.insert({token, {f, cb}});
     time_t tm = sr->getNextStepTime(types, now.tv_sec);
-    if (tm != 0 && (search_time == 0 || search_time > tm)) {
-
+    if (tm != 0 && (search_time == 0 || search_time > tm))
         search_time = tm;
-    }
     return token;
 }
 
@@ -1205,13 +1221,13 @@ Dht::put(const InfoHash& id, Value&& value, DoneCallback callback)
         }
     };
     announce(id, AF_INET, val, [=](bool ok4) {
-        DHT_DEBUG("search done IPv4 %d", ok4);
+        DHT_DEBUG("Announce done IPv4 %d", ok4);
         *done4 = true;
         *ok |= ok4;
         donecb();
     });
     announce(id, AF_INET6, val, [=](bool ok6) {
-        DHT_DEBUG("search done IPv6 %d", ok6);
+        DHT_DEBUG("Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
         donecb();
@@ -2054,6 +2070,16 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     }
                 /* See comment for gp above. */
                 searchSendGetValues(*sr);
+
+                // If the value was just successfully announced, call the callback
+                for (auto& a : sr->announce) {
+                    if (!a.callback || !a.value || a.value->id != value_id)
+                        continue;
+                    if (sr->isAnnounced(value_id, getType(a.value->type), now.tv_sec)) {
+                        a.callback(true);
+                        a.callback = nullptr;
+                    }
+                }
             }
         } else if (tid.matches(TransPrefix::LISTEN, &ttid)) { 
             DHT_DEBUG("Got reply to listen.");
