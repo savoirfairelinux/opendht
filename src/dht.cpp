@@ -1198,15 +1198,14 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 }
 
 void
-Dht::put(const InfoHash& id, Value&& value, DoneCallback callback)
+Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback callback)
 {
-    if (value.id == Value::INVALID_ID) {
+    if (val->id == Value::INVALID_ID) {
         std::random_device rdev;
         std::uniform_int_distribution<Value::Id> rand_id {};
-        value.id = rand_id(rdev);
+        val->id = rand_id(rdev);
     }
 
-    auto val = std::make_shared<Value>(std::move(value));
     DHT_DEBUG("put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
     auto ok = std::make_shared<bool>(false);

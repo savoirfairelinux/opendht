@@ -38,6 +38,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <exception>
+#include <queue>
 
 #include <unistd.h> // close(fd)
 
@@ -68,8 +69,11 @@ public:
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
     void cancelPut(const InfoHash& h , const Value::Id& id) {
-        std::unique_lock<std::mutex> lck(dht_mtx);
-        dht->cancelPut(h, id);
+        std::unique_lock<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            std::cout << "Processing cancelPut " << h << " / " << id << std::endl;
+            dht.cancelPut(h, id);
+        });
     }
 
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
@@ -181,14 +185,7 @@ private:
     std::vector<std::pair<Blob, sockaddr_storage>> rcv {};
     std::atomic<time_t> tosleep {0};
 
-    // IPC temporary storage
-    std::vector<std::tuple<InfoHash, Dht::GetCallback, Dht::DoneCallback, Value::Filter>> dht_gets {};
-    std::vector<std::tuple<InfoHash, Dht::GetCallback, Value::Filter>> dht_listen {};
-    std::vector<std::tuple<InfoHash, Value, Dht::DoneCallback>> dht_puts {};
-    std::vector<std::tuple<InfoHash, Value, Dht::DoneCallback>> dht_sputs {};
-    std::vector<std::tuple<InfoHash, InfoHash, Value, Dht::DoneCallback>> dht_eputs {};
-    std::vector<sockaddr_storage> bootstrap_ips {};
-    std::vector<Dht::NodeExport> bootstrap_nodes {};
+    std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
     std::atomic<bool> running {false};

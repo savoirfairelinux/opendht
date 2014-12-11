@@ -49,19 +49,14 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, S
             std::unique_lock<std::mutex> lk(dht_mtx);
             loop_();
             cv.wait_for(lk, std::chrono::seconds( tosleep ), [this]() {
-                if (!running) return true;
+                if (not running) return true;
                 {
                     std::unique_lock<std::mutex> lck(sock_mtx);
-                    if (!rcv.empty()) return true;
+                    if (not rcv.empty()) return true;
                 }
                 {
                     std::unique_lock<std::mutex> lck(storage_mtx);
-                    if (!dht_gets.empty()
-                     || !dht_puts.empty()
-                     || !dht_eputs.empty()
-                     || !dht_sputs.empty()
-                     || !dht_listen.empty()
-                     || !bootstrap_nodes.empty())
+                    if (not pending_ops.empty())
                         return true;
                 }
                 return false;
@@ -109,52 +104,10 @@ DhtRunner::loop_()
     tosleep = tosl;
     {
         std::unique_lock<std::mutex> lck(storage_mtx);
-
-        for (auto& get : dht_gets) {
-            std::cout << "Processing get (" <<  std::get<0>(get) << ")" << std::endl;
-            dht->get(std::get<0>(get), std::get<1>(get), std::get<2>(get), std::move(std::get<3>(get)));
+        while (not pending_ops.empty()) {
+            pending_ops.front()(*dht);
+            pending_ops.pop();
         }
-        dht_gets.clear();
-
-        for (auto& list : dht_listen) {
-            std::cout << "Processing listen (" <<  std::get<0>(list) << ")" << std::endl;
-            dht->listen(std::get<0>(list), std::move(std::get<1>(list)), std::move(std::get<2>(list)));
-        }
-        dht_listen.clear();
-
-        for (auto& put : dht_eputs) {
-            auto& id = std::get<0>(put);
-            auto& val = std::get<2>(put);
-            std::cout << "Processing encrypted put at " << id << " for " << std::get<1>(put) << " -> " << val << std::endl;
-            dht->putEncrypted(id, std::get<1>(put), std::move(val), std::get<3>(put));
-        }
-        dht_eputs.clear();
-
-        for (auto& put : dht_puts) {
-            auto& id = std::get<0>(put);
-            auto& val = std::get<1>(put);
-            std::cout << "Processing put " << id << " -> " << val << std::endl;
-            dht->put(id, std::move(val), std::get<2>(put));
-        }
-        dht_puts.clear();
-
-        for (auto& put : dht_sputs) {
-            auto& id = std::get<0>(put);
-            auto& val = std::get<1>(put);
-            std::cout << "Processing signed put " << id << " -> " << val << std::endl;
-            dht->putSigned(id, std::move(val), std::get<2>(put));
-        }
-        dht_sputs.clear();
-
-        for (auto& node : bootstrap_nodes)
-            dht->insertNode(node);
-        bootstrap_nodes.clear();
-
-        for (auto& node : bootstrap_ips) {
-            dht->pingNode((sockaddr*)&node, sizeof(node));
-            //std::this_thread::sleep_for( std::chrono::microseconds(/*rand_delay()*/ 10) );
-        }
-        bootstrap_ips.clear();
     }
 
     if (statusCb) {
@@ -268,7 +221,10 @@ void
 DhtRunner::get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    dht_gets.emplace_back(hash, vcb, dcb, f);
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing get (" <<  hash << ")" << std::endl;
+        dht.get(hash, vcb, dcb, f);
+    });
     cv.notify_all();
 }
 
@@ -282,7 +238,10 @@ void
 DhtRunner::listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    dht_listen.emplace_back(hash, vcb, f);
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing listen (" <<  hash << ")" << std::endl;
+        dht.listen(hash, vcb, f);
+    });
     cv.notify_all();
 }
 
@@ -296,7 +255,11 @@ void
 DhtRunner::put(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    dht_puts.emplace_back(hash, std::move(value), cb);
+    auto sv = std::make_shared<Value>(std::move(value));
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing put " << hash << " -> " << *sv << std::endl;
+        dht.put(hash, sv, cb);
+    });
     cv.notify_all();
 }
 
@@ -310,7 +273,11 @@ void
 DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    dht_sputs.emplace_back(hash, std::move(value), cb);
+    auto sv = std::make_shared<Value>(std::move(value));
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing signed put " << hash << " -> " << *sv << std::endl;
+        dht.putSigned(hash, sv, cb);
+    });
     cv.notify_all();
 }
 
@@ -324,7 +291,11 @@ void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    dht_eputs.emplace_back(hash, to, std::move(value), cb);
+    auto sv = std::make_shared<Value>(std::move(value));
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing encrypted put at " << hash << " for " << to << " -> " << *sv << std::endl;
+        dht.putEncrypted(hash, to, sv, cb);
+    });
     cv.notify_all();
 }
 
@@ -338,7 +309,10 @@ void
 DhtRunner::bootstrap(const std::vector<sockaddr_storage>& nodes)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    bootstrap_ips.insert(bootstrap_ips.end(), nodes.begin(), nodes.end());
+    pending_ops.emplace([=](SecureDht& dht) {
+        for (auto& node : nodes)
+            dht.pingNode((sockaddr*)&node, sizeof(node));
+    });
     cv.notify_all();
 }
 
@@ -346,7 +320,10 @@ void
 DhtRunner::bootstrap(const std::vector<Dht::NodeExport>& nodes)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
-    bootstrap_nodes.insert(bootstrap_nodes.end(), nodes.begin(), nodes.end());
+    pending_ops.emplace([=](SecureDht& dht) {
+        for (auto& node : nodes)
+            dht.insertNode(node);
+    });
     cv.notify_all();
 }
 

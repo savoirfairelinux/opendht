@@ -232,41 +232,40 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter filter)
 }
 
 void
-SecureDht::putSigned(const InfoHash& hash, Value&& val, DoneCallback callback)
+SecureDht::putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback)
 {
-    if (val.id == Value::INVALID_ID) {
+    if (val->id == Value::INVALID_ID) {
         auto id = getId();
         static_assert(sizeof(Value::Id) <= sizeof(InfoHash), "Value::Id can't be larger than InfoHash");
-        val.id = *reinterpret_cast<Value::Id*>(id.data());
+        val->id = *reinterpret_cast<Value::Id*>(id.data());
     }
 
     // Check if we are already announcing a value
-    auto p = getPut(hash, val.id);
-    if (p && val.seq <= p->seq) {
+    auto p = getPut(hash, val->id);
+    if (p && val->seq <= p->seq) {
         DHT_DEBUG("Found previous value being announced.");
-        val.seq = p->seq + 1;
+        val->seq = p->seq + 1;
     }
 
     // Check if data already exists on the dht
-    auto sval = std::make_shared<Value>(std::move(val));
     get(hash,
-        [sval,this] (const std::vector<std::shared_ptr<Value>>& vals) {
+        [val,this] (const std::vector<std::shared_ptr<Value>>& vals) {
             DHT_DEBUG("Found online previous value being announced.");
             for (const auto& v : vals) {
                 if (!v->isSigned())
                     DHT_ERROR("Existing non-signed value seems to exists at this location.");
                 else if (v->owner.getId() != getId())
                     DHT_ERROR("Existing signed value belonging to someone else seems to exists at this location.");
-                else if (sval->seq <= v->seq)
-                    sval->seq = v->seq + 1;
+                else if (val->seq <= v->seq)
+                    val->seq = v->seq + 1;
             }
             return true;
         },
-        [hash,sval,this,callback] (bool /* ok */) {
-            sign(*sval);
-            put(hash, std::move(*sval), callback);
+        [hash,val,this,callback] (bool /* ok */) {
+            sign(*val);
+            put(hash, val, callback);
         },
-        Value::IdFilter(val.id)
+        Value::IdFilter(val->id)
     );
 }
 

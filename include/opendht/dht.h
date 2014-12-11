@@ -149,7 +149,11 @@ public:
      * reannounced on a regular basis.
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash&, Value&&, DoneCallback cb=nullptr);
+    void put(const InfoHash&, const std::shared_ptr<Value>&, DoneCallback cb=nullptr);
+
+    void put(const InfoHash& h, Value&& v, DoneCallback cb=nullptr) {
+        put(h, std::make_shared<Value>(std::move(v)), cb);
+    }
 
     /**
      * Get data currently being put at the given hash.
