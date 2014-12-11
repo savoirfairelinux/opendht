@@ -192,8 +192,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
         }
 
         /* BEP-32 mandates that we should bind this socket to one of our
-           global IPv6 addresses.  In this simple example, this only
-           happens if the user used the -b flag. */
+           global IPv6 addresses. */
         sockaddr_in6 sin6 {
             .sin6_family = AF_INET6,
             .sin6_port = htons(port)
@@ -225,7 +224,8 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
                     FD_SET(s, &readfds);
                 if(s6 >= 0)
                     FD_SET(s6, &readfds);
-                int rc = select(s > s6 ? s + 1 : s6 + 1, &readfds, NULL, NULL, &tv);
+
+                int rc = select(s > s6 ? s + 1 : s6 + 1, &readfds, nullptr, nullptr, &tv);
                 if(rc < 0) {
                     if(errno != EINTR) {
                         perror("select");
