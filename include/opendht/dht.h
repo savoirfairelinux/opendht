@@ -222,7 +222,7 @@ private:
     static const time_t MAX_RESPONSE_TIME {6};
 
     /* A search with no nodes will timeout after this time. */
-    static const time_t SEARCH_TIMEOUT {10};
+    static const time_t SEARCH_TIMEOUT {6};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
