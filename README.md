@@ -52,7 +52,7 @@ How-to build and install
 -
 ```bash
 # clone the repo
-git clone https://github.com/aberaud/dht.git
+git clone https://github.com/aberaud/opendht.git
 
 # build and install
 cd dht
