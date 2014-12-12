@@ -42,17 +42,19 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, S
     statusCb = cb;
     running = true;
     doRun(port, identity);
-    if (!threaded)
+    if (not threaded)
         return;
     dht_thread = std::thread([this]() {
         while (running) {
             std::unique_lock<std::mutex> lk(dht_mtx);
             loop_();
             cv.wait_for(lk, std::chrono::seconds( tosleep ), [this]() {
-                if (not running) return true;
+                if (not running) 
+                    return true;
                 {
                     std::unique_lock<std::mutex> lck(sock_mtx);
-                    if (not rcv.empty()) return true;
+                    if (not rcv.empty())
+                        return true;
                 }
                 {
                     std::unique_lock<std::mutex> lck(storage_mtx);
@@ -102,12 +104,14 @@ DhtRunner::loop_()
         }
     }
     tosleep = tosl;
+    decltype(pending_ops) ops {};
     {
         std::unique_lock<std::mutex> lck(storage_mtx);
-        while (not pending_ops.empty()) {
-            pending_ops.front()(*dht);
-            pending_ops.pop();
-        }
+        ops = std::move(pending_ops);
+    }
+    while (not ops.empty()) {
+        ops.front()(*dht);
+        ops.pop();
     }
 
     if (statusCb) {
