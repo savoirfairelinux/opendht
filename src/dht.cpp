@@ -1153,15 +1153,20 @@ size_t
 Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
 {
     auto vals = std::make_shared<std::map<Value::Id, std::shared_ptr<Value>>>();
+    auto token = ++listener_token;
+
     auto gcb = [=](const std::vector<std::shared_ptr<Value>>& values) {
         std::vector<std::shared_ptr<Value>> newvals {};
         for (const auto& v : values) {
             auto it = vals->find(v->id);
-            if (it == vals->cend() || !(*it->second == *v) )
+            if (it == vals->cend() || !(*it->second == *v))
                 newvals.push_back(v);
         }
         if (!newvals.empty()) {
-            cb(newvals);
+            if (!cb(newvals)) {
+                cancelListen(id, token);
+                return false;
+            }
             for (const auto& v : newvals)
                 vals->insert({v->id, v});
         }
@@ -1176,20 +1181,26 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
     }
     if (st) {
         if (not st->values.empty()) {
-            std::vector<std::shared_ptr<Value>> vals;
-            vals.reserve(st->values.size());
-            for (auto& v : st->values)
-                if (f(*v.data)) vals.push_back(v.data);
-            if (not vals.empty())
-                gcb(vals);
+            std::vector<std::shared_ptr<Value>> newvals {};
+            newvals.reserve(st->values.size());
+            for (auto& v : st->values) {
+                if (f(*v.data))
+                    newvals.push_back(v.data);
+            }
+            if (not newvals.empty()) {
+                if (!cb(newvals))
+                    return 0;
+                for (const auto& v : newvals)
+                    vals->insert({v->id, v});
+            }
         }
         tokenlocal = ++st->listener_token;
-        st->local_listeners.insert({tokenlocal, {f, cb}});
+        st->local_listeners.insert({tokenlocal, {f, gcb}});
     }
 
     auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
-    auto token = ++listener_token;
+
     listeners.insert({token, std::make_tuple(tokenlocal, token4, token6)});
     return token;
 }
@@ -1198,8 +1209,11 @@ bool
 Dht::cancelListen(const InfoHash& id, size_t token)
 {
     auto it = listeners.find(token);
-    if (it == listeners.end())
+    if (it == listeners.end()) {
+        DHT_WARN("Listen token not found: %d", token);
         return false;
+    }
+    DHT_WARN("cancelListen %s with token %d", id.toString().c_str(), token);
     Storage* st = findStorage(id);
     auto tokenlocal = std::get<0>(it->second);
     if (st && tokenlocal)

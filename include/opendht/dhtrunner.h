@@ -37,6 +37,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <future>
 #include <exception>
 #include <queue>
 
@@ -63,18 +64,14 @@ public:
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
     void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
 
-    void listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
-    void listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+    std::future<size_t> listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+    std::future<size_t> listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+    void cancelListen(InfoHash h, size_t token);
+    void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
-    void cancelPut(const InfoHash& h , const Value::Id& id) {
-        std::unique_lock<std::mutex> lck(storage_mtx);
-        pending_ops.emplace([=](SecureDht& dht) {
-            std::cout << "Processing cancelPut " << h << " / " << id << std::endl;
-            dht.cancelPut(h, id);
-        });
-    }
+    void cancelPut(const InfoHash& h , const Value::Id& id);
 
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);

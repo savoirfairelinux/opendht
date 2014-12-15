@@ -238,21 +238,45 @@ DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback d
     get(InfoHash::get(key), vcb, dcb, f);
 }
 
-void
+std::future<size_t>
 DhtRunner::listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
+    auto ret_token = std::make_shared<std::promise<size_t>>();
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing listen (" <<  hash << ")" << std::endl;
-        dht.listen(hash, vcb, f);
+        ret_token->set_value(dht.listen(hash, vcb, f));
     });
     cv.notify_all();
+    return ret_token->get_future();
+}
+
+std::future<size_t>
+DhtRunner::listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f)
+{
+    return listen(InfoHash::get(key), vcb, f);
 }
 
 void
-DhtRunner::listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f)
+DhtRunner::cancelListen(InfoHash h, size_t token)
 {
-    listen(InfoHash::get(key), vcb, f);
+    std::unique_lock<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing cancelListen " << h << std::endl;
+        dht.cancelListen(h, token);
+    });
+}
+
+void
+DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
+{
+    std::unique_lock<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing cancelListen (shared_future) " << h << std::endl;
+        auto tk = token.get();
+        std::cout << "token is " << tk << std::endl;
+        dht.cancelListen(h, tk);
+    });
 }
 
 void
@@ -271,6 +295,16 @@ void
 DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallback cb)
 {
     put(InfoHash::get(key), std::forward<Value>(value), cb);
+}
+
+void
+DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
+{
+    std::unique_lock<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) {
+        std::cout << "Processing cancelPut " << h << " / " << id << std::endl;
+        dht.cancelPut(h, id);
+    });
 }
 
 void
