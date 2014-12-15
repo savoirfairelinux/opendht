@@ -1168,12 +1168,29 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
         return true;
     };
 
-    gcb(getLocal(id, f));
+    Storage* st = findStorage(id);
+    size_t tokenlocal = 0;
+    if (!st && store.size() < MAX_HASHES) {
+        store.push_back(Storage {id});
+        st = &store.back();
+    }
+    if (st) {
+        if (not st->values.empty()) {
+            std::vector<std::shared_ptr<Value>> vals;
+            vals.reserve(st->values.size());
+            for (auto& v : st->values)
+                if (f(*v.data)) vals.push_back(v.data);
+            if (not vals.empty())
+                gcb(vals);
+        }
+        tokenlocal = ++st->listener_token;
+        st->local_listeners.insert({tokenlocal, {f, cb}});
+    }
 
     auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
     auto token = ++listener_token;
-    listeners.insert({token, {token4, token6}});
+    listeners.insert({token, std::make_tuple(tokenlocal, token4, token6)});
     return token;
 }
 
@@ -1183,15 +1200,19 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     auto it = listeners.find(token);
     if (it == listeners.end())
         return false;
+    Storage* st = findStorage(id);
+    auto tokenlocal = std::get<0>(it->second);
+    if (st && tokenlocal)
+        st->local_listeners.erase(tokenlocal);
     for (auto& s : searches) {
         if (s.id != id) continue;
-        auto af_token = s.af == AF_INET ? it->second.first : it->second.second;
+        auto af_token = s.af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
         if (af_token == 0)
             continue;
-        auto sit = s.listeners.find(af_token);
+        /*auto sit = s.listeners.find(af_token);
         if (sit == s.listeners.end())
-            continue;
-        s.listeners.erase(sit);
+            continue;*/
+        s.listeners.erase(af_token);
     }
     listeners.erase(it);
     return true;
@@ -1333,7 +1354,7 @@ Dht::getPut(const InfoHash& id, const Value::Id& vid)
                 return a.value;
         }
     }
-    return nullptr;
+    return {};
 }
 
 bool
@@ -1370,6 +1391,15 @@ Dht::findStorage(const InfoHash& id)
 void
 Dht::storageChanged(Storage& st)
 {
+    // TODO: only advertise changing/new value
+    for (const auto& l : st.local_listeners) {
+        std::vector<std::shared_ptr<Value>> vals;
+        vals.reserve(st.values.size());
+        for (auto& v : st.values)
+            if (l.second.filter(*v.data)) vals.push_back(v.data);
+        if (not vals.empty())
+            l.second.get_cb(vals);
+    }
     for (const auto& l : st.listeners) {
         DHT_WARN("Storage changed. Sending update.");
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
@@ -1384,7 +1414,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value)
     if (!st) {
         if (store.size() >= MAX_HASHES)
             return nullptr;
-        store.push_back(Storage {id, {}, {}});
+        store.push_back(Storage {id});
         st = &store.back();
     }
 
@@ -1417,7 +1447,7 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
     if (!st) {
         if (store.size() >= MAX_HASHES)
             return;
-        store.push_back(Storage {id, {}, {}});
+        store.push_back(Storage {id});
         st = &store.back();
     }
     sa_family_t af = from->sa_family;
@@ -2038,13 +2068,13 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                             cb.get_cb(tmp);
                     }
                     for (auto& l : sr->listeners) {
-                        if (!l.second.second) continue;
+                        if (!l.second.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
                         std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
-                            return l.second.first(*v);
+                            return l.second.filter(*v);
                         });
                         if (not tmp.empty())
-                            l.second.second(tmp);
+                            l.second.get_cb(tmp);
                     }
                 }
                 // Force to recompute the next step time

@@ -379,6 +379,11 @@ private:
         DoneCallback callback;
     };
 
+    struct LocalListener {
+        Value::Filter filter;
+        GetCallback get_cb;
+    };
+
     /**
      * A search is a pointer to the nodes we think are responsible
      * for storing values for a given hash.
@@ -400,7 +405,7 @@ private:
         std::vector<Announce> announce {};
         std::vector<Get> callbacks {};
 
-        std::map<size_t, std::pair<Value::Filter, GetCallback>> listeners {};
+        std::map<size_t, LocalListener> listeners {};
         size_t listener_token = 1;
 
         bool insertNode(const InfoHash& id, const sockaddr*, socklen_t, time_t now, bool confirmed=false, const Blob& token={});
@@ -477,8 +482,13 @@ private:
 
     struct Storage {
         InfoHash id;
-        std::vector<ValueStorage> values;
-        std::vector<Listener> listeners;
+        std::vector<ValueStorage> values {};
+        std::vector<Listener> listeners {};
+        std::map<size_t, LocalListener> local_listeners {};
+        size_t listener_token {1};
+
+        Storage() {}
+        Storage(InfoHash id) : id(id) {}
     };
 
     enum class MessageType {
@@ -557,7 +567,7 @@ private:
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
     // 0 is the invalid token.
-    std::map<size_t, std::pair<size_t, size_t>> listeners {};
+    std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners {};
     size_t listener_token {1};
 
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
