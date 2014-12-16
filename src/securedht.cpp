@@ -198,7 +198,7 @@ SecureDht::getCallbackFilter(GetCallback cb)
                     }
                     // Ignore values belonging to other people
                 } catch (const std::exception& e) {
-                    DHT_WARN("Could not decrypt value %s", v->toString().c_str());
+                    DHT_WARN("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
                 }
             }
             // Check signed values
@@ -295,16 +295,15 @@ SecureDht::sign(Value& v) const
     if (v.flags.isEncrypted())
         throw DhtException("Can't sign encrypted data.");
     v.owner = key_->getPublicKey();
-    v.flags = Value::ValueFlags(true, false);
+    v.flags = Value::ValueFlags(true, false, v.flags[2]);
     v.signature = key_->sign(v.getToSign());
 }
 
 Value
 SecureDht::encrypt(Value& v, const crypto::PublicKey& to) const
 {
-    if (v.flags.isEncrypted()) {
+    if (v.flags.isEncrypted())
         throw DhtException("Data is already encrypted.");
-    }
     v.setRecipient(to.getId());
     sign(v);
     Value nv {v.id};

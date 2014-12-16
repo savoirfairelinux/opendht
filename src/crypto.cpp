@@ -285,7 +285,7 @@ PublicKey::encrypt(const Blob& data) const
 
     unsigned max_block_sz = key_len / 8 - 11;
     unsigned cypher_block_sz = key_len / 8;
-    unsigned block_num = data.size() / max_block_sz;
+    unsigned block_num = data.empty() ? 1 : 1 + (data.size() - 1) / max_block_sz;
 
     Blob ret;
     auto eb = data.cbegin();

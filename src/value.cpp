@@ -91,7 +91,6 @@ Value::packToSign(Blob& res) const
         if (flags.isSigned()) {
             serialize<decltype(seq)>(seq, res);
             owner.pack(res);
-            //res.insert(res.end(), owner.begin(), owner.end());
             if (flags.haveRecipient())
                 res.insert(res.end(), recipient.begin(), recipient.end());
         }
