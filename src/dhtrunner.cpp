@@ -340,7 +340,7 @@ DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCall
 void
 DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb)
 {
-    putEncrypted(key, to, std::forward<Value>(value), cb);
+    putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), cb);
 }
 
 void
