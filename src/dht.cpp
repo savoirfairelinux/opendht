@@ -2363,6 +2363,10 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     DHT_ERROR("Error reading value at %s", h.first.toString().c_str());
                     continue;
                 }
+                if (val_time + getType(tmp_val.type).expiration < now.tv_sec) {
+                    DHT_DEBUG("Discarding expired value at %s", h.first.toString().c_str());
+                    continue;
+                }
                 auto st = storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)));
                 st->time = val_time;
             }
@@ -3022,13 +3026,13 @@ Dht::dht_memmem(const void *haystack, size_t haystacklen, const void *needle, si
 
     /* size_t is unsigned */
     if (needlelen > haystacklen)
-        return NULL;
+        return nullptr;
 
     for (i = 0; i <= haystacklen - needlelen; i++) {
         if (memcmp(h + i, n, needlelen) == 0)
             return (void*)(h + i);
     }
-    return NULL;
+    return nullptr;
 }
 
 #endif
