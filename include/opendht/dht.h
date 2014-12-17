@@ -211,42 +211,42 @@ private:
     /* When performing a search, we search for up to SEARCH_NODES closest nodes
        to the destination, and use the additional ones to backtrack if any of
        the target 8 turn out to be dead. */
-    static const unsigned SEARCH_NODES {14};
+    static constexpr unsigned SEARCH_NODES {14};
 
     /* The maximum number of values we store for a given hash. */
-    static const unsigned MAX_VALUES {2048};
+    static constexpr unsigned MAX_VALUES {2048};
 
     /* The maximum number of hashes we're willing to track. */
-    static const unsigned MAX_HASHES {16384};
+    static constexpr unsigned MAX_HASHES {16384};
 
     /* The maximum number of searches we keep data about. */
-    static const unsigned MAX_SEARCHES {1024};
+    static constexpr unsigned MAX_SEARCHES {1024};
 
     /* Time for a request to timeout */
-    static const time_t MAX_RESPONSE_TIME {6};
+    static constexpr time_t MAX_RESPONSE_TIME {6};
 
     /* A search with no nodes will timeout after this time. */
-    static const time_t SEARCH_TIMEOUT {6};
+    static constexpr time_t SEARCH_TIMEOUT {6};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
-    static const time_t SEARCH_GET_STEP {6};
+    static constexpr time_t SEARCH_GET_STEP {6};
 
     /* The time after which we consider a search to be expirable. */
-    static const time_t SEARCH_EXPIRE_TIME {62 * 60};
+    static constexpr time_t SEARCH_EXPIRE_TIME {62 * 60};
 
     /* The time after which we consider a node to be expirable. */
-    static const time_t NODE_EXPIRE_TIME {15 * 60};
+    static constexpr time_t NODE_EXPIRE_TIME {15 * 60};
 
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
-    static const unsigned BLACKLISTED_MAX {10};
+    static constexpr unsigned BLACKLISTED_MAX {10};
 
-    static const long unsigned MAX_REQUESTS_PER_SEC;
+    static constexpr long unsigned MAX_REQUESTS_PER_SEC {400};
 
-    static const time_t TOKEN_EXPIRE_TIME {10 * 60};
+    static constexpr time_t TOKEN_EXPIRE_TIME {10 * 60};
 
-    static const unsigned TOKEN_SIZE {64};
+    static constexpr unsigned TOKEN_SIZE {64};
 
     struct Node {
         InfoHash id {};

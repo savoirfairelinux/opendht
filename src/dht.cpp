@@ -117,7 +117,7 @@ static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
     0xFF, 0xFF, 0xFF, 0xFF
 }};
 
-const long unsigned Dht::MAX_REQUESTS_PER_SEC = 400;
+constexpr long unsigned Dht::MAX_REQUESTS_PER_SEC;
 
 void
 Dht::setLoggers(LogMethod&& error, LogMethod&& warn, LogMethod&& debug)
