@@ -34,6 +34,7 @@ THE SOFTWARE.
 #include <vector>
 #include <map>
 #include <list>
+#include <queue>
 #include <functional>
 #include <algorithm>
 #include <memory>
@@ -65,7 +66,7 @@ public:
         socklen_t sslen;
     };
 
-    typedef int_fast8_t want_t;
+    using want_t = int_fast8_t;
 
     Dht() {}
 
@@ -117,7 +118,7 @@ public:
 
     int pingNode(const sockaddr*, socklen_t);
 
-    void periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_t *tosleep);
+    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -223,20 +224,26 @@ private:
     static constexpr unsigned MAX_SEARCHES {1024};
 
     /* Time for a request to timeout */
-    static constexpr time_t MAX_RESPONSE_TIME {6};
+    static constexpr std::chrono::seconds MAX_RESPONSE_TIME {6};
 
     /* A search with no nodes will timeout after this time. */
-    static constexpr time_t SEARCH_TIMEOUT {6};
+    static constexpr std::chrono::seconds SEARCH_TIMEOUT {6};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
-    static constexpr time_t SEARCH_GET_STEP {6};
+    static constexpr std::chrono::seconds SEARCH_GET_STEP {6};
 
     /* The time after which we consider a search to be expirable. */
-    static constexpr time_t SEARCH_EXPIRE_TIME {62 * 60};
+    static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
     /* The time after which we consider a node to be expirable. */
-    static constexpr time_t NODE_EXPIRE_TIME {15 * 60};
+    static constexpr std::chrono::minutes NODE_EXPIRE_TIME {15};
+
+    static constexpr std::chrono::minutes NODE_GOOD_TIME {120};
+
+    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {3};
+
+    static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
 
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
@@ -244,7 +251,7 @@ private:
 
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {400};
 
-    static constexpr time_t TOKEN_EXPIRE_TIME {10 * 60};
+    static constexpr std::chrono::seconds TOKEN_EXPIRE_TIME {10 * 60};
 
     static constexpr unsigned TOKEN_SIZE {64};
 
@@ -252,29 +259,29 @@ private:
         InfoHash id {};
         sockaddr_storage ss;
         socklen_t sslen {0};
-        time_t time {0};            /* time of last message received */
-        time_t reply_time {0};      /* time of last correct reply received */
-        time_t pinged_time {0};     /* time of last request */
+        time_point time {};            /* time of last message received */
+        time_point reply_time {};      /* time of last correct reply received */
+        time_point pinged_time {};     /* time of last request */
         unsigned pinged {0};        /* how many requests we sent since last reply */
 
         Node() {
             std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
         }
-        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, time_t t, time_t reply_time)
+        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, time_point t, time_point reply_time)
             : id(id), sslen(salen), time(t), reply_time(reply_time) {
             std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
         }
-        bool isGood(time_t now) const;
+        bool isGood(time_point now) const;
         NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
     };
 
     struct Bucket {
         Bucket() : cached() {}
-        Bucket(sa_family_t af, const InfoHash& f = {}, time_t t = 0)
+        Bucket(sa_family_t af, const InfoHash& f = {}, time_point t = {})
             : af(af), first(f), time(t), cached() {}
         sa_family_t af {0};
         InfoHash first {};
-        time_t time {0};             /* time of last reply in this bucket */
+        time_point time {};             /* time of last reply in this bucket */
         std::list<Node> nodes {};
         sockaddr_storage cached;  /* the address of a likely candidate */
         socklen_t cachedlen {0};
@@ -316,47 +323,52 @@ private:
         SearchNode(const InfoHash& id) : id(id), ss() {}
 
         struct RequestStatus {
-            time_t request_time;    /* the time of the last unanswered announce request */
-            time_t reply_time;      /* the time of the last announce confirmation */
+            time_point request_time {};    /* the time of the last unanswered announce request */
+            time_point reply_time {};      /* the time of the last announce confirmation */
+            RequestStatus() {};
+            RequestStatus(time_point q, time_point a = {}) : request_time(q), reply_time(a) {};
         };
         typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
 
         /**
          * Can we use this node to listen/announce ?
          */
-        bool isSynced(time_t now) const {
+        bool isSynced(time_point now) const {
             return /*pinged < 3 && replied &&*/ reply_time >= now - NODE_EXPIRE_TIME;
         }
 
-        bool isAnnounced(Value::Id vid, const ValueType& type, time_t now) const {
+        bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
             auto ack = acked.find(vid);
             if (ack == acked.end()) {
-
                 return false;
             }
             return ack->second.reply_time + type.expiration > now;
         }
-        time_t getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
+        time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
-                return request_time + 5;
-            return std::max<time_t>({ack->second.reply_time + type.expiration - 3, ack->second.request_time + 5, request_time + 5});
+                return request_time + MAX_RESPONSE_TIME;
+            return std::max<time_point>({
+                ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN, 
+                ack->second.request_time + MAX_RESPONSE_TIME, 
+                request_time + MAX_RESPONSE_TIME
+            });
         }
-        time_t getAnnounceTime(Value::Id vid, const ValueType& type) const {
+        time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
             return getAnnounceTime(acked.find(vid), type);
         }
-        time_t getListenTime() const {
-            time_t min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
-            return listenStatus.reply_time ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - 5, min_t) : min_t;
+        time_point getListenTime() const {
+            time_point min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
+            return listenStatus.reply_time.time_since_epoch().count() ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN, min_t) : min_t;
         }
 
         InfoHash id {};
         sockaddr_storage ss;
         socklen_t sslen {0};
-        time_t request_time {0};    /* the time of the last unanswered request */
-        time_t reply_time {0};      /* the time of the last reply with a token */
+        time_point request_time {};    /* the time of the last unanswered request */
+        time_point reply_time {};      /* the time of the last reply with a token */
         unsigned pinged {0};
 
-        RequestStatus listenStatus {0, 0};
+        RequestStatus listenStatus {};
 
         Blob token {};
 
@@ -368,7 +380,7 @@ private:
     };
 
     struct Get {
-        time_t start;
+        time_point start;
         Value::Filter filter;
         GetCallback get_cb;
         DoneCallback done_cb;
@@ -398,7 +410,7 @@ private:
         sa_family_t af;
 
         uint16_t tid;
-        time_t step_time {0};           /* the time of the last search_step */
+        time_point step_time {};           /* the time of the last search_step */
 
         bool done {false};
         std::vector<SearchNode> nodes {SEARCH_NODES+1};
@@ -408,54 +420,54 @@ private:
         std::map<size_t, LocalListener> listeners {};
         size_t listener_token = 1;
 
-        bool insertNode(const InfoHash& id, const sockaddr*, socklen_t, time_t now, bool confirmed=false, const Blob& token={});
-        void insertBucket(const Bucket&, time_t now);
+        bool insertNode(const InfoHash& id, const sockaddr*, socklen_t, time_point now, bool confirmed=false, const Blob& token={});
+        void insertBucket(const Bucket&, time_point now);
 
         /**
          * Can we use this search to announce ?
          */
-        bool isSynced(time_t now) const;
+        bool isSynced(time_point now) const;
 
-        time_t getLastGetTime() const;
+        time_point getLastGetTime() const;
 
         bool isUpdated(const SearchNode& sn) const;
 
         /**
          * Is this get operation done ?
          */
-        bool isDone(const Get& get, time_t now) const;
+        bool isDone(const Get& get, time_point now) const;
 
-        time_t getUpdateTime(time_t now) const;
+        time_point getUpdateTime(time_point now) const;
 
-        bool isAnnounced(Value::Id id, const ValueType& type, time_t now) const;
+        bool isAnnounced(Value::Id id, const ValueType& type, time_point now) const;
 
         /**
          * ret = 0 : no announce required.
          * ret > 0 : (re-)announce required at time ret.
          */
-        time_t getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) const;
+        time_point getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) const;
 
         /**
          * ret = 0 : no listen required.
          * ret > 0 : (re-)announce required at time ret.
          */
-        time_t getListenTime(time_t now) const;
+        time_point getListenTime(time_point now) const;
 
         /**
          * ret = 0 : no expiration
          * ret > 0 : search will expire at time ret
          */
-        time_t getExpireTime() const;
+        time_point getExpireTime() const;
 
-        time_t getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_t now) const;
+        time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
     };
 
     struct ValueStorage {
         std::shared_ptr<Value> data {};
-        time_t time {0};
+        time_point time {};
 
         ValueStorage() {}
-        ValueStorage(const std::shared_ptr<Value>& v, time_t t) : data(v), time(t) {}
+        ValueStorage(const std::shared_ptr<Value>& v, time_point t) : data(v), time(t) {}
     };
 
     /**
@@ -466,13 +478,13 @@ private:
         sockaddr_storage ss;
         socklen_t sslen {};
         uint16_t tid {};
-        time_t time {};
+        time_point time {};
 
         constexpr Listener() : ss() {}
-        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_t t) : id(id), ss(), sslen(fromlen), tid(ttid), time(t) {
+        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) : id(id), ss(), sslen(fromlen), tid(ttid), time(t) {
             memcpy(&ss, from, fromlen);
         }
-        void refresh(const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_t t) {
+        void refresh(const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) {
             memcpy(&ss, from, fromlen);
             sslen = fromlen;
             tid = ttid;
@@ -573,16 +585,13 @@ private:
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
 
-    struct timeval now {0, 0};
-    time_t mybucket_grow_time {0}, mybucket6_grow_time {0};
-    time_t expire_stuff_time {0};
-    time_t search_time {0};
-    time_t confirm_nodes_time {0};
-    time_t rotate_secrets_time {0};
-    time_t rate_limit_time {0};
-
-    // remaining requests for this second
-    long unsigned rate_limit_tokens {MAX_REQUESTS_PER_SEC};
+    time_point now;
+    time_point mybucket_grow_time {}, mybucket6_grow_time {};
+    time_point expire_stuff_time {};
+    time_point search_time {};
+    time_point confirm_nodes_time {};
+    time_point rotate_secrets_time {};
+    std::queue<time_point> rate_limit_time {};
 
     // Networking & packet handling
     int send(const char* buf, size_t len, int flags, const sockaddr*, socklen_t);

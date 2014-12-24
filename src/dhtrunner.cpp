@@ -47,8 +47,8 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, S
     dht_thread = std::thread([this]() {
         while (running) {
             std::unique_lock<std::mutex> lk(dht_mtx);
-            loop_();
-            cv.wait_for(lk, std::chrono::seconds( tosleep ), [this]() {
+            auto wakeup = loop_();
+            cv.wait_until(lk, wakeup, [this]() {
                 if (not running) 
                     return true;
                 {
@@ -78,57 +78,60 @@ DhtRunner::join()
         rcv_thread.join();
     {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        dht.reset();
+        dht_.reset();
         status4 = Dht::Status::Disconnected;
         status6 = Dht::Status::Disconnected;
     }
 }
 
-void
+time_point
 DhtRunner::loop_()
 {
-    if (!dht) return;
-    time_t tosl = 5;
-    {
-        std::unique_lock<std::mutex> lck(sock_mtx);
-        if (!dht) return;
-        if (rcv.size()) {
-            for (const auto& pck : rcv) {
-                auto& buf = pck.first;
-                auto& from = pck.second;
-                dht->periodic(buf.data(), buf.size()-1, (sockaddr*)&from, from.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6), &tosl);
-            }
-            rcv.clear();
-        } else {
-            dht->periodic(nullptr, 0, nullptr, 0, &tosl);
-        }
-    }
-    tosleep = tosl;
+    if (!dht_)
+        return {};
+
     decltype(pending_ops) ops {};
     {
         std::unique_lock<std::mutex> lck(storage_mtx);
         ops = std::move(pending_ops);
     }
     while (not ops.empty()) {
-        ops.front()(*dht);
+        ops.front()(*dht_);
         ops.pop();
     }
 
+    time_point wakeup {};
+    {
+        std::unique_lock<std::mutex> lck(sock_mtx);
+        if (not rcv.empty()) {
+            for (const auto& pck : rcv) {
+                auto& buf = pck.first;
+                auto& from = pck.second;
+                wakeup = dht_->periodic(buf.data(), buf.size()-1, (sockaddr*)&from, from.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6));
+            }
+            rcv.clear();
+        } else {
+            wakeup = dht_->periodic(nullptr, 0, nullptr, 0);
+        }
+    }
+
     if (statusCb) {
-        Dht::Status nstatus4 = dht->getStatus(AF_INET);
-        Dht::Status nstatus6 = dht->getStatus(AF_INET6);
+        Dht::Status nstatus4 = dht_->getStatus(AF_INET);
+        Dht::Status nstatus6 = dht_->getStatus(AF_INET6);
         if (nstatus4 != status4 || nstatus6 != status6) {
             status4 = nstatus4;
             status6 = nstatus6;
             statusCb(status4, status6);
         }
     }
+
+    return wakeup;
 }
 
 void
 DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 {
-    dht.reset();
+    dht_.reset();
 
     int s = socket(PF_INET, SOCK_DGRAM, 0);
     int s6 = socket(PF_INET6, SOCK_DGRAM, 0);
@@ -159,22 +162,17 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
             throw DhtException("Can't bind IPv6 socket");
     }
 
-    dht = std::unique_ptr<SecureDht>(new SecureDht {s, s6, identity});
+    dht_ = std::unique_ptr<SecureDht>(new SecureDht {s, s6, identity});
 
     rcv_thread = std::thread([this,s,s6]() {
-        std::mt19937 engine(std::random_device{}());
-        auto rand_delay = std::bind(std::uniform_int_distribution<uint32_t>(0, 1000000), engine);
         try {
             while (true) {
                 uint8_t buf[4096 * 64];
                 sockaddr_storage from;
                 socklen_t fromlen;
 
-                struct timeval tv;
+                struct timeval tv {.tv_sec = 3, .tv_usec = 0};
                 fd_set readfds;
-                tv.tv_sec = std::min<time_t>(tosleep.load(), 5);
-                tv.tv_usec = rand_delay();
-                //std::cout << "Dht::rcv_thread loop " << tv.tv_sec << "." << tv.tv_usec << std::endl;
 
                 FD_ZERO(&readfds);
                 if(s >= 0)

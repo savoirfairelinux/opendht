@@ -85,48 +85,48 @@ public:
     void dumpTables() const
     {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        dht->dumpTables();
+        dht_->dumpTables();
     }
 
     InfoHash getId() const {
-        if (!dht)
+        if (!dht_)
             return {};
-        return dht->getId();
+        return dht_->getId();
     }
 
     InfoHash getRoutingId() const {
-        if (!dht)
+        if (!dht_)
             return {};
-        return dht->getRoutingId();
+        return dht_->getRoutingId();
     }
 
     std::vector<Dht::NodeExport> exportNodes() const {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        if (!dht)
+        if (!dht_)
             return {};
-        return dht->exportNodes();
+        return dht_->exportNodes();
     }
 
     std::vector<Dht::ValuesExport> exportValues() const {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        if (!dht)
+        if (!dht_)
             return {};
-        return dht->exportValues();
+        return dht_->exportValues();
     }
 
     void setLoggers(LogMethod&& error = NOLOG, LogMethod&& warn = NOLOG, LogMethod&& debug = NOLOG) {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        dht->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+        dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
     }
 
     void registerType(const ValueType& type) {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        dht->registerType(type);
+        dht_->registerType(type);
     }
 
     void importValues(const std::vector<Dht::ValuesExport>& values) {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        dht->importValues(values);
+        dht_->importValues(values);
     }
 
     bool isRunning() const {
@@ -136,23 +136,23 @@ public:
     int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
     {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        return dht->getNodesStats(af, good_return, dubious_return, cached_return, incoming_return);
+        return dht_->getNodesStats(af, good_return, dubious_return, cached_return, incoming_return);
     }
 
     std::string getStorageLog() const
     {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        return dht->getStorageLog();
+        return dht_->getStorageLog();
     }
     std::string getRoutingTablesLog(sa_family_t af) const
     {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        return dht->getRoutingTablesLog(af);
+        return dht_->getRoutingTablesLog(af);
     }
     std::string getSearchesLog(sa_family_t af) const
     {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        return dht->getSearchesLog(af);
+        return dht_->getSearchesLog(af);
     }
 
     /**
@@ -160,9 +160,9 @@ public:
      */
     void run(in_port_t port, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
 
-    void loop() {
+    time_point loop() {
         std::unique_lock<std::mutex> lck(dht_mtx);
-        loop_();
+        return loop_();
     }
 
     void join();
@@ -170,9 +170,9 @@ public:
 private:
 
     void doRun(in_port_t port, const crypto::Identity identity);
-    void loop_();
+    time_point loop_();
 
-    std::unique_ptr<SecureDht> dht {};
+    std::unique_ptr<SecureDht> dht_ {};
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
@@ -180,7 +180,6 @@ private:
     std::thread rcv_thread {};
     std::mutex sock_mtx {};
     std::vector<std::pair<Blob, sockaddr_storage>> rcv {};
-    std::atomic<time_t> tosleep {0};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};

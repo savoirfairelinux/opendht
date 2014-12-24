@@ -54,10 +54,34 @@ typedef uint16_t in_port_t;
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <chrono>
 
 #include <cstdarg>
 
 namespace dht {
+
+using clock = std::chrono::steady_clock;
+using time_point = clock::time_point;
+using duration = clock::duration;
+
+static constexpr time_point TIME_INVALID = {};
+static constexpr time_point TIME_MAX {duration{std::numeric_limits<duration::rep>::max()}};
+
+template <typename Duration = duration>
+class uniform_duration_distribution : public std::uniform_int_distribution<typename Duration::rep> {
+    using Base = std::uniform_int_distribution<typename Duration::rep>;
+    using param_type = typename Base::param_type;
+public:
+    uniform_duration_distribution(Duration min, Duration max) : Base(min.count(), max.count()) {}
+    template <class Generator>
+    Duration operator()(Generator && g) {
+        return Duration(Base::operator()(g));
+    }
+    template< class Generator >
+    Duration operator()( Generator && g, const param_type& params ) {
+        return Duration(Base::operator()(g, params));
+    }
+};
 
 /**
  * Wrapper for logging methods
@@ -100,10 +124,10 @@ struct ValueType {
     typedef uint16_t Id;
     ValueType () {}
 
-    ValueType (Id id, std::string name, time_t e = 60 * 60)
+    ValueType (Id id, std::string name, duration e = std::chrono::hours(1))
     : id(id), name(name), expiration(e) {}
 
-    ValueType (Id id, std::string name, time_t e, StorePolicy&& sp, EditPolicy&& ep)
+    ValueType (Id id, std::string name, duration e, StorePolicy&& sp, EditPolicy&& ep)
      : id(id), name(name), expiration(e), storePolicy(std::move(sp)), editPolicy(std::move(ep)) {}
 
     virtual ~ValueType() {}
@@ -124,7 +148,7 @@ struct ValueType {
 
     Id id {0};
     std::string name {};
-    time_t expiration {60 * 60};
+    duration expiration {60 * 60};
     StorePolicy storePolicy {DEFAULT_STORE_POLICY};
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };

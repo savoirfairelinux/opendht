@@ -79,7 +79,7 @@ ServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, 
     return true;
 }
 
-const ValueType ServiceAnnouncement::TYPE = {1, "Service Announcement", 15 * 60, ServiceAnnouncement::storePolicy, ValueType::DEFAULT_EDIT_POLICY};
+const ValueType ServiceAnnouncement::TYPE = {1, "Service Announcement", std::chrono::minutes(15), ServiceAnnouncement::storePolicy, ValueType::DEFAULT_EDIT_POLICY};
 
 void
 Value::packToSign(Blob& res) const

@@ -32,6 +32,7 @@
 #include <tuple>
 #include <numeric>
 #include <limits>
+#include <chrono>
 
 typedef std::vector<uint8_t> Blob;
 
@@ -67,6 +68,13 @@ namespace detail {
     struct get_size_helper<std::string> {
         static size_t value(const std::string& obj) {
             return sizeof(serialized_size_t) + obj.length()*sizeof(uint8_t);
+        }
+    };
+
+    template <class T>
+    struct get_size_helper<std::chrono::time_point<T>> {
+        static constexpr size_t value(const std::chrono::time_point<T>&) {
+            return sizeof(typename std::chrono::time_point<T>::rep);
         }
     };
 
@@ -160,6 +168,13 @@ namespace detail {
     };
 
     template <class T>
+    struct serialize_helper<std::chrono::time_point<T>> {
+        static void apply(const std::chrono::time_point<T>& obj, Blob::iterator& res) {
+            serializer(obj.time_since_epoch().count(), res);
+        }
+    };
+
+    template <class T>
     struct serialize_helper {
         static void apply(const T& obj, Blob::iterator& res) {
             const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&obj);
@@ -204,6 +219,14 @@ namespace detail {
             std::copy(begin, begin+sizeof(T), reinterpret_cast<uint8_t*>(&val));
             begin+=sizeof(T);
             return val;
+        }
+    };
+
+    template <class T>
+    struct deserialize_helper<std::chrono::time_point<T>> {
+        static std::chrono::time_point<T> apply(Blob::const_iterator& begin,
+                                             Blob::const_iterator end) {
+            return std::chrono::time_point<T>(typename T::duration(deserialize_helper<typename T::rep>::apply(begin,end)));
         }
     };
 

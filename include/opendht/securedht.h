@@ -136,7 +136,7 @@ private:
 };
 
 const ValueType CERTIFICATE_TYPE = {
-    8, "Certificate", 60 * 60 * 24 * 7,
+    8, "Certificate", std::chrono::hours(24 * 7),
     // A certificate can only be stored at it's public key ID.
     [](InfoHash id, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t) {
         try {
