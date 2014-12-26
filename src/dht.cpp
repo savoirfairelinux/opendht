@@ -903,7 +903,6 @@ Dht::Search::isDone(const Get& get, time_point now) const
 time_point
 Dht::Search::getUpdateTime(time_point now) const
 {
-    //static constexpr time_t STEP_INVALID = std::numeric_limits<time_t>::max();
     time_point ut = TIME_MAX;
     const auto last_get = getLastGetTime();
     unsigned i = 0;
@@ -1007,8 +1006,7 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
     /*if (not callbacks.empty())
         return now;*/
 
-    //static constexpr time_t STEP_INVALID = std::numeric_limits<time_t>::max();
-    auto next_step = TIME_MAX;//STEP_INVALID;
+    auto next_step = TIME_MAX;
 
     /*if (not callbacks.empty())
         next_step = now;*/
@@ -2257,7 +2255,6 @@ time_point
 Dht::periodic(const uint8_t *buf, size_t buflen,
              const sockaddr *from, socklen_t fromlen)
 {
-    DHT_DEBUG("::periodic");
     now = clock::now();
 
     processMessage(buf, buflen, from, fromlen);
