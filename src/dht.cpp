@@ -584,18 +584,15 @@ Dht::Search::insertNode(const InfoHash& nid,
     memcpy(&n->ss, sa, salen);
     n->sslen = salen;
 
-    if (confirmed) {
+    if (confirmed && now - n->request_time > NODE_EXPIRE_TIME) {
         /*if (n->pinged >= 3)
-            DHT_WARN("Resurrecting node  !");*/
+            std::cout << "Resurrecting node  !" << std::endl;*/
         n->pinged = 0;
     }
     if (not token.empty()) {
         n->reply_time = now;
         n->request_time = TIME_INVALID;
-      /*  n->pinged = 0;*/
-        /*if (token.size() > 64)
-            DHT_DEBUG("Eek!  Overlong token.");
-        else*/
+        n->pinged = 0;
         if (token.size() <= 64)
             n->token = token;
     }
@@ -657,9 +654,9 @@ void
 Dht::searchStep(Search& sr)
 {
     // Remove expired nodes
-    sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
+    /*sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
         return n.pinged >= 3 && n.reply_time < now - NODE_GOOD_TIME;
-    }), sr.nodes.end());
+    }), sr.nodes.end());*/
 
     if (sr.nodes.empty()) {
         // No nodes... yet ?
@@ -1068,7 +1065,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         sr->done = false;
         // Discard any doubtful nodes.
         sr->nodes.erase(std::remove_if (sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& n) {
-            return n.pinged >= 3 || n.reply_time < now - NODE_GOOD_TIME;
+            return n.reply_time < now - NODE_GOOD_TIME;
         }), sr->nodes.end());
     } else {
         sr = newSearch();
@@ -1127,9 +1124,13 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
     }
     auto tm = sr->getNextStepTime(types, now);
     if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm)) {
-        DHT_WARN("search_time is now in %lf", std::chrono::duration_cast<std::chrono::milliseconds>(tm-now).count()/1000.);
-        DHT_WARN("search_time is now in %lf", std::chrono::duration_cast<std::chrono::milliseconds>(tm-clock::now()).count()/1000.);
+        DHT_DEBUG("search_time is now in %lf", std::chrono::duration_cast<std::chrono::milliseconds>(tm-clock::now()).count()/1000.);
         search_time = tm;
+    } else {
+        DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)", 
+            tm.time_since_epoch().count(),
+            std::chrono::duration_cast<std::chrono::milliseconds>(tm-clock::now()).count()/1000.,
+            std::chrono::duration_cast<std::chrono::milliseconds>(search_time-clock::now()).count()/1000.);
     }
 }
 
@@ -1768,7 +1769,7 @@ Dht::getSearchesLog(sa_family_t af) const
 }
 
 Dht::Dht(int s, int s6, const InfoHash& id)
- : dht_socket(s), dht_socket6(s6), myid(id), now(clock::now())
+ : dht_socket(s), dht_socket6(s6), myid(id), now(clock::now()), mybucket_grow_time(now), mybucket6_grow_time(now)
 {
     if (s < 0 && s6 < 0)
         return;
@@ -1785,12 +1786,9 @@ Dht::Dht(int s, int s6, const InfoHash& id)
             throw DhtException("Can't set socket to non-blocking mode");
     }
 
-    std::uniform_int_distribution<decltype(search_id)> searchid_dis {};
-    search_id = searchid_dis(rd);
+    search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
 
     uniform_duration_distribution<> time_dis {std::chrono::seconds(0), std::chrono::seconds(3)};
-    mybucket_grow_time = now;
-    mybucket6_grow_time = now;
     confirm_nodes_time = now + time_dis(rd);
 
     // Fill old secret
@@ -2270,7 +2268,6 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
     }
 
     if (search_time != TIME_INVALID && now > search_time) {
-        DHT_DEBUG("search_time");
         search_time = TIME_INVALID;
         for (auto& sr : searches) {
             auto tm = sr.getNextStepTime(types, now);
@@ -2283,11 +2280,13 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
                 search_time = tm;
         }
         if (search_time == TIME_INVALID)
-            DHT_DEBUG("next search_time : (none)");
+            DHT_DEBUG("next search time : (none)");
         else if (search_time < now)
-            DHT_DEBUG("next search_time : %lu (ASAP)");
+            DHT_DEBUG("next search time : %ld (ASAP)", std::chrono::duration_cast<std::chrono::milliseconds>(search_time-now));
         else
-            DHT_DEBUG("next search_time : %lu (in %lu s)", search_time, search_time-now);
+            DHT_DEBUG("next search time : %ld (in %lf s)",
+                search_time.time_since_epoch().count(),
+                std::chrono::duration_cast<std::chrono::milliseconds>(search_time-now).count()/1000.);
     }
 
     if (now >= confirm_nodes_time) {
@@ -2315,15 +2314,11 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         dumpTables();
     }
 
-    time_point tosleep = TIME_MAX;
-
-    if (confirm_nodes_time > now)
-        tosleep = confirm_nodes_time;
-
+    time_point tosleep = confirm_nodes_time;
     if (search_time != TIME_INVALID)
         tosleep = std::min(tosleep, search_time);
 
-    return tosleep == TIME_MAX ? TIME_INVALID : tosleep;
+    return tosleep;
 }
 
 std::vector<Dht::ValuesExport>
