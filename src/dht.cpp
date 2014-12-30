@@ -936,6 +936,23 @@ Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_point now) co
     return i;
 }
 
+bool
+Dht::Search::isListening(time_point now) const
+{
+    if (nodes.empty() or listeners.empty())
+        return false;
+    unsigned i = 0;
+    for (const auto& n : nodes) {
+        if (n.pinged >= 3)
+            continue;
+        if (!n.isListening(now))
+            return false;
+        if (++i == 2)
+            break;
+    }
+    return i;
+}
+
 time_point
 Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) const
 {
@@ -1656,24 +1673,15 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << " [done]";
     bool synced = sr.isSynced(now);
     out << (synced ? " [synced]" : " [not synced]");
-    if (synced && not sr.announce.empty()) {
-        auto at = sr.getAnnounceTime(types);
-        if (at > now)
-            out << " [all announced, next in " << duration_cast<minutes>(at-now).count() << " min]";
-        //else
-        //    out << " announce at " << at << ", in " << duration_cast<minutes>(at-now).count() << " min";
-    }
-    if (synced && not sr.listeners.empty()) {
+    if (synced && sr.isListening(now)) {
         auto lt = sr.getListenTime(now);
-        if (lt > now)
-            out << " [listening, next in " << duration_cast<minutes>(lt-now).count() << " min]";
-        //else
-        //    out << " listen at " << lt << ", in " << duration_cast<minutes>(lt-now).count() << " s.";
+        out << " [listening, next in " << duration_cast<minutes>(lt-now).count() << " min]";
     }
     out << std::endl;
 
     for (const auto& n : sr.announce) {
-        out << "   Announcement: " << *n.value << std::endl;
+        bool announced = sr.isAnnounced(n.value->id, getType(n.value->type), now);
+        out << "   Announcement: " << *n.value << (announced ? " [announced]" : "") << std::endl;
     }
 
     unsigned i = 0;

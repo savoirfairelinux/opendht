@@ -344,6 +344,10 @@ private:
             }
             return ack->second.reply_time + type.expiration > now;
         }
+        bool isListening(time_point now) const {
+            return listenStatus.reply_time + NODE_EXPIRE_TIME > now;
+        }
+
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
                 return request_time + MAX_RESPONSE_TIME;
@@ -440,6 +444,7 @@ private:
         time_point getUpdateTime(time_point now) const;
 
         bool isAnnounced(Value::Id id, const ValueType& type, time_point now) const;
+        bool isListening(time_point now) const;
 
         /**
          * ret = 0 : no announce required.
