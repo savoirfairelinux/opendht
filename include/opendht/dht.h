@@ -54,7 +54,7 @@ public:
     enum class Status {
         Disconnected, // 0 nodes
         Connecting,   // 1+ nodes
-        Connected     // 4+ good nodes
+        Connected     // 1+ good nodes
     };
 
     typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;

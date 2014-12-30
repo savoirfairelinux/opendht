@@ -2045,7 +2045,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
                     if (ni_id == myid)
                         continue;
-                    sockaddr_in sin { .sin_family = AF_INET };
+                    sockaddr_in sin;
+                    sin.sin_family = AF_INET;
                     memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
                     memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
                     newNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0);
@@ -2058,7 +2059,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     InfoHash* ni_id = reinterpret_cast<InfoHash*>(ni);
                     if (*ni_id == myid)
                         continue;
-                    sockaddr_in6 sin6 {.sin6_family = AF_INET6};
+                    sockaddr_in6 sin6;
+                    sin6.sin6_family = AF_INET6;
                     memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
                     memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
                     newNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), 0);
