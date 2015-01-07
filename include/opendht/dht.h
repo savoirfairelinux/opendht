@@ -485,7 +485,7 @@ private:
         uint16_t tid {};
         time_point time {};
 
-        constexpr Listener() : ss() {}
+        /*constexpr*/ Listener() : ss() {}
         Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) : id(id), ss(), sslen(fromlen), tid(ttid), time(t) {
             memcpy(&ss, from, fromlen);
         }
