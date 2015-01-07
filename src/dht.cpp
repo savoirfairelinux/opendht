@@ -768,7 +768,7 @@ Dht::searchStep(Search& sr)
                                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
                                            n.token, n.reply_time >= now - UDP_REPLY_TIME);
                         if (a_status == n.acked.end()) {
-                            n.acked[vid] = { .request_time = now, .reply_time = TIME_INVALID };
+                            n.acked[vid] = { now };
                         } else {
                             a_status->second.request_time = now;
                         }
@@ -1767,9 +1767,8 @@ Dht::getRoutingTablesLog(sa_family_t af) const
 }
 
 std::string 
-Dht::getSearchesLog(sa_family_t af) const
+Dht::getSearchesLog(sa_family_t) const
 {
-    auto& list = (af == AF_INET) ? buckets : buckets6;
     std::stringstream out;
     for (const auto& sr : searches)
         dumpSearch(sr, out);

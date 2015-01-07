@@ -115,7 +115,7 @@ private:
 inline void NOLOG(char const*, va_list) {}
 
 
-class Value;
+struct Value;
 
 typedef std::function<bool(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t)> StorePolicy;
 typedef std::function<bool(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t)> EditPolicy;
