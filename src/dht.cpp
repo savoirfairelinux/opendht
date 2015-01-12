@@ -1175,6 +1175,8 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
 size_t
 Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
 {
+    now = clock::now();
+
     auto vals = std::make_shared<std::map<Value::Id, std::shared_ptr<Value>>>();
     auto token = ++listener_token;
 
@@ -1258,6 +1260,8 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 void
 Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback callback)
 {
+    now = clock::now();
+
     if (val->id == Value::INVALID_ID) {
         std::random_device rdev;
         std::uniform_int_distribution<Value::Id> rand_id {};
@@ -1294,6 +1298,8 @@ Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback cal
 void
 Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter filter)
 {
+    now = clock::now();
+
     auto done = std::make_shared<bool>(false);
     auto done4 = std::make_shared<bool>(false);
     auto done6 = std::make_shared<bool>(false);
