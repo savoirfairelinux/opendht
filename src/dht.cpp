@@ -655,9 +655,10 @@ void
 Dht::searchStep(Search& sr)
 {
     // Remove expired nodes
-    /*sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
-        return n.pinged >= 3 && n.reply_time < now - NODE_GOOD_TIME;
-    }), sr.nodes.end());*/
+    sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
+        //return n.pinged >= 3 && n.reply_time < now - NODE_GOOD_TIME;
+        return n.pinged >= 3 && n.time < now - NODE_GOOD_TIME;
+    }), sr.nodes.end());
 
     if (sr.nodes.empty()) {
         // No nodes... yet ?
@@ -1446,7 +1447,17 @@ Dht::storageChanged(Storage& st)
             l.second.get_cb(vals);
     }
     for (const auto& l : st.listeners) {
-        DHT_WARN("Storage changed. Sending update.");
+        char hbuf[NI_MAXHOST];
+        char sbuf[NI_MAXSERV];
+        std::stringstream out;
+        if (!getnameinfo((sockaddr*)&l.ss, l.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+            if (l.ss.ss_family == AF_INET6)
+                out << "[" << hbuf << "]:" << sbuf;
+            else
+                out << hbuf << ":" << sbuf;
+        } else
+            out << " [invalid address]";
+        DHT_WARN("Storage changed. Sending update to %s %s.", l.id.toString().c_str(), out.str().c_str());
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
         sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, &st);
     }
