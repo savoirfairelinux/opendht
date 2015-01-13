@@ -320,11 +320,11 @@ private:
 
     struct SearchNode {
         SearchNode() : ss() {}
-        SearchNode(const InfoHash& id) : id(id), ss() {}
+        SearchNode(const InfoHash& id, time_point known) : id(id), ss(), time(known) {}
 
         struct RequestStatus {
-            time_point request_time {};    /* the time of the last unanswered announce request */
-            time_point reply_time {};      /* the time of the last announce confirmation */
+            time_point request_time {};    /* the time of the last unanswered request */
+            time_point reply_time {};      /* the time of the last confirmation */
             RequestStatus() {};
             RequestStatus(time_point q, time_point a = {}) : request_time(q), reply_time(a) {};
         };
@@ -334,7 +334,7 @@ private:
          * Can we use this node to listen/announce ?
          */
         bool isSynced(time_point now) const {
-            return /*pinged < 3 && replied &&*/ reply_time >= now - NODE_EXPIRE_TIME;
+            return /*pinged < 3 && replied &&*/ getStatus.reply_time >= now - NODE_EXPIRE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -350,11 +350,11 @@ private:
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
-                return request_time + MAX_RESPONSE_TIME;
+                return getStatus.request_time + MAX_RESPONSE_TIME;
             return std::max<time_point>({
                 ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN, 
                 ack->second.request_time + MAX_RESPONSE_TIME, 
-                request_time + MAX_RESPONSE_TIME
+                getStatus.request_time + MAX_RESPONSE_TIME
             });
         }
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
@@ -368,15 +368,14 @@ private:
         InfoHash id {};
         sockaddr_storage ss;
         socklen_t sslen {0};
-        time_point request_time {};    /* the time of the last unanswered request */
-        time_point reply_time {};      /* the time of the last reply with a token */
-        unsigned pinged {0};
+        time_point time {};            /* the last time we heard about this node */
 
+        RequestStatus getStatus {};    /* get/sync status */
         RequestStatus listenStatus {};
+        AnnounceStatusMap acked {};    /* announcement status for a given value id */
+        unsigned pinged {0};           
 
         Blob token {};
-
-        AnnounceStatusMap acked {};  /* announcement status for a given value id */
 
         // Generic temporary flag.
         // Must be reset to false after use by the algorithm.

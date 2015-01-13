@@ -576,22 +576,23 @@ Dht::Search::insertNode(const InfoHash& nid,
     if (!found) {
         if (n == nodes.end() && nodes.size() == SEARCH_NODES)
             return false;
-        n = nodes.insert(n, SearchNode{ nid });
+        n = nodes.insert(n, SearchNode{ nid, now });
         if (nodes.size() > SEARCH_NODES)
             nodes.pop_back();
     }
 
     memcpy(&n->ss, sa, salen);
     n->sslen = salen;
+    n->time = now;
 
-    if (confirmed && now - n->request_time > NODE_EXPIRE_TIME) {
+    if (confirmed && now - n->getStatus.request_time > NODE_EXPIRE_TIME) {
         /*if (n->pinged >= 3)
             std::cout << "Resurrecting node  !" << std::endl;*/
         n->pinged = 0;
     }
     if (not token.empty()) {
-        n->reply_time = now;
-        n->request_time = TIME_INVALID;
+        n->getStatus.reply_time = now;
+        n->getStatus.request_time = TIME_INVALID;
         n->pinged = 0;
         if (token.size() <= 64)
             n->token = token;
@@ -615,11 +616,11 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
     std::function<bool(const SearchNode&)> check_node;
     if (update)
         check_node = [this,sr](const SearchNode& sn) {
-            return sn.pinged < 3 && sn.request_time < now - MAX_RESPONSE_TIME && (!sn.isSynced(now) || !sr.isUpdated(sn));
+            return sn.pinged < 3 && sn.getStatus.request_time < now - MAX_RESPONSE_TIME && (!sn.isSynced(now) || !sr.isUpdated(sn));
         };
     else
         check_node = [this](const SearchNode& sn) {
-            return sn.pinged < 3 && sn.request_time < now - MAX_RESPONSE_TIME && !sn.isSynced(now);
+            return sn.pinged < 3 && sn.getStatus.request_time < now - MAX_RESPONSE_TIME && !sn.isSynced(now);
         };
 
     if (!n) {
@@ -637,9 +638,9 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
         getnameinfo((sockaddr*)&n->ss, n->sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
         DHT_WARN("Sending get_values to %s:%s (%s) for %s.", hbuf, sbuf, n->id.toString().c_str(), sr.id.toString().c_str());
     }
-    sendGetValues((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->reply_time >= now - UDP_REPLY_TIME);
+    sendGetValues((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->getStatus.reply_time >= now - UDP_REPLY_TIME);
     n->pinged++;
-    n->request_time = now;
+    n->getStatus.request_time = now;
 
     /* If the node happens to be in our main routing table, mark it
        as pinged. */
@@ -731,7 +732,8 @@ Dht::searchStep(Search& sr)
                             getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
                             DHT_DEBUG("Sending listen to %s:%s (%s).", hbuf, sbuf, n.id.toString().c_str());
                         }
-                        sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.reply_time >= now - UDP_REPLY_TIME);
+                        sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
+                        n.pending = true;
                         n.listenStatus.request_time = now;
                     }
                     if (++i == 2)
@@ -766,13 +768,13 @@ Dht::searchStep(Search& sr)
                         }
                         sendAnnounceValue((sockaddr*)&n.ss, sizeof(sockaddr_storage),
                                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
-                                           n.token, n.reply_time >= now - UDP_REPLY_TIME);
+                                           n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
                         if (a_status == n.acked.end()) {
                             n.acked[vid] = { now };
                         } else {
                             a_status->second.request_time = now;
                         }
-                        // use the "pending" flag so we update the "request_time"
+                        // use the "pending" flag so we update the "pinged"
                         // fields after sending the announce requests for every value to announce
                         n.pending = true;
                     }
@@ -784,7 +786,7 @@ Dht::searchStep(Search& sr)
                 if (n.pending) {
                     n.pending = false;
                     n.pinged++;
-                    n.request_time = now;
+                    //n.getStatus.request_time = now;
                     if (auto node = findNode(n.id, n.ss.ss_family))
                         pinged(*node);
                 }
@@ -878,7 +880,7 @@ Dht::Search::getLastGetTime() const
 bool
 Dht::Search::isUpdated(const SearchNode& sn) const
 {
-    return getLastGetTime() <= sn.reply_time;
+    return getLastGetTime() <= sn.getStatus.reply_time;
 }
 
 bool
@@ -889,7 +891,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     for (const auto& sn : nodes) {
         if (sn.pinged >= 3)
             continue;
-        if (sn.reply_time < limit)
+        if (sn.getStatus.reply_time < limit)
             return false;
         if (++i == 8)
             break;
@@ -909,8 +911,8 @@ Dht::Search::getUpdateTime(time_point now) const
         if (!sn.isSynced(now)) {
             ut = std::min(ut, step_time + SEARCH_GET_STEP);
         }
-        else if (sn.reply_time < last_get) {
-            ut = std::min(ut, sn.request_time + MAX_RESPONSE_TIME);
+        else if (sn.getStatus.reply_time < last_get) {
+            ut = std::min(ut, sn.getStatus.request_time + MAX_RESPONSE_TIME);
         }
         if (++i == 8)
             break;
@@ -1081,9 +1083,9 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     if (sr != searches.end()) {
         sr->done = false;
         // Discard any doubtful nodes.
-        sr->nodes.erase(std::remove_if (sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& n) {
+        /*sr->nodes.erase(std::remove_if (sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& n) {
             return n.reply_time < now - NODE_GOOD_TIME;
-        }), sr->nodes.end());
+        }), sr->nodes.end());*/
     } else {
         sr = newSearch();
         if (sr == searches.end())
@@ -1693,14 +1695,14 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     unsigned i = 0;
     for (const auto& n : sr.nodes) {
         out << "   Node " << i++ << " id " << n.id << " bits " << InfoHash::commonBits(sr.id, n.id);
-        if (n.request_time != TIME_INVALID)
-            out << " req: " << duration_cast<seconds>(now - n.request_time).count() << " s,";
-        out << " age:" << duration_cast<seconds>(now - n.reply_time).count() << " s";
+        if (n.getStatus.request_time != TIME_INVALID)
+            out << " req: " << duration_cast<seconds>(now - n.getStatus.request_time).count() << " s,";
+        out << " age:" << duration_cast<seconds>(now - n.getStatus.reply_time).count() << " s";
         if (n.pinged)
             out << " pinged: " << n.pinged;
         if (findNode(n.id, AF_INET))
             out << " [known]";
-        if (n.reply_time != TIME_INVALID)
+        if (n.getStatus.reply_time != TIME_INVALID)
             out << " [replied]";
         out << (n.isSynced(now) ? " [synced]" : " [not synced]");
         out << std::endl;
@@ -2000,8 +2002,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 for (auto& n : sr.nodes) {
                     if (n.id != id) continue;
                     cleared++;
-                    n.request_time = TIME_INVALID;
-                    n.reply_time = TIME_INVALID;
+                    n.getStatus.request_time = TIME_INVALID;
+                    n.getStatus.reply_time = TIME_INVALID;
                     n.pinged = 0;
                     searchSendGetValues(sr);
                     break;
@@ -2125,7 +2127,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     if (sn.id == id) {
                         auto it = sn.acked.insert({value_id, {}});
                         it.first->second.reply_time = now;
-                        sn.request_time = TIME_INVALID;
+                        //sn.getStatus.request_time = TIME_INVALID;
                         sn.pinged = 0;
                         break;
                     }
@@ -2153,7 +2155,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 for (auto& sn : sr->nodes)
                     if (sn.id == id) {
                         sn.listenStatus.reply_time = now;
-                        //sn.request_time = 0;
+                        //sn.getStatus.request_time = TIME_INVALID;
                         sn.pinged = 0;
                         break;
                     }
