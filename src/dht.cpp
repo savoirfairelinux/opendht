@@ -587,12 +587,14 @@ Dht::Search::insertNode(const InfoHash& nid,
 
     if (confirmed && now - n->getStatus.request_time > NODE_EXPIRE_TIME) {
         /*if (n->pinged >= 3)
-            std::cout << "Resurrecting node  !" << std::endl;*/
+            std::cout << "Resurrecting node 1 !" << std::endl;*/
         n->pinged = 0;
     }
     if (not token.empty()) {
         n->getStatus.reply_time = now;
         n->getStatus.request_time = TIME_INVALID;
+        /*if (n->pinged >= 3)
+            std::cout << "Resurrecting node 2 !" << std::endl;*/
         n->pinged = 0;
         if (token.size() <= 64)
             n->token = token;
@@ -636,7 +638,9 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
         char hbuf[NI_MAXHOST];
         char sbuf[NI_MAXSERV];
         getnameinfo((sockaddr*)&n->ss, n->sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-        DHT_WARN("Sending get_values to %s:%s (%s) for %s.", hbuf, sbuf, n->id.toString().c_str(), sr.id.toString().c_str());
+        DHT_WARN("Sending get_values to %s:%s (%s) for %s (p %d last req %lf)", hbuf, sbuf, n->id.toString().c_str(), sr.id.toString().c_str(),
+            n->pinged,
+            std::chrono::duration_cast<std::chrono::milliseconds>(now-n->getStatus.request_time)/1000.);
     }
     sendGetValues((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->getStatus.reply_time >= now - UDP_REPLY_TIME);
     n->pinged++;
@@ -1715,6 +1719,8 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
             out << " [known]";
         if (n.getStatus.reply_time != TIME_INVALID)
             out << " [replied]";
+        if (n.listenStatus.reply_time != TIME_INVALID)
+            out << " [list]";
         out << (n.isSynced(now) ? " [synced]" : " [not synced]");
         out << std::endl;
     }
