@@ -2287,6 +2287,7 @@ time_point
 Dht::periodic(const uint8_t *buf, size_t buflen,
              const sockaddr *from, socklen_t fromlen)
 {
+    using namespace std::chrono;
     now = clock::now();
 
     processMessage(buf, buflen, from, fromlen);
@@ -2320,7 +2321,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         else
             DHT_DEBUG("next search time : %ld (in %lf s)",
                 search_time.time_since_epoch().count(),
-                std::chrono::duration_cast<std::chrono::milliseconds>(search_time-now).count()/1000.);
+                duration_cast<milliseconds>(search_time-now).count()/1000.);
     }
 
     if (now >= confirm_nodes_time) {
@@ -2330,9 +2331,9 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         soon |= bucketMaintenance(buckets6);
 
         if (!soon) {
-            if (mybucket_grow_time >= now - std::chrono::seconds(150))
+            if (mybucket_grow_time >= now - seconds(150))
                 soon |= neighbourhoodMaintenance(buckets);
-            if (mybucket6_grow_time >= now - std::chrono::seconds(150))
+            if (mybucket6_grow_time >= now - seconds(150))
                 soon |= neighbourhoodMaintenance(buckets6);
         }
 
@@ -2341,8 +2342,8 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
            We want to keep a margin for neighborhood maintenance, so keep
            this within 25 seconds. */
         auto time_dis = soon ?
-               uniform_duration_distribution<> {std::chrono::seconds(5) , std::chrono::seconds(25)}
-             : uniform_duration_distribution<> {std::chrono::seconds(60), std::chrono::seconds(180)};
+               uniform_duration_distribution<> {seconds(5) , seconds(25)}
+             : uniform_duration_distribution<> {seconds(60), seconds(180)};
         confirm_nodes_time = now + time_dis(rd);
 
         dumpTables();
