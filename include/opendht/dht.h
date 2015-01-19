@@ -264,11 +264,11 @@ private:
         time_point pinged_time {};     /* time of last request */
         unsigned pinged {0};        /* how many requests we sent since last reply */
 
-        Node() {
+        Node() : ss() {
             std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
         }
         Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, time_point t, time_point reply_time)
-            : id(id), sslen(salen), time(t), reply_time(reply_time) {
+            : id(id), ss(), sslen(salen), time(t), reply_time(reply_time) {
             std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
         }
         bool isGood(time_point now) const;

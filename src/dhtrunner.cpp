@@ -136,10 +136,9 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
     int s = socket(PF_INET, SOCK_DGRAM, 0);
     int s6 = socket(PF_INET6, SOCK_DGRAM, 0);
     if(s >= 0) {
-        sockaddr_in sin {
-            .sin_family = AF_INET,
-            .sin_port = htons(port)
-        };
+        sockaddr_in sin {};
+        sin.sin_family = AF_INET;
+        sin.sin_port = htons(port);
         int rc = bind(s, (sockaddr*)&sin, sizeof(sin));
         if(rc < 0)
             throw DhtException("Can't bind IPv4 socket");
@@ -153,10 +152,9 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 
         /* BEP-32 mandates that we should bind this socket to one of our
            global IPv6 addresses. */
-        sockaddr_in6 sin6 {
-            .sin6_family = AF_INET6,
-            .sin6_port = htons(port)
-        };
+        sockaddr_in6 sin6 {};
+        sin6.sin6_family = AF_INET6;
+        sin6.sin6_port = htons(port);
         rc = bind(s6, (sockaddr*)&sin6, sizeof(sin6));
         if(rc < 0)
             throw DhtException("Can't bind IPv6 socket");
