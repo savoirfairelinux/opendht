@@ -107,11 +107,11 @@ struct PrivateKey
      */
     static PrivateKey generate(unsigned key_length = 2048);
 
+    gnutls_privkey_t key {};
+    gnutls_x509_privkey_t x509_key {};
 private:
     PrivateKey(const PrivateKey&) = delete;
     PrivateKey& operator=(const PrivateKey&) = delete;
-    gnutls_privkey_t key {};
-    gnutls_x509_privkey_t x509_key {};
 
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity);
 };

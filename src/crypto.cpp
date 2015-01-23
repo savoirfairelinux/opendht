@@ -95,9 +95,9 @@ PrivateKey::PrivateKey(const Blob& import)
         throw DhtException("Can't initialize private key !");
 
     const gnutls_datum_t dt {(uint8_t*)import.data(), static_cast<unsigned>(import.size())};
-    err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_PEM);
+    err = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN);
     if (err != GNUTLS_E_SUCCESS)
-        err = gnutls_x509_privkey_import(x509_key, &dt, GNUTLS_X509_FMT_DER);
+        err = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_DER, nullptr, GNUTLS_PKCS_PLAIN);
     if (err != GNUTLS_E_SUCCESS) {
         gnutls_x509_privkey_deinit(x509_key);
         throw DhtException("Can't load private key !");
