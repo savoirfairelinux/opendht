@@ -35,6 +35,7 @@
 #include <array>
 #include <vector>
 #include <algorithm>
+#include <stdexcept>
 #include <cstring>
 
 // bytes
