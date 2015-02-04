@@ -213,8 +213,8 @@ SecureDht::getCallbackFilter(GetCallback cb)
                 tmpvals.push_back(v);
             }
         }
-        if (not tmpvals.empty())
-            return !cb || cb(tmpvals);
+        if (cb && not tmpvals.empty())
+            return cb(tmpvals);
         return true;
     };
 }
