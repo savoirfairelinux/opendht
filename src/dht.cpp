@@ -1216,7 +1216,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
             std::vector<std::shared_ptr<Value>> newvals {};
             newvals.reserve(st->values.size());
             for (auto& v : st->values) {
-                if (f(*v.data))
+                if (not f || f(*v.data))
                     newvals.push_back(v.data);
             }
             if (not newvals.empty()) {
@@ -1330,7 +1330,7 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
                 return sv == v || *sv == *v;
             });
             if (it == vals->cend()) {
-                if (filter(*v))
+                if (!filter || filter(*v))
                     newvals.push_back(v);
             }
         }
@@ -1365,7 +1365,7 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
     std::vector<std::shared_ptr<Value>> vals;
     vals.reserve(s->values.size());
     for (auto& v : s->values)
-        if (f(*v.data)) vals.push_back(v.data);
+        if (!f || f(*v.data)) vals.push_back(v.data);
     return vals;
 }
 
@@ -1446,7 +1446,8 @@ Dht::storageChanged(Storage& st)
         std::vector<std::shared_ptr<Value>> vals;
         vals.reserve(st.values.size());
         for (auto& v : st.values)
-            if (l.second.filter(*v.data)) vals.push_back(v.data);
+            if (!l.second.filter or l.second.filter(*v.data))
+                vals.push_back(v.data);
         if (not vals.empty())
             l.second.get_cb(vals);
     }
@@ -2113,7 +2114,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         if (!cb.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
                         std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
-                            return cb.filter(*v);
+                            return !cb.filter || cb.filter(*v);
                         });
                         if (not tmp.empty())
                             cb.get_cb(tmp);
@@ -2122,7 +2123,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         if (!l.second.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
                         std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
-                            return l.second.filter(*v);
+                            return !l.second.filter || l.second.filter(*v);
                         });
                         if (not tmp.empty())
                             l.second.get_cb(tmp);

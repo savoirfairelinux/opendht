@@ -214,7 +214,7 @@ SecureDht::getCallbackFilter(GetCallback cb)
             }
         }
         if (not tmpvals.empty())
-            return cb(tmpvals);
+            return !cb || cb(tmpvals);
         return true;
     };
 }
