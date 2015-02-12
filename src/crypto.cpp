@@ -312,7 +312,8 @@ PublicKey::getId() const
 {
     InfoHash id;
     size_t sz = id.size();
-    gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz);
+    if (gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
+        return {};
     return id;
 }
 
@@ -378,6 +379,31 @@ Certificate::getPublicKey() const
     if (gnutls_pubkey_import_x509(pk, cert, 0) != GNUTLS_E_SUCCESS)
         return {};
     return pk_ret;
+}
+
+InfoHash
+Certificate::getId() const
+{
+    if (not cert)
+        return {};
+    InfoHash id;
+    size_t sz = id.size();
+    if (gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
+        throw std::runtime_error("Can't get certificate public key ID.");
+    return id;
+}
+
+std::string
+Certificate::getUID() const
+{
+    std::string uid;
+    uid.resize(512);
+    size_t uid_sz = uid.size();
+    int ret = gnutls_x509_crt_get_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, 0, &(*uid.begin()), &uid_sz);
+    if (ret != GNUTLS_E_SUCCESS)
+        return {};
+    uid.resize(uid_sz);
+    return uid;
 }
 
 PrivateKey

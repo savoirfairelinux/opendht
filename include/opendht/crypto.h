@@ -122,12 +122,18 @@ struct Certificate : public Serializable {
     Certificate(const Blob& crt);
     Certificate(Certificate&& o) noexcept : cert(o.cert) { o.cert = nullptr; };
     Certificate& operator=(Certificate&& o) noexcept;
-
     ~Certificate();
-    operator bool() const { return cert; }
-    PublicKey getPublicKey() const;
+
     void pack(Blob& b) const override;
     void unpack(Blob::const_iterator& begin, Blob::const_iterator& end) override;
+
+    operator bool() const { return cert; }
+    PublicKey getPublicKey() const;
+
+    /** Same as getPublicKey().getId() */
+    InfoHash getId() const;
+
+    std::string getUID() const;
 
     gnutls_x509_crt_t cert {};
 private:
