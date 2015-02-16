@@ -50,6 +50,11 @@ struct Certificate;
 
 typedef std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certificate>> Identity;
 
+class CryptoException : public std::runtime_error {
+    public:
+        CryptoException(const std::string& str) : std::runtime_error(str) {};
+};
+
 /**
  * Generate an RSA key pair (2048 bits) and a certificate.
  * If a certificate authority (ca) is provided, it will be used to
