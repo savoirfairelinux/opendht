@@ -109,6 +109,15 @@ PrivateKey::PrivateKey(const Blob& import)
     }
 }
 
+PrivateKey::PrivateKey(PrivateKey&& o) noexcept : key(o.key), x509_key(o.x509_key)
+{
+    // gnutls_global_init already succeeded at least once here so no real need to check.
+    int ret = gnutls_global_init();
+    assert(ret == GNUTLS_E_SUCCESS);
+    o.key = nullptr;
+    o.x509_key = nullptr;
+};
+
 PrivateKey::~PrivateKey()
 {
     if (key) {
