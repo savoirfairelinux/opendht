@@ -1442,15 +1442,22 @@ void
 Dht::storageChanged(Storage& st)
 {
     // TODO: only advertise changing/new value
-    for (const auto& l : st.local_listeners) {
-        std::vector<std::shared_ptr<Value>> vals;
-        vals.reserve(st.values.size());
-        for (auto& v : st.values)
-            if (!l.second.filter or l.second.filter(*v.data))
-                vals.push_back(v.data);
-        if (not vals.empty())
-            l.second.get_cb(vals);
+    {
+        // listeners may be deleted by callback
+        std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
+        for (const auto& l : st.local_listeners) {
+            std::vector<std::shared_ptr<Value>> vals;
+            vals.reserve(st.values.size());
+            for (auto& v : st.values)
+                if (not static_cast<bool>(l.second.filter) or l.second.filter(*v.data))
+                    vals.push_back(v.data);
+            if (not vals.empty())
+                cbs.emplace_back(l.second.get_cb, std::move(vals));
+        }
+        for (auto& cb : cbs)
+            cb.first(cb.second);
     }
+
     for (const auto& l : st.listeners) {
         char hbuf[NI_MAXHOST];
         char sbuf[NI_MAXSERV];
@@ -2113,21 +2120,24 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     for (auto& cb : sr->callbacks) {
                         if (!cb.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
-                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
-                            return !cb.filter || cb.filter(*v);
+                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
+                            return not static_cast<bool>(cb.filter) or cb.filter(*v);
                         });
                         if (not tmp.empty())
                             cb.get_cb(tmp);
                     }
+                    std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
                     for (auto& l : sr->listeners) {
                         if (!l.second.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
-                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v){
-                            return !l.second.filter || l.second.filter(*v);
+                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
+                            return not static_cast<bool>(l.second.filter) or l.second.filter(*v);
                         });
                         if (not tmp.empty())
-                            l.second.get_cb(tmp);
+                            tmp_lists.emplace_back(l.second.get_cb, tmp);
                     }
+                    for (auto& l : tmp_lists)
+                        l.first(l.second);
                 }
                 // Force to recompute the next step time
                 if (sr->isSynced(now))
@@ -2347,7 +2357,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
              : uniform_duration_distribution<> {seconds(60), seconds(180)};
         confirm_nodes_time = now + time_dis(rd);
 
-        dumpTables();
+        //dumpTables();
     }
 
     time_point tosleep = confirm_nodes_time;
