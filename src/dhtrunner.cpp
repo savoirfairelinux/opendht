@@ -261,6 +261,7 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
         std::cout << "Processing cancelListen " << h << std::endl;
         dht.cancelListen(h, token);
     });
+    cv.notify_all();
 }
 
 void
@@ -273,6 +274,7 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
         std::cout << "token is " << tk << std::endl;
         dht.cancelListen(h, tk);
     });
+    cv.notify_all();
 }
 
 void
@@ -301,6 +303,7 @@ DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
         std::cout << "Processing cancelPut " << h << " / " << id << std::endl;
         dht.cancelPut(h, id);
     });
+    cv.notify_all();
 }
 
 void
