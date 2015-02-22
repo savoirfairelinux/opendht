@@ -52,12 +52,12 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, S
                 if (not running) 
                     return true;
                 {
-                    std::unique_lock<std::mutex> lck(sock_mtx);
+                    std::lock_guard<std::mutex> lck(sock_mtx);
                     if (not rcv.empty())
                         return true;
                 }
                 {
-                    std::unique_lock<std::mutex> lck(storage_mtx);
+                    std::lock_guard<std::mutex> lck(storage_mtx);
                     if (not pending_ops.empty())
                         return true;
                 }
@@ -77,7 +77,7 @@ DhtRunner::join()
     if (rcv_thread.joinable())
         rcv_thread.join();
     {
-        std::unique_lock<std::mutex> lck(dht_mtx);
+        std::lock_guard<std::mutex> lck(dht_mtx);
         dht_.reset();
         status4 = Dht::Status::Disconnected;
         status6 = Dht::Status::Disconnected;
@@ -92,7 +92,7 @@ DhtRunner::loop_()
 
     decltype(pending_ops) ops {};
     {
-        std::unique_lock<std::mutex> lck(storage_mtx);
+        std::lock_guard<std::mutex> lck(storage_mtx);
         ops = std::move(pending_ops);
     }
     while (not ops.empty()) {
@@ -102,7 +102,7 @@ DhtRunner::loop_()
 
     time_point wakeup {};
     {
-        std::unique_lock<std::mutex> lck(sock_mtx);
+        std::lock_guard<std::mutex> lck(sock_mtx);
         if (not rcv.empty()) {
             for (const auto& pck : rcv) {
                 auto& buf = pck.first;
@@ -200,7 +200,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
                     if (rc > 0) {
                         buf[rc] = 0;
                         {
-                            std::unique_lock<std::mutex> lck(sock_mtx);
+                            std::lock_guard<std::mutex> lck(sock_mtx);
                             rcv.emplace_back(Blob {buf, buf+rc+1}, from);
                         }
                         cv.notify_all();
@@ -220,7 +220,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 void
 DhtRunner::get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing get (" <<  hash << ")" << std::endl;
         dht.get(hash, vcb, dcb, f);
@@ -237,7 +237,7 @@ DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback d
 std::future<size_t>
 DhtRunner::listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     auto ret_token = std::make_shared<std::promise<size_t>>();
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing listen (" <<  hash << ")" << std::endl;
@@ -256,7 +256,7 @@ DhtRunner::listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f)
 void
 DhtRunner::cancelListen(InfoHash h, size_t token)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing cancelListen " << h << std::endl;
         dht.cancelListen(h, token);
@@ -266,7 +266,7 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
 void
 DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing cancelListen (shared_future) " << h << std::endl;
         auto tk = token.get();
@@ -278,7 +278,7 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
 void
 DhtRunner::put(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing put " << hash << " -> " << *sv << std::endl;
@@ -296,7 +296,7 @@ DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallback cb)
 void
 DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing cancelPut " << h << " / " << id << std::endl;
         dht.cancelPut(h, id);
@@ -306,7 +306,7 @@ DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
 void
 DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing signed put " << hash << " -> " << *sv << std::endl;
@@ -324,7 +324,7 @@ DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb
 void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
         std::cout << "Processing encrypted put at " << hash << " for " << to << " -> " << *sv << std::endl;
@@ -342,7 +342,7 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht:
 void
 DhtRunner::bootstrap(const std::vector<sockaddr_storage>& nodes)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         for (auto& node : nodes)
             dht.pingNode((sockaddr*)&node, sizeof(node));
@@ -353,7 +353,7 @@ DhtRunner::bootstrap(const std::vector<sockaddr_storage>& nodes)
 void
 DhtRunner::bootstrap(const std::vector<Dht::NodeExport>& nodes)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         for (auto& node : nodes)
             dht.insertNode(node);
