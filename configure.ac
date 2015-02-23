@@ -3,6 +3,7 @@ AC_CONFIG_AUX_DIR(ac)
 AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
+AC_CANONICAL_HOST
 
 AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Build in debug mode, adds stricter warnings, disables optimization]))
 AS_IF([test "x$enable_debug" = "xyes"],
@@ -12,6 +13,32 @@ AS_IF([test "x$enable_debug" = "xyes"],
 AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_AR
+
+case "${host_os}" in
+  "")
+    SYS=unknown
+    ;;
+  linux*)
+    SYS=linux
+    ;;
+  darwin*)
+    SYS=darwin
+    ;;
+  mingw32*)
+    SYS=mingw32
+    AC_DEFINE([_POSIX_SOURCE], [1], [IEEE Std 1003.1.])
+    AC_DEFINE([_POSIX_C_SOURCE], [200809L], [IEEE Std 1003.1.])
+    AC_DEFINE([_XOPEN_SOURCE], [700], [POSIX and XPG 7th edition])
+    AC_DEFINE([_XOPEN_SOURCE_EXTENDED], [1], [XPG things and X/Open Unix extensions.])
+    AC_DEFINE([_BSD_SOURCE], [1], [ISO C, POSIX, and 4.3BSD things.])
+    LDFLAGS="${LDFLAGS} -lws2_32"
+    AC_SUBST(WINDOWS_ARCH)
+    AC_SUBST(PROGRAMFILES)
+    ;;
+  *)
+    SYS="${host_os}"
+    ;;
+esac
 
 LT_INIT()
 LT_LANG(C++)

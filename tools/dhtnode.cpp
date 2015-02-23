@@ -35,7 +35,12 @@ extern "C" {
 #include <gnutls/gnutls.h>
 }
 
+#ifndef _WIN32
 #include <sys/socket.h>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 
 #include <iostream>
 #include <string>

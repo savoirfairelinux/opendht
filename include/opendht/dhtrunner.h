@@ -56,10 +56,8 @@ class DhtRunner {
 public:
     typedef std::function<void(Dht::Status, Dht::Status)> StatusCallback;
 
-    DhtRunner() {}
-    virtual ~DhtRunner() {
-        join();
-    }
+    DhtRunner();
+    virtual ~DhtRunner();
 
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
     void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
