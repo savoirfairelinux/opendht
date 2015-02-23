@@ -227,14 +227,14 @@ std::ostream& operator<< (std::ostream& s, const DhtMessage& v)
 void
 DhtMessage::pack(Blob& res) const
 {
-    serialize<int16_t>(service, res);
+    serialize<Service>(service, res);
     serialize<Blob>(message, res);
 }
 
 void
 DhtMessage::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
 {
-    service = deserialize<int16_t>(begin, end);
+    service = deserialize<Service>(begin, end);
     message = deserialize<Blob>(begin, end);
 }
 
@@ -242,7 +242,7 @@ bool
 DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
 {
     DhtMessage request {v->data};
-    if (request.service == 0)
+    if (request.service == Service::UNDEFINED)
         return false;
     return true;
 }

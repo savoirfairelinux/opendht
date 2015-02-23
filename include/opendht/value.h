@@ -186,7 +186,7 @@ struct Value : public Serializable
         };
     }
 
-    static Filter chainFilters(Filter& f1, Filter& f2) {
+    static Filter chainFilters(Filter&& f1, Filter&& f2) {
         return [f1,f2](const Value& v){
             return f1(v) && f2(v);
         };
@@ -364,13 +364,27 @@ private:
     sockaddr_storage ss;
 };
 
-
 struct DhtMessage : public Serializable
 {
-    DhtMessage(uint16_t s, Blob msg = {}) : service(s), message(msg) {}
+    enum class Service : uint16_t {
+        UNDEFINED = 0,
+        IM_MESSAGE,
+        ICE_CANDIDATES
+    };
+
+    DhtMessage(uint16_t s, Blob msg = {}) : service(static_cast<Service>(s)), message(msg) {}
+    DhtMessage(Service s, Blob msg = {}) : service(s), message(msg) {}
 
     DhtMessage(const Blob& b) {
         unpackBlob(b);
+    }
+
+    Service getService() const {
+        return service;
+    }
+
+    const Blob& getMessage() const {
+        return message;
     }
 
     virtual void pack(Blob& res) const;
@@ -379,11 +393,26 @@ struct DhtMessage : public Serializable
     static const ValueType TYPE;
     static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
 
+    static Value::Filter ServiceFilter(Service s) {
+        return Value::chainFilters(
+            Value::TypeFilter(TYPE),
+            [s](const Value& v) {
+                try {
+                    auto b = v.data.cbegin(), e = v.data.cend();
+                    auto service = deserialize<Service>(b, e);
+                    return service == s;
+                } catch (const std::exception& e) {
+                    return false;
+                }
+            }
+        );
+    }
+
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream&, const DhtMessage&);
 
 private:
-    uint16_t service;
+    Service service;
     Blob message;
 };
 
