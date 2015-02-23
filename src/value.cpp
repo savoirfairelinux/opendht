@@ -41,8 +41,8 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
     if (v.flags.isEncrypted())
         s << "encrypted ";
     else {
-        if (v.type == ServiceAnnouncement::TYPE.id) {
-            s << ServiceAnnouncement(v.data);
+        if (v.type == IpServiceAnnouncement::TYPE.id) {
+            s << IpServiceAnnouncement(v.data);
         } else if (v.type == CERTIFICATE_TYPE.id) {
             s << "Certificate";
             try {
@@ -65,21 +65,6 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
 
 const ValueType ValueType::USER_DATA = {0, "User Data"};
 
-bool
-ServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
-{
-    ServiceAnnouncement request {};
-    request.unpackBlob(v->data);
-    if (request.getPort() == 0)
-        return false;
-    ServiceAnnouncement sa_addr {from, fromlen};
-    sa_addr.setPort(request.getPort());
-    // argument v is modified (not the value).
-    v = std::make_shared<Value>(ServiceAnnouncement::TYPE, sa_addr, v->id);
-    return true;
-}
-
-const ValueType ServiceAnnouncement::TYPE = {1, "Service Announcement", std::chrono::minutes(15), ServiceAnnouncement::storePolicy, ValueType::DEFAULT_EDIT_POLICY};
 
 void
 Value::packToSign(Blob& res) const
@@ -169,7 +154,7 @@ Value::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
     unpackBody(begin, end);
 }
 
-std::ostream& operator<< (std::ostream& s, const ServiceAnnouncement& v)
+std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
 {
     s << "Peer: ";
     s << "port " << v.getPort();
@@ -184,7 +169,7 @@ std::ostream& operator<< (std::ostream& s, const ServiceAnnouncement& v)
 }
 
 void
-ServiceAnnouncement::pack(Blob& res) const
+IpServiceAnnouncement::pack(Blob& res) const
 {
     serialize<in_port_t>(getPort(), res);
     if (ss.ss_family == AF_INET) {
@@ -197,7 +182,7 @@ ServiceAnnouncement::pack(Blob& res) const
 }
 
 void
-ServiceAnnouncement::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
+IpServiceAnnouncement::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
 {
     setPort(deserialize<in_port_t>(begin, end));
     size_t addr_size = end - begin;
@@ -216,5 +201,52 @@ ServiceAnnouncement::unpack(Blob::const_iterator& begin, Blob::const_iterator& e
     }
 }
 
+bool
+IpServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
+{
+    IpServiceAnnouncement request {};
+    request.unpackBlob(v->data);
+    if (request.getPort() == 0)
+        return false;
+    IpServiceAnnouncement sa_addr {from, fromlen};
+    sa_addr.setPort(request.getPort());
+    // argument v is modified (not the value).
+    v = std::make_shared<Value>(IpServiceAnnouncement::TYPE, sa_addr, v->id);
+    return true;
+}
+
+const ValueType IpServiceAnnouncement::TYPE = {2, "Internet Service Announcement", std::chrono::minutes(15), IpServiceAnnouncement::storePolicy, ValueType::DEFAULT_EDIT_POLICY};
+
+std::ostream& operator<< (std::ostream& s, const DhtMessage& v)
+{
+    s << "DhtMessage: service " << v.service << std::endl;
+    s.write((const char*)v.message.data(), v.message.size());
+    return s;
+}
+
+void
+DhtMessage::pack(Blob& res) const
+{
+    serialize<int16_t>(service, res);
+    serialize<Blob>(message, res);
+}
+
+void
+DhtMessage::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
+{
+    service = deserialize<int16_t>(begin, end);
+    message = deserialize<Blob>(begin, end);
+}
+
+bool
+DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
+{
+    DhtMessage request {v->data};
+    if (request.service == 0)
+        return false;
+    return true;
+}
+
+const ValueType DhtMessage::TYPE = {1, "DHT message", std::chrono::minutes(5), DhtMessage::storePolicy, ValueType::DEFAULT_EDIT_POLICY};
 
 }

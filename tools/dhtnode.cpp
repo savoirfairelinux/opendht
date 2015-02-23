@@ -276,7 +276,7 @@ main(int argc, char **argv)
         else if (op == "a") {
             in_port_t port;
             iss >> port;
-            dht.put(id, dht::Value {dht::ServiceAnnouncement::TYPE.id, dht::ServiceAnnouncement(port)}, [](bool ok) {
+            dht.put(id, dht::Value {dht::IpServiceAnnouncement::TYPE.id, dht::IpServiceAnnouncement(port)}, [](bool ok) {
                 std::cout << "Announce done !" << ok << std::endl;
             });
         }

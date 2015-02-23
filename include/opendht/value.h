@@ -324,19 +324,19 @@ struct Value : public Serializable
 
 /* "Peer" announcement
  */
-struct ServiceAnnouncement : public Serializable
+struct IpServiceAnnouncement : public Serializable
 {
-    ServiceAnnouncement(in_port_t p = 0) {
+    IpServiceAnnouncement(in_port_t p = 0) {
         ss.ss_family = 0;
         setPort(p);
     }
 
-    ServiceAnnouncement(const sockaddr* sa, socklen_t sa_len) {
+    IpServiceAnnouncement(const sockaddr* sa, socklen_t sa_len) {
         if (sa)
             std::copy_n((const uint8_t*)sa, sa_len, (uint8_t*)&ss);
     }
 
-    ServiceAnnouncement(const Blob& b) {
+    IpServiceAnnouncement(const Blob& b) {
         unpackBlob(b);
     }
 
@@ -358,10 +358,46 @@ struct ServiceAnnouncement : public Serializable
     static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
 
     /** print value for debugging */
-    friend std::ostream& operator<< (std::ostream&, const ServiceAnnouncement&);
+    friend std::ostream& operator<< (std::ostream&, const IpServiceAnnouncement&);
 
 private:
     sockaddr_storage ss;
+};
+
+
+struct DhtMessage : public Serializable
+{
+    DhtMessage(uint16_t s, Blob msg = {}) : service(s), message(msg) {}
+
+    DhtMessage(const Blob& b) {
+        unpackBlob(b);
+    }
+
+    virtual void pack(Blob& res) const;
+    virtual void unpack(Blob::const_iterator& begin, Blob::const_iterator& end);
+
+    static const ValueType TYPE;
+    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
+
+    /** print value for debugging */
+    friend std::ostream& operator<< (std::ostream&, const DhtMessage&);
+
+private:
+    uint16_t service;
+    Blob message;
+};
+
+const std::array<std::reference_wrapper<const ValueType>, 2>
+DEFAULT_TYPES
+{
+    ValueType::USER_DATA,
+    DhtMessage::TYPE,
+};
+
+const std::array<std::reference_wrapper<const ValueType>, 1>
+DEFAULT_INSECURE_TYPES
+{
+    IpServiceAnnouncement::TYPE
 };
 
 }

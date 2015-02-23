@@ -54,8 +54,10 @@ SecureDht::SecureDht(int s, int s6, crypto::Identity id)
     if (certId != key_->getPublicKey().getId())
         throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
-    registerType(ValueType::USER_DATA);
-    registerInsecureType(ServiceAnnouncement::TYPE);
+    for (const auto& type : DEFAULT_TYPES)
+        registerType(type);
+    for (const auto& type : DEFAULT_INSECURE_TYPES)
+        registerInsecureType(type);
     registerInsecureType(CERTIFICATE_TYPE);
 
     Dht::put(certId, Value {
