@@ -222,7 +222,6 @@ DhtRunner::get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing get (" <<  hash << ")" << std::endl;
         dht.get(hash, vcb, dcb, f);
     });
     cv.notify_all();
@@ -240,7 +239,6 @@ DhtRunner::listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f)
     std::lock_guard<std::mutex> lck(storage_mtx);
     auto ret_token = std::make_shared<std::promise<size_t>>();
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing listen (" <<  hash << ")" << std::endl;
         ret_token->set_value(dht.listen(hash, vcb, f));
     });
     cv.notify_all();
@@ -258,7 +256,6 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing cancelListen " << h << std::endl;
         dht.cancelListen(h, token);
     });
     cv.notify_all();
@@ -269,9 +266,7 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing cancelListen (shared_future) " << h << std::endl;
         auto tk = token.get();
-        std::cout << "token is " << tk << std::endl;
         dht.cancelListen(h, tk);
     });
     cv.notify_all();
@@ -283,7 +278,6 @@ DhtRunner::put(InfoHash hash, Value&& value, Dht::DoneCallback cb)
     std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing put " << hash << " -> " << *sv << std::endl;
         dht.put(hash, sv, cb);
     });
     cv.notify_all();
@@ -300,7 +294,6 @@ DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing cancelPut " << h << " / " << id << std::endl;
         dht.cancelPut(h, id);
     });
     cv.notify_all();
@@ -312,7 +305,6 @@ DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
     std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing signed put " << hash << " -> " << *sv << std::endl;
         dht.putSigned(hash, sv, cb);
     });
     cv.notify_all();
@@ -330,7 +322,6 @@ DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCall
     std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
-        std::cout << "Processing encrypted put at " << hash << " for " << to << " -> " << *sv << std::endl;
         dht.putEncrypted(hash, to, sv, cb);
     });
     cv.notify_all();

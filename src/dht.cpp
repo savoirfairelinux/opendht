@@ -2377,7 +2377,6 @@ Dht::exportValues() const
         ve.first = h.id;
         serialize<uint16_t>(h.values.size(), ve.second);
         for (const auto& v : h.values) {
-            Blob vde;
             serialize<time_point>(v.time, ve.second);
             v.data->pack(ve.second);
         }
