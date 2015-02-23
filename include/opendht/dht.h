@@ -224,14 +224,14 @@ private:
     static constexpr unsigned MAX_SEARCHES {1024};
 
     /* Time for a request to timeout */
-    static constexpr std::chrono::seconds MAX_RESPONSE_TIME {6};
+    static constexpr std::chrono::seconds MAX_RESPONSE_TIME {3};
 
     /* A search with no nodes will timeout after this time. */
-    static constexpr std::chrono::seconds SEARCH_TIMEOUT {6};
+    static constexpr std::chrono::seconds SEARCH_TIMEOUT {3};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
-    static constexpr std::chrono::seconds SEARCH_GET_STEP {6};
+    static constexpr std::chrono::seconds SEARCH_GET_STEP {3};
 
     /* The time after which we consider a search to be expirable. */
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
@@ -241,7 +241,7 @@ private:
 
     static constexpr std::chrono::minutes NODE_GOOD_TIME {120};
 
-    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {3};
+    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
 
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
 
