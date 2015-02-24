@@ -86,9 +86,9 @@ public:
      * If the signature can't be checked, or if the data can't be decrypted, it is not returned.
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
-    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter = Value::AllFilter());
+    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& = {});
 
-    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter = Value::AllFilter());
+    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {});
 
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
@@ -127,7 +127,7 @@ private:
     SecureDht(const SecureDht&) = delete;
     SecureDht& operator=(const SecureDht&) = delete;
 
-    GetCallback getCallbackFilter(GetCallback);
+    GetCallback getCallbackFilter(GetCallback, Value::Filter&&);
 
     std::shared_ptr<crypto::PrivateKey> key_ {};
     std::shared_ptr<crypto::Certificate> certificate_ {};

@@ -183,7 +183,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 
 
 Dht::GetCallback
-SecureDht::getCallbackFilter(GetCallback cb)
+SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 {
     return [=](const std::vector<std::shared_ptr<Value>>& values) {
         std::vector<std::shared_ptr<Value>> tmpvals {};
@@ -193,8 +193,10 @@ SecureDht::getCallbackFilter(GetCallback cb)
                 try {
                     Value decrypted_val (decrypt(*v));
                     if (decrypted_val.recipient == getId()) {
-                        if (decrypted_val.owner.checkSignature(decrypted_val.getToSign(), decrypted_val.signature))
-                            tmpvals.push_back(std::make_shared<Value>(std::move(decrypted_val)));
+                        if (decrypted_val.owner.checkSignature(decrypted_val.getToSign(), decrypted_val.signature)) {
+                            if (not filter or filter(decrypted_val))
+                                tmpvals.push_back(std::make_shared<Value>(std::move(decrypted_val)));
+                        }
                         else
                             DHT_WARN("Signature verification failed for %s", v->toString().c_str());
                     }
@@ -205,14 +207,17 @@ SecureDht::getCallbackFilter(GetCallback cb)
             }
             // Check signed values
             else if (v->isSigned()) {
-                if (v->owner.checkSignature(v->getToSign(), v->signature))
-                    tmpvals.push_back(v);
+                if (v->owner.checkSignature(v->getToSign(), v->signature)) {
+                    if (not filter or filter(*v))
+                        tmpvals.push_back(v);
+                }
                 else
                     DHT_WARN("Signature verification failed for %s", v->toString().c_str());
             }
             // Forward normal values
             else {
-                tmpvals.push_back(v);
+                if (not filter or filter(*v))
+                    tmpvals.push_back(v);
             }
         }
         if (cb && not tmpvals.empty())
@@ -222,15 +227,15 @@ SecureDht::getCallbackFilter(GetCallback cb)
 }
 
 void
-SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter filter)
+SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& f)
 {
-    Dht::get(id, getCallbackFilter(cb), donecb, filter);
+    Dht::get(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), donecb);
 }
 
 size_t
-SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter filter)
+SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
 {
-    return Dht::listen(id, getCallbackFilter(cb), filter);
+    return Dht::listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)));
 }
 
 void

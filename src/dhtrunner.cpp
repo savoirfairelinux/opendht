@@ -221,8 +221,8 @@ void
 DhtRunner::get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.get(hash, vcb, dcb, f);
+    pending_ops.emplace([=](SecureDht& dht) mutable {
+        dht.get(hash, vcb, dcb, std::move(f));
     });
     cv.notify_all();
 }
@@ -238,8 +238,8 @@ DhtRunner::listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     auto ret_token = std::make_shared<std::promise<size_t>>();
-    pending_ops.emplace([=](SecureDht& dht) {
-        ret_token->set_value(dht.listen(hash, vcb, f));
+    pending_ops.emplace([=](SecureDht& dht) mutable {
+        ret_token->set_value(dht.listen(hash, vcb, std::move(f)));
     });
     cv.notify_all();
     return ret_token->get_future();
