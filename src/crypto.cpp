@@ -416,6 +416,20 @@ Certificate::getUID() const
     return uid;
 }
 
+std::string
+Certificate::toString() const
+{
+    std::string str;
+    size_t buf_sz = 8192;
+    str.resize(buf_sz);
+    int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_PEM, &(*str.begin()), &buf_sz);
+    if (err != GNUTLS_E_SUCCESS) {
+        std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
+    }
+    str.resize(buf_sz);
+    return str;
+}
+
 PrivateKey
 PrivateKey::generate(unsigned key_length)
 {

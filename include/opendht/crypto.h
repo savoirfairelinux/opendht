@@ -107,7 +107,7 @@ struct PrivateKey
     /**
      * Generate a new RSA key pair
      * @param key_length : size of the modulus in bits
-     *      Recommended values: 2048, 4096, 8192
+     *      Recommended values: 4096, 8192
      */
     static PrivateKey generate(unsigned key_length = 4096);
 
@@ -138,6 +138,11 @@ struct Certificate : public Serializable {
     InfoHash getId() const;
 
     std::string getUID() const;
+
+    /**
+     * PEM encoded certificate
+     */
+    std::string toString() const;
 
     gnutls_x509_crt_t cert {};
 private:
