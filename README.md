@@ -55,7 +55,7 @@ How-to build and install
 git clone https://github.com/savoirfairelinux/opendht.git
 
 # build and install
-cd dht
+cd opendht
 ./autogen.sh && ./configure
 make
 sudo make install
@@ -69,7 +69,7 @@ g++ main.cpp -std=c++11 -lopendht -lgnutls
 
 Licence
 -
-Copyright (C) 2014 Savoir-Faire Linux Inc.
+Copyright (C) 2014-2015 Savoir-Faire Linux Inc.
 
 Licenced under the GNU General Public License version 3, though the core routing library (dht.cpp) is licenced under the MIT licence.
 
