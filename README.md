@@ -80,7 +80,6 @@ Dependencies
 
 TODO
 -
- * Event listening
  * Long term value persistance
- * Documention
+ * Documentation
  * ...
