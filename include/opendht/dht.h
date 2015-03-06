@@ -237,7 +237,7 @@ private:
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
     /* The time after which we consider a node to be expirable. */
-    static constexpr std::chrono::minutes NODE_EXPIRE_TIME {15};
+    static constexpr std::chrono::minutes NODE_EXPIRE_TIME {10};
 
     static constexpr std::chrono::minutes NODE_GOOD_TIME {120};
 
@@ -608,11 +608,11 @@ private:
     int sendNodesValues(const sockaddr*, socklen_t, TransId tid,
                               const uint8_t *nodes, unsigned nodes_len,
                               const uint8_t *nodes6, unsigned nodes6_len,
-                              Storage *st, const Blob& token);
+                              const std::vector<ValueStorage>& st, const Blob& token);
 
     int sendClosestNodes(const sockaddr*, socklen_t, TransId tid,
                                const InfoHash& id, want_t want, const Blob& token={},
-                               Storage *st=nullptr);
+                               const std::vector<ValueStorage>& st = {});
 
     int sendGetValues(const sockaddr*, socklen_t, TransId tid,
                             const InfoHash& infohash, want_t want, int confirm);
@@ -655,7 +655,7 @@ private:
     void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
     ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value);
     void expireStorage();
-    void storageChanged(Storage& st);
+    void storageChanged(Storage& st, ValueStorage&);
 
     // Buckets
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {

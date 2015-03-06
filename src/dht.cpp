@@ -1237,6 +1237,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
     auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
 
+    DHT_WARN("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
     listeners.insert({token, std::make_tuple(tokenlocal, token4, token6)});
     return token;
 }
@@ -1443,29 +1444,28 @@ Dht::findStorage(const InfoHash& id)
 }
 
 void
-Dht::storageChanged(Storage& st)
+Dht::storageChanged(Storage& st, ValueStorage& v)
 {
-    // TODO: only advertise changing/new value
     {
-        // listeners may be deleted by callback
         std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
         for (const auto& l : st.local_listeners) {
             std::vector<std::shared_ptr<Value>> vals;
-            vals.reserve(st.values.size());
-            for (auto& v : st.values)
-                if (not static_cast<bool>(l.second.filter) or l.second.filter(*v.data))
-                    vals.push_back(v.data);
+            if (not l.second.filter or l.second.filter(*v.data))
+                vals.push_back(v.data);
             if (not vals.empty())
                 cbs.emplace_back(l.second.get_cb, std::move(vals));
         }
+        // listeners are copied: they may be deleted by the callback
         for (auto& cb : cbs)
             cb.first(cb.second);
     }
 
     for (const auto& l : st.listeners) {
         DHT_WARN("Storage changed. Sending update to %s %s.", l.id.toString().c_str(), print_addr((sockaddr*)&l.ss, l.sslen).c_str());
+        std::vector<ValueStorage> vals;
+        vals.push_back(v);
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
-        sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, st.values);
+        sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, vals);
     }
 }
 
@@ -1489,7 +1489,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value)
         if (it->data != value) {
             DHT_DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             it->data = value;
-            storageChanged(*st);
+            storageChanged(*st, *it);
         }
         return &*it;
     } else {
@@ -1497,7 +1497,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value)
         if (st->values.size() >= MAX_VALUES)
             return nullptr;
         st->values.emplace_back(value, now);
-        storageChanged(*st);
+        storageChanged(*st, st->values.back());
         return &st->values.back();
     }
 }
@@ -2195,7 +2195,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             Blob ntoken = makeToken(from, false);
             if (st && st->values.size() > 0) {
                  DHT_DEBUG("Sending found%s values.", from->sa_family == AF_INET6 ? " IPv6" : "");
-                 sendClosestNodes(from, fromlen, tid, info_hash, want, ntoken, st);
+                 sendClosestNodes(from, fromlen, tid, info_hash, want, ntoken, st->values);
             } else {
                 DHT_DEBUG("Sending nodes for get_values.");
                 sendClosestNodes(from, fromlen, tid, info_hash, want, ntoken);
@@ -2544,7 +2544,7 @@ int
 Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
                  const uint8_t *nodes, unsigned nodes_len,
                  const uint8_t *nodes6, unsigned nodes6_len,
-                 Storage *st, const Blob& token)
+                 const std::vector<ValueStorage>& st, const Blob& token)
 {
     constexpr const size_t BUF_SZ = 2048 * 64;
     char buf[BUF_SZ];
@@ -2568,11 +2568,11 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
         COPY(buf, i, token.data(), token.size(), BUF_SZ);
     }
 
-    if (st && st->values.size() > 0) {
+    if (st.size() > 0) {
         /* We treat the storage as a circular list, and serve a randomly
            chosen slice.  In order to make sure we fit,
            we limit ourselves to 50 values. */
-        std::uniform_int_distribution<> pos_dis(0, st->values.size()-1);
+        std::uniform_int_distribution<> pos_dis(0, st.size()-1);
         unsigned j0 = pos_dis(rd);
         unsigned j = j0;
         unsigned k = 0;
@@ -2580,11 +2580,11 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
         rc = snprintf(buf + i, BUF_SZ - i, "6:valuesl"); INC(i, rc, BUF_SZ);
         do {
             Blob packed_value;
-            st->values[j].data->pack(packed_value);
+            st[j].data->pack(packed_value);
             rc = snprintf(buf + i, BUF_SZ - i, "%lu:", packed_value.size()); INC(i, rc, BUF_SZ);
             COPY(buf, i, packed_value.data(), packed_value.size(), BUF_SZ);
             k++;
-            j = (j + 1) % st->values.size();
+            j = (j + 1) % st.size();
         } while (j != j0 && k < 50);
         rc = snprintf(buf + i, BUF_SZ - i, "e"); INC(i, rc, BUF_SZ);
     }
@@ -2654,7 +2654,7 @@ Dht::bufferClosestNodes(uint8_t *nodes, unsigned numnodes, const InfoHash& id, c
 
 int
 Dht::sendClosestNodes(const sockaddr *sa, socklen_t salen, TransId tid,
-                    const InfoHash& id, want_t want, const Blob& token, Storage *st)
+                    const InfoHash& id, want_t want, const Blob& token, const std::vector<ValueStorage>& st)
 {
     uint8_t nodes[8 * 26];
     uint8_t nodes6[8 * 38];
