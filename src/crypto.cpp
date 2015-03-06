@@ -425,6 +425,7 @@ Certificate::toString() const
     int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_PEM, &(*str.begin()), &buf_sz);
     if (err != GNUTLS_E_SUCCESS) {
         std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
+        return {};
     }
     str.resize(buf_sz);
     return str;
