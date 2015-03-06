@@ -100,6 +100,22 @@ to_hex(const uint8_t *buf, size_t buflen)
     return s.str();
 }
 
+static std::string
+print_addr(const sockaddr* sa, socklen_t slen)
+{
+    char hbuf[NI_MAXHOST];
+    char sbuf[NI_MAXSERV];
+    std::stringstream out;
+    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+        if (sa->sa_family == AF_INET6)
+            out << "[" << hbuf << "]:" << sbuf;
+        else
+            out << hbuf << ":" << sbuf;
+    } else
+        out << "[invalid address]";
+    return out.str();
+}
+
 namespace dht {
 
 const Dht::TransPrefix Dht::TransPrefix::PING = {"pn"};
@@ -634,14 +650,12 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
     if (!n || !check_node(*n))
         return false;
 
-    {
-        char hbuf[NI_MAXHOST];
-        char sbuf[NI_MAXSERV];
-        getnameinfo((sockaddr*)&n->ss, n->sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-        DHT_WARN("Sending get_values to %s:%s (%s) for %s (p %d last req %lf)", hbuf, sbuf, n->id.toString().c_str(), sr.id.toString().c_str(),
-            n->pinged,
-            std::chrono::duration_cast<std::chrono::milliseconds>(now-n->getStatus.request_time)/1000.);
-    }
+    DHT_WARN("Sending get_values to %s (%s) for %s (p %d last req %lf)",
+        print_addr((sockaddr*)&n->ss, n->sslen).c_str(),
+        n->id.toString().c_str(),
+        sr.id.toString().c_str(),
+        n->pinged,
+        std::chrono::duration_cast<std::chrono::milliseconds>(now-n->getStatus.request_time)/1000.);
     sendGetValues((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->getStatus.reply_time >= now - UDP_REPLY_TIME);
     n->pinged++;
     n->getStatus.request_time = now;
@@ -731,12 +745,7 @@ Dht::searchStep(Search& sr)
                     if (n.pinged >= 3)
                         continue;
                     if (n.getListenTime() <= now) {
-                        {
-                            char hbuf[NI_MAXHOST];
-                            char sbuf[NI_MAXSERV];
-                            getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-                            DHT_DEBUG("Sending listen to %s:%s (%s).", hbuf, sbuf, n.id.toString().c_str());
-                        }
+                        DHT_DEBUG("Sending listen to %s (%s).", print_addr((sockaddr*)&n.ss, n.sslen).c_str(), n.id.toString().c_str());
                         sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
                         n.pending = true;
                         n.listenStatus.request_time = now;
@@ -765,12 +774,7 @@ Dht::searchStep(Search& sr)
                     auto a_status = n.acked.find(vid);
                     auto at = n.getAnnounceTime(a_status, type);
                     if ( at <= now ) {
-                        {
-                            char hbuf[NI_MAXHOST];
-                            char sbuf[NI_MAXSERV];
-                            getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-                            DHT_DEBUG("Sending announce_value to %s:%s (%s).", hbuf, sbuf, n.id.toString().c_str());
-                        }
+                        DHT_DEBUG("Sending announce_value to %s (%s).", print_addr((sockaddr*)&n.ss, n.sslen).c_str(), n.id.toString().c_str());
                         sendAnnounceValue((sockaddr*)&n.ss, sizeof(sockaddr_storage),
                                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
                                            n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
@@ -1459,19 +1463,9 @@ Dht::storageChanged(Storage& st)
     }
 
     for (const auto& l : st.listeners) {
-        char hbuf[NI_MAXHOST];
-        char sbuf[NI_MAXSERV];
-        std::stringstream out;
-        if (!getnameinfo((sockaddr*)&l.ss, l.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
-            if (l.ss.ss_family == AF_INET6)
-                out << "[" << hbuf << "]:" << sbuf;
-            else
-                out << hbuf << ":" << sbuf;
-        } else
-            out << " [invalid address]";
-        DHT_WARN("Storage changed. Sending update to %s %s.", l.id.toString().c_str(), out.str().c_str());
+        DHT_WARN("Storage changed. Sending update to %s %s.", l.id.toString().c_str(), print_addr((sockaddr*)&l.ss, l.sslen).c_str());
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
-        sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, &st);
+        sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, st.values);
     }
 }
 
@@ -1672,16 +1666,7 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
         out << " (cached)";
     out  << std::endl;
     for (auto& n : b.nodes) {
-        char hbuf[NI_MAXHOST];
-        char sbuf[NI_MAXSERV];
-        out << "    Node " << n.id << " ";
-        if (!getnameinfo((sockaddr*)&n.ss, n.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
-            if (n.ss.ss_family == AF_INET6)
-                out << "[" << hbuf << "]:" << sbuf;
-            else
-                out << hbuf << ":" << sbuf;
-        } else
-            out << " [invalid address]";
+        out << "    Node " << n.id << " " << print_addr((sockaddr*)&n.ss, n.sslen);
         if (n.time != n.reply_time)
             out << " age " << duration_cast<seconds>(now - n.time).count() << ", reply: " << duration_cast<seconds>(now - n.reply_time).count();
         else
@@ -1764,16 +1749,7 @@ Dht::getStorageLog() const
     for (const auto& st : store) {
         out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values:" << std::endl;
         for (const auto& l : st.listeners) {
-            out << "   " << "Listener " << l.id << " ";
-            char hbuf[NI_MAXHOST];
-            char sbuf[NI_MAXSERV];
-            if (!getnameinfo((sockaddr*)&l.ss, l.sslen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
-                if (l.ss.ss_family == AF_INET6)
-                    out << "[" << hbuf << "]:" << sbuf;
-                else
-                    out << hbuf << ":" << sbuf;
-            } else
-                out << " [invalid address]";
+            out << "   " << "Listener " << l.id << " " << print_addr((sockaddr*)&l.ss, l.sslen);
             auto since = duration_cast<seconds>(now - l.time);
             auto expires = duration_cast<seconds>(l.time + NODE_EXPIRE_TIME - now);
             out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
