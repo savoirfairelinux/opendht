@@ -169,23 +169,25 @@ main(int argc, char **argv)
     std::uniform_int_distribution<Value::Id> rand_id {};
 
     auto rcv_msg = [&](const std::vector<std::shared_ptr<Value>>& values) {
-                    for (const auto& a : values) {
-                        if (a->owner.getId() == myid)
-                            continue;
-                        if (a->isEncrypted())
-                            std::cout << a->owner.getId().toString() << " : [encrypted]" << std::endl;
-                        else {
-                            Blob msg_raw = dht::DhtMessage(a->data).getMessage();
-                            auto b = msg_raw.cbegin();
-                            auto e = msg_raw.cend();
-                            auto date = deserialize<std::chrono::system_clock::time_point>(b, e);
-                            auto dt = std::chrono::system_clock::now() - date;
-                            std::string msg {b, e};
-                            std::cout << a->owner.getId().toString() << " at " << getDateTime(date) << " (took " << std::chrono::duration_cast<std::chrono::duration<double>>(dt).count() << "s) : " << msg << std::endl;
-                        }
+            for (const auto& a : values) {
+                try {
+                    if (a->owner.getId() == myid)
+                        continue;
+                    if (a->isEncrypted())
+                        std::cout << a->owner.getId().toString() << " : [encrypted]" << std::endl;
+                    else {
+                        Blob msg_raw = dht::DhtMessage(a->data).getMessage();
+                        auto b = msg_raw.cbegin();
+                        auto e = msg_raw.cend();
+                        auto date = deserialize<std::chrono::system_clock::time_point>(b, e);
+                        auto dt = std::chrono::system_clock::now() - date;
+                        std::string msg {b, e};
+                        std::cout << a->owner.getId().toString() << " at " << getDateTime(date) << " (took " << std::chrono::duration_cast<std::chrono::duration<double>>(dt).count() << "s) : " << msg << std::endl;
                     }
-                    return true;
-                };
+                } catch (const std::exception& e) {}
+            }
+            return true;
+        };
 
     while (true)
     {
@@ -210,7 +212,7 @@ main(int argc, char **argv)
                     std::cout << "Syntax error: invalid InfoHash." << std::endl;
                     continue;
                 }
-                dht.listen(room, rcv_msg);
+                dht.listen(room, rcv_msg, dht::DhtMessage::ServiceFilter(dht::DhtMessage::Service::IM_MESSAGE));
                 connected = true;
             } else if (op == "p") {
                 iss >> p;
