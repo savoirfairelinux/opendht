@@ -1516,8 +1516,10 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
     auto l = std::find_if(st->listeners.begin(), st->listeners.end(), [&](const Listener& l){
         return l.ss.ss_family == af && l.id == node;
     });
-    if (l == st->listeners.end())
+    if (l == st->listeners.end()) {
+        sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->values);
         st->listeners.emplace_back(node, from, fromlen, tid, now);
+    }
     else
         l->refresh(from, fromlen, tid, now);
 }
