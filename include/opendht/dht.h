@@ -213,6 +213,7 @@ private:
        to the destination, and use the additional ones to backtrack if any of
        the target 8 turn out to be dead. */
     static constexpr unsigned SEARCH_NODES {14};
+    static constexpr unsigned LISTEN_NODES {4};
 
     /* The maximum number of values we store for a given hash. */
     static constexpr unsigned MAX_VALUES {2048};
@@ -271,8 +272,57 @@ private:
             : id(id), ss(), sslen(salen), time(t), reply_time(reply_time) {
             std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
         }
+        bool isExpired(time_point now) const {
+            return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
+        }
         bool isGood(time_point now) const;
         NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
+
+        void update(const sockaddr* sa, socklen_t salen) {
+            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
+            sslen = salen;
+        }
+
+        /** To be called when a message was sent to the noe */
+        void requested(time_point now) {
+            pinged++;
+            if (reply_time > pinged_time || pinged_time + MAX_RESPONSE_TIME < now)
+                pinged_time = now;
+        }
+
+        /** To be called when a message was received from the node.
+         Answer should be true if the message was an aswer to a request we made*/
+        void received(time_point now, bool answer) {
+            time = now;
+            if (answer) {
+                pinged = 0;
+                reply_time = now;
+            }
+        }
+    };
+
+    struct NodeCache {
+        std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family) {
+            auto& list = family == AF_INET ? cache_4 : cache_6;
+            for (auto n = list.begin(); n != list.end();) {
+                if (auto ln = n->lock()) {
+                    if (ln->id == id)
+                        return ln;
+                    ++n;
+                } else {
+                    n = list.erase(n);
+                }
+            }
+            return nullptr;
+        }
+        void putNode(std::shared_ptr<Node> n) {
+            if (not n) return;
+            auto& list = n->ss.ss_family == AF_INET ? cache_4 : cache_6;
+            list.push_back(n);
+        }
+    private:
+        std::list<std::weak_ptr<Node>> cache_4;
+        std::list<std::weak_ptr<Node>> cache_6;
     };
 
     struct Bucket {
@@ -282,12 +332,12 @@ private:
         sa_family_t af {0};
         InfoHash first {};
         time_point time {};             /* time of last reply in this bucket */
-        std::list<Node> nodes {};
+        std::list<std::shared_ptr<Node>> nodes {};
         sockaddr_storage cached;  /* the address of a likely candidate */
         socklen_t cachedlen {0};
 
         /** Return a random node in a bucket. */
-        Node* randomNode();
+        std::shared_ptr<Node> randomNode();
     };
 
     class RoutingTable : public std::list<Bucket> {
@@ -319,14 +369,16 @@ private:
     };
 
     struct SearchNode {
-        SearchNode() : ss() {}
-        SearchNode(const InfoHash& id, time_point known) : id(id), ss(), time(known) {}
+        SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
         struct RequestStatus {
             time_point request_time {};    /* the time of the last unanswered request */
             time_point reply_time {};      /* the time of the last confirmation */
             RequestStatus() {};
             RequestStatus(time_point q, time_point a = {}) : request_time(q), reply_time(a) {};
+            bool expired(time_point now) {
+                return (reply_time < request_time && request_time >= now - MAX_RESPONSE_TIME);
+            }
         };
         typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
 
@@ -334,7 +386,7 @@ private:
          * Can we use this node to listen/announce ?
          */
         bool isSynced(time_point now) const {
-            return /*pinged < 3 && replied &&*/ getStatus.reply_time >= now - NODE_EXPIRE_TIME;
+            return not node->isExpired(now) and getStatus.reply_time >= now - NODE_EXPIRE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -361,19 +413,18 @@ private:
             return getAnnounceTime(acked.find(vid), type);
         }
         time_point getListenTime() const {
-            time_point min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
-            return listenStatus.reply_time.time_since_epoch().count() ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN, min_t) : min_t;
+            if (listenStatus.reply_time > listenStatus.request_time)
+                return listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN;
+            return listenStatus.request_time + MAX_RESPONSE_TIME;
+            //time_point min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
+            //return listenStatus.reply_time.time_since_epoch().count() ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN, min_t) : min_t;
         }
 
-        InfoHash id {};
-        sockaddr_storage ss;
-        socklen_t sslen {0};
-        time_point time {};            /* the last time we heard about this node */
+        std::shared_ptr<Node> node {};
 
         RequestStatus getStatus {};    /* get/sync status */
         RequestStatus listenStatus {};
         AnnounceStatusMap acked {};    /* announcement status for a given value id */
-        unsigned pinged {0};           
 
         Blob token {};
 
@@ -416,14 +467,14 @@ private:
         time_point step_time {};           /* the time of the last search_step */
 
         bool done {false};
-        std::vector<SearchNode> nodes {SEARCH_NODES+1};
+        std::vector<SearchNode> nodes {};
         std::vector<Announce> announce {};
         std::vector<Get> callbacks {};
 
         std::map<size_t, LocalListener> listeners {};
         size_t listener_token = 1;
 
-        bool insertNode(const InfoHash& id, const sockaddr*, socklen_t, time_point now, bool confirmed=false, const Blob& token={});
+        bool insertNode(std::shared_ptr<Node> n, time_point now, const Blob& token={});
         void insertBucket(const Bucket&, time_point now);
 
         /**
@@ -449,7 +500,7 @@ private:
          * ret = 0 : no announce required.
          * ret > 0 : (re-)announce required at time ret.
          */
-        time_point getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) const;
+        time_point getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
 
         /**
          * ret = 0 : no listen required.
@@ -574,6 +625,9 @@ private:
     // registred types
     std::map<ValueType::Id, ValueType> types;
 
+    // cache of nodes not in the main routing table but used for searches
+    NodeCache cache;
+
     // the stuff
     RoutingTable buckets {};
     RoutingTable buckets6 {};
@@ -683,9 +737,9 @@ private:
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    Node* newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
-    Node* findNode(const InfoHash& id, sa_family_t af);
-    const Node* findNode(const InfoHash& id, sa_family_t af) const;
+    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
+    std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
+    const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
 
     void pinged(Node& n, Bucket *b = nullptr);
 

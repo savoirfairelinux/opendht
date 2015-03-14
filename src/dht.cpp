@@ -204,7 +204,7 @@ Dht::isMartian(const sockaddr *sa, socklen_t len)
     }
 }
 
-Dht::Node*
+std::shared_ptr<Dht::Node>
 Dht::Bucket::randomNode()
 {
     if (nodes.empty())
@@ -212,8 +212,8 @@ Dht::Bucket::randomNode()
     std::uniform_int_distribution<unsigned> rand_node(0, nodes.size()-1);
     unsigned nn = rand_node(rd);
     for (auto& n : nodes)
-        if (not nn--) return &n;
-    return &nodes.back();
+        if (not nn--) return n;
+    return nodes.back();
 }
 
 InfoHash
@@ -276,26 +276,26 @@ Dht::RoutingTable::findBucket(const InfoHash& id) const
 }
 
 /* Every bucket contains an unordered list of nodes. */
-Dht::Node *
+std::shared_ptr<Dht::Node>
 Dht::findNode(const InfoHash& id, sa_family_t af)
 {
     Bucket* b = findBucket(id, af);
     if (!b)
-        return nullptr;
+        return {};
     for (auto& n : b->nodes)
-        if (n.id == id) return &n;
-    return nullptr;
+        if (n->id == id) return n;
+    return {};
 }
 
-const Dht::Node*
+const std::shared_ptr<Dht::Node>
 Dht::findNode(const InfoHash& id, sa_family_t af) const
 {
     const Bucket* b = findBucket(id, af);
     if (!b)
-        return nullptr;
+        return {};
     for (const auto& n : b->nodes)
-        if (n.id == id) return &n;
-    return nullptr;
+        if (n->id == id) return n;
+    return {};
 }
 
 /* This is our definition of a known-good node. */
@@ -303,7 +303,7 @@ bool
 Dht::Node::isGood(time_point now) const
 {
     return
-        pinged <= 2 &&
+        not isExpired(now) &&
         reply_time >= now - NODE_GOOD_TIME &&
         time >= now - NODE_EXPIRE_TIME;
 }
@@ -326,12 +326,14 @@ Dht::sendCachedPing(Bucket& b)
 /* Called whenever we send a request to a node, increases the ping count
    and, if that reaches 3, sends a ping to a new candidate. */
 void
-Dht::pinged(Node& n, Bucket *b)
+Dht::pinged(Node& n, Bucket* b)
 {
-    n.pinged++;
-    n.pinged_time = now;
-    if (n.pinged >= 3)
-        sendCachedPing(b ? *b : *findBucket(n.id, n.ss.ss_family));
+    n.requested(now);
+    if (n.pinged >= 3) {
+        if (not b)
+            b = findBucket(n.id, n.ss.ss_family);
+        if (b) sendCachedPing(*b);
+    }
 }
 
 /* The internal blacklist is an LRU cache of nodes that have sent
@@ -343,15 +345,15 @@ Dht::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
 
     if (id) {
         /* Make the node easy to discard. */
-        Node *n = findNode(*id, sa->sa_family);
+        auto n = findNode(*id, sa->sa_family);
         if (n) {
             n->pinged = 3;
             pinged(*n);
         }
         /* Discard it from any searches in progress. */
         for (auto& sr : searches) {
-            sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [id](const SearchNode& sn){
-                return sn.id == *id;
+            sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn){
+                return sn.node == n;
             }));
         }
     }
@@ -392,11 +394,11 @@ Dht::RoutingTable::split(const RoutingTable::iterator& b)
     insert(std::next(b), Bucket {b->af, new_id, b->time});
 
     // Re-assign nodes
-    std::list<Node> nodes {};
+    std::list<std::shared_ptr<Node>> nodes {};
     nodes.splice(nodes.begin(), b->nodes);
     while (!nodes.empty()) {
         auto n = nodes.begin();
-        auto b = findBucket(n->id);
+        auto b = findBucket((*n)->id);
         if (b == end())
             nodes.erase(n);
         else
@@ -407,15 +409,15 @@ Dht::RoutingTable::split(const RoutingTable::iterator& b)
 
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
-Dht::Node*
+std::shared_ptr<Dht::Node>
 Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm)
 {
-    if (isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
+    if (id == myid || isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
         return nullptr;
 
     auto& list = sa->sa_family == AF_INET ? buckets : buckets6;
     auto b = list.findBucket(id);
-    if (b == list.end() || id == myid)
+    if (b == list.end())
         return nullptr;
 
     bool mybucket = list.contains(b, myid);
@@ -424,43 +426,28 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         b->time = now;
 
     for (auto& n : b->nodes) {
-        if (n.id != id) continue;
+        if (n->id != id) continue;
         /* Known node.  Update stuff. */
 
-        if (confirm || n.time < now - NODE_EXPIRE_TIME) {
-            memcpy((sockaddr*)&n.ss, sa, salen);
-        }
-        if (confirm >= 2) {
-            n.reply_time = now;
-            n.pinged = 0;
-            n.pinged_time = TIME_INVALID;
-        }
-        if (confirm) {
-            n.time = now;
-            /* If this node existed in searches but was expired, give it another chance. */
-            for (auto& s : searches) {
-                if (s.af != sa->sa_family) continue;
-                if (s.insertNode(id, sa, salen, now, true)) {
-                    auto tm = s.getNextStepTime(types, now);
-                    if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-                        search_time = tm;
+        if (confirm || n->time < now - NODE_EXPIRE_TIME) {
+            n->update(sa, salen);
+            if (confirm) {
+                n->received(now, confirm >= 2);
+                /* If this node existed in searches but was expired, give it another chance. */
+                for (auto& s : searches) {
+                    if (s.af != sa->sa_family) continue;
+                    if (s.insertNode(n, now)) {
+                        auto tm = s.getNextStepTime(types, now);
+                        if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
+                            search_time = tm;
+                    }
                 }
             }
         }
-        return &n;
+        return n;
     }
 
     /* New node. */
-
-    /* Try adding the node to searches */
-    for (auto& s : searches) {
-        if (s.af != sa->sa_family) continue;
-        if (s.insertNode(id, sa, salen, now)) {
-            time_point tm = s.getNextStepTime(types, now);
-            if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-                search_time = tm;
-        }
-    }
 
     if (mybucket) {
         if (sa->sa_family == AF_INET)
@@ -471,15 +458,21 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
 
     /* First, try to get rid of a known-bad node. */
     for (auto& n : b->nodes) {
-        if (n.pinged < 3 || n.pinged_time >= now - MAX_RESPONSE_TIME)
+        if (not n->isExpired(now))
             continue;
-        n.id = id;
-        memcpy((sockaddr*)&n.ss, sa, salen);
-        n.time = confirm ? now : TIME_INVALID;
-        n.reply_time = confirm >= 2 ? now : TIME_INVALID;
-        n.pinged_time = TIME_INVALID;
-        n.pinged = 0;
-        return &n;
+        auto cn = cache.getNode(id, sa->sa_family);
+        n = cn ? cn : std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+
+        /* Try adding the node to searches */
+        for (auto& s : searches) {
+            if (s.af != sa->sa_family) continue;
+            if (s.insertNode(n, now)) {
+                time_point tm = s.getNextStepTime(types, now);
+                if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
+                    search_time = tm;
+            }
+        }
+        return n;
     }
 
     if (b->nodes.size() >= 8) {
@@ -490,13 +483,14 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                last 15 seconds.  This gives nodes the time to reply, but
                tends to concentrate on the same nodes, so that we get rid
                of bad nodes fast. */
-            if (!n.isGood(now)) {
+            if (not n->isGood(now)) {
                 dubious = true;
-                if (n.pinged_time < now - MAX_RESPONSE_TIME) {
+                if (n->pinged_time + MAX_RESPONSE_TIME < now) {
                     DHT_DEBUG("Sending ping to dubious node.");
-                    sendPing((sockaddr*)&n.ss, n.sslen, TransId {TransPrefix::PING});
-                    n.pinged++;
-                    n.pinged_time = now;
+                    sendPing((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::PING});
+                    n->pinged++;
+                    n->pinged_time = now;
+                    //pinged(n, b);
                     break;
                 }
             }
@@ -516,12 +510,22 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             b->cachedlen = salen;
         }
 
-        return nullptr;
+        auto cn = cache.getNode(id, sa->sa_family);
+        if (not cn) {
+            cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+            cache.putNode(cn);
+        }
+
+        return cn;
     }
 
     /* Create a new node. */
-    b->nodes.emplace_front(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-    return &b->nodes.front();
+    auto cn = cache.getNode(id, sa->sa_family);
+    if (not cn) {
+        cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+        b->nodes.emplace_front(cn);
+    }
+    return b->nodes.front();
 }
 
 /* Called periodically to purge known-bad nodes.  Note that we're very
@@ -532,8 +536,8 @@ Dht::expireBuckets(RoutingTable& list)
 {
     for (auto& b : list) {
         bool changed = false;
-        b.nodes.remove_if([&changed](const Node& n) {
-            if (n.pinged >= 4) {
+        b.nodes.remove_if([&changed](const std::shared_ptr<Node>& n) {
+            if (n->pinged >= 4) {
                 changed = true;
                 return true;
             }
@@ -564,17 +568,17 @@ Dht::findSearch(unsigned short tid, sa_family_t af)
    target.  We just got a new candidate, insert it at the right spot or
    discard it. */
 bool
-Dht::Search::insertNode(const InfoHash& nid,
-    const sockaddr *sa, socklen_t salen,
-    time_point now, bool confirmed, const Blob& token)
+Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& token)
 {
-    if (sa->sa_family != af) {
+    if (node->ss.ss_family != af) {
         //DHT_DEBUG("Attempted to insert node in the wrong family.");
         return false;
     }
 
+    const auto& nid = node->id;
+
     // Fast track for the case where the node is not relevant for this search
-    if (nodes.size() == SEARCH_NODES && id.xorCmp(nid, nodes.back().id) > 0)
+    if (nodes.size() == SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
         return false;
 
     // Reset search timer if it was empty
@@ -583,39 +587,25 @@ Dht::Search::insertNode(const InfoHash& nid,
 
     bool found = false;
     auto n = std::find_if(nodes.begin(), nodes.end(), [=,&found](const SearchNode& sn) {
-        if (sn.id == nid) {
+        if (sn.node == node) {
             found = true;
             return true;
         }
-        return id.xorCmp(nid, sn.id) < 0;
+        return id.xorCmp(nid, sn.node->id) < 0;
     });
     if (!found) {
         if (n == nodes.end() && nodes.size() == SEARCH_NODES)
             return false;
-        n = nodes.insert(n, SearchNode{ nid, now });
+        n = nodes.insert(n, SearchNode(node));
         if (nodes.size() > SEARCH_NODES)
             nodes.pop_back();
-    }
-
-    memcpy(&n->ss, sa, salen);
-    n->sslen = salen;
-    n->time = now;
-
-    if (confirmed && now - n->getStatus.request_time > NODE_EXPIRE_TIME) {
-        /*if (n->pinged >= 3)
-            std::cout << "Resurrecting node 1 !" << std::endl;*/
-        n->pinged = 0;
     }
     if (not token.empty()) {
         n->getStatus.reply_time = now;
         n->getStatus.request_time = TIME_INVALID;
-        /*if (n->pinged >= 3)
-            std::cout << "Resurrecting node 2 !" << std::endl;*/
-        n->pinged = 0;
         if (token.size() <= 64)
             n->token = token;
     }
-
     return true;
 }
 
@@ -634,11 +624,11 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
     std::function<bool(const SearchNode&)> check_node;
     if (update)
         check_node = [this,sr](const SearchNode& sn) {
-            return sn.pinged < 3 && sn.getStatus.request_time < now - MAX_RESPONSE_TIME && (!sn.isSynced(now) || !sr.isUpdated(sn));
+            return not sn.node->isExpired(now) && (!sn.isSynced(now) || !sr.isUpdated(sn)) && sn.getStatus.request_time < now - MAX_RESPONSE_TIME;
         };
     else
         check_node = [this](const SearchNode& sn) {
-            return sn.pinged < 3 && sn.getStatus.request_time < now - MAX_RESPONSE_TIME && !sn.isSynced(now);
+            return not sn.node->isExpired(now) && !sn.isSynced(now) && sn.getStatus.request_time < now - MAX_RESPONSE_TIME;
         };
 
     if (!n) {
@@ -650,20 +640,16 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
     if (!n || !check_node(*n))
         return false;
 
-    DHT_WARN("Sending get_values to %s (%s) for %s (p %d last req %lf)",
-        print_addr((sockaddr*)&n->ss, n->sslen).c_str(),
-        n->id.toString().c_str(),
+    DHT_WARN("Sending get_values to %s (%s) for %s (p %d last get %lf)",
+        print_addr((sockaddr*)&n->node->ss, n->node->sslen).c_str(),
+        n->node->id.toString().c_str(),
         sr.id.toString().c_str(),
-        n->pinged,
+        n->node->pinged,
         std::chrono::duration_cast<std::chrono::milliseconds>(now-n->getStatus.request_time)/1000.);
-    sendGetValues((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->getStatus.reply_time >= now - UDP_REPLY_TIME);
-    n->pinged++;
-    n->getStatus.request_time = now;
 
-    /* If the node happens to be in our main routing table, mark it
-       as pinged. */
-    Node *node = findNode(n->id, n->ss.ss_family);
-    if (node) pinged(*node);
+    sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->getStatus.reply_time >= now - UDP_REPLY_TIME);
+    n->getStatus.request_time = now;
+    pinged(*n->node);
     return true;
 }
 
@@ -673,9 +659,9 @@ void
 Dht::searchStep(Search& sr)
 {
     // Remove expired nodes
+    DHT_WARN("Search IPv%c %s searchStep.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
     sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
-        //return n.pinged >= 3 && n.reply_time < now - NODE_GOOD_TIME;
-        return n.pinged >= 3 && n.time < now - NODE_GOOD_TIME;
+        return n.node->isExpired(now) && n.node->time < now - NODE_GOOD_TIME;
     }), sr.nodes.end());
 
     if (sr.nodes.empty()) {
@@ -735,22 +721,22 @@ Dht::searchStep(Search& sr)
             }
         } else {
             // true if this node is part of the target nodes cluter.
-            bool in = sr.id.xorCmp(myid, sr.nodes.back().id) < 0;
+            bool in = sr.id.xorCmp(myid, sr.nodes.back().node->id) < 0;
 
             DHT_DEBUG("searchStep (synced%s).", in ? ", in" : "");
 
             if (not sr.listeners.empty()) {
                 unsigned i = 0;
                 for (auto& n : sr.nodes) {
-                    if (n.pinged >= 3)
+                    if (n.node->isExpired(now))
                         continue;
                     if (n.getListenTime() <= now) {
-                        DHT_DEBUG("Sending listen to %s (%s).", print_addr((sockaddr*)&n.ss, n.sslen).c_str(), n.id.toString().c_str());
-                        sendListen((sockaddr*)&n.ss, sizeof(sockaddr_storage), TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
+                        DHT_DEBUG("Sending listen to %s (%s).", print_addr((sockaddr*)&n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                        sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
                         n.pending = true;
                         n.listenStatus.request_time = now;
                     }
-                    if (++i == 2)
+                    if (++i == LISTEN_NODES)
                         break;
                 }
             }
@@ -769,13 +755,13 @@ Dht::searchStep(Search& sr)
                     storageStore(sr.id, a.value);
                 }
                 for (auto& n : sr.nodes) {
-                    if (n.pinged >= 3)
+                    if (n.node->isExpired(now))
                         continue;
                     auto a_status = n.acked.find(vid);
                     auto at = n.getAnnounceTime(a_status, type);
                     if ( at <= now ) {
-                        DHT_DEBUG("Sending announce_value to %s (%s).", print_addr((sockaddr*)&n.ss, n.sslen).c_str(), n.id.toString().c_str());
-                        sendAnnounceValue((sockaddr*)&n.ss, sizeof(sockaddr_storage),
+                        DHT_DEBUG("Sending announce_value to %s (%s).", print_addr((sockaddr*)&n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                        sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
                                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
                                            n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
                         if (a_status == n.acked.end()) {
@@ -794,10 +780,7 @@ Dht::searchStep(Search& sr)
             for (auto& n : sr.nodes) {
                 if (n.pending) {
                     n.pending = false;
-                    n.pinged++;
-                    //n.getStatus.request_time = now;
-                    if (auto node = findNode(n.id, n.ss.ss_family))
-                        pinged(*node);
+                    pinged(*n.node);
                 }
             }
             if (sr.announce.empty() && sr.listeners.empty())
@@ -857,8 +840,8 @@ void
 Dht::Search::insertBucket(const Bucket& b, time_point now)
 {
     for (auto& n : b.nodes) {
-        if (n.time > now - NODE_EXPIRE_TIME && n.pinged < 3)
-            insertNode(n.id, (sockaddr*)&n.ss, n.sslen, now);
+        if (not n->isExpired(now))
+            insertNode(n, now);
     }
 }
 
@@ -867,7 +850,7 @@ Dht::Search::isSynced(time_point now) const
 {
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.pinged >= 3)
+        if (n.node->isExpired(now))
             continue;
         if (!n.isSynced(now))
             return false;
@@ -898,7 +881,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     unsigned i = 0;
     auto limit = std::max(get.start, now - NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
-        if (sn.pinged >= 3)
+        if (sn.node->isExpired(now))
             continue;
         if (sn.getStatus.reply_time < limit)
             return false;
@@ -915,7 +898,7 @@ Dht::Search::getUpdateTime(time_point now) const
     const auto last_get = getLastGetTime();
     unsigned i = 0;
     for (const auto& sn : nodes) {
-        if (sn.pinged >= 3)
+        if (sn.node->isExpired(now))
             continue;
         if (!sn.isSynced(now)) {
             ut = std::min(ut, step_time + SEARCH_GET_STEP);
@@ -937,7 +920,7 @@ Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_point now) co
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.pinged >= 3)
+        if (n.node->isExpired(now))
             continue;
         if (!n.isAnnounced(id, type, now))
             return false;
@@ -954,18 +937,18 @@ Dht::Search::isListening(time_point now) const
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.pinged >= 3)
+        if (n.node->isExpired(now))
             continue;
         if (!n.isListening(now))
             return false;
-        if (++i == 2)
+        if (++i == LISTEN_NODES)
             break;
     }
     return i;
 }
 
 time_point
-Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) const
+Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const
 {
     if (nodes.empty())
         return {};
@@ -976,7 +959,7 @@ Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) co
         const ValueType& type = (type_it == types.end()) ? ValueType::USER_DATA : type_it->second;
         unsigned i = 0;
         for (const auto& n : nodes) {
-            if (n.pinged >= 3)
+            if (n.node->isExpired(now))
                 continue;
             auto at = n.getAnnounceTime(a.value->id, type);
             if (at != TIME_INVALID && (ret == TIME_INVALID || ret > at))
@@ -989,18 +972,18 @@ Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types) co
 }
 
 time_point
-Dht::Search::getListenTime(time_point /* now */) const
+Dht::Search::getListenTime(time_point now) const
 {
     if (listeners.empty())
         return {};
     time_point listen_time {};
     unsigned i = 0;
     for (const auto& sn : nodes) {
-        if (sn.pinged >= 3)
+        if (sn.node->isExpired(now))
             continue;
         auto lt = sn.getListenTime();
         listen_time = listen_time == TIME_INVALID ? lt : std::min(listen_time, lt);
-        if (++i == 2)
+        if (++i == LISTEN_NODES)
             break;
     }
     return listen_time;
@@ -1039,7 +1022,7 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
     if (ut != TIME_INVALID)
         next_step = std::min(next_step, ut);
 
-    auto at = getAnnounceTime(types);
+    auto at = getAnnounceTime(types, now);
     if (at != TIME_INVALID)
         next_step = std::min(next_step, at);
 
@@ -1060,8 +1043,10 @@ Dht::bootstrapSearch(Dht::Search& sr)
         return;
     DHT_DEBUG("bootstrapSearch.");
     auto b = list.findBucket(sr.id);
-    if (b == list.end())
+    if (b == list.end()) {
+        DHT_ERROR("No bucket");
         return;
+    }
 
     sr.insertBucket(*b, now);
     if (sr.nodes.size() < SEARCH_NODES) {
@@ -1104,7 +1089,8 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         sr->step_time = TIME_INVALID;
         sr->id = id;
         sr->done = false;
-        sr->nodes = {};
+        sr->nodes.clear();
+        sr->nodes.reserve(SEARCH_NODES+1);
         DHT_DEBUG("New IPv%s search for %s", (af == AF_INET) ? "4" : "6", id.toString().c_str());
     }
 
@@ -1260,9 +1246,6 @@ Dht::cancelListen(const InfoHash& id, size_t token)
         auto af_token = s.af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
         if (af_token == 0)
             continue;
-        /*auto sit = s.listeners.find(af_token);
-        if (sit == s.listeners.end())
-            continue;*/
         s.listeners.erase(af_token);
     }
     listeners.erase(it);
@@ -1351,11 +1334,13 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     cb(getLocal(id, filter));
 
     Dht::search(id, AF_INET, cb, [=](bool ok) {
+        DHT_WARN("DHT done IPv4");
         *done4 = true;
         *ok4 = ok;
         done_l();
     });
     Dht::search(id, AF_INET6, cb, [=](bool ok) {
+        DHT_WARN("DHT done IPv6");
         *done6 = true;
         *ok6 = ok;
         done_l();
@@ -1637,9 +1622,9 @@ Dht::getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_retu
 
     for (const auto& b : list) {
         for (auto& n : b.nodes) {
-            if (n.isGood(now)) {
+            if (n->isGood(now)) {
                 good++;
-                if (n.time > n.reply_time)
+                if (n->time > n->reply_time)
                     incoming++;
             } else {
                 dubious++;
@@ -1668,14 +1653,14 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
         out << " (cached)";
     out  << std::endl;
     for (auto& n : b.nodes) {
-        out << "    Node " << n.id << " " << print_addr((sockaddr*)&n.ss, n.sslen);
-        if (n.time != n.reply_time)
-            out << " age " << duration_cast<seconds>(now - n.time).count() << ", reply: " << duration_cast<seconds>(now - n.reply_time).count();
+        out << "    Node " << n->id << " " << print_addr((sockaddr*)&n->ss, n->sslen);
+        if (n->time != n->reply_time)
+            out << " age " << duration_cast<seconds>(now - n->time).count() << ", reply: " << duration_cast<seconds>(now - n->reply_time).count();
         else
-            out << " age " << duration_cast<seconds>(now - n.time).count();
-        if (n.pinged)
-            out << " (" << n.pinged << ")";
-        if (n.isGood(now))
+            out << " age " << duration_cast<seconds>(now - n->time).count();
+        if (n->pinged)
+            out << " (" << n->pinged << ")";
+        if (n->isGood(now))
             out << " (good)";
         out << std::endl;
     }
@@ -1686,7 +1671,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 {
     using namespace std::chrono;
     out << std::endl << "Search (IPv" << (sr.af == AF_INET6 ? "6" : "4") << ") " << sr.id;
-    out << " age " << duration_cast<seconds>(now - sr.step_time).count() << " s";
+    out << " age " << duration_cast<seconds>(now - sr.step_time).count() << " s tid " << sr.tid;
     if (sr.done)
         out << " [done]";
     bool synced = sr.isSynced(now);
@@ -1704,13 +1689,13 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 
     unsigned i = 0;
     for (const auto& n : sr.nodes) {
-        out << "   Node " << i++ << " id " << n.id << " bits " << InfoHash::commonBits(sr.id, n.id);
+        out << "   Node " << i++ << " id " << n.node->id << " bits " << InfoHash::commonBits(sr.id, n.node->id);
         if (n.getStatus.request_time != TIME_INVALID)
             out << " req: " << duration_cast<seconds>(now - n.getStatus.request_time).count() << " s,";
-        out << " age:" << duration_cast<seconds>(now - n.getStatus.reply_time).count() << " s";
-        if (n.pinged)
-            out << " pinged: " << n.pinged;
-        if (findNode(n.id, AF_INET))
+        out << " age:" << duration_cast<seconds>(now - n.node->time).count() << " s";
+        if (n.node->pinged)
+            out << " pinged: " << n.node->pinged;
+        if (findNode(n.node->id, AF_INET))
             out << " [known]";
         if (n.getStatus.reply_time != TIME_INVALID)
             out << " [replied]";
@@ -1866,7 +1851,7 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
     /* Since our node-id is the same in both DHTs, it's probably
        profitable to query both families. */
     want_t want = dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1;
-    Node *n = q->randomNode();
+    auto n = q->randomNode();
     if (n) {
         DHT_DEBUG("Sending find_node for%s neighborhood maintenance.", q->af == AF_INET6 ? " IPv6" : "");
         sendFindNode((sockaddr*)&n->ss, n->sslen,
@@ -1902,7 +1887,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                     q = r;
             }
 
-            Node *n = q->randomNode();
+            auto n = q->randomNode();
             if (n) {
                 want_t want = -1;
 
@@ -2001,13 +1986,15 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             auto esr = findSearch(ttid, from->sa_family);
             if (!esr) return;
             unsigned cleared = 0;
+            std::shared_ptr<Node> n;
             for (auto& sr : searches) {
                 for (auto& n : sr.nodes) {
-                    if (n.id != id) continue;
+                    if (n.node->id != id) continue;
                     cleared++;
                     n.getStatus.request_time = TIME_INVALID;
                     n.getStatus.reply_time = TIME_INVALID;
-                    n.pinged = 0;
+                    //n.pinged = 0;
+                    n = n.node;
                     searchSendGetValues(sr);
                     break;
                 }
@@ -2037,6 +2024,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else if (tid.matches(TransPrefix::FIND_NODE) or tid.matches(TransPrefix::GET_VALUES)) {
             bool gp = false;
             Search *sr = nullptr;
+            std::shared_ptr<Node> n;
             if (tid.matches(TransPrefix::GET_VALUES, &ttid)) {
                 gp = true;
                 sr = findSearch(ttid, from->sa_family);
@@ -2045,11 +2033,12 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             if (nodes_len % 26 != 0 || nodes6_len % 38 != 0) {
                 DHT_WARN("Unexpected length for node info!");
                 blacklistNode(&id, from, fromlen);
-            } else if (gp && sr == NULL) {
-                DHT_WARN("Unknown search!");
-                newNode(id, from, fromlen, 1);
+                break;
+            } else if (gp && sr == nullptr) {
+                DHT_WARN("Unknown search with tid %u !", ttid);
+                n = newNode(id, from, fromlen, 1);
             } else {
-                newNode(id, from, fromlen, 2);
+                n = newNode(id, from, fromlen, 2);
                 for (unsigned i = 0; i < nodes_len / 26; i++) {
                     uint8_t *ni = nodes + i * 26;
                     const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
@@ -2059,9 +2048,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     sin.sin_family = AF_INET;
                     memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
                     memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
-                    newNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0);
+                    auto sn = newNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0);
                     if (sr && sr->af == AF_INET) {
-                        sr->insertNode(ni_id, (sockaddr*)&sin, sizeof(sin), now);
+                        sr->insertNode(sn, now);
                     }
                 }
                 for (unsigned i = 0; i < nodes6_len / 38; i++) {
@@ -2073,9 +2062,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     sin6.sin6_family = AF_INET6;
                     memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
                     memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
-                    newNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), 0);
+                    auto sn = newNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), 0);
                     if (sr && sr->af == AF_INET6) {
-                        sr->insertNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), now);
+                        sr->insertNode(sn, now);
                     }
                 }
                 if (sr) {
@@ -2092,7 +2081,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 }
             }
             if (sr) {
-                sr->insertNode(id, from, fromlen, now, true, token);
+                sr->insertNode(n, now, token);
                 if (!values.empty()) {
                     DHT_DEBUG("Got %d values !", values.size());
                     for (auto& cb : sr->callbacks) {
@@ -2128,13 +2117,11 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 DHT_DEBUG("Unknown search or announce!");
                 newNode(id, from, fromlen, 1);
             } else {
-                newNode(id, from, fromlen, 2);
+                auto n = newNode(id, from, fromlen, 2);
                 for (auto& sn : sr->nodes)
-                    if (sn.id == id) {
+                    if (sn.node == n) {
                         auto it = sn.acked.insert({value_id, {}});
                         it.first->second.reply_time = now;
-                        //sn.getStatus.request_time = TIME_INVALID;
-                        sn.pinged = 0;
                         break;
                     }
                 /* See comment for gp above. */
@@ -2157,12 +2144,10 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 DHT_DEBUG("Unknown search or announce!");
                 newNode(id, from, fromlen, 1);
             } else {
-                newNode(id, from, fromlen, 2);
+                auto n = newNode(id, from, fromlen, 2);
                 for (auto& sn : sr->nodes)
-                    if (sn.id == id) {
+                    if (sn.node == n) {
                         sn.listenStatus.reply_time = now;
-                        //sn.getStatus.request_time = TIME_INVALID;
-                        sn.pinged = 0;
                         break;
                     }
                 /* See comment for gp above. */
@@ -2335,7 +2320,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
              : uniform_duration_distribution<> {seconds(60), seconds(180)};
         confirm_nodes_time = now + time_dis(rd);
 
-        //dumpTables();
+        dumpTables();
     }
 
     time_point tosleep = confirm_nodes_time;
@@ -2405,26 +2390,26 @@ Dht::exportNodes()
     const auto b4 = buckets.findBucket(myid);
     if (b4 != buckets.end()) {
         for (auto& n : b4->nodes)
-            if (n.isGood(now))
-                nodes.push_back(n.exportNode());
+            if (n->isGood(now))
+                nodes.push_back(n->exportNode());
     }
     const auto b6 = buckets6.findBucket(myid);
     if (b6 != buckets6.end()) {
         for (auto& n : b6->nodes)
-            if (n.isGood(now))
-                nodes.push_back(n.exportNode());
+            if (n->isGood(now))
+                nodes.push_back(n->exportNode());
     }
     for (auto b = buckets.begin(); b != buckets.end(); ++b) {
         if (b == b4) continue;
         for (auto& n : b->nodes)
-            if (n.isGood(now))
-                nodes.push_back(n.exportNode());
+            if (n->isGood(now))
+                nodes.push_back(n->exportNode());
     }
     for (auto b = buckets6.begin(); b != buckets6.end(); ++b) {
         if (b == b6) continue;
         for (auto& n : b->nodes)
-            if (n.isGood(now))
-                nodes.push_back(n.exportNode());
+            if (n->isGood(now))
+                nodes.push_back(n->exportNode());
     }
     return nodes;
 }
@@ -2434,7 +2419,7 @@ Dht::insertNode(const InfoHash& id, const sockaddr *sa, socklen_t salen)
 {
     if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
         return false;
-    Node *n = newNode(id, sa, salen, 0);
+    auto n = newNode(id, sa, salen, 0);
     return !!n;
 }
 
@@ -2645,11 +2630,11 @@ Dht::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, co
 }
 
 unsigned
-Dht::bufferClosestNodes(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const
+Dht::bufferClosestNodes(uint8_t* nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const
 {
-    for (auto& n : b.nodes) {
-        if (n.isGood(now))
-            numnodes = insertClosestNode(nodes, numnodes, id, n);
+    for (const auto& n : b.nodes) {
+        if (n->isGood(now))
+            numnodes = insertClosestNode(nodes, numnodes, id, *n);
     }
     return numnodes;
 }
