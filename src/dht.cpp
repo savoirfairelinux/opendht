@@ -1162,7 +1162,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
         throw DhtException("Can't create search");
     sr->done = false;
     auto token = ++sr->listener_token;
-    sr->listeners.insert({token, {f, cb}});
+    sr->listeners.emplace(token, LocalListener{f, cb});
     auto tm = sr->getNextStepTime(types, now);
     if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
         search_time = tm;
@@ -1189,8 +1189,11 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
                 cancelListen(id, token);
                 return false;
             }
-            for (const auto& v : newvals)
-                vals->insert({v->id, v});
+            for (const auto& v : newvals) {
+                auto it = vals->emplace(v->id, v);
+                if (not it.second)
+                    it.first->second = v;
+            }
         }
         return true;
     };
@@ -1212,19 +1215,22 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
             if (not newvals.empty()) {
                 if (!cb(newvals))
                     return 0;
-                for (const auto& v : newvals)
-                    vals->insert({v->id, v});
+                for (const auto& v : newvals) {
+                    auto it = vals->emplace(v->id, v);
+                    if (not it.second)
+                        it.first->second = v;
+                }
             }
         }
         tokenlocal = ++st->listener_token;
-        st->local_listeners.insert({tokenlocal, {f, gcb}});
+        st->local_listeners.emplace(tokenlocal, LocalListener{f, gcb});
     }
 
     auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
 
     DHT_WARN("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
-    listeners.insert({token, std::make_tuple(tokenlocal, token4, token6)});
+    listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
     return token;
 }
 
@@ -2120,7 +2126,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 auto n = newNode(id, from, fromlen, 2);
                 for (auto& sn : sr->nodes)
                     if (sn.node == n) {
-                        auto it = sn.acked.insert({value_id, {}});
+                        auto it = sn.acked.emplace(value_id, SearchNode::RequestStatus{});
                         it.first->second.reply_time = now;
                         break;
                     }
