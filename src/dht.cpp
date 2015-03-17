@@ -660,9 +660,6 @@ Dht::searchStep(Search& sr)
 {
     // Remove expired nodes
     DHT_WARN("Search IPv%c %s searchStep.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
-    sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [this](const SearchNode& n) {
-        return n.node->isExpired(now) && n.node->time < now - NODE_GOOD_TIME;
-    }), sr.nodes.end());
 
     if (sr.nodes.empty()) {
         // No nodes... yet ?
