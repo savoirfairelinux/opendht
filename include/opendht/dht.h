@@ -213,7 +213,7 @@ private:
        to the destination, and use the additional ones to backtrack if any of
        the target 8 turn out to be dead. */
     static constexpr unsigned SEARCH_NODES {14};
-    static constexpr unsigned LISTEN_NODES {4};
+    static constexpr unsigned LISTEN_NODES {3};
 
     /* The maximum number of values we store for a given hash. */
     static constexpr unsigned MAX_VALUES {2048};
@@ -239,6 +239,9 @@ private:
 
     /* The time after which we consider a node to be expirable. */
     static constexpr std::chrono::minutes NODE_EXPIRE_TIME {10};
+
+    /* Timeout for listen */
+    static constexpr std::chrono::minutes LISTEN_EXPIRE_TIME {3};
 
     static constexpr std::chrono::minutes NODE_GOOD_TIME {120};
 
@@ -397,7 +400,7 @@ private:
             return ack->second.reply_time + type.expiration > now;
         }
         bool isListening(time_point now) const {
-            return listenStatus.reply_time + NODE_EXPIRE_TIME > now;
+            return listenStatus.reply_time + LISTEN_EXPIRE_TIME > now;
         }
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
@@ -414,7 +417,7 @@ private:
         }
         time_point getListenTime() const {
             if (listenStatus.reply_time > listenStatus.request_time)
-                return listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN;
+                return listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
             return listenStatus.request_time + MAX_RESPONSE_TIME;
             //time_point min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
             //return listenStatus.reply_time.time_since_epoch().count() ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN, min_t) : min_t;
