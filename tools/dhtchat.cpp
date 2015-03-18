@@ -114,7 +114,7 @@ main(int argc, char **argv)
     if (!port)
         port = 4222;
 
-    std::vector<sockaddr_storage> bootstrap_nodes {};
+    std::vector<std::pair<sockaddr_storage, socklen_t>> bootstrap_nodes {};
     while (i < argc) {
         addrinfo hints;
         memset(&hints, 0, sizeof(hints));
@@ -131,8 +131,8 @@ main(int argc, char **argv)
         infop = info;
         while (infop) {
             sockaddr_storage tmp;
-            memcpy(&tmp, infop->ai_addr, infop->ai_addrlen);
-            bootstrap_nodes.push_back(tmp);
+            std::copy_n((uint8_t*)infop->ai_addr, infop->ai_addrlen, (uint8_t*)&tmp);
+            bootstrap_nodes.emplace_back(tmp, infop->ai_addrlen);
             infop = infop->ai_next;
         }
         freeaddrinfo(info);

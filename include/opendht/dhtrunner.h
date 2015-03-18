@@ -79,7 +79,7 @@ public:
     void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb=nullptr);
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb=nullptr);
 
-    void bootstrap(const std::vector<sockaddr_storage>& nodes);
+    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
     void bootstrap(const std::vector<Dht::NodeExport>& nodes);
 
     void dumpTables() const

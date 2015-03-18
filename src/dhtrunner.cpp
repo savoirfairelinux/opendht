@@ -334,12 +334,12 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht:
 }
 
 void
-DhtRunner::bootstrap(const std::vector<sockaddr_storage>& nodes)
+DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         for (auto& node : nodes)
-            dht.pingNode((sockaddr*)&node, sizeof(node));
+            dht.pingNode((sockaddr*)&node.first, node.second);
     });
     cv.notify_all();
 }
