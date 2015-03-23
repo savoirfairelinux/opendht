@@ -653,7 +653,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
         n->node->pinged,
         std::chrono::duration_cast<std::chrono::milliseconds>(now-n->getStatus.request_time)/1000.);
 
-    sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->getStatus.reply_time >= now - UDP_REPLY_TIME);
+    sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
     n->getStatus.request_time = now;
     pinged(*n->node);
     return true;
@@ -766,7 +766,7 @@ Dht::searchStep(Search& sr)
                         DHT_DEBUG("Sending announce_value to %s (%s).", print_addr((sockaddr*)&n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
                         sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
                                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
-                                           n.token, n.getStatus.reply_time >= now - UDP_REPLY_TIME);
+                                           n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
                         if (a_status == n.acked.end()) {
                             n.acked[vid] = { now };
                         } else {
