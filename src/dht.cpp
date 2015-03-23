@@ -473,7 +473,11 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         if (not n->isExpired(now))
             continue;
         auto cn = cache.getNode(id, sa->sa_family);
-        n = cn ? cn : std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+        if (not cn) {
+            cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+            cache.putNode(cn);
+        }
+        n = cn;
 
         /* Try adding the node to searches */
         trySearchInsert(n);
@@ -528,8 +532,9 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
     auto cn = cache.getNode(id, sa->sa_family);
     if (not cn) {
         cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-        b->nodes.emplace_front(cn);
+        cache.putNode(cn);
     }
+    b->nodes.emplace_front(cn);
     trySearchInsert(cn);
     return cn;
 }
