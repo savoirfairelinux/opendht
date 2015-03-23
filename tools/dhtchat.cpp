@@ -233,7 +233,7 @@ main(int argc, char **argv)
                     data
                 ),
                 id
-            }, [id](bool ok) {
+            }, [id](bool /*ok*/) {
                 //dht.cancelPut(room, id);
                 //std::cout << "Put signed done !" << ok << std::endl;
             });
