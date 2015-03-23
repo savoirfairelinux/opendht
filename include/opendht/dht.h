@@ -280,6 +280,7 @@ private:
         }
         bool isGood(time_point now) const;
         NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
+        sa_family_t getFamily() const { return ss.ss_family; }
 
         void update(const sockaddr* sa, socklen_t salen) {
             std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
@@ -743,6 +744,7 @@ private:
     std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
+    bool trySearchInsert(const std::shared_ptr<Dht::Node>& node);
 
     void pinged(Node& n, Bucket *b = nullptr);
 

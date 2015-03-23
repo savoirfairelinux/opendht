@@ -408,6 +408,24 @@ Dht::RoutingTable::split(const RoutingTable::iterator& b)
     return true;
 }
 
+bool
+Dht::trySearchInsert(const std::shared_ptr<Dht::Node>& node)
+{
+    bool inserted = false;
+    auto family = node->getFamily();
+    if (not node) return inserted;
+    for (auto& s : searches) {
+        if (s.af != family) continue;
+        if (s.insertNode(node, now)) {
+            inserted = true;
+            auto tm = s.getNextStepTime(types, now);
+            if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
+                search_time = tm;
+        }
+    }
+    return inserted;
+}
+
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
 std::shared_ptr<Dht::Node>
@@ -435,14 +453,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             if (confirm) {
                 n->received(now, confirm >= 2);
                 /* If this node existed in searches but was expired, give it another chance. */
-                for (auto& s : searches) {
-                    if (s.af != sa->sa_family) continue;
-                    if (s.insertNode(n, now)) {
-                        auto tm = s.getNextStepTime(types, now);
-                        if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-                            search_time = tm;
-                    }
-                }
+                trySearchInsert(n);
             }
         }
         return n;
@@ -465,14 +476,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         n = cn ? cn : std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
 
         /* Try adding the node to searches */
-        for (auto& s : searches) {
-            if (s.af != sa->sa_family) continue;
-            if (s.insertNode(n, now)) {
-                time_point tm = s.getNextStepTime(types, now);
-                if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-                    search_time = tm;
-            }
-        }
+        trySearchInsert(n);
         return n;
     }
 
@@ -526,7 +530,8 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
         b->nodes.emplace_front(cn);
     }
-    return b->nodes.front();
+    trySearchInsert(cn);
+    return cn;
 }
 
 /* Called periodically to purge known-bad nodes.  Note that we're very
