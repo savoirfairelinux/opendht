@@ -2053,7 +2053,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
                     memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
                     auto sn = newNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0);
-                    if (sr && sr->af == AF_INET) {
+                    if (sn && sr && sr->af == AF_INET) {
                         sr->insertNode(sn, now);
                     }
                 }
@@ -2067,7 +2067,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
                     memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
                     auto sn = newNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), 0);
-                    if (sr && sr->af == AF_INET6) {
+                    if (sn && sr  && sr->af == AF_INET6) {
                         sr->insertNode(sn, now);
                     }
                 }
