@@ -1673,9 +1673,11 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
         else
             out << " age " << duration_cast<seconds>(now - n->time).count();
         if (n->pinged)
-            out << " (" << n->pinged << ")";
-        if (n->isGood(now))
-            out << " (good)";
+            out << " [p " << n->pinged << "]";
+        if (n->isExpired(now))
+            out << " [expired]";
+        else if (n->isGood(now))
+            out << " [good]";
         out << std::endl;
     }
 }
@@ -1704,18 +1706,19 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     unsigned i = 0;
     for (const auto& n : sr.nodes) {
         out << "   Node " << i++ << " id " << n.node->id << " bits " << InfoHash::commonBits(sr.id, n.node->id);
+        out << " [get ";
         if (n.getStatus.request_time != TIME_INVALID)
-            out << " req: " << duration_cast<seconds>(now - n.getStatus.request_time).count() << " s,";
-        out << " age:" << duration_cast<seconds>(now - n.node->time).count() << " s";
+            out << duration_cast<seconds>(now - n.getStatus.request_time).count() << " s ";
+        out << duration_cast<seconds>(now - n.getStatus.reply_time).count() << " s]";
         if (n.node->pinged)
             out << " pinged: " << n.node->pinged;
-        if (findNode(n.node->id, AF_INET))
+        if (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6))
             out << " [known]";
-        if (n.getStatus.reply_time != TIME_INVALID)
+        if (n.node->reply_time != TIME_INVALID)
             out << " [replied]";
         if (n.listenStatus.reply_time != TIME_INVALID)
             out << " [list]";
-        out << (n.isSynced(now) ? " [synced]" : " [not synced]");
+        out << (n.isSynced(now) ? " [synced]" : (n.node->isExpired(now) ? " [expired]" : " [not synced]"));
         out << std::endl;
     }
 }
