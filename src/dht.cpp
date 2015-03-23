@@ -309,6 +309,38 @@ Dht::Node::isGood(time_point now) const
         time >= now - NODE_EXPIRE_TIME;
 }
 
+std::shared_ptr<Dht::Node>
+Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
+    auto& list = family == AF_INET ? cache_4 : cache_6;
+    for (auto n = list.begin(); n != list.end();) {
+        if (auto ln = n->lock()) {
+            if (ln->id == id)
+                return ln;
+            ++n;
+        } else {
+            n = list.erase(n);
+        }
+    }
+    return nullptr;
+}
+
+std::shared_ptr<Dht::Node>
+Dht::NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point t, time_point reply) {
+    auto node = getNode(id, sa->sa_family);
+    if (not node) {
+        node = std::make_shared<Node>(id, sa, sa_len, t, reply);
+        putNode(node);
+    }
+    return node;
+}
+
+void
+Dht::NodeCache::putNode(std::shared_ptr<Dht::Node> n) {
+    if (not n) return;
+    auto& list = n->ss.ss_family == AF_INET ? cache_4 : cache_6;
+    list.push_back(n);
+}
+
 /* Every bucket caches the address of a likely node.  Ping it. */
 int
 Dht::sendCachedPing(Bucket& b)
@@ -472,12 +504,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
     for (auto& n : b->nodes) {
         if (not n->isExpired(now))
             continue;
-        auto cn = cache.getNode(id, sa->sa_family);
-        if (not cn) {
-            cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-            cache.putNode(cn);
-        }
-        n = cn;
+        n = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
 
         /* Try adding the node to searches */
         trySearchInsert(n);
@@ -519,21 +546,11 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             b->cachedlen = salen;
         }
 
-        auto cn = cache.getNode(id, sa->sa_family);
-        if (not cn) {
-            cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-            cache.putNode(cn);
-        }
-
-        return cn;
+        return cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
     }
 
     /* Create a new node. */
-    auto cn = cache.getNode(id, sa->sa_family);
-    if (not cn) {
-        cn = std::make_shared<Node>(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-        cache.putNode(cn);
-    }
+    auto cn = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
     b->nodes.emplace_front(cn);
     trySearchInsert(cn);
     return cn;

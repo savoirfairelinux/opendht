@@ -306,24 +306,9 @@ private:
     };
 
     struct NodeCache {
-        std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family) {
-            auto& list = family == AF_INET ? cache_4 : cache_6;
-            for (auto n = list.begin(); n != list.end();) {
-                if (auto ln = n->lock()) {
-                    if (ln->id == id)
-                        return ln;
-                    ++n;
-                } else {
-                    n = list.erase(n);
-                }
-            }
-            return nullptr;
-        }
-        void putNode(std::shared_ptr<Node> n) {
-            if (not n) return;
-            auto& list = n->ss.ss_family == AF_INET ? cache_4 : cache_6;
-            list.push_back(n);
-        }
+        std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
+        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point t, time_point reply);
+        void putNode(std::shared_ptr<Node> n);
     private:
         std::list<std::weak_ptr<Node>> cache_4;
         std::list<std::weak_ptr<Node>> cache_6;
