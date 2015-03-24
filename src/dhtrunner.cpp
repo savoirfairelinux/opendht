@@ -169,7 +169,7 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
                 sockaddr_storage from;
                 socklen_t fromlen;
 
-                struct timeval tv {.tv_sec = 3, .tv_usec = 0};
+                struct timeval tv {.tv_sec = 0, .tv_usec = 250000};
                 fd_set readfds;
 
                 FD_ZERO(&readfds);
