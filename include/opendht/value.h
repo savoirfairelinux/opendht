@@ -228,6 +228,8 @@ struct Value : public Serializable
      : id(id), type(t), data(data) {}
     Value(ValueType::Id t, Blob&& data, Id id = INVALID_ID)
      : id(id), type(t), data(std::move(data)) {}
+    Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
+     : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
     Value(ValueType::Id t, const Serializable& d, Id id = INVALID_ID)
      : id(id), type(t), data(d.getPacked()) {}
     Value(const ValueType& t, const Serializable& d, Id id = INVALID_ID)
@@ -236,6 +238,7 @@ struct Value : public Serializable
     /** Custom user data constructor */
     Value(const Blob& userdata) : data(userdata) {}
     Value(Blob&& userdata) : data(std::move(userdata)) {}
+    Value(const uint8_t* dat_ptr, size_t dat_len) : data(dat_ptr, dat_ptr+dat_len) {}
 
     Value(Value&& o) noexcept
      : id(o.id), flags(o.flags), owner(std::move(o.owner)), recipient(o.recipient),
