@@ -239,7 +239,7 @@ DhtMessage::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
 }
 
 bool
-DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
+DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
 {
     DhtMessage request {v->data};
     if (request.service == Service::UNDEFINED)
