@@ -226,6 +226,8 @@ struct Value : public Serializable
     /** Generic constructor */
     Value(ValueType::Id t, const Blob& data, Id id = INVALID_ID)
      : id(id), type(t), data(data) {}
+    Value(ValueType::Id t, Blob&& data, Id id = INVALID_ID)
+     : id(id), type(t), data(std::move(data)) {}
     Value(ValueType::Id t, const Serializable& d, Id id = INVALID_ID)
      : id(id), type(t), data(d.getPacked()) {}
     Value(const ValueType& t, const Serializable& d, Id id = INVALID_ID)
