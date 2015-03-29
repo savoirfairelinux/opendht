@@ -1,21 +1,24 @@
 OpenDHT
 ===
-A lightweight C++11 Distributed Hash Table implementation
+A lightweight C++11 Distributed Hash Table implementation originally based on https://github.com/jech/dht by Juliusz Chroboczek.
 
- * Light C++11 Kademlia DHT library
- * Simple distributed map API
- * Support for storage of arbitrary values (not just IPs)
- * Optional public key cryptography layer providing data signature and encryption (using GnuTLS)
- * Fast bootstrap and announce time
- * Not compatible with Bittorrent DHT (mainline).
- * Originally based on https://github.com/jech/dht by Juliusz Chroboczek
+ * Light and fast C++11 Kademlia DHT library.
+ * Distributed shared key->value data-store
+ * Clean and powerfull distributed map API.
+ * Storage of arbitrary binary values up to 64 kB. Keys are 160 bits long.
+ * Optional public key cryptography layer providing data signature and encryption (using GnuTLS).
+ * IPv4 and IPv6 support.
 
 Documentation
 -
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
-Example
+Examples
 -
+The `tools` directory includes two simple example programs :
+* `dhtnode`, a command line tool, mostly used for debuging, allowing to perform all operations supported by the library with string values.
+* `dhtchat`, a very simple example of a chat client working over the dht.
+
 Example program launching a DHT node, connecting to the network and performing some basic operations:
 ```c++
 #include <opendht.h>
@@ -87,8 +90,3 @@ Dependencies
 - GnuTLS 3.1+, used to compute hashes and for the identity layer.
 - Build tested with GCC 4.8+ (Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
 
-TODO
--
- * Long term value persistance
- * Documentation
- * ...
