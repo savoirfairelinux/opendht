@@ -4,8 +4,8 @@ A lightweight C++11 Distributed Hash Table implementation
 
  * Light C++11 Kademlia DHT library
  * Simple distributed map API
- * Support for arbitrary value types (not just IPs)
- * Optional crypto/identity layer with data signature and encryption (using GnuTLS)
+ * Support for storage of arbitrary values (not just IPs)
+ * Optional public key cryptography layer providing data signature and encryption (using GnuTLS)
  * Fast bootstrap and announce time
  * Not compatible with Bittorrent DHT (mainline).
  * Originally based on https://github.com/jech/dht by Juliusz Chroboczek
