@@ -35,8 +35,6 @@ extern "C" {
 #include <gnutls/gnutls.h>
 }
 
-#include <sys/socket.h>
-
 #include <iostream>
 #include <string>
 #include <sstream>
