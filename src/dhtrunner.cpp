@@ -30,6 +30,8 @@
 
 #include "dhtrunner.h"
 
+#include <unistd.h> // close(fd)
+
 namespace dht {
 
 void

@@ -33,15 +33,13 @@
 #include "securedht.h"
 
 #include <thread>
-#include <random>
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
 #include <future>
 #include <exception>
 #include <queue>
-
-#include <unistd.h> // close(fd)
+#include <chrono>
 
 namespace dht {
 
