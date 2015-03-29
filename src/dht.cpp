@@ -2460,7 +2460,7 @@ Dht::insertNode(const InfoHash& id, const sockaddr *sa, socklen_t salen)
 int
 Dht::pingNode(const sockaddr *sa, socklen_t salen)
 {
-    DHT_DEBUG("Sending ping.");
+    DHT_DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
     return sendPing(sa, salen, TransId {TransPrefix::PING});
 }
 

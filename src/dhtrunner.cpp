@@ -336,6 +336,29 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht:
 }
 
 void
+DhtRunner::bootstrap(const char* host, const char* service)
+{
+    std::vector<std::pair<sockaddr_storage, socklen_t>> bootstrap_nodes {};
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_socktype = SOCK_DGRAM;
+    addrinfo* info = nullptr;
+    int rc = getaddrinfo(host, service, &hints, &info);
+    if(rc != 0)
+        throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
+
+    addrinfo* infop = info;
+    while (infop) {
+        bootstrap_nodes.emplace_back(sockaddr_storage(), infop->ai_addrlen);
+        std::copy_n((uint8_t*)infop->ai_addr, infop->ai_addrlen, (uint8_t*)&bootstrap_nodes.back().first);
+        infop = infop->ai_next;
+    }
+    freeaddrinfo(info);
+    bootstrap(bootstrap_nodes);
+}
+
+void
 DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);

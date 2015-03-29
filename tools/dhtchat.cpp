@@ -114,31 +114,6 @@ main(int argc, char **argv)
     if (!port)
         port = 4222;
 
-    std::vector<std::pair<sockaddr_storage, socklen_t>> bootstrap_nodes {};
-    while (i < argc) {
-        addrinfo hints;
-        memset(&hints, 0, sizeof(hints));
-        addrinfo *info = nullptr, *infop = nullptr;
-        hints.ai_socktype = SOCK_DGRAM;
-        int rc = getaddrinfo(argv[i], argv[i + 1], &hints, &info);
-        if(rc != 0)
-            throw std::invalid_argument(std::string("getaddrinfo: ") + gai_strerror(rc));
-
-        i++;
-        if(i >= argc)
-            break;
-
-        infop = info;
-        while (infop) {
-            sockaddr_storage tmp;
-            std::copy_n((uint8_t*)infop->ai_addr, infop->ai_addrlen, (uint8_t*)&tmp);
-            bootstrap_nodes.emplace_back(tmp, infop->ai_addrlen);
-            infop = infop->ai_next;
-        }
-        freeaddrinfo(info);
-        i++;
-    }
-
     int rc = gnutls_global_init();
     if (rc != GNUTLS_E_SUCCESS)
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
@@ -155,7 +130,11 @@ main(int argc, char **argv)
         [](char const* m, va_list args){ printLog(std::cout, m, args); }
     );
 */
-    dht.bootstrap(bootstrap_nodes);
+
+    while (i+1 < argc) {
+        dht.bootstrap(argv[i], argv[i + 1]);
+        i += 2;
+    }
 
     std::cout << "OpenDht node " << dht.getRoutingId() << " running on port " <<  port<<  std::endl;
     std::cout << "Public key ID " << dht.getId() << std::endl;
