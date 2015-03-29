@@ -12,7 +12,7 @@ A lightweight C++11 Distributed Hash Table implementation
 
 Documentation
 -
-See the wiki: <https://github.com/savoirfairelinux/opendht/wiki/OpenDHT-Documentation>
+See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
 Example
 -
