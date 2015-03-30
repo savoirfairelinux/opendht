@@ -689,34 +689,33 @@ Dht::searchStep(Search& sr)
     // Remove expired nodes
     DHT_WARN("Search IPv%c %s searchStep.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
 
-    if (sr.nodes.empty()) {
-        // No nodes... yet ?
-        // Nothing to do, wait for the timeout.
-        if (sr.step_time == TIME_INVALID)
-            sr.step_time = now;
-        if (now - sr.step_time >= SEARCH_TIMEOUT) {
-            DHT_WARN("Search IPv%c %s timed out.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
-            sr.step_time = now;
-            {
-                auto get_cbs = std::move(sr.callbacks);
-                for (const auto& g : get_cbs) {
-                    if (g.done_cb)
-                        g.done_cb(false);
-                }
+    bool has_synced {false};
+    for (const auto& n : sr.nodes)
+        has_synced |= n.isSynced(now);
+    if (has_synced) {
+        sr.good_time = now;
+    }
+    else if (now - sr.good_time > SEARCH_TIMEOUT) {
+        DHT_WARN("Search IPv%c %s timed out.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
+        sr.step_time = now;
+        {
+            auto get_cbs = std::move(sr.callbacks);
+            for (const auto& g : get_cbs) {
+                if (g.done_cb)
+                    g.done_cb(false);
             }
-            {
-                std::vector<DoneCallback> a_cbs;
-                a_cbs.reserve(sr.announce.size());
-                for (const auto& a : sr.announce)
-                    if (a.callback)
-                        a_cbs.emplace_back(std::move(a.callback));
-                for (const auto& a : a_cbs)
-                    a(false);
-            }
-            if (sr.announce.empty() && sr.listeners.empty())
-                sr.done = true;
         }
-        return;
+        {
+            std::vector<DoneCallback> a_cbs;
+            a_cbs.reserve(sr.announce.size());
+            for (const auto& a : sr.announce)
+                if (a.callback)
+                    a_cbs.emplace_back(std::move(a.callback));
+            for (const auto& a : a_cbs)
+                a(false);
+        }
+        if (sr.announce.empty() && sr.listeners.empty())
+            sr.done = true;
     }
 
     /* Check if the first 8 live nodes have replied. */
@@ -1112,6 +1111,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         sr->af = af;
         sr->tid = search_id++;
         sr->step_time = TIME_INVALID;
+        sr->good_time = now;
         sr->id = id;
         sr->done = false;
         sr->nodes.clear();

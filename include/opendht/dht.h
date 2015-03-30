@@ -454,6 +454,7 @@ private:
 
         uint16_t tid;
         time_point step_time {};           /* the time of the last search_step */
+        time_point good_time {};           /* the last time the search had a synced node */
 
         bool done {false};
         std::vector<SearchNode> nodes {};
