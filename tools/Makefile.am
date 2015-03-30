@@ -2,7 +2,7 @@ libexec_PROGRAMS = dhtnode dhtchat
 
 AM_CPPFLAGS = -I../include
 dhtnode_SOURCES = dhtnode.cpp
-dhtnode_LDFLAGS = @GNUTLS_LIBS@ -lpthread -lopendht -L../src/.libs
+dhtnode_LDFLAGS = -lpthread -lopendht -L../src/.libs @GNUTLS_LIBS@
 
 AM_CPPFLAGS = -I../include
 dhtchat_SOURCES = dhtchat.cpp
