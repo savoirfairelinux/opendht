@@ -36,54 +36,12 @@ extern "C" {
 }
 
 #include <iostream>
-#include <iomanip>
 #include <string>
-#include <sstream>
 #include <chrono>
-#include <set>
 
 #include <ctime>
 
 using namespace dht;
-
-namespace Color {
-    enum Code {
-        FG_RED      = 31,
-        FG_GREEN    = 32,
-        FG_YELLOW   = 33,
-        FG_BLUE     = 34,
-        FG_DEFAULT  = 39,
-        BG_RED      = 41,
-        BG_GREEN    = 42,
-        BG_BLUE     = 44,
-        BG_DEFAULT  = 49
-    };
-    class Modifier {
-        Code code;
-    public:
-        Modifier(Code pCode) : code(pCode) {}
-        friend std::ostream&
-        operator<<(std::ostream& os, const Modifier& mod) {
-            return os << "\033[" << mod.code << "m";
-        }
-    };
-}
-
-const Color::Modifier def(Color::FG_DEFAULT);
-const Color::Modifier red(Color::FG_RED);
-const Color::Modifier yellow(Color::FG_YELLOW);
-
-void printLog(std::ostream& s, char const* m, va_list args) {
-    static constexpr int BUF_SZ = 8192;
-    char buffer[BUF_SZ];
-    int ret = vsnprintf(buffer, sizeof(buffer), m, args);
-    if (ret < 0)
-        return;
-    s.write(buffer, std::min(ret, BUF_SZ));
-    if (ret >= BUF_SZ)
-        s << "[[TRUNCATED]]";
-    s.put('\n');
-}
 
 const std::string getDateTime(const std::chrono::system_clock::time_point& t) {
     auto now = std::chrono::system_clock::to_time_t(t);
@@ -118,12 +76,6 @@ main(int argc, char **argv)
     DhtRunner dht;
     dht.run(port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {
     });
-    /*dht.setLoggers(
-        [](char const* m, va_list args){ std::cerr << red; printLog(std::cerr, m, args); std::cerr << def; },
-        [](char const* m, va_list args){ std::cout << yellow; printLog(std::cout, m, args); std::cout << def; },
-        [](char const* m, va_list args){ printLog(std::cout, m, args); }
-    );
-*/
 
     while (i+1 < argc) {
         dht.bootstrap(argv[i], argv[i + 1]);
@@ -164,7 +116,7 @@ main(int argc, char **argv)
 
     while (true)
     {
-        std::cout << ">> ";
+        std::cout << (connected ? ">> " : "> ");
         std::string line;
         std::getline(std::cin, line);
         static constexpr dht::InfoHash INVALID_ID {};
@@ -187,12 +139,6 @@ main(int argc, char **argv)
                 }
                 dht.listen(room, rcv_msg, dht::DhtMessage::ServiceFilter(dht::DhtMessage::Service::IM_MESSAGE));
                 connected = true;
-            } else if (op == "p") {
-                iss >> p;
-                room = idstr;
-                InfoHash peer {p};
-                std::vector<uint8_t> data;
-                
             }
         } else {
             auto id = rand_id(rdev);
@@ -206,9 +152,10 @@ main(int argc, char **argv)
                     data
                 ),
                 id
-            }, [id](bool /*ok*/) {
+            }, [id](bool ok) {
                 //dht.cancelPut(room, id);
-                //std::cout << "Put signed done !" << ok << std::endl;
+                if (not ok)
+                    std::cout << "Message publishing failed !" << std::endl;
             });
         }
     }
