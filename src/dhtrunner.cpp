@@ -32,7 +32,31 @@
 
 #include <unistd.h> // close(fd)
 
+#ifndef _WIN32
+#include <sys/socket.h>
+#else
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 namespace dht {
+
+DhtRunner::DhtRunner()
+{
+#ifdef _WIN32
+    WSADATA wsd;
+    if (WSAStartup(MAKEWORD(2,2), &wsd) != 0)
+        throw DhtException("Can't initialize Winsock2");
+#endif
+}
+
+DhtRunner::~DhtRunner()
+{
+    join();
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
 
 void
 DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, StatusCallback cb)
