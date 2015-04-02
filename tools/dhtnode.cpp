@@ -242,7 +242,7 @@ main(int argc, char **argv)
             std::string tostr;
             std::string v;
             iss >> tostr >> v;
-            dht.putEncrypted(id, tostr, dht::Value {
+            dht.putEncrypted(id, InfoHash(tostr), dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [](bool ok) {

@@ -71,7 +71,7 @@ public:
      * hex must be at least 2.HASH_LEN characters long.
      * If too long, only the first 2.HASH_LEN characters are read.
      */
-    InfoHash(const std::string& hex);
+    explicit InfoHash(const std::string& hex);
 
     /**
      * Find the lowest 1 bit in an id.

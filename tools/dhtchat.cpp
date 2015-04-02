@@ -132,7 +132,7 @@ main(int argc, char **argv)
             if (op  == "x" || op == "q" || op == "exit" || op == "quit")
                 break;
             else if (op == "c") {
-                room = idstr;
+                room = InfoHash(idstr);
                 if (room == INVALID_ID) {
                     std::cout << "Syntax error: invalid InfoHash." << std::endl;
                     continue;
