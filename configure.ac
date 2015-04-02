@@ -18,11 +18,11 @@ case "${host_os}" in
   "")
     SYS=unknown
     ;;
+  *android*)
+    SYS=android
+    ;;
   linux*)
     SYS=linux
-    ;;
-  android*)
-    SYS=android
     ;;
   darwin*)
     SYS=darwin
