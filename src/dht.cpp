@@ -116,6 +116,12 @@ print_addr(const sockaddr* sa, socklen_t slen)
     return out.str();
 }
 
+template <class DT>
+static double
+print_dt(DT d) {
+    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+}
+
 namespace dht {
 
 const Dht::TransPrefix Dht::TransPrefix::PING = {"pn"};
@@ -134,7 +140,6 @@ static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
 }};
 
 constexpr std::chrono::seconds Dht::MAX_RESPONSE_TIME;
-constexpr std::chrono::seconds Dht::SEARCH_TIMEOUT;
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::NODE_EXPIRE_TIME;
@@ -610,8 +615,10 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         return false;
 
     // Reset search timer if it was empty
-    if (nodes.empty())
+    if (nodes.empty()) {
         step_time = TIME_INVALID;
+        get_step_time = TIME_INVALID;
+    }
 
     bool found = false;
     auto n = std::find_if(nodes.begin(), nodes.end(), [=,&found](const SearchNode& sn) {
@@ -627,12 +634,14 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         n = nodes.insert(n, SearchNode(node));
         if (nodes.size() > SEARCH_NODES)
             nodes.pop_back();
+        expired = false;
     }
     if (not token.empty()) {
         n->getStatus.reply_time = now;
         n->getStatus.request_time = TIME_INVALID;
         if (token.size() <= 64)
             n->token = token;
+        expired = false;
     }
     return true;
 }
@@ -686,37 +695,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
 void
 Dht::searchStep(Search& sr)
 {
-    // Remove expired nodes
     DHT_WARN("Search IPv%c %s searchStep.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
-
-    bool has_synced {false};
-    for (const auto& n : sr.nodes)
-        has_synced |= n.isSynced(now);
-    if (has_synced) {
-        sr.good_time = now;
-    }
-    else if (now - sr.good_time > SEARCH_TIMEOUT) {
-        DHT_WARN("Search IPv%c %s timed out.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
-        sr.step_time = now;
-        {
-            auto get_cbs = std::move(sr.callbacks);
-            for (const auto& g : get_cbs) {
-                if (g.done_cb)
-                    g.done_cb(false);
-            }
-        }
-        {
-            std::vector<DoneCallback> a_cbs;
-            a_cbs.reserve(sr.announce.size());
-            for (const auto& a : sr.announce)
-                if (a.callback)
-                    a_cbs.emplace_back(std::move(a.callback));
-            for (const auto& a : a_cbs)
-                a(false);
-        }
-        if (sr.announce.empty() && sr.listeners.empty())
-            sr.done = true;
-    }
 
     /* Check if the first 8 live nodes have replied. */
     if (sr.isSynced(now)) {
@@ -813,21 +792,45 @@ Dht::searchStep(Search& sr)
         }
 
     } else {
-        DHT_DEBUG("searchStep.");
-        if (sr.step_time + SEARCH_GET_STEP >= now)
-            return;
-
-        // Listening or announcing requires keeping the cluster up to date.
-        if (sr.nodes.empty() && sr.announce.empty() && sr.listeners.empty()) {
-            sr.done = true;
+        if (sr.get_step_time + SEARCH_GET_STEP >= now) {
+            DHT_WARN("searchStep: too early");
             return;
         }
+        DHT_DEBUG("searchStep.");
 
-        unsigned i = 0;
+        unsigned i = 0, e = 0;
         for (auto& sn : sr.nodes) {
+            if (sn.node->isExpired(now)) {
+                e++;
+                continue;
+            }
             i += searchSendGetValues(sr, &sn) ? 1 : 0;
             if (i >= 3)
                 break;
+        }
+        if (i > 0)
+            sr.get_step_time = now;
+        else if (e == sr.nodes.size()) {
+            sr.expired = true;
+            if (sr.announce.empty() && sr.listeners.empty()) {
+                // Listening or announcing requires keeping the cluster up to date.
+                sr.done = true;
+                auto get_cbs = std::move(sr.callbacks);
+                for (const auto& g : get_cbs) {
+                    if (g.done_cb)
+                        g.done_cb(false);
+                }
+            }
+            {
+                std::vector<DoneCallback> a_cbs;
+                a_cbs.reserve(sr.announce.size());
+                for (const auto& a : sr.announce)
+                    if (a.callback)
+                        a_cbs.emplace_back(std::move(a.callback));
+                for (const auto& a : a_cbs)
+                    a(false);
+            }
+            return;
         }
     }
     sr.step_time = now;
@@ -920,21 +923,29 @@ Dht::Search::getUpdateTime(time_point now) const
 {
     time_point ut = TIME_MAX;
     const auto last_get = getLastGetTime();
-    unsigned i = 0;
+    unsigned i = 0, d = 0;
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now))
             continue;
-        if (!sn.isSynced(now)) {
-            ut = std::min(ut, step_time + SEARCH_GET_STEP);
+        if (sn.getStatus.reply_time < now - NODE_EXPIRE_TIME) { // not isSynced
+            return std::min(ut, get_step_time + SEARCH_GET_STEP);
         }
         else if (sn.getStatus.reply_time < last_get) {
             ut = std::min(ut, sn.getStatus.request_time + MAX_RESPONSE_TIME);
+        } else {
+            d++;
+            ut = std::min(ut, std::max(
+                sn.getStatus.request_time + MAX_RESPONSE_TIME,
+                sn.getStatus.reply_time + NODE_EXPIRE_TIME));
         }
         if (++i == 8)
             break;
     }
-    // If all synced/updated but some callbacks remain, step now to clear them
-    return ut == TIME_MAX ? (callbacks.empty() ? TIME_INVALID : now) : ut;
+    if (not callbacks.empty() and i == d) {
+        // If all synced/updated but some callbacks remain, step now to clear them
+        return now;
+    }
+    return ut == TIME_MAX ? TIME_INVALID : ut;
 }
 
 bool
@@ -1014,47 +1025,33 @@ Dht::Search::getListenTime(time_point now) const
 }
 
 time_point
-Dht::Search::getExpireTime() const
-{
-    if (nodes.empty() && (not callbacks.empty() /* || done_callback */))
-        return step_time + SEARCH_TIMEOUT;
-    return {};
-}
-
-time_point
 Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const
 {
-    if (done)
+    if (expired or done)
         return {};
 
-    if (nodes.empty())
-        return getExpireTime();
-
     if (!isSynced(now))
-        return step_time + SEARCH_GET_STEP;
-
-    // The search just completed : call the callback
-    //if (done_callback)
-    /*if (not callbacks.empty())
-        return now;*/
+        return get_step_time + SEARCH_GET_STEP;
 
     auto next_step = TIME_MAX;
 
-    /*if (not callbacks.empty())
-        next_step = now;*/
     auto ut = getUpdateTime(now);
-    if (ut != TIME_INVALID)
+    if (ut != TIME_INVALID) {
+        //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " update time in " << print_dt(ut - now) << " s" << std::endl;
         next_step = std::min(next_step, ut);
+    }
 
     auto at = getAnnounceTime(types, now);
-    if (at != TIME_INVALID)
+    if (at != TIME_INVALID) {
+        //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " announce time in " << print_dt(at - now) << " s" << std::endl;
         next_step = std::min(next_step, at);
+    }
 
     auto lt = getListenTime(now);
-    if (lt != TIME_INVALID)
+    if (lt != TIME_INVALID) {
+        //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " listen time in " << print_dt(lt - now) << " s" << std::endl;
         next_step = std::min(next_step, lt);
-
-    //std::cout << " NEXT STEP FOR IPv" << (af == AF_INET ? "4" : "6") << " " << id << " at " << next_step << " IN " << (next_step-now) << std::endl;
+    }
 
     return next_step == TIME_MAX ? TIME_INVALID : next_step;
 }
@@ -1100,10 +1097,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
 
     if (sr != searches.end()) {
         sr->done = false;
-        // Discard any doubtful nodes.
-        /*sr->nodes.erase(std::remove_if (sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& n) {
-            return n.reply_time < now - NODE_GOOD_TIME;
-        }), sr->nodes.end());*/
+        sr->expired = false;
     } else {
         sr = newSearch();
         if (sr == searches.end())
@@ -1111,9 +1105,10 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         sr->af = af;
         sr->tid = search_id++;
         sr->step_time = TIME_INVALID;
-        sr->good_time = now;
+        sr->get_step_time = TIME_INVALID;
         sr->id = id;
         sr->done = false;
+        sr->expired = false;
         sr->nodes.clear();
         sr->nodes.reserve(SEARCH_NODES+1);
         DHT_DEBUG("New IPv%s search for %s", (af == AF_INET) ? "4" : "6", id.toString().c_str());
@@ -1163,13 +1158,13 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
     }
     auto tm = sr->getNextStepTime(types, now);
     if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm)) {
-        DHT_DEBUG("search_time is now in %lf", std::chrono::duration_cast<std::chrono::milliseconds>(tm-clock::now()).count()/1000.);
+        DHT_DEBUG("search_time is now in %lf", print_dt(tm-clock::now()));
         search_time = tm;
     } else {
         DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)", 
             tm.time_since_epoch().count(),
-            std::chrono::duration_cast<std::chrono::milliseconds>(tm-clock::now()).count()/1000.,
-            std::chrono::duration_cast<std::chrono::milliseconds>(search_time-clock::now()).count()/1000.);
+            print_dt(tm-clock::now()),
+            print_dt(search_time-clock::now()));
     }
 }
 
@@ -2324,12 +2319,8 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         }
         if (search_time == TIME_INVALID)
             DHT_DEBUG("next search time : (none)");
-        else if (search_time < now)
-            DHT_DEBUG("next search time : %ld ms ago (ASAP)", duration_cast<milliseconds>(now-search_time));
         else
-            DHT_DEBUG("next search time : %ld (in %lf s)",
-                search_time.time_since_epoch().count(),
-                duration_cast<milliseconds>(search_time-now).count()/1000.);
+            DHT_DEBUG("next search time : %lf s%s", print_dt(search_time-now), (search_time < now)?" (ASAP)":"");
     }
 
     if (now >= confirm_nodes_time) {

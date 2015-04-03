@@ -227,9 +227,6 @@ private:
     /* Time for a request to timeout */
     static constexpr std::chrono::seconds MAX_RESPONSE_TIME {3};
 
-    /* A search with no nodes will timeout after this time. */
-    static constexpr std::chrono::seconds SEARCH_TIMEOUT {3};
-
     /* The time after which we can send get requests for
        a search in case of no answers. */
     static constexpr std::chrono::seconds SEARCH_GET_STEP {3};
@@ -454,9 +451,10 @@ private:
 
         uint16_t tid;
         time_point step_time {};           /* the time of the last search_step */
-        time_point good_time {};           /* the last time the search had a synced node */
+        time_point get_step_time {};       /* the time of the last get time */
 
-        bool done {false};
+        bool expired {false};              /* no node, or all nodes expired */
+        bool done {false};                 /* search is over, cached for later */
         std::vector<SearchNode> nodes {};
         std::vector<Announce> announce {};
         std::vector<Get> callbacks {};
@@ -497,12 +495,6 @@ private:
          * ret > 0 : (re-)announce required at time ret.
          */
         time_point getListenTime(time_point now) const;
-
-        /**
-         * ret = 0 : no expiration
-         * ret > 0 : search will expire at time ret
-         */
-        time_point getExpireTime() const;
 
         time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
     };
