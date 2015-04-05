@@ -366,11 +366,14 @@ Dht::sendCachedPing(Bucket& b)
 void
 Dht::pinged(Node& n, Bucket* b)
 {
-    n.requested(now);
-    if (n.pinged >= 3) {
-        if (not b)
-            b = findBucket(n.id, n.ss.ss_family);
-        if (b) sendCachedPing(*b);
+
+    if (not n.isExpired(now)) {
+        n.requested(now);
+        if (n.pinged >= 3) {
+            if (not b)
+                b = findBucket(n.id, n.ss.ss_family);
+            if (b) sendCachedPing(*b);
+        }
     }
 }
 
@@ -815,6 +818,8 @@ Dht::searchStep(Search& sr)
             if (sr.announce.empty() && sr.listeners.empty()) {
                 // Listening or announcing requires keeping the cluster up to date.
                 sr.done = true;
+            }
+            {
                 auto get_cbs = std::move(sr.callbacks);
                 for (const auto& g : get_cbs) {
                     if (g.done_cb)
@@ -1718,12 +1723,15 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     unsigned i = 0;
     for (const auto& n : sr.nodes) {
         out << "   Node " << i++ << " id " << n.node->id << " bits " << InfoHash::commonBits(sr.id, n.node->id);
-        out << " [get ";
+        if (n.node->pinged) {
+            out << " [c " << n.node->pinged << " "
+             << duration_cast<seconds>(now - n.node->pinged_time).count() << "s "
+             << duration_cast<seconds>(now - n.node->reply_time).count() << "s]";
+        }
+        out << " [g ";
         if (n.getStatus.request_time != TIME_INVALID)
-            out << duration_cast<seconds>(now - n.getStatus.request_time).count() << " s ";
-        out << duration_cast<seconds>(now - n.getStatus.reply_time).count() << " s]";
-        if (n.node->pinged)
-            out << " pinged: " << n.node->pinged;
+            out << duration_cast<seconds>(now - n.getStatus.request_time).count() << "s ";
+        out << duration_cast<seconds>(now - n.getStatus.reply_time).count() << "s]";
         if (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6))
             out << " [known]";
         if (n.node->reply_time != TIME_INVALID)
@@ -2014,24 +2022,20 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         if (error_code == 401 && id != zeroes && (tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || tid.matches(TransPrefix::LISTEN, &ttid))) {
             auto esr = findSearch(ttid, from->sa_family);
             if (!esr) return;
+            auto ne = newNode(id, from, fromlen, 2);
             unsigned cleared = 0;
-            std::shared_ptr<Node> n;
             for (auto& sr : searches) {
                 for (auto& n : sr.nodes) {
-                    if (n.node->id != id) continue;
+                    if (n.node != ne) continue;
                     cleared++;
                     n.getStatus.request_time = TIME_INVALID;
                     n.getStatus.reply_time = TIME_INVALID;
-                    //n.pinged = 0;
-                    n = n.node;
-                    searchSendGetValues(sr);
+                    if (searchSendGetValues(sr))
+                        sr.get_step_time = now;
                     break;
                 }
             }
-            if (cleared) {
-                DHT_WARN("Token flush for node %s (%d searches affected)", id.toString().c_str(), cleared);
-                newNode(id, from, fromlen, 2);
-            }
+            DHT_WARN("Token flush for node %s (%d searches affected)", id.toString().c_str(), cleared);
         } else {
             DHT_WARN("Received unknown error message %u from %s:", error_code, id.toString().c_str());
             DHT_WARN.logPrintable(buf, buflen);
@@ -2105,7 +2109,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         search_time = now;
                         //sr->step_time = 0;
                     } else {*/
-                        searchSendGetValues(*sr);
+                        if (searchSendGetValues(*sr))
+                            sr->get_step_time = now;
                     //}
                 }
             }
@@ -2154,7 +2159,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         break;
                     }
                 /* See comment for gp above. */
-                searchSendGetValues(*sr);
+                if (searchSendGetValues(*sr))
+                    sr->get_step_time = now;
 
                 // If the value was just successfully announced, call the callback
                 for (auto& a : sr->announce) {
@@ -2180,7 +2186,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         break;
                     }
                 /* See comment for gp above. */
-                searchSendGetValues(*sr);
+                if (searchSendGetValues(*sr))
+                    sr->get_step_time = now;
             }
         } else {
             DHT_WARN("Unexpected reply: ");
