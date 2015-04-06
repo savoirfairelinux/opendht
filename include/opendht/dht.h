@@ -260,10 +260,10 @@ private:
         InfoHash id {};
         sockaddr_storage ss;
         socklen_t sslen {0};
-        time_point time {};            /* time of last message received */
+        time_point time {};            /* last time eared about */
         time_point reply_time {};      /* time of last correct reply received */
-        time_point pinged_time {};     /* time of last request */
-        unsigned pinged {0};        /* how many requests we sent since last reply */
+        time_point pinged_time {};     /* time of last message sent */
+        unsigned pinged {0};           /* how many requests we sent since last reply */
 
         Node() : ss() {
             std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
