@@ -654,7 +654,7 @@ Dht::expireSearches()
 {
     auto t = now - SEARCH_EXPIRE_TIME;
     searches.remove_if([t](const Search& sr) {
-        return sr.announce.empty() && sr.step_time < t;
+        return sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty() && sr.step_time < t;
     });
 }
 
