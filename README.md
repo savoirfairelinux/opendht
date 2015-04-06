@@ -16,8 +16,8 @@ See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 Examples
 -
 The `tools` directory includes two simple example programs :
-* `dhtnode`, a command line tool, mostly used for debuging, allowing to perform all operations supported by the library with string values.
-* `dhtchat`, a very simple example of a chat client working over the dht.
+* `dhtnode`, a command line tool, mostly used for debuging, allowing to perform all operations supported by the library (get, put etc.) with string values.
+* `dhtchat`, a very simple IM client working over the dht.
 
 Example program launching a DHT node, connecting to the network and performing some basic operations:
 ```c++
