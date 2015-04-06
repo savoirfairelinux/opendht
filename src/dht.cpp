@@ -610,7 +610,8 @@ Dht::Search::removeExpiredNode(time_point now)
     auto e = nodes.end();
     while (e != nodes.cbegin()) {
         e = std::prev(e);
-        if (e->node->isExpired(now)) {
+        const Node& n = *e->node;
+        if (n.isExpired(now) and n.time + NODE_EXPIRE_TIME < now) {
             nodes.erase(e);
             return true;
         }
@@ -662,7 +663,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         }
         n = nodes.insert(n, SearchNode(node));
         if (nodes.size() > SEARCH_NODES and not removeExpiredNode(now))
-                nodes.pop_back();
+            nodes.pop_back();
         expired = false;
     }
     if (not token.empty()) {
