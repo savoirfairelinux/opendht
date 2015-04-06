@@ -497,6 +497,8 @@ private:
         time_point getListenTime(time_point now) const;
 
         time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
+
+        bool removeExpiredNode(time_point now);
     };
 
     struct ValueStorage {

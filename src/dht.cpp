@@ -600,6 +600,20 @@ Dht::findSearch(unsigned short tid, sa_family_t af)
     return sr == searches.end() ? nullptr : &(*sr);
 }
 
+bool
+Dht::Search::removeExpiredNode(time_point now)
+{
+    auto e = nodes.end();
+    while (e != nodes.begin()) {
+        e = std::prev(e);
+        if (e->node->isExpired(now)) {
+            nodes.erase(e);
+            return true;
+        }
+    }
+    return false;
+}
+
 /* A search contains a list of nodes, sorted by decreasing distance to the
    target.  We just got a new candidate, insert it at the right spot or
    discard it. */
@@ -614,7 +628,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     const auto& nid = node->id;
 
     // Fast track for the case where the node is not relevant for this search
-    if (nodes.size() == SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
+    if (nodes.size() == SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0 && node->isExpired(now))
         return false;
 
     // Reset search timer if it was empty
@@ -624,7 +638,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     }
 
     bool found = false;
-    auto n = std::find_if(nodes.begin(), nodes.end(), [=,&found](const SearchNode& sn) {
+    auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
         if (sn.node == node) {
             found = true;
             return true;
@@ -632,11 +646,19 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         return id.xorCmp(nid, sn.node->id) < 0;
     });
     if (!found) {
-        if (n == nodes.end() && nodes.size() == SEARCH_NODES)
-            return false;
+        if (nodes.size() == SEARCH_NODES) {
+            if (node->isExpired(now))
+                return false;
+            if (n == nodes.end()) {
+                // search is full, try to remove an expired node
+                if (not removeExpiredNode(now))
+                    return false;
+                n = nodes.end();
+            }
+        }
         n = nodes.insert(n, SearchNode(node));
-        if (nodes.size() > SEARCH_NODES)
-            nodes.pop_back();
+        if (nodes.size() > SEARCH_NODES and not removeExpiredNode(now))
+                nodes.pop_back();
         expired = false;
     }
     if (not token.empty()) {
