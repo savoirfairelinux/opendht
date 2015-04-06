@@ -513,6 +513,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         if (not n->isExpired(now))
             continue;
         n = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+        n->received(now, confirm >= 2);
 
         /* Try adding the node to searches */
         trySearchInsert(n);
@@ -553,13 +554,16 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             memcpy(&b->cached, sa, salen);
             b->cachedlen = salen;
         }
-
-        return cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+        auto cn = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+        cn->received(now, confirm >= 2);
+        trySearchInsert(cn);
+        return cn;
     }
 
     /* Create a new node. */
     auto cn = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
     b->nodes.emplace_front(cn);
+    cn->received(now, confirm >= 2);
     trySearchInsert(cn);
     return cn;
 }
@@ -604,7 +608,7 @@ bool
 Dht::Search::removeExpiredNode(time_point now)
 {
     auto e = nodes.end();
-    while (e != nodes.begin()) {
+    while (e != nodes.cbegin()) {
         e = std::prev(e);
         if (e->node->isExpired(now)) {
             nodes.erase(e);
