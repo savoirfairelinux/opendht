@@ -330,12 +330,16 @@ Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 }
 
 std::shared_ptr<Dht::Node>
-Dht::NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point t, time_point reply) {
+Dht::NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
     auto node = getNode(id, sa->sa_family);
     if (not node) {
-        node = std::make_shared<Node>(id, sa, sa_len, t, reply);
+        node = std::make_shared<Node>(id, sa, sa_len);
         putNode(node);
+    } else if (confirm || node->time < now - NODE_EXPIRE_TIME) {
+        node->update(sa, sa_len);
     }
+    if (confirm)
+        node->received(now, confirm >= 2);
     return node;
 }
 
@@ -512,8 +516,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
     for (auto& n : b->nodes) {
         if (not n->isExpired(now))
             continue;
-        n = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-        n->received(now, confirm >= 2);
+        n = cache.getNode(id, sa, salen, now, confirm);
 
         /* Try adding the node to searches */
         trySearchInsert(n);
@@ -554,16 +557,14 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             memcpy(&b->cached, sa, salen);
             b->cachedlen = salen;
         }
-        auto cn = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
-        cn->received(now, confirm >= 2);
+        auto cn = cache.getNode(id, sa, salen, now, confirm);
         trySearchInsert(cn);
         return cn;
     }
 
     /* Create a new node. */
-    auto cn = cache.getNode(id, sa, salen, confirm ? now : TIME_INVALID, confirm >= 2 ? now : TIME_INVALID);
+    auto cn = cache.getNode(id, sa, salen, now, confirm);
     b->nodes.emplace_front(cn);
-    cn->received(now, confirm >= 2);
     trySearchInsert(cn);
     return cn;
 }

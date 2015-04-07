@@ -268,8 +268,8 @@ private:
         Node() : ss() {
             std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
         }
-        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, time_point t, time_point reply_time)
-            : id(id), ss(), sslen(salen), time(t), reply_time(reply_time) {
+        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
+            : id(id), ss(), sslen(salen) {
             std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
         }
         bool isExpired(time_point now) const {
@@ -304,7 +304,7 @@ private:
 
     struct NodeCache {
         std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
-        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point t, time_point reply);
+        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
         void putNode(std::shared_ptr<Node> n);
     private:
         std::list<std::weak_ptr<Node>> cache_4;
