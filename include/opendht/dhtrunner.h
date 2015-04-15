@@ -60,8 +60,67 @@ public:
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
     void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
 
+    template <class T>
+    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
+    {
+        get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+            return cb(unpackVector<T>(vals));
+        },
+        T::getFilter());
+    }
+    template <class T>
+    void get(InfoHash hash, std::function<bool(T&&)> cb)
+    {
+        get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+            for (const auto& v : vals) {
+                T msg;
+                try {
+                    msg.unpackValue(*v);
+                } catch (const std::exception&) {
+                    continue;
+                }
+                if (not cb(std::move(msg)))
+                    return false;
+            }
+            return true;
+        },
+        T::getFilter());
+    }
+
     std::future<size_t> listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
     std::future<size_t> listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+
+    template <class T>
+    std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
+    {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+            return cb(unpackVector<T>(vals));
+        },
+        T::getFilter());
+    }
+    template <class T>
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter())
+    {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+            for (const auto& v : vals) {
+                T msg;
+                try {
+                    msg.unpackValue(*v);
+                } catch (const std::exception&) {
+                    continue;
+                }
+                if (not cb(std::move(msg)))
+                    return false;
+            }
+            return true;
+        },
+        Value::Filter::chain({
+            Value::TypeFilter(T::TYPE),
+            T::getFilter(),
+            f
+        }));
+    }
+
     void cancelListen(InfoHash h, size_t token);
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 

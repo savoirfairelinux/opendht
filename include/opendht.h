@@ -35,3 +35,4 @@
 #include "opendht/infohash.h"
 #include "opendht/securedht.h"
 #include "opendht/dhtrunner.h"
+#include "opendht/default_types.h"

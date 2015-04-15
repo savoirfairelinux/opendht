@@ -30,6 +30,8 @@
 
 #include "securedht.h"
 
+#include "default_types.h"
+
 extern "C" {
 #include <gnutls/gnutls.h>
 #include <gnutls/abstract.h>
@@ -208,7 +210,7 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
             // Check signed values
             else if (v->isSigned()) {
                 if (v->owner.checkSignature(v->getToSign(), v->signature)) {
-                    if (not filter or filter(*v))
+                    if (not filter  or filter(*v))
                         tmpvals.push_back(v);
                 }
                 else
@@ -242,9 +244,8 @@ void
 SecureDht::putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback)
 {
     if (val->id == Value::INVALID_ID) {
-        auto id = getId();
-        static_assert(sizeof(Value::Id) <= sizeof(InfoHash), "Value::Id can't be larger than InfoHash");
-        val->id = *reinterpret_cast<Value::Id*>(id.data());
+        std::random_device rdev;
+        val->id = rand_id(rdev);
     }
 
     // Check if we are already announcing a value

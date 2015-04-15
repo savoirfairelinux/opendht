@@ -36,6 +36,7 @@
 #include <map>
 #include <vector>
 #include <memory>
+#include <random>
 
 namespace dht {
 
@@ -133,6 +134,8 @@ private:
     std::shared_ptr<crypto::Certificate> certificate_ {};
 
     std::map<InfoHash, std::shared_ptr<crypto::Certificate>> nodesCertificates_ {};
+
+    std::uniform_int_distribution<Value::Id> rand_id {};
 };
 
 const ValueType CERTIFICATE_TYPE = {
