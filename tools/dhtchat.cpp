@@ -102,10 +102,10 @@ main(int argc, char **argv)
         if (line.empty())
             continue;
 
+        std::istringstream iss(line);
+        std::string op, idstr;
+        iss >> op >> idstr;
         if (not connected) {
-            std::istringstream iss(line);
-            std::string op, idstr, p;
-            iss >> op >> idstr;
             if (op  == "x" || op == "q" || op == "exit" || op == "quit")
                 break;
             else if (op == "c") {
@@ -119,7 +119,7 @@ main(int argc, char **argv)
                     if (msg.from != myid)
                         std::cout << msg.from.toString() << " at " << printTime(msg.sent)
                                   << " (took " << dtToDouble(std::chrono::system_clock::now() - msg.sent)
-                                  << "s) : " << msg.im_message << std::endl;
+                                  << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.im_message << std::endl;
                     return true;
                 });
                 connected = true;
@@ -127,15 +127,23 @@ main(int argc, char **argv)
                 std::cout << "Unknown command. Type 'c {hash}' to join a channel" << std::endl << std::endl;
             }
         } else {
-            if (line == "d") {
+            if (op == "d") {
                 connected = false;
                 continue;
+            } else if (op == "e") {
+                std::getline(iss, line);
+                dht.putEncrypted(room, InfoHash(idstr), dht::ImMessage(std::move(line)), [](bool ok) {
+                    //dht.cancelPut(room, id);
+                    if (not ok)
+                        std::cout << "Message publishing failed !" << std::endl;
+                });
+            } else {
+                dht.putSigned(room, dht::ImMessage(std::move(op)), [](bool ok) {
+                    //dht.cancelPut(room, id);
+                    if (not ok)
+                        std::cout << "Message publishing failed !" << std::endl;
+                });
             }
-            dht.putSigned(room, dht::ImMessage(std::move(line)), [](bool ok) {
-                //dht.cancelPut(room, id);
-                if (not ok)
-                    std::cout << "Message publishing failed !" << std::endl;
-            });
         }
     }
 
