@@ -86,7 +86,7 @@ struct EncryptedValue : public SignedValue
     static Value::Filter getFilter() {
         return Value::Filter::chain(
             SignedValue::getFilter(),
-            [](const Value& v){ return v.isEncrypted() and v.recipient != InfoHash(); }
+            [](const Value& v){ return v.recipient != InfoHash(); }
         );
     }
 
