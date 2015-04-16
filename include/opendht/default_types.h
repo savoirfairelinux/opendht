@@ -165,8 +165,8 @@ struct IceCandidates : public EncryptedValue
         ice_data = deserialize<Blob>(b, e);
     }
     virtual void unpackValue(const Value& v) {
+        EncryptedValue::unpackValue(v);
         id = v.id;
-        ValueSerializable::unpackValue(v);
     }
 
     Value::Id id;
