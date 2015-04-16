@@ -153,6 +153,13 @@ struct ValueType {
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
 
+struct ValueSerializable : public Serializable
+{
+    virtual const ValueType& getType() const = 0;
+    virtual void unpackValue(const Value& v);
+    virtual Value packValue() const;
+};
+
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.
  *
@@ -167,7 +174,30 @@ struct Value : public Serializable
     typedef uint64_t Id;
     static const Id INVALID_ID {0};
 
-    typedef std::function<bool(const Value&)> Filter;
+    class Filter : public std::function<bool(const Value&)> {
+        using std::function<bool(const Value&)>::function;
+    public:
+        static Filter chain(Filter&& f1, Filter&& f2) {
+            return [f1,f2](const Value& v){
+                return f1(v) && f2(v);
+            };
+        }
+        static Filter chain(std::initializer_list<Filter> l) {
+            const std::vector<Filter> list(l.begin(), l.end());
+            return [list](const Value& v){
+                for (const auto& f : list)
+                    if (f and not f(v))
+                        return false;
+                return true;
+            };
+        }
+        Filter chain(Filter&& f2) {
+            Filter f1 = std::move(*this);
+            return [f1,f2](const Value& v){
+                return f1(v) && f2(v);
+            };
+        }
+    };
 
     static const Filter AllFilter() {
         return [](const Value&){return true;};
@@ -186,9 +216,9 @@ struct Value : public Serializable
         };
     }
 
-    static Filter chainFilters(Filter&& f1, Filter&& f2) {
-        return [f1,f2](const Value& v){
-            return f1(v) && f2(v);
+    static Filter recipientFilter(const InfoHash& r) {
+        return [r](const Value& v) {
+            return v.recipient == r;
         };
     }
 
@@ -234,6 +264,8 @@ struct Value : public Serializable
      : id(id), type(t), data(d.getPacked()) {}
     Value(const ValueType& t, const Serializable& d, Id id = INVALID_ID)
      : id(id), type(t.id), data(d.getPacked()) {}
+    Value(const ValueSerializable& d, Id id = INVALID_ID)
+     : id(id), type(d.getType().id), data(d.getPacked()) {}
 
     /** Custom user data constructor */
     Value(const Blob& userdata) : data(userdata) {}
@@ -326,112 +358,19 @@ struct Value : public Serializable
     Blob cypher {};
 };
 
-
-/* "Peer" announcement
- */
-struct IpServiceAnnouncement : public Serializable
-{
-    IpServiceAnnouncement(in_port_t p = 0) {
-        ss.ss_family = 0;
-        setPort(p);
+template <class T>
+std::vector<T>
+unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
+    std::vector<T> ret;
+    ret.reserve(vals.size());
+    for (const auto& v : vals) {
+        try {
+            T msg;
+            msg.unpackValue(*v);
+            ret.emplace_back(std::move(msg));
+        } catch (const std::exception&) {}
     }
-
-    IpServiceAnnouncement(const sockaddr* sa, socklen_t sa_len) {
-        if (sa)
-            std::copy_n((const uint8_t*)sa, sa_len, (uint8_t*)&ss);
-    }
-
-    IpServiceAnnouncement(const Blob& b) {
-        unpackBlob(b);
-    }
-
-    virtual void pack(Blob& res) const;
-    virtual void unpack(Blob::const_iterator& begin, Blob::const_iterator& end);
-
-    in_port_t getPort() const {
-        return ntohs(reinterpret_cast<const sockaddr_in*>(&ss)->sin_port);
-    }
-    void setPort(in_port_t p) {
-        reinterpret_cast<sockaddr_in*>(&ss)->sin_port = htons(p);
-    }
-
-    sockaddr_storage getPeerAddr() const {
-        return ss;
-    }
-
-    static const ValueType TYPE;
-    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
-
-    /** print value for debugging */
-    friend std::ostream& operator<< (std::ostream&, const IpServiceAnnouncement&);
-
-private:
-    sockaddr_storage ss;
-};
-
-struct DhtMessage : public Serializable
-{
-    enum class Service : uint16_t {
-        UNDEFINED = 0,
-        IM_MESSAGE,
-        ICE_CANDIDATES
-    };
-
-    DhtMessage(uint16_t s, Blob msg = {}) : service(static_cast<Service>(s)), message(msg) {}
-    DhtMessage(Service s, Blob msg = {}) : service(s), message(msg) {}
-
-    DhtMessage(const Blob& b) {
-        unpackBlob(b);
-    }
-
-    Service getService() const {
-        return service;
-    }
-
-    const Blob& getMessage() const {
-        return message;
-    }
-
-    virtual void pack(Blob& res) const;
-    virtual void unpack(Blob::const_iterator& begin, Blob::const_iterator& end);
-
-    static const ValueType TYPE;
-    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
-
-    static Value::Filter ServiceFilter(Service s) {
-        return Value::chainFilters(
-            Value::TypeFilter(TYPE),
-            [s](const Value& v) {
-                try {
-                    auto b = v.data.cbegin(), e = v.data.cend();
-                    auto service = deserialize<Service>(b, e);
-                    return service == s;
-                } catch (const std::exception& e) {
-                    return false;
-                }
-            }
-        );
-    }
-
-    /** print value for debugging */
-    friend std::ostream& operator<< (std::ostream&, const DhtMessage&);
-
-private:
-    Service service;
-    Blob message;
-};
-
-const std::array<std::reference_wrapper<const ValueType>, 2>
-DEFAULT_TYPES
-{
-    ValueType::USER_DATA,
-    DhtMessage::TYPE,
-};
-
-const std::array<std::reference_wrapper<const ValueType>, 1>
-DEFAULT_INSECURE_TYPES
-{
-    IpServiceAnnouncement::TYPE
-};
+    return ret;
+}
 
 }

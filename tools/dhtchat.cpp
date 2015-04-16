@@ -38,13 +38,17 @@ extern "C" {
 #include <iostream>
 #include <string>
 #include <chrono>
-#include <random>
 
 #include <ctime>
 
 using namespace dht;
 
-const std::string getDateTime(const std::chrono::system_clock::time_point& t) {
+template <class DT>
+static double dtToDouble(DT d) {
+    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+}
+
+const std::string printTime(const std::chrono::system_clock::time_point& t) {
     auto now = std::chrono::system_clock::to_time_t(t);
     struct tm tstruct = *localtime(&now);
     char buf[80];
@@ -67,16 +71,11 @@ main(int argc, char **argv)
     if (!port)
         port = 4222;
 
-    int rc = gnutls_global_init();
-    if (rc != GNUTLS_E_SUCCESS)
+    if (int rc = gnutls_global_init())
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
 
-    auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
-    auto crt_tmp = dht::crypto::generateIdentity("DHT Node", ca_tmp);
-
     DhtRunner dht;
-    dht.run(port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {
-    });
+    dht.run(port, dht::crypto::generateIdentity("DHT Chat Node"), true);
 
     while (i+1 < argc) {
         dht.bootstrap(argv[i], argv[i + 1]);
@@ -91,30 +90,6 @@ main(int argc, char **argv)
     InfoHash room;
     const InfoHash myid = dht.getId();
 
-    std::random_device rdev;
-    std::uniform_int_distribution<Value::Id> rand_id {};
-
-    auto rcv_msg = [&](const std::vector<std::shared_ptr<Value>>& values) {
-            for (const auto& a : values) {
-                try {
-                    if (a->owner.getId() == myid)
-                        continue;
-                    if (a->isEncrypted())
-                        std::cout << a->owner.getId().toString() << " : [encrypted]" << std::endl;
-                    else {
-                        Blob msg_raw = dht::DhtMessage(a->data).getMessage();
-                        auto b = msg_raw.cbegin();
-                        auto e = msg_raw.cend();
-                        auto date = deserialize<std::chrono::system_clock::time_point>(b, e);
-                        auto dt = std::chrono::system_clock::now() - date;
-                        std::string msg {b, e};
-                        std::cout << a->owner.getId().toString() << " at " << getDateTime(date) << " (took " << std::chrono::duration_cast<std::chrono::duration<double>>(dt).count() << "s) : " << msg << std::endl;
-                    }
-                } catch (const std::exception& e) {}
-            }
-            return true;
-        };
-
     while (true)
     {
         std::cout << (connected ? ">> " : "> ");
@@ -122,49 +97,58 @@ main(int argc, char **argv)
         std::getline(std::cin, line);
         static constexpr dht::InfoHash INVALID_ID {};
 
-        if (std::cin.eof()) {
+        if (std::cin.eof())
             break;
-        }
+        if (line.empty())
+            continue;
 
+        std::istringstream iss(line);
+        std::string op, idstr;
+        iss >> op >> idstr;
         if (not connected) {
-            std::istringstream iss(line);
-            std::string op, idstr, p;
-            iss >> op >> idstr;
             if (op  == "x" || op == "q" || op == "exit" || op == "quit")
                 break;
             else if (op == "c") {
                 room = InfoHash(idstr);
                 if (room == INVALID_ID) {
-                    std::cout << "Syntax error: invalid InfoHash." << std::endl;
-                    continue;
+                    room = InfoHash::get(idstr);
+                    std::cout << "Joining h(" << idstr << ") = " << room << std::endl;
                 }
-                dht.listen(room, rcv_msg, dht::DhtMessage::ServiceFilter(dht::DhtMessage::Service::IM_MESSAGE));
+
+                dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
+                    if (msg.from != myid)
+                        std::cout << msg.from.toString() << " at " << printTime(msg.sent)
+                                  << " (took " << dtToDouble(std::chrono::system_clock::now() - msg.sent)
+                                  << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.im_message << std::endl;
+                    return true;
+                });
                 connected = true;
+            } else {
+                std::cout << "Unknown command. Type 'c {hash}' to join a channel" << std::endl << std::endl;
             }
         } else {
-            auto id = rand_id(rdev);
-            std::vector<uint8_t> data;
-            serialize<std::chrono::system_clock::time_point>(std::chrono::system_clock::now(), data);
-            data.insert(data.end(), line.begin(), line.end());
-            dht.putSigned(room, dht::Value {
-                dht::DhtMessage::TYPE,
-                dht::DhtMessage(
-                    dht::DhtMessage::Service::IM_MESSAGE,
-                    data
-                ),
-                id
-            }, [id](bool ok) {
-                //dht.cancelPut(room, id);
-                if (not ok)
-                    std::cout << "Message publishing failed !" << std::endl;
-            });
+            if (op == "d") {
+                connected = false;
+                continue;
+            } else if (op == "e") {
+                std::getline(iss, line);
+                dht.putEncrypted(room, InfoHash(idstr), dht::ImMessage(std::move(line)), [](bool ok) {
+                    //dht.cancelPut(room, id);
+                    if (not ok)
+                        std::cout << "Message publishing failed !" << std::endl;
+                });
+            } else {
+                dht.putSigned(room, dht::ImMessage(std::move(op)), [](bool ok) {
+                    //dht.cancelPut(room, id);
+                    if (not ok)
+                        std::cout << "Message publishing failed !" << std::endl;
+                });
+            }
         }
     }
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;
     dht.join();
-
     gnutls_global_deinit();
-
     return 0;
 }
