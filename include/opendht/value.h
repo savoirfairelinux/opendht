@@ -366,7 +366,7 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
     for (const auto& v : vals) {
         try {
             T msg;
-            msg.unpackBlob(v->data);
+            msg.unpackValue(*v);
             ret.emplace_back(std::move(msg));
         } catch (const std::exception&) {}
     }
