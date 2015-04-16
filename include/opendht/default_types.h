@@ -115,7 +115,12 @@ struct ImMessage : public SignedValue
         sent = deserialize<decltype(sent)>(b, e);
         im_message = std::string(b, e);
     }
+    virtual void unpackValue(const Value& v) {
+        to = v.recipient;
+        SignedValue::unpackValue(v);
+    }
 
+    dht::InfoHash to;
     std::chrono::system_clock::time_point sent;
     std::string im_message;
 };
