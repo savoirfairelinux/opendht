@@ -345,31 +345,47 @@ Certificate::operator=(Certificate&& o) noexcept
 void
 Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
 {
-    if (cert)
+    if (cert) {
         gnutls_x509_crt_deinit(cert);
-    gnutls_x509_crt_init(&cert);
+        cert = nullptr;
+    }
+    gnutls_x509_crt_t* cert_list;
+    unsigned cert_num;
     const gnutls_datum_t crt_dt {(uint8_t*)&(*begin), (unsigned)(end-begin)};
-    int err = gnutls_x509_crt_import(cert, &crt_dt, GNUTLS_X509_FMT_PEM);
+    int err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_PEM, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
     if (err != GNUTLS_E_SUCCESS)
-        err = gnutls_x509_crt_import(cert, &crt_dt, GNUTLS_X509_FMT_DER);
-    if (err != GNUTLS_E_SUCCESS) {
+        err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_DER, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
+    if (err != GNUTLS_E_SUCCESS || cert_num == 0) {
         cert = nullptr;
         throw CryptoException(std::string("Could not read certificate - ") + gnutls_strerror(err));
     }
+
+    cert = cert_list[0];
+    Certificate* crt = this;
+    size_t i = 1;
+    while (crt and i < cert_num) {
+        crt->issuer = std::make_shared<Certificate>(cert_list[i++]);
+        crt = crt->issuer.get();
+    }
+    gnutls_free(cert_list);
 }
 
 void
 Certificate::pack(Blob& b) const
 {
-    auto b_size = b.size();
-    size_t buf_sz = 8192;
-    b.resize(b_size + buf_sz);
-    int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_DER, b.data()+b_size, &buf_sz);
-    if (err != GNUTLS_E_SUCCESS) {
-        std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
-        b.resize(b_size);
+    const Certificate* crt = this;
+    while (crt) {
+        std::string str;
+        size_t buf_sz = 8192;
+        str.resize(buf_sz);
+        if (int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_PEM, &(*str.begin()), &buf_sz)) {
+            std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
+            return;
+        }
+        str.resize(buf_sz);
+        b.insert(b.end(), str.begin(), str.end());
+        crt = crt->issuer.get();
     }
-    b.resize(b_size + buf_sz);
 }
 
 Certificate::~Certificate()
@@ -417,18 +433,35 @@ Certificate::getUID() const
 }
 
 std::string
+Certificate::getIssuerUID() const
+{
+    std::string uid;
+    uid.resize(512);
+    size_t uid_sz = uid.size();
+    int ret = gnutls_x509_crt_get_issuer_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, 0, &(*uid.begin()), &uid_sz);
+    if (ret != GNUTLS_E_SUCCESS)
+        return {};
+    uid.resize(uid_sz);
+    return uid;
+}
+
+std::string
 Certificate::toString() const
 {
-    std::string str;
-    size_t buf_sz = 8192;
-    str.resize(buf_sz);
-    int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_PEM, &(*str.begin()), &buf_sz);
-    if (err != GNUTLS_E_SUCCESS) {
-        std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
-        return {};
+    std::ostringstream ss;
+    while (const Certificate* crt = this) {
+        std::string str;
+        size_t buf_sz = 8192;
+        str.resize(buf_sz);
+        if (int err = gnutls_x509_crt_export(cert, GNUTLS_X509_FMT_PEM, &(*str.begin()), &buf_sz)) {
+            std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
+            return {};
+        }
+        str.resize(buf_sz);
+        ss << str;
+        crt = crt->issuer.get();
     }
-    str.resize(buf_sz);
-    return str;
+    return ss.str();
 }
 
 PrivateKey
@@ -495,6 +528,7 @@ generateIdentity(const std::string& name, crypto::Identity ca)
             std::cerr << "Error when signing certificate" << std::endl;
             return {};
         }
+        shared_crt->issuer = ca.second;
     } else {
         gnutls_x509_crt_set_ca_status(cert, 1);
         gnutls_x509_crt_set_key_usage (cert, GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_KEY_CERT_SIGN);

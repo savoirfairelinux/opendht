@@ -139,12 +139,15 @@ struct Certificate : public Serializable {
 
     std::string getUID() const;
 
+    std::string getIssuerUID() const;
+
     /**
      * PEM encoded certificate
      */
     std::string toString() const;
 
     gnutls_x509_crt_t cert {};
+    std::shared_ptr<Certificate> issuer {};
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
