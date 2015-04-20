@@ -122,8 +122,17 @@ private:
 
 struct Certificate : public Serializable {
     Certificate() {}
+
+    /**
+     * Take ownership of existing gnutls structure
+     */
     Certificate(gnutls_x509_crt_t crt) : cert(crt) {}
+
+    /**
+     * Import certificate (PEM or DER) or certificate list (PEM)
+     */
     Certificate(const Blob& crt);
+
     Certificate(Certificate&& o) noexcept : cert(o.cert) { o.cert = nullptr; };
     Certificate& operator=(Certificate&& o) noexcept;
     ~Certificate();
