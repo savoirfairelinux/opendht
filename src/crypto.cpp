@@ -339,6 +339,7 @@ Certificate::operator=(Certificate&& o) noexcept
         gnutls_x509_crt_deinit(cert);
     cert = o.cert;
     o.cert = nullptr;
+    issuer = std::move(o.issuer);
     return *this;
 }
 

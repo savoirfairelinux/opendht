@@ -129,16 +129,50 @@ struct Certificate : public Serializable {
     Certificate(gnutls_x509_crt_t crt) : cert(crt) {}
 
     /**
-     * Import certificate (PEM or DER) or certificate list (PEM)
+     * Import certificate (PEM or DER) or certificate chain (PEM),
+     * ordered from subject to issuer
      */
     Certificate(const Blob& crt);
 
-    Certificate(Certificate&& o) noexcept : cert(o.cert) { o.cert = nullptr; };
+    /**
+     * Import certificate chain (PEM or DER),
+     * ordered from subject to issuer
+     */
+    template<typename Iterator>
+    Certificate(const std::vector<std::pair<Iterator, Iterator>>& certs) {
+        unpack(certs);
+    }
+
+    Certificate(Certificate&& o) noexcept : cert(o.cert), issuer(std::move(o.issuer)) { o.cert = nullptr; };
     Certificate& operator=(Certificate&& o) noexcept;
     ~Certificate();
 
     void pack(Blob& b) const override;
     void unpack(Blob::const_iterator& begin, Blob::const_iterator& end) override;
+
+    /**
+     * Import certificate chain (PEM or DER),
+     * ordered from subject to issuer
+     */
+    template<typename Iterator>
+    void unpack(const std::vector<std::pair<Iterator, Iterator>>& certs) override 
+    {
+        std::shared_ptr<Certificate> tmp_issuer;
+        for (auto li = certs.rbegin(); li != certs.rend(); ++li) {
+            Certificate tmp_crt;
+            gnutls_x509_crt_init(&tmp_crt.cert);
+            const gnutls_datum_t crt_dt {(uint8_t*)&(*li->first), (unsigned)(li->second-li->first)};
+            int err = gnutls_x509_crt_import(tmp_crt.cert, &crt_dt, GNUTLS_X509_FMT_PEM);
+            if (err != GNUTLS_E_SUCCESS)
+                err = gnutls_x509_crt_import(tmp_crt.cert, &crt_dt, GNUTLS_X509_FMT_DER);
+            if (err != GNUTLS_E_SUCCESS)
+                throw CryptoException(std::string("Could not read certificate - ") + gnutls_strerror(err));
+            tmp_crt.issuer = tmp_issuer;
+            tmp_issuer = std::make_shared<Certificate>(std::move(tmp_crt));
+        }
+        if (tmp_issuer)
+            *this = std::move(*tmp_issuer);
+    }
 
     operator bool() const { return cert; }
     PublicKey getPublicKey() const;
