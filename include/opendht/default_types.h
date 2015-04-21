@@ -125,10 +125,10 @@ struct ImMessage : public SignedValue
     std::string im_message;
 };
 
-struct ContactInvite : public EncryptedValue
+struct TrustRequest : public EncryptedValue
 {
-    ContactInvite() {}
-    ContactInvite(std::string s) : service(s) {}
+    TrustRequest() {}
+    TrustRequest(std::string s) : service(s) {}
 
     static const ValueType TYPE;
     virtual const ValueType& getType() const {
@@ -228,7 +228,7 @@ DEFAULT_TYPES
     DhtMessage::TYPE,
     ImMessage::TYPE,
     IceCandidates::TYPE,
-    ContactInvite::TYPE
+    TrustRequest::TYPE
 };
 
 const std::array<std::reference_wrapper<const ValueType>, 1>
