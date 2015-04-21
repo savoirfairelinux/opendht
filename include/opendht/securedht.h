@@ -120,7 +120,9 @@ public:
 
     void findCertificate(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb);
 
-    const std::shared_ptr<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& publicKey);
+    const std::shared_ptr<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
+    void registerCertificate(std::shared_ptr<crypto::Certificate>& cert);
+
     const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
 
 private:

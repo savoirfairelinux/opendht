@@ -149,10 +149,16 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
         return nullptr;
     }
     auto it = nodesCertificates_.find(h);
-    if (it == nodesCertificates_.end()) {
+    if (it == nodesCertificates_.end())
         return nullptr;
-    }
     return it->second;
+}
+
+void
+SecureDht::registerCertificate(std::shared_ptr<crypto::Certificate>& cert)
+{
+    if (cert)
+        nodesCertificates_[cert->getId()] = cert;
 }
 
 void
