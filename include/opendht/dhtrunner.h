@@ -211,6 +211,14 @@ public:
         return dht_->getSearchesLog(af);
     }
 
+    // securedht methods
+
+    void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>)>);
+    void registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        dht_->registerCertificate(cert);
+    }
+
     /**
      * If threaded is false, loop() must be called periodically.
      */
