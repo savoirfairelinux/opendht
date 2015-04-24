@@ -450,7 +450,8 @@ std::string
 Certificate::toString() const
 {
     std::ostringstream ss;
-    while (const Certificate* crt = this) {
+    const Certificate* crt = this;
+    while (crt) {
         std::string str;
         size_t buf_sz = 8192;
         str.resize(buf_sz);
