@@ -1419,7 +1419,7 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
 }
 
 std::shared_ptr<Value>
-Dht::getLocal(const InfoHash& id, const Value::Id& vid) const
+Dht::getLocalById(const InfoHash& id, const Value::Id& vid) const
 {
     if (auto s = findStorage(id)) {
         for (auto& v : s->values)
@@ -2272,7 +2272,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 sendError(from, fromlen, tid, 203, "Announce_value with invalid id");
                 continue;
             }
-            auto lv = getLocal(info_hash, v->id);
+            auto lv = getLocalById(info_hash, v->id);
             std::shared_ptr<Value> vc = v;
             if (lv) {
                 const auto& type = getType(lv->type);

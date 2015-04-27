@@ -138,7 +138,7 @@ public:
     /**
      * Get locally stored data for the given hash and value id.
      */
-    std::shared_ptr<Value> getLocal(const InfoHash& id, const Value::Id& vid) const;
+    std::shared_ptr<Value> getLocalById(const InfoHash& id, const Value::Id& vid) const;
 
     /**
      * Announce a value on all available protocols (IPv4, IPv6), and
