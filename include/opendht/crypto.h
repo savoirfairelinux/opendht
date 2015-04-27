@@ -155,7 +155,7 @@ struct Certificate : public Serializable {
      * ordered from subject to issuer
      */
     template<typename Iterator>
-    void unpack(const std::vector<std::pair<Iterator, Iterator>>& certs) override 
+    void unpack(const std::vector<std::pair<Iterator, Iterator>>& certs)
     {
         std::shared_ptr<Certificate> tmp_issuer;
         for (auto li = certs.rbegin(); li != certs.rend(); ++li) {
