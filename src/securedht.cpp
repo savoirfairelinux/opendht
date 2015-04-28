@@ -167,7 +167,8 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
     std::shared_ptr<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
         DHT_DEBUG("Using public key from cache for %s", node.toString().c_str());
-        cb(b);
+        if (cb)
+            cb(b);
         return;
     }
     auto found = std::make_shared<bool>(false);
@@ -178,13 +179,14 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
                 DHT_DEBUG("Found public key for %s", node.toString().c_str());
-                cb(cert);
+                if (cb)
+                    cb(cert);
                 return false;
             }
         }
         return true;
     }, [cb,found](bool) {
-        if (!*found)
+        if (!*found and cb)
             cb(nullptr);
     }, Value::TypeFilter(CERTIFICATE_TYPE));
 }
