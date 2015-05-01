@@ -379,13 +379,14 @@ Certificate::pack(Blob& b) const
         std::string str;
         size_t buf_sz = 8192;
         str.resize(buf_sz);
-        if (int err = gnutls_x509_crt_export(crt->cert, GNUTLS_X509_FMT_PEM, &(*str.begin()), &buf_sz)) {
+        if (int err = gnutls_x509_crt_export(crt->cert, GNUTLS_X509_FMT_DER, &(*str.begin()), &buf_sz)) {
             std::cerr << "Could not export certificate - " << gnutls_strerror(err) << std::endl;
             return;
         }
         str.resize(buf_sz);
         b.insert(b.end(), str.begin(), str.end());
         crt = crt->issuer.get();
+        return;
     }
 }
 
