@@ -185,9 +185,10 @@ struct Certificate : public Serializable {
     std::string getIssuerUID() const;
 
     /**
-     * PEM encoded certificate
+     * PEM encoded certificate.
+     * If chain is true, the issuer chain will be included (default).
      */
-    std::string toString() const;
+    std::string toString(bool chain = true) const;
 
     gnutls_x509_crt_t cert {};
     std::shared_ptr<Certificate> issuer {};

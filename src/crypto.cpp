@@ -447,7 +447,7 @@ Certificate::getIssuerUID() const
 }
 
 std::string
-Certificate::toString() const
+Certificate::toString(bool chain) const
 {
     std::ostringstream ss;
     const Certificate* crt = this;
@@ -461,6 +461,8 @@ Certificate::toString() const
         }
         str.resize(buf_sz);
         ss << str;
+        if (not chain)
+            break;
         crt = crt->issuer.get();
     }
     return ss.str();
