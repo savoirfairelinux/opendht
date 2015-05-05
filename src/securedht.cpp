@@ -252,7 +252,11 @@ void
 SecureDht::putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback)
 {
     if (val->id == Value::INVALID_ID) {
+#ifndef _WIN32
         std::random_device rdev;
+#else
+        std::default_random_engine rdev(std::chrono::system_clock::now().time_since_epoch().count());
+#endif
         val->id = rand_id(rdev);
     }
 
