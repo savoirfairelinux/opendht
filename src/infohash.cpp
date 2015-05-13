@@ -44,8 +44,12 @@ InfoHash::InfoHash(const std::string& hex) {
         fill(0);
         return;
     }
-    for (size_t i = 0; i < HASH_LEN; i++)
-        sscanf((const char*)hex.data() + 2*i, "%02x", (unsigned*)(&((*this)[i])));
+    const auto p = (const char*)hex.data();
+    for (size_t i = 0; i < HASH_LEN; i++) {
+        unsigned res = 0;
+        sscanf(p + 2*i, "%02x", &res);
+        (*this)[i] = res;
+    }
 }
 
 InfoHash
