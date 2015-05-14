@@ -397,9 +397,13 @@ Dht::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
         }
         /* Discard it from any searches in progress. */
         for (auto& sr : searches) {
-            sr.nodes.erase(std::remove_if (sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn){
-                return sn.node == n;
-            }));
+            auto sni = std::begin(sr.nodes);
+            while (sni != std::end(sr.nodes)) {
+                if ((*sni).node == n)
+                    sni = sr.nodes.erase(sni);
+                else
+                    ++sni;
+            }
         }
     }
     /* And make sure we don't hear from it again. */
