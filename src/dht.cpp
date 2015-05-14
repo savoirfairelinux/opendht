@@ -2010,6 +2010,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
 
     want_t want;
     uint16_t ttid;
+    bool ring;
 
     if (isMartian(from, fromlen))
         return;
@@ -2026,7 +2027,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         message = parseMessage(buf, buflen, tid, id, info_hash, target,
                                 port, token, value_id,
                                 nodes, &nodes_len, nodes6, &nodes6_len,
-                                values, &want, error_code);
+                               values, &want, error_code, ring);
         if (message != MessageType::Error && id == zeroes)
             throw DhtException("no or invalid InfoHash");
     } catch (const std::exception& e) {
@@ -2034,6 +2035,10 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         DHT_DEBUG.logPrintable(buf, buflen);
         return;
     }
+
+    // drop msg with unknown protocol
+    if (not ring)
+        return;
 
     if (id == myid) {
         DHT_DEBUG("Received message from self.");
@@ -2898,7 +2903,7 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
               uint8_t *nodes_return, unsigned *nodes_len,
               uint8_t *nodes6_return, unsigned *nodes6_len,
               std::vector<std::shared_ptr<Value>>& values_return,
-              want_t* want_return, uint16_t& error_code)
+                  want_t* want_return, uint16_t& error_code, bool& ring)
 {
     const uint8_t *p;
 
@@ -3056,6 +3061,8 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
     }
 
 #undef CHECK
+
+    ring = dht_memmem(buf, buflen, my_v, sizeof(my_v));
 
     if (dht_memmem(buf, buflen, "1:y1:r", 6))
         return MessageType::Reply;

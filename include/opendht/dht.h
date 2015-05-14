@@ -677,7 +677,7 @@ private:
                   uint8_t *nodes_return, unsigned *nodes_len,
                   uint8_t *nodes6_return, unsigned *nodes6_len,
                   std::vector<std::shared_ptr<Value>>& values_return,
-                  want_t* want_return, uint16_t& error_code);
+                             want_t* want_return, uint16_t& error_code, bool& ring);
 
     void rotateSecrets();
 
