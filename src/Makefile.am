@@ -12,6 +12,10 @@ libopendht_la_SOURCES = \
         dhtrunner.cpp \
         default_types.cpp
 
+if WIN32
+libopendht_la_SOURCES := rng.cpp
+endif
+
 nobase_include_HEADERS = \
         ../include/opendht.h \
         ../include/opendht/dht.h \

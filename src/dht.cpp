@@ -25,6 +25,7 @@ THE SOFTWARE.
 */
 
 #include "dht.h"
+#include "rng.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
@@ -82,7 +83,7 @@ set_nonblocking(int fd, int nonblocking)
 #define WANT4 1
 #define WANT6 2
 
-static std::mt19937 rd {std::random_device{}()};
+static std::mt19937 rd {dht::crypto::random_device{}()};
 static std::uniform_int_distribution<uint8_t> rand_byte;
 
 static const uint8_t v4prefix[16] = {
@@ -1321,7 +1322,7 @@ Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback cal
     now = clock::now();
 
     if (val->id == Value::INVALID_ID) {
-        std::random_device rdev;
+        crypto::random_device rdev;
         std::uniform_int_distribution<Value::Id> rand_id {};
         val->id = rand_id(rdev);
     }
@@ -1622,7 +1623,7 @@ Dht::rotateSecrets()
 
     oldsecret = secret;
     {
-        std::random_device rdev;
+        crypto::random_device rdev;
         std::generate_n(secret.begin(), secret.size(), std::bind(rand_byte, std::ref(rdev)));
     }
 }
@@ -1865,7 +1866,7 @@ Dht::Dht(int s, int s6, const InfoHash& id)
 
     // Fill old secret
     {
-        std::random_device rdev;
+        crypto::random_device rdev;
         std::generate_n(secret.begin(), secret.size(), std::bind(rand_byte, std::ref(rdev)));
     }
     rotateSecrets();

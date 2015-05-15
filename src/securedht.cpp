@@ -29,6 +29,7 @@
  */
 
 #include "securedht.h"
+#include "rng.h"
 
 #include "default_types.h"
 
@@ -252,7 +253,7 @@ void
 SecureDht::putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback)
 {
     if (val->id == Value::INVALID_ID) {
-        std::random_device rdev;
+        crypto::random_device rdev;
         val->id = rand_id(rdev);
     }
 

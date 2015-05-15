@@ -29,6 +29,7 @@
  */
 
 #include "crypto.h"
+#include "rng.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
@@ -520,7 +521,7 @@ generateIdentity(const std::string& name, crypto::Identity ca)
     gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, uid_str.data(), uid_str.length());
 
     {
-        std::random_device rdev;
+        random_device rdev;
         std::uniform_int_distribution<uint64_t> dist{};
         uint64_t cert_serial = dist(rdev);
         gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
