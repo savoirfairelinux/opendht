@@ -82,7 +82,18 @@ set_nonblocking(int fd, int nonblocking)
 #define WANT4 1
 #define WANT6 2
 
+#ifndef _WIN32
 static std::mt19937 rd {std::random_device{}()};
+#else
+std::seed_seq& getSeed() {
+    int seed_data[std::mt19937::state_size];
+    std::default_random_engine dre(std::chrono::system_clock::now().time_since_epoch().count());
+    std::generate_n(seed_data, std::mt19937::state_size, std::ref(dre));
+    static std::seed_seq seed(std::begin(seed_data), std::end(seed_data));
+    return seed;
+}
+static std::mt19937 rd {(getSeed())};
+#endif
 static std::uniform_int_distribution<uint8_t> rand_byte;
 
 static const uint8_t v4prefix[16] = {
@@ -1321,7 +1332,11 @@ Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback cal
     now = clock::now();
 
     if (val->id == Value::INVALID_ID) {
+#ifndef _WIN32
         std::random_device rdev;
+#else
+        std::default_random_engine rdev(std::chrono::system_clock::now().time_since_epoch().count());
+#endif
         std::uniform_int_distribution<Value::Id> rand_id {};
         val->id = rand_id(rdev);
     }
@@ -1622,7 +1637,11 @@ Dht::rotateSecrets()
 
     oldsecret = secret;
     {
+#ifndef _WIN32
         std::random_device rdev;
+#else
+        std::default_random_engine rdev(std::chrono::system_clock::now().time_since_epoch().count());
+#endif
         std::generate_n(secret.begin(), secret.size(), std::bind(rand_byte, std::ref(rdev)));
     }
 }
@@ -1865,7 +1884,11 @@ Dht::Dht(int s, int s6, const InfoHash& id)
 
     // Fill old secret
     {
+#ifndef _WIN32
         std::random_device rdev;
+#else
+        std::default_random_engine rdev(std::chrono::system_clock::now().time_since_epoch().count());
+#endif
         std::generate_n(secret.begin(), secret.size(), std::bind(rand_byte, std::ref(rdev)));
     }
     rotateSecrets();
