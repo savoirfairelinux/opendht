@@ -1,17 +1,36 @@
 #include "rng.h"
 
+#include <chrono>
 #include <cstring>
 
 namespace dht {
 namespace crypto {
 
+random_device::random_device() :
+   has_rdrand(hasRdrand()),
+   has_rdseed(hasRdseed()),
+   gen(std::chrono::system_clock::now().time_since_epoch().count())
+{}
+
+random_device::result_type
+random_device::operator()()
+{
+    result_type prand = dis(gen);
+    result_type hwrand;
+    if (has_rdseed and rdseed(&hwrand))
+        prand ^= hwrand;
+    else if (has_rdrand and rdrand(&hwrand))
+        prand ^= hwrand;
+    return prand;
+}
+
 void
-random_device::cpuid_info(CPUIDinfo *info, const unsigned int func, const unsigned int subfunc)
+random_device::CPUIDinfo::get(const unsigned int func, const unsigned int subfunc)
 {
     __asm__ __volatile__ (
-            "cpuid"
-            : "=a"(info->EAX), "=b"(info->EBX), "=c"(info->ECX), "=d"(info->EDX)
-            : "a"(func), "c"(subfunc)
+        "cpuid"
+        : "=a"(EAX), "=b"(EBX), "=c"(ECX), "=d"(EDX)
+        : "a"(func), "c"(subfunc)
     );
 }
 
@@ -19,7 +38,7 @@ bool
 random_device::hasIntelCpu()
 {
     CPUIDinfo info;
-    cpuid_info(&info, 0, 0);
+    info.get(0, 0);
     if (memcmp((char *) (&info.EBX), "Genu", 4) == 0
      && memcmp((char *) (&info.EDX), "ineI", 4) == 0
      && memcmp((char *) (&info.ECX), "ntel", 4) == 0) {
@@ -29,13 +48,13 @@ random_device::hasIntelCpu()
 }
 
 bool
-random_device::hasRDRAND()
+random_device::hasRdrand()
 {
     if (!hasIntelCpu())
         return false;
 
     CPUIDinfo info;
-    cpuid_info(&info, 1, 0);
+    info.get(1, 0);
     static const constexpr unsigned int RDRAND_FLAG = (1 << 30);
     if ((info.ECX & RDRAND_FLAG) == RDRAND_FLAG)
         return true;
@@ -43,35 +62,61 @@ random_device::hasRDRAND()
 }
 
 bool
-random_device::RDRAND_bytes(uint8_t* buff, size_t bsize)
+random_device::hasRdseed()
 {
-    if (!hasRDRAND())
+    if (!hasIntelCpu())
         return false;
 
-    size_t idx = 0, rem = bsize;
-    size_t safety = bsize / sizeof(unsigned int) + 4;
+    CPUIDinfo info;
+    info.get(7, 0);
+    static const constexpr unsigned int RDSEED_FLAG = (1 << 18);
+    if ((info.ECX & RDSEED_FLAG) == RDSEED_FLAG)
+        return true;
+    return false;
+}
 
-    while (rem > 0 && safety > 0)
-    {
-        char rc;
-        unsigned int val;
+bool
+random_device::rdrandStep(result_type* r)
+{
+    unsigned char ok;
+    asm volatile ("rdrand %0; setc %1"
+        : "=r" (*r), "=qm" (ok));
+    return ok;
+}
 
-        __asm__ volatile(
-                "rdrand %0 ; setc %1"
-                : "=r" (val), "=qm" (rc)
-        );
+bool
+random_device::rdrand(result_type* r)
+{
+    result_type res;
+    unsigned retries = 8;
+    while (retries--)
+        if (rdrandStep(&res)) {
+            *r = res;
+            return true;
+        }
+    return false;
+}
 
-        // 1 = success, 0 = underflow
-        if (rc) {
-            size_t cnt = (rem < sizeof(val) ? rem : sizeof(val));
-            memmove(buff + idx, &val, cnt);
-            rem -= cnt;
-            idx += cnt;
-        } else {
-            safety--;
-		}
-    }
-    return !rem;
+bool
+random_device::rdseedStep(result_type* r)
+{
+    unsigned char ok;
+    asm volatile ("rdseed %0; setc %1"
+        : "=r" (*r), "=qm" (ok));
+    return ok;
+}
+
+bool
+random_device::rdseed(result_type* r)
+{
+    result_type res;
+    unsigned retries = 256;
+    while (retries--)
+        if (rdseedStep(&res)) {
+            *r = res;
+            return true;
+        }
+    return false;
 }
 
 }}
