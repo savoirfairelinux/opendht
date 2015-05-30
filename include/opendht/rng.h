@@ -5,6 +5,10 @@ namespace crypto {
 
 #ifdef _WIN32
 
+/**
+ * Hardware random rumber generator using Intel RDRAND/RDSEED,
+ * API-compatible with std::random_device.
+ */
 class random_device {
 public:
     using result_type = std::random_device::result_type;
