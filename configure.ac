@@ -44,7 +44,7 @@ case "${host_os}" in
     ;;
 esac
 
-AM_CONDITIONAL(WIN32, [test x"$SYS" = mingw32])
+AM_CONDITIONAL(WIN32, [test "x$SYS" = "xmingw32"])
 AS_IF([test "x$SYS" = "xandroid"],
       [], [LDFLAGS="${LDFLAGS} -lpthread"])
 
