@@ -13,7 +13,7 @@ libopendht_la_SOURCES = \
         default_types.cpp
 
 if WIN32
-libopendht_la_SOURCES := rng.cpp
+libopendht_la_SOURCES += rng.cpp
 endif
 
 nobase_include_HEADERS = \
