@@ -78,9 +78,9 @@ public:
     virtual ~Dht();
 
     /**
-     * Get the ID of the node, which was provided in the constructor.
+     * Get the ID of the node.
      */
-    inline const InfoHash& getId() const { return myid; }
+    inline const InfoHash& getNodeId() const { return myid; }
 
     /**
      * Get the current status of the node for the given family.

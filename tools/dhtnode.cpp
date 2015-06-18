@@ -113,7 +113,7 @@ main(int argc, char **argv)
         i += 2;
     }
 
-    std::cout << "OpenDht node " << dht.getRoutingId() << " running on port " <<  port<<  std::endl;
+    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  port<<  std::endl;
     std::cout << "Public key ID " << dht.getId() << std::endl;
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 

@@ -150,10 +150,15 @@ public:
         return dht_->getId();
     }
 
-    InfoHash getRoutingId() const {
+    InfoHash getNodeId() const {
         if (!dht_)
             return {};
-        return dht_->getRoutingId();
+        return dht_->getNodeId();
+    }
+
+    //[[deprecated]]
+    InfoHash getRoutingId() const {
+        return getNodeId();
     }
 
     std::vector<Dht::NodeExport> exportNodes() const {

@@ -61,10 +61,6 @@ public:
         return key_->getPublicKey().getId();
     }
 
-    InfoHash getRoutingId() const {
-        return Dht::getId();
-    }
-
     ValueType secureType(ValueType&& type);
 
     ValueType secureType(const ValueType& type) {
