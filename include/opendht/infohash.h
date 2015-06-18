@@ -127,8 +127,7 @@ public:
     int
     xorCmp(const InfoHash& id1, const InfoHash& id2) const
     {
-        unsigned i;
-        for(i = 0; i < HASH_LEN; i++) {
+        for(unsigned i = 0; i < HASH_LEN; i++) {
             uint8_t xor1, xor2;
             if(id1[i] == id2[i])
                 continue;
@@ -140,6 +139,31 @@ public:
                 return 1;
         }
         return 0;
+    }
+
+    bool
+    getBit(unsigned nbit) const
+    {
+        auto& num = *(cbegin()+(nbit/8));
+        unsigned bit = 7 - (nbit % 8);
+        return (num >> bit) & 1;
+    }
+
+    void
+    setBit(unsigned nbit, bool b)
+    {
+        auto& num = *(begin()+(nbit/8));
+        unsigned bit = 7 - (nbit % 8);
+        num ^= (-b ^ num) & (1 << bit);
+    }
+
+    bool
+    operator<(const InfoHash& o) const {
+        for(unsigned i = 0; i < HASH_LEN; i++) {
+            if((*this)[i] != o[i])
+                return (*this)[i] < o[i];
+        }
+        return false;
     }
 
     static inline InfoHash get(const std::string& data) {
