@@ -88,10 +88,12 @@ public:
     Status getStatus(sa_family_t af) const;
 
     /**
-     * Returns true if the node have access to an open socket
-     * for the provided family.
+     * Returns true if the node is running (have access to an open socket).
+     *
+     *  af: address family. If non-zero, will return true if the node
+     *      is running for the provided family.
      */
-    bool isRunning(sa_family_t af) const;
+    bool isRunning(sa_family_t af = 0) const;
 
     /**
      * Enable or disable logging of DHT internal messages

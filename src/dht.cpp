@@ -173,8 +173,16 @@ Dht::getStatus(sa_family_t af) const
 bool
 Dht::isRunning(sa_family_t af) const
 {
-    return (af == AF_INET  && dht_socket  >= 0)
-        || (af == AF_INET6 && dht_socket6 >= 0);
+    switch (af) {
+    case 0:
+        return dht_socket  >= 0 ||  dht_socket6 >= 0;
+    case AF_INET:
+        return dht_socket  >= 0;
+    case AF_INET6:
+        return dht_socket6 >= 0;
+    default:
+        return false;
+    }
 }
 
 bool
