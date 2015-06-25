@@ -14,6 +14,11 @@ AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_AR
 
+AC_CHECK_PROGS([DOXYGEN], [doxygen])
+if test -z "$DOXYGEN";
+   then AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])
+fi
+
 case "${host_os}" in
   "")
     SYS=unknown
@@ -58,6 +63,9 @@ PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
+
+AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
+AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])])
 
 AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile opendht.pc])
 AC_OUTPUT

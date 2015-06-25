@@ -2,6 +2,9 @@ SUBDIRS = src
 if ENABLE_TOOLS
 SUBDIRS += tools
 endif
+if HAVE_DOXYGEN
+SUBDIRS += doc
+endif
 
 ACLOCAL_AMFLAGS = -I m4
 
