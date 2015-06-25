@@ -144,15 +144,16 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
     InfoHash h = crt->getPublicKey().getId();
     if (node == h) {
         DHT_DEBUG("Registering public key for %s", h.toString().c_str());
-        nodesCertificates_[h] = crt;
+        auto it = nodesCertificates_.find(h);
+        if (it == nodesCertificates_.end())
+            std::tie(it, std::ignore) = nodesCertificates_.emplace(h, std::move(crt));
+        else
+            it->second = std::move(crt);
+        return it->second;
     } else {
         DHT_DEBUG("Certificate %s for node %s does not match node id !", h.toString().c_str(), node.toString().c_str());
         return nullptr;
     }
-    auto it = nodesCertificates_.find(h);
-    if (it == nodesCertificates_.end())
-        return nullptr;
-    return it->second;
 }
 
 void
@@ -172,6 +173,17 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
             cb(b);
         return;
     }
+    if (localQueryMethod_) {
+        auto res = localQueryMethod_(node);
+        if (not res.empty()) {
+            DHT_DEBUG("Registering public key from local store for %s", node.toString().c_str());
+            nodesCertificates_.emplace(node, res.front());
+            if (cb)
+                cb(res.front());
+            return;
+        }
+    }
+
     auto found = std::make_shared<bool>(false);
     Dht::get(node, [cb,node,found,this](const std::vector<std::shared_ptr<Value>>& vals) {
         if (*found)

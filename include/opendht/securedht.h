@@ -121,6 +121,18 @@ public:
 
     const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
 
+
+    using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
+
+    /**
+     * Allows to set a custom callback called by the library to find a locally-stored certificate.
+     * The search key used is the public key ID, so there may be multiple certificates retured, signed with
+     * the same private key.
+     */
+    void setLocalCertificateStore(CertificateStoreQuery&& query_method) {
+        localQueryMethod_ = std::move(query_method);
+    }
+
 private:
     // prevent copy
     SecureDht(const SecureDht&) = delete;
@@ -131,6 +143,10 @@ private:
     std::shared_ptr<crypto::PrivateKey> key_ {};
     std::shared_ptr<crypto::Certificate> certificate_ {};
 
+    // method to query the local certificate store
+    CertificateStoreQuery localQueryMethod_ {};
+
+    // our certificate cache
     std::map<InfoHash, std::shared_ptr<crypto::Certificate>> nodesCertificates_ {};
 
     std::uniform_int_distribution<Value::Id> rand_id {};

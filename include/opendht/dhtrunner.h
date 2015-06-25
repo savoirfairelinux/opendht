@@ -223,6 +223,10 @@ public:
         std::lock_guard<std::mutex> lck(dht_mtx);
         dht_->registerCertificate(cert);
     }
+    void setLocalCertificateStore(SecureDht::CertificateStoreQuery&& query_method) {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        dht_->setLocalCertificateStore(std::move(query_method));
+    }
 
     /**
      * If threaded is false, loop() must be called periodically.
