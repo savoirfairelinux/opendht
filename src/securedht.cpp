@@ -304,7 +304,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
     findCertificate(to, [=](const std::shared_ptr<crypto::Certificate> crt) {
         if(!crt || !*crt) {
             if (callback)
-                callback(false);
+                callback(false, {});
             return;
         }
         DHT_WARN("Encrypting data for PK: %s", crt->getPublicKey().getId().toString().c_str());
@@ -313,7 +313,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
         } catch (const std::exception& e) {
             DHT_ERROR("Error putting encrypted data: %s", e.what());
             if (callback)
-                callback(false);
+                callback(false, {});
         }
     });
 }

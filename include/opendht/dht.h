@@ -57,8 +57,16 @@ public:
         Connected     // 1+ good nodes
     };
 
+    struct Node;
     typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
-    typedef std::function<void(bool success)> DoneCallback;
+    typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
+    typedef std::function<void(bool success)> DoneCallbackSimple;
+
+    static DoneCallback
+    bindDoneCb(DoneCallbackSimple donecb) {
+        using namespace std::placeholders;
+        return std::bind(donecb, _1);
+    }
 
     struct NodeExport {
         InfoHash id;
@@ -131,6 +139,9 @@ public:
      * Then, DoneCallback is called.
      */
     void get(const InfoHash& id, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter = Value::AllFilter());
+    void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
+        get(id, cb, bindDoneCb(donecb), f);
+    }
 
     /**
      * Get locally stored data for the given hash.
@@ -153,9 +164,15 @@ public:
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
     void put(const InfoHash&, const std::shared_ptr<Value>&, DoneCallback cb=nullptr);
+    void put(const InfoHash& id, const std::shared_ptr<Value>& v, DoneCallbackSimple cb) {
+        put(id, v, bindDoneCb(cb));
+    }
 
     void put(const InfoHash& h, Value&& v, DoneCallback cb=nullptr) {
         put(h, std::make_shared<Value>(std::move(v)), cb);
+    }
+    void put(const InfoHash& id, Value&& v, DoneCallbackSimple cb) {
+        put(id, std::forward<Value>(v), bindDoneCb(cb));
     }
 
     /**
@@ -204,12 +221,47 @@ public:
     /* This must be provided by the user. */
     static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
 
+    struct Node {
+        InfoHash id {};
+        sockaddr_storage ss;
+        socklen_t sslen {0};
+        time_point time {};            /* last time eared about */
+        time_point reply_time {};      /* time of last correct reply received */
+        time_point pinged_time {};     /* time of last message sent */
+        unsigned pinged {0};           /* how many requests we sent since last reply */
+
+        Node() : ss() {
+            std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
+        }
+        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
+            : id(id), ss(), sslen(salen) {
+            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
+        }
+        bool isExpired(time_point now) const;
+        bool isGood(time_point now) const;
+        NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
+        sa_family_t getFamily() const { return ss.ss_family; }
+
+        void update(const sockaddr* sa, socklen_t salen);
+
+        /** To be called when a message was sent to the noe */
+        void requested(time_point now);
+
+        /** To be called when a message was received from the node.
+         Answer should be true if the message was an aswer to a request we made*/
+        void received(time_point now, bool answer);
+
+        friend std::ostream& operator<< (std::ostream& s, const Node& h);
+    };
+
 protected:
     LogMethod DHT_DEBUG = NOLOG;
     LogMethod DHT_WARN = NOLOG;
     LogMethod DHT_ERROR = NOLOG;
 
 private:
+
+    static constexpr unsigned TARGET_NODES {8};
 
     /* When performing a search, we search for up to SEARCH_NODES closest nodes
        to the destination, and use the additional ones to backtrack if any of
@@ -258,51 +310,6 @@ private:
 
     static constexpr unsigned TOKEN_SIZE {64};
 
-    struct Node {
-        InfoHash id {};
-        sockaddr_storage ss;
-        socklen_t sslen {0};
-        time_point time {};            /* last time eared about */
-        time_point reply_time {};      /* time of last correct reply received */
-        time_point pinged_time {};     /* time of last message sent */
-        unsigned pinged {0};           /* how many requests we sent since last reply */
-
-        Node() : ss() {
-            std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
-        }
-        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-            : id(id), ss(), sslen(salen) {
-            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-        }
-        bool isExpired(time_point now) const {
-            return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
-        }
-        bool isGood(time_point now) const;
-        NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
-        sa_family_t getFamily() const { return ss.ss_family; }
-
-        void update(const sockaddr* sa, socklen_t salen) {
-            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-            sslen = salen;
-        }
-
-        /** To be called when a message was sent to the noe */
-        void requested(time_point now) {
-            pinged++;
-            if (reply_time > pinged_time || pinged_time + MAX_RESPONSE_TIME < now)
-                pinged_time = now;
-        }
-
-        /** To be called when a message was received from the node.
-         Answer should be true if the message was an aswer to a request we made*/
-        void received(time_point now, bool answer) {
-            time = now;
-            if (answer) {
-                pinged = 0;
-                reply_time = now;
-            }
-        }
-    };
 
     struct NodeCache {
         std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
@@ -501,6 +508,8 @@ private:
         time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
 
         bool removeExpiredNode(time_point now);
+
+        std::vector<std::shared_ptr<Dht::Node>> getNodes(time_point now) const;
     };
 
     struct ValueStorage {

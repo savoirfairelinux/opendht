@@ -58,6 +58,9 @@ public:
     virtual ~DhtRunner();
 
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
+    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallbackSimple cb) {
+        get(hash, vcb, Dht::bindDoneCb(cb));
+    }
     void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
 
     template <class T>
@@ -126,12 +129,22 @@ public:
 
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
+    void put(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
+        put(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
+    }
+
     void cancelPut(const InfoHash& h , const Value::Id& id);
 
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
+    void putSigned(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
+        putSigned(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
+    }
 
     void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb=nullptr);
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallbackSimple cb) {
+        putEncrypted(hash, to, std::forward<Value>(value), Dht::bindDoneCb(cb));
+    }
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb=nullptr);
 
     void bootstrap(const char* host, const char* service);

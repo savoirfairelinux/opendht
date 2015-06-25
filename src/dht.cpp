@@ -117,6 +117,12 @@ print_addr(const sockaddr* sa, socklen_t slen)
     return out.str();
 }
 
+static std::string
+print_addr(const sockaddr_storage& ss, socklen_t sslen)
+{
+    return print_addr((const sockaddr*)&ss, sslen);
+}
+
 template <class DT>
 static double
 print_dt(DT d) {
@@ -322,6 +328,47 @@ Dht::Node::isGood(time_point now) const
         reply_time >= now - NODE_GOOD_TIME &&
         time >= now - NODE_EXPIRE_TIME;
 }
+
+bool
+Dht::Node::isExpired(time_point now) const
+{
+    return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
+}
+
+void
+Dht::Node::update(const sockaddr* sa, socklen_t salen)
+{
+    std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
+    sslen = salen;
+}
+
+/** To be called when a message was sent to the noe */
+void
+Dht::Node::requested(time_point now)
+{
+    pinged++;
+    if (reply_time > pinged_time || pinged_time + MAX_RESPONSE_TIME < now)
+        pinged_time = now;
+}
+
+/** To be called when a message was received from the node.
+ Answer should be true if the message was an aswer to a request we made*/
+void
+Dht::Node::received(time_point now, bool answer)
+{
+    time = now;
+    if (answer) {
+        pinged = 0;
+        reply_time = now;
+    }
+}
+
+std::ostream& operator<< (std::ostream& s, const Dht::Node& h)
+{
+    s << h.id << " " << print_addr(h.ss, h.sslen);
+    return s;
+}
+
 
 std::shared_ptr<Dht::Node>
 Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
@@ -536,7 +583,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         return n;
     }
 
-    if (b->nodes.size() >= 8) {
+    if (b->nodes.size() >= TARGET_NODES) {
         /* Bucket full.  Ping a dubious node */
         bool dubious = false;
         for (auto& n : b->nodes) {
@@ -690,6 +737,22 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     return true;
 }
 
+std::vector<std::shared_ptr<Dht::Node>>
+Dht::Search::getNodes(time_point now) const
+{
+    std::vector<std::shared_ptr<Node>> ret {};
+    ret.reserve(TARGET_NODES);
+    //size_t i = 0;
+    for (const auto& sn : nodes) {
+        if (not sn.node->isExpired(now) and sn.isSynced(now)) {
+            ret.emplace_back(sn.node);
+            /*if (++i == TARGET_NODES)
+                break;*/
+        }
+    }
+    return ret;
+}
+
 void
 Dht::expireSearches()
 {
@@ -741,7 +804,7 @@ Dht::searchStep(Search& sr)
 {
     DHT_WARN("Search IPv%c %s searchStep.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
 
-    /* Check if the first 8 live nodes have replied. */
+    /* Check if the first TARGET_NODES (8) live nodes have replied. */
     if (sr.isSynced(now)) {
         if (not sr.callbacks.empty()) {
             // search is synced but some (newer) get operations are not complete
@@ -750,7 +813,7 @@ Dht::searchStep(Search& sr)
             for (auto b = sr.callbacks.begin(); b != sr.callbacks.end();) {
                 if (sr.isDone(*b, now)) {
                     if (b->done_cb)
-                        b->done_cb(true);
+                        b->done_cb(true, sr.getNodes(now));
                     b = sr.callbacks.erase(b);
                 }
                 else
@@ -820,7 +883,7 @@ Dht::searchStep(Search& sr)
                         // fields after sending the announce requests for every value to announce
                         n.pending = true;
                     }
-                    if (++i == 8)
+                    if (++i == TARGET_NODES)
                         break;
                 }
             }
@@ -864,7 +927,7 @@ Dht::searchStep(Search& sr)
                 auto get_cbs = std::move(sr.callbacks);
                 for (const auto& g : get_cbs) {
                     if (g.done_cb)
-                        g.done_cb(false);
+                        g.done_cb(false, {});
                 }
             }
             {
@@ -874,7 +937,7 @@ Dht::searchStep(Search& sr)
                     if (a.callback)
                         a_cbs.emplace_back(std::move(a.callback));
                 for (const auto& a : a_cbs)
-                    a(false);
+                    a(false, {});
             }
             return;
         }
@@ -927,7 +990,7 @@ Dht::Search::isSynced(time_point now) const
             continue;
         if (!n.isSynced(now))
             return false;
-        if (++i == 8)
+        if (++i == TARGET_NODES)
             break;
     }
     return i > 0;
@@ -958,7 +1021,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
             continue;
         if (sn.getStatus.reply_time < limit)
             return false;
-        if (++i == 8)
+        if (++i == TARGET_NODES)
             break;
     }
     return true;
@@ -984,7 +1047,7 @@ Dht::Search::getUpdateTime(time_point now) const
                 sn.getStatus.request_time + MAX_RESPONSE_TIME,
                 sn.getStatus.reply_time + NODE_EXPIRE_TIME));
         }
-        if (++i == 8)
+        if (++i == TARGET_NODES)
             break;
     }
     if (not callbacks.empty() and i == d) {
@@ -1005,7 +1068,7 @@ Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_point now) co
             continue;
         if (!n.isAnnounced(id, type, now))
             return false;
-        if (++i == 8)
+        if (++i == TARGET_NODES)
             break;
     }
     return i;
@@ -1045,7 +1108,7 @@ Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, ti
             auto at = n.getAnnounceTime(a.value->id, type);
             if (at != TIME_INVALID && (ret == TIME_INVALID || ret > at))
                 ret = at;
-            if (++i == 8)
+            if (++i == TARGET_NODES)
                 break;
         }
     }
@@ -1133,7 +1196,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     if (!isRunning(af)) {
         DHT_ERROR("Unsupported protocol IPv%s bucket for %s", (af == AF_INET) ? "4" : "6", id.toString().c_str());
         if (done_callback)
-            done_callback(false);
+            done_callback(false, {});
         return nullptr;
     }
 
@@ -1174,7 +1237,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
 {
     if (!value) {
         if (callback)
-            callback(false);
+            callback(false, {});
         return;
     }
     auto sri = std::find_if (searches.begin(), searches.end(), [id,af](const Search& s) {
@@ -1183,7 +1246,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
     Search* sr = (sri == searches.end()) ? search(id, af, nullptr, nullptr) : &(*sri);
     if (!sr) {
         if (callback)
-            callback(false);
+            callback(false, {});
         return;
     }
     sr->done = false;
@@ -1199,7 +1262,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
                 n.acked[value->id] = {};
         }
         if (a_sr->callback)
-            a_sr->callback(false);
+            a_sr->callback(false, {});
         a_sr->callback = callback;
     }
     auto tm = sr->getNextStepTime(types, now);
@@ -1341,24 +1404,24 @@ Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback cal
     auto done = std::make_shared<bool>(false);
     auto done4 = std::make_shared<bool>(false);
     auto done6 = std::make_shared<bool>(false);
-    auto donecb = [=]() {
+    auto donecb = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
         // Callback as soon as the value is announced on one of the available networks
         if (callback && !*done && (*ok || (*done4 && *done6))) {
-            callback(*ok);
+            callback(*ok, nodes);
             *done = true;
         }
     };
-    announce(id, AF_INET, val, [=](bool ok4) {
+    announce(id, AF_INET, val, [=](bool ok4, const std::vector<std::shared_ptr<Node>>& nodes) {
         DHT_DEBUG("Announce done IPv4 %d", ok4);
         *done4 = true;
         *ok |= ok4;
-        donecb();
+        donecb(nodes);
     });
-    announce(id, AF_INET6, val, [=](bool ok6) {
+    announce(id, AF_INET6, val, [=](bool ok6, const std::vector<std::shared_ptr<Node>>& nodes) {
         DHT_DEBUG("Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
-        donecb();
+        donecb(nodes);
     });
 }
 
@@ -1373,12 +1436,14 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     auto ok4 = std::make_shared<bool>(false);
     auto ok6 = std::make_shared<bool>(false);
     auto vals = std::make_shared<std::vector<std::shared_ptr<Value>>>();
-    auto done_l = [=]() {
+    auto all_nodes = std::make_shared<std::vector<std::shared_ptr<Node>>>();
+    auto done_l = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
+        all_nodes->insert(all_nodes->end(), nodes.begin(), nodes.end());
         if ((*done4 && *done6) || *done) {
             bool ok = *done || *ok4 || *ok6;
             *done = true;
             if (donecb)
-                donecb(ok);
+                donecb(ok, *all_nodes);
         }
     };
     auto cb = [=](const std::vector<std::shared_ptr<Value>>& values) {
@@ -1398,24 +1463,24 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
             *done = !getcb(newvals);
             vals->insert(vals->end(), newvals.begin(), newvals.end());
         }
-        done_l();
+        done_l({});
         return !*done;
     };
 
     /* Try to answer this search locally. */
     cb(getLocal(id, filter));
 
-    Dht::search(id, AF_INET, cb, [=](bool ok) {
+    Dht::search(id, AF_INET, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
         DHT_WARN("DHT done IPv4");
         *done4 = true;
         *ok4 = ok;
-        done_l();
+        done_l(nodes);
     });
-    Dht::search(id, AF_INET6, cb, [=](bool ok) {
+    Dht::search(id, AF_INET6, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
         DHT_WARN("DHT done IPv6");
         *done6 = true;
         *ok6 = ok;
-        done_l();
+        done_l(nodes);
     });
 }
 
@@ -1971,7 +2036,7 @@ Dht::bucketMaintenance(RoutingTable& list)
 
                 if (dht_socket >= 0 && dht_socket6 >= 0) {
                     auto otherbucket = findBucket(id, q->af == AF_INET ? AF_INET6 : AF_INET);
-                    if (otherbucket && otherbucket->nodes.size() < 8)
+                    if (otherbucket && otherbucket->nodes.size() < TARGET_NODES)
                         /* The corresponding bucket in the other family
                            is emptyish -- querying both is useful. */
                         want = WANT4 | WANT6;
@@ -2213,7 +2278,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     if (!a.callback || !a.value || a.value->id != value_id)
                         continue;
                     if (sr->isAnnounced(value_id, getType(a.value->type), now)) {
-                        a.callback(true);
+                        a.callback(true, sr->getNodes(now));
                         a.callback = nullptr;
                     }
                 }
@@ -2682,10 +2747,10 @@ Dht::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, co
             break;
     }
 
-    if (i >= 8)
+    if (i >= TARGET_NODES)
         return numnodes;
 
-    if (numnodes < 8)
+    if (numnodes < TARGET_NODES)
         numnodes++;
 
     if (i < numnodes - 1)
