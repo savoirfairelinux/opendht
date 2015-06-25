@@ -448,6 +448,13 @@ Certificate::getIssuerUID() const
     return uid;
 }
 
+bool
+Certificate::isCA() const
+{
+    unsigned critical;
+    return gnutls_x509_crt_get_ca_status(cert, &critical) > 0;
+}
+
 std::string
 Certificate::toString(bool chain) const
 {

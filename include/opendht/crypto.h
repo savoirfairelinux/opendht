@@ -185,6 +185,11 @@ struct Certificate : public Serializable {
     std::string getIssuerUID() const;
 
     /**
+     * Returns true if the certificate is marked as a Certificate Authority.
+     */
+    bool isCA() const;
+
+    /**
      * PEM encoded certificate.
      * If chain is true, the issuer chain will be included (default).
      */
