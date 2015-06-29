@@ -310,6 +310,16 @@ DhtRunner::put(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 }
 
 void
+DhtRunner::put(InfoHash hash, const std::shared_ptr<Value>& value, Dht::DoneCallback cb)
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) {
+        dht.put(hash, value, cb);
+    });
+    cv.notify_all();
+}
+
+void
 DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallback cb)
 {
     put(InfoHash::get(key), std::forward<Value>(value), cb);

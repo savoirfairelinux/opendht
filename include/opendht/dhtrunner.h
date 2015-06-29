@@ -57,7 +57,7 @@ public:
     DhtRunner();
     virtual ~DhtRunner();
 
-    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
+    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f={});
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallbackSimple cb) {
         get(hash, vcb, Dht::bindDoneCb(cb));
     }
@@ -128,10 +128,11 @@ public:
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
-    void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
+    void put(InfoHash hash, const std::shared_ptr<Value>&, Dht::DoneCallback cb=nullptr);
     void put(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
         put(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
     }
+    void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
 
     void cancelPut(const InfoHash& h , const Value::Id& id);
 
@@ -169,6 +170,9 @@ public:
         return dht_->getNodeId();
     }
 
+    /**
+     * @deprecated
+     */
     //[[deprecated]]
     InfoHash getRoutingId() const {
         return getNodeId();
