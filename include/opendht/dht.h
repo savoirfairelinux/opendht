@@ -41,6 +41,56 @@ THE SOFTWARE.
 
 namespace dht {
 
+struct NodeExport {
+    InfoHash id;
+    sockaddr_storage ss;
+    socklen_t sslen;
+};
+
+struct Node {
+    InfoHash id {};
+    sockaddr_storage ss;
+    socklen_t sslen {0};
+    time_point time {};            /* last time eared about */
+    time_point reply_time {};      /* time of last correct reply received */
+    time_point pinged_time {};     /* time of last message sent */
+    unsigned pinged {0};           /* how many requests we sent since last reply */
+
+    Node() : ss() {
+        std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
+    }
+    Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
+        : id(id), ss(), sslen(salen) {
+        std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
+    }
+    InfoHash getId() const {
+        return id;
+    }
+    bool isExpired(time_point now) const;
+    bool isGood(time_point now) const;
+    NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
+    sa_family_t getFamily() const { return ss.ss_family; }
+
+    void update(const sockaddr* sa, socklen_t salen);
+
+    /** To be called when a message was sent to the noe */
+    void requested(time_point now);
+
+    /** To be called when a message was received from the node.
+     Answer should be true if the message was an aswer to a request we made*/
+    void received(time_point now, bool answer);
+
+    friend std::ostream& operator<< (std::ostream& s, const Node& h);
+
+    static constexpr const std::chrono::minutes NODE_GOOD_TIME {120};
+
+    /* The time after which we consider a node to be expirable. */
+    static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
+
+    /* Time for a request to timeout */
+    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {3};
+};
+
 /**
  * Main Dht class.
  * Provides a Distributed Hash Table node.
@@ -57,9 +107,34 @@ public:
         Connected     // 1+ good nodes
     };
 
-    struct Node;
-    typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
-    typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
+    // [[deprecated]]
+    using NodeExport = dht::NodeExport;
+
+    //typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
+    struct GetCallback : public std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>
+    {
+        typedef bool (*GetCallbackRaw)(std::vector<std::shared_ptr<Value>>*, void *user_data);
+
+        using std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>::function;
+        GetCallback(GetCallbackRaw raw_cb, void *user_data)
+            : GetCallback([=](const std::vector<std::shared_ptr<Value>>& values){
+                return raw_cb((std::vector<std::shared_ptr<Value>>*)&values, user_data);
+            }) {}
+        GetCallback() : GetCallback(nullptr) {}
+    };
+    struct DoneCallback : public std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>
+    {
+        typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+
+        using std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>::function;
+        DoneCallback(DoneCallbackRaw raw_cb, void *user_data)
+            : DoneCallback([=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
+                return raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
+            }) {}
+        DoneCallback() : DoneCallback(nullptr) {}
+    };
+
+    //typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
     typedef std::function<void(bool success)> DoneCallbackSimple;
 
     static DoneCallback
@@ -68,11 +143,6 @@ public:
         return std::bind(donecb, _1);
     }
 
-    struct NodeExport {
-        InfoHash id;
-        sockaddr_storage ss;
-        socklen_t sslen;
-    };
 
     using want_t = int_fast8_t;
 
@@ -221,39 +291,6 @@ public:
     /* This must be provided by the user. */
     static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
 
-    struct Node {
-        InfoHash id {};
-        sockaddr_storage ss;
-        socklen_t sslen {0};
-        time_point time {};            /* last time eared about */
-        time_point reply_time {};      /* time of last correct reply received */
-        time_point pinged_time {};     /* time of last message sent */
-        unsigned pinged {0};           /* how many requests we sent since last reply */
-
-        Node() : ss() {
-            std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
-        }
-        Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-            : id(id), ss(), sslen(salen) {
-            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-        }
-        bool isExpired(time_point now) const;
-        bool isGood(time_point now) const;
-        NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
-        sa_family_t getFamily() const { return ss.ss_family; }
-
-        void update(const sockaddr* sa, socklen_t salen);
-
-        /** To be called when a message was sent to the noe */
-        void requested(time_point now);
-
-        /** To be called when a message was received from the node.
-         Answer should be true if the message was an aswer to a request we made*/
-        void received(time_point now, bool answer);
-
-        friend std::ostream& operator<< (std::ostream& s, const Node& h);
-    };
-
 protected:
     LogMethod DHT_DEBUG = NOLOG;
     LogMethod DHT_WARN = NOLOG;
@@ -278,9 +315,6 @@ private:
     /* The maximum number of searches we keep data about. */
     static constexpr unsigned MAX_SEARCHES {1024};
 
-    /* Time for a request to timeout */
-    static constexpr std::chrono::seconds MAX_RESPONSE_TIME {3};
-
     /* The time after which we can send get requests for
        a search in case of no answers. */
     static constexpr std::chrono::seconds SEARCH_GET_STEP {3};
@@ -288,13 +322,8 @@ private:
     /* The time after which we consider a search to be expirable. */
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
-    /* The time after which we consider a node to be expirable. */
-    static constexpr std::chrono::minutes NODE_EXPIRE_TIME {10};
-
     /* Timeout for listen */
     static constexpr std::chrono::minutes LISTEN_EXPIRE_TIME {3};
-
-    static constexpr std::chrono::minutes NODE_GOOD_TIME {120};
 
     static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
 
@@ -372,16 +401,16 @@ private:
             RequestStatus() {};
             RequestStatus(time_point q, time_point a = {}) : request_time(q), reply_time(a) {};
             bool expired(time_point now) {
-                return (reply_time < request_time && request_time >= now - MAX_RESPONSE_TIME);
+                return (reply_time < request_time && now - request_time <= Node::MAX_RESPONSE_TIME);
             }
         };
         typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
 
         /**
-         * Can we use this node to listen/announce ?
+         * Can we use this node to listen/announce now ?
          */
         bool isSynced(time_point now) const {
-            return not node->isExpired(now) and getStatus.reply_time >= now - NODE_EXPIRE_TIME;
+            return not node->isExpired(now) and getStatus.reply_time >= now - Node::NODE_EXPIRE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -397,11 +426,11 @@ private:
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
-                return getStatus.request_time + MAX_RESPONSE_TIME;
+                return getStatus.request_time + Node::MAX_RESPONSE_TIME;
             return std::max<time_point>({
                 ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN, 
-                ack->second.request_time + MAX_RESPONSE_TIME, 
-                getStatus.request_time + MAX_RESPONSE_TIME
+                ack->second.request_time + Node::MAX_RESPONSE_TIME, 
+                getStatus.request_time + Node::MAX_RESPONSE_TIME
             });
         }
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
@@ -410,7 +439,7 @@ private:
         time_point getListenTime() const {
             if (listenStatus.reply_time > listenStatus.request_time)
                 return listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
-            return listenStatus.request_time + MAX_RESPONSE_TIME;
+            return listenStatus.request_time + Node::MAX_RESPONSE_TIME;
             //time_point min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
             //return listenStatus.reply_time.time_since_epoch().count() ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN, min_t) : min_t;
         }
@@ -509,7 +538,7 @@ private:
 
         bool removeExpiredNode(time_point now);
 
-        std::vector<std::shared_ptr<Dht::Node>> getNodes(time_point now) const;
+        std::vector<std::shared_ptr<Node>> getNodes(time_point now) const;
     };
 
     struct ValueStorage {
@@ -735,7 +764,7 @@ private:
     std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
-    bool trySearchInsert(const std::shared_ptr<Dht::Node>& node);
+    bool trySearchInsert(const std::shared_ptr<Node>& node);
 
     void pinged(Node& n, Bucket *b = nullptr);
 

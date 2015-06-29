@@ -146,11 +146,12 @@ static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
     0xFF, 0xFF, 0xFF, 0xFF
 }};
 
-constexpr std::chrono::seconds Dht::MAX_RESPONSE_TIME;
+constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
+constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
+constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
+
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
-constexpr std::chrono::minutes Dht::NODE_EXPIRE_TIME;
-constexpr std::chrono::minutes Dht::NODE_GOOD_TIME;
 constexpr std::chrono::minutes Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
 constexpr std::chrono::seconds Dht::UDP_REPLY_TIME;
@@ -225,7 +226,7 @@ Dht::isMartian(const sockaddr *sa, socklen_t len)
     }
 }
 
-std::shared_ptr<Dht::Node>
+std::shared_ptr<Node>
 Dht::Bucket::randomNode()
 {
     if (nodes.empty())
@@ -297,7 +298,7 @@ Dht::RoutingTable::findBucket(const InfoHash& id) const
 }
 
 /* Every bucket contains an unordered list of nodes. */
-std::shared_ptr<Dht::Node>
+std::shared_ptr<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af)
 {
     Bucket* b = findBucket(id, af);
@@ -308,7 +309,7 @@ Dht::findNode(const InfoHash& id, sa_family_t af)
     return {};
 }
 
-const std::shared_ptr<Dht::Node>
+const std::shared_ptr<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af) const
 {
     const Bucket* b = findBucket(id, af);
@@ -321,7 +322,7 @@ Dht::findNode(const InfoHash& id, sa_family_t af) const
 
 /* This is our definition of a known-good node. */
 bool
-Dht::Node::isGood(time_point now) const
+Node::isGood(time_point now) const
 {
     return
         not isExpired(now) &&
@@ -330,13 +331,13 @@ Dht::Node::isGood(time_point now) const
 }
 
 bool
-Dht::Node::isExpired(time_point now) const
+Node::isExpired(time_point now) const
 {
     return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
 }
 
 void
-Dht::Node::update(const sockaddr* sa, socklen_t salen)
+Node::update(const sockaddr* sa, socklen_t salen)
 {
     std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
     sslen = salen;
@@ -344,7 +345,7 @@ Dht::Node::update(const sockaddr* sa, socklen_t salen)
 
 /** To be called when a message was sent to the noe */
 void
-Dht::Node::requested(time_point now)
+Node::requested(time_point now)
 {
     pinged++;
     if (reply_time > pinged_time || pinged_time + MAX_RESPONSE_TIME < now)
@@ -354,7 +355,7 @@ Dht::Node::requested(time_point now)
 /** To be called when a message was received from the node.
  Answer should be true if the message was an aswer to a request we made*/
 void
-Dht::Node::received(time_point now, bool answer)
+Node::received(time_point now, bool answer)
 {
     time = now;
     if (answer) {
@@ -363,14 +364,14 @@ Dht::Node::received(time_point now, bool answer)
     }
 }
 
-std::ostream& operator<< (std::ostream& s, const Dht::Node& h)
+std::ostream& operator<< (std::ostream& s, const Node& h)
 {
     s << h.id << " " << print_addr(h.ss, h.sslen);
     return s;
 }
 
 
-std::shared_ptr<Dht::Node>
+std::shared_ptr<Node>
 Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
     auto& list = family == AF_INET ? cache_4 : cache_6;
     for (auto n = list.begin(); n != list.end();) {
@@ -385,13 +386,13 @@ Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
     return nullptr;
 }
 
-std::shared_ptr<Dht::Node>
+std::shared_ptr<Node>
 Dht::NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
     auto node = getNode(id, sa->sa_family);
     if (not node) {
         node = std::make_shared<Node>(id, sa, sa_len);
         putNode(node);
-    } else if (confirm || node->time < now - NODE_EXPIRE_TIME) {
+    } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
         node->update(sa, sa_len);
     }
     if (confirm)
@@ -400,7 +401,7 @@ Dht::NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len
 }
 
 void
-Dht::NodeCache::putNode(std::shared_ptr<Dht::Node> n) {
+Dht::NodeCache::putNode(std::shared_ptr<Node> n) {
     if (not n) return;
     auto& list = n->ss.ss_family == AF_INET ? cache_4 : cache_6;
     list.push_back(n);
@@ -513,7 +514,7 @@ Dht::RoutingTable::split(const RoutingTable::iterator& b)
 }
 
 bool
-Dht::trySearchInsert(const std::shared_ptr<Dht::Node>& node)
+Dht::trySearchInsert(const std::shared_ptr<Node>& node)
 {
     bool inserted = false;
     auto family = node->getFamily();
@@ -532,7 +533,7 @@ Dht::trySearchInsert(const std::shared_ptr<Dht::Node>& node)
 
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
-std::shared_ptr<Dht::Node>
+std::shared_ptr<Node>
 Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm)
 {
     if (id == myid || isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
@@ -552,7 +553,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         if (n->id != id) continue;
         /* Known node.  Update stuff. */
 
-        if (confirm || n->time < now - NODE_EXPIRE_TIME) {
+        if (confirm || n->time < now - Node::NODE_EXPIRE_TIME) {
             n->update(sa, salen);
             if (confirm) {
                 n->received(now, confirm >= 2);
@@ -593,7 +594,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                of bad nodes fast. */
             if (not n->isGood(now)) {
                 dubious = true;
-                if (n->pinged_time + MAX_RESPONSE_TIME < now) {
+                if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
                     DHT_DEBUG("Sending ping to dubious node.");
                     sendPing((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::PING});
                     n->pinged++;
@@ -672,7 +673,7 @@ Dht::Search::removeExpiredNode(time_point now)
     while (e != nodes.cbegin()) {
         e = std::prev(e);
         const Node& n = *e->node;
-        if (n.isExpired(now) and n.time + NODE_EXPIRE_TIME < now) {
+        if (n.isExpired(now) and n.time + Node::NODE_EXPIRE_TIME < now) {
             nodes.erase(e);
             return true;
         }
@@ -737,7 +738,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     return true;
 }
 
-std::vector<std::shared_ptr<Dht::Node>>
+std::vector<std::shared_ptr<Node>>
 Dht::Search::getNodes(time_point now) const
 {
     std::vector<std::shared_ptr<Node>> ret {};
@@ -768,11 +769,11 @@ Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
     std::function<bool(const SearchNode&)> check_node;
     if (update)
         check_node = [this,sr](const SearchNode& sn) {
-            return not sn.node->isExpired(now) && (!sn.isSynced(now) || !sr.isUpdated(sn)) && sn.getStatus.request_time < now - MAX_RESPONSE_TIME;
+            return not sn.node->isExpired(now) && (!sn.isSynced(now) || !sr.isUpdated(sn)) && sn.getStatus.request_time < now - Node::MAX_RESPONSE_TIME;
         };
     else
         check_node = [this](const SearchNode& sn) {
-            return not sn.node->isExpired(now) && !sn.isSynced(now) && sn.getStatus.request_time < now - MAX_RESPONSE_TIME;
+            return not sn.node->isExpired(now) && !sn.isSynced(now) && sn.getStatus.request_time < now - Node::MAX_RESPONSE_TIME;
         };
 
     if (!n) {
@@ -1015,7 +1016,7 @@ bool
 Dht::Search::isDone(const Get& get, time_point now) const
 {
     unsigned i = 0;
-    auto limit = std::max(get.start, now - NODE_EXPIRE_TIME);
+    auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now))
             continue;
@@ -1036,16 +1037,16 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now))
             continue;
-        if (sn.getStatus.reply_time < now - NODE_EXPIRE_TIME) { // not isSynced
+        if (sn.getStatus.reply_time < now - Node::NODE_EXPIRE_TIME) { // not isSynced
             return std::min(ut, get_step_time + SEARCH_GET_STEP);
         }
         else if (sn.getStatus.reply_time < last_get) {
-            ut = std::min(ut, sn.getStatus.request_time + MAX_RESPONSE_TIME);
+            ut = std::min(ut, sn.getStatus.request_time + Node::MAX_RESPONSE_TIME);
         } else {
             d++;
             ut = std::min(ut, std::max(
-                sn.getStatus.request_time + MAX_RESPONSE_TIME,
-                sn.getStatus.reply_time + NODE_EXPIRE_TIME));
+                sn.getStatus.request_time + Node::MAX_RESPONSE_TIME,
+                sn.getStatus.reply_time + Node::NODE_EXPIRE_TIME));
         }
         if (++i == TARGET_NODES)
             break;
@@ -1658,7 +1659,7 @@ Dht::expireStorage()
             std::partition(i->listeners.begin(), i->listeners.end(),
                 [&](const Listener& l)
                 {
-                    bool expired = l.time + NODE_EXPIRE_TIME < now;
+                    bool expired = l.time + Node::NODE_EXPIRE_TIME < now;
                     if (expired)
                         DHT_DEBUG("Discarding expired listener %s", l.id.toString().c_str());
                     // return false if the element should be removed
@@ -1881,7 +1882,7 @@ Dht::getStorageLog() const
         for (const auto& l : st.listeners) {
             out << "   " << "Listener " << l.id << " " << print_addr((sockaddr*)&l.ss, l.sslen);
             auto since = duration_cast<seconds>(now - l.time);
-            auto expires = duration_cast<seconds>(l.time + NODE_EXPIRE_TIME - now);
+            auto expires = duration_cast<seconds>(l.time + Node::NODE_EXPIRE_TIME - now);
             out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
         }
         for (const auto& v : st.values) {
@@ -2526,7 +2527,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
 }
 
 
-std::vector<Dht::NodeExport>
+std::vector<NodeExport>
 Dht::exportNodes()
 {
     std::vector<NodeExport> nodes;

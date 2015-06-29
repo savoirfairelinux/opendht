@@ -394,7 +394,7 @@ DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& 
 }
 
 void
-DhtRunner::bootstrap(const std::vector<Dht::NodeExport>& nodes)
+DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {

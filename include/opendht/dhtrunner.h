@@ -149,7 +149,7 @@ public:
 
     void bootstrap(const char* host, const char* service);
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
-    void bootstrap(const std::vector<Dht::NodeExport>& nodes);
+    void bootstrap(const std::vector<NodeExport>& nodes);
 
     void dumpTables() const
     {
@@ -174,7 +174,7 @@ public:
         return getNodeId();
     }
 
-    std::vector<Dht::NodeExport> exportNodes() const {
+    std::vector<NodeExport> exportNodes() const {
         std::lock_guard<std::mutex> lck(dht_mtx);
         if (!dht_)
             return {};
