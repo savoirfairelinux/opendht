@@ -493,13 +493,13 @@ PrivateKey::generate(unsigned key_length)
 }
 
 crypto::Identity
-generateIdentity(const std::string& name, crypto::Identity ca)
+generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_length)
 {
     int rc = gnutls_global_init();
     if (rc != GNUTLS_E_SUCCESS)
         return {};
 
-    auto shared_key = std::make_shared<PrivateKey>(PrivateKey::generate());
+    auto shared_key = std::make_shared<PrivateKey>(PrivateKey::generate(key_length));
 
     gnutls_x509_crt_t cert;
     if (gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)

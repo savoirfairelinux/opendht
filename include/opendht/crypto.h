@@ -60,7 +60,7 @@ class CryptoException : public std::runtime_error {
  * If a certificate authority (ca) is provided, it will be used to
  * sign the certificate, otherwise the certificate will be self-signed.
  */
-Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {});
+Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
 struct PublicKey : public Serializable
 {
@@ -117,7 +117,7 @@ private:
     PrivateKey(const PrivateKey&) = delete;
     PrivateKey& operator=(const PrivateKey&) = delete;
 
-    friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity);
+    friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
 struct Certificate : public Serializable {
@@ -201,7 +201,7 @@ private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
 
-    friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity);
+    friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
 
