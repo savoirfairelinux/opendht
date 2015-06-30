@@ -336,6 +336,12 @@ Node::isExpired(time_point now) const
     return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
 }
 
+bool
+Node::isMessagePending(time_point now) const
+{
+    return reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME > now;
+}
+
 void
 Node::update(const sockaddr* sa, socklen_t salen)
 {
@@ -343,7 +349,7 @@ Node::update(const sockaddr* sa, socklen_t salen)
     sslen = salen;
 }
 
-/** To be called when a message was sent to the noe */
+/** To be called when a message was sent to the node */
 void
 Node::requested(time_point now)
 {
@@ -523,9 +529,7 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         if (s.af != family) continue;
         if (s.insertNode(node, now)) {
             inserted = true;
-            auto tm = s.getNextStepTime(types, now);
-            if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-                search_time = tm;
+            search_time = std::min(search_time, s.getNextStepTime(types, now));
         }
     }
     return inserted;
@@ -553,7 +557,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         if (n->id != id) continue;
         /* Known node.  Update stuff. */
 
-        if (confirm || n->time < now - Node::NODE_EXPIRE_TIME) {
+        if (confirm || n->time + Node::NODE_EXPIRE_TIME < now) {
             n->update(sa, salen);
             if (confirm) {
                 n->received(now, confirm >= 2);
@@ -674,6 +678,7 @@ Dht::Search::removeExpiredNode(time_point now)
         e = std::prev(e);
         const Node& n = *e->node;
         if (n.isExpired(now) and n.time + Node::NODE_EXPIRE_TIME < now) {
+            //std::cout << "Removing expired node " << n.id << " from IPv" << (af==AF_INET?'4':'6') << " search " << id << std::endl;
             nodes.erase(e);
             return true;
         }
@@ -695,7 +700,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     const auto& nid = node->id;
 
     // Fast track for the case where the node is not relevant for this search
-    if (nodes.size() == SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0 && node->isExpired(now))
+    if (nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0 && node->isExpired(now))
         return false;
 
     // Reset search timer if it was empty
@@ -705,7 +710,10 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     }
 
     bool found = false;
+    unsigned num_candidates = 0;
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
+        if (sn.candidate)
+            num_candidates++;
         if (sn.node == node) {
             found = true;
             return true;
@@ -713,7 +721,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         return id.xorCmp(nid, sn.node->id) < 0;
     });
     if (!found) {
-        if (nodes.size() == SEARCH_NODES) {
+        if (nodes.size()-num_candidates >= SEARCH_NODES) {
             if (node->isExpired(now))
                 return false;
             if (n == nodes.end()) {
@@ -723,14 +731,27 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
                 n = nodes.end();
             }
         }
+        bool synced = isSynced(now);
         n = nodes.insert(n, SearchNode(node));
-        if (nodes.size() > SEARCH_NODES and not removeExpiredNode(now))
-            nodes.pop_back();
+        node->time = now;
+        if (synced) {
+            n->candidate = true;
+            //std::cout << "Adding candidate node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
+        }/* else {
+            std::cout << "Adding real node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
+        }*/
+        while (nodes.size()-num_candidates > SEARCH_NODES)
+            if (not removeExpiredNode(now))
+                nodes.pop_back();
         expired = false;
     }
     if (not token.empty()) {
         n->getStatus.reply_time = now;
         n->getStatus.request_time = TIME_INVALID;
+        if (n->candidate) {
+            n->candidate = false;
+            //std::cout << "Confirm candidate node " << node->id << " to synced search " << id << std::endl;
+        }
         if (token.size() <= 64)
             n->token = token;
         expired = false;
@@ -784,7 +805,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
     }
 
     DHT_WARN("Sending get_values to %s (%s) for %s (p %d last get %lf)",
-        print_addr((sockaddr*)&n->node->ss, n->node->sslen).c_str(),
+        print_addr(n->node->ss, n->node->sslen).c_str(),
         n->node->id.toString().c_str(),
         sr.id.toString().c_str(),
         n->node->pinged,
@@ -793,6 +814,9 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
     sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
     n->getStatus.request_time = now;
     pinged(*n->node);
+
+    //std::cout << "Sending GET to " << n->node->id << " for IPv" << (sr.af==AF_INET?'4':'6') << " search " << sr.id << " (now pinged " << n->node->pinged << ")" << std::endl;
+
     return true;
 }
 
@@ -802,6 +826,7 @@ void
 Dht::searchStep(Search& sr)
 {
     DHT_WARN("Search IPv%c %s searchStep.", sr.af == AF_INET ? '4' : '6', sr.id.toString().c_str());
+    sr.step_time = now;
 
     /* Check if the first TARGET_NODES (8) live nodes have replied. */
     if (sr.isSynced(now)) {
@@ -820,128 +845,123 @@ Dht::searchStep(Search& sr)
             }
             if (sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty())
                 sr.done = true;
-            else if (not sr.callbacks.empty()) {
-                unsigned i = 0;
-                for (auto& sn : sr.nodes) {
-                    i += searchSendGetValues(sr, &sn, true) ? 1 : 0;
-                    if (i >= 3)
-                        break;
-                }
-            }
-        } else {
-            // true if this node is part of the target nodes cluter.
-            bool in = sr.id.xorCmp(myid, sr.nodes.back().node->id) < 0;
+        }
 
-            DHT_DEBUG("searchStep (synced%s).", in ? ", in" : "");
+        // true if this node is part of the target nodes cluter.
+        bool in = sr.id.xorCmp(myid, sr.nodes.back().node->id) < 0;
 
-            if (not sr.listeners.empty()) {
-                unsigned i = 0;
-                for (auto& n : sr.nodes) {
-                    if (n.node->isExpired(now))
-                        continue;
-                    if (n.getListenTime() <= now) {
-                        DHT_DEBUG("Sending listen to %s (%s).", print_addr((sockaddr*)&n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
-                        sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
-                        n.pending = true;
-                        n.listenStatus.request_time = now;
-                    }
-                    if (++i == LISTEN_NODES)
-                        break;
-                }
-            }
+        DHT_DEBUG("searchStep (synced%s).", in ? ", in" : "");
+        DHT_DEBUG("%s", getSearchesLog(sr.af).c_str());
 
-            // Announce requests
-            for (auto& a : sr.announce) {
-                if (!a.value) {
+        if (not sr.listeners.empty()) {
+            unsigned i = 0, t = 0;
+            for (auto& n : sr.nodes) {
+                if (n.node->isExpired(now) or (n.candidate and t >= LISTEN_NODES))
                     continue;
-                    DHT_ERROR("Trying to announce a null value !");
+                if (n.getListenTime() <= now) {
+                    DHT_DEBUG("Sending listen to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                    sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
+                    n.pending = true;
+                    n.listenStatus.request_time = now;
                 }
-                unsigned i = 0;
-                auto vid = a.value->id;
-                const auto& type = getType(a.value->type);
-                if (in) {
-                    DHT_WARN("Storing local value");
-                    storageStore(sr.id, a.value);
-                }
-                for (auto& n : sr.nodes) {
-                    if (n.node->isExpired(now))
-                        continue;
-                    auto a_status = n.acked.find(vid);
-                    auto at = n.getAnnounceTime(a_status, type);
-                    if ( at <= now ) {
-                        DHT_DEBUG("Sending announce_value to %s (%s).", print_addr((sockaddr*)&n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
-                        sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
-                                           TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
-                                           n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
-                        if (a_status == n.acked.end()) {
-                            n.acked[vid] = { now };
-                        } else {
-                            a_status->second.request_time = now;
-                        }
-                        // use the "pending" flag so we update the "pinged"
-                        // fields after sending the announce requests for every value to announce
-                        n.pending = true;
-                    }
-                    if (++i == TARGET_NODES)
-                        break;
-                }
+                t++;
+                if (not n.candidate and ++i == LISTEN_NODES)
+                    break;
+            }
+        }
+
+        // Announce requests
+        for (auto& a : sr.announce) {
+            if (!a.value) {
+                continue;
+                DHT_ERROR("Trying to announce a null value !");
+            }
+            unsigned i = 0, t = 0;
+            auto vid = a.value->id;
+            const auto& type = getType(a.value->type);
+            if (in) {
+                DHT_WARN("Storing local value");
+                    (sr.id, a.value);
             }
             for (auto& n : sr.nodes) {
-                if (n.pending) {
-                    n.pending = false;
-                    pinged(*n.node);
+                if (n.node->isExpired(now) or (n.candidate and t >= TARGET_NODES))
+                    continue;
+                auto a_status = n.acked.find(vid);
+                auto at = n.getAnnounceTime(a_status, type);
+                if ( at <= now ) {
+                    DHT_DEBUG("Sending announce_value to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                    sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
+                                       TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
+                                       n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
+                    if (a_status == n.acked.end()) {
+                        n.acked[vid] = { now };
+                    } else {
+                        a_status->second.request_time = now;
+                    }
+                    // use the "pending" flag so we update the "pinged"
+                    // fields after sending the announce requests for every value to announce
+                    n.pending = true;
                 }
+                t++;
+                if (not n.candidate and ++i == TARGET_NODES)
+                    break;
             }
-            if (sr.announce.empty() && sr.listeners.empty())
-                sr.done = true;
-            DHT_DEBUG("Searchstep done.");
         }
+        for (auto& n : sr.nodes) {
+            if (n.pending) {
+                n.pending = false;
+                pinged(*n.node);
+            }
+        }
+        if (sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty())
+            sr.done = true;
+        DHT_DEBUG("Searchstep done.");
 
-    } else {
-        if (sr.get_step_time + SEARCH_GET_STEP >= now) {
-            DHT_WARN("searchStep: too early");
-            return;
-        }
-        DHT_DEBUG("searchStep.");
-
-        unsigned i = 0, e = 0;
-        for (auto& sn : sr.nodes) {
-            if (sn.node->isExpired(now)) {
-                e++;
-                continue;
-            }
-            i += searchSendGetValues(sr, &sn) ? 1 : 0;
-            if (i >= 3)
-                break;
-        }
-        if (i > 0)
-            sr.get_step_time = now;
-        else if (e == sr.nodes.size()) {
-            sr.expired = true;
-            if (sr.announce.empty() && sr.listeners.empty()) {
-                // Listening or announcing requires keeping the cluster up to date.
-                sr.done = true;
-            }
-            {
-                auto get_cbs = std::move(sr.callbacks);
-                for (const auto& g : get_cbs) {
-                    if (g.done_cb)
-                        g.done_cb(false, {});
-                }
-            }
-            {
-                std::vector<DoneCallback> a_cbs;
-                a_cbs.reserve(sr.announce.size());
-                for (const auto& a : sr.announce)
-                    if (a.callback)
-                        a_cbs.emplace_back(std::move(a.callback));
-                for (const auto& a : a_cbs)
-                    a(false, {});
-            }
-            return;
-        }
     }
-    sr.step_time = now;
+
+    if (sr.get_step_time + SEARCH_GET_STEP >= now) {
+        DHT_WARN("searchStep: too early");
+        return;
+    }
+
+    unsigned i = 0;
+    bool sent;
+    do {
+        if (sent = searchSendGetValues(sr))
+            i++;
+    }
+    while (sent and i < 3);
+    DHT_DEBUG("searchStep, sent %u.", i);
+
+    if (i > 0)
+        sr.get_step_time = now;
+    else if (std::count_if(sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn) {
+                return sn.node->isExpired(now);
+            }) == sr.nodes.size())
+    {
+        sr.expired = true;
+        if (sr.announce.empty() && sr.listeners.empty()) {
+            // Listening or announcing requires keeping the cluster up to date.
+            sr.done = true;
+        }
+        {
+            auto get_cbs = std::move(sr.callbacks);
+            for (const auto& g : get_cbs) {
+                if (g.done_cb)
+                    g.done_cb(false, {});
+            }
+        }
+        {
+            std::vector<DoneCallback> a_cbs;
+            a_cbs.reserve(sr.announce.size());
+            for (const auto& a : sr.announce)
+                if (a.callback)
+                    a_cbs.emplace_back(std::move(a.callback));
+            for (const auto& a : a_cbs)
+                a(false, {});
+        }
+        return;
+    }
 }
 
 
@@ -985,9 +1005,9 @@ Dht::Search::isSynced(time_point now) const
 {
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.node->isExpired(now))
+        if (n.node->isExpired(now) or n.candidate)
             continue;
-        if (!n.isSynced(now))
+        if (not n.isSynced(now))
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -1008,9 +1028,9 @@ bool
 Dht::Search::isDone(const Get& get, time_point now) const
 {
     unsigned i = 0;
-    auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
+    const auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired(now))
+        if (sn.node->isExpired(now) or sn.candidate)
             continue;
         if (sn.getStatus.reply_time < limit)
             return false;
@@ -1023,31 +1043,33 @@ Dht::Search::isDone(const Get& get, time_point now) const
 time_point
 Dht::Search::getUpdateTime(time_point now) const
 {
-    time_point ut = TIME_MAX;
+    time_point ut = time_point::max();
     const auto last_get = getLastGetTime();
-    unsigned i = 0, d = 0;
+    unsigned i = 0, t = 0, d = 0;
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired(now))
+        if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
-        if (sn.getStatus.reply_time < now - Node::NODE_EXPIRE_TIME) { // not isSynced
-            return std::min(ut, get_step_time + SEARCH_GET_STEP);
-        }
-        else if (sn.getStatus.reply_time < last_get) {
-            ut = std::min(ut, sn.getStatus.request_time + Node::MAX_RESPONSE_TIME);
+        if (sn.getStatus.reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
+            // not isSynced 
+            ut = std::min(ut, std::max(
+                sn.getStatus.request_time + Node::MAX_RESPONSE_TIME,
+                get_step_time + SEARCH_GET_STEP));
+            if (not sn.candidate)
+                d++;
         } else {
-            d++;
             ut = std::min(ut, std::max(
                 sn.getStatus.request_time + Node::MAX_RESPONSE_TIME,
                 sn.getStatus.reply_time + Node::NODE_EXPIRE_TIME));
         }
-        if (++i == TARGET_NODES)
+        t++;
+        if (not sn.candidate and ++i == TARGET_NODES)
             break;
     }
-    if (not callbacks.empty() and i == d) {
+    if (not callbacks.empty() and d == 0) {
         // If all synced/updated but some callbacks remain, step now to clear them
         return now;
     }
-    return ut == TIME_MAX ? TIME_INVALID : ut;
+    return ut;
 }
 
 bool
@@ -1057,9 +1079,9 @@ Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_point now) co
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.node->isExpired(now))
+        if (n.candidate or n.node->isExpired(now))
             continue;
-        if (!n.isAnnounced(id, type, now))
+        if (not n.isAnnounced(id, type, now))
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -1074,7 +1096,7 @@ Dht::Search::isListening(time_point now) const
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.node->isExpired(now))
+        if (n.candidate or n.node->isExpired(now))
             continue;
         if (!n.isListening(now))
             return false;
@@ -1088,20 +1110,19 @@ time_point
 Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const
 {
     if (nodes.empty())
-        return {};
-    time_point ret {};
+        return time_point::max();
+    time_point ret {time_point::max()};
     for (const auto& a : announce) {
         if (!a.value) continue;
         auto type_it = types.find(a.value->type);
         const ValueType& type = (type_it == types.end()) ? ValueType::USER_DATA : type_it->second;
-        unsigned i = 0;
+        unsigned i = 0, t = 0;
         for (const auto& n : nodes) {
-            if (n.node->isExpired(now))
+            if (n.node->isExpired(now) or (n.candidate and t >= TARGET_NODES))
                 continue;
-            auto at = n.getAnnounceTime(a.value->id, type);
-            if (at != TIME_INVALID && (ret == TIME_INVALID || ret > at))
-                ret = at;
-            if (++i == TARGET_NODES)
+            ret = std::min(ret, n.getAnnounceTime(a.value->id, type));
+            t++;
+            if (not n.candidate and ++i == TARGET_NODES)
                 break;
         }
     }
@@ -1112,15 +1133,16 @@ time_point
 Dht::Search::getListenTime(time_point now) const
 {
     if (listeners.empty())
-        return {};
-    time_point listen_time {};
-    unsigned i = 0;
+        return time_point::max();
+    time_point listen_time {time_point::max()};
+    unsigned i = 0, t = 0;
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired(now))
+        if (sn.node->isExpired(now) or (sn.candidate and t >= LISTEN_NODES))
             continue;
         auto lt = sn.getListenTime();
-        listen_time = listen_time == TIME_INVALID ? lt : std::min(listen_time, lt);
-        if (++i == LISTEN_NODES)
+        listen_time = std::min(listen_time, lt);
+        t++;
+        if (not sn.candidate and ++i == LISTEN_NODES)
             break;
     }
     return listen_time;
@@ -1129,33 +1151,33 @@ Dht::Search::getListenTime(time_point now) const
 time_point
 Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const
 {
+    auto next_step = time_point::max();
     if (expired or done)
-        return {};
-
-    if (!isSynced(now))
-        return get_step_time + SEARCH_GET_STEP;
-
-    auto next_step = TIME_MAX;
+        return next_step;
 
     auto ut = getUpdateTime(now);
-    if (ut != TIME_INVALID) {
+    if (ut != time_point::max()) {
         //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " update time in " << print_dt(ut - now) << " s" << std::endl;
         next_step = std::min(next_step, ut);
     }
 
-    auto at = getAnnounceTime(types, now);
-    if (at != TIME_INVALID) {
-        //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " announce time in " << print_dt(at - now) << " s" << std::endl;
-        next_step = std::min(next_step, at);
+    if (isSynced(now))
+    {
+        auto at = getAnnounceTime(types, now);
+        if (at != time_point::max()) {
+            //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " announce time in " << print_dt(at - now) << " s" << std::endl;
+            next_step = std::min(next_step, at);
+        }
+
+        auto lt = getListenTime(now);
+        if (lt != time_point::max()) {
+            //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " listen time in " << print_dt(lt - now) << " s" << std::endl;
+            next_step = std::min(next_step, lt);
+        }
     }
 
-    auto lt = getListenTime(now);
-    if (lt != TIME_INVALID) {
-        //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " listen time in " << print_dt(lt - now) << " s" << std::endl;
-        next_step = std::min(next_step, lt);
-    }
 
-    return next_step == TIME_MAX ? TIME_INVALID : next_step;
+    return next_step;
 }
 
 void
@@ -1259,7 +1281,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
         a_sr->callback = callback;
     }
     auto tm = sr->getNextStepTime(types, now);
-    if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm)) {
+    if (tm < search_time) {
         DHT_DEBUG("search_time is now in %lf", print_dt(tm-clock::now()));
         search_time = tm;
     } else {
@@ -1285,9 +1307,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     sr->done = false;
     auto token = ++sr->listener_token;
     sr->listeners.emplace(token, LocalListener{f, cb});
-    auto tm = sr->getNextStepTime(types, now);
-    if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-        search_time = tm;
+    search_time = std::min(search_time, sr->getNextStepTime(types, now));
     return token;
 }
 
@@ -1802,7 +1822,7 @@ void
 Dht::dumpSearch(const Search& sr, std::ostream& out) const
 {
     using namespace std::chrono;
-    out << std::endl << "Search (IPv" << (sr.af == AF_INET6 ? "6" : "4") << ") " << sr.id;
+    out << std::endl << "Search IPv" << (sr.af == AF_INET6 ? '6' : '4') << ' ' << sr.id << " G" << sr.callbacks.size();
     out << " age " << duration_cast<seconds>(now - sr.step_time).count() << " s tid " << sr.tid;
     if (sr.done)
         out << " [done]";
@@ -1816,28 +1836,65 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 
     for (const auto& n : sr.announce) {
         bool announced = sr.isAnnounced(n.value->id, getType(n.value->type), now);
-        out << "   Announcement: " << *n.value << (announced ? " [announced]" : "") << std::endl;
+        out << "Announcement: " << *n.value << (announced ? " [announced]" : "") << std::endl;
     }
 
+    out << " Common bits    InfoHash                          Conn. Get   Put IP" << std::endl;
     unsigned i = 0;
+    auto last_get = sr.getLastGetTime();
     for (const auto& n : sr.nodes) {
-        out << "   Node " << i++ << " id " << n.node->id << " bits " << InfoHash::commonBits(sr.id, n.node->id);
-        if (n.node->pinged) {
-            out << " [c " << n.node->pinged << " "
-             << duration_cast<seconds>(now - n.node->pinged_time).count() << "s "
-             << duration_cast<seconds>(now - n.node->reply_time).count() << "s]";
+        out << std::setfill (' ') << std::setw(3) << InfoHash::commonBits(sr.id, n.node->id) << ' ' << n.node->id;
+        out << ' ' << (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6) ? '*' : ' ');
+        out << ' ' << (n.candidate ? 'c' : ' ');
+        out << " ["
+            << (n.node->isMessagePending(now) ? 'f':' ');
+        if (n.node->pinged)
+            out << n.node->pinged;
+        else
+            out << ' ';
+        out << (n.node->isExpired(now) ? 'x' : ' ') << "]";
+
+        out << " ["
+            << (n.getStatus.pending(now) ? 'f' : (n.getStatus.expired(now) ? 'x' : ' '))
+            << (n.isSynced(now) ? 's' : '-')
+            << ((n.getStatus.reply_time > last_get) ? 'u' : '-') << "] ";
+
+        if (not sr.listeners.empty()) {
+            if (n.listenStatus.request_time == time_point{})
+                out << "     ";
+            else
+                out << "["
+                    << (n.listenStatus.pending(now) ? 'f' : (n.listenStatus.expired(now) ? 'x' : ' '))
+                    << (n.isListening(now) ? 'l' : '-') << "] ";
         }
-        out << " [g ";
-        if (n.getStatus.request_time != TIME_INVALID)
-            out << duration_cast<seconds>(now - n.getStatus.request_time).count() << "s ";
-        out << duration_cast<seconds>(now - n.getStatus.reply_time).count() << "s]";
-        if (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6))
-            out << " [known]";
-        if (n.node->reply_time != TIME_INVALID)
-            out << " [replied]";
-        if (n.listenStatus.reply_time != TIME_INVALID)
-            out << " [list]";
-        out << (n.isSynced(now) ? " [synced]" : (n.node->isExpired(now) ? " [expired]" : " [not synced]"));
+
+        if (not sr.announce.empty()) {
+            if (n.acked.empty()) {
+                out << "   ";
+                for (const auto& a : sr.announce)
+                    out << ' ';
+            } else {
+                out << "[";
+                for (const auto& a : sr.announce) {
+                    auto ack = n.acked.find(a.value->id);
+                    if (ack == n.acked.end()) {
+                        out << ' ';
+                    } else {
+                        auto& astatus = ack->second;
+                        if (astatus.reply_time + getType(a.value->type).expiration > now)
+                            out << 'a';
+                        else if (astatus.pending(now))
+                            out << 'f';
+                        else if (astatus.expired(now))
+                            out << 'x';
+                        else
+                            out << ' ';
+                    }
+                }
+                out << "] ";
+            }
+        }
+        out << print_addr(n.node->ss, n.node->sslen);
         out << std::endl;
     }
 }
@@ -1899,11 +1956,13 @@ Dht::getRoutingTablesLog(sa_family_t af) const
 }
 
 std::string 
-Dht::getSearchesLog(sa_family_t) const
+Dht::getSearchesLog(sa_family_t af) const
 {
     std::stringstream out;
+    out << "s:synched, u:updated, a:announced, c:candidate, f:cur req, x:expired, *:known" << std::endl;
     for (const auto& sr : searches)
-        dumpSearch(sr, out);
+        if (af == 0 or sr.af == af)
+            dumpSearch(sr, out);
     return out.str();
 }
 
@@ -2120,6 +2179,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
     }
 
+    //std::cout << "Message from " << id << " IPv" << (from->sa_family==AF_INET?'4':'6') << std::endl;
+
     switch (message) {
     case MessageType::Error:
         if (tid.length != 4) return;
@@ -2208,14 +2269,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     /* Since we received a reply, the number of
                        requests in flight has decreased.  Let's push
                        another request. */
-                    /*if (sr->isSynced(now)) {
-                        DHT_DEBUG("Trying to accelerate search!");
-                        search_time = now;
-                        //sr->step_time = 0;
-                    } else {*/
-                        if (searchSendGetValues(*sr))
-                            sr->get_step_time = now;
-                    //}
+                    //std::cout << "Received reply from " << id << ", sending new message..." << std::endl;
+                    if (searchSendGetValues(*sr))
+                        sr->get_step_time = now;
                 }
             }
             if (sr) {
@@ -2416,19 +2472,17 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         expireSearches();
     }
 
-    if (search_time != TIME_INVALID && now > search_time) {
-        search_time = TIME_INVALID;
+    if (now > search_time) {
+        search_time = time_point::max();
         for (auto& sr : searches) {
-            auto tm = sr.getNextStepTime(types, now);
-            if (tm == TIME_INVALID) continue;
-            if (tm <= now) {
+            auto step = sr.getNextStepTime(types, now);
+            if (step <= now) {
                 searchStep(sr);
-                tm = sr.getNextStepTime(types, now);
+                step = sr.getNextStepTime(types, now);
             }
-            if (tm != TIME_INVALID && (search_time == TIME_INVALID || search_time > tm))
-                search_time = tm;
+            search_time = std::min(search_time, step);
         }
-        if (search_time == TIME_INVALID)
+        if (search_time == time_point::max())
             DHT_DEBUG("next search time : (none)");
         else
             DHT_DEBUG("next search time : %lf s%s", print_dt(search_time-now), (search_time < now)?" (ASAP)":"");
@@ -2459,11 +2513,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         dumpTables();
     }
 
-    time_point tosleep = confirm_nodes_time;
-    if (search_time != TIME_INVALID)
-        tosleep = std::min(tosleep, search_time);
-
-    return tosleep;
+    return std::min(confirm_nodes_time, search_time);
 }
 
 std::vector<Dht::ValuesExport>

@@ -68,6 +68,7 @@ struct Node {
     }
     bool isExpired(time_point now) const;
     bool isGood(time_point now) const;
+    bool isMessagePending(time_point now) const;
     NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
     sa_family_t getFamily() const { return ss.ss_family; }
 
@@ -400,8 +401,11 @@ private:
             time_point reply_time {};      /* the time of the last confirmation */
             RequestStatus() {};
             RequestStatus(time_point q, time_point a = {}) : request_time(q), reply_time(a) {};
-            bool expired(time_point now) {
-                return (reply_time < request_time && now - request_time <= Node::MAX_RESPONSE_TIME);
+            bool expired(time_point now) const {
+                return reply_time < request_time && now > request_time + Node::MAX_RESPONSE_TIME;
+            }
+            bool pending(time_point now) const {
+                return reply_time < request_time && now - request_time <= Node::MAX_RESPONSE_TIME;
             }
         };
         typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
@@ -446,8 +450,6 @@ private:
             if (listenStatus.reply_time > listenStatus.request_time)
                 return listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
             return listenStatus.request_time + Node::MAX_RESPONSE_TIME;
-            //time_point min_t = listenStatus.request_time + MAX_RESPONSE_TIME;
-            //return listenStatus.reply_time.time_since_epoch().count() ? std::max(listenStatus.reply_time + NODE_EXPIRE_TIME - REANNOUNCE_MARGIN, min_t) : min_t;
         }
 
         std::shared_ptr<Node> node {};
@@ -458,11 +460,20 @@ private:
 
         Blob token {};
 
+        /**
+         * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
+         * 
+         */
+        bool candidate {false};
+
         // Generic temporary flag.
         // Must be reset to false after use by the algorithm.
         bool pending {false};
     };
 
+    /**
+     * A single "get" operation data
+     */
     struct Get {
         time_point start;
         Value::Filter filter;
@@ -470,11 +481,17 @@ private:
         DoneCallback done_cb;
     };
 
+    /**
+     * A single "put" operation data
+     */
     struct Announce {
         std::shared_ptr<Value> value;
         DoneCallback callback;
     };
 
+    /**
+     * A single "listen" operation data
+     */
     struct LocalListener {
         Value::Filter filter;
         GetCallback get_cb;
@@ -674,7 +691,7 @@ private:
     time_point now;
     time_point mybucket_grow_time {}, mybucket6_grow_time {};
     time_point expire_stuff_time {};
-    time_point search_time {};
+    time_point search_time {time_point::max()};
     time_point confirm_nodes_time {};
     time_point rotate_secrets_time {};
     std::queue<time_point> rate_limit_time {};
@@ -795,7 +812,7 @@ private:
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
      */
-    bool searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = false);
+    bool searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = true);
 
     void searchStep(Search& sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
