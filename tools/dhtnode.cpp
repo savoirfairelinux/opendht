@@ -82,6 +82,12 @@ void printLog(std::ostream& s, char const* m, va_list args) {
     s.put('\n');
 }
 
+template <class DT>
+static double
+print_dt(DT d) {
+    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+}
+
 int
 main(int argc, char **argv)
 {
@@ -197,24 +203,25 @@ main(int argc, char **argv)
             continue;
         }
 
+        auto start = std::chrono::high_resolution_clock::now();
         if (op == "g") {
-            dht.get(id, [](const std::vector<std::shared_ptr<Value>>& values) {
-                std::cout << "Get - found values : " << std::endl;
-                for (const auto& a : values) {
+            dht.get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
+                auto now = std::chrono::high_resolution_clock::now();
+                std::cout << "Get: found values (after " << print_dt(now-start) << "s)" << std::endl;
+                for (const auto& a : values)
                     std::cout << "\t" << *a << std::endl;
-                }
                 return true;
-            }, [](bool ok) {
-                std::cout << "Get - done : " << (ok ? "success" : "failure") << std::endl;
+            }, [start](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "Get: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
         }
         else if (op == "l") {
             std::cout << id << std::endl;
             dht.listen(id, [](const std::vector<std::shared_ptr<Value>>& values) {
-                std::cout << "Listen - found values : " << std::endl;
-                for (const auto& a : values) {
+                std::cout << "Listen: found values:" << std::endl;
+                for (const auto& a : values)
                     std::cout << "\t" << *a << std::endl;
-                }
                 return true;
             });
         }
@@ -224,8 +231,9 @@ main(int argc, char **argv)
             dht.put(id, dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
-            }, [](bool ok) {
-                std::cout << "Put done !" << ok << std::endl;
+            }, [start](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "Put: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
         }
         else if (op == "s") {
@@ -234,8 +242,9 @@ main(int argc, char **argv)
             dht.putSigned(id, dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
-            }, [](bool ok) {
-                std::cout << "Put signed done !" << ok << std::endl;
+            }, [start](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "Put signed: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
         }
         else if (op == "e") {
@@ -245,15 +254,17 @@ main(int argc, char **argv)
             dht.putEncrypted(id, InfoHash(tostr), dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
-            }, [](bool ok) {
-                std::cout << "Put encrypted done !" << ok << std::endl;
+            }, [start](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
         }
         else if (op == "a") {
             in_port_t port;
             iss >> port;
-            dht.put(id, dht::Value {dht::IpServiceAnnouncement::TYPE.id, dht::IpServiceAnnouncement(port)}, [](bool ok) {
-                std::cout << "Announce done !" << ok << std::endl;
+            dht.put(id, dht::Value {dht::IpServiceAnnouncement::TYPE.id, dht::IpServiceAnnouncement(port)}, [start](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "Announce: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
         }
     }
