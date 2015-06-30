@@ -814,6 +814,10 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
     sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
     n->getStatus.request_time = now;
     pinged(*n->node);
+    if (n->node->pinged > 1 and not n->candidate) {
+        //std::cout << "New policy: node " << n->node->id << " now a candidate" << std::endl;
+        n->candidate = true;
+    }
 
     //std::cout << "Sending GET to " << n->node->id << " for IPv" << (sr.af==AF_INET?'4':'6') << " search " << sr.id << " (now pinged " << n->node->pinged << ")" << std::endl;
 
