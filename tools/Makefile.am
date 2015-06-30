@@ -1,3 +1,7 @@
+if USE_CYTHON
+SUBDIRS = python
+endif
+
 libexec_PROGRAMS = dhtnode dhtchat
 
 AM_CPPFLAGS = -I../include

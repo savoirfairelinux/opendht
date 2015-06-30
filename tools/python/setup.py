@@ -20,12 +20,14 @@
 
 from distutils.core import setup, Extension
 from Cython.Build import cythonize
+from Cython.Distutils import build_ext
 
 setup(name="opendht",
       version="0.1",
       description="Cython generated wrapper for opendht",
       author="Guillaume Roguez",
       license="GPLv3",
+      cmdclass = { 'build_ext' : build_ext },
       ext_modules = cythonize(Extension(
           "opendht",
           ["opendht.pyx"],

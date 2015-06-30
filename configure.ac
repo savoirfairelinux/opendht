@@ -18,6 +18,18 @@ AC_CHECK_PROGS([DOXYGEN], [doxygen])
 if test -z "$DOXYGEN";
    then AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])
 fi
+AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
+
+AM_PATH_PYTHON([3.3],, [:])
+AM_CONDITIONAL([HAVE_PYTHON], [test -n "$PYTHON"])
+
+if test -n "$PYTHON"; then
+  AC_CHECK_PROGS([CYTHON], [cython])
+  if test -z "$CYTHON";
+     then AC_MSG_WARN([Cython not found - continuing without cython support])
+  fi
+fi
+AM_CONDITIONAL([USE_CYTHON], [test -n "$CYTHON"])
 
 case "${host_os}" in
   "")
@@ -64,8 +76,11 @@ PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
 
-AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])])
+AM_COND_IF([USE_CYTHON], [AC_CONFIG_FILES([tools/python/Makefile])])
 
-AC_CONFIG_FILES([Makefile src/Makefile tools/Makefile opendht.pc])
+AC_CONFIG_FILES([Makefile
+                 src/Makefile
+                 tools/Makefile
+                 opendht.pc])
 AC_OUTPUT
