@@ -410,7 +410,13 @@ private:
          * Can we use this node to listen/announce now ?
          */
         bool isSynced(time_point now) const {
-            return not node->isExpired(now) and getStatus.reply_time >= now - Node::NODE_EXPIRE_TIME;
+            return not node->isExpired(now) and
+                   getStatus.reply_time >= now - Node::NODE_EXPIRE_TIME;
+        }
+        bool canGet(time_point now, time_point update) const {
+            return not node->isExpired(now) and
+                   (now > getStatus.reply_time + Node::NODE_EXPIRE_TIME or update > getStatus.reply_time) and
+                   now > getStatus.request_time + Node::MAX_RESPONSE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -509,8 +515,6 @@ private:
         bool isSynced(time_point now) const;
 
         time_point getLastGetTime() const;
-
-        bool isUpdated(const SearchNode& sn) const;
 
         /**
          * Is this get operation done ?

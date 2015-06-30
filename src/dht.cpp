@@ -764,26 +764,24 @@ Dht::expireSearches()
 }
 
 bool
-Dht::searchSendGetValues(Search& sr, SearchNode *n, bool update)
+Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
 {
-    std::function<bool(const SearchNode&)> check_node;
-    if (update)
-        check_node = [this,sr](const SearchNode& sn) {
-            return not sn.node->isExpired(now) && (!sn.isSynced(now) || !sr.isUpdated(sn)) && sn.getStatus.request_time < now - Node::MAX_RESPONSE_TIME;
-        };
-    else
-        check_node = [this](const SearchNode& sn) {
-            return not sn.node->isExpired(now) && !sn.isSynced(now) && sn.getStatus.request_time < now - Node::MAX_RESPONSE_TIME;
-        };
-
-    if (!n) {
-        auto ni = std::find_if(sr.nodes.begin(), sr.nodes.end(), check_node);
-        if (ni != sr.nodes.end())
-            n = &*ni;
+    const time_point up = update ? sr.getLastGetTime() : time_point{};
+    SearchNode* n = nullptr;
+    if (pn) {
+        if (not pn->canGet(now, up))
+            return false;
+        n = pn;
+    } else {
+        for (auto& sn : sr.nodes) {
+            if (sn.canGet(now, up)) {
+                n = &sn;
+                break;
+            }
+        }
+        if (not n)
+            return false;
     }
-
-    if (!n || !check_node(*n))
-        return false;
 
     DHT_WARN("Sending get_values to %s (%s) for %s (p %d last get %lf)",
         print_addr((sockaddr*)&n->node->ss, n->node->sslen).c_str(),
@@ -1004,12 +1002,6 @@ Dht::Search::getLastGetTime() const
     for (const auto& g : callbacks)
         last = std::max(last, g.start);
     return last;
-}
-
-bool
-Dht::Search::isUpdated(const SearchNode& sn) const
-{
-    return getLastGetTime() <= sn.getStatus.reply_time;
 }
 
 bool
