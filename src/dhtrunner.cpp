@@ -41,6 +41,23 @@
 
 namespace dht {
 
+static std::string
+print_addr(const sockaddr* sa, socklen_t slen)
+{
+    char hbuf[NI_MAXHOST];
+    char sbuf[NI_MAXSERV];
+    std::stringstream out;
+    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+        if (sa->sa_family == AF_INET6)
+            out << "[" << hbuf << "]:" << sbuf;
+        else
+            out << hbuf << ":" << sbuf;
+    } else
+        out << "[invalid address]";
+    return out.str();
+}
+
+
 DhtRunner::DhtRunner()
 {
 #ifdef _WIN32
@@ -61,13 +78,34 @@ DhtRunner::~DhtRunner()
 void
 DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, StatusCallback cb)
 {
+    sockaddr_in sin4 {};
+    sin4.sin_family = AF_INET;
+    sin4.sin_port = htons(port);
+    sockaddr_in6 sin6 {};
+    sin6.sin6_family = AF_INET6;
+    sin6.sin6_port = htons(port);
+    run(&sin4, &sin6, identity, threaded, cb);
+}
+
+void
+DhtRunner::run(const char* ip4, const char* ip6, const char* service, const crypto::Identity identity, bool threaded, StatusCallback cb)
+{
+    auto res4 = ip4 ? getAddrInfo(ip4, service) : std::vector<std::pair<sockaddr_storage, socklen_t>>();
+    auto res6 = ip6 ? getAddrInfo(ip6, service) : std::vector<std::pair<sockaddr_storage, socklen_t>>();
+    run(res4.empty() ? nullptr : (sockaddr_in*) &res4.front().first,
+        res6.empty() ? nullptr : (sockaddr_in6*)&res6.front().first, identity, threaded, cb);
+}
+
+void
+DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, const crypto::Identity identity, bool threaded, StatusCallback cb)
+{
     if (running)
         return;
     if (rcv_thread.joinable())
         rcv_thread.join();
     statusCb = cb;
     running = true;
-    doRun(port, identity);
+    doRun(local4, local6, identity);
     if (not threaded)
         return;
     dht_thread = std::thread([this]() {
@@ -155,40 +193,38 @@ DhtRunner::loop_()
 }
 
 void
-DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
+DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto::Identity identity)
 {
     dht_.reset();
 
-    int s = socket(PF_INET, SOCK_DGRAM, 0);
-    int s6 = socket(PF_INET6, SOCK_DGRAM, 0);
-    if(s >= 0) {
-        sockaddr_in sin {};
-        sin.sin_family = AF_INET;
-        sin.sin_port = htons(port);
-        int rc = bind(s, (sockaddr*)&sin, sizeof(sin));
-        if(rc < 0)
-            throw DhtException("Can't bind IPv4 socket");
-    }
-    if(s6 >= 0) {
-        int val = 1;
-        int rc = setsockopt(s6, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&val, sizeof(val));
-        if(rc < 0) {
-            throw DhtException("setsockopt(IPV6_V6ONLY)");
+    int s4 = -1,
+        s6 = -1;
+    if (sin4) {
+        s4 = socket(PF_INET, SOCK_DGRAM, 0);
+        if(s4 >= 0) {
+            int rc = bind(s4, (sockaddr*)sin4, sizeof(sockaddr_in));
+            if(rc < 0)
+                throw DhtException("Can't bind IPv4 socket on " + print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
         }
-
-        /* BEP-32 mandates that we should bind this socket to one of our
-           global IPv6 addresses. */
-        sockaddr_in6 sin6 {};
-        sin6.sin6_family = AF_INET6;
-        sin6.sin6_port = htons(port);
-        rc = bind(s6, (sockaddr*)&sin6, sizeof(sin6));
-        if(rc < 0)
-            throw DhtException("Can't bind IPv6 socket");
     }
 
-    dht_ = std::unique_ptr<SecureDht>(new SecureDht {s, s6, identity});
+    if (sin6) {
+        s6 = socket(PF_INET6, SOCK_DGRAM, 0);
+        if(s6 >= 0) {
+            int val = 1;
+            int rc = setsockopt(s6, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&val, sizeof(val));
+            if(rc < 0)
+                throw DhtException("Can't set IPV6_V6ONLY");
 
-    rcv_thread = std::thread([this,s,s6]() {
+            rc = bind(s6, (sockaddr*)sin6, sizeof(sockaddr_in6));
+            if(rc < 0)
+                throw DhtException("Can't bind IPv6 socket on " + print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
+        }
+    }
+
+    dht_ = std::unique_ptr<SecureDht>(new SecureDht {s4, s6, identity});
+
+    rcv_thread = std::thread([this,s4,s6]() {
         try {
             while (true) {
                 uint8_t buf[4096 * 64];
@@ -199,12 +235,12 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
                 fd_set readfds;
 
                 FD_ZERO(&readfds);
-                if(s >= 0)
-                    FD_SET(s, &readfds);
+                if(s4 >= 0)
+                    FD_SET(s4, &readfds);
                 if(s6 >= 0)
                     FD_SET(s6, &readfds);
 
-                int rc = select(s > s6 ? s + 1 : s6 + 1, &readfds, nullptr, nullptr, &tv);
+                int rc = select(s4 > s6 ? s4 + 1 : s6 + 1, &readfds, nullptr, nullptr, &tv);
                 if(rc < 0) {
                     if(errno != EINTR) {
                         perror("select");
@@ -217,8 +253,8 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
 
                 if(rc > 0) {
                     fromlen = sizeof(from);
-                    if(s >= 0 && FD_ISSET(s, &readfds))
-                        rc = recvfrom(s, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
+                    if(s4 >= 0 && FD_ISSET(s4, &readfds))
+                        rc = recvfrom(s4, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
                         rc = recvfrom(s6, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
                     else
@@ -236,8 +272,8 @@ DhtRunner::doRun(in_port_t port, const crypto::Identity identity)
         } catch (const std::exception& e) {
             std::cerr << "Error int DHT networking thread: " << e.what() << std::endl;
         }
-        if (s >= 0)
-            close(s);
+        if (s4 >= 0)
+            close(s4);
         if (s6 >= 0)
             close(s6);
     });
@@ -369,10 +405,10 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht:
     putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), cb);
 }
 
-void
-DhtRunner::bootstrap(const char* host, const char* service)
+std::vector<std::pair<sockaddr_storage, socklen_t>>
+DhtRunner::getAddrInfo(const char* host, const char* service)
 {
-    std::vector<std::pair<sockaddr_storage, socklen_t>> bootstrap_nodes {};
+    std::vector<std::pair<sockaddr_storage, socklen_t>> ips {};
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -384,12 +420,19 @@ DhtRunner::bootstrap(const char* host, const char* service)
 
     addrinfo* infop = info;
     while (infop) {
-        bootstrap_nodes.emplace_back(sockaddr_storage(), infop->ai_addrlen);
-        std::copy_n((uint8_t*)infop->ai_addr, infop->ai_addrlen, (uint8_t*)&bootstrap_nodes.back().first);
+        ips.emplace_back(sockaddr_storage(), infop->ai_addrlen);
+        std::copy_n((uint8_t*)infop->ai_addr, infop->ai_addrlen, (uint8_t*)&ips.back().first);
         infop = infop->ai_next;
     }
     freeaddrinfo(info);
-    bootstrap(bootstrap_nodes);
+    std::cout << "getAddrInfo : got " << ips.size() << " IPs" << std::endl;
+    return ips;
+}
+
+void
+DhtRunner::bootstrap(const char* host, const char* service)
+{
+    bootstrap(getAddrInfo(host, service));
 }
 
 void

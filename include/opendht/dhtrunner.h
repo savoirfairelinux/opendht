@@ -246,9 +246,28 @@ public:
     }
 
     /**
-     * If threaded is false, loop() must be called periodically.
+     * port: local port to bind. Both IPv4 and IPv6 will be tried (ANY).
+     * identity: RSA key pair to use for cryptographic operations.
+     * threaded: if false, loop() must be called periodically. Otherwise a thread is launched.
+     * cb: optional callback to receive general state information.
      */
     void run(in_port_t port, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
+
+    /**
+     * local4: local IPv4 address and port to bind. Can be null.
+     * local6: local IPv6 address and port to bind. Can be null.
+     *         BEP-32 mandates that we should bind to one of our
+     *         global IPv6 addresses.
+     * identity: RSA key pair to use for cryptographic operations.
+     * threaded: if false, loop() must be called periodically. Otherwise a thread is launched.
+     * cb: optional callback to receive general state information.
+     */
+    void run(const sockaddr_in* local4, const sockaddr_in6* local6, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
+
+    /**
+     * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
+     */
+    void run(const char* ip4, const char* ip6, const char* service, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
 
     time_point loop() {
         std::lock_guard<std::mutex> lck(dht_mtx);
@@ -259,8 +278,10 @@ public:
 
 private:
 
-    void doRun(in_port_t port, const crypto::Identity identity);
+    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto::Identity identity);
     time_point loop_();
+
+    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const char* host, const char* service);
 
     std::unique_ptr<SecureDht> dht_ {};
     mutable std::mutex dht_mtx {};
