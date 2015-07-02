@@ -40,7 +40,6 @@ from cpython cimport ref
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
 
-
 cdef extern from "<memory>" namespace "std" nogil:
     cdef cppclass shared_ptr[T]:
         shared_ptr() except +
@@ -208,6 +207,8 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         InfoHash getNodeId() const
         void bootstrap(const char*, const char*)
         void run(in_port_t, const Identity, bool)
+        #void run(const sockaddr_in*, const sockaddr_in6*, const Identity, bool)
+        void run(const char*, const char*, const char*, const Identity, bool)
         void join()
         bool isRunning()
         string getStorageLog() const
@@ -244,8 +245,11 @@ cdef class PyDhtRunner(_WithID):
         return self.thisptr.getNodeId().toString()
     def bootstrap(self, str host, str port):
         self.thisptr.bootstrap(host.encode(), port.encode())
-    def run(self, in_port_t port, PyIdentity id, bool threaded=False):
-        self.thisptr.run(port, id._id, threaded)
+    def run(self, PyIdentity id, bool threaded=True, in_port_t port=0, str ipv4="", str ipv6=""):
+        if ipv4 or ipv6:
+            self.thisptr.run(ipv4.encode(), ipv6.encode(), str(port).encode(), id._id, threaded)
+        else:
+            self.thisptr.run(port, id._id, threaded)
     def join(self):
         self.thisptr.join()
     def isRunning(self):

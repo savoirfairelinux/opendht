@@ -90,8 +90,8 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, S
 void
 DhtRunner::run(const char* ip4, const char* ip6, const char* service, const crypto::Identity identity, bool threaded, StatusCallback cb)
 {
-    auto res4 = ip4 ? getAddrInfo(ip4, service) : std::vector<std::pair<sockaddr_storage, socklen_t>>();
-    auto res6 = ip6 ? getAddrInfo(ip6, service) : std::vector<std::pair<sockaddr_storage, socklen_t>>();
+    auto res4 = getAddrInfo(ip4, service);
+    auto res6 = getAddrInfo(ip6, service);
     run(res4.empty() ? nullptr : (sockaddr_in*) &res4.front().first,
         res6.empty() ? nullptr : (sockaddr_in6*)&res6.front().first, identity, threaded, cb);
 }
@@ -409,6 +409,8 @@ std::vector<std::pair<sockaddr_storage, socklen_t>>
 DhtRunner::getAddrInfo(const char* host, const char* service)
 {
     std::vector<std::pair<sockaddr_storage, socklen_t>> ips {};
+    if (not host or not service or strlen(host) == 0)
+        return ips;
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
@@ -425,7 +427,6 @@ DhtRunner::getAddrInfo(const char* host, const char* service)
         infop = infop->ai_next;
     }
     freeaddrinfo(info);
-    std::cout << "getAddrInfo : got " << ips.size() << " IPs" << std::endl;
     return ips;
 }
 
