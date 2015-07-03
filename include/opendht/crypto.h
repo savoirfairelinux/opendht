@@ -96,11 +96,11 @@ struct PrivateKey
     PrivateKey(PrivateKey&& o) noexcept;
     PrivateKey& operator=(PrivateKey&& o) noexcept;
 
-    PrivateKey(const Blob& import);
+    PrivateKey(const Blob& import, const std::string& password = {});
     ~PrivateKey();
     operator bool() const { return key; }
     PublicKey getPublicKey() const;
-    Blob serialize() const;
+    Blob serialize(const std::string& password = {}) const;
     Blob sign(const Blob&) const;
     Blob decrypt(const Blob& cypher) const;
 

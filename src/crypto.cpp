@@ -68,6 +68,17 @@ static gnutls_digest_algorithm_t get_dig(gnutls_x509_crt_t crt)
     return dig;
 }
 
+// support for GnuTLS < 3.4.
+#if GNUTLS_VERSION_NUMBER < 0x030400
+#define GNUTLS_PKCS_PKCS12_3DES GNUTLS_PKCS_USE_PKCS12_3DES
+#define GNUTLS_PKCS_PKCS12_ARCFOUR GNUTLS_PKCS_USE_PKCS12_ARCFOUR
+#define GNUTLS_PKCS_PKCS12_RC2_40 GNUTLS_PKCS_USE_PKCS12_RC2_40
+#define GNUTLS_PKCS_PBES2_3DES GNUTLS_PKCS_USE_PBES2_3DES
+#define GNUTLS_PKCS_PBES2_AES_128 GNUTLS_PKCS_USE_PBES2_AES_128
+#define GNUTLS_PKCS_PBES2_AES_192 GNUTLS_PKCS_USE_PBES2_AES_192
+#define GNUTLS_PKCS_PBES2_AES_256 GNUTLS_PKCS_USE_PBES2_AES_256
+#endif
+
 namespace dht {
 namespace crypto {
 
@@ -88,7 +99,7 @@ PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
     }
 }
 
-PrivateKey::PrivateKey(const Blob& import)
+PrivateKey::PrivateKey(const Blob& import, const std::string& password)
 {
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize GnuTLS.");
@@ -97,12 +108,19 @@ PrivateKey::PrivateKey(const Blob& import)
         throw CryptoException("Can't initialize private key !");
 
     const gnutls_datum_t dt {(uint8_t*)import.data(), static_cast<unsigned>(import.size())};
-    err = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN);
-    if (err != GNUTLS_E_SUCCESS)
-        err = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_DER, nullptr, GNUTLS_PKCS_PLAIN);
+    const char* password_ptr = password.empty() ? nullptr : password.c_str();
+    int flags = password.empty() ? GNUTLS_PKCS_PLAIN 
+                : ( GNUTLS_PKCS_PBES2_AES_128 | GNUTLS_PKCS_PBES2_AES_192  | GNUTLS_PKCS_PBES2_AES_256
+                  | GNUTLS_PKCS_PKCS12_3DES   | GNUTLS_PKCS_PKCS12_ARCFOUR | GNUTLS_PKCS_PKCS12_RC2_40);
+
+    err = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_PEM, password_ptr, flags);
     if (err != GNUTLS_E_SUCCESS) {
-        gnutls_x509_privkey_deinit(x509_key);
-        throw CryptoException("Can't load private key !");
+        int err_der = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_DER, password_ptr, flags);
+        if (err_der != GNUTLS_E_SUCCESS) {
+            gnutls_x509_privkey_deinit(x509_key);
+            throw CryptoException(std::string("Can't load private key: PEM: ") + gnutls_strerror(err)
+                                                                   + " DER: "  + gnutls_strerror(err_der));
+        }
     }
 
     gnutls_privkey_init(&key);
@@ -194,14 +212,16 @@ PrivateKey::decrypt(const Blob& cipher) const
 }
 
 Blob
-PrivateKey::serialize() const
+PrivateKey::serialize(const std::string& password) const
 {
     if (!x509_key)
         return {};
     size_t buf_sz = 8192;
     Blob buffer;
     buffer.resize(buf_sz);
-    int err = gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz);
+    int err = password.empty()
+        ? gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz)
+        : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, buffer.data(), &buf_sz);
     if (err != GNUTLS_E_SUCCESS) {
         std::cerr << "Could not export private key - " << gnutls_strerror(err) << std::endl;
         return {};
