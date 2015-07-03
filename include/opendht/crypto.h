@@ -57,11 +57,16 @@ class CryptoException : public std::runtime_error {
 
 /**
  * Generate an RSA key pair (2048 bits) and a certificate.
- * If a certificate authority (ca) is provided, it will be used to
- * sign the certificate, otherwise the certificate will be self-signed.
+ * @param name the name used in the generated certificate
+ * @param ca if set, the certificate authority that will sign the generated certificate.
+ *           If not set, the generated certificate will be a self-signed CA.
+ * @param key_length stength of the generated provste key (bits).
  */
 Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
+/**
+ * A public key.
+ */
 struct PublicKey : public Serializable
 {
     PublicKey() {}
@@ -88,6 +93,9 @@ private:
     PublicKey& operator=(const PublicKey&) = delete;
 };
 
+/**
+ * A private key, including the corresponding public key.
+ */
 struct PrivateKey
 {
     PrivateKey();
@@ -101,7 +109,18 @@ struct PrivateKey
     operator bool() const { return key; }
     PublicKey getPublicKey() const;
     Blob serialize(const std::string& password = {}) const;
+
+    /**
+     * Sign the provided binary object.
+     * @returns the signed data.
+     */
     Blob sign(const Blob&) const;
+
+    /**
+     * Try to decrypt the provided cypher text.
+     * In case of failure a CryptoException is thrown.
+     * @returns the decrypted data.
+     */
     Blob decrypt(const Blob& cypher) const;
 
     /**
