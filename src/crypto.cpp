@@ -84,14 +84,18 @@ namespace crypto {
 
 PrivateKey::PrivateKey()
 {
+#if GNUTLS_VERSION_NUMBER < 0x030300
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize GnuTLS.");
+#endif
 }
 
 PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
 {
+#if GNUTLS_VERSION_NUMBER < 0x030300
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize GnuTLS.");
+#endif
     gnutls_privkey_init(&key);
     if (gnutls_privkey_import_x509(key, k, GNUTLS_PRIVKEY_IMPORT_COPY) != GNUTLS_E_SUCCESS) {
         key = nullptr;
@@ -101,8 +105,10 @@ PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
 
 PrivateKey::PrivateKey(const Blob& import, const std::string& password)
 {
+#if GNUTLS_VERSION_NUMBER < 0x030300
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize GnuTLS.");
+#endif
     int err = gnutls_x509_privkey_init(&x509_key);
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize private key !");
@@ -131,9 +137,11 @@ PrivateKey::PrivateKey(const Blob& import, const std::string& password)
 
 PrivateKey::PrivateKey(PrivateKey&& o) noexcept : key(o.key), x509_key(o.x509_key)
 {
+#if GNUTLS_VERSION_NUMBER < 0x030300
     // gnutls_global_init already succeeded at least once here so no real need to check.
     int ret = gnutls_global_init();
     assert(ret == GNUTLS_E_SUCCESS);
+#endif
     o.key = nullptr;
     o.x509_key = nullptr;
 };
@@ -148,7 +156,9 @@ PrivateKey::~PrivateKey()
         gnutls_x509_privkey_deinit(x509_key);
         x509_key = nullptr;
     }
+#if GNUTLS_VERSION_NUMBER < 0x030300
     gnutls_global_deinit();
+#endif
 }
 
 PrivateKey&
@@ -204,7 +214,7 @@ PrivateKey::decrypt(const Blob& cipher) const
         gnutls_datum_t out;
         int err = gnutls_privkey_decrypt_data(key, 0, &dat, &out);
         if (err != GNUTLS_E_SUCCESS)
-            throw DhtException(std::string("Can't decrypt data: ") + gnutls_strerror(err));
+            throw CryptoException(std::string("Can't decrypt data: ") + gnutls_strerror(err));
         ret.insert(ret.end(), out.data, out.data+out.size);
         gnutls_free(out.data);
     }
@@ -499,8 +509,10 @@ Certificate::toString(bool chain) const
 PrivateKey
 PrivateKey::generate(unsigned key_length)
 {
+#if GNUTLS_VERSION_NUMBER < 0x030300
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize GnuTLS.");
+#endif
     gnutls_x509_privkey_t key;
     if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize private key.");
@@ -515,10 +527,10 @@ PrivateKey::generate(unsigned key_length)
 crypto::Identity
 generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_length)
 {
-    int rc = gnutls_global_init();
-    if (rc != GNUTLS_E_SUCCESS)
+#if GNUTLS_VERSION_NUMBER < 0x030300
+    if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         return {};
-
+#endif
     auto shared_key = std::make_shared<PrivateKey>(PrivateKey::generate(key_length));
 
     gnutls_x509_crt_t cert;
@@ -571,7 +583,9 @@ generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_leng
         }
     }
 
+#if GNUTLS_VERSION_NUMBER < 0x030300
     gnutls_global_deinit();
+#endif
 
     return {shared_key, shared_crt};
 }
