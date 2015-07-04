@@ -169,6 +169,23 @@ struct Certificate : public Serializable {
     void pack(Blob& b) const override;
     void unpack(Blob::const_iterator& begin, Blob::const_iterator& end) override;
 
+    template<typename Iterator>
+    void unpack(const Iterator& begin, const Iterator& end)
+    {
+        std::shared_ptr<Certificate> tmp_subject {};
+        std::shared_ptr<Certificate> first {};
+        for (Iterator icrt = begin; icrt < end; ++icrt) {
+            auto tmp_crt = std::make_shared<Certificate>(*icrt);
+            if (tmp_subject)
+                tmp_subject->issuer = tmp_crt;
+            tmp_subject = std::move(tmp_crt);
+            if (!first)
+                first = tmp_subject;
+        }
+        *this = first ? std::move(*first) : Certificate();
+    }
+
+
     /**
      * Import certificate chain (PEM or DER),
      * ordered from subject to issuer
@@ -177,6 +194,7 @@ struct Certificate : public Serializable {
     void unpack(const std::vector<std::pair<Iterator, Iterator>>& certs)
     {
         std::shared_ptr<Certificate> tmp_issuer;
+        // reverse iteration
         for (auto li = certs.rbegin(); li != certs.rend(); ++li) {
             Certificate tmp_crt;
             gnutls_x509_crt_init(&tmp_crt.cert);
@@ -189,8 +207,7 @@ struct Certificate : public Serializable {
             tmp_crt.issuer = tmp_issuer;
             tmp_issuer = std::make_shared<Certificate>(std::move(tmp_crt));
         }
-        if (tmp_issuer)
-            *this = std::move(*tmp_issuer);
+        *this = tmp_issuer ? std::move(*tmp_issuer) : Certificate();
     }
 
     operator bool() const { return cert; }
