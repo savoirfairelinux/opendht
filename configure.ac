@@ -10,25 +10,26 @@ AS_IF([test "x$enable_debug" = "xyes"],
       [CXXFLAGS="${CXXFLAGS} -g -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -O0"],
       [CXXFLAGS="${CXXFLAGS} -O3"])
 
-AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_AR
 
-AC_CHECK_PROGS([DOXYGEN], [doxygen])
-if test -z "$DOXYGEN";
-   then AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])
-fi
+dnl Check for Doxygen
+AC_ARG_ENABLE([doc], [AS_HELP_STRING([--disable-doc], [Disable documentation generation (doxygen)])])
+AS_IF([test "x$enable_doc" != "xno"], [
+  AC_CHECK_PROGS([DOXYGEN], [doxygen])
+  AS_IF([test -z "$DOXYGEN"],[AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])])
+])
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
-AM_PATH_PYTHON([3.3],, [:])
-AM_CONDITIONAL([HAVE_PYTHON], [test -n "$PYTHON"])
-
-if test -n "$PYTHON"; then
-  AC_CHECK_PROGS([CYTHON], [cython])
-  if test -z "$CYTHON";
-     then AC_MSG_WARN([Cython not found - continuing without cython support])
-  fi
-fi
+dnl Check for Python
+AC_ARG_ENABLE([python], [AS_HELP_STRING([--disable-python], [Disble python binding])])
+AS_IF([test "x$enable_python" != "xno"], [
+  AM_PATH_PYTHON([3.3],, [:])
+  AS_IF([test -n "$PYTHON"],[
+    AC_CHECK_PROGS([CYTHON], [cython])
+    AS_IF([test -z "$CYTHON"],[AC_MSG_WARN([Cython not found - continuing without python support])])
+  ])
+])
 AM_CONDITIONAL([USE_CYTHON], [test -n "$CYTHON"])
 
 case "${host_os}" in
