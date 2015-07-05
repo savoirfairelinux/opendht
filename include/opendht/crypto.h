@@ -158,6 +158,15 @@ struct Certificate : public Serializable {
      * ordered from subject to issuer
      */
     template<typename Iterator>
+    Certificate(const Iterator& begin, const Iterator& end) {
+        unpack(begin, end);
+    }
+
+    /**
+     * Import certificate chain (PEM or DER),
+     * ordered from subject to issuer
+     */
+    template<typename Iterator>
     Certificate(const std::vector<std::pair<Iterator, Iterator>>& certs) {
         unpack(certs);
     }
