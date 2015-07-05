@@ -885,7 +885,7 @@ Dht::searchStep(Search& sr)
             const auto& type = getType(a.value->type);
             if (in) {
                 DHT_WARN("Storing local value");
-                    (sr.id, a.value);
+                storageStore(sr.id, a.value);
             }
             for (auto& n : sr.nodes) {
                 if (n.node->isExpired(now) or (n.candidate and t >= TARGET_NODES))
@@ -931,7 +931,7 @@ Dht::searchStep(Search& sr)
     unsigned i = 0;
     bool sent;
     do {
-        if (sent = searchSendGetValues(sr))
+        if ((sent = searchSendGetValues(sr)))
             i++;
     }
     while (sent and i < 3);
@@ -939,7 +939,7 @@ Dht::searchStep(Search& sr)
 
     if (i > 0)
         sr.get_step_time = now;
-    else if (std::count_if(sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn) {
+    else if ((size_t)std::count_if(sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn) {
                 return sn.node->isExpired(now);
             }) == sr.nodes.size())
     {
@@ -1847,6 +1847,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     unsigned i = 0;
     auto last_get = sr.getLastGetTime();
     for (const auto& n : sr.nodes) {
+        i++;
         out << std::setfill (' ') << std::setw(3) << InfoHash::commonBits(sr.id, n.node->id) << ' ' << n.node->id;
         out << ' ' << (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6) ? '*' : ' ');
         out << ' ' << (n.candidate ? 'c' : ' ');
@@ -1875,7 +1876,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         if (not sr.announce.empty()) {
             if (n.acked.empty()) {
                 out << "   ";
-                for (const auto& a : sr.announce)
+                for (size_t a=0; a < sr.announce.size(); a++)
                     out << ' ';
             } else {
                 out << "[";
