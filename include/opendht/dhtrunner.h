@@ -99,7 +99,34 @@ public:
         T::getFilter());
     }
 
-    std::future<size_t> listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter()) {
+        auto p = std::make_shared<std::promise<std::vector<std::shared_ptr< dht::Value >>>>();
+        auto values = std::make_shared<std::vector<std::shared_ptr< dht::Value >>>();
+
+        get(key, [=](const std::vector<std::shared_ptr<dht::Value>>& vlist) {
+            values->insert(values->end(), vlist.begin(), vlist.end());
+            return true;
+        }, [=](bool) {
+            p->set_value(std::move(*values));
+        }, f);
+        return p->get_future();
+    }
+
+    template <class T>
+    std::future<std::vector<T>> get(InfoHash key) {
+        auto p = std::make_shared<std::promise<std::vector<std::shared_ptr<dht::Value>>>>();
+        auto values = std::make_shared<std::vector<T>>();
+
+        get<T>(key, [=](T&& v) {
+            values->emplace_back(std::move(v));
+            return true;
+        }, [=](bool) {
+            p->set_value(std::move(*values));
+        });
+        return p->get_future();
+    }
+
+    std::future<size_t> listen(InfoHash key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
     std::future<size_t> listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
     std::future<size_t> listen(InfoHash key, Dht::GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
         return listen(key, Dht::bindGetCb(cb), f);
