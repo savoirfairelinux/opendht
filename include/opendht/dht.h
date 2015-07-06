@@ -203,11 +203,13 @@ public:
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
-     * and call the callback when some values are found.
+     * and call the provided get callback when values are found at key.
      * The operation will start as soon as the node is connected to the network.
-     * GetCallback will be called every time new values are found, until
-     * GetCallback returns false or the search completes.
-     * Then, DoneCallback is called.
+     * @param cb a function called when new values are found on the network.
+     *           It should return false to stop the operation.
+     * @param donecb a function called when the operation is complete.
+                        cb and donecb won't be called again afterward.
+     * @param f a filter function used to prefilter values.
      */
     void get(const InfoHash& id, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter = Value::AllFilter());
     void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
@@ -220,7 +222,7 @@ public:
     std::vector<std::shared_ptr<Value>> getLocal(const InfoHash& id, Value::Filter f = Value::AllFilter()) const;
 
     /**
-     * Get locally stored data for the given hash and value id.
+     * Get locally stored data for the given key and value id.
      */
     std::shared_ptr<Value> getLocalById(const InfoHash& id, const Value::Id& vid) const;
 

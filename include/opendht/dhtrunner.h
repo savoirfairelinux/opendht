@@ -46,7 +46,7 @@ namespace dht {
 /**
  * Provides a thread-safe interface to run the (secure) DHT.
  * The class will open sockets on the provided port and will
- * either wait for (expectedly frequent) calls to loop() or start an internal
+ * either wait for (expectedly frequent) calls to ::loop() or start an internal
  * thread that will update the DHT when appropriate.
  */
 class DhtRunner {
@@ -134,7 +134,7 @@ public:
     }
     void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
 
-    void cancelPut(const InfoHash& h , const Value::Id& id);
+    void cancelPut(const InfoHash& h, const Value::Id& id);
 
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
     void putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
@@ -171,7 +171,7 @@ public:
     }
 
     /**
-     * @deprecated
+     * @deprecated Use getNodeId()
      */
     //[[deprecated]]
     InfoHash getRoutingId() const {
@@ -246,21 +246,21 @@ public:
     }
 
     /**
-     * port: local port to bind. Both IPv4 and IPv6 will be tried (ANY).
-     * identity: RSA key pair to use for cryptographic operations.
-     * threaded: if false, loop() must be called periodically. Otherwise a thread is launched.
-     * cb: optional callback to receive general state information.
-     */
+     * @param port: Local port to bind. Both IPv4 and IPv6 will be tried (ANY).
+     * @param identity: RSA key pair to use for cryptographic operations.
+     * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
+     * @param cb: Optional callback to receive general state information.
+     */ 
     void run(in_port_t port, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
 
     /**
-     * local4: local IPv4 address and port to bind. Can be null.
-     * local6: local IPv6 address and port to bind. Can be null.
+     * @param local4: Local IPv4 address and port to bind. Can be null.
+     * @param local6: Local IPv6 address and port to bind. Can be null.
      *         BEP-32 mandates that we should bind to one of our
      *         global IPv6 addresses.
-     * identity: RSA key pair to use for cryptographic operations.
-     * threaded: if false, loop() must be called periodically. Otherwise a thread is launched.
-     * cb: optional callback to receive general state information.
+     * @param identity: RSA key pair to use for cryptographic operations.
+     * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
+     * @param cb: Optional callback to receive general state information.
      */
     void run(const sockaddr_in* local4, const sockaddr_in6* local6, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
 
