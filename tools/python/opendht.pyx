@@ -70,15 +70,21 @@ cdef extern from "opendht/dht.h" namespace "dht":
     cdef cppclass Node:
         Node() except +
         InfoHash getId() const
-    ctypedef bool (*GetCallbackRaw)(vector[shared_ptr[Value]]* values, void *user_data)
-    ctypedef void (*DoneCallbackRaw)(bool bone, vector[shared_ptr[Node]]* nodes, void *user_data)
+    ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
+    ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     cdef cppclass Dht:
         cppclass GetCallback:
-            GetCallback(GetCallbackRaw cb, void *user_data) except +
+            GetCallback() except +
+            #GetCallback(GetCallbackRaw cb, void *user_data) except +
         cppclass DoneCallback:
-            DoneCallback(DoneCallbackRaw, void *user_data) except +
+            DoneCallback() except +
+            #DoneCallback(DoneCallbackRaw, void *user_data) except +
         Dht() except +
         InfoHash getNodeId() const
+        @staticmethod
+        GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
+        @staticmethod
+        DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
 
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
@@ -217,14 +223,11 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void get(InfoHash key, Dht.GetCallback get_cb, Dht.DoneCallback done_cb)
         void put(InfoHash key, shared_ptr[Value] val, Dht.DoneCallback done_cb)
 
-cdef bool py_get_callback(vector[shared_ptr[Value]]* values, void *user_data) with gil:
+cdef bool py_get_callback(shared_ptr[Value] value, void *user_data) with gil:
     cb = (<object>user_data)['get']
-    for v in deref(values):
-        pv = PyValue()
-        pv._value = v
-        if not cb(pv):
-            return False
-    return True
+    pv = PyValue()
+    pv._value = value
+    return cb(pv)
 
 cdef void py_done_callback(bool done, vector[shared_ptr[Node]]* nodes, void *user_data) with gil:
     node_ids = []
@@ -263,16 +266,16 @@ cdef class PyDhtRunner(_WithID):
     def get(self, PyInfoHash key, get_cb, done_cb):
         cb_obj = {'get':get_cb, 'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.get(key._infohash, Dht.GetCallback(py_get_callback, <void*>cb_obj), Dht.DoneCallback(py_done_callback, <void*>cb_obj))
+        self.thisptr.get(key._infohash, Dht.bindGetCb(py_get_callback, <void*>cb_obj), Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
     def get(self, str key, get_cb, done_cb):
         cb_obj = {'get':get_cb, 'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.get(InfoHash.get(key.encode()), Dht.GetCallback(py_get_callback, <void*>cb_obj), Dht.DoneCallback(py_done_callback, <void*>cb_obj))
+        self.thisptr.get(InfoHash.get(key.encode()), Dht.bindGetCb(py_get_callback, <void*>cb_obj), Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
     def put(self, PyInfoHash key, PyValue val, done_cb):
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.put(key._infohash, val._value, Dht.DoneCallback(py_done_callback, <void*>cb_obj))
+        self.thisptr.put(key._infohash, val._value, Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
     def put(self, str key, PyValue val, done_cb):
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.put(InfoHash.get(key.encode()), val._value, Dht.DoneCallback(py_done_callback, <void*>cb_obj))
+        self.thisptr.put(InfoHash.get(key.encode()), val._value, Dht.bindDoneCb(py_done_callback, <void*>cb_obj))

@@ -111,31 +111,30 @@ public:
     // [[deprecated]]
     using NodeExport = dht::NodeExport;
 
-    //typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
-    struct GetCallback : public std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>
-    {
-        typedef bool (*GetCallbackRaw)(std::vector<std::shared_ptr<Value>>*, void *user_data);
+    typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
+    typedef std::function<bool(std::shared_ptr<Value> value)> GetCallbackSimple;
 
-        using std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>::function;
-        GetCallback(GetCallbackRaw raw_cb, void *user_data)
-            : GetCallback([=](const std::vector<std::shared_ptr<Value>>& values){
-                return raw_cb((std::vector<std::shared_ptr<Value>>*)&values, user_data);
-            }) {}
-        GetCallback() : GetCallback(nullptr) {}
-    };
-    struct DoneCallback : public std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>
-    {
-        typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+    typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 
-        using std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>::function;
-        DoneCallback(DoneCallbackRaw raw_cb, void *user_data)
-            : DoneCallback([=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
-                return raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
-            }) {}
-        DoneCallback() : DoneCallback(nullptr) {}
-    };
+    static GetCallbackSimple
+    bindGetCb(GetCallbackRaw raw_cb, void* user_data) {
+        return [=](const std::shared_ptr<Value>& value) {
+            return raw_cb(value, user_data);
+        };
+    }
+    static GetCallback
+    bindGetCb(GetCallbackSimple cb) {
+        return [=](const std::vector<std::shared_ptr<Value>>& values) {
+            for (const auto& v : values)
+                if (not cb(v))
+                    return false;
+            return true;
+        };
+    }
 
-    //typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
+    typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
+    typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+
     typedef std::function<void(bool success)> DoneCallbackSimple;
 
     static DoneCallback
@@ -143,7 +142,12 @@ public:
         using namespace std::placeholders;
         return std::bind(donecb, _1);
     }
-
+    static DoneCallback
+    bindDoneCb(DoneCallbackRaw raw_cb, void* user_data) {
+        return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
+            raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
+        };
+    }
 
     using want_t = int_fast8_t;
 
@@ -211,20 +215,26 @@ public:
                         cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter = Value::AllFilter());
-    void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
-        get(id, cb, bindDoneCb(donecb), f);
+    void get(const InfoHash& key, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter());
+    void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
+        get(key, cb, bindDoneCb(donecb), f);
+    }
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter()) {
+        get(key, bindGetCb(cb), donecb, f);
+    }
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), f);
     }
 
     /**
      * Get locally stored data for the given hash.
      */
-    std::vector<std::shared_ptr<Value>> getLocal(const InfoHash& id, Value::Filter f = Value::AllFilter()) const;
+    std::vector<std::shared_ptr<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const;
 
     /**
      * Get locally stored data for the given key and value id.
      */
-    std::shared_ptr<Value> getLocalById(const InfoHash& id, const Value::Id& vid) const;
+    std::shared_ptr<Value> getLocalById(const InfoHash& key, const Value::Id& vid) const;
 
     /**
      * Announce a value on all available protocols (IPv4, IPv6), and
@@ -236,16 +246,16 @@ public:
      * reannounced on a regular basis.
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash&, const std::shared_ptr<Value>&, DoneCallback cb=nullptr);
-    void put(const InfoHash& id, const std::shared_ptr<Value>& v, DoneCallbackSimple cb) {
-        put(id, v, bindDoneCb(cb));
+    void put(const InfoHash& key, const std::shared_ptr<Value>&, DoneCallback cb=nullptr);
+    void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb) {
+        put(key, v, bindDoneCb(cb));
     }
 
-    void put(const InfoHash& h, Value&& v, DoneCallback cb=nullptr) {
-        put(h, std::make_shared<Value>(std::move(v)), cb);
+    void put(const InfoHash& key, Value&& v, DoneCallback cb=nullptr) {
+        put(key, std::make_shared<Value>(std::move(v)), cb);
     }
-    void put(const InfoHash& id, Value&& v, DoneCallbackSimple cb) {
-        put(id, std::forward<Value>(v), bindDoneCb(cb));
+    void put(const InfoHash& key, Value&& v, DoneCallbackSimple cb) {
+        put(key, std::forward<Value>(v), bindDoneCb(cb));
     }
 
     /**
@@ -272,6 +282,10 @@ public:
      * @return a token to cancel the listener later.
      */
     size_t listen(const InfoHash&, GetCallback, Value::Filter = Value::AllFilter());
+    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
+        return listen(key, bindGetCb(cb), f);
+    }
+
     bool cancelListen(const InfoHash&, size_t token);
 
     /**

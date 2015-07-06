@@ -290,7 +290,7 @@ DhtRunner::get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value
 }
 
 void
-DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f)
+DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallbackSimple dcb, Value::Filter f)
 {
     get(InfoHash::get(key), vcb, dcb, f);
 }

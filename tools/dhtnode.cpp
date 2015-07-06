@@ -205,11 +205,10 @@ main(int argc, char **argv)
 
         auto start = std::chrono::high_resolution_clock::now();
         if (op == "g") {
-            dht.get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
+            dht.get(id, [start](std::shared_ptr<Value> value) {
                 auto now = std::chrono::high_resolution_clock::now();
-                std::cout << "Get: found values (after " << print_dt(now-start) << "s)" << std::endl;
-                for (const auto& a : values)
-                    std::cout << "\t" << *a << std::endl;
+                std::cout << "Get: found value (after " << print_dt(now-start) << "s)" << std::endl;
+                std::cout << "\t" << *value << std::endl;
                 return true;
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
@@ -218,10 +217,9 @@ main(int argc, char **argv)
         }
         else if (op == "l") {
             std::cout << id << std::endl;
-            dht.listen(id, [](const std::vector<std::shared_ptr<Value>>& values) {
-                std::cout << "Listen: found values:" << std::endl;
-                for (const auto& a : values)
-                    std::cout << "\t" << *a << std::endl;
+            dht.listen(id, [](std::shared_ptr<Value> value) {
+                std::cout << "Listen: found value:" << std::endl;
+                std::cout << "\t" << *value << std::endl;
                 return true;
             });
         }

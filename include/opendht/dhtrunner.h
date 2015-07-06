@@ -57,11 +57,20 @@ public:
     DhtRunner();
     virtual ~DhtRunner();
 
-    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f={});
-    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallbackSimple cb) {
-        get(hash, vcb, Dht::bindDoneCb(cb));
+    void get(InfoHash id, Dht::GetCallbackSimple cb, Dht::DoneCallback donecb={}, Value::Filter f = Value::AllFilter()) {
+        get(id, Dht::bindGetCb(cb), donecb, f);
     }
-    void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb=nullptr, Value::Filter f = Value::AllFilter());
+
+    void get(InfoHash id, Dht::GetCallbackSimple cb, Dht::DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
+        get(id, Dht::bindGetCb(cb), donecb, f);
+    }
+
+    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f={});
+
+    void get(InfoHash id, Dht::GetCallback cb, Dht::DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
+        get(id, cb, Dht::bindDoneCb(donecb), f);
+    }
+    void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter());
 
     template <class T>
     void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
@@ -92,6 +101,9 @@ public:
 
     std::future<size_t> listen(InfoHash hash, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
     std::future<size_t> listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
+    std::future<size_t> listen(InfoHash key, Dht::GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
+        return listen(key, Dht::bindGetCb(cb), f);
+    }
 
     template <class T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
