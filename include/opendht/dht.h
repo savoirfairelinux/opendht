@@ -355,6 +355,8 @@ private:
        a search in case of no answers. */
     static constexpr std::chrono::seconds SEARCH_GET_STEP {3};
 
+    static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_TIME {10};
+
     /* The time after which we consider a search to be expirable. */
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
@@ -497,7 +499,7 @@ private:
 
         /**
          * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
-         * 
+         *
          */
         bool candidate {false};
 
