@@ -2142,6 +2142,42 @@ Dht::bucketMaintenance(RoutingTable& list)
 }
 
 void
+Dht::maintainStorage(InfoHash id) {
+    auto *local_storage = findStorage(id);
+    std::vector<std::shared_ptr<Value>> foreign_values;
+
+    if (!local_storage) { return; }
+    get(id,
+    [&foreign_values](std::shared_ptr<Value> value){
+        foreign_values.push_back(value);
+        return true;
+    },
+    [=,&foreign_values](bool success, const std::vector<std::shared_ptr<Node>> &nodes) {
+        if (success) {
+            auto this_node = std::find_if(nodes.begin(), nodes.end(), [this](const std::shared_ptr<Node>& node) {
+                        return getNodeId() == node->id;
+                    });
+            //If this node is not in the list of 8 nodes nearby the given id.
+            if (this_node == nodes.end()) {
+                for (auto &local_value_storage : local_storage->values) {
+                    const auto& vt = getType(local_value_storage.data->type);
+                    if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_TIME) {
+                        auto mutual_value = std::find(foreign_values.begin(),
+                                foreign_values.end(), local_value_storage.data);
+                        if (mutual_value == foreign_values.end()) {
+                            // gotta put that value there
+                            put(id, local_value_storage.data);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    local_storage->last_maintenance_time = now;
+}
+
+void
 Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
 {
     if (buflen == 0)
