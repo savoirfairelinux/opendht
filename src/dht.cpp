@@ -1187,7 +1187,7 @@ Dht::getNextStorageMaintenanceTime() {
     time_point tp {time_point::max()};
 
     for (auto& str : store) {
-        tp = std::min(tp, str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_TIME);
+        tp = std::min(tp, str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME);
     }
     return tp;
 }
@@ -2161,7 +2161,7 @@ Dht::maintainStorage(InfoHash id) {
             if (this_node == nodes.end()) {
                 for (auto &local_value_storage : local_storage->values) {
                     const auto& vt = getType(local_value_storage.data->type);
-                    if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_TIME) {
+                    if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                         auto mutual_value = std::find(foreign_values.begin(),
                                 foreign_values.end(), local_value_storage.data);
                         if (mutual_value == foreign_values.end()) {
@@ -2574,6 +2574,15 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
                uniform_duration_distribution<> {seconds(5) , seconds(25)}
              : uniform_duration_distribution<> {seconds(60), seconds(180)};
         confirm_nodes_time = now + time_dis(rd);
+    }
+
+    //data persistence
+    if (now > getNextStorageMaintenanceTime()) {
+        for (auto &str : store) {
+            if (now > str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                maintainStorage(str.id);
+            }
+        }
     }
 
     return std::min(confirm_nodes_time, search_time);
