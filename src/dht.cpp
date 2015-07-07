@@ -1182,16 +1182,6 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
     return next_step;
 }
 
-time_point
-Dht::getNextStorageMaintenanceTime() {
-    time_point tp {time_point::max()};
-
-    for (auto& str : store) {
-        tp = std::min(tp, str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME);
-    }
-    return tp;
-}
-
 void
 Dht::bootstrapSearch(Dht::Search& sr)
 {
@@ -2577,11 +2567,9 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
     }
 
     //data persistence
-    if (now > getNextStorageMaintenanceTime()) {
-        for (auto &str : store) {
-            if (now > str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
-                maintainStorage(str.id);
-            }
+    for (auto &str : store) {
+        if (now > str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+            maintainStorage(str.id);
         }
     }
 

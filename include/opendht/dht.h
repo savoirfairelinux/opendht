@@ -801,7 +801,6 @@ private:
     void storageChanged(Storage& st, ValueStorage&);
 
     void maintainStorage(InfoHash id);
-    time_point getNextStorageMaintenanceTime();
 
     // Buckets
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
