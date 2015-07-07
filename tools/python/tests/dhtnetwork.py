@@ -49,8 +49,6 @@ class DhtNetwork(object):
         self.ip6 = ip6 if ip6 else ips[1]
         self.bootstrap = bootstrap
         #print(self.ip4, self.ip6, self.port)
-        #self.bootstrap_node = DhtNetwork.run_node(self.ip4, self.ip6, self.port+1, [(self.ip4, str(self.port))])[1]
-        #self.port += 1
 
     def front(self):
         if len(self.nodes) == 0:
@@ -111,11 +109,16 @@ if __name__ == '__main__':
         parser.add_argument('-I', '--iface', help='local interface to bind', default='any')
         parser.add_argument('-p', '--port', help='start of port range (port, port+node_num)', type=int, default=4000)
         parser.add_argument('-b', '--bootstrap', help='bootstrap address')
+        parser.add_argument('-b6', '--bootstrap6', help='bootstrap address (IPv6)')
         args = parser.parse_args()
 
-        #ips = find_ip(args.iface)
+        bs = []
+        if args.bootstrap:
+            bs.append((args.bootstrap, str(4000)))
+        if args.bootstrap6:
+            bs.append((args.bootstrap6, str(4000)))
 
-        net = DhtNetwork(iface=args.iface, port=args.port, bootstrap=[args.bootstrap.split(':')] if args.bootstrap else [])
+        net = DhtNetwork(iface=args.iface, port=args.port, bootstrap=bs if args.bootstrap else [])
         net.resize(args.node_num)
 
         with lock:

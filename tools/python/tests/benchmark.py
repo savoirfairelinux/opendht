@@ -37,7 +37,7 @@ procs = [None for _ in range(clusters)]
 
 try:
     for i in range(clusters):
-        procs[i] = NSPopen('node'+str(i), ["python3", "dhtnetwork.py", "-n", str(node_per_loc), "-b", bootstrap.ip4+':4000', '-I', args.ifname+str(i)+'.1'])
+        procs[i] = NSPopen('node'+str(i), ["python3", "dhtnetwork.py", "-n", str(node_per_loc), "-b", bootstrap.ip4, "-b6", bootstrap.ip6, '-I', args.ifname+str(i)+'.1'])
         plt.pause(2)
 
     plt.ion()
@@ -86,7 +86,7 @@ try:
                 procs[n].release()
             except:
                 pass
-        procs[n] = NSPopen('node'+str(n), ["python3", "dhtnetwork.py", "-n", str(node_per_loc), "-b", bootstrap.ip4+':4000', '-I', args.ifname+str(n)+'.1'])
+        procs[n] = NSPopen('node'+str(n), ["python3", "dhtnetwork.py", "-n", str(node_per_loc), "-b", bootstrap.ip4, "-b6", bootstrap.ip6, '-I', args.ifname+str(n)+'.1'])
 
     plt.pause(5)
 
@@ -98,7 +98,7 @@ try:
         #nnodes = (n+1)*args.node_num
         #net.resize(nnodes)
         #time.sleep(2.5)
-        #replace_cluster()
+        replace_cluster()
         print("Getting 10 random hashes succesively.")
         for i in range(50):
             #net.replace_node()

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+import argparse, subprocess
+
 from pyroute2 import IPDB, NetNS
 from pyroute2.netns.process.proxy import NSPopen
-import argparse, subprocess
 
 parser = argparse.ArgumentParser(description='Create a dummy network interface for testing')
 parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
@@ -49,7 +50,8 @@ try:
                 iface = args.ifname+str(ifn)
                 i.add_port(ip.interfaces[iface])
             i.add_port(ip.interfaces['tap'+args.ifname])
-            i.add_ip('10.0.42.1/24')  # the same as i.add_ip('10.0.0.1', 24)
+            i.add_ip(local_addr4+'1/24')  # the same as i.add_ip('10.0.0.1', 24)
+            i.add_ip(local_addr6+'1/24')
             i.up()
 
         with ip.interfaces['tap'+args.ifname] as tap:
@@ -72,7 +74,7 @@ try:
                     lo.up()
                 with ip_ns.interfaces[iface1] as i:
                     i.add_ip(local_addr4+str(ifn+8)+'/24')
-                    #i.add_ip(local_addr6+str(ifn+8)+'/8')
+                    i.add_ip(local_addr6+str(ifn+8)+'/64')
                     i.up()
             finally:
                 ip_ns.release()
@@ -82,6 +84,9 @@ try:
             nsp.communicate()
             nsp.wait()
             nsp.release()
+
+        subprocess.call(["sysctl", "-w", "net.ipv4.conf."+brige_name+".forwarding=1"])
+        subprocess.call(["sysctl", "-w", "net.ipv6.conf."+brige_name+".forwarding=1"])
 
 except Exception as e:
       print('Error',e)
