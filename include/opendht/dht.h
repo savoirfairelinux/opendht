@@ -631,6 +631,7 @@ private:
 
     struct Storage {
         InfoHash id;
+        time_point last_maintenance_time;
         std::vector<ValueStorage> values {};
         std::vector<Listener> listeners {};
         std::map<size_t, LocalListener> local_listeners {};
@@ -798,6 +799,9 @@ private:
     ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
+
+    void maintainStorage(InfoHash id);
+    time_point getNextStorageMaintenanceTime();
 
     // Buckets
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
