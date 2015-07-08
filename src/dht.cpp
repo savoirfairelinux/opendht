@@ -2144,11 +2144,19 @@ Dht::maintainStorage(InfoHash id) {
     },
     [=,&foreign_values](bool success, const std::vector<std::shared_ptr<Node>> &nodes) {
         if (success) {
-            auto this_node = std::find_if(nodes.begin(), nodes.end(), [this](const std::shared_ptr<Node>& node) {
-                        return getNodeId() == node->id;
-                    });
+            auto farthest_node = nodes.begin();
+            {
+                auto nit = nodes.begin();
+                while (nit != nodes.end()) {
+                    if (id.xorCmp(farthest_node[0]->id, nit[0]->id) < 0) {
+                        farthest_node = nit;
+                    }
+                    nit++;
+                }
+            }
             //If this node is not in the list of 8 nodes nearby the given id.
-            if (this_node == nodes.end()) {
+            bool too_far = id.xorCmp(farthest_node[0]->id, myid) < 0;
+            if (too_far) {
                 for (auto &local_value_storage : local_storage->values) {
                     const auto& vt = getType(local_value_storage.data->type);
                     if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
