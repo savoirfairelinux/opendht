@@ -451,30 +451,79 @@ Certificate::getId() const
     return id;
 }
 
+static std::string
+getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
+{
+    std::string dn;
+    dn.resize(512);
+    size_t dn_sz = dn.size();
+    int ret = issuer
+            ? gnutls_x509_crt_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz)
+            : gnutls_x509_crt_get_dn_by_oid(       cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
+    if (ret != GNUTLS_E_SUCCESS)
+        return {};
+    dn.resize(dn_sz);
+    return dn;
+}
+
+std::string
+Certificate::getName() const
+{
+    return getDN(cert, GNUTLS_OID_X520_COMMON_NAME);
+}
+
 std::string
 Certificate::getUID() const
 {
-    std::string uid;
-    uid.resize(512);
-    size_t uid_sz = uid.size();
-    int ret = gnutls_x509_crt_get_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, 0, &(*uid.begin()), &uid_sz);
-    if (ret != GNUTLS_E_SUCCESS)
-        return {};
-    uid.resize(uid_sz);
-    return uid;
+    return getDN(cert, GNUTLS_OID_LDAP_UID);
+}
+
+std::string
+Certificate::getIssuerName() const
+{
+    return getDN(cert, GNUTLS_OID_X520_COMMON_NAME, true);
 }
 
 std::string
 Certificate::getIssuerUID() const
 {
-    std::string uid;
-    uid.resize(512);
-    size_t uid_sz = uid.size();
-    int ret = gnutls_x509_crt_get_issuer_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, 0, &(*uid.begin()), &uid_sz);
-    if (ret != GNUTLS_E_SUCCESS)
-        return {};
-    uid.resize(uid_sz);
-    return uid;
+    return getDN(cert, GNUTLS_OID_LDAP_UID, true);
+}
+
+static Certificate::NameType
+typeFromGnuTLS(gnutls_x509_subject_alt_name_t type)
+{
+    switch(type) {
+    case GNUTLS_SAN_DNSNAME:
+        return Certificate::NameType::DNS;
+    case GNUTLS_SAN_RFC822NAME:
+        return Certificate::NameType::RFC822;
+    case GNUTLS_SAN_URI:
+        return Certificate::NameType::URI;
+    case GNUTLS_SAN_IPADDRESS:
+        return Certificate::NameType::IP;
+    default:
+        return Certificate::NameType::UNKNOWN;
+    }
+}
+
+std::vector<std::pair<Certificate::NameType, std::string>>
+Certificate::getAltNames() const
+{
+    std::vector<std::pair<NameType, std::string>> names;
+    unsigned i = 0;
+    std::string name;
+    while (true) {
+        name.resize(512);
+        size_t name_sz = name.size();
+        unsigned type;
+        int ret = gnutls_x509_crt_get_subject_alt_name2(cert, i++, &(*name.begin()), &name_sz, &type, nullptr);
+        if (ret == GNUTLS_E_REQUESTED_DATA_NOT_AVAILABLE)
+            break;
+        name.resize(name_sz);
+        names.emplace_back(typeFromGnuTLS((gnutls_x509_subject_alt_name_t)type), name);
+    }
+    return names;
 }
 
 bool

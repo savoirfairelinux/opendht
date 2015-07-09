@@ -225,9 +225,22 @@ struct Certificate : public Serializable {
     /** Same as getPublicKey().getId() */
     InfoHash getId() const;
 
+    /** Read certificate Common Name (CN) */
+    std::string getName() const;
+
+    /** Read certificate User ID (UID) */
     std::string getUID() const;
 
+    /** Read certificate issuer Common Name (CN) */
+    std::string getIssuerName() const;
+
+    /** Read certificate issuer User ID (UID) */
     std::string getIssuerUID() const;
+
+    enum class NameType { UNKNOWN = 0, RFC822, DNS, URI, IP };
+
+    /** Read certificate alternative names */
+    std::vector<std::pair<NameType, std::string>> getAltNames() const;
 
     /**
      * Returns true if the certificate is marked as a Certificate Authority.
