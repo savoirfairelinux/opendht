@@ -176,7 +176,7 @@ main(int argc, char **argv)
             continue;
         } else if (op == "ls") {
             std::cout << "Searches:" << std::endl;
-            std::cout << dht.getSearchesLog(AF_INET) << std::endl;
+            std::cout << dht.getSearchesLog() << std::endl;
             continue;
         } else if (op == "log") {
             dht.setLoggers(

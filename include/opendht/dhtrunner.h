@@ -266,7 +266,7 @@ public:
         std::lock_guard<std::mutex> lck(dht_mtx);
         return dht_->getRoutingTablesLog(af);
     }
-    std::string getSearchesLog(sa_family_t af) const
+    std::string getSearchesLog(sa_family_t af = 0) const
     {
         std::lock_guard<std::mutex> lck(dht_mtx);
         return dht_->getSearchesLog(af);

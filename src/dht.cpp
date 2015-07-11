@@ -1950,7 +1950,7 @@ Dht::getStorageLog() const
 }
 
 
-std::string 
+std::string
 Dht::getRoutingTablesLog(sa_family_t af) const
 {
     auto& list = (af == AF_INET) ? buckets : buckets6;
@@ -1960,7 +1960,7 @@ Dht::getRoutingTablesLog(sa_family_t af) const
     return out.str();
 }
 
-std::string 
+std::string
 Dht::getSearchesLog(sa_family_t af) const
 {
     std::stringstream out;
@@ -2360,9 +2360,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } 
         break;
     case MessageType::Ping:
-        DHT_DEBUG("Got ping (%d)!", tid.length);
+        //DHT_DEBUG("Got ping (%d)!", tid.length);
         newNode(id, from, fromlen, 1);
-        DHT_DEBUG("Sending pong.");
+        //DHT_DEBUG("Sending pong.");
         sendPong(from, fromlen, tid);
         break;
     case MessageType::FindNode:
@@ -2514,8 +2514,6 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
                uniform_duration_distribution<> {seconds(5) , seconds(25)}
              : uniform_duration_distribution<> {seconds(60), seconds(180)};
         confirm_nodes_time = now + time_dis(rd);
-
-        dumpTables();
     }
 
     return std::min(confirm_nodes_time, search_time);
