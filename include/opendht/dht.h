@@ -828,7 +828,7 @@ private:
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
      */
-    bool searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = true);
+    std::pair<bool, bool> searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = true);
 
     void searchStep(Search& sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;

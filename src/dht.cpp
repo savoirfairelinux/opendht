@@ -784,14 +784,14 @@ Dht::expireSearches()
     });
 }
 
-bool
+std::pair<bool, bool>
 Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
 {
     const time_point up = update ? sr.getLastGetTime() : time_point::min();
     SearchNode* n = nullptr;
     if (pn) {
         if (not pn->canGet(now, up))
-            return false;
+            return {false, false};
         n = pn;
     } else {
         for (auto& sn : sr.nodes) {
@@ -801,7 +801,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
             }
         }
         if (not n)
-            return false;
+            return {false, false};
     }
 
     DHT_WARN("Sending get_values to %s (%s) for %s (p %d last get %lf)",
@@ -821,7 +821,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
 
     //std::cout << "Sending GET to " << n->node->id << " for IPv" << (sr.af==AF_INET?'4':'6') << " search " << sr.id << " (now pinged " << n->node->pinged << ")" << std::endl;
 
-    return true;
+    return {true, n->candidate};
 }
 
 /* When a search is in progress, we periodically call search_step to send
@@ -855,12 +855,11 @@ Dht::searchStep(Search& sr)
         bool in = sr.id.xorCmp(myid, sr.nodes.back().node->id) < 0;
 
         DHT_DEBUG("searchStep (synced%s).", in ? ", in" : "");
-        DHT_DEBUG("%s", getSearchesLog(sr.af).c_str());
 
         if (not sr.listeners.empty()) {
             unsigned i = 0, t = 0;
             for (auto& n : sr.nodes) {
-                if (n.node->isExpired(now) or (n.candidate and t >= LISTEN_NODES))
+                if (not n.isSynced(now) or (n.candidate and t >= LISTEN_NODES))
                     continue;
                 if (n.getListenTime() <= now) {
                     DHT_DEBUG("Sending listen to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
@@ -888,7 +887,7 @@ Dht::searchStep(Search& sr)
                 storageStore(sr.id, a.value);
             }
             for (auto& n : sr.nodes) {
-                if (n.node->isExpired(now) or (n.candidate and t >= TARGET_NODES))
+                if (not n.isSynced(now) or (n.candidate and t >= TARGET_NODES))
                     continue;
                 auto a_status = n.acked.find(vid);
                 auto at = n.getAnnounceTime(a_status, type);
@@ -929,9 +928,10 @@ Dht::searchStep(Search& sr)
     }
 
     unsigned i = 0;
-    bool sent;
+    bool sent, candidate;
     do {
-        if ((sent = searchSendGetValues(sr)))
+        std::tie(sent, candidate) = searchSendGetValues(sr);
+        if (sent and not candidate)
             i++;
     }
     while (sent and i < 3);
@@ -1122,7 +1122,7 @@ Dht::Search::getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, ti
         const ValueType& type = (type_it == types.end()) ? ValueType::USER_DATA : type_it->second;
         unsigned i = 0, t = 0;
         for (const auto& n : nodes) {
-            if (n.node->isExpired(now) or (n.candidate and t >= TARGET_NODES))
+            if (not n.isSynced(now) or (n.candidate and t >= TARGET_NODES))
                 continue;
             ret = std::min(ret, n.getAnnounceTime(a.value->id, type));
             t++;
@@ -1141,7 +1141,7 @@ Dht::Search::getListenTime(time_point now) const
     time_point listen_time {time_point::max()};
     unsigned i = 0, t = 0;
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired(now) or (sn.candidate and t >= LISTEN_NODES))
+        if (not sn.isSynced(now) or (sn.candidate and t >= LISTEN_NODES))
             continue;
         auto lt = sn.getListenTime();
         listen_time = std::min(listen_time, lt);
@@ -2202,7 +2202,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     cleared++;
                     n.getStatus.request_time = TIME_INVALID;
                     n.getStatus.reply_time = TIME_INVALID;
-                    if (searchSendGetValues(sr))
+                    if (searchSendGetValues(sr).first)
                         sr.get_step_time = now;
                     break;
                 }
@@ -2277,7 +2277,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                        requests in flight has decreased.  Let's push
                        another request. */
                     //std::cout << "Received reply from " << id << ", sending new message..." << std::endl;
-                    if (searchSendGetValues(*sr))
+                    if (searchSendGetValues(*sr).first)
                         sr->get_step_time = now;
                 }
             }
@@ -2326,7 +2326,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         break;
                     }
                 /* See comment for gp above. */
-                if (searchSendGetValues(*sr))
+                if (searchSendGetValues(*sr).first)
                     sr->get_step_time = now;
 
                 // If the value was just successfully announced, call the callback
@@ -2353,7 +2353,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         break;
                     }
                 /* See comment for gp above. */
-                if (searchSendGetValues(*sr))
+                if (searchSendGetValues(*sr).first)
                     sr->get_step_time = now;
             }
         } else {
