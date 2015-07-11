@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014 Savoir-Faire Linux Inc.
+ *  Copyright (C) 2014-2015 Savoir-Faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -461,7 +461,7 @@ getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
             ? gnutls_x509_crt_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz)
             : gnutls_x509_crt_get_dn_by_oid(       cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
     if (ret != GNUTLS_E_SUCCESS)
-        return {};
+        return {};  
     dn.resize(dn_sz);
     return dn;
 }
