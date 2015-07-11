@@ -787,7 +787,7 @@ Dht::expireSearches()
 bool
 Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
 {
-    const time_point up = update ? sr.getLastGetTime() : time_point{};
+    const time_point up = update ? sr.getLastGetTime() : time_point::min();
     SearchNode* n = nullptr;
     if (pn) {
         if (not pn->canGet(now, up))
@@ -877,8 +877,8 @@ Dht::searchStep(Search& sr)
         // Announce requests
         for (auto& a : sr.announce) {
             if (!a.value) {
-                continue;
                 DHT_ERROR("Trying to announce a null value !");
+                continue;
             }
             unsigned i = 0, t = 0;
             auto vid = a.value->id;
@@ -1022,7 +1022,7 @@ Dht::Search::isSynced(time_point now) const
 time_point
 Dht::Search::getLastGetTime() const
 {
-    time_point last {};
+    time_point last = time_point::min();
     for (const auto& g : callbacks)
         last = std::max(last, g.start);
     return last;
@@ -1383,6 +1383,8 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
 bool
 Dht::cancelListen(const InfoHash& id, size_t token)
 {
+    now = clock::now();
+
     auto it = listeners.find(token);
     if (it == listeners.end()) {
         DHT_WARN("Listen token not found: %d", token);
@@ -1865,7 +1867,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
             << ((n.getStatus.reply_time > last_get) ? 'u' : '-') << "] ";
 
         if (not sr.listeners.empty()) {
-            if (n.listenStatus.request_time == time_point{})
+            if (n.listenStatus.request_time == time_point::min())
                 out << "     ";
             else
                 out << "["
@@ -2608,6 +2610,7 @@ Dht::insertNode(const InfoHash& id, const sockaddr *sa, socklen_t salen)
 {
     if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
         return false;
+    now = clock::now();
     auto n = newNode(id, sa, salen, 0);
     return !!n;
 }

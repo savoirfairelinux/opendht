@@ -51,9 +51,9 @@ struct Node {
     InfoHash id {};
     sockaddr_storage ss;
     socklen_t sslen {0};
-    time_point time {};            /* last time eared about */
-    time_point reply_time {};      /* time of last correct reply received */
-    time_point pinged_time {};     /* time of last message sent */
+    time_point time {time_point::min()};            /* last time eared about */
+    time_point reply_time {time_point::min()};      /* time of last correct reply received */
+    time_point pinged_time {time_point::min()};     /* time of last message sent */
     unsigned pinged {0};           /* how many requests we sent since last reply */
 
     Node() : ss() {
@@ -368,11 +368,11 @@ private:
 
     struct Bucket {
         Bucket() : cached() {}
-        Bucket(sa_family_t af, const InfoHash& f = {}, time_point t = {})
+        Bucket(sa_family_t af, const InfoHash& f = {}, time_point t = time_point::min())
             : af(af), first(f), time(t), cached() {}
         sa_family_t af {0};
         InfoHash first {};
-        time_point time {};             /* time of last reply in this bucket */
+        time_point time {time_point::min()};             /* time of last reply in this bucket */
         std::list<std::shared_ptr<Node>> nodes {};
         sockaddr_storage cached;  /* the address of a likely candidate */
         socklen_t cachedlen {0};
@@ -413,10 +413,10 @@ private:
         SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
         struct RequestStatus {
-            time_point request_time {};    /* the time of the last unanswered request */
-            time_point reply_time {};      /* the time of the last confirmation */
+            time_point request_time {time_point::min()};    /* the time of the last unanswered request */
+            time_point reply_time {time_point::min()};      /* the time of the last confirmation */
             RequestStatus() {};
-            RequestStatus(time_point q, time_point a = {}) : request_time(q), reply_time(a) {};
+            RequestStatus(time_point q, time_point a = time_point::min()) : request_time(q), reply_time(a) {};
             bool expired(time_point now) const {
                 return reply_time < request_time && now > request_time + Node::MAX_RESPONSE_TIME;
             }
@@ -527,8 +527,8 @@ private:
         sa_family_t af;
 
         uint16_t tid;
-        time_point step_time {};           /* the time of the last search_step */
-        time_point get_step_time {};       /* the time of the last get time */
+        time_point step_time {time_point::min()};           /* the time of the last search_step */
+        time_point get_step_time {time_point::min()};       /* the time of the last get time */
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
@@ -705,11 +705,11 @@ private:
     unsigned next_blacklisted = 0;
 
     time_point now;
-    time_point mybucket_grow_time {}, mybucket6_grow_time {};
-    time_point expire_stuff_time {};
+    time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
+    time_point expire_stuff_time {time_point::min()};
     time_point search_time {time_point::max()};
-    time_point confirm_nodes_time {};
-    time_point rotate_secrets_time {};
+    time_point confirm_nodes_time {time_point::min()};
+    time_point rotate_secrets_time {time_point::min()};
     std::queue<time_point> rate_limit_time {};
 
     // Networking & packet handling
