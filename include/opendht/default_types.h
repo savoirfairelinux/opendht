@@ -129,6 +129,7 @@ struct TrustRequest : public EncryptedValue
 {
     TrustRequest() {}
     TrustRequest(std::string s) : service(s) {}
+    TrustRequest(std::string s, const Blob& d) : service(s), payload(d) {}
 
     static const ValueType TYPE;
     virtual const ValueType& getType() const {
@@ -139,11 +140,14 @@ struct TrustRequest : public EncryptedValue
     }
     virtual void pack(Blob& data) const {
         serialize<std::string>(service, data);
+        serialize<Blob>(payload, data);
     }
     virtual void unpack(Blob::const_iterator& b, Blob::const_iterator& e) {
         service = deserialize<std::string>(b, e);
+        payload = deserialize<Blob>(b, e);
     }
     std::string service;
+    Blob payload;
 };
 
 struct IceCandidates : public EncryptedValue
