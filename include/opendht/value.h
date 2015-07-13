@@ -64,8 +64,8 @@ using clock = std::chrono::steady_clock;
 using time_point = clock::time_point;
 using duration = clock::duration;
 
-static constexpr const time_point TIME_INVALID = {time_point::min()};
-static constexpr const time_point TIME_MAX {time_point::max()};
+static /*constexpr*/ const time_point TIME_INVALID = {time_point::min()};
+static /*constexpr*/ const time_point TIME_MAX {time_point::max()};
 
 template <typename Duration = duration>
 class uniform_duration_distribution : public std::uniform_int_distribution<typename Duration::rep> {
