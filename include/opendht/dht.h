@@ -41,6 +41,9 @@ THE SOFTWARE.
 
 namespace dht {
 
+std::string print_addr(const sockaddr* sa, socklen_t slen);
+std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+
 struct NodeExport {
     InfoHash id;
     sockaddr_storage ss;
@@ -65,6 +68,12 @@ struct Node {
     }
     InfoHash getId() const {
         return id;
+    }
+    std::pair<const sockaddr*, socklen_t> getAddr() const {
+        return {(const sockaddr*)&ss, sslen};
+    }
+    std::string getAddrStr() const {
+        return print_addr(ss, sslen);
     }
     bool isExpired(time_point now) const;
     bool isGood(time_point now) const;

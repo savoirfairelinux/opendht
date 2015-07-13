@@ -41,23 +41,6 @@
 
 namespace dht {
 
-static std::string
-print_addr(const sockaddr* sa, socklen_t slen)
-{
-    char hbuf[NI_MAXHOST];
-    char sbuf[NI_MAXSERV];
-    std::stringstream out;
-    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
-        if (sa->sa_family == AF_INET6)
-            out << "[" << hbuf << "]:" << sbuf;
-        else
-            out << hbuf << ":" << sbuf;
-    } else
-        out << "[invalid address]";
-    return out.str();
-}
-
-
 DhtRunner::DhtRunner()
 {
 #ifdef _WIN32
@@ -204,7 +187,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
         if(s4 >= 0) {
             int rc = bind(s4, (sockaddr*)sin4, sizeof(sockaddr_in));
             if(rc < 0)
-                throw DhtException("Can't bind IPv4 socket on " + print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
+                throw DhtException("Can't bind IPv4 socket on " + dht::print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
         }
     }
 
@@ -218,7 +201,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
 
             rc = bind(s6, (sockaddr*)sin6, sizeof(sockaddr_in6));
             if(rc < 0)
-                throw DhtException("Can't bind IPv6 socket on " + print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
+                throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
         }
     }
 

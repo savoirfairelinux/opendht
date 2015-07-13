@@ -29,7 +29,7 @@
 from libc.stdint cimport *
 from libcpp.string cimport string
 from libcpp.vector cimport vector
-from libcpp.set cimport set as set
+from libcpp.map cimport map as map
 from libcpp cimport bool
 from libcpp.utility cimport pair
 
@@ -70,6 +70,7 @@ cdef extern from "opendht/dht.h" namespace "dht":
     cdef cppclass Node:
         Node() except +
         InfoHash getId() const
+        string getAddrStr() const
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     cdef cppclass Dht:
@@ -127,6 +128,22 @@ cdef class PyInfoHash(_WithID):
         h._infohash = InfoHash.get(key.encode())
         return h
 
+cdef class PyNode(_WithID):
+    cdef shared_ptr[Node] _node
+    def getId(self):
+        return self._node.get().getId().toString()
+    def getAddr(self):
+        return self._node.get().getAddrStr()
+
+cdef class PyNodeEntry(_WithID):
+    cdef pair[InfoHash, shared_ptr[Node]] _v
+    def getId(self):
+        return self._v.first.toString()
+    def getNode(self):
+        n = PyNode()
+        n._node = self._v.second
+        return n
+
 cdef class PyValue(object):
     cdef shared_ptr[Value] _value
     def __init__(self, bytes val=b''):
@@ -135,25 +152,25 @@ cdef class PyValue(object):
         return self._value.get().toString().decode()
 
 cdef class PyNodeSetIter(object):
-    cdef set[InfoHash]* _nodes
-    cdef set[InfoHash].iterator _curIter
+    cdef map[InfoHash, shared_ptr[Node]]* _nodes
+    cdef map[InfoHash, shared_ptr[Node]].iterator _curIter
     def __init__(self, PyNodeSet s):
         self._nodes = &s._nodes
         self._curIter = self._nodes.begin()
     def __next__(self):
         if self._curIter == self._nodes.end():
             raise StopIteration
-        h = PyInfoHash()
-        h._infohash = deref(self._curIter)
+        h = PyNodeEntry()
+        h._v = deref(self._curIter)
         inc(self._curIter)
         return h
 
 cdef class PyNodeSet(object):
-    cdef set[InfoHash] _nodes
+    cdef map[InfoHash, shared_ptr[Node]] _nodes
     def size(self):
         return self._nodes.size()
-    def insert(self, PyInfoHash l):
-        self._nodes.insert(l._infohash)
+    def insert(self, PyNodeEntry l):
+        self._nodes.insert(l._v)
     def extend(self, li):
         for n in li:
             self.insert(n)
@@ -161,19 +178,19 @@ cdef class PyNodeSet(object):
         if self._nodes.empty():
             raise IndexError()
         h = PyInfoHash()
-        h._infohash = deref(self._nodes.begin())
+        h._infohash = deref(self._nodes.begin()).first
         return h
     def last(self):
         if self._nodes.empty():
             raise IndexError()
         h = PyInfoHash()
-        h._infohash = deref(dec(self._nodes.end()))
+        h._infohash = deref(dec(self._nodes.end())).first
         return h
     def __str__(self):
         s = ''
-        cdef set[InfoHash].iterator it = self._nodes.begin()
+        cdef map[InfoHash, shared_ptr[Node]].iterator it = self._nodes.begin()
         while it != self._nodes.end():
-            s += deref(it).toString().decode() + '\n'
+            s += deref(it).first.toString().decode() + ' ' + deref(it).second.get().getAddrStr().decode() + '\n'
             inc(it)
         return s
     def __iter__(self):
@@ -232,8 +249,9 @@ cdef bool py_get_callback(shared_ptr[Value] value, void *user_data) with gil:
 cdef void py_done_callback(bool done, vector[shared_ptr[Node]]* nodes, void *user_data) with gil:
     node_ids = []
     for n in deref(nodes):
-        h = PyInfoHash()
-        h._infohash = n.get().getId()
+        h = PyNodeEntry()
+        h._v.first = n.get().getId()
+        h._v.second = n
         node_ids.append(h)
     (<object>user_data)['done'](done, node_ids)
     ref.Py_DECREF(<object>user_data)

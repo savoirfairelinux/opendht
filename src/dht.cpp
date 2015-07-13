@@ -101,8 +101,8 @@ to_hex(const uint8_t *buf, size_t buflen)
     return s.str();
 }
 
-static std::string
-print_addr(const sockaddr* sa, socklen_t slen)
+std::string
+dht::print_addr(const sockaddr* sa, socklen_t slen)
 {
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
@@ -117,8 +117,8 @@ print_addr(const sockaddr* sa, socklen_t slen)
     return out.str();
 }
 
-static std::string
-print_addr(const sockaddr_storage& ss, socklen_t sslen)
+std::string
+dht::print_addr(const sockaddr_storage& ss, socklen_t sslen)
 {
     return print_addr((const sockaddr*)&ss, sslen);
 }
