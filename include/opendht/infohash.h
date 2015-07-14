@@ -39,7 +39,7 @@
 #include <cstring>
 
 // bytes
-#define HASH_LEN 20
+#define HASH_LEN 20u
 
 namespace dht {
 
@@ -155,6 +155,17 @@ public:
         auto& num = *(begin()+(nbit/8));
         unsigned bit = 7 - (nbit % 8);
         num ^= (-b ^ num) & (1 << bit);
+    }
+
+    double
+    toFloat() const
+    {
+        double v = 0.;
+        for (unsigned i = 0; i < std::min<size_t>(HASH_LEN*8, sizeof(unsigned)*8-1); i++) {
+            if (getBit(i))
+                v += 1.d/(double)(1<<(i+1));
+        }
+        return v;
     }
 
     bool

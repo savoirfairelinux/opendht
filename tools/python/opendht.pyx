@@ -51,9 +51,10 @@ cdef extern from "opendht/infohash.h" namespace "dht":
     cdef cppclass InfoHash:
         InfoHash() except +
         InfoHash(string s) except +
-        string toString()
-        bool getBit(unsigned bit)
+        string toString() const
+        bool getBit(unsigned bit) const
         void setBit(unsigned bit, bool b)
+        double toFloat() const
         @staticmethod
         unsigned commonBits(InfoHash a, InfoHash b)
         @staticmethod
@@ -107,7 +108,7 @@ cdef class _WithID(object):
     def __repr__(self):
         return "<%s '%s'>" % (self.__class__.__name__, str(self))
     def __str__(self):
-        return self.getId().decode()
+        return self.getId().toString().decode()
 
 cdef class PyInfoHash(_WithID):
     cdef InfoHash _infohash
@@ -118,7 +119,11 @@ cdef class PyInfoHash(_WithID):
     def setBit(self, bit, b):
         self._infohash.setBit(bit, b)
     def getId(self):
+        return self
+    def toString(self):
         return self._infohash.toString()
+    def toFloat(self):
+        return self._infohash.toFloat()
     @staticmethod
     def commonBits(PyInfoHash a, PyInfoHash b):
         return InfoHash.commonBits(a._infohash, b._infohash)
@@ -131,14 +136,18 @@ cdef class PyInfoHash(_WithID):
 cdef class PyNode(_WithID):
     cdef shared_ptr[Node] _node
     def getId(self):
-        return self._node.get().getId().toString()
+        h = PyInfoHash()
+        h._infohash = self._node.get().getId()
+        return h
     def getAddr(self):
         return self._node.get().getAddrStr()
 
 cdef class PyNodeEntry(_WithID):
     cdef pair[InfoHash, shared_ptr[Node]] _v
     def getId(self):
-        return self._v.first.toString()
+        h = PyInfoHash()
+        h._infohash = self._v.first
+        return h
     def getNode(self):
         n = PyNode()
         n._node = self._v.second
@@ -199,14 +208,16 @@ cdef class PyNodeSet(object):
 cdef class PyPublicKey(_WithID):
     cdef PublicKey _key
     def getId(self):
-        return self._key.getId().toString()
-
+        h = PyInfoHash()
+        h._infohash = self._key.getId()
+        return h
 
 cdef class PySharedCertificate(_WithID):
     cdef shared_ptr[Certificate] _cert
     def getId(self):
-        return self._cert.get().getId().toString()
-
+        h = PyInfoHash()
+        h._infohash = self._cert.get().getId()
+        return h
 
 cdef class PyIdentity(object):
     cdef Identity _id;
@@ -261,7 +272,9 @@ cdef class PyDhtRunner(_WithID):
     def __cinit__(self):
         self.thisptr = new DhtRunner()
     def getId(self):
-        return self.thisptr.getId().toString()
+        h = PyInfoHash()
+        h._infohash = self.thisptr.getId()
+        return h
     def getNodeId(self):
         return self.thisptr.getNodeId().toString()
     def bootstrap(self, str host, str port):
