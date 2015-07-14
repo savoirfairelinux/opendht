@@ -2134,15 +2134,15 @@ Dht::bucketMaintenance(RoutingTable& list)
 void
 Dht::maintainStorage(InfoHash id) {
     auto *local_storage = findStorage(id);
-    std::vector<std::shared_ptr<Value>> foreign_values;
+    auto *foreign_values = new std::vector<std::shared_ptr<Value>>();
 
     if (!local_storage) { return; }
     get(id,
-    [&foreign_values](std::shared_ptr<Value> value){
-        foreign_values.push_back(value);
+    [=](std::shared_ptr<Value> value){
+        foreign_values->push_back(value);
         return true;
     },
-    [=,&foreign_values](bool success, const std::vector<std::shared_ptr<Node>> &nodes) {
+    [=](bool success, const std::vector<std::shared_ptr<Node>> &nodes) {
         if (success) {
             auto farthest_node = nodes.begin();
             {
@@ -2160,9 +2160,9 @@ Dht::maintainStorage(InfoHash id) {
                 for (auto &local_value_storage : local_storage->values) {
                     const auto& vt = getType(local_value_storage.data->type);
                     if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
-                        auto mutual_value = std::find(foreign_values.begin(),
-                                foreign_values.end(), local_value_storage.data);
-                        if (mutual_value == foreign_values.end()) {
+                        auto mutual_value = std::find(foreign_values->begin(),
+                                foreign_values->end(), local_value_storage.data);
+                        if (mutual_value == foreign_values->end()) {
                             // gotta put that value there
                             put(id, local_value_storage.data);
                         }
@@ -2170,6 +2170,7 @@ Dht::maintainStorage(InfoHash id) {
                 }
             }
         }
+        delete foreign_values;
     });
 
     local_storage->last_maintenance_time = now;
