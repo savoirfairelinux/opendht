@@ -124,8 +124,11 @@ PrivateKey::PrivateKey(const Blob& import, const std::string& password)
         int err_der = gnutls_x509_privkey_import2(x509_key, &dt, GNUTLS_X509_FMT_DER, password_ptr, flags);
         if (err_der != GNUTLS_E_SUCCESS) {
             gnutls_x509_privkey_deinit(x509_key);
-            throw CryptoException(std::string("Can't load private key: PEM: ") + gnutls_strerror(err)
-                                                                   + " DER: "  + gnutls_strerror(err_der));
+            if (err == GNUTLS_E_DECRYPTION_FAILED or err_der == GNUTLS_E_DECRYPTION_FAILED)
+                throw DecryptError("Can't decrypt private key");
+            else
+                throw CryptoException(std::string("Can't load private key: PEM: ") + gnutls_strerror(err)
+                                                                       + " DER: "  + gnutls_strerror(err_der));
         }
     }
 
@@ -214,7 +217,7 @@ PrivateKey::decrypt(const Blob& cipher) const
         gnutls_datum_t out;
         int err = gnutls_privkey_decrypt_data(key, 0, &dat, &out);
         if (err != GNUTLS_E_SUCCESS)
-            throw CryptoException(std::string("Can't decrypt data: ") + gnutls_strerror(err));
+            throw DecryptError(std::string("Can't decrypt data: ") + gnutls_strerror(err));
         ret.insert(ret.end(), out.data, out.data+out.size);
         gnutls_free(out.data);
     }

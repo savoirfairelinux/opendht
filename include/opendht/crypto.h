@@ -56,6 +56,14 @@ class CryptoException : public std::runtime_error {
 };
 
 /**
+ * Exception thrown when an expected decryption failed.
+ */
+class DecryptError : public CryptoException {
+    public:
+        DecryptError(const std::string& str = "") : CryptoException(str) {};
+};
+
+/**
  * Generate an RSA key pair (2048 bits) and a certificate.
  * @param name the name used in the generated certificate
  * @param ca if set, the certificate authority that will sign the generated certificate.
