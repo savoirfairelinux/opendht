@@ -278,6 +278,41 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
     return std::max(bit1, bit2)+1;
 }
 
+std::vector<std::shared_ptr<Node>>
+Dht::RoutingTable::findClosestNodes(const InfoHash id) const {
+    auto bucket = findBucket(id);
+    std::vector<std::shared_ptr<Node>> nodes {};
+    nodes.reserve(TARGET_NODES);
+
+    auto sortedBucketInsert = [&](const Bucket &b) {
+            for (auto n : b.nodes) {
+                auto here = std::find_if(nodes.begin(), nodes.end(), [&id,&n](std::shared_ptr<Node> &node) {
+                        return id.xorCmp(node->id, n->id) < 0;
+                        });
+                nodes.insert(here, n);
+            }
+        };
+
+    if (bucket != this->end()) {
+        // Inserting very closest nodes
+        sortedBucketInsert(*bucket);
+
+        // adjacent buckets contain remaining closest candidates
+        if (std::next(bucket) != this->end() && nodes.size() < TARGET_NODES) {
+            sortedBucketInsert(*std::next(bucket));
+        }
+        if (std::prev(bucket) != this->end() && nodes.size() < TARGET_NODES) {
+            sortedBucketInsert(*std::prev(bucket));
+        }
+
+        auto after_target_nodes = nodes.begin();
+        std::advance(after_target_nodes, TARGET_NODES);
+        nodes.erase(after_target_nodes, nodes.end());
+    }
+
+    return nodes;
+}
+
 Dht::RoutingTable::iterator
 Dht::RoutingTable::findBucket(const InfoHash& id)
 {

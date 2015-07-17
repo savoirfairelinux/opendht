@@ -406,6 +406,8 @@ private:
 
         InfoHash middle(const RoutingTable::const_iterator&) const;
 
+        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id) const;
+
         RoutingTable::iterator findBucket(const InfoHash& id);
         RoutingTable::const_iterator findBucket(const InfoHash& id) const;
 
