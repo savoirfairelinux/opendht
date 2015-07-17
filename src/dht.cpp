@@ -1704,6 +1704,11 @@ Dht::expireStorage()
     auto i = store.begin();
     while (i != store.end())
     {
+        if (!i->want4 && !i->want6) {
+            store.erase(i);
+            continue;
+        }
+
         // put elements to remove at the end with std::partition,
         // and then remove them with std::vector::erase.
         i->listeners.erase(
@@ -2169,44 +2174,42 @@ Dht::bucketMaintenance(RoutingTable& list)
 void
 Dht::maintainStorage(InfoHash id) {
     auto *local_storage = findStorage(id);
-    auto *foreign_values = new std::vector<std::shared_ptr<Value>>();
-
     if (!local_storage) { return; }
-    get(id,
-    [=](std::shared_ptr<Value> value){
-        foreign_values->push_back(value);
-        return true;
-    },
-    [=](bool success, const std::vector<std::shared_ptr<Node>> &nodes) {
-        if (success) {
-            auto farthest_node = nodes.begin();
-            {
-                auto nit = nodes.begin();
-                while (nit != nodes.end()) {
-                    if (id.xorCmp(farthest_node[0]->id, nit[0]->id) < 0) {
-                        farthest_node = nit;
-                    }
-                    nit++;
+
+    auto nodes = buckets.findClosestNodes(id);
+    auto nodes6 = buckets6.findClosestNodes(id);
+
+    if (nodes.size() != 0) {
+        if (id.xorCmp(nodes.back()->id, myid) < 0) {
+            for (auto &local_value_storage : local_storage->values) {
+                const auto& vt = getType(local_value_storage.data->type);
+                if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                    // gotta put that value there
+                    announce(id, AF_INET, local_value_storage.data, nullptr);
                 }
             }
-            //If this node is not in the list of 8 nodes nearby the given id.
-            bool too_far = id.xorCmp(farthest_node[0]->id, myid) < 0;
-            if (too_far) {
-                for (auto &local_value_storage : local_storage->values) {
-                    const auto& vt = getType(local_value_storage.data->type);
-                    if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
-                        auto mutual_value = std::find(foreign_values->begin(),
-                                foreign_values->end(), local_value_storage.data);
-                        if (mutual_value == foreign_values->end()) {
-                            // gotta put that value there
-                            put(id, local_value_storage.data);
-                        }
-                    }
-                }
-            }
+            local_storage->want4 = false;
         }
-        delete foreign_values;
-    });
+    }
+    else {
+        local_storage->want4 = false;
+    }
+
+    if (nodes6.size() != 0) {
+        if (id.xorCmp(nodes6.back()->id, myid) < 0) {
+            for (auto &local_value_storage : local_storage->values) {
+                const auto& vt = getType(local_value_storage.data->type);
+                if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                    // gotta put that value there
+                    announce(id, AF_INET6, local_value_storage.data, nullptr);
+                }
+            }
+            local_storage->want6 = false;
+        }
+    }
+    else {
+        local_storage->want6 = false;
+    }
 
     local_storage->last_maintenance_time = now;
 }
