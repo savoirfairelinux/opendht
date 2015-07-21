@@ -151,6 +151,7 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
+constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
