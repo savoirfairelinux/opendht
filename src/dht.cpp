@@ -281,9 +281,10 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
 
 std::vector<std::shared_ptr<Node>>
 Dht::RoutingTable::findClosestNodes(const InfoHash id) const {
-    auto bucket = findBucket(id);
     std::vector<std::shared_ptr<Node>> nodes {};
-    nodes.reserve(TARGET_NODES);
+    auto bucket = findBucket(id);
+
+    if (bucket == end()) { return nodes; }
 
     auto sortedBucketInsert = [&](const Bucket &b) {
             for (auto n : b.nodes) {
@@ -306,9 +307,10 @@ Dht::RoutingTable::findClosestNodes(const InfoHash id) const {
             sortedBucketInsert(*std::prev(bucket));
         }
 
-        auto after_target_nodes = nodes.begin();
-        std::advance(after_target_nodes, TARGET_NODES);
-        nodes.erase(after_target_nodes, nodes.end());
+        // shrink to the TARGET_NODES closest nodes.
+        if (nodes.size() > TARGET_NODES) {
+            nodes.resize(TARGET_NODES);
+        }
     }
 
     return nodes;
@@ -2180,7 +2182,7 @@ Dht::maintainStorage(InfoHash id) {
     auto nodes = buckets.findClosestNodes(id);
     auto nodes6 = buckets6.findClosestNodes(id);
 
-    if (nodes.size() != 0) {
+    if (!nodes.empty()) {
         if (id.xorCmp(nodes.back()->id, myid) < 0) {
             for (auto &local_value_storage : local_storage->values) {
                 const auto& vt = getType(local_value_storage.data->type);
@@ -2192,11 +2194,8 @@ Dht::maintainStorage(InfoHash id) {
             local_storage->want4 = false;
         }
     }
-    else {
-        local_storage->want4 = false;
-    }
 
-    if (nodes6.size() != 0) {
+    if (!nodes6.empty()) {
         if (id.xorCmp(nodes6.back()->id, myid) < 0) {
             for (auto &local_value_storage : local_storage->values) {
                 const auto& vt = getType(local_value_storage.data->type);
@@ -2207,9 +2206,6 @@ Dht::maintainStorage(InfoHash id) {
             }
             local_storage->want6 = false;
         }
-    }
-    else {
-        local_storage->want6 = false;
     }
 
     local_storage->last_maintenance_time = now;
