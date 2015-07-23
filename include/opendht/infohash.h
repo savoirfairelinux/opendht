@@ -161,10 +161,8 @@ public:
     toFloat() const
     {
         double v = 0.;
-        for (unsigned i = 0; i < std::min<size_t>(HASH_LEN*8, sizeof(unsigned)*8-1); i++) {
-            if (getBit(i))
-                v += 1.d/(double)(1<<(i+1));
-        }
+        for (unsigned i = 0; i < std::min<size_t>(HASH_LEN, sizeof(unsigned)-1); i++)
+            v += *(cbegin()+i)/(double)(1<<(8*(i+1)));  
         return v;
     }
 
