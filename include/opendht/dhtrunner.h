@@ -329,7 +329,7 @@ private:
 
     std::thread rcv_thread {};
     std::mutex sock_mtx {};
-    std::vector<std::pair<Blob, sockaddr_storage>> rcv {};
+    std::vector<std::pair<Blob, std::pair<sockaddr_storage, socklen_t>>> rcv {};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};

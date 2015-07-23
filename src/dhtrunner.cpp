@@ -61,10 +61,12 @@ DhtRunner::~DhtRunner()
 void
 DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, StatusCallback cb)
 {
-    sockaddr_in sin4 {};
+    sockaddr_in sin4;
+    std::fill_n((uint8_t*)&sin4, sizeof(sin4), 0);
     sin4.sin_family = AF_INET;
     sin4.sin_port = htons(port);
-    sockaddr_in6 sin6 {};
+    sockaddr_in6 sin6;
+    std::fill_n((uint8_t*)&sin6, sizeof(sin6), 0);
     sin6.sin6_family = AF_INET6;
     sin6.sin6_port = htons(port);
     run(&sin4, &sin6, identity, threaded, cb);
@@ -154,7 +156,7 @@ DhtRunner::loop_()
             for (const auto& pck : rcv) {
                 auto& buf = pck.first;
                 auto& from = pck.second;
-                wakeup = dht_->periodic(buf.data(), buf.size()-1, (sockaddr*)&from, from.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6));
+                wakeup = dht_->periodic(buf.data(), buf.size()-1, (sockaddr*)&from.first, from.second);
             }
             rcv.clear();
         } else {
@@ -201,7 +203,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
 
             rc = bind(s6, (sockaddr*)sin6, sizeof(sockaddr_in6));
             if(rc < 0)
-                throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
+                throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin6, sizeof(sockaddr_in6)));
         }
     }
 
@@ -246,7 +248,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
                         buf[rc] = 0;
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
-                            rcv.emplace_back(Blob {buf, buf+rc+1}, from);
+                            rcv.emplace_back(Blob {buf, buf+rc+1}, std::make_pair(from, fromlen));
                         }
                         cv.notify_all();
                     }
