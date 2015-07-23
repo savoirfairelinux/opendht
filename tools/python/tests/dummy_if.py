@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2015 Savoir-Faire Linux Inc.
+# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+
 import argparse, subprocess
 
 from pyroute2 import IPDB, NetNS

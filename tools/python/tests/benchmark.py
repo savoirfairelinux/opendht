@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (C) 2015 Savoir-Faire Linux Inc.
+# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+
 import sys, subprocess, argparse, time, random, string, math, ipaddress, threading, queue
 from pyroute2.netns.process.proxy import NSPopen
 import numpy as np
