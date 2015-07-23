@@ -2133,8 +2133,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     InfoHash id, info_hash, target;
     TransId tid;
     Blob token {};
-    uint8_t nodes[256], nodes6[1024];
-    unsigned nodes_len = 256, nodes6_len = 1024;
+    uint8_t nodes[26*16], nodes6[38*16];
+    unsigned nodes_len = 26*16, nodes6_len = 38*16;
     in_port_t port;
     Value::Id value_id;
     uint16_t error_code;
@@ -3100,7 +3100,7 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
         if (p) {
             char *q;
             size_t l = strtoul((char*)p + 7, &q, 10);
-            if (q && *q == ':' && l > 0 && l < *nodes_len) {
+            if (q && *q == ':' && l > 0 && l <= *nodes_len) {
                 CHECK(q + 1, l);
                 memcpy(nodes_return, q + 1, l);
                 *nodes_len = l;
@@ -3115,7 +3115,7 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
         if (p) {
             char *q;
             size_t l = strtoul((char*)p + 8, &q, 10);
-            if (q && *q == ':' && l > 0 && l < *nodes6_len) {
+            if (q && *q == ':' && l > 0 && l <= *nodes6_len) {
                 CHECK(q + 1, l);
                 memcpy(nodes6_return, q + 1, l);
                 *nodes6_len = l;
