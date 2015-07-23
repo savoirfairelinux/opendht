@@ -245,7 +245,7 @@ Dht::RoutingTable::randomId(const Dht::RoutingTable::const_iterator& it) const
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
     int bit = std::max(bit1, bit2) + 1;
 
-    if (bit >= 8*HASH_LEN)
+    if (bit >= 8*(int)HASH_LEN)
         return it->first;
 
     int b = bit/8;
@@ -265,7 +265,7 @@ Dht::RoutingTable::middle(const RoutingTable::const_iterator& it) const
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
     int bit = std::max(bit1, bit2) + 1;
 
-    if (bit >= 8*HASH_LEN)
+    if (bit >= 8*(int)HASH_LEN)
         throw std::out_of_range("End of table");
 
     InfoHash id = it->first;
