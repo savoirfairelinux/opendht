@@ -193,6 +193,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
         }
     }
 
+#if 0
     if (sin6) {
         s6 = socket(PF_INET6, SOCK_DGRAM, 0);
         if(s6 >= 0) {
@@ -206,6 +207,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
                 throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin6, sizeof(sockaddr_in6)));
         }
     }
+#endif
 
     dht_ = std::unique_ptr<SecureDht>(new SecureDht {s4, s6, identity});
 
