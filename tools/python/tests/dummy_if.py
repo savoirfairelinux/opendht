@@ -13,6 +13,9 @@ parser.add_argument('-n', '--ifnum', type=int, help='interface number', default=
 parser.add_argument('-r', '--remove', help='remove instead of adding the interface', action="store_true")
 parser.add_argument('-l', '--loss', help='simulated packet loss (percent)', type=int, default=0)
 parser.add_argument('-d', '--delay', help='simulated latency (ms)', type=int, default=0)
+parser.add_argument('-4', '--ipv4', help='Enable IPv4', action="store_true")
+parser.add_argument('-6', '--ipv6', help='Enable IPv6', action="store_true")
+
 args = parser.parse_args()
 
 local_addr4 = '10.0.42.'
@@ -28,8 +31,6 @@ try:
             if iface in ip.interfaces:
                 with ip.interfaces[iface] as i:
                     i.remove()
-                #with ip.interfaces[iface+'.1'] as i:
-                #    i.remove()
         if 'tap'+args.ifname in ip.interfaces:
             with ip.interfaces['tap'+args.ifname] as i:
                 i.remove()
@@ -53,8 +54,10 @@ try:
                 iface = args.ifname+str(ifn)
                 i.add_port(ip.interfaces[iface])
             i.add_port(ip.interfaces['tap'+args.ifname])
-            i.add_ip(local_addr4+'1/24')  # the same as i.add_ip('10.0.0.1', 24)
-            i.add_ip(local_addr6+'1/24')
+            if args.ipv4:
+                i.add_ip(local_addr4+'1/24')
+            if args.ipv6:
+                i.add_ip(local_addr6+'1/24')
             i.up()
 
         with ip.interfaces['tap'+args.ifname] as tap:
@@ -76,8 +79,10 @@ try:
                 with ip_ns.interfaces.lo as lo:
                     lo.up()
                 with ip_ns.interfaces[iface1] as i:
-                    i.add_ip(local_addr4+str(ifn+8)+'/24')
-                    i.add_ip(local_addr6+str(ifn+8)+'/64')
+                    if args.ipv4:
+                        i.add_ip(local_addr4+str(ifn+8)+'/24')
+                    if args.ipv6:
+                        i.add_ip(local_addr6+str(ifn+8)+'/64')
                     i.up()
             finally:
                 ip_ns.release()
@@ -88,8 +93,10 @@ try:
             nsp.wait()
             nsp.release()
 
-        subprocess.call(["sysctl", "-w", "net.ipv4.conf."+brige_name+".forwarding=1"])
-        subprocess.call(["sysctl", "-w", "net.ipv6.conf."+brige_name+".forwarding=1"])
+        if args.ipv4:
+            subprocess.call(["sysctl", "-w", "net.ipv4.conf."+brige_name+".forwarding=1"])
+        if args.ipv6:
+            subprocess.call(["sysctl", "-w", "net.ipv6.conf."+brige_name+".forwarding=1"])
 
 except Exception as e:
       print('Error',e)

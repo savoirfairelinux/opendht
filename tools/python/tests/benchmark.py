@@ -2,7 +2,7 @@
 # Copyright (C) 2015 Savoir-Faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 
-import sys, subprocess, argparse, time, random, string, math, ipaddress, threading, queue
+import sys, subprocess, argparse, time, random, string, threading, signal
 from pyroute2.netns.process.proxy import NSPopen
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,9 +17,11 @@ def random_hash():
 parser = argparse.ArgumentParser(description='Create a dummy network interface for testing')
 parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
 parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
-parser.add_argument('-v', '--virtual-locs', help='number of virtual locations', type=int, default=8)
+parser.add_argument('-v', '--virtual-locs', help='number of virtual locations (node clusters)', type=int, default=8)
 parser.add_argument('-l', '--loss', help='simulated cluster packet loss (percent)', type=int, default=0)
 parser.add_argument('-d', '--delay', help='simulated cluster latency (ms)', type=int, default=0)
+parser.add_argument('-no4', '--disable-ipv4', help='Enable IPv4', action="store_true")
+parser.add_argument('-no6', '--disable-ipv6', help='Enable IPv6', action="store_true")
 
 args = parser.parse_args()
 
@@ -29,7 +31,13 @@ node_per_loc = int(args.node_num / clusters)
 print("Launching", args.node_num, "nodes (", clusters, "clusters of", node_per_loc, "nodes)")
 
 if args.virtual_locs > 1:
-    p = subprocess.Popen(["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), '-l', str(args.loss), '-d', str(args.delay)], stdout=subprocess.PIPE)
+    cmd = ["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), '-l', str(args.loss), '-d', str(args.delay)]
+    if not args.disable_ipv4:
+        cmd.append('-4')
+    if not args.disable_ipv6:
+        cmd.append('-6')
+    print(cmd)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     output, err = p.communicate()
     print(output.decode())
 
@@ -38,10 +46,35 @@ bootstrap.resize(1)
 
 procs = [None for _ in range(clusters)]
 
+def start_cluster(i):
+    global procs
+    cmd = ["python3", "dhtnetwork.py", "-n", str(node_per_loc), '-I', args.ifname+str(i)+'.1']
+    if not args.disable_ipv4 and bootstrap.ip4:
+        cmd.extend(['-b', bootstrap.ip4])
+    if not args.disable_ipv6 and bootstrap.ip6:
+        cmd.extend(['-b6', bootstrap.ip6])
+    procs[i] = NSPopen('node'+str(i), cmd)
+    plt.pause(2)
+
+def stop_cluster(i):
+    global procs
+    if procs[i]:
+        try:
+            procs[i].send_signal(signal.SIGINT);
+            procs[i].wait()
+            procs[i].release()
+        except Exception as e:
+            print(e)
+        procs[i] = None
+
+def replace_cluster():
+    n = random.randrange(0, clusters)
+    stop_cluster(n)
+    start_cluster(n)
+
 try:
     for i in range(clusters):
-        procs[i] = NSPopen('node'+str(i), ["python3", "dhtnetwork.py", "-n", str(node_per_loc), "-b", bootstrap.ip4, "-b6", bootstrap.ip6, '-I', args.ifname+str(i)+'.1'])
-        plt.pause(2)
+        start_cluster(i)
 
     plt.ion()
 
@@ -80,17 +113,6 @@ try:
         lines = plt.plot(times, color='blue')
         plt.draw()
 
-    def replace_cluster():
-        n = random.randrange(0, clusters)
-        if procs[n]:
-            print("Terminating process...")
-            try:
-                procs[n].terminate()
-                procs[n].release()
-            except:
-                pass
-        procs[n] = NSPopen('node'+str(n), ["python3", "dhtnetwork.py", "-n", str(node_per_loc), "-b", bootstrap.ip4, "-b6", bootstrap.ip6, '-I', args.ifname+str(n)+'.1'])
-
     plt.pause(5)
 
     plt.show()
@@ -98,15 +120,10 @@ try:
 
     times = []
     for n in range(10):
-        #nnodes = (n+1)*args.node_num
-        #net.resize(nnodes)
-        #time.sleep(2.5)
-        replace_cluster()
-        print("Getting 10 random hashes succesively.")
+        #replace_cluster()
+        plt.pause(2)
+        print("Getting 50 random hashes succesively.")
         for i in range(50):
-            #net.replace_node()
-            #if not (i % 10):
-            #    net.replace_node()
             with lock:
                 done += 1
                 start = time.time()
@@ -121,12 +138,15 @@ try:
 except Exception as e:
     print(e)
 finally:
-    for p in procs:
-        if p:
-            print("Terminating process...")
-            try:
-                p.terminate()
-                p.release()
-            except:
-                pass
+    for i in range(clusters):
+        if procs[i]:
+            procs[i].send_signal(signal.SIGINT);
+    bootstrap.resize(0)
     subprocess.call(["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), "-r"])
+    for i in range(clusters):
+        if procs[i]:
+            try:
+                procs[i].wait()
+                procs[i].release()
+            except Exception as e:
+                print(e)

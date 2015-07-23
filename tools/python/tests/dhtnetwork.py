@@ -2,7 +2,7 @@
 # Copyright (C) 2015 Savoir-Faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 
-import signal, os, sys, ipaddress
+import signal, os, sys, ipaddress, random
 from pyroute2 import IPDB
 
 sys.path.append('..')
@@ -68,11 +68,11 @@ class DhtNetwork(object):
     def end_node(self):
         if not self.nodes:
             return
-        random.shuffle(self.nodes)
         n = self.nodes.pop()
         n[1].join()
 
     def replace_node(self):
+        random.shuffle(self.nodes)
         self.end_node()
         self.launch_node()
 
@@ -82,11 +82,12 @@ class DhtNetwork(object):
         if n == l:
             return
         if n > l:
-            print("Launching", n-l, "nodes to reach", n)
+            print("Launching", n-l, "nodes")
             for i in range(l, n):
                 self.launch_node()
         else:
-            print("Ending", l-n, "nodes to reach", n)
+            print("Ending", l-n, "nodes")
+            random.shuffle(self.nodes)
             for i in range(n, l):
                 self.end_node()
 
@@ -107,6 +108,7 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
 
+    net = None
     try:
         parser = argparse.ArgumentParser(description='Create a dht network of -n nodes')
         parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
@@ -130,3 +132,6 @@ if __name__ == '__main__':
                 lock.wait()
     except Exception as e:
         pass
+    finally:
+        if net:
+            net.resize(0)
