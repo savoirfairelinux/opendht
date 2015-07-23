@@ -57,7 +57,7 @@ try:
             if args.ipv4:
                 i.add_ip(local_addr4+'1/24')
             if args.ipv6:
-                i.add_ip(local_addr6+'1/24')
+                i.add_ip(local_addr6+'1/64')
             i.up()
 
         with ip.interfaces['tap'+args.ifname] as tap:

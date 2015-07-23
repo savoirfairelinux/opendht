@@ -124,7 +124,7 @@ if __name__ == '__main__':
         if args.bootstrap6:
             bs.append((args.bootstrap6, str(4000)))
 
-        net = DhtNetwork(iface=args.iface, port=args.port, bootstrap=bs if args.bootstrap else [])
+        net = DhtNetwork(iface=args.iface, port=args.port, bootstrap=bs)
         net.resize(args.node_num)
 
         with lock:
