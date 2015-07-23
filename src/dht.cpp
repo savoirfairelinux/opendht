@@ -593,7 +593,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         bool dubious = false;
         for (auto& n : b->nodes) {
             /* Pick the first dubious node that we haven't pinged in the
-               last 15 seconds.  This gives nodes the time to reply, but
+               last 9 seconds.  This gives nodes the time to reply, but
                tends to concentrate on the same nodes, so that we get rid
                of bad nodes fast. */
             if (not n->isGood(now)) {
@@ -2270,7 +2270,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
                     memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
                     auto sn = newNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), 0);
-                    if (sn && sr  && sr->af == AF_INET6) {
+                    if (sn && sr && sr->af == AF_INET6) {
                         sr->insertNode(sn, now);
                     }
                 }
