@@ -721,7 +721,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         return id.xorCmp(nid, sn.node->id) < 0;
     });
     if (!found) {
-        if (nodes.size()-num_candidates >= SEARCH_NODES) {
+        if (nodes.size()-num_candidates >= SEARCH_NODES or nodes.size() >= SEARCH_NODES+TARGET_NODES/2) {
             if (node->isExpired(now))
                 return false;
             if (n == nodes.end()) {
