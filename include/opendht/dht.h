@@ -461,20 +461,20 @@ private:
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
-                return getStatus.request_time + Node::MAX_RESPONSE_TIME;
-            return std::max<time_point>({
+                return time_point::min();
+            return std::max(
                 ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN, 
-                ack->second.request_time + Node::MAX_RESPONSE_TIME, 
-                getStatus.request_time + Node::MAX_RESPONSE_TIME
-            });
+                ack->second.request_time + Node::MAX_RESPONSE_TIME
+            );
         }
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
             return getAnnounceTime(acked.find(vid), type);
         }
         time_point getListenTime() const {
-            if (listenStatus.reply_time > listenStatus.request_time)
-                return listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
-            return listenStatus.request_time + Node::MAX_RESPONSE_TIME;
+            return std::max(
+                listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
+                listenStatus.request_time + Node::MAX_RESPONSE_TIME
+            );
         }
 
         std::shared_ptr<Node> node {};
