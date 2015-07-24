@@ -30,7 +30,6 @@ mpx = axes[0]
 mpx.set_title("Node GeoIP")
 
 m = Basemap(projection='robin', resolution = 'l', area_thresh = 1000.0, lat_0=0, lon_0=0, ax=mpx)
-#m.drawcoastlines()
 m.fillcontinents(color='#cccccc',lake_color='white')
 m.drawparallels(np.arange(-90.,120.,30.))
 m.drawmeridians(np.arange(0.,420.,60.))
@@ -52,7 +51,7 @@ i = PyIdentity()
 i.generate()
 
 r.run(i, port=4112)
-r.bootstrap("37.187.30.78", "4241")
+r.bootstrap("bootstrap.ring.cx", "4222")
 
 plt.pause(2)
 
@@ -63,16 +62,19 @@ def step(cur_h, cur_depth):
     b = a + 2.*pi/(2**(cur_depth))
     print("step", cur_h, cur_depth)
     arc = ringx.add_patch(mpatches.Wedge([0.,0,], 1., a*180/pi, b*180/pi, fill=True, color="blue", alpha=0.5))
-    r.get(cur_h, gcb, lambda d, nodes: nextstep(cur_h, cur_depth, d, nodes, arc=arc))
+    lines = ringx.plot([0, cos(a)], [0, sin(a)], 'k-', lw=1.2)
+    r.get(cur_h, gcb, lambda d, nodes: nextstep(cur_h, cur_depth, d, nodes, arc=arc, lines=lines))
 
-def nextstep(cur_h, cur_depth, ok, nodes, arc=None):
+def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
     global done, all_nodes
     if arc:
         arc.remove()
+    for l in lines:
+        l.set_color('#444444')
     snodes = PyNodeSet()
     snodes.extend(nodes)
     all_nodes.extend(nodes)
-    depth = PyInfoHash.commonBits(snodes.first(), snodes.last())+2
+    depth = min(8, PyInfoHash.commonBits(snodes.first(), snodes.last())+6)
     if cur_depth < depth:
         for b in range(cur_depth, depth):
             new_h = PyInfoHash(cur_h.toString());
@@ -101,7 +103,7 @@ def update_plot():
         else:
             res = gi.record_by_name(addr)
         if res:
-            pprint(res)
+            #pprint(res)
             lats.append(res['latitude'])
             lons.append(res['longitude'])
             cities.append(res['city'] if res['city'] else (str(int(res['latitude']))+'-'+str(int(res['longitude']))))
@@ -132,8 +134,9 @@ print(len(not_found), " nodes not geolocalized")
 for n in not_found:
     print(n.getNode().getId().toString().decode(), n.getNode().getAddr().decode())
 
+plt.ioff()
+plt.show()
+
 all_nodes = []
 r.join()
 
-plt.ioff()
-plt.show()
