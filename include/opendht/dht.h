@@ -361,7 +361,7 @@ private:
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
 
-    static constexpr long unsigned MAX_REQUESTS_PER_SEC {400};
+    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
 
     static constexpr unsigned TOKEN_SIZE {64};
 
