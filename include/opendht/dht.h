@@ -363,8 +363,6 @@ private:
 
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {400};
 
-    static constexpr std::chrono::seconds TOKEN_EXPIRE_TIME {10 * 60};
-
     static constexpr unsigned TOKEN_SIZE {64};
 
 

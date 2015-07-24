@@ -613,7 +613,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             DHT_DEBUG("Splitting.");
             sendCachedPing(*b);
             list.split(b);
-            dumpTables();
+            //dumpTables();
             return newNode(id, sa, salen, confirm);
         }
 
@@ -808,8 +808,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
         print_addr(n->node->ss, n->node->sslen).c_str(),
         n->node->id.toString().c_str(),
         sr.id.toString().c_str(),
-        n->node->pinged,
-        std::chrono::duration_cast<std::chrono::milliseconds>(now-n->getStatus.request_time)/1000.);
+        n->node->pinged, print_dt(now-n->getStatus.request_time));
 
     sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
     n->getStatus.request_time = now;
@@ -836,7 +835,6 @@ Dht::searchStep(Search& sr)
     if (sr.isSynced(now)) {
         if (not sr.callbacks.empty()) {
             // search is synced but some (newer) get operations are not complete
-            DHT_DEBUG("searchStep (update).");
             // Call callbacks when done
             for (auto b = sr.callbacks.begin(); b != sr.callbacks.end();) {
                 if (sr.isDone(*b, now)) {
@@ -862,7 +860,8 @@ Dht::searchStep(Search& sr)
                 if (not n.isSynced(now) or (n.candidate and t >= LISTEN_NODES))
                     continue;
                 if (n.getListenTime() <= now) {
-                    DHT_DEBUG("Sending listen to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                    //DHT_DEBUG("Sending listen to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                    //std::cout << "Sending listen to " << print_addr(n.node->ss, n.node->sslen) << " (" << n.node->id << ")" << std::endl;
                     sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
                     n.pending = true;
                     n.listenStatus.request_time = now;
@@ -892,7 +891,8 @@ Dht::searchStep(Search& sr)
                 auto a_status = n.acked.find(vid);
                 auto at = n.getAnnounceTime(a_status, type);
                 if ( at <= now ) {
-                    DHT_DEBUG("Sending announce_value to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                    //DHT_DEBUG("Sending announce_value to %s (%s).", print_addr(n.node->ss, n.node->sslen).c_str(), n.node->id.toString().c_str());
+                    //std::cout << "Sending announce_value to " << print_addr(n.node->ss, n.node->sslen) << " (" << n.node->id << ")" << std::endl;
                     sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
                                        TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
                                        n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
@@ -918,14 +918,10 @@ Dht::searchStep(Search& sr)
         }
         if (sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty())
             sr.done = true;
-        DHT_DEBUG("Searchstep done.");
-
     }
 
-    if (sr.get_step_time + SEARCH_GET_STEP >= now) {
-        DHT_WARN("searchStep: too early");
+    if (sr.get_step_time + SEARCH_GET_STEP >= now)
         return;
-    }
 
     unsigned i = 0;
     bool sent, candidate;
@@ -2379,7 +2375,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         DHT_DEBUG("Got \"get values\" request");
         newNode(id, from, fromlen, 1);
         if (info_hash == zeroes) {
-            DHT_WARN("Eek!  Got get_values with no info_hash.");
+            DHT_WARN("Eek!  Got get_values with no info_hash from %s %s.", id.toString().c_str(), print_addr(from, fromlen).c_str());
             sendError(from, fromlen, tid, 203, "Get_values with no info_hash");
             break;
         } else {
