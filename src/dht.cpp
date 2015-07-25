@@ -731,13 +731,13 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
                 n = nodes.end();
             }
         }
-        bool synced = isSynced(now);
+        //bool synced = isSynced(now);
         n = nodes.insert(n, SearchNode(node));
         node->time = now;
-        if (synced) {
+        /*if (synced) {
             n->candidate = true;
             //std::cout << "Adding candidate node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
-        }/* else {
+        }*//* else {
             std::cout << "Adding real node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
         }*/
         while (nodes.size()-num_candidates > SEARCH_NODES)
