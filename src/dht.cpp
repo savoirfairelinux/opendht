@@ -784,14 +784,14 @@ Dht::expireSearches()
     });
 }
 
-std::pair<bool, bool>
+Dht::SearchNode*
 Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
 {
     const time_point up = update ? sr.getLastGetTime() : time_point::min();
     SearchNode* n = nullptr;
     if (pn) {
         if (not pn->canGet(now, up))
-            return {false, false};
+            return nullptr;
         n = pn;
     } else {
         for (auto& sn : sr.nodes) {
@@ -801,7 +801,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
             }
         }
         if (not n)
-            return {false, false};
+            return nullptr;
     }
 
     DHT_WARN("Sending get_values to %s (%s) for %s (p %d last get %lf)",
@@ -820,7 +820,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
 
     //std::cout << "Sending GET to " << n->node->id << " for IPv" << (sr.af==AF_INET?'4':'6') << " search " << sr.id << " (now pinged " << n->node->pinged << ")" << std::endl;
 
-    return {true, n->candidate};
+    return n;
 }
 
 /* When a search is in progress, we periodically call search_step to send
@@ -910,58 +910,62 @@ Dht::searchStep(Search& sr)
                     break;
             }
         }
-        for (auto& n : sr.nodes) {
-            if (n.pending) {
-                n.pending = false;
-                pinged(*n.node);
-            }
-        }
         if (sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty())
             sr.done = true;
     }
 
-    if (sr.get_step_time + SEARCH_GET_STEP >= now)
-        return;
-
-    unsigned i = 0;
-    bool sent, candidate;
-    do {
-        std::tie(sent, candidate) = searchSendGetValues(sr);
-        if (sent and not candidate)
-            i++;
-    }
-    while (sent and i < 3);
-    DHT_DEBUG("searchStep, sent %u.", i);
-
-    if (i > 0)
-        sr.get_step_time = now;
-    else if ((size_t)std::count_if(sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn) {
-                return sn.node->isExpired(now);
-            }) == sr.nodes.size())
-    {
-        sr.expired = true;
-        if (sr.announce.empty() && sr.listeners.empty()) {
-            // Listening or announcing requires keeping the cluster up to date.
-            sr.done = true;
-        }
-        {
-            auto get_cbs = std::move(sr.callbacks);
-            for (const auto& g : get_cbs) {
-                if (g.done_cb)
-                    g.done_cb(false, {});
+    if (sr.get_step_time + SEARCH_GET_STEP <= now) {
+        unsigned i = 0;
+        SearchNode* sent;
+        do {
+            sent = searchSendGetValues(sr);
+            if (sent) {
+                sent->pending = false;
+                if (not sent->candidate)
+                    i++;
             }
         }
+        while (sent and i < 3);
+        DHT_DEBUG("searchStep, sent %u.", i);
+
+        if (i > 0)
+            sr.get_step_time = now;
+        else if ((size_t)std::count_if(sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn) {
+                    return sn.node->isExpired(now);
+                }) == sr.nodes.size())
         {
-            std::vector<DoneCallback> a_cbs;
-            a_cbs.reserve(sr.announce.size());
-            for (const auto& a : sr.announce)
-                if (a.callback)
-                    a_cbs.emplace_back(std::move(a.callback));
-            for (const auto& a : a_cbs)
-                a(false, {});
+            // no nodes or all expired nodes
+            sr.expired = true;
+            if (sr.announce.empty() && sr.listeners.empty()) {
+                // Listening or announcing requires keeping the cluster up to date.
+                sr.done = true;
+            }
+            {
+                auto get_cbs = std::move(sr.callbacks);
+                for (const auto& g : get_cbs) {
+                    if (g.done_cb)
+                        g.done_cb(false, {});
+                }
+            }
+            {
+                std::vector<DoneCallback> a_cbs;
+                a_cbs.reserve(sr.announce.size());
+                for (const auto& a : sr.announce)
+                    if (a.callback)
+                        a_cbs.emplace_back(std::move(a.callback));
+                for (const auto& a : a_cbs)
+                    a(false, {});
+            }
         }
-        return;
     }
+
+    for (auto& n : sr.nodes) {
+        if (n.pending) {
+            n.pending = false;
+            pinged(*n.node);
+        }
+    }
+
 }
 
 
@@ -2198,7 +2202,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     cleared++;
                     n.getStatus.request_time = TIME_INVALID;
                     n.getStatus.reply_time = TIME_INVALID;
-                    if (searchSendGetValues(sr).first)
+                    if (searchSendGetValues(sr))
                         sr.get_step_time = now;
                     break;
                 }
@@ -2275,7 +2279,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                        requests in flight has decreased.  Let's push
                        another request. */
                     //std::cout << "Received reply from " << id << ", sending new message..." << std::endl;
-                    if (searchSendGetValues(*sr).first)
+                    if (searchSendGetValues(*sr))
                         sr->get_step_time = now;
                 }
             }
@@ -2324,7 +2328,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         break;
                     }
                 /* See comment for gp above. */
-                if (searchSendGetValues(*sr).first)
+                if (searchSendGetValues(*sr))
                     sr->get_step_time = now;
 
                 // If the value was just successfully announced, call the callback
@@ -2351,7 +2355,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         break;
                     }
                 /* See comment for gp above. */
-                if (searchSendGetValues(*sr).first)
+                if (searchSendGetValues(*sr))
                     sr->get_step_time = now;
             }
         } else {
