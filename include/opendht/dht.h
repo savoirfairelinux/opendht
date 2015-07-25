@@ -351,7 +351,7 @@ private:
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
     /* Timeout for listen */
-    static constexpr std::chrono::minutes LISTEN_EXPIRE_TIME {3};
+    static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME {30};
 
     static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
 

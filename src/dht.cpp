@@ -152,7 +152,7 @@ constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
-constexpr std::chrono::minutes Dht::LISTEN_EXPIRE_TIME;
+constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
 constexpr std::chrono::seconds Dht::UDP_REPLY_TIME;
 constexpr long unsigned Dht::MAX_REQUESTS_PER_SEC;
