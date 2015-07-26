@@ -78,6 +78,7 @@ struct Node {
         return print_addr(ss, sslen);
     }
     bool isExpired(time_point now) const;
+    bool isExpired() const { return isExpired(clock::now()); }
     bool isGood(time_point now) const;
     bool isMessagePending(time_point now) const;
     NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
@@ -584,7 +585,7 @@ private:
 
         bool removeExpiredNode(time_point now);
 
-        std::vector<std::shared_ptr<Node>> getNodes(time_point now) const;
+        std::vector<std::shared_ptr<Node>> getNodes() const;
     };
 
     struct ValueStorage {

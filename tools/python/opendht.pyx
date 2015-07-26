@@ -72,6 +72,7 @@ cdef extern from "opendht/dht.h" namespace "dht":
         Node() except +
         InfoHash getId() const
         string getAddrStr() const
+        bool isExpired() const
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     cdef cppclass Dht:
@@ -141,6 +142,8 @@ cdef class PyNode(_WithID):
         return h
     def getAddr(self):
         return self._node.get().getAddrStr()
+    def isExpired(self):
+        return self._node.get().isExpired()
 
 cdef class PyNodeEntry(_WithID):
     cdef pair[InfoHash, shared_ptr[Node]] _v

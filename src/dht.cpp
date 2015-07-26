@@ -760,18 +760,12 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
 }
 
 std::vector<std::shared_ptr<Node>>
-Dht::Search::getNodes(time_point now) const
+Dht::Search::getNodes() const
 {
     std::vector<std::shared_ptr<Node>> ret {};
-    ret.reserve(TARGET_NODES);
-    //size_t i = 0;
-    for (const auto& sn : nodes) {
-        if (not sn.node->isExpired(now) and sn.isSynced(now)) {
-            ret.emplace_back(sn.node);
-            /*if (++i == TARGET_NODES)
-                break;*/
-        }
-    }
+    ret.reserve(nodes.size());
+    for (const auto& sn : nodes)
+        ret.emplace_back(sn.node);
     return ret;
 }
 
@@ -839,7 +833,7 @@ Dht::searchStep(Search& sr)
             for (auto b = sr.callbacks.begin(); b != sr.callbacks.end();) {
                 if (sr.isDone(*b, now)) {
                     if (b->done_cb)
-                        b->done_cb(true, sr.getNodes(now));
+                        b->done_cb(true, sr.getNodes());
                     b = sr.callbacks.erase(b);
                 }
                 else
@@ -2336,7 +2330,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     if (!a.callback || !a.value || a.value->id != value_id)
                         continue;
                     if (sr->isAnnounced(value_id, getType(a.value->type), now)) {
-                        a.callback(true, sr->getNodes(now));
+                        a.callback(true, sr->getNodes());
                         a.callback = nullptr;
                     }
                 }
