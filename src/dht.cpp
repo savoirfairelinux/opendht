@@ -261,16 +261,21 @@ Dht::RoutingTable::randomId(const Dht::RoutingTable::const_iterator& it) const
 InfoHash
 Dht::RoutingTable::middle(const RoutingTable::const_iterator& it) const
 {
-    int bit1 = it->first.lowbit();
-    int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
-    int bit = std::max(bit1, bit2) + 1;
-
-    if (bit >= 8*(int)HASH_LEN)
+    unsigned bit = depth(it);
+    if (bit >= 8*HASH_LEN)
         throw std::out_of_range("End of table");
 
     InfoHash id = it->first;
-    id[bit / 8] |= (0x80 >> (bit % 8));
+    id.setBit(bit, 1);
     return id;
+}
+
+unsigned
+Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
+{
+    int bit1 = it->first.lowbit();
+    int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
+    return std::max(bit1, bit2)+1;
 }
 
 Dht::RoutingTable::iterator
@@ -609,11 +614,10 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             }
         }
 
-        if (mybucket && (!dubious || list.size() == 1)) {
-            DHT_DEBUG("Splitting.");
+        if ((mybucket || (is_bootstrap and list.depth(b) < 6)) && (!dubious || list.size() == 1)) {
+            DHT_DEBUG("Splitting from depth %u", list.depth(b));
             sendCachedPing(*b);
             list.split(b);
-            //dumpTables();
             return newNode(id, sa, salen, confirm);
         }
 
@@ -1967,8 +1971,9 @@ Dht::getSearchesLog(sa_family_t af) const
     return out.str();
 }
 
-Dht::Dht(int s, int s6, const InfoHash& id)
- : dht_socket(s), dht_socket6(s6), myid(id), now(clock::now()), mybucket_grow_time(now), mybucket6_grow_time(now)
+Dht::Dht(int s, int s6, const InfoHash& id, bool bootstrap)
+ : dht_socket(s), dht_socket6(s6), myid(id), is_bootstrap(bootstrap),
+   now(clock::now()), mybucket_grow_time(now), mybucket6_grow_time(now)
 {
     if (s < 0 && s6 < 0)
         return;

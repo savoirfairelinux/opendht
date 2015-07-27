@@ -169,7 +169,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(int s, int s6, const InfoHash& id);
+    Dht(int s, int s6, const InfoHash& id, bool bootstrap = false);
     virtual ~Dht();
 
     /**
@@ -412,6 +412,8 @@ private:
          * Returns a random id in the bucket's range.
          */
         InfoHash randomId(const RoutingTable::const_iterator& bucket) const;
+
+        unsigned depth(const RoutingTable::const_iterator& bucket) const;
 
         /**
          * Split a bucket in two equal parts.
@@ -698,6 +700,12 @@ private:
 
     // cache of nodes not in the main routing table but used for searches
     NodeCache cache;
+
+    // are we a bootstrap node ?
+    // note: Any running node can be used as a bootstrap node.
+    //       Only nodes running only as bootstrap nodes should
+    //       be put in bootstrap mode.
+    const bool is_bootstrap {false};
 
     // the stuff
     RoutingTable buckets {};

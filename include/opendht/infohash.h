@@ -152,7 +152,7 @@ public:
     void
     setBit(unsigned nbit, bool b)
     {
-        auto& num = *(begin()+(nbit/8));
+        auto& num = (*this)[nbit/8];
         unsigned bit = 7 - (nbit % 8);
         num ^= (-b ^ num) & (1 << bit);
     }
