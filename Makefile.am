@@ -1,7 +1,13 @@
 SUBDIRS = src
+
 if ENABLE_TOOLS
 SUBDIRS += tools
 endif
+
+if USE_CYTHON
+SUBDIRS += python
+endif
+
 if HAVE_DOXYGEN
 SUBDIRS += doc
 endif

@@ -1,7 +1,3 @@
-if USE_CYTHON
-SUBDIRS = python
-endif
-
 libexec_PROGRAMS = dhtnode dhtchat dhtscanner
 
 AM_CPPFLAGS = -I../include

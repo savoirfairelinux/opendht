@@ -5,8 +5,10 @@
 # distutils: libraries = opendht gnutls
 # cython: language_level=3
 #
-# opendht.pyx - Copyright 2015 by Guillaume Roguez <yomgui1 AT gmail DOT com>
-# A Python3 wrapper to access to OpenDHT API
+# Copyright (c) 2015 Savoir-Faire Linux Inc. 
+# Author: Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
+# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+#
 # This wrapper is written for Cython 0.22
 # 
 # This file is part of OpenDHT Python Wrapper.
@@ -24,7 +26,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with OpenDHT Python Wrapper. If not, see <http://www.gnu.org/licenses/>.
 #
-
 
 from libc.stdint cimport *
 from libcpp.string cimport string

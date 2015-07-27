@@ -1,4 +1,7 @@
-# This file is copyright 2015 by Guillaume Roguez <yomgui1 AT gmail DOT com>
+# Copyright (c) 2015 Savoir-Faire Linux Inc. 
+# Author: Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
+# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+#
 # A Python3 wrapper to access to OpenDHT API
 # This wrapper is written for Cython 0.22
 #

@@ -78,7 +78,7 @@ AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT 
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
 
 AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])])
-AM_COND_IF([USE_CYTHON], [AC_CONFIG_FILES([tools/python/Makefile])])
+AM_COND_IF([USE_CYTHON], [AC_CONFIG_FILES([python/Makefile])])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
