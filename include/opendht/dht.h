@@ -355,6 +355,8 @@ private:
        a search in case of no answers. */
     static constexpr std::chrono::seconds SEARCH_GET_STEP {3};
 
+    static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
+
     /* The time after which we consider a search to be expirable. */
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
@@ -403,6 +405,8 @@ private:
         using std::list<Bucket>::list;
 
         InfoHash middle(const RoutingTable::const_iterator&) const;
+
+        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id) const;
 
         RoutingTable::iterator findBucket(const InfoHash& id);
         RoutingTable::const_iterator findBucket(const InfoHash& id) const;
@@ -497,7 +501,7 @@ private:
 
         /**
          * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
-         * 
+         *
          */
         bool candidate {false};
 
@@ -629,6 +633,8 @@ private:
 
     struct Storage {
         InfoHash id;
+        bool want4 {true}, want6 {true};
+        time_point last_maintenance_time {};
         std::vector<ValueStorage> values {};
         std::vector<Listener> listeners {};
         std::map<size_t, LocalListener> local_listeners {};
@@ -796,6 +802,8 @@ private:
     ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
+
+    void maintainStorage(InfoHash id);
 
     // Buckets
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {

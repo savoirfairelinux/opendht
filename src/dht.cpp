@@ -151,6 +151,7 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
+constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
@@ -276,6 +277,43 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
     int bit1 = it->first.lowbit();
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
     return std::max(bit1, bit2)+1;
+}
+
+std::vector<std::shared_ptr<Node>>
+Dht::RoutingTable::findClosestNodes(const InfoHash id) const {
+    std::vector<std::shared_ptr<Node>> nodes {};
+    auto bucket = findBucket(id);
+
+    if (bucket == end()) { return nodes; }
+
+    auto sortedBucketInsert = [&](const Bucket &b) {
+            for (auto n : b.nodes) {
+                auto here = std::find_if(nodes.begin(), nodes.end(), [&id,&n](std::shared_ptr<Node> &node) {
+                        return id.xorCmp(node->id, n->id) < 0;
+                        });
+                nodes.insert(here, n);
+            }
+        };
+
+    if (bucket != this->end()) {
+        // Inserting very closest nodes
+        sortedBucketInsert(*bucket);
+
+        // adjacent buckets contain remaining closest candidates
+        if (std::next(bucket) != this->end() && nodes.size() < TARGET_NODES) {
+            sortedBucketInsert(*std::next(bucket));
+        }
+        if (std::prev(bucket) != this->end() && nodes.size() < TARGET_NODES) {
+            sortedBucketInsert(*std::prev(bucket));
+        }
+
+        // shrink to the TARGET_NODES closest nodes.
+        if (nodes.size() > TARGET_NODES) {
+            nodes.resize(TARGET_NODES);
+        }
+    }
+
+    return nodes;
 }
 
 Dht::RoutingTable::iterator
@@ -1052,7 +1090,7 @@ Dht::Search::getUpdateTime(time_point now) const
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
         if (sn.getStatus.reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
-            // not isSynced 
+            // not isSynced
             ut = std::min(ut, std::max(
                 sn.getStatus.request_time + Node::MAX_RESPONSE_TIME,
                 get_step_time + SEARCH_GET_STEP));
@@ -1287,7 +1325,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& 
         DHT_DEBUG("search_time is now in %lf", print_dt(tm-clock::now()));
         search_time = tm;
     } else {
-        DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)", 
+        DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)",
             tm.time_since_epoch().count(),
             print_dt(tm-clock::now()),
             print_dt(search_time-clock::now()));
@@ -1669,6 +1707,11 @@ Dht::expireStorage()
     auto i = store.begin();
     while (i != store.end())
     {
+        if (!i->want4 && !i->want6) {
+            store.erase(i);
+            continue;
+        }
+
         // put elements to remove at the end with std::partition,
         // and then remove them with std::vector::erase.
         i->listeners.erase(
@@ -2132,6 +2175,43 @@ Dht::bucketMaintenance(RoutingTable& list)
 }
 
 void
+Dht::maintainStorage(InfoHash id) {
+    auto *local_storage = findStorage(id);
+    if (!local_storage) { return; }
+
+    auto nodes = buckets.findClosestNodes(id);
+    auto nodes6 = buckets6.findClosestNodes(id);
+
+    if (!nodes.empty()) {
+        if (id.xorCmp(nodes.back()->id, myid) < 0) {
+            for (auto &local_value_storage : local_storage->values) {
+                const auto& vt = getType(local_value_storage.data->type);
+                if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                    // gotta put that value there
+                    announce(id, AF_INET, local_value_storage.data, nullptr);
+                }
+            }
+            local_storage->want4 = false;
+        }
+    }
+
+    if (!nodes6.empty()) {
+        if (id.xorCmp(nodes6.back()->id, myid) < 0) {
+            for (auto &local_value_storage : local_storage->values) {
+                const auto& vt = getType(local_value_storage.data->type);
+                if (local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                    // gotta put that value there
+                    announce(id, AF_INET6, local_value_storage.data, nullptr);
+                }
+            }
+            local_storage->want6 = false;
+        }
+    }
+
+    local_storage->last_maintenance_time = now;
+}
+
+void
 Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
 {
     if (buflen == 0)
@@ -2351,7 +2431,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     }
                 }
             }
-        } else if (tid.matches(TransPrefix::LISTEN, &ttid)) { 
+        } else if (tid.matches(TransPrefix::LISTEN, &ttid)) {
             DHT_DEBUG("Got reply to listen.");
             Search *sr = findSearch(ttid, from->sa_family);
             if (!sr) {
@@ -2371,7 +2451,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else {
             DHT_WARN("Unexpected reply: ");
             DHT_WARN.logPrintable(buf, buflen);
-        } 
+        }
         break;
     case MessageType::Ping:
         //DHT_DEBUG("Got ping (%d)!", tid.length);
@@ -2528,6 +2608,13 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
                uniform_duration_distribution<> {seconds(5) , seconds(25)}
              : uniform_duration_distribution<> {seconds(60), seconds(180)};
         confirm_nodes_time = now + time_dis(rd);
+    }
+
+    //data persistence
+    for (auto &str : store) {
+        if (now > str.last_maintenance_time + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+            maintainStorage(str.id);
+        }
     }
 
     return std::min(confirm_nodes_time, search_time);
