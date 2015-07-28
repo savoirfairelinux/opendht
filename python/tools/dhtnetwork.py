@@ -59,9 +59,15 @@ class DhtNetwork(object):
             return None
         return self.nodes[0][1]
 
+    def get(self, n):
+        return self.nodes[n][1]
+
     def launch_node(self):
         n = DhtNetwork.run_node(self.ip4, self.ip6, self.port, self.bootstrap)
         self.nodes.append(n)
+        if not self.bootstrap:
+            print("Using fallback bootstrap", self.ip4, self.port)
+            self.bootstrap = [(self.ip4, str(self.port))]
         self.port += 1
         return n
 
@@ -87,7 +93,7 @@ class DhtNetwork(object):
                 self.launch_node()
         else:
             print("Ending", l-n, "nodes")
-            random.shuffle(self.nodes)
+            #random.shuffle(self.nodes)
             for i in range(n, l):
                 self.end_node()
 
