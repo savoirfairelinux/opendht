@@ -14,38 +14,6 @@ from opendht import *
 def random_hash():
     return PyInfoHash(''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(40)).encode())
 
-parser = argparse.ArgumentParser(description='Create a dummy network interface for testing')
-parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
-parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
-parser.add_argument('-v', '--virtual-locs', help='number of virtual locations (node clusters)', type=int, default=8)
-parser.add_argument('-l', '--loss', help='simulated cluster packet loss (percent)', type=int, default=0)
-parser.add_argument('-d', '--delay', help='simulated cluster latency (ms)', type=int, default=0)
-parser.add_argument('-no4', '--disable-ipv4', help='Enable IPv4', action="store_true")
-parser.add_argument('-no6', '--disable-ipv6', help='Enable IPv6', action="store_true")
-
-args = parser.parse_args()
-
-clusters = min(args.virtual_locs, args.node_num)
-node_per_loc = int(args.node_num / clusters)
-
-print("Launching", args.node_num, "nodes (", clusters, "clusters of", node_per_loc, "nodes)")
-
-if args.virtual_locs > 1:
-    cmd = ["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), '-l', str(args.loss), '-d', str(args.delay)]
-    if not args.disable_ipv4:
-        cmd.append('-4')
-    if not args.disable_ipv6:
-        cmd.append('-6')
-    print(cmd)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    output, err = p.communicate()
-    print(output.decode())
-
-bootstrap = DhtNetwork(iface='br'+args.ifname)
-bootstrap.resize(1)
-
-procs = [None for _ in range(clusters)]
-
 def start_cluster(i):
     global procs
     cmd = ["python3", "dhtnetwork.py", "-n", str(node_per_loc), '-I', args.ifname+str(i)+'.1']
@@ -72,9 +40,10 @@ def replace_cluster():
     stop_cluster(n)
     start_cluster(n)
 
-try:
-    for i in range(clusters):
-        start_cluster(i)
+def getsTimesTest():
+    """TODO: Docstring for
+
+    """
 
     plt.ion()
 
@@ -95,7 +64,7 @@ try:
         print("found", v)
 
     def donecb(ok, nodes):
-        global lock, done, times
+        nonlocal lock, done, times
         t = time.time()-start
         with lock:
             if not ok:
@@ -105,7 +74,7 @@ try:
             lock.notify()
 
     def update_plot():
-        global lines
+        nonlocal lines
         while lines:
             l = lines.pop()
             l.remove()
@@ -133,20 +102,70 @@ try:
             update_plot()
         print("Took", np.sum(times), "mean", np.mean(times), "std", np.std(times), "min", np.min(times), "max", np.max(times))
 
+    print('GET calls timings benchmark test : DONE. '  \
+            'Close Matplotlib window for terminating the program.')
     plt.ioff()
     plt.show()
-except Exception as e:
-    print(e)
-finally:
-    for i in range(clusters):
-        if procs[i]:
-            procs[i].send_signal(signal.SIGINT);
-    bootstrap.resize(0)
-    subprocess.call(["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), "-r"])
-    for i in range(clusters):
-        if procs[i]:
-            try:
-                procs[i].wait()
-                procs[i].release()
-            except Exception as e:
-                print(e)
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Create a dummy network interface for testing')
+    parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
+    parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
+    parser.add_argument('-v', '--virtual-locs', help='number of virtual locations (node clusters)', type=int, default=8)
+    parser.add_argument('-l', '--loss', help='simulated cluster packet loss (percent)', type=int, default=0)
+    parser.add_argument('-d', '--delay', help='simulated cluster latency (ms)', type=int, default=0)
+    parser.add_argument('-no4', '--disable-ipv4', help='Enable IPv4', action="store_true")
+    parser.add_argument('-no6', '--disable-ipv6', help='Enable IPv6', action="store_true")
+    parser.add_argument('--gets', action='store_true', help='Launches get calls timings benchmark test.', default=0)
+
+    args = parser.parse_args()
+
+    if args.gets < 1:
+        print('No test specified... Quitting.', file=sys.stderr)
+        sys.exit(1)
+
+    clusters = min(args.virtual_locs, args.node_num)
+    node_per_loc = int(args.node_num / clusters)
+
+    print("Launching", args.node_num, "nodes (", clusters, "clusters of", node_per_loc, "nodes)")
+
+    if args.virtual_locs > 1:
+        cmd = ["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), '-l', str(args.loss), '-d', str(args.delay)]
+        if not args.disable_ipv4:
+            cmd.append('-4')
+        if not args.disable_ipv6:
+            cmd.append('-6')
+        print(cmd)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        output, err = p.communicate()
+        print(output.decode())
+
+    bootstrap = DhtNetwork(iface='br'+args.ifname)
+    bootstrap.resize(1)
+
+    procs = [None for _ in range(clusters)]
+
+    try:
+        for i in range(clusters):
+            start_cluster(i)
+
+        if args.gets:
+            getsTimesTest()
+
+    except Exception as e:
+        print(e)
+    finally:
+        for i in range(clusters):
+            if procs[i]:
+                procs[i].send_signal(signal.SIGINT);
+        bootstrap.resize(0)
+        print('Removing dummy interfaces...')
+        subprocess.call(["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), "-r"])
+        for i in range(clusters):
+            if procs[i]:
+                try:
+                    procs[i].wait()
+                    procs[i].release()
+                except Exception as e:
+                    print(e)
