@@ -315,11 +315,21 @@ public:
      */
     void run(const char* ip4, const char* ip6, const char* service, const crypto::Identity identity, bool threaded = false, StatusCallback cb = nullptr);
 
+    /**
+     * In non-threaded mode, the user should call this method
+     * regularly and everytime a new packet is received.
+     * @return the next op
+     */
     time_point loop() {
         std::lock_guard<std::mutex> lck(dht_mtx);
         return loop_();
     }
 
+    /**
+     * Quit and wait for all threads to terminate.
+     * No callbacks will be called after this method returns.
+     * All internal state will be lost. The DHT can then be run again with @run().
+     */
     void join();
 
 private:
