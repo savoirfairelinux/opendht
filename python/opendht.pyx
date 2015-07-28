@@ -48,6 +48,16 @@ cdef extern from "<memory>" namespace "std" nogil:
         T operator*()
         void reset(T*);
 
+cdef extern from "<future>" namespace "std" nogil:
+    cdef cppclass shared_future[T]:
+        shared_future() except +
+        bool valid() const
+
+    cdef cppclass future[T]:
+        future() except +
+        bool valid() const
+        shared_future[T] share()
+
 cdef extern from "opendht/infohash.h" namespace "dht":
     cdef cppclass InfoHash:
         InfoHash() except +
@@ -105,6 +115,45 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     cdef cppclass Certificate:
         Certificate()
         InfoHash getId() const
+
+cdef extern from "opendht/dhtrunner.h" namespace "dht":
+    ctypedef future[size_t] ListenToken
+    ctypedef shared_future[size_t] SharedListenToken
+    cdef cppclass DhtRunner:
+        DhtRunner() except +
+        InfoHash getId() const
+        InfoHash getNodeId() const
+        void bootstrap(const char*, const char*)
+        void run(in_port_t, const Identity, bool)
+        #void run(const sockaddr_in*, const sockaddr_in6*, const Identity, bool)
+        void run(const char*, const char*, const char*, const Identity, bool)
+        void join()
+        bool isRunning()
+        string getStorageLog() const
+        string getRoutingTablesLog(sa_family_t af) const
+        string getSearchesLog(sa_family_t af) const
+        void get(InfoHash key, Dht.GetCallback get_cb, Dht.DoneCallback done_cb)
+        void put(InfoHash key, shared_ptr[Value] val, Dht.DoneCallback done_cb)
+        ListenToken listen(InfoHash key, Dht.GetCallback get_cb)
+        void cancelListen(InfoHash key, SharedListenToken token)
+
+cdef bool py_get_callback(shared_ptr[Value] value, void *user_data) with gil:
+    cb = (<object>user_data)['get']
+    pv = PyValue()
+    pv._value = value
+    return cb(pv)
+
+cdef void py_done_callback(bool done, vector[shared_ptr[Node]]* nodes, void *user_data) with gil:
+    node_ids = []
+    for n in deref(nodes):
+        h = PyNodeEntry()
+        h._v.first = n.get().getId()
+        h._v.second = n
+        node_ids.append(h)
+    cbs = <object>user_data
+    if cbs['done']:
+        cbs['done'](done, node_ids)
+    ref.Py_DECREF(cbs)
 
 cdef class _WithID(object):
     def __repr__(self):
@@ -223,8 +272,13 @@ cdef class PySharedCertificate(_WithID):
         h._infohash = self._cert.get().getId()
         return h
 
+cdef class PyListenToken(object):
+    cdef InfoHash _h
+    cdef shared_future[size_t] _t
+    _cb = dict()
+
 cdef class PyIdentity(object):
-    cdef Identity _id;
+    cdef Identity _id
     def generate(self, str name = "pydht", PyIdentity ca = PyIdentity(), unsigned bits = 4096):
         self._id = generateIdentity(name.encode(), ca._id, bits)
     property PublicKey:
@@ -238,41 +292,8 @@ cdef class PyIdentity(object):
             c._cert = self._id.second
             return c
 
-cdef extern from "opendht/dhtrunner.h" namespace "dht":
-    cdef cppclass DhtRunner:
-        DhtRunner() except +
-        InfoHash getId() const
-        InfoHash getNodeId() const
-        void bootstrap(const char*, const char*)
-        void run(in_port_t, const Identity, bool)
-        #void run(const sockaddr_in*, const sockaddr_in6*, const Identity, bool)
-        void run(const char*, const char*, const char*, const Identity, bool)
-        void join()
-        bool isRunning()
-        string getStorageLog() const
-        string getRoutingTablesLog(sa_family_t af) const
-        string getSearchesLog(sa_family_t af) const
-        void get(InfoHash key, Dht.GetCallback get_cb, Dht.DoneCallback done_cb)
-        void put(InfoHash key, shared_ptr[Value] val, Dht.DoneCallback done_cb)
-
-cdef bool py_get_callback(shared_ptr[Value] value, void *user_data) with gil:
-    cb = (<object>user_data)['get']
-    pv = PyValue()
-    pv._value = value
-    return cb(pv)
-
-cdef void py_done_callback(bool done, vector[shared_ptr[Node]]* nodes, void *user_data) with gil:
-    node_ids = []
-    for n in deref(nodes):
-        h = PyNodeEntry()
-        h._v.first = n.get().getId()
-        h._v.second = n
-        node_ids.append(h)
-    (<object>user_data)['done'](done, node_ids)
-    ref.Py_DECREF(<object>user_data)
-
 cdef class PyDhtRunner(_WithID):
-    cdef DhtRunner* thisptr;
+    cdef DhtRunner* thisptr
     def __cinit__(self):
         self.thisptr = new DhtRunner()
     def getId(self):
@@ -302,15 +323,20 @@ cdef class PyDhtRunner(_WithID):
         cb_obj = {'get':get_cb, 'done':done_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.get(key._infohash, Dht.bindGetCb(py_get_callback, <void*>cb_obj), Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
-    def get(self, str key, get_cb, done_cb):
-        cb_obj = {'get':get_cb, 'done':done_cb}
-        ref.Py_INCREF(cb_obj)
-        self.thisptr.get(InfoHash.get(key.encode()), Dht.bindGetCb(py_get_callback, <void*>cb_obj), Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
-    def put(self, PyInfoHash key, PyValue val, done_cb):
+    def put(self, PyInfoHash key, PyValue val, done_cb=None):
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.put(key._infohash, val._value, Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
-    def put(self, str key, PyValue val, done_cb):
-        cb_obj = {'done':done_cb}
+    def listen(self, PyInfoHash key, get_cb):
+        t = PyListenToken()
+        t._h = key._infohash
+        cb_obj = {'get':get_cb}
+        t._cb['cb'] = cb_obj
+        # avoid the callback being destructed if the token is destroyed
         ref.Py_INCREF(cb_obj)
-        self.thisptr.put(InfoHash.get(key.encode()), val._value, Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
+        t._t = self.thisptr.listen(t._h, Dht.bindGetCb(py_get_callback, <void*>cb_obj)).share()
+        return t
+    def cancelListen(self, PyListenToken token):
+        self.thisptr.cancelListen(token._h, token._t)
+        # fixme: not thread safe
+        ref.Py_DECREF(<object>token._cb['cb'])
