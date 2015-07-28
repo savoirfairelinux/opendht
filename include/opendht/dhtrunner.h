@@ -191,6 +191,13 @@ public:
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
     void bootstrap(const std::vector<NodeExport>& nodes);
 
+    /**
+     * Inform the DHT of lower-layer connectivity changes.
+     * This will cause the DHT to assume an IP address change.
+     * The DHT will recontact neighbor nodes, re-register for listen ops etc.
+     */
+    void connectivityChanged();
+
     void dumpTables() const
     {
         std::lock_guard<std::mutex> lck(dht_mtx);

@@ -446,6 +446,16 @@ DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 }
 
 void
+DhtRunner::connectivityChanged()
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) {
+        dht.connectivityChanged();
+    });
+    cv.notify_all();
+}
+
+void
 DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb) {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {

@@ -1706,6 +1706,17 @@ Dht::expireStorage()
 }
 
 void
+Dht::connectivityChanged()
+{
+    confirm_nodes_time = now;
+    mybucket_grow_time = now;
+    mybucket6_grow_time = now;
+    for (auto& s : searches)
+        for (auto& sn : s.nodes)
+            sn.listenStatus = {};
+}
+
+void
 Dht::rotateSecrets()
 {
     uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));

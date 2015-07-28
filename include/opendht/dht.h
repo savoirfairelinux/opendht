@@ -301,6 +301,13 @@ public:
     bool cancelListen(const InfoHash&, size_t token);
 
     /**
+     * Inform the DHT of lower-layer connectivity changes.
+     * This will cause the DHT to assume an IP address change.
+     * The DHT will recontact neighbor nodes, re-register for listen ops etc.
+     */
+    void connectivityChanged();
+
+    /**
      * Get the list of good nodes for local storage saving purposes
      * The list is ordered to minimize the back-to-work delay.
      */
