@@ -62,6 +62,7 @@ def getsTimesTest():
 
     def getcb(v):
         print("found", v)
+        return True
 
     def donecb(ok, nodes):
         nonlocal lock, done, times
@@ -109,7 +110,7 @@ def getsTimesTest():
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Create a dummy network interface for testing')
+    parser = argparse.ArgumentParser(description='Run, test and benchmark a DHT network on a local virtual network with simulated packet loss and latency.')
     parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
     parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
     parser.add_argument('-v', '--virtual-locs', help='number of virtual locations (node clusters)', type=int, default=8)
@@ -131,7 +132,7 @@ if __name__ == '__main__':
     print("Launching", args.node_num, "nodes (", clusters, "clusters of", node_per_loc, "nodes)")
 
     if args.virtual_locs > 1:
-        cmd = ["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), '-l', str(args.loss), '-d', str(args.delay)]
+        cmd = ["python3", "virtual_network_builder.py", "-i", args.ifname, "-n", str(clusters), '-l', str(args.loss), '-d', str(args.delay)]
         if not args.disable_ipv4:
             cmd.append('-4')
         if not args.disable_ipv6:
@@ -156,16 +157,16 @@ if __name__ == '__main__':
     except Exception as e:
         print(e)
     finally:
-        for i in range(clusters):
-            if procs[i]:
-                procs[i].send_signal(signal.SIGINT);
+        for p in procs:
+            if p:
+                p.send_signal(signal.SIGINT);
         bootstrap.resize(0)
-        print('Removing dummy interfaces...')
-        subprocess.call(["/usr/bin/sudo", "python3", "dummy_if.py", "-i", args.ifname, "-n", str(clusters), "-r"])
-        for i in range(clusters):
-            if procs[i]:
+        print('Shuting down the virtual IP network.')
+        subprocess.call(["python3", "virtual_network_builder.py", "-i", args.ifname, "-n", str(clusters), "-r"])
+        for p in procs:
+            if p:
                 try:
-                    procs[i].wait()
-                    procs[i].release()
+                    p.wait()
+                    p.release()
                 except Exception as e:
                     print(e)

@@ -151,7 +151,7 @@ cdef void py_done_callback(bool done, vector[shared_ptr[Node]]* nodes, void *use
         h._v.second = n
         node_ids.append(h)
     cbs = <object>user_data
-    if cbs['done']:
+    if 'done' in cbs:
         cbs['done'](done, node_ids)
     ref.Py_DECREF(cbs)
 

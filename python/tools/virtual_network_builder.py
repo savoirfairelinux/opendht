@@ -7,10 +7,10 @@ import argparse, subprocess
 from pyroute2 import IPDB, NetNS
 from pyroute2.netns.process.proxy import NSPopen
 
-parser = argparse.ArgumentParser(description='Create a dummy network interface for testing')
+parser = argparse.ArgumentParser(description='Creates a virtual network topology for testing')
 parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
-parser.add_argument('-n', '--ifnum', type=int, help='interface number', default=1)
-parser.add_argument('-r', '--remove', help='remove instead of adding the interface', action="store_true")
+parser.add_argument('-n', '--ifnum', type=int, help='number of isolated interfaces to create', default=1)
+parser.add_argument('-r', '--remove', help='remove instead of adding network interfaces', action="store_true")
 parser.add_argument('-l', '--loss', help='simulated packet loss (percent)', type=int, default=0)
 parser.add_argument('-d', '--delay', help='simulated latency (ms)', type=int, default=0)
 parser.add_argument('-4', '--ipv4', help='Enable IPv4', action="store_true")
@@ -26,6 +26,7 @@ ip = None
 try:
     ip = IPDB()
     if args.remove:
+        # cleanup interfaces
         for ifn in range(args.ifnum):
             iface = args.ifname+str(ifn)
             if iface in ip.interfaces:
