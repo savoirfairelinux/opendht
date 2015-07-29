@@ -1442,29 +1442,35 @@ Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback cal
     });
 }
 
+struct OpStatus {
+    bool done {false};
+    bool ok {false};
+};
+
 void
 Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter filter)
 {
     now = clock::now();
 
-    auto done = std::make_shared<bool>(false);
-    auto done4 = std::make_shared<bool>(false);
-    auto done6 = std::make_shared<bool>(false);
-    auto ok4 = std::make_shared<bool>(false);
-    auto ok6 = std::make_shared<bool>(false);
+    auto status = std::make_shared<OpStatus>();
+    auto status4 = std::make_shared<OpStatus>();
+    auto status6 = std::make_shared<OpStatus>();
     auto vals = std::make_shared<std::vector<std::shared_ptr<Value>>>();
     auto all_nodes = std::make_shared<std::vector<std::shared_ptr<Node>>>();
+
     auto done_l = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
+        if (status->done)
+            return;
         all_nodes->insert(all_nodes->end(), nodes.begin(), nodes.end());
-        if ((*done4 && *done6) || *done) {
-            bool ok = *done || *ok4 || *ok6;
-            *done = true;
+        if (status->ok || (status4->done && status6->done)) {
+            bool ok = status->ok || status4->ok || status6->ok;
+            status->done = true;
             if (donecb)
                 donecb(ok, *all_nodes);
         }
     };
     auto cb = [=](const std::vector<std::shared_ptr<Value>>& values) {
-        if (*done)
+        if (status->done)
             return false;
         std::vector<std::shared_ptr<Value>> newvals {};
         for (const auto& v : values) {
@@ -1477,26 +1483,26 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
             }
         }
         if (!newvals.empty()) {
-            *done = !getcb(newvals);
+            status->ok = !getcb(newvals);
             vals->insert(vals->end(), newvals.begin(), newvals.end());
         }
         done_l({});
-        return !*done;
+        return !status->ok;
     };
 
     /* Try to answer this search locally. */
     cb(getLocal(id, filter));
 
     Dht::search(id, AF_INET, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
-        DHT_WARN("DHT done IPv4");
-        *done4 = true;
-        *ok4 = ok;
+        //DHT_WARN("DHT done IPv4");
+        status4->done = true;
+        status4->ok = ok;
         done_l(nodes);
     });
     Dht::search(id, AF_INET6, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
-        DHT_WARN("DHT done IPv6");
-        *done6 = true;
-        *ok6 = ok;
+        //DHT_WARN("DHT done IPv6");
+        status6->done = true;
+        status6->ok = ok;
         done_l(nodes);
     });
 }
