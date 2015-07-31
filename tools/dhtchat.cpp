@@ -33,8 +33,6 @@
 extern "C" {
 #include <gnutls/gnutls.h>
 }
-#include <opendht.h>
-#include <iostream>
 #include <ctime>
 
 using namespace dht;

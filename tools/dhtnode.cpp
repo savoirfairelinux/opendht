@@ -33,16 +33,25 @@
 extern "C" {
 #include <gnutls/gnutls.h>
 }
-#include <opendht.h>
-#include <iostream>
+
 #include <set>
 
 using namespace dht;
+
+void print_usage() {
+    std::cout << "Usage: dhtnode [-p local_port] [-b bootstrap_host]" << std::endl << std::endl;
+    std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
+    std::cout << "Report bugs to: http://opendht.net" << std::endl;
+}
 
 int
 main(int argc, char **argv)
 {
     auto params = parseArgs(argc, argv);
+    if (params.help) {
+        print_usage();
+        return 0;
+    }
 
     // TODO: remove with GnuTLS >= 3.3
     int rc = gnutls_global_init();
@@ -53,8 +62,7 @@ main(int argc, char **argv)
     auto crt_tmp = dht::crypto::generateIdentity("DHT Node", ca_tmp);
 
     DhtRunner dht;
-    dht.run(params.port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {
-    });
+    dht.run(params.port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {});
 
     if (not params.bootstrap.empty())
         dht.bootstrap(params.bootstrap[0].c_str(), params.bootstrap[1].c_str());
@@ -63,6 +71,7 @@ main(int argc, char **argv)
     std::cout << "Public key ID " << dht.getId() << std::endl;
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
+    bool do_log {false};
     while (true)
     {
         std::cout << ">> ";
@@ -119,11 +128,11 @@ main(int argc, char **argv)
             std::cout << dht.getSearchesLog() << std::endl;
             continue;
         } else if (op == "log") {
-            dht.setLoggers(
-                [](char const* m, va_list args){ std::cerr << red; printLog(std::cerr, m, args); std::cerr << def; },
-                [](char const* m, va_list args){ std::cout << yellow; printLog(std::cout, m, args); std::cout << def; },
-                [](char const* m, va_list args){ printLog(std::cout, m, args); }
-            );
+            do_log = !do_log;
+            if (do_log)
+                enableLogging(dht);
+            else
+                disableLogging(dht);
             continue;
         }
 
@@ -209,8 +218,6 @@ main(int argc, char **argv)
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;
     dht.join();
-
     gnutls_global_deinit();
-
     return 0;
 }

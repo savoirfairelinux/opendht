@@ -33,10 +33,11 @@
 
 #include <string>
 #include <vector>
-#include <sstream>
 #include <chrono>
+#include <iostream>
+#include <sstream>
 
-#include <opendht/value.h> // in_port_t
+#include <opendht.h>
 #include <getopt.h>
 
 /**
@@ -70,7 +71,7 @@ const Color::Modifier red(Color::FG_RED);
 const Color::Modifier yellow(Color::FG_YELLOW);
 
 /**
- * Print va_list to std::ostream (used for logging)
+ * Print va_list to std::ostream (used for logging).
  */
 void
 printLog(std::ostream& s, char const* m, va_list args) {
@@ -83,6 +84,22 @@ printLog(std::ostream& s, char const* m, va_list args) {
     if (ret >= BUF_SZ)
         s << "[[TRUNCATED]]";
     s.put('\n');
+}
+
+void
+enableLogging(dht::DhtRunner& dht)
+{
+    dht.setLoggers(
+        [](char const* m, va_list args){ std::cerr << red; printLog(std::cerr, m, args); std::cerr << def; },
+        [](char const* m, va_list args){ std::cout << yellow; printLog(std::cout, m, args); std::cout << def; },
+        [](char const* m, va_list args){ printLog(std::cout, m, args); }
+    );
+}
+
+void
+disableLogging(dht::DhtRunner& dht)
+{
+    dht.setLoggers(dht::NOLOG, dht::NOLOG, dht::NOLOG);
 }
 
 /**
@@ -110,12 +127,14 @@ split(const std::string& s, char delim) {
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 
 struct dht_params {
+    bool help {false}; // print help and exit
     in_port_t port {DHT_DEFAULT_PORT};
     bool is_bootstrap_node {false};
     std::vector<std::string> bootstrap {};
 };
 
 static const struct option long_options[] = {
+   {"help",       no_argument,       nullptr, 'h'},
    {"port",       required_argument, nullptr, 'p'},
    {"bootstrap",  optional_argument, nullptr, 'b'},
    {nullptr,      0,                 nullptr,  0}
@@ -125,7 +144,7 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "p:b:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hp:b:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -143,6 +162,9 @@ parseArgs(int argc, char **argv) {
             }
             else
                 params.is_bootstrap_node = true;
+            break;
+        case 'h':
+            params.help = true;
             break;
         default:
             break;
