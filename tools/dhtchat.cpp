@@ -29,24 +29,15 @@
  *  as that of the covered work.
  */
 
-#include <opendht.h>
-
+#include "tools_common.h"
 extern "C" {
 #include <gnutls/gnutls.h>
 }
-
+#include <opendht.h>
 #include <iostream>
-#include <string>
-#include <chrono>
-
 #include <ctime>
 
 using namespace dht;
-
-template <class DT>
-static double dtToDouble(DT d) {
-    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
-}
 
 const std::string printTime(const std::chrono::system_clock::time_point& t) {
     auto now = std::chrono::system_clock::to_time_t(t);
@@ -59,30 +50,19 @@ const std::string printTime(const std::chrono::system_clock::time_point& t) {
 int
 main(int argc, char **argv)
 {
-    int i = 1;
-    in_port_t port = 0;
-    if (argc >= 2) {
-        int p = atoi(argv[i]);
-        if (p > 0 && p < 0x10000) {
-            port = p;
-            i++;
-        }
-    }
-    if (!port)
-        port = 4222;
+    auto params = parseArgs(argc, argv);
 
+    // TODO: remove with GnuTLS >= 3.3
     if (int rc = gnutls_global_init())
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
 
     DhtRunner dht;
-    dht.run(port, dht::crypto::generateIdentity("DHT Chat Node"), true);
+    dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true);
 
-    while (i+1 < argc) {
-        dht.bootstrap(argv[i], argv[i + 1]);
-        i += 2;
-    }
+    if (not params.bootstrap.empty())
+        dht.bootstrap(params.bootstrap[0].c_str(), params.bootstrap[1].c_str());
 
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  port<<  std::endl;
+    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
     std::cout << "Public key ID " << dht.getId() << std::endl;
     std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
 
@@ -118,7 +98,7 @@ main(int argc, char **argv)
                 dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
                     if (msg.from != myid)
                         std::cout << msg.from.toString() << " at " << printTime(msg.sent)
-                                  << " (took " << dtToDouble(std::chrono::system_clock::now() - msg.sent)
+                                  << " (took " << print_dt(std::chrono::system_clock::now() - msg.sent)
                                   << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.im_message << std::endl;
                     return true;
                 });

@@ -29,15 +29,12 @@
  *  as that of the covered work.
  */
 
-#include <opendht.h>
-
+#include "tools_common.h"
 extern "C" {
 #include <gnutls/gnutls.h>
 }
-
+#include <opendht.h>
 #include <iostream>
-#include <string>
-#include <chrono>
 #include <set>
 #include <condition_variable>
 #include <mutex>
@@ -82,18 +79,9 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
 int
 main(int argc, char **argv)
 {
-    int i = 1;
-    in_port_t port = 0;
-    if (argc >= 2) {
-        int p = atoi(argv[i]);
-        if (p > 0 && p < 0x10000) {
-            port = p;
-            i++;
-        }
-    }
-    if (!port)
-        port = 4222;
+    auto params = parseArgs(argc, argv);
 
+    // TODO: remove with GnuTLS >= 3.3
     int rc = gnutls_global_init();
     if (rc != GNUTLS_E_SUCCESS)
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
@@ -102,14 +90,12 @@ main(int argc, char **argv)
     auto crt_tmp = dht::crypto::generateIdentity("Scanner node", ca_tmp);
 
     DhtRunner dht;
-    dht.run(port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {});
+    dht.run(params.port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {});
 
-    while (i+1 < argc) {
-        dht.bootstrap(argv[i], argv[i + 1]);
-        i += 2;
-    }
+    if (not params.bootstrap.empty())
+        dht.bootstrap(params.bootstrap[0].c_str(), params.bootstrap[1].c_str());
 
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  port<<  std::endl;
+    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
     std::cout << "Scanning network..." << std::endl;
     auto all_nodes = std::make_shared<NodeSet>();
 
