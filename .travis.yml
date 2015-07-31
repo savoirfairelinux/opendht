@@ -4,14 +4,18 @@ compiler:
   - gcc
   - clang
 
+addons:
+  apt:
+    packages:
+    - g++
+    - libgnutls-dev
+
 before_install:
   - echo $LANG
   - echo $LC_ALL
-  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-get update && sudo apt-get install -y g++ libgnutls-dev; fi
   - if [ $TRAVIS_OS_NAME == osx ]; then brew update && brew install llvm36 && brew install gnutls && brew link --force llvm36; fi
 
 before_script:
-  - travis_retry bundle
   - if [ $TRAVIS_OS_NAME == linux ]; then travis_retry ./autogen.sh && ./configure; fi
   - if [ $TRAVIS_OS_NAME == osx ]; then travis_retry ./autogen.sh && ./configure; fi
 
