@@ -110,6 +110,7 @@ struct PublicKey
 private:
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
+    void encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t dst_size) const;
 };
 
 /**
@@ -145,6 +146,7 @@ struct PrivateKey
     /**
      * Generate a new RSA key pair
      * @param key_length : size of the modulus in bits
+     *      Minimim value: 2048
      *      Recommended values: 4096, 8192
      */
     static PrivateKey generate(unsigned key_length = 4096);
@@ -154,6 +156,7 @@ struct PrivateKey
 private:
     PrivateKey(const PrivateKey&) = delete;
     PrivateKey& operator=(const PrivateKey&) = delete;
+    Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
@@ -301,6 +304,15 @@ private:
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
+/**
+ * AES-GCM encryption. Key must be 128, 192 or 126 bits long (16, 24 or 32 bytes).
+ */
+Blob aesEncrypt(const Blob& data, const Blob& key);
+
+/**
+ * AES-GCM decryption.
+ */
+Blob aesDecrypt(const Blob& data, const Blob& key);
 
 }
 }
