@@ -188,6 +188,8 @@ public:
      */
     static InfoHash get(const uint8_t* data, size_t data_len);
 
+    static InfoHash getRandom();
+
     friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
 
     std::string toString() const;

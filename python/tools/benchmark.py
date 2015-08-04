@@ -12,7 +12,7 @@ sys.path.append('..')
 from opendht import *
 
 def random_hash():
-    return PyInfoHash(''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(40)).encode())
+    return PyInfoHash.getRandom()
 
 def start_cluster(i):
     global procs

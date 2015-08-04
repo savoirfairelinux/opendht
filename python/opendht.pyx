@@ -70,6 +70,8 @@ cdef extern from "opendht/infohash.h" namespace "dht":
         unsigned commonBits(InfoHash a, InfoHash b)
         @staticmethod
         InfoHash get(string s)
+        @staticmethod
+        InfoHash getRandom()
 
 cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:
@@ -182,6 +184,11 @@ cdef class PyInfoHash(_WithID):
     def get(str key):
         h = PyInfoHash()
         h._infohash = InfoHash.get(key.encode())
+        return h
+    @staticmethod
+    def getRandom():
+        h = PyInfoHash()
+        h._infohash = InfoHash.getRandom()
         return h
 
 cdef class PyNode(_WithID):

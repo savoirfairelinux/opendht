@@ -29,11 +29,13 @@
  */
 
 #include "infohash.h"
+#include "rng.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
 }
 
+#include <functional>
 #include <sstream>
 #include <cstdio>
 
@@ -67,6 +69,16 @@ InfoHash::get(const uint8_t* data, size_t data_len)
     if (rc == 0 && s == HASH_LEN)
         return h;
     throw std::string("Error while hashing");
+}
+
+InfoHash
+InfoHash::getRandom()
+{
+    InfoHash h;
+    crypto::random_device rdev;
+    std::uniform_int_distribution<uint8_t> rand_byte;
+    std::generate(h.begin(), h.end(), std::bind(rand_byte, std::ref(rdev)));
+    return h;
 }
 
 std::string
