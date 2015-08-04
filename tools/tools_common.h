@@ -130,6 +130,7 @@ struct dht_params {
     bool help {false}; // print help and exit
     in_port_t port {DHT_DEFAULT_PORT};
     bool is_bootstrap_node {false};
+    bool generate_identity {false};
     std::vector<std::string> bootstrap {};
 };
 
@@ -137,6 +138,7 @@ static const struct option long_options[] = {
    {"help",       no_argument,       nullptr, 'h'},
    {"port",       required_argument, nullptr, 'p'},
    {"bootstrap",  optional_argument, nullptr, 'b'},
+   {"identity",   no_argument      , nullptr, 'i'},
    {nullptr,      0,                 nullptr,  0}
 };
 
@@ -144,7 +146,7 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "hp:b:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, ":hip:b:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -165,6 +167,19 @@ parseArgs(int argc, char **argv) {
             break;
         case 'h':
             params.help = true;
+            break;
+        case 'i':
+            params.generate_identity = true;
+            break;
+        case ':':
+            switch (optopt) {
+            case 'b':
+                params.is_bootstrap_node = true;
+                break;
+            default:
+                std::cout << "option requires an argument -- '" << optopt << '\'' << std::endl;
+                break;
+            }
             break;
         default:
             break;

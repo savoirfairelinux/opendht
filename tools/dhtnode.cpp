@@ -44,6 +44,18 @@ void print_usage() {
     std::cout << "Report bugs to: http://opendht.net" << std::endl;
 }
 
+void print_id_req() {
+    std::cout << "An identity is required to perform this operation (run with -i)" << std::cout;
+}
+
+void print_node_info(const DhtRunner& dht, const dht_params& params) {
+    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
+    if (params.is_bootstrap_node)
+        std::cout << "Running in bootstrap mode (discouraged)." << std::endl;
+    if (params.generate_identity)
+        std::cout << "Public key ID " << dht.getId() << std::endl;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -58,17 +70,21 @@ main(int argc, char **argv)
     if (rc != GNUTLS_E_SUCCESS)
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
 
-    auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
-    auto crt_tmp = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+    dht::crypto::Identity crt {};
+    if (params.generate_identity) {
+        auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
+        crt = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+    }
 
     DhtRunner dht;
-    dht.run(params.port, crt_tmp, true, [](dht::Dht::Status /* ipv4 */, dht::Dht::Status /* ipv6 */) {});
+    dht.run(params.port, crt, true, params.is_bootstrap_node);
 
-    if (not params.bootstrap.empty())
+    if (not params.bootstrap.empty()) {
+        std::cout << "Bootstrap: " << params.bootstrap[0] << ":" << params.bootstrap[1] << std::endl;
         dht.bootstrap(params.bootstrap[0].c_str(), params.bootstrap[1].c_str());
+    }
 
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
-    std::cout << "Public key ID " << dht.getId() << std::endl;
+    print_node_info(dht, params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
     bool do_log {false};
@@ -105,12 +121,11 @@ main(int argc, char **argv)
             std::cout << std::endl;
             continue;
         } else if (op == "ll") {
+            print_node_info(dht, params);
             unsigned good4, dubious4, cached4, incoming4;
             unsigned good6, dubious6, cached6, incoming6;
             dht.getNodesStats(AF_INET, &good4, &dubious4, &cached4, &incoming4);
             dht.getNodesStats(AF_INET6, &good6, &dubious6, &cached6, &incoming6);
-            std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
-            std::cout << "Public key ID " << dht.getId() << std::endl;
             std::cout << "IPv4 nodes : " << good4 << " good, " << dubious4 << " dubious, " << incoming4 << " incoming." << std::endl;
             std::cout << "IPv6 nodes : " << good6 << " good, " << dubious6 << " dubious, " << incoming6 << " incoming." << std::endl;
             continue;
@@ -184,6 +199,10 @@ main(int argc, char **argv)
             });
         }
         else if (op == "s") {
+            if (not params.generate_identity) {
+                print_id_req();
+                continue;
+            }
             std::string v;
             iss >> v;
             dht.putSigned(id, dht::Value {
@@ -195,6 +214,10 @@ main(int argc, char **argv)
             });
         }
         else if (op == "e") {
+            if (not params.generate_identity) {
+                print_id_req();
+                continue;
+            }
             std::string tostr;
             std::string v;
             iss >> tostr >> v;
