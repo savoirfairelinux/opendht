@@ -44,40 +44,48 @@ extern "C" {
 namespace dht {
 
 SecureDht::SecureDht(int s, int s6, crypto::Identity id)
-: Dht(s, s6, InfoHash::get("node:"+id.second->getPublicKey().getId().toString())), key_(id.first), certificate_(id.second)
+: Dht(s, s6, id.second ? InfoHash::get("node:"+id.second->getId().toString()) : InfoHash::getRandom()), key_(id.first), certificate_(id.second)
 {
     if (s < 0 && s6 < 0)
         return;
 
+#if GNUTLS_VERSION_NUMBER < 0x030300
     int rc = gnutls_global_init();
     if (rc != GNUTLS_E_SUCCESS)
         throw DhtException(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
-
-    auto certId = certificate_->getPublicKey().getId();
-    if (certId != key_->getPublicKey().getId())
-        throw DhtException("SecureDht: provided certificate doesn't match private key.");
+#endif
 
     for (const auto& type : DEFAULT_TYPES)
         registerType(type);
+
     for (const auto& type : DEFAULT_INSECURE_TYPES)
         registerInsecureType(type);
+
     registerInsecureType(CERTIFICATE_TYPE);
 
-    Dht::put(certId, Value {
-        CERTIFICATE_TYPE,
-        *certificate_,
-        1
-    }, [this](bool ok) {
-        if (ok)
-            DHT_DEBUG("SecureDht: public key announced successfully");
-        else
-            DHT_ERROR("SecureDht: error while announcing public key!");
-    });
+    if (certificate_) {
+        auto certId = certificate_->getPublicKey().getId();
+        if (key_ and certId != key_->getPublicKey().getId())
+            throw DhtException("SecureDht: provided certificate doesn't match private key.");
+
+        Dht::put(certId, Value {
+            CERTIFICATE_TYPE,
+            *certificate_,
+            1
+        }, [this](bool ok) {
+            if (ok)
+                DHT_DEBUG("SecureDht: public key announced successfully");
+            else
+                DHT_ERROR("SecureDht: error while announcing public key!");
+        });
+    }
 }
 
 SecureDht::~SecureDht()
 {
+#if GNUTLS_VERSION_NUMBER < 0x030300
     gnutls_global_deinit();
+#endif
 }
 
 ValueType
@@ -213,6 +221,8 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
         for (const auto& v : values) {
             // Decrypt encrypted values
             if (v->isEncrypted()) {
+                if (not key_)
+                    continue;
                 try {
                     Value decrypted_val (decrypt(*v));
                     if (decrypted_val.recipient == getId()) {
