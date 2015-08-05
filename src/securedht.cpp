@@ -43,8 +43,8 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(int s, int s6, crypto::Identity id)
-: Dht(s, s6, id.second ? InfoHash::get("node:"+id.second->getId().toString()) : InfoHash::getRandom()), key_(id.first), certificate_(id.second)
+SecureDht::SecureDht(int s, int s6, crypto::Identity id, bool is_bootstrap)
+: Dht(s, s6, id.second ? InfoHash::get("node:"+id.second->getId().toString()) : InfoHash::getRandom(), is_bootstrap), key_(id.first), certificate_(id.second)
 {
     if (s < 0 && s6 < 0)
         return;

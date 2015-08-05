@@ -53,7 +53,7 @@ public:
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(int s, int s6, crypto::Identity id = {});
+    SecureDht(int s, int s6, crypto::Identity id = {}, bool is_bootstrap = false);
 
     virtual ~SecureDht();
 

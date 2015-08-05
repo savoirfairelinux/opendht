@@ -126,9 +126,8 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         InfoHash getId() const
         InfoHash getNodeId() const
         void bootstrap(const char*, const char*)
-        void run(in_port_t, const Identity, bool)
-        #void run(const sockaddr_in*, const sockaddr_in6*, const Identity, bool)
-        void run(const char*, const char*, const char*, const Identity, bool)
+        void run(in_port_t, const Identity, bool threaded, bool b)
+        void run(const char*, const char*, const char*, const Identity, bool threaded, bool b)
         void join()
         bool isRunning()
         string getStorageLog() const
@@ -311,11 +310,11 @@ cdef class PyDhtRunner(_WithID):
         return self.thisptr.getNodeId().toString()
     def bootstrap(self, str host, str port):
         self.thisptr.bootstrap(host.encode(), port.encode())
-    def run(self, PyIdentity id, bool threaded=True, in_port_t port=0, str ipv4="", str ipv6=""):
+    def run(self, PyIdentity id, bool threaded=True, is_bootstrap=False, in_port_t port=0, str ipv4="", str ipv6=""):
         if ipv4 or ipv6:
-            self.thisptr.run(ipv4.encode(), ipv6.encode(), str(port).encode(), id._id, threaded)
+            self.thisptr.run(ipv4.encode(), ipv6.encode(), str(port).encode(), id._id, threaded, is_bootstrap)
         else:
-            self.thisptr.run(port, id._id, threaded)
+            self.thisptr.run(port, id._id, threaded, is_bootstrap)
     def join(self):
         self.thisptr.join()
     def isRunning(self):

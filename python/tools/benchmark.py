@@ -11,18 +11,18 @@ from dhtnetwork import DhtNetwork
 sys.path.append('..')
 from opendht import *
 
-def random_hash():
-    return PyInfoHash.getRandom()
-
 def start_cluster(i):
     global procs
     cmd = ["python3", "dhtnetwork.py", "-n", str(node_per_loc), '-I', args.ifname+str(i)+'.1']
-    if not args.disable_ipv4 and bootstrap.ip4:
-        cmd.extend(['-b', bootstrap.ip4])
-    if not args.disable_ipv6 and bootstrap.ip6:
-        cmd.extend(['-b6', bootstrap.ip6])
+    if args.bootstrap:
+        cmd.extend(['-b', args.bootstrap, '-bp', "5000"])
+    else:
+        if not args.disable_ipv4 and bootstrap.ip4:
+            cmd.extend(['-b', bootstrap.ip4])
+        if not args.disable_ipv6 and bootstrap.ip6:
+            cmd.extend(['-b6', bootstrap.ip6])
     procs[i] = NSPopen('node'+str(i), cmd)
-    plt.pause(2)
+    #plt.pause(2)
 
 def stop_cluster(i):
     global procs
@@ -90,14 +90,14 @@ def getsTimesTest():
 
     times = []
     for n in range(10):
-        #replace_cluster()
+        replace_cluster()
         plt.pause(2)
         print("Getting 50 random hashes succesively.")
         for i in range(50):
             with lock:
                 done += 1
                 start = time.time()
-                bootstrap.front().get(random_hash(), getcb, donecb)
+                bootstrap.front().get(PyInfoHash.getRandom(), getcb, donecb)
                 while done > 0:
                     lock.wait()
             update_plot()
@@ -116,6 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--virtual-locs', help='number of virtual locations (node clusters)', type=int, default=8)
     parser.add_argument('-l', '--loss', help='simulated cluster packet loss (percent)', type=int, default=0)
     parser.add_argument('-d', '--delay', help='simulated cluster latency (ms)', type=int, default=0)
+    parser.add_argument('-b', '--bootstrap', help='Bootstrap node to use (if any)', default=None)
     parser.add_argument('-no4', '--disable-ipv4', help='Enable IPv4', action="store_true")
     parser.add_argument('-no6', '--disable-ipv6', help='Enable IPv6', action="store_true")
     parser.add_argument('--gets', action='store_true', help='Launches get calls timings benchmark test.', default=0)
@@ -142,7 +143,7 @@ if __name__ == '__main__':
         output, err = p.communicate()
         print(output.decode())
 
-    bootstrap = DhtNetwork(iface='br'+args.ifname)
+    bootstrap = DhtNetwork(iface='br'+args.ifname, first_bootstrap=False if args.bootstrap else True, bootstrap=[(args.bootstrap, "5000")])
     bootstrap.resize(1)
 
     procs = [None for _ in range(clusters)]

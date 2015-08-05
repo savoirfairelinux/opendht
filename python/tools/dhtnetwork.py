@@ -12,12 +12,12 @@ class DhtNetwork(object):
     nodes = []
 
     @staticmethod
-    def run_node(ip4, ip6, p, bootstrap=[]):
-        #print("run_node", ip4, ip6, p, bootstrap)
+    def run_node(ip4, ip6, p, bootstrap=[], is_bootstrap=False):
+        print("run_node", ip4, ip6, p, bootstrap)
         id = PyIdentity()
-        id.generate("dhtbench"+str(p), PyIdentity(), 1024)
+        #id.generate("dhtbench"+str(p), PyIdentity(), 1024)
         n = PyDhtRunner()
-        n.run(id, ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p)
+        n.run(id, ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
         for b in bootstrap:
             n.bootstrap(b[0], b[1])
         #plt.pause(0.02)
@@ -46,12 +46,17 @@ class DhtNetwork(object):
             ipdb.release()
         return (if_ip4, if_ip6)
 
-    def __init__(self, iface=None, ip4=None, ip6=None, port=4000, bootstrap=[]):
+    def __init__(self, iface=None, ip4=None, ip6=None, port=4000, bootstrap=[], first_bootstrap=False):
         self.port = port
         ips = DhtNetwork.find_ip(iface)
         self.ip4 = ip4 if ip4 else ips[0]
         self.ip6 = ip6 if ip6 else ips[1]
         self.bootstrap = bootstrap
+        if first_bootstrap:
+            print("Starting bootstrap node")
+            self.nodes.append(DhtNetwork.run_node(self.ip4, self.ip6, self.port, self.bootstrap, is_bootstrap=True))
+            self.bootstrap = [(self.ip4, str(self.port))]
+            self.port += 1
         #print(self.ip4, self.ip6, self.port)
 
     def front(self):
@@ -122,13 +127,14 @@ if __name__ == '__main__':
         parser.add_argument('-p', '--port', help='start of port range (port, port+node_num)', type=int, default=4000)
         parser.add_argument('-b', '--bootstrap', help='bootstrap address')
         parser.add_argument('-b6', '--bootstrap6', help='bootstrap address (IPv6)')
+        parser.add_argument('-bp', '--bootstrap-port', help='bootstrap port', default="4000")
         args = parser.parse_args()
 
         bs = []
         if args.bootstrap:
-            bs.append((args.bootstrap, str(4000)))
+            bs.append((args.bootstrap, args.bootstrap_port))
         if args.bootstrap6:
-            bs.append((args.bootstrap6, str(4000)))
+            bs.append((args.bootstrap6, args.bootstrap_port))
 
         net = DhtNetwork(iface=args.iface, port=args.port, bootstrap=bs)
         net.resize(args.node_num)
