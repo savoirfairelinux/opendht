@@ -59,7 +59,7 @@ DhtRunner::~DhtRunner()
 }
 
 void
-DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, bool is_bootstrap)
+DhtRunner::run(in_port_t port, DhtRunner::Config config)
 {
     sockaddr_in sin4;
     std::fill_n((uint8_t*)&sin4, sizeof(sin4), 0);
@@ -69,28 +69,28 @@ DhtRunner::run(in_port_t port, const crypto::Identity identity, bool threaded, b
     std::fill_n((uint8_t*)&sin6, sizeof(sin6), 0);
     sin6.sin6_family = AF_INET6;
     sin6.sin6_port = htons(port);
-    run(&sin4, &sin6, identity, threaded, is_bootstrap);
+    run(&sin4, &sin6, config);
 }
 
 void
-DhtRunner::run(const char* ip4, const char* ip6, const char* service, const crypto::Identity identity, bool threaded, bool is_bootstrap)
+DhtRunner::run(const char* ip4, const char* ip6, const char* service, DhtRunner::Config config)
 {
     auto res4 = getAddrInfo(ip4, service);
     auto res6 = getAddrInfo(ip6, service);
     run(res4.empty() ? nullptr : (sockaddr_in*) &res4.front().first,
-        res6.empty() ? nullptr : (sockaddr_in6*)&res6.front().first, identity, threaded, is_bootstrap);
+        res6.empty() ? nullptr : (sockaddr_in6*)&res6.front().first, config);
 }
 
 void
-DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, const crypto::Identity identity, bool threaded, bool is_bootstrap)
+DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner::Config config)
 {
     if (running)
         return;
     if (rcv_thread.joinable())
         rcv_thread.join();
     running = true;
-    doRun(local4, local6, identity, is_bootstrap);
-    if (not threaded)
+    doRun(local4, local6, config.dht_config);
+    if (not config.threaded)
         return;
     dht_thread = std::thread([this]() {
         while (running) {
@@ -177,7 +177,7 @@ DhtRunner::loop_()
 }
 
 void
-DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto::Identity identity, bool is_bootstrap)
+DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::Config config)
 {
     dht_.reset();
 
@@ -208,7 +208,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto
     }
 #endif
 
-    dht_ = std::unique_ptr<SecureDht>(new SecureDht {s4, s6, identity, is_bootstrap});
+    dht_ = std::unique_ptr<SecureDht>(new SecureDht {s4, s6, config});
 
     rcv_thread = std::thread([this,s4,s6]() {
         try {

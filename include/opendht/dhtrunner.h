@@ -291,13 +291,30 @@ public:
         dht_->setLocalCertificateStore(std::move(query_method));
     }
 
+    struct Config {
+        SecureDht::Config dht_config;
+        bool threaded;
+    };
+
     /**
      * @param port: Local port to bind. Both IPv4 and IPv6 will be tried (ANY).
      * @param identity: RSA key pair to use for cryptographic operations.
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
-     */ 
-    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false);
+     */
+    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false) {
+        run(port, {
+            .dht_config = {
+                .node_config = {
+                    .node_id = {},
+                    .is_bootstrap = is_bootstrap
+                },
+                .id = identity
+            },
+            .threaded = threaded
+        });
+    }
+    void run(in_port_t port, Config config);
 
     /**
      * @param local4: Local IPv4 address and port to bind. Can be null.
@@ -308,12 +325,12 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const sockaddr_in* local4, const sockaddr_in6* local6, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false);
+    void run(const sockaddr_in* local4, const sockaddr_in6* local6, Config config);
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false);
+    void run(const char* ip4, const char* ip6, const char* service, Config config);
 
     void setOnStatusChanged(StatusCallback&& cb) {
         statusCb = std::move(cb);
@@ -338,7 +355,7 @@ public:
 
 private:
 
-    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, const crypto::Identity identity, bool is_bootstrap);
+    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::Config config);
     time_point loop_();
 
     static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const char* host, const char* service);

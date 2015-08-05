@@ -120,6 +120,11 @@ public:
         Connected     // 1+ good nodes
     };
 
+    struct Config {
+        InfoHash node_id;
+        bool is_bootstrap;
+    };
+
     // [[deprecated]]
     using NodeExport = dht::NodeExport;
 
@@ -169,7 +174,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(int s, int s6, const InfoHash& id, bool bootstrap = false);
+    Dht(int s, int s6, Config config);
     virtual ~Dht();
 
     /**

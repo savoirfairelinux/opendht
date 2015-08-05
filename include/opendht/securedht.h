@@ -45,6 +45,12 @@ public:
 
     typedef std::function<void(bool)> SignatureCheckCallback;
 
+    struct Config
+    {
+        Dht::Config node_config;
+        crypto::Identity id;
+    };
+
     SecureDht() {}
 
     /**
@@ -53,7 +59,7 @@ public:
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(int s, int s6, crypto::Identity id = {}, bool is_bootstrap = false);
+    SecureDht(int s, int s6, Config config);
 
     virtual ~SecureDht();
 

@@ -1988,8 +1988,8 @@ Dht::getSearchesLog(sa_family_t af) const
     return out.str();
 }
 
-Dht::Dht(int s, int s6, const InfoHash& id, bool bootstrap)
- : dht_socket(s), dht_socket6(s6), myid(id), is_bootstrap(bootstrap),
+Dht::Dht(int s, int s6, Config config)
+ : dht_socket(s), dht_socket6(s6), myid(config.node_id), is_bootstrap(config.is_bootstrap),
    now(clock::now()), mybucket_grow_time(now), mybucket6_grow_time(now)
 {
     if (s < 0 && s6 < 0)

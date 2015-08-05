@@ -43,8 +43,20 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(int s, int s6, crypto::Identity id, bool is_bootstrap)
-: Dht(s, s6, id.second ? InfoHash::get("node:"+id.second->getId().toString()) : InfoHash::getRandom(), is_bootstrap), key_(id.first), certificate_(id.second)
+Dht::Config& getConfig(SecureDht::Config& conf)
+{
+    auto& c = conf.node_config;
+    if (c.node_id == InfoHash()) {
+          if (conf.id.second)
+            c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
+        else
+            c.node_id = InfoHash::getRandom();
+    }
+    return c;
+}
+
+SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
+: Dht(s, s6, getConfig(conf)), key_(conf.id.first), certificate_(conf.id.second)
 {
     if (s < 0 && s6 < 0)
         return;
