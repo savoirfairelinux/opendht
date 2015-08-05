@@ -27,9 +27,6 @@
 #    along with OpenDHT Python Wrapper. If not, see <http://www.gnu.org/licenses/>.
 #
 
-from libc.stdint cimport *
-from libcpp.string cimport string
-from libcpp.vector cimport vector
 from libcpp.map cimport map as map
 from libcpp cimport bool
 from libcpp.utility cimport pair
@@ -38,116 +35,18 @@ from cython.parallel import parallel, prange
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
 
-ctypedef uint16_t in_port_t
-ctypedef unsigned short int sa_family_t;
+cimport opendht_cpp as cpp
 
-cdef extern from "<memory>" namespace "std" nogil:
-    cdef cppclass shared_ptr[T]:
-        shared_ptr() except +
-        T* get()
-        T operator*()
-        void reset(T*);
-
-cdef extern from "<future>" namespace "std" nogil:
-    cdef cppclass shared_future[T]:
-        shared_future() except +
-        bool valid() const
-
-    cdef cppclass future[T]:
-        future() except +
-        bool valid() const
-        shared_future[T] share()
-
-cdef extern from "opendht/infohash.h" namespace "dht":
-    cdef cppclass InfoHash:
-        InfoHash() except +
-        InfoHash(string s) except +
-        string toString() const
-        bool getBit(unsigned bit) const
-        void setBit(unsigned bit, bool b)
-        double toFloat() const
-        @staticmethod
-        unsigned commonBits(InfoHash a, InfoHash b)
-        @staticmethod
-        InfoHash get(string s)
-        @staticmethod
-        InfoHash getRandom()
-
-cdef extern from "opendht/value.h" namespace "dht":
-    cdef cppclass Value:
-        Value() except +
-        Value(vector[uint8_t]) except +
-        Value(const uint8_t* dat_ptr, size_t dat_len) except +
-        string toString() const
-
-cdef extern from "opendht/dht.h" namespace "dht":
-    cdef cppclass Node:
-        Node() except +
-        InfoHash getId() const
-        string getAddrStr() const
-        bool isExpired() const
-    ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
-    ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
-    cdef cppclass Dht:
-        cppclass GetCallback:
-            GetCallback() except +
-            #GetCallback(GetCallbackRaw cb, void *user_data) except +
-        cppclass DoneCallback:
-            DoneCallback() except +
-            #DoneCallback(DoneCallbackRaw, void *user_data) except +
-        Dht() except +
-        InfoHash getNodeId() const
-        @staticmethod
-        GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
-        @staticmethod
-        DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
-
-cdef extern from "opendht/crypto.h" namespace "dht::crypto":
-    ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
-    cdef Identity generateIdentity(string name, Identity ca, unsigned bits)
-
-    cdef cppclass PrivateKey:
-        PrivateKey()
-        PublicKey getPublicKey() const
-
-    cdef cppclass PublicKey:
-        PublicKey()
-        InfoHash getId() const
-
-    cdef cppclass Certificate:
-        Certificate()
-        InfoHash getId() const
-
-cdef extern from "opendht/dhtrunner.h" namespace "dht":
-    ctypedef future[size_t] ListenToken
-    ctypedef shared_future[size_t] SharedListenToken
-    cdef cppclass DhtRunner:
-        DhtRunner() except +
-        InfoHash getId() const
-        InfoHash getNodeId() const
-        void bootstrap(const char*, const char*)
-        void run(in_port_t, const Identity, bool threaded, bool b)
-        void run(const char*, const char*, const char*, const Identity, bool threaded, bool b)
-        void join()
-        bool isRunning()
-        string getStorageLog() const
-        string getRoutingTablesLog(sa_family_t af) const
-        string getSearchesLog(sa_family_t af) const
-        void get(InfoHash key, Dht.GetCallback get_cb, Dht.DoneCallback done_cb)
-        void put(InfoHash key, shared_ptr[Value] val, Dht.DoneCallback done_cb)
-        ListenToken listen(InfoHash key, Dht.GetCallback get_cb)
-        void cancelListen(InfoHash key, SharedListenToken token)
-
-cdef bool py_get_callback(shared_ptr[Value] value, void *user_data) with gil:
+cdef inline bool get_callback(cpp.shared_ptr[cpp.Value] value, void *user_data) with gil:
     cb = (<object>user_data)['get']
-    pv = PyValue()
+    pv = Value()
     pv._value = value
     return cb(pv)
 
-cdef void py_done_callback(bool done, vector[shared_ptr[Node]]* nodes, void *user_data) with gil:
+cdef inline void done_callback(bool done, cpp.vector[cpp.shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
     node_ids = []
     for n in deref(nodes):
-        h = PyNodeEntry()
+        h = NodeEntry()
         h._v.first = n.get().getId()
         h._v.second = n
         node_ids.append(h)
@@ -162,10 +61,10 @@ cdef class _WithID(object):
     def __str__(self):
         return self.getId().toString().decode()
 
-cdef class PyInfoHash(_WithID):
-    cdef InfoHash _infohash
+cdef class InfoHash(_WithID):
+    cdef cpp.InfoHash _infohash
     def __init__(self, bytes str=b''):
-        self._infohash = InfoHash(str)
+        self._infohash = cpp.InfoHash(str)
     def getBit(self, bit):
         return self._infohash.getBit(bit)
     def setBit(self, bit, b):
@@ -177,23 +76,23 @@ cdef class PyInfoHash(_WithID):
     def toFloat(self):
         return self._infohash.toFloat()
     @staticmethod
-    def commonBits(PyInfoHash a, PyInfoHash b):
-        return InfoHash.commonBits(a._infohash, b._infohash)
+    def commonBits(InfoHash a, InfoHash b):
+        return cpp.InfoHash.commonBits(a._infohash, b._infohash)
     @staticmethod
     def get(str key):
-        h = PyInfoHash()
-        h._infohash = InfoHash.get(key.encode())
+        h = InfoHash()
+        h._infohash = cpp.InfoHash.get(key.encode())
         return h
     @staticmethod
     def getRandom():
-        h = PyInfoHash()
-        h._infohash = InfoHash.getRandom()
+        h = InfoHash()
+        h._infohash = cpp.InfoHash.getRandom()
         return h
 
-cdef class PyNode(_WithID):
-    cdef shared_ptr[Node] _node
+cdef class Node(_WithID):
+    cdef cpp.shared_ptr[cpp.Node] _node
     def getId(self):
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = self._node.get().getId()
         return h
     def getAddr(self):
@@ -201,43 +100,43 @@ cdef class PyNode(_WithID):
     def isExpired(self):
         return self._node.get().isExpired()
 
-cdef class PyNodeEntry(_WithID):
-    cdef pair[InfoHash, shared_ptr[Node]] _v
+cdef class NodeEntry(_WithID):
+    cdef cpp.pair[cpp.InfoHash, cpp.shared_ptr[cpp.Node]] _v
     def getId(self):
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = self._v.first
         return h
     def getNode(self):
-        n = PyNode()
+        n = Node()
         n._node = self._v.second
         return n
 
-cdef class PyValue(object):
-    cdef shared_ptr[Value] _value
+cdef class Value(object):
+    cdef cpp.shared_ptr[cpp.Value] _value
     def __init__(self, bytes val=b''):
-        self._value.reset(new Value(val, len(val)))
+        self._value.reset(new cpp.Value(val, len(val)))
     def __str__(self):
         return self._value.get().toString().decode()
 
-cdef class PyNodeSetIter(object):
-    cdef map[InfoHash, shared_ptr[Node]]* _nodes
-    cdef map[InfoHash, shared_ptr[Node]].iterator _curIter
-    def __init__(self, PyNodeSet s):
+cdef class NodeSetIter(object):
+    cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]]* _nodes
+    cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]].iterator _curIter
+    def __init__(self, NodeSet s):
         self._nodes = &s._nodes
         self._curIter = self._nodes.begin()
     def __next__(self):
         if self._curIter == self._nodes.end():
             raise StopIteration
-        h = PyNodeEntry()
+        h = NodeEntry()
         h._v = deref(self._curIter)
         inc(self._curIter)
         return h
 
-cdef class PyNodeSet(object):
-    cdef map[InfoHash, shared_ptr[Node]] _nodes
+cdef class NodeSet(object):
+    cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]] _nodes
     def size(self):
         return self._nodes.size()
-    def insert(self, PyNodeEntry l):
+    def insert(self, NodeEntry l):
         self._nodes.insert(l._v)
     def extend(self, li):
         for n in li:
@@ -245,104 +144,116 @@ cdef class PyNodeSet(object):
     def first(self):
         if self._nodes.empty():
             raise IndexError()
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = deref(self._nodes.begin()).first
         return h
     def last(self):
         if self._nodes.empty():
             raise IndexError()
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = deref(dec(self._nodes.end())).first
         return h
     def __str__(self):
         s = ''
-        cdef map[InfoHash, shared_ptr[Node]].iterator it = self._nodes.begin()
+        cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]].iterator it = self._nodes.begin()
         while it != self._nodes.end():
             s += deref(it).first.toString().decode() + ' ' + deref(it).second.get().getAddrStr().decode() + '\n'
             inc(it)
         return s
     def __iter__(self):
-        return PyNodeSetIter(self)
+        return NodeSetIter(self)
 
-cdef class PyPublicKey(_WithID):
-    cdef PublicKey _key
+cdef class PublicKey(_WithID):
+    cdef cpp.PublicKey _key
     def getId(self):
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = self._key.getId()
         return h
 
-cdef class PySharedCertificate(_WithID):
-    cdef shared_ptr[Certificate] _cert
+cdef class Certificate(_WithID):
+    cdef cpp.shared_ptr[cpp.Certificate] _cert
     def getId(self):
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = self._cert.get().getId()
         return h
 
-cdef class PyListenToken(object):
-    cdef InfoHash _h
-    cdef shared_future[size_t] _t
+cdef class ListenToken(object):
+    cdef cpp.InfoHash _h
+    cdef cpp.shared_future[size_t] _t
     _cb = dict()
 
-cdef class PyIdentity(object):
-    cdef Identity _id
-    def generate(self, str name = "pydht", PyIdentity ca = PyIdentity(), unsigned bits = 4096):
-        self._id = generateIdentity(name.encode(), ca._id, bits)
+cdef class Identity(object):
+    cdef cpp.Identity _id
+    def generate(self, str name = "pydht", Identity ca = Identity(), unsigned bits = 4096):
+        self._id = cpp.generateIdentity(name.encode(), ca._id, bits)
     property PublicKey:
         def __get__(self):
-            k = PyPublicKey()
+            k = PublicKey()
             k._key = self._id.first.get().getPublicKey()
             return k
     property Certificate:
         def __get__(self):
-            c = PySharedCertificate()
+            c = Certificate()
             c._cert = self._id.second
             return c
 
-cdef class PyDhtRunner(_WithID):
-    cdef DhtRunner* thisptr
+cdef class DhtConfig(object):
+    cdef cpp.Config _config
+    def __init__(self):
+        self._config = cpp.Config()
+        self._config.threaded = True;
+    def setIdentity(self, Identity id):
+        self._config.dht_config.id = id._id
+    def setBootstrapMode(self, bool bootstrap):
+        self._config.dht_config.node_config.is_bootstrap = bootstrap
+
+cdef class DhtRunner(_WithID):
+    cdef cpp.DhtRunner* thisptr
     def __cinit__(self):
-        self.thisptr = new DhtRunner()
+        self.thisptr = new cpp.DhtRunner()
     def getId(self):
-        h = PyInfoHash()
+        h = InfoHash()
         h._infohash = self.thisptr.getId()
         return h
     def getNodeId(self):
         return self.thisptr.getNodeId().toString()
     def bootstrap(self, str host, str port):
         self.thisptr.bootstrap(host.encode(), port.encode())
-    def run(self, PyIdentity id, bool threaded=True, is_bootstrap=False, in_port_t port=0, str ipv4="", str ipv6=""):
+    def run(self, Identity id = Identity(), is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6=""):
+        config = DhtConfig()
+        config.setIdentity(id)
         if ipv4 or ipv6:
-            self.thisptr.run(ipv4.encode(), ipv6.encode(), str(port).encode(), id._id, threaded, is_bootstrap)
+            self.thisptr.run(ipv4.encode(), ipv6.encode(), str(port).encode(), config._config)
         else:
-            self.thisptr.run(port, id._id, threaded, is_bootstrap)
+            self.thisptr.run(port, config._config)
     def join(self):
         self.thisptr.join()
     def isRunning(self):
         return self.thisptr.isRunning()
     def getStorageLog(self):
         return self.thisptr.getStorageLog().decode()
-    def getRoutingTablesLog(self, sa_family_t af):
+    def getRoutingTablesLog(self, cpp.sa_family_t af):
         return self.thisptr.getRoutingTablesLog(af).decode()
-    def getSearchesLog(self, sa_family_t af):
+    def getSearchesLog(self, cpp.sa_family_t af):
         return self.thisptr.getSearchesLog(af).decode()
-    def get(self, PyInfoHash key, get_cb, done_cb):
+    def get(self, InfoHash key, get_cb, done_cb):
         cb_obj = {'get':get_cb, 'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.get(key._infohash, Dht.bindGetCb(py_get_callback, <void*>cb_obj), Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
-    def put(self, PyInfoHash key, PyValue val, done_cb=None):
+        self.thisptr.get(key._infohash, cpp.Dht.bindGetCb(get_callback, <void*>cb_obj), cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
+    def put(self, InfoHash key, Value val, done_cb=None):
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.put(key._infohash, val._value, Dht.bindDoneCb(py_done_callback, <void*>cb_obj))
-    def listen(self, PyInfoHash key, get_cb):
-        t = PyListenToken()
+        self.thisptr.put(key._infohash, val._value, cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
+    def listen(self, InfoHash key, get_cb):
+        t = ListenToken()
         t._h = key._infohash
         cb_obj = {'get':get_cb}
         t._cb['cb'] = cb_obj
         # avoid the callback being destructed if the token is destroyed
         ref.Py_INCREF(cb_obj)
-        t._t = self.thisptr.listen(t._h, Dht.bindGetCb(py_get_callback, <void*>cb_obj)).share()
+        t._t = self.thisptr.listen(t._h, cpp.Dht.bindGetCb(get_callback, <void*>cb_obj)).share()
         return t
-    def cancelListen(self, PyListenToken token):
+    def cancelListen(self, ListenToken token):
         self.thisptr.cancelListen(token._h, token._t)
         # fixme: not thread safe
         ref.Py_DECREF(<object>token._cb['cb'])
