@@ -142,6 +142,12 @@ main(int argc, char **argv)
             std::cout << "Searches:" << std::endl;
             std::cout << dht.getSearchesLog() << std::endl;
             continue;
+        } else if (op == "la")  {
+            std::cout << "Reported public addresses:" << std::endl;
+            auto addrs = dht.getPublicAddressStr();
+            for (const auto& addr : addrs)
+                std::cout << addr << std::endl;
+            continue;
         } else if (op == "log") {
             do_log = !do_log;
             if (do_log)

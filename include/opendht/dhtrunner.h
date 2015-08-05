@@ -278,6 +278,18 @@ public:
         std::lock_guard<std::mutex> lck(dht_mtx);
         return dht_->getSearchesLog(af);
     }
+    std::vector<Address> getPublicAddress()
+    {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        return dht_->getPublicAddress();
+    }
+    std::vector<std::string> getPublicAddressStr()
+    {
+        auto addrs = getPublicAddress();
+        std::vector<std::string> ret(addrs.size());
+        std::transform(addrs.begin(), addrs.end(), ret.begin(), dht::printAddr);
+        return ret;
+    }
 
     // securedht methods
 

@@ -109,9 +109,11 @@ dht::print_addr(const sockaddr* sa, socklen_t slen)
     std::stringstream out;
     if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
         if (sa->sa_family == AF_INET6)
-            out << "[" << hbuf << "]:" << sbuf;
+            out << "[" << hbuf << "]";
         else
-            out << hbuf << ":" << sbuf;
+            out << hbuf;
+        if (strcmp(sbuf, "0"))
+            out << ":" << sbuf;
     } else
         out << "[invalid address]";
     return out.str();
@@ -121,6 +123,11 @@ std::string
 dht::print_addr(const sockaddr_storage& ss, socklen_t sslen)
 {
     return print_addr((const sockaddr*)&ss, sslen);
+}
+
+std::string
+dht::printAddr(const Address& addr) {
+    return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 
 template <class DT>
@@ -496,6 +503,19 @@ Dht::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
     return false;
 }
 
+std::vector<Address>
+Dht::getPublicAddress()
+{
+    std::sort(reported_addr.begin(), reported_addr.end(), [](const ReportedAddr& a, const ReportedAddr& b) {
+        return a.first < b.first;
+    });
+    std::vector<Address> ret;
+    ret.reserve(reported_addr.size());
+    for (const auto& addr : reported_addr)
+        ret.emplace_back(addr.second);
+    return ret;
+}
+
 /* Split a bucket into two equal parts. */
 bool
 Dht::RoutingTable::split(const RoutingTable::iterator& b)
@@ -540,10 +560,23 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
     return inserted;
 }
 
+void 
+Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
+{
+    auto it = std::find_if(reported_addr.begin(), reported_addr.end(), [=](const ReportedAddr& addr){
+        return (addr.second.second == sa_len) && std::equal((uint8_t*)&addr.second.first, (uint8_t*)&addr.second.first + addr.second.second, (uint8_t*)sa);
+    });
+    if (it == reported_addr.end()) {
+        if (reported_addr.size() < 32)
+            reported_addr.emplace_back(1, std::make_pair(*((sockaddr_storage*)sa), sa_len));
+    } else
+        it->first++;
+}
+
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
 std::shared_ptr<Node>
-Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm)
+Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm, const sockaddr* addr, socklen_t addr_length)
 {
     if (id == myid || isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
         return nullptr;
@@ -555,8 +588,11 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
 
     bool mybucket = list.contains(b, myid);
 
-    if (confirm == 2)
+    if (confirm == 2) {
         b->time = now;
+        if (addr and addr_length)
+            reportedAddr(addr, addr_length);
+    }
 
     for (auto& n : b->nodes) {
         if (n->id != id) continue;
@@ -1717,6 +1753,7 @@ Dht::connectivityChanged()
     confirm_nodes_time = now;
     mybucket_grow_time = now;
     mybucket6_grow_time = now;
+    reported_addr.clear();
     for (auto& s : searches)
         for (auto& sn : s.nodes)
             sn.listenStatus = {};
@@ -2154,6 +2191,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     in_port_t port;
     Value::Id value_id;
     uint16_t error_code;
+    sockaddr_storage addr;
+    socklen_t addr_length = sizeof(sockaddr_storage);
 
     std::vector<std::shared_ptr<Value>> values;
 
@@ -2176,7 +2215,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         message = parseMessage(buf, buflen, tid, id, info_hash, target,
                                 port, token, value_id,
                                 nodes, &nodes_len, nodes6, &nodes6_len,
-                               values, &want, error_code, ring);
+                               values, &want, error_code, ring, (sockaddr*)&addr, addr_length);
         if (message != MessageType::Error && id == zeroes)
             throw DhtException("no or invalid InfoHash");
     } catch (const std::exception& e) {
@@ -2241,7 +2280,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         if (tid.matches(TransPrefix::PING)) {
             DHT_DEBUG("Pong!");
-            newNode(id, from, fromlen, 2);
+            newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
         } else if (tid.matches(TransPrefix::FIND_NODE) or tid.matches(TransPrefix::GET_VALUES)) {
             bool gp = false;
             Search *sr = nullptr;
@@ -2259,7 +2298,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 DHT_WARN("Unknown search with tid %u !", ttid);
                 n = newNode(id, from, fromlen, 1);
             } else {
-                n = newNode(id, from, fromlen, 2);
+                n = newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
                 for (unsigned i = 0; i < nodes_len / 26; i++) {
                     uint8_t *ni = nodes + i * 26;
                     const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
@@ -2336,7 +2375,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 DHT_DEBUG("Unknown search or announce!");
                 newNode(id, from, fromlen, 1);
             } else {
-                auto n = newNode(id, from, fromlen, 2);
+                auto n = newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
                 for (auto& sn : sr->nodes)
                     if (sn.node == n) {
                         auto it = sn.acked.emplace(value_id, SearchNode::RequestStatus{});
@@ -2364,7 +2403,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 DHT_DEBUG("Unknown search or announce!");
                 newNode(id, from, fromlen, 1);
             } else {
-                auto n = newNode(id, from, fromlen, 2);
+                auto n = newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
                 for (auto& sn : sr->nodes)
                     if (sn.node == n) {
                         sn.listenStatus.reply_time = now;
@@ -2698,13 +2737,25 @@ Dht::sendPing(const sockaddr *sa, socklen_t salen, TransId tid)
     return send(buf, i, 0, sa, salen);
 }
 
+void
+insertAddr(char* buf, size_t buflen, size_t& p, const sockaddr *sa, socklen_t)
+{
+    size_t addr_len = (sa->sa_family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr);
+    void* addr_ptr = (sa->sa_family == AF_INET) ? (void*)&((sockaddr_in*)sa)->sin_addr
+                                                : (void*)&((sockaddr_in6*)sa)->sin6_addr;
+    int rc = snprintf(buf + p, buflen - p, "2:sa%lu:", addr_len);
+    INC(p, rc, buflen);
+    COPY(buf, p, addr_ptr, addr_len, buflen);
+}
+
 int
 Dht::sendPong(const sockaddr *sa, socklen_t salen, TransId tid)
 {
     char buf[512];
-    int i = 0, rc;
-    rc = snprintf(buf + i, 512 - i, "d1:rd2:id20:"); INC(i, rc, 512);
+    size_t i = 0;
+    auto rc = snprintf(buf + i, 512 - i, "d1:rd2:id20:"); INC(i, rc, 512);
     COPY(buf, i, myid.data(), myid.size(), 512);
+    insertAddr(buf, 512, i, sa, salen);
     rc = snprintf(buf + i, 512 - i, "e1:t%d:", tid.length); INC(i, rc, 512);
     COPY(buf, i, tid.data(), tid.length, 512);
     ADD_V(buf, i, 512);
@@ -2745,10 +2796,11 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
 {
     constexpr const size_t BUF_SZ = 2048 * 64;
     char buf[BUF_SZ];
-    int i = 0, rc;
+    size_t i = 0;
 
-    rc = snprintf(buf + i, BUF_SZ - i, "d1:rd2:id20:"); INC(i, rc, BUF_SZ);
+    auto rc = snprintf(buf + i, BUF_SZ - i, "d1:rd2:id20:"); INC(i, rc, BUF_SZ);
     COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
+    insertAddr(buf, BUF_SZ, i, sa, salen);
     if (nodes_len > 0) {
         rc = snprintf(buf + i, BUF_SZ - i, "5:nodes%u:", nodes_len);
         INC(i, rc, BUF_SZ);
@@ -2951,10 +3003,12 @@ Dht::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid)
 {
     static constexpr const size_t BUF_SZ = 512;
     char buf[BUF_SZ];
-    int i = 0, rc;
+    size_t i = 0;
 
-    rc = snprintf(buf + i, BUF_SZ - i, "d1:rd2:id20:"); INC(i, rc, BUF_SZ);
+    auto rc = snprintf(buf + i, BUF_SZ - i, "d1:rd2:id20:"); INC(i, rc, BUF_SZ);
     COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
+    insertAddr(buf, BUF_SZ, i, sa, salen);
+
     rc = snprintf(buf + i, BUF_SZ - i, "e1:t%u:", tid.length); INC(i, rc, BUF_SZ);
     COPY(buf, i, tid.data(), tid.length, BUF_SZ);
     ADD_V(buf, i, BUF_SZ);
@@ -2994,10 +3048,12 @@ int
 Dht::sendValueAnnounced(const sockaddr *sa, socklen_t salen, TransId tid, Value::Id vid)
 {
     char buf[512];
-    int i = 0, rc;
+    size_t i = 0;
 
-    rc = snprintf(buf + i, 512 - i, "d1:rd2:id20:"); INC(i, rc, 512);
+    auto rc = snprintf(buf + i, 512 - i, "d1:rd2:id20:"); INC(i, rc, 512);
     COPY(buf, i, myid.data(), myid.size(), 512);
+    insertAddr(buf, 512, i, sa, salen);
+
     rc = snprintf(buf + i, 512 - i, "3:vid%lu:", sizeof(Value::Id)); INC(i, rc, 512);
     COPY(buf, i, &vid, sizeof(Value::Id), 512);
     rc = snprintf(buf + i, 512 - i, "e1:t%u:", tid.length); INC(i, rc, 512);
@@ -3044,7 +3100,8 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
               uint8_t *nodes_return, unsigned *nodes_len,
               uint8_t *nodes6_return, unsigned *nodes6_len,
               std::vector<std::shared_ptr<Value>>& values_return,
-                  want_t* want_return, uint16_t& error_code, bool& ring)
+              want_t* want_return, uint16_t& error_code, bool& ring,
+              sockaddr* addr_return, socklen_t& addr_length_return)
 {
     const uint8_t *p;
 
@@ -3071,6 +3128,34 @@ Dht::parseMessage(const uint8_t *buf, size_t buflen,
         memcpy(id_return.data(), p + 7, HASH_LEN);
     } else {
         id_return = {};
+    }
+
+    if (addr_return and addr_length_return) {
+        p = (uint8_t*)dht_memmem(buf, buflen, "2:sa", 4);
+        if (p) {
+            char *q;
+            size_t l = strtoul((char*)p + 4, &q, 10);
+            if (q && *q == ':' && (l == sizeof(in_addr) or l == sizeof(in6_addr))) {
+                CHECK(q + 1, l);
+                if (l == sizeof(in_addr)) {
+                    auto addr = (sockaddr_in*)addr_return;
+                    std::fill_n((uint8_t*)addr, sizeof(sockaddr_in), 0);
+                    addr->sin_family = AF_INET;
+                    addr->sin_port = 0;
+                    memcpy(&addr->sin_addr, q+1, l);
+                    addr_length_return = sizeof(sockaddr_in);
+                } else if (l == sizeof(in6_addr)) {
+                    auto addr = (sockaddr_in6*)addr_return;
+                    std::fill_n((uint8_t*)addr, sizeof(sockaddr_in6), 0);
+                    addr_return->sa_family = AF_INET6;
+                    addr->sin6_port = 0;
+                    memcpy(&addr->sin6_addr, q+1, l);
+                    addr_length_return = sizeof(sockaddr_in6);
+                }
+            } else
+                addr_length_return = 0;
+        } else
+            addr_length_return = 0;
     }
 
     p = (uint8_t*)dht_memmem(buf, buflen, "9:info_hash20:", 14);

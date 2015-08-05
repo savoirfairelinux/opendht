@@ -41,8 +41,11 @@ THE SOFTWARE.
 
 namespace dht {
 
+using Address = std::pair<sockaddr_storage, socklen_t>;
+
 std::string print_addr(const sockaddr* sa, socklen_t slen);
 std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+std::string printAddr(const Address& addr);
 
 struct NodeExport {
     InfoHash id;
@@ -331,6 +334,8 @@ public:
 
     /* This must be provided by the user. */
     static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
+
+    std::vector<Address> getPublicAddress();
 
 protected:
     LogMethod DHT_DEBUG = NOLOG;
@@ -734,6 +739,7 @@ private:
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
 
+    // timing
     time_point now;
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
     time_point expire_stuff_time {time_point::min()};
@@ -741,6 +747,9 @@ private:
     time_point confirm_nodes_time {time_point::min()};
     time_point rotate_secrets_time {time_point::min()};
     std::queue<time_point> rate_limit_time {};
+
+    using ReportedAddr = std::pair<unsigned, Address>;
+    std::vector<ReportedAddr> reported_addr;
 
     // Networking & packet handling
     int send(const char* buf, size_t len, int flags, const sockaddr*, socklen_t);
@@ -784,12 +793,15 @@ private:
                   uint8_t *nodes_return, unsigned *nodes_len,
                   uint8_t *nodes6_return, unsigned *nodes6_len,
                   std::vector<std::shared_ptr<Value>>& values_return,
-                             want_t* want_return, uint16_t& error_code, bool& ring);
+                  want_t* want_return, uint16_t& error_code, bool& ring,
+                  sockaddr* addr_return, socklen_t& addr_length_return);
 
     void rotateSecrets();
 
     Blob makeToken(const sockaddr *sa, bool old) const;
     bool tokenMatch(const Blob& token, const sockaddr *sa) const;
+
+    void reportedAddr(const sockaddr *sa, socklen_t sa_len);
 
     // Storage
     Storage* findStorage(const InfoHash& id);
@@ -828,7 +840,7 @@ private:
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
+    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm, const sockaddr* addr=nullptr, socklen_t addr_length=0);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);
