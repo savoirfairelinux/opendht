@@ -14,9 +14,9 @@ class DhtNetwork(object):
     @staticmethod
     def run_node(ip4, ip6, p, bootstrap=[], is_bootstrap=False):
         print("run_node", ip4, ip6, p, bootstrap)
-        id = PyIdentity()
-        #id.generate("dhtbench"+str(p), PyIdentity(), 1024)
-        n = PyDhtRunner()
+        id = Identity()
+        #id.generate("dhtbench"+str(p), Identity(), 1024)
+        n = DhtRunner()
         n.run(id, ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
         for b in bootstrap:
             n.bootstrap(b[0], b[1])

@@ -47,14 +47,20 @@ def getsTimesTest():
 
     plt.ion()
 
-    lines = plt.plot([])
-    plt.ylabel('time (s)')
-    #plt.show()
+    fig, axes = plt.subplots(2, 1)
+    fig.tight_layout()
+
+    lax = axes[0]
+    hax = axes[1]
+
+    lines = None#ax.plot([])
+    #plt.ylabel('time (s)')
+    hax.set_ylim(0, 2)
 
     # let the network stabilise
-    plt.pause(5)
+    plt.pause(60)
 
-    start = time.time()
+    #start = time.time()
     times = []
     done = 0
 
@@ -83,6 +89,12 @@ def getsTimesTest():
         lines = plt.plot(times, color='blue')
         plt.draw()
 
+    def run_get():
+        nonlocal done
+        done += 1
+        start = time.time()
+        bootstrap.front().get(InfoHash.getRandom(), getcb, lambda ok, nodes: donecb(ok, nodes, start))
+
     plt.pause(5)
 
     plt.show()
@@ -100,6 +112,7 @@ def getsTimesTest():
                 bootstrap.front().get(PyInfoHash.getRandom(), getcb, donecb)
                 while done > 0:
                     lock.wait()
+                    update_plot()
             update_plot()
         print("Took", np.sum(times), "mean", np.mean(times), "std", np.std(times), "min", np.min(times), "max", np.max(times))
 
@@ -143,7 +156,7 @@ if __name__ == '__main__':
         output, err = p.communicate()
         print(output.decode())
 
-    bootstrap = DhtNetwork(iface='br'+args.ifname, first_bootstrap=False if args.bootstrap else True, bootstrap=[(args.bootstrap, "5000")])
+    bootstrap = DhtNetwork(iface='br'+args.ifname, first_bootstrap=False if args.bootstrap else True, bootstrap=[(args.bootstrap, "5000")] if args.bootstrap else [])
     bootstrap.resize(1)
 
     procs = [None for _ in range(clusters)]

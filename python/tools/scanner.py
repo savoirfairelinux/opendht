@@ -38,7 +38,7 @@ from mpl_toolkits.basemap import Basemap
 import GeoIP
 
 done = 0
-all_nodes = PyNodeSet()
+all_nodes = NodeSet()
 
 plt.ion()
 plt.figaspect(2.)
@@ -76,8 +76,8 @@ gi6 = GeoIP.open("GeoLiteCityv6.dat", GeoIP.GEOIP_INDEX_CACHE | GeoIP.GEOIP_CHEC
 def gcb(v):
     return True
 
-r = PyDhtRunner()
-i = PyIdentity()
+r = DhtRunner()
+i = Identity()
 i.generate(bits = 1024)
 
 r.run(i, port=4112)
@@ -105,13 +105,13 @@ def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
         del arc
     for l in lines:
         l.set_color('#444444')
-    snodes = PyNodeSet()
+    snodes = NodeSet()
     snodes.extend(nodes)
     all_nodes.extend(nodes)
-    depth = min(6, PyInfoHash.commonBits(snodes.first(), snodes.last())+4)
+    depth = min(6, InfoHash.commonBits(snodes.first(), snodes.last())+4)
     if cur_depth < depth:
         for b in range(cur_depth, depth):
-            new_h = PyInfoHash(cur_h.toString());
+            new_h = InfoHash(cur_h.toString());
             new_h.setBit(b, 1);
             step(new_h, b+1);
     done -= 1
@@ -138,7 +138,7 @@ def restart(arg):
     points = []
 
     print(arg)
-    start_h = PyInfoHash()
+    start_h = InfoHash()
     start_h.setBit(159, 1)
     step(start_h, 0)
     plt.draw()
@@ -209,7 +209,7 @@ def update_plot():
 
 if run:
     # start first step
-    start_h = PyInfoHash()
+    start_h = InfoHash()
     start_h.setBit(159, 1)
     step(start_h, 0)
 
