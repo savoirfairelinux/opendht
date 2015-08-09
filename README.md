@@ -8,6 +8,7 @@ A lightweight C++11 Distributed Hash Table implementation originally based on ht
  * Storage of arbitrary binary values up to 64 kB. Keys are 160 bits long.
  * Optional public key cryptography layer providing data signature and encryption (using GnuTLS).
  * IPv4 and IPv6 support.
+ * Python binding.
 
 Documentation
 -
