@@ -85,14 +85,13 @@ public:
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
-                T msg;
                 try {
-                    msg.unpackValue(*v);
+                    auto msg = unpack<T>(v->data);
+                    if (not cb(std::move(msg)))
+                        return false;
                 } catch (const std::exception&) {
                     continue;
                 }
-                if (not cb(std::move(msg)))
-                    return false;
             }
             return true;
         },
@@ -145,14 +144,13 @@ public:
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
-                T msg;
                 try {
-                    msg.unpackValue(*v);
+                    auto msg = unpack<T>(v->data);
+                    if (not cb(std::move(msg)))
+                        return false;
                 } catch (const std::exception&) {
                     continue;
                 }
-                if (not cb(std::move(msg)))
-                    return false;
             }
             return true;
         },

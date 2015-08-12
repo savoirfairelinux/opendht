@@ -256,7 +256,7 @@ PrivateKey::getPublicKey() const
 
 PublicKey::PublicKey(const Blob& dat) : pk(nullptr)
 {
-    unpackBlob(dat);
+    unpack(dat.data(), dat.size());
 }
 
 PublicKey::~PublicKey()
@@ -286,22 +286,29 @@ PublicKey::pack(Blob& b) const
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Could not export public key: ") + gnutls_strerror(err));
     tmp.resize(sz);
-    serialize<Blob>(tmp, b);
+    b.insert(b.end(), tmp.begin(), tmp.end());
 }
 
 void
-PublicKey::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
+PublicKey::unpack(const uint8_t* data, size_t data_size)
 {
-    Blob tmp = deserialize<Blob>(begin, end);
     if (pk)
         gnutls_pubkey_deinit(pk);
     gnutls_pubkey_init(&pk);
-    const gnutls_datum_t dat {(uint8_t*)tmp.data(), (unsigned)tmp.size()};
+    const gnutls_datum_t dat {(uint8_t*)data, (unsigned)data_size};
     int err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_PEM);
     if (err != GNUTLS_E_SUCCESS)
         err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_DER);
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Could not read public key: ") + gnutls_strerror(err));
+}
+
+void
+PublicKey::msgpack_unpack(msgpack::object o)
+{
+    if (o.type != msgpack::type::BIN)
+        throw msgpack::type_error();
+    unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
 }
 
 bool
@@ -363,7 +370,7 @@ PublicKey::getId() const
 
 Certificate::Certificate(const Blob& certData) : cert(nullptr)
 {
-    unpackBlob(certData);
+    unpack(certData.data(), certData.size());
 }
 
 Certificate&
@@ -378,7 +385,7 @@ Certificate::operator=(Certificate&& o) noexcept
 }
 
 void
-Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
+Certificate::unpack(const uint8_t* dat, size_t dat_size)
 {
     if (cert) {
         gnutls_x509_crt_deinit(cert);
@@ -386,7 +393,7 @@ Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
     }
     gnutls_x509_crt_t* cert_list;
     unsigned cert_num;
-    const gnutls_datum_t crt_dt {(uint8_t*)&(*begin), (unsigned)(end-begin)};
+    const gnutls_datum_t crt_dt {(uint8_t*)dat, (unsigned)dat_size};
     int err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_PEM, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
     if (err != GNUTLS_E_SUCCESS)
         err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_DER, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
@@ -403,6 +410,14 @@ Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
         crt = crt->issuer.get();
     }
     gnutls_free(cert_list);
+}
+
+void
+Certificate::msgpack_unpack(msgpack::object o)
+{
+    if (o.type != msgpack::type::BIN)
+        throw msgpack::type_error();
+    unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
 }
 
 void

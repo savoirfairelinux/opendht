@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include "dht.h"
 #include "rng.h"
 
+#include <msgpack.hpp>
 extern "C" {
 #include <gnutls/gnutls.h>
 }
@@ -140,11 +141,11 @@ namespace dht {
 
 const Dht::TransPrefix Dht::TransPrefix::PING = {"pn"};
 const Dht::TransPrefix Dht::TransPrefix::FIND_NODE  = {"fn"};
-const Dht::TransPrefix Dht::TransPrefix::GET_VALUES  = {"gp"};
-const Dht::TransPrefix Dht::TransPrefix::ANNOUNCE_VALUES  = {"ap"};
-const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"ls"};
+const Dht::TransPrefix Dht::TransPrefix::GET_VALUES  = {"gt"};
+const Dht::TransPrefix Dht::TransPrefix::ANNOUNCE_VALUES  = {"pt"};
+const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"lt"};
 
-const uint8_t Dht::my_v[9] = "1:v4:RNG";
+const std::string my_v = "RNG";
 
 static constexpr InfoHash zeroes {};
 static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
@@ -2180,26 +2181,6 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     if (buflen == 0)
         return;
 
-    //DHT_DEBUG("processMessage %p %lu %p %lu", buf, buflen, from, fromlen);
-
-    MessageType message;
-    InfoHash id, info_hash, target;
-    TransId tid;
-    Blob token {};
-    uint8_t nodes[26*16], nodes6[38*16];
-    unsigned nodes_len = 26*16, nodes6_len = 38*16;
-    in_port_t port;
-    Value::Id value_id;
-    uint16_t error_code;
-    sockaddr_storage addr;
-    socklen_t addr_length = sizeof(sockaddr_storage);
-
-    std::vector<std::shared_ptr<Value>> values;
-
-    want_t want;
-    uint16_t ttid;
-    bool ring;
-
     if (isMartian(from, fromlen))
         return;
 
@@ -2208,15 +2189,13 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         return;
     }
 
-    if (buf[buflen] != '\0')
-        throw DhtException("Unterminated message.");
+    //DHT_DEBUG("processMessage %p %lu %p %lu", buf, buflen, from, fromlen);
 
+    ParsedMessage msg;
     try {
-        message = parseMessage(buf, buflen, tid, id, info_hash, target,
-                                port, token, value_id,
-                                nodes, &nodes_len, nodes6, &nodes6_len,
-                               values, &want, error_code, ring, (sockaddr*)&addr, addr_length);
-        if (message != MessageType::Error && id == zeroes)
+        msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
+        msg.msgpack_unpack(msg_res.get());
+        if (msg.type != MessageType::Error && msg.id == zeroes)
             throw DhtException("no or invalid InfoHash");
     } catch (const std::exception& e) {
         DHT_WARN("Can't process message of size %lu: %s.", buflen, e.what());
@@ -2224,16 +2203,12 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         return;
     }
 
-    // drop msg with unknown protocol
-    if (not ring)
-        return;
-
-    if (id == myid) {
+    if (msg.id == myid) {
         DHT_DEBUG("Received message from self.");
         return;
     }
 
-    if (message > MessageType::Reply) {
+    if (msg.type > MessageType::Reply) {
         /* Rate limit requests. */
         if (!rateLimit()) {
             DHT_WARN("Dropping request due to rate limiting.");
@@ -2242,14 +2217,15 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     }
 
     //std::cout << "Message from " << id << " IPv" << (from->sa_family==AF_INET?'4':'6') << std::endl;
+    uint16_t ttid = 0;
 
-    switch (message) {
+    switch (msg.type) {
     case MessageType::Error:
-        if (tid.length != 4) return;
-        if (error_code == 401 && id != zeroes && (tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || tid.matches(TransPrefix::LISTEN, &ttid))) {
+        if (msg.tid.length != 4) return;
+        if (msg.error_code == 401 && msg.id != zeroes && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
             auto esr = findSearch(ttid, from->sa_family);
             if (!esr) return;
-            auto ne = newNode(id, from, fromlen, 2);
+            auto ne = newNode(msg.id, from, fromlen, 2);
             unsigned cleared = 0;
             for (auto& sr : searches) {
                 for (auto& n : sr.nodes) {
@@ -2262,45 +2238,45 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     break;
                 }
             }
-            DHT_WARN("Token flush for node %s (%d searches affected)", id.toString().c_str(), cleared);
+            DHT_WARN("Token flush for node %s (%d searches affected)",msg.id.toString().c_str(), cleared);
         } else {
-            DHT_WARN("Received unknown error message %u from %s:", error_code, id.toString().c_str());
+            DHT_WARN("Received unknown error message %u from %s:", msg.error_code,msg.id.toString().c_str());
             DHT_WARN.logPrintable(buf, buflen);
         }
         break;
     case MessageType::Reply:
-        if (tid.length != 4) {
-            DHT_ERROR("Broken node truncates transaction ids (len: %d): ", tid.length);
+        if (msg.tid.length != 4) {
+            DHT_ERROR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
             DHT_ERROR.logPrintable(buf, buflen);
             /* This is really annoying, as it means that we will
                time-out all our searches that go through this node.
                Kill it. */
-            blacklistNode(&id, from, fromlen);
+            blacklistNode(&msg.id, from, fromlen);
             return;
         }
-        if (tid.matches(TransPrefix::PING)) {
+        if (msg.tid.matches(TransPrefix::PING)) {
             DHT_DEBUG("Pong!");
-            newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
-        } else if (tid.matches(TransPrefix::FIND_NODE) or tid.matches(TransPrefix::GET_VALUES)) {
+            newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
+        } else if (msg.tid.matches(TransPrefix::FIND_NODE) or msg.tid.matches(TransPrefix::GET_VALUES)) {
             bool gp = false;
             Search *sr = nullptr;
             std::shared_ptr<Node> n;
-            if (tid.matches(TransPrefix::GET_VALUES, &ttid)) {
+            if (msg.tid.matches(TransPrefix::GET_VALUES, &ttid)) {
                 gp = true;
                 sr = findSearch(ttid, from->sa_family);
             }
-            DHT_DEBUG("Nodes found (%u+%u)%s!", nodes_len/26, nodes6_len/38, gp ? " for get_values" : "");
-            if (nodes_len % 26 != 0 || nodes6_len % 38 != 0) {
+            DHT_DEBUG("Nodes found (%u+%u)%s!", msg.nodes4.size()/26, msg.nodes6.size()/38, gp ? " for get_values" : "");
+            if (msg.nodes4.size() % 26 != 0 || msg.nodes6.size() % 38 != 0) {
                 DHT_WARN("Unexpected length for node info!");
-                blacklistNode(&id, from, fromlen);
+                blacklistNode(&msg.id, from, fromlen);
                 break;
             } else if (gp && sr == nullptr) {
                 DHT_WARN("Unknown search with tid %u !", ttid);
-                n = newNode(id, from, fromlen, 1);
+                n = newNode(msg.id, from, fromlen, 1);
             } else {
-                n = newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
-                for (unsigned i = 0; i < nodes_len / 26; i++) {
-                    uint8_t *ni = nodes + i * 26;
+                n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
+                for (unsigned i = 0; i < msg.nodes4.size() / 26; i++) {
+                    uint8_t *ni = msg.nodes4.data() + i * 26;
                     const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
                     if (ni_id == myid)
                         continue;
@@ -2314,8 +2290,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                         sr->insertNode(sn, now);
                     }
                 }
-                for (unsigned i = 0; i < nodes6_len / 38; i++) {
-                    uint8_t *ni = nodes6 + i * 38;
+                for (unsigned i = 0; i < msg.nodes6.size() / 38; i++) {
+                    uint8_t *ni = msg.nodes6.data() + i * 38;
                     InfoHash* ni_id = reinterpret_cast<InfoHash*>(ni);
                     if (*ni_id == myid)
                         continue;
@@ -2339,13 +2315,13 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 }
             }
             if (sr) {
-                sr->insertNode(n, now, token);
-                if (!values.empty()) {
-                    DHT_DEBUG("Got %d values !", values.size());
+                sr->insertNode(n, now, msg.token);
+                if (!msg.values.empty()) {
+                    DHT_DEBUG("Got %d values !", msg.values.size());
                     for (auto& cb : sr->callbacks) {
                         if (!cb.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
-                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
+                        std::copy_if(msg.values.begin(), msg.values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
                             return not static_cast<bool>(cb.filter) or cb.filter(*v);
                         });
                         if (not tmp.empty())
@@ -2355,7 +2331,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     for (auto& l : sr->listeners) {
                         if (!l.second.get_cb) continue;
                         std::vector<std::shared_ptr<Value>> tmp;
-                        std::copy_if(values.begin(), values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
+                        std::copy_if(msg.values.begin(), msg.values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
                             return not static_cast<bool>(l.second.filter) or l.second.filter(*v);
                         });
                         if (not tmp.empty())
@@ -2368,17 +2344,17 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 if (sr->isSynced(now))
                     search_time = now;
             }
-        } else if (tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)) {
+        } else if (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)) {
             DHT_DEBUG("Got reply to announce_values.");
             Search *sr = findSearch(ttid, from->sa_family);
-            if (!sr || value_id == Value::INVALID_ID) {
+            if (!sr || msg.value_id == Value::INVALID_ID) {
                 DHT_DEBUG("Unknown search or announce!");
-                newNode(id, from, fromlen, 1);
+                newNode(msg.id, from, fromlen, 1);
             } else {
-                auto n = newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
+                auto n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
                 for (auto& sn : sr->nodes)
                     if (sn.node == n) {
-                        auto it = sn.acked.emplace(value_id, SearchNode::RequestStatus{});
+                        auto it = sn.acked.emplace(msg.value_id, SearchNode::RequestStatus{});
                         it.first->second.reply_time = now;
                         break;
                     }
@@ -2388,22 +2364,22 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
 
                 // If the value was just successfully announced, call the callback
                 for (auto& a : sr->announce) {
-                    if (!a.callback || !a.value || a.value->id != value_id)
+                    if (!a.callback || !a.value || a.value->id != msg.value_id)
                         continue;
-                    if (sr->isAnnounced(value_id, getType(a.value->type), now)) {
+                    if (sr->isAnnounced(msg.value_id, getType(a.value->type), now)) {
                         a.callback(true, sr->getNodes());
                         a.callback = nullptr;
                     }
                 }
             }
-        } else if (tid.matches(TransPrefix::LISTEN, &ttid)) { 
+        } else if (msg.tid.matches(TransPrefix::LISTEN, &ttid)) { 
             DHT_DEBUG("Got reply to listen.");
             Search *sr = findSearch(ttid, from->sa_family);
             if (!sr) {
                 DHT_DEBUG("Unknown search or announce!");
-                newNode(id, from, fromlen, 1);
+                newNode(msg.id, from, fromlen, 1);
             } else {
-                auto n = newNode(id, from, fromlen, 2, (sockaddr*)&addr, addr_length);
+                auto n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
                 for (auto& sn : sr->nodes)
                     if (sn.node == n) {
                         sn.listenStatus.reply_time = now;
@@ -2419,73 +2395,72 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } 
         break;
     case MessageType::Ping:
-        //DHT_DEBUG("Got ping (%d)!", tid.length);
-        newNode(id, from, fromlen, 1);
+        newNode(msg.id, from, fromlen, 1);
         //DHT_DEBUG("Sending pong.");
-        sendPong(from, fromlen, tid);
+        sendPong(from, fromlen, msg.tid);
         break;
     case MessageType::FindNode:
         DHT_DEBUG("Got \"find node\" request");
-        newNode(id, from, fromlen, 1);
-        DHT_DEBUG("Sending closest nodes (%d).", want);
-        sendClosestNodes(from, fromlen, tid, target, want);
+        newNode(msg.id, from, fromlen, 1);
+        DHT_DEBUG("Sending closest nodes (%d).", msg.want);
+        sendClosestNodes(from, fromlen, msg.tid, msg.target, msg.want);
         break;
     case MessageType::GetValues:
         DHT_DEBUG("Got \"get values\" request");
-        newNode(id, from, fromlen, 1);
-        if (info_hash == zeroes) {
-            DHT_WARN("Eek!  Got get_values with no info_hash from %s %s.", id.toString().c_str(), print_addr(from, fromlen).c_str());
-            sendError(from, fromlen, tid, 203, "Get_values with no info_hash");
+        newNode(msg.id, from, fromlen, 1);
+        if (msg.info_hash == zeroes) {
+            DHT_WARN("Eek!  Got get_values with no info_hash from %s %s.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
+            sendError(from, fromlen, msg.tid, 203, "Get_values with no info_hash");
             break;
         } else {
-            Storage* st = findStorage(info_hash);
+            Storage* st = findStorage(msg.info_hash);
             Blob ntoken = makeToken(from, false);
             if (st && st->values.size() > 0) {
                  DHT_DEBUG("Sending found%s values.", from->sa_family == AF_INET6 ? " IPv6" : "");
-                 sendClosestNodes(from, fromlen, tid, info_hash, want, ntoken, st->values);
+                 sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken, st->values);
             } else {
                 DHT_DEBUG("Sending nodes for get_values.");
-                sendClosestNodes(from, fromlen, tid, info_hash, want, ntoken);
+                sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken);
             }
         }
         break;
     case MessageType::AnnounceValue:
         DHT_DEBUG("Got \"announce value\" request!");
-        newNode(id, from, fromlen, 1);
-        if (info_hash == zeroes) {
+        newNode(msg.id, from, fromlen, 1);
+        if (msg.info_hash == zeroes) {
             DHT_WARN("Announce_value with no info_hash.");
-            sendError(from, fromlen, tid, 203, "Announce_value with no info_hash");
+            sendError(from, fromlen, msg.tid, 203, "Announce_value with no info_hash");
             break;
         }
-        if (!tokenMatch(token, from)) {
-            DHT_WARN("Incorrect token %s for announce_values.", to_hex(token.data(), token.size()).c_str());
-            sendError(from, fromlen, tid, 401, "Announce_value with wrong token", true);
+        if (!tokenMatch(msg.token, from)) {
+            DHT_WARN("Incorrect token %s for announce_values.", to_hex(msg.token.data(), msg.token.size()).c_str());
+            sendError(from, fromlen, msg.tid, 401, "Announce_value with wrong token", true);
             break;
         }
-        for (const auto& v : values) {
+        for (const auto& v : msg.values) {
             if (v->id == Value::INVALID_ID) {
                 DHT_WARN("Incorrect value id ");
-                sendError(from, fromlen, tid, 203, "Announce_value with invalid id");
+                sendError(from, fromlen, msg.tid, 203, "Announce_value with invalid id");
                 continue;
             }
-            auto lv = getLocalById(info_hash, v->id);
+            auto lv = getLocalById(msg.info_hash, v->id);
             std::shared_ptr<Value> vc = v;
             if (lv) {
                 const auto& type = getType(lv->type);
-                if (type.editPolicy(info_hash, lv, vc, id, from, fromlen)) {
-                    DHT_DEBUG("Editing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), info_hash.toString().c_str());
-                    storageStore(info_hash, vc);
+                if (type.editPolicy(msg.info_hash, lv, vc, msg.id, from, fromlen)) {
+                    DHT_DEBUG("Editing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
+                    storageStore(msg.info_hash, vc);
                 } else {
-                    DHT_WARN("Rejecting edition of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), info_hash.toString().c_str());
+                    DHT_WARN("Rejecting edition of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
                 }
             } else {
                 // Allow the value to be edited by the storage policy
                 const auto& type = getType(vc->type);
-                if (type.storePolicy(info_hash, vc, id, from, fromlen)) {
-                    DHT_DEBUG("Storing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), info_hash.toString().c_str());
-                    storageStore(info_hash, vc);
+                if (type.storePolicy(msg.info_hash, vc, msg.id, from, fromlen)) {
+                    DHT_DEBUG("Storing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
+                    storageStore(msg.info_hash, vc);
                 } else {
-                    DHT_WARN("Rejecting storage of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), info_hash.toString().c_str());
+                    DHT_WARN("Rejecting storage of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
                 }
             }
 
@@ -2493,26 +2468,26 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                This is to prevent them from backtracking, and hence
                polluting the DHT. */
             DHT_DEBUG("Sending announceValue confirmation.");
-            sendValueAnnounced(from, fromlen, tid, v->id);
+            sendValueAnnounced(from, fromlen, msg.tid, v->id);
         }
         break;
     case MessageType::Listen:
-        if (info_hash == zeroes) {
+        if (msg.info_hash == zeroes) {
             DHT_WARN("Listen with no info_hash.");
-            sendError(from, fromlen, tid, 203, "Listen with no info_hash");
+            sendError(from, fromlen, msg.tid, 203, "Listen with no info_hash");
             break;
         }
-        if (!tokenMatch(token, from)) {
-            DHT_WARN("Incorrect token %s for announce_values.", to_hex(token.data(), token.size()).c_str());
-            sendError(from, fromlen, tid, 401, "Listen with wrong token", true);
+        if (!tokenMatch(msg.token, from)) {
+            DHT_WARN("Incorrect token %s for announce_values.", to_hex(msg.token.data(), msg.token.size()).c_str());
+            sendError(from, fromlen, msg.tid, 401, "Listen with wrong token", true);
             break;
         }
-        if (!tid.matches(TransPrefix::LISTEN, &ttid)) {
+        if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
             break;
         }
-        newNode(id, from, fromlen, 1);
-        storageAddListener(info_hash, id, from, fromlen, ttid);
-        sendListenConfirmation(from, fromlen, tid);
+        newNode(msg.id, from, fromlen, 1);
+        storageAddListener(msg.info_hash, msg.id, from, fromlen, ttid);
+        sendListenConfirmation(from, fromlen, msg.tid);
         break;
     }
 }
@@ -2586,11 +2561,16 @@ Dht::exportValues() const
     for (const auto& h : store) {
         ValuesExport ve;
         ve.first = h.id;
-        serialize<uint16_t>(h.values.size(), ve.second);
+
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        pk.pack_array(h.values.size());
         for (const auto& v : h.values) {
-            serialize<time_point>(v.time, ve.second);
-            v.data->pack(ve.second);
+            pk.pack_array(2);
+            pk.pack(v.time.time_since_epoch().count());
+            v.data->msgpack_pack(pk);
         }
+        ve.second = {buffer.data(), buffer.data()+buffer.size()};
         e.push_back(std::move(ve));
     }
     return e;
@@ -2602,16 +2582,22 @@ Dht::importValues(const std::vector<ValuesExport>& import)
     for (const auto& h : import) {
         if (h.second.empty())
             continue;
-        auto b = h.second.begin(),
-             e = h.second.end();
+
         try {
-            const size_t n_vals = deserialize<uint16_t>(b, e);
-            for (unsigned i = 0; i < n_vals; i++) {
+            msgpack::unpacked msg;
+            msgpack::unpack(&msg, (const char*)h.second.data(), h.second.size());
+            auto valarr = msg.get();
+            if (valarr.type != msgpack::type::ARRAY)
+                throw msgpack::type_error();
+            for (unsigned i = 0; i < valarr.via.array.size; i++) {
+                auto& valel = valarr.via.array.ptr[i];
+                if (valel.via.array.size < 2)
+                    throw msgpack::type_error();
                 time_point val_time;
                 Value tmp_val;
                 try {
-                    val_time = deserialize<time_point>(b, e);
-                    tmp_val.unpack(b, e);
+                    val_time = time_point{time_point::duration{valel.via.array.ptr[0].as<time_point::duration::rep>()}};
+                    tmp_val.msgpack_unpack(valel.via.array.ptr[1]);
                 } catch (const std::exception&) {
                     DHT_ERROR("Error reading value at %s", h.first.toString().c_str());
                     continue;
@@ -2679,24 +2665,22 @@ Dht::pingNode(const sockaddr *sa, socklen_t salen)
     return sendPing(sa, salen, TransId {TransPrefix::PING});
 }
 
-/* We could use a proper bencoding printer and parser, but the format of
-   DHT messages is fairly stylised, so this seemed simpler. */
+void
+insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const sockaddr *sa, socklen_t)
+{
+    size_t addr_len = (sa->sa_family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr);
+    void* addr_ptr = (sa->sa_family == AF_INET) ? (void*)&((sockaddr_in*)sa)->sin_addr
+                                                : (void*)&((sockaddr_in6*)sa)->sin6_addr;
+    pk.pack("sa");
+    pk.pack_bin(addr_len);
+    pk.pack_bin_body((char*)addr_ptr, addr_len);
+}
 
-#define CHECK(offset, delta, size)                  \
-    if (offset + delta > size) throw std::length_error("Provided buffer is not large enough.");
-
-#define INC(offset, delta, size)                    \
-    if (delta < 0) throw std::length_error("Provided buffer is not large enough."); \
-    CHECK(offset, (size_t)delta, size);             \
-    offset += delta
-
-#define COPY(buf, offset, src, delta, size)         \
-    CHECK(offset, delta, size);                     \
-    memcpy(buf + offset, src, delta);               \
-    offset += delta;
-
-#define ADD_V(buf, offset, size)                    \
-    COPY(buf, offset, my_v, sizeof(my_v), size);
+void
+insertV(msgpack::packer<msgpack::sbuffer>& pk)
+{
+    pk.pack("v"); pk.pack(my_v);
+}
 
 int
 Dht::send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen)
@@ -2725,67 +2709,66 @@ Dht::send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t 
 int
 Dht::sendPing(const sockaddr *sa, socklen_t salen, TransId tid)
 {
-    char buf[512];
-    int i = 0, rc;
-    rc = snprintf(buf + i, 512 - i, "d1:ad2:id20:"); INC(i, rc, 512);
-    COPY(buf, i, myid.data(), myid.size(), 512);
-    rc = snprintf(buf + i, 512 - i, "e1:q4:ping1:t%d:", tid.length);
-    INC(i, rc, 512);
-    COPY(buf, i, tid.data(), tid.length, 512);
-    ADD_V(buf, i, 512);
-    rc = snprintf(buf + i, 512 - i, "1:y1:qe"); INC(i, rc, 512);
-    return send(buf, i, 0, sa, salen);
-}
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5);
 
-void
-insertAddr(char* buf, size_t buflen, size_t& p, const sockaddr *sa, socklen_t)
-{
-    size_t addr_len = (sa->sa_family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr);
-    void* addr_ptr = (sa->sa_family == AF_INET) ? (void*)&((sockaddr_in*)sa)->sin_addr
-                                                : (void*)&((sockaddr_in6*)sa)->sin6_addr;
-    int rc = snprintf(buf + p, buflen - p, "2:sa%lu:", addr_len);
-    INC(p, rc, buflen);
-    COPY(buf, p, addr_ptr, addr_len, buflen);
+    pk.pack(std::string("a")); pk.pack_map(1);
+      pk.pack(std::string("id")); pk.pack(myid);
+
+    pk.pack(std::string("q")); pk.pack(std::string("ping"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
 int
 Dht::sendPong(const sockaddr *sa, socklen_t salen, TransId tid)
 {
-    char buf[512];
-    size_t i = 0;
-    auto rc = snprintf(buf + i, 512 - i, "d1:rd2:id20:"); INC(i, rc, 512);
-    COPY(buf, i, myid.data(), myid.size(), 512);
-    insertAddr(buf, 512, i, sa, salen);
-    rc = snprintf(buf + i, 512 - i, "e1:t%d:", tid.length); INC(i, rc, 512);
-    COPY(buf, i, tid.data(), tid.length, 512);
-    ADD_V(buf, i, 512);
-    rc = snprintf(buf + i, 512 - i, "1:y1:re"); INC(i, rc, 512);
-    return send(buf, i, 0, sa, salen);
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4);
+
+    pk.pack(std::string("r")); pk.pack_map(2);
+      pk.pack(std::string("id")); pk.pack(myid);
+      insertAddr(pk, sa, salen);
+
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("r"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
 int
 Dht::sendFindNode(const sockaddr *sa, socklen_t salen, TransId tid,
                const InfoHash& target, want_t want, int confirm)
 {
-    constexpr const size_t BUF_SZ = 512;
-    char buf[BUF_SZ];
-    int i = 0, rc;
-    rc = snprintf(buf + i, BUF_SZ - i, "d1:ad2:id20:"); INC(i, rc, BUF_SZ);
-    COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "6:target20:"); INC(i, rc, BUF_SZ);
-    COPY(buf, i, target.data(), target.size(), BUF_SZ);
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5);
+
+    pk.pack(std::string("a")); pk.pack_map(2 + (want>0?1:0));
+      pk.pack(std::string("id"));     pk.pack(myid);
+      pk.pack(std::string("target")); pk.pack(target);
     if (want > 0) {
-        rc = snprintf(buf + i, BUF_SZ - i, "4:wantl%s%se",
-                      (want & WANT4) ? "2:n4" : "",
-                      (want & WANT6) ? "2:n6" : "");
-        INC(i, rc, BUF_SZ);
+      pk.pack(std::string("w"));
+      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
+      if (want & WANT4) pk.pack(AF_INET);
+      if (want & WANT6) pk.pack(AF_INET6);
     }
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:q9:find_node1:t%d:", tid.length);
-    INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:qe"); INC(i, rc, BUF_SZ);
-    return send(buf, i, confirm ? MSG_CONFIRM : 0, sa, salen);
+
+    pk.pack(std::string("q")); pk.pack(std::string("find"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
 int
@@ -2794,56 +2777,51 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
                  const uint8_t *nodes6, unsigned nodes6_len,
                  const std::vector<ValueStorage>& st, const Blob& token)
 {
-    constexpr const size_t BUF_SZ = 2048 * 64;
-    char buf[BUF_SZ];
-    size_t i = 0;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4);
 
-    auto rc = snprintf(buf + i, BUF_SZ - i, "d1:rd2:id20:"); INC(i, rc, BUF_SZ);
-    COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-    insertAddr(buf, BUF_SZ, i, sa, salen);
+    pk.pack(std::string("r"));
+    pk.pack_map(2 + (not st.empty()?1:0) + (nodes_len>0?1:0) + (nodes6_len>0?1:0) + (not token.empty()?1:0));
+    pk.pack(std::string("id")); pk.pack(myid);
+    insertAddr(pk, sa, salen);
     if (nodes_len > 0) {
-        rc = snprintf(buf + i, BUF_SZ - i, "5:nodes%u:", nodes_len);
-        INC(i, rc, BUF_SZ);
-        COPY(buf, i, nodes, nodes_len, BUF_SZ);
+        pk.pack(std::string("n4"));
+        pk.pack_bin(nodes_len);
+        pk.pack_bin_body((const char*)nodes, nodes_len);
     }
     if (nodes6_len > 0) {
-         rc = snprintf(buf + i, BUF_SZ - i, "6:nodes6%u:", nodes6_len);
-         INC(i, rc, BUF_SZ);
-         COPY(buf, i, nodes6, nodes6_len, BUF_SZ);
+        pk.pack(std::string("n6"));
+        pk.pack_bin(nodes6_len);
+        pk.pack_bin_body((const char*)nodes6, nodes6_len);
     }
     if (not token.empty()) {
-        rc = snprintf(buf + i, BUF_SZ - i, "5:token%lu:", token.size());
-        INC(i, rc, BUF_SZ);
-        COPY(buf, i, token.data(), token.size(), BUF_SZ);
+        pk.pack(std::string("token")); pk.pack(token);
     }
-
-    if (st.size() > 0) {
-        /* We treat the storage as a circular list, and serve a randomly
-           chosen slice.  In order to make sure we fit,
-           we limit ourselves to 50 values. */
+    if (not st.empty()) {
+        // We treat the storage as a circular list, and serve a randomly
+        // chosen slice.  In order to make sure we fit,
+        // we limit ourselves to 50 values.
         std::uniform_int_distribution<> pos_dis(0, st.size()-1);
         unsigned j0 = pos_dis(rd);
         unsigned j = j0;
         unsigned k = 0;
 
-        rc = snprintf(buf + i, BUF_SZ - i, "6:valuesl"); INC(i, rc, BUF_SZ);
+        pk.pack(std::string("values"));
+        pk.pack_array(std::min(st.size(), 50ul));
         do {
-            Blob packed_value;
-            st[j].data->pack(packed_value);
-            rc = snprintf(buf + i, BUF_SZ - i, "%lu:", packed_value.size()); INC(i, rc, BUF_SZ);
-            COPY(buf, i, packed_value.data(), packed_value.size(), BUF_SZ);
+            pk.pack(st[j].data);
             k++;
             j = (j + 1) % st.size();
         } while (j != j0 && k < 50);
-        rc = snprintf(buf + i, BUF_SZ - i, "e"); INC(i, rc, BUF_SZ);
     }
 
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:t%d:", tid.length); INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:re"); INC(i, rc, BUF_SZ);
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("r"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
 
-    return send(buf, i, 0, sa, salen);
+    return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
 unsigned
@@ -2951,69 +2929,68 @@ Dht::sendGetValues(const sockaddr *sa, socklen_t salen,
                TransId tid, const InfoHash& infohash,
                want_t want, int confirm)
 {
-    static constexpr const size_t BUF_SZ = 2048 * 4;
-    char buf[BUF_SZ];
-    size_t i = 0;
-    int rc;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5);
 
-    rc = snprintf(buf + i, BUF_SZ - i, "d1:ad2:id20:"); INC(i, rc, BUF_SZ);
-    COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "9:info_hash20:"); INC(i, rc, BUF_SZ);
-    COPY(buf, i, infohash.data(), infohash.size(), BUF_SZ);
+    pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
+      pk.pack(std::string("id")); pk.pack(myid);
+      pk.pack(std::string("h"));  pk.pack(infohash);
     if (want > 0) {
-        rc = snprintf(buf + i, BUF_SZ - i, "4:wantl%s%se",
-                      (want & WANT4) ? "2:n4" : "",
-                      (want & WANT6) ? "2:n6" : "");
-        INC(i, rc, BUF_SZ);
+      pk.pack(std::string("w"));
+      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
+      if (want & WANT4) pk.pack(AF_INET);
+      if (want & WANT6) pk.pack(AF_INET6);
     }
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:q9:get_peers1:t%d:", tid.length);
-    INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:qe"); INC(i, rc, BUF_SZ);
-    return send(buf, i, confirm ? MSG_CONFIRM : 0, sa, salen);
+
+    pk.pack(std::string("q")); pk.pack(std::string("get"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
 int
 Dht::sendListen(const sockaddr* sa, socklen_t salen, TransId tid,
                         const InfoHash& infohash, const Blob& token, int confirm)
 {
-    static constexpr const size_t BUF_SZ = 2048;
-    char buf[BUF_SZ];
-    size_t i = 0;
-    int rc;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5);
 
-    rc = snprintf(buf + i, BUF_SZ - i, "d1:ad2:id%lu:", myid.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "9:info_hash%lu:", infohash.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, infohash.data(), infohash.size(), BUF_SZ);
+    pk.pack(std::string("a")); pk.pack_map(3);
+      pk.pack(std::string("id"));    pk.pack(myid);
+      pk.pack(std::string("h"));     pk.pack(infohash);
+      pk.pack(std::string("token")); pk.pack(token);
 
-    rc = snprintf(buf + i, BUF_SZ - i, "e5:token%lu:", token.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, token.data(), token.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:q6:listen1:t%u:", tid.length); INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:qe"); INC(i, rc, BUF_SZ);
+    pk.pack(std::string("q")); pk.pack(std::string("listen"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
 
-    return send(buf, i, confirm ? 0 : MSG_CONFIRM, sa, salen);
+    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
 int
 Dht::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid)
 {
-    static constexpr const size_t BUF_SZ = 512;
-    char buf[BUF_SZ];
-    size_t i = 0;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4);
 
-    auto rc = snprintf(buf + i, BUF_SZ - i, "d1:rd2:id20:"); INC(i, rc, BUF_SZ);
-    COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-    insertAddr(buf, BUF_SZ, i, sa, salen);
+    pk.pack(std::string("r")); pk.pack_map(2);
+      pk.pack(std::string("id")); pk.pack(myid);
+      insertAddr(pk, sa, salen);
 
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:t%u:", tid.length); INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:re"); INC(i, rc, BUF_SZ);
-    return send(buf, i, 0, sa, salen);
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("r"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
 int
@@ -3021,292 +2998,210 @@ Dht::sendAnnounceValue(const sockaddr *sa, socklen_t salen, TransId tid,
                    const InfoHash& infohash, const Value& value,
                    const Blob& token, int confirm)
 {
-    constexpr const size_t BUF_SZ = 2048 * 4;
-    char buf[BUF_SZ];
-    size_t i = 0;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5);
 
-    int rc = snprintf(buf + i, BUF_SZ - i, "d1:ad2:id%lu:", myid.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "9:info_hash%lu:", infohash.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, infohash.data(), infohash.size(), BUF_SZ);
+    pk.pack(std::string("a")); pk.pack_map(4);
+      pk.pack(std::string("id"));     pk.pack(myid);
+      pk.pack(std::string("h"));      pk.pack(infohash);
+      pk.pack(std::string("values")); pk.pack_array(1); pk.pack(value);
+      pk.pack(std::string("token"));  pk.pack(token);
 
-    Blob packed_value;
-    value.pack(packed_value);
-    rc = snprintf(buf + i, BUF_SZ - i, "6:valuesl%lu:", packed_value.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, packed_value.data(), packed_value.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "e5:token%lu:", token.size()); INC(i, rc, BUF_SZ);
-    COPY(buf, i, token.data(), token.size(), BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:q13:announce_peer1:t%u:", tid.length); INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:qe"); INC(i, rc, BUF_SZ);
+    pk.pack(std::string("q")); pk.pack(std::string("put"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
 
-    return send(buf, i, confirm ? 0 : MSG_CONFIRM, sa, salen);
+    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
 int
 Dht::sendValueAnnounced(const sockaddr *sa, socklen_t salen, TransId tid, Value::Id vid)
 {
-    char buf[512];
-    size_t i = 0;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4);
 
-    auto rc = snprintf(buf + i, 512 - i, "d1:rd2:id20:"); INC(i, rc, 512);
-    COPY(buf, i, myid.data(), myid.size(), 512);
-    insertAddr(buf, 512, i, sa, salen);
+    pk.pack(std::string("r")); pk.pack_map(3);
+      pk.pack(std::string("id"));  pk.pack(myid);
+      pk.pack(std::string("vid")); pk.pack(vid);
+      insertAddr(pk, sa, salen);
 
-    rc = snprintf(buf + i, 512 - i, "3:vid%lu:", sizeof(Value::Id)); INC(i, rc, 512);
-    COPY(buf, i, &vid, sizeof(Value::Id), 512);
-    rc = snprintf(buf + i, 512 - i, "e1:t%u:", tid.length); INC(i, rc, 512);
-    COPY(buf, i, tid.data(), tid.length, 512);
-    ADD_V(buf, i, 512);
-    rc = snprintf(buf + i, 512 - i, "1:y1:re"); INC(i, rc, 512);
-    return send(buf, i, 0, sa, salen);
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("r"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
 int
 Dht::sendError(const sockaddr *sa, socklen_t salen, TransId tid, uint16_t code, const char *message, bool include_id)
 {
-    constexpr const size_t BUF_SZ = 512;
-    char buf[BUF_SZ];
-    int i = 0, rc;
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4 + (include_id?1:0));
 
-    size_t msg_len = strlen(message);
-    rc = snprintf(buf + i, BUF_SZ - i, "d1:eli%ue%lu:", code, msg_len);
-    INC(i, rc, BUF_SZ);
-    COPY(buf, i, message, msg_len, BUF_SZ);
-    rc = snprintf(buf + i, BUF_SZ - i, "e1:t%d:", tid.length); INC(i, rc, BUF_SZ);
-    COPY(buf, i, tid.data(), tid.length, BUF_SZ);
-    ADD_V(buf, i, BUF_SZ);
+    pk.pack(std::string("e")); pk.pack_array(2);
+      pk.pack(code);
+      pk.pack_str(strlen(message));
+      pk.pack_str_body(message, strlen(message));
+
     if (include_id) {
-        rc = snprintf(buf + i, BUF_SZ - i, "1:rd2:id20:"); INC(i, rc, BUF_SZ);
-        COPY(buf, i, myid.data(), myid.size(), BUF_SZ);
-        COPY(buf, i, "e", 1u, BUF_SZ);
+        pk.pack(std::string("r")); pk.pack_map(1);
+        pk.pack(std::string("id")); pk.pack(myid);
     }
-    rc = snprintf(buf + i, BUF_SZ - i, "1:y1:ee"); INC(i, rc, BUF_SZ);
-    return send(buf, i, 0, sa, salen);
+
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("e"));
+    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+
+    return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-#undef CHECK
-#undef INC
-#undef COPY
-#undef ADD_V
+msgpack::object*
+findMapValue(msgpack::object& map, const std::string& key) {
+    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
+    for (unsigned i = 0; i < map.via.map.size; i++) {
+        auto& o = map.via.map.ptr[i];
+        if(o.key.type != msgpack::type::STR)
+            continue;
+        if (o.key.as<std::string>() == key) {
+            return &o.val;
+        }
+    }
+    return nullptr;
+}
 
-Dht::MessageType
-Dht::parseMessage(const uint8_t *buf, size_t buflen,
-              TransId& tid_return,
-              InfoHash& id_return, InfoHash& info_hash_return,
-              InfoHash& target_return, in_port_t& port_return,
-              Blob& token, Value::Id& value_id,
-              uint8_t *nodes_return, unsigned *nodes_len,
-              uint8_t *nodes6_return, unsigned *nodes6_len,
-              std::vector<std::shared_ptr<Value>>& values_return,
-              want_t* want_return, uint16_t& error_code, bool& ring,
-              sockaddr* addr_return, socklen_t& addr_length_return)
+void
+Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
-    const uint8_t *p;
+    auto y = findMapValue(msg, "y");
+    auto a = findMapValue(msg, "a");
+    auto r = findMapValue(msg, "r");
+    auto e = findMapValue(msg, "e");
 
-    /* This code will happily crash if the buffer is not NUL-terminated. */
-    if (buf[buflen] != '\0')
-        throw DhtException("Eek!  parse_message with unterminated buffer.");
-
-#define CHECK(ptr, len) if (((uint8_t*)ptr) + (len) > (buf) + (buflen)) throw std::out_of_range("Truncated message.");
-
-    p = (uint8_t*)dht_memmem(buf, buflen, "1:t", 3);
-    if (p) {
-        char *q;
-        size_t l = strtoul((char*)p + 3, &q, 10);
-        if (q && *q == ':') {
-            CHECK(q + 1, l);
-            tid_return = {q+1, l};
-        } else
-            tid_return.length = 0;
+    std::string query;
+    if (auto q = findMapValue(msg, "q")) {
+        if (q->type != msgpack::type::STR)
+            throw msgpack::type_error();
+        query = q->as<std::string>();
     }
 
-    p = (uint8_t*)dht_memmem(buf, buflen, "2:id20:", 7);
-    if (p) {
-        CHECK(p + 7, HASH_LEN);
-        memcpy(id_return.data(), p + 7, HASH_LEN);
-    } else {
-        id_return = {};
+    auto& req = a ? *a : (r ? *r : *e);
+    if (not &req)
+        throw msgpack::type_error();
+
+    if (e) {
+        if (e->type != msgpack::type::ARRAY)
+            throw msgpack::type_error();
+        error_code = e->via.array.ptr[0].as<uint16_t>();
     }
 
-    if (addr_return and addr_length_return) {
-        p = (uint8_t*)dht_memmem(buf, buflen, "2:sa", 4);
-        if (p) {
-            char *q;
-            size_t l = strtoul((char*)p + 4, &q, 10);
-            if (q && *q == ':' && (l == sizeof(in_addr) or l == sizeof(in6_addr))) {
-                CHECK(q + 1, l);
-                if (l == sizeof(in_addr)) {
-                    auto addr = (sockaddr_in*)addr_return;
-                    std::fill_n((uint8_t*)addr, sizeof(sockaddr_in), 0);
-                    addr->sin_family = AF_INET;
-                    addr->sin_port = 0;
-                    memcpy(&addr->sin_addr, q+1, l);
-                    addr_length_return = sizeof(sockaddr_in);
-                } else if (l == sizeof(in6_addr)) {
-                    auto addr = (sockaddr_in6*)addr_return;
-                    std::fill_n((uint8_t*)addr, sizeof(sockaddr_in6), 0);
-                    addr_return->sa_family = AF_INET6;
-                    addr->sin6_port = 0;
-                    memcpy(&addr->sin6_addr, q+1, l);
-                    addr_length_return = sizeof(sockaddr_in6);
-                }
-            } else
-                addr_length_return = 0;
-        } else
-            addr_length_return = 0;
+    if (auto rid = findMapValue(req, "id"))
+        id = {*rid};
+
+    if (auto rh = findMapValue(req, "h"))
+        info_hash = {*rh};
+
+    if (auto rtarget = findMapValue(req, "target"))
+        target = {*rtarget};
+
+    if (auto otoken = findMapValue(req, "token"))
+        token = otoken->as<Blob>();
+
+    if (auto vid = findMapValue(req, "vid"))
+        value_id = vid->as<Value::Id>();
+
+    if (auto rnodes4 = findMapValue(req, "n4")) {
+        auto n4b = rnodes4->as<std::vector<char>>();
+        nodes4 = {n4b.begin(), n4b.end()};
     }
 
-    p = (uint8_t*)dht_memmem(buf, buflen, "9:info_hash20:", 14);
-    if (p) {
-        CHECK(p + 14, HASH_LEN);
-        memcpy(info_hash_return.data(), p + 14, HASH_LEN);
-    } else {
-        info_hash_return = {};
+    if (auto rnodes6 = findMapValue(req, "n6")) {
+        auto n6b = rnodes6->as<std::vector<char>>();
+        nodes6 = {n6b.begin(), n6b.end()};
     }
 
-    p = (uint8_t*)dht_memmem(buf, buflen, "porti", 5);
-    if (p) {
-        char *q;
-        unsigned long l = strtoul((char*)p + 5, &q, 10);
-        if (q && *q == 'e' && l < 0x10000)
-            port_return = l;
-        else
-            port_return = 0;
+    if (auto sa = findMapValue(req, "sa")) {
+        if (sa->type != msgpack::type::BIN)
+            throw msgpack::type_error();
+        auto l = sa->via.bin.size;
+        if (l == sizeof(in_addr)) {
+            auto a = (sockaddr_in*)&addr.first;
+            std::fill_n((uint8_t*)a, sizeof(sockaddr_in), 0);
+            a->sin_family = AF_INET;
+            a->sin_port = 0;
+            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin_addr);
+            addr.second = sizeof(sockaddr_in);
+        } else if (l == sizeof(in6_addr)) {
+            auto a = (sockaddr_in6*)&addr.first;
+            std::fill_n((uint8_t*)a, sizeof(sockaddr_in6), 0);
+            a->sin6_family = AF_INET6;
+            a->sin6_port = 0;
+            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin6_addr);
+            addr.second = sizeof(sockaddr_in6);
+        }
     } else
-        port_return = 0;
+        addr.second = 0;
 
-    p = (uint8_t*)dht_memmem(buf, buflen, "6:target20:", 11);
-    if (p) {
-        CHECK(p + 11, HASH_LEN);
-        memcpy(target_return.data(), p + 11, HASH_LEN);
-    } else {
-        target_return = {};
-    }
-
-    p = (uint8_t*)dht_memmem(buf, buflen, "5:token", 7);
-    if (p) {
-        char *q;
-        size_t l = strtoul((char*)p + 7, &q, 10);
-        if (q && *q == ':' && l > 0 && l <= 128) {
-            CHECK(q + 1, l);
-            token.clear();
-            token.insert(token.begin(), q + 1, q + 1 + l);
-        }
-    }
-
-    if (nodes_len) {
-        p = (uint8_t*)dht_memmem(buf, buflen, "5:nodes", 7);
-        if (p) {
-            char *q;
-            size_t l = strtoul((char*)p + 7, &q, 10);
-            if (q && *q == ':' && l > 0 && l <= *nodes_len) {
-                CHECK(q + 1, l);
-                memcpy(nodes_return, q + 1, l);
-                *nodes_len = l;
-            } else
-                *nodes_len = 0;
-        } else
-            *nodes_len = 0;
-    }
-
-    if (nodes6_len) {
-        p = (uint8_t*)dht_memmem(buf, buflen, "6:nodes6", 8);
-        if (p) {
-            char *q;
-            size_t l = strtoul((char*)p + 8, &q, 10);
-            if (q && *q == ':' && l > 0 && l <= *nodes6_len) {
-                CHECK(q + 1, l);
-                memcpy(nodes6_return, q + 1, l);
-                *nodes6_len = l;
-            } else
-                *nodes6_len = 0;
-        } else
-            *nodes6_len = 0;
-    }
-
-    p = (uint8_t*)dht_memmem(buf, buflen, "6:valuesl", 9);
-    if (p) {
-        unsigned i = p - buf + 9;
-        while (true) {
-            char *q;
-            size_t l = strtoul((char*)buf + i, &q, 10);
-            if (q && *q == ':' && l > 0) {
-                CHECK(q + 1, l);
-                i = q + 1 + l - (char*)buf;
-                Value v;
-                v.unpackBlob(Blob {q + 1, q + 1 + l});
-                values_return.push_back(std::make_shared<Value>(std::move(v)));
-            } else
-                break;
-        }
-        if (i >= buflen || buf[i] != 'e')
-            DHT_DEBUG("eek... unexpected end for values.");
-    }
-
-    p = (uint8_t*)dht_memmem(buf, buflen, "3:vid8:", 7);
-    if (p) {
-        CHECK(p + 7, sizeof(value_id));
-        memcpy(&value_id, p + 7, sizeof(value_id));
-    } else {
-        value_id = Value::INVALID_ID;
-    }
-
-    if (want_return) {
-        p = (uint8_t*)dht_memmem(buf, buflen, "4:wantl", 7);
-        if (p) {
-            unsigned i = p - buf + 7;
-            *want_return = 0;
-            while (buf[i] > '0' && buf[i] <= '9' && buf[i + 1] == ':' &&
-                  i + 2 + buf[i] - '0' < buflen) {
-                CHECK(buf + i + 2, buf[i] - '0');
-                if (buf[i] == '2' && memcmp(buf + i + 2, "n4", 2) == 0)
-                    *want_return |= WANT4;
-                else if (buf[i] == '2' && memcmp(buf + i + 2, "n6", 2) == 0)
-                    *want_return |= WANT6;
-                else
-                    DHT_DEBUG("eek... unexpected want flag (%c)", buf[i]);
-                i += 2 + buf[i] - '0';
+    if (auto rvalues = findMapValue(req, "values")) {
+        if (rvalues->type != msgpack::type::ARRAY)
+            throw msgpack::type_error();
+        for (size_t i = 0; i < rvalues->via.array.size; i++)
+            try {
+                values.emplace_back(std::make_shared<Value>(rvalues->via.array.ptr[i]));
+            } catch (const std::exception& e) {
+                //DHT_WARN("Error reading value: %s", e.what());
+                std::cout << "Error reading value: " << e.what() << std::endl;
             }
-            if (i >= buflen || buf[i] != 'e')
-                DHT_DEBUG("eek... unexpected end for want.");
-        } else {
-            *want_return = -1;
+    }
+
+    if (auto w = findMapValue(req, "w")) {
+        if (w->type != msgpack::type::ARRAY)
+            throw msgpack::type_error();
+        want = 0;
+        for (unsigned i=0; i<w->via.array.size; i++) {
+            auto& val = w->via.array.ptr[i];
+            try {
+                auto w = val.as<sa_family_t>();
+                if (w == AF_INET)
+                    want |= WANT4;
+                else if(w == AF_INET6)
+                    want |= WANT6;
+            } catch (const std::exception& e) {};
         }
-    }
-
-    p = (uint8_t*)dht_memmem(buf, buflen, "1:eli", 5);
-    if (p) {
-        char *q;
-        unsigned long l = strtoul((char*)p + 5, &q, 10);
-        if (q && *q == 'e' && l < 0x10000)
-            error_code = l;
     } else {
-        error_code = 0;
+        want = -1;
     }
 
-#undef CHECK
+    if (auto t = findMapValue(msg, "t"))
+        tid = {t->as<std::array<char, 4>>()};
 
-    ring = dht_memmem(buf, buflen, my_v, sizeof(my_v));
+    if (auto rv = findMapValue(msg, "v"))
+        ua = rv->as<std::string>();
 
-    if (dht_memmem(buf, buflen, "1:y1:r", 6))
-        return MessageType::Reply;
-    if (dht_memmem(buf, buflen, "1:y1:e", 6))
-        return MessageType::Error;
-    if (!dht_memmem(buf, buflen, "1:y1:q", 6))
-        throw DhtException("Parse error");
-    if (dht_memmem(buf, buflen, "1:q4:ping", 9))
-        return MessageType::Ping;
-    if (dht_memmem(buf, buflen, "1:q9:find_node", 14))
-       return MessageType::FindNode;
-    if (dht_memmem(buf, buflen, "1:q9:get_peers", 14))
-        return MessageType::GetValues;
-    if (dht_memmem(buf, buflen, "1:q13:announce_peer", 19))
-       return MessageType::AnnounceValue;
-    if (dht_memmem(buf, buflen, "1:q6:listen", 11))
-       return MessageType::Listen;
-    throw DhtException("Can't read message type.");
+    if (r)
+        type = MessageType::Reply;
+    else if (e)
+        type = MessageType::Error;
+    else if (y and y->as<std::string>() != "q")
+        throw msgpack::type_error();
+    else if (query == "ping")
+        type = MessageType::Ping;
+    else if (query == "find")
+        type = MessageType::FindNode;
+    else if (query == "get")
+        type = MessageType::GetValues;
+    else if (query == "listen")
+        type = MessageType::Listen;
+    else if (query == "put")
+        type = MessageType::AnnounceValue;
+    else
+        throw msgpack::type_error();
 }
 
 #ifdef HAVE_MEMMEM

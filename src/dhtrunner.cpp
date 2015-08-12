@@ -241,13 +241,12 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
                 if(rc > 0) {
                     fromlen = sizeof(from);
                     if(s4 >= 0 && FD_ISSET(s4, &readfds))
-                        rc = recvfrom(s4, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s4, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromlen);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, (char*)buf, sizeof(buf) - 1, 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s6, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromlen);
                     else
                         break;
                     if (rc > 0) {
-                        buf[rc] = 0;
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
                             rcv.emplace_back(Blob {buf, buf+rc+1}, std::make_pair(from, fromlen));
