@@ -128,6 +128,7 @@ static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 
 struct dht_params {
     bool help {false}; // print help and exit
+    bool log {false};
     in_port_t port {DHT_DEFAULT_PORT};
     bool is_bootstrap_node {false};
     bool generate_identity {false};
@@ -139,6 +140,7 @@ static const struct option long_options[] = {
    {"port",       required_argument, nullptr, 'p'},
    {"bootstrap",  optional_argument, nullptr, 'b'},
    {"identity",   no_argument      , nullptr, 'i'},
+   {"verbose",    no_argument      , nullptr, 'v'},
    {nullptr,      0,                 nullptr,  0}
 };
 
@@ -146,7 +148,7 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, ":hip:b:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, ":hivp:b:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -167,6 +169,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'h':
             params.help = true;
+            break;
+        case 'v':
+            params.log = true;
             break;
         case 'i':
             params.generate_identity = true;
