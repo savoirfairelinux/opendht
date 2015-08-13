@@ -112,16 +112,26 @@ print_dt(DT d) {
 }
 
 /**
- * Split string with delimiter
+ * Split "[host]:port" or "host:port" to pair<"host", "port">.
  */
-std::vector<std::string>
-split(const std::string& s, char delim) {
-    std::vector<std::string> elems;
-    std::stringstream ss(s);
-    std::string item;
-    while (std::getline(ss, item, delim))
-        elems.emplace_back(std::move(item));
-    return elems;
+std::pair<std::string, std::string>
+splitPort(const std::string& s) {
+    if (s.empty())
+        return {};
+    if (s[0] == '[') {
+        std::size_t closure = s.find_first_of(']');
+        std::size_t found = s.find_last_of(':');
+        if (closure == std::string::npos)
+            return {s, ""};
+        if (found == std::string::npos or found < closure)
+            return {s.substr(1,closure-1), ""};
+        return {s.substr(1,closure-1), s.substr(found+1)};
+    }
+    std::size_t found = s.find_last_of(':');
+    std::size_t first = s.find_first_of(':');
+    if (found == std::string::npos or found != first)
+        return {s, ""};
+    return {s.substr(0,found), s.substr(found+1)};
 }
 
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
@@ -132,7 +142,7 @@ struct dht_params {
     in_port_t port {DHT_DEFAULT_PORT};
     bool is_bootstrap_node {false};
     bool generate_identity {false};
-    std::vector<std::string> bootstrap {};
+    std::pair<std::string, std::string> bootstrap {};
 };
 
 static const struct option long_options[] = {
@@ -160,9 +170,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'b':
             if (optarg) {
-                params.bootstrap = split((optarg[0] == '=') ? optarg+1 : optarg, ':');
-                if (params.bootstrap.size() == 1)
-                    params.bootstrap.emplace_back(std::to_string(DHT_DEFAULT_PORT));
+                params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
+                if (not params.bootstrap.first.empty() and params.bootstrap.second.empty())
+                    params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
             }
             else
                 params.is_bootstrap_node = true;
