@@ -149,11 +149,6 @@ struct IceCandidates : public EncryptedValue<IceCandidates>
         return EncryptedValue::getFilter();
     }
 
-    virtual void unpackValue(const Value& v) {
-        EncryptedValue::unpackValue(v);
-        id = v.id;
-    }
-
     Value::Id id;
     Blob ice_data;
     MSGPACK_DEFINE(id, ice_data);
