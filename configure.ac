@@ -72,6 +72,7 @@ LT_LANG(C++)
 AX_CXX_COMPILE_STDCXX_11([noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
+PKG_CHECK_MODULES([nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
 PKG_CHECK_MODULES([msgpack], [msgpack])
 
