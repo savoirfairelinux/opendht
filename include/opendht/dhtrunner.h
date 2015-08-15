@@ -86,7 +86,8 @@ public:
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
-                    auto msg = unpack<T>(v->data);
+                    T msg;
+                    msg.unpackValue(*v);
                     if (not cb(std::move(msg)))
                         return false;
                 } catch (const std::exception&) {
@@ -145,7 +146,8 @@ public:
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
-                    auto msg = unpack<T>(v->data);
+                    T msg;
+                    msg.unpackValue(*v);
                     if (not cb(std::move(msg)))
                         return false;
                 } catch (const std::exception&) {

@@ -369,6 +369,8 @@ SecureDht::decrypt(const Value& v)
     auto msg = msgpack::unpack((const char*)decrypted.data(), decrypted.size());
     ret.msgpack_unpack_body(msg.get());
 
+    if (ret.recipient != getId())
+        throw crypto::DecryptError("Recipient mismatch");
     if (not ret.owner.checkSignature(ret.getToSign(), ret.signature))
         throw crypto::DecryptError("Signature mismatch");
 
