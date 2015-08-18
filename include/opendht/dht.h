@@ -138,12 +138,14 @@ public:
 
     static GetCallbackSimple
     bindGetCb(GetCallbackRaw raw_cb, void* user_data) {
+        if (not raw_cb) return {};
         return [=](const std::shared_ptr<Value>& value) {
             return raw_cb(value, user_data);
         };
     }
     static GetCallback
     bindGetCb(GetCallbackSimple cb) {
+        if (not cb) return {};
         return [=](const std::vector<std::shared_ptr<Value>>& values) {
             for (const auto& v : values)
                 if (not cb(v))
@@ -159,11 +161,13 @@ public:
 
     static DoneCallback
     bindDoneCb(DoneCallbackSimple donecb) {
+        if (not donecb) return {};
         using namespace std::placeholders;
         return std::bind(donecb, _1);
     }
     static DoneCallback
     bindDoneCb(DoneCallbackRaw raw_cb, void* user_data) {
+        if (not raw_cb) return {};
         return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
             raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
         };
@@ -266,7 +270,7 @@ public:
      * reannounced on a regular basis.
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash& key, const std::shared_ptr<Value>&, DoneCallback cb=nullptr);
+    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb=nullptr);
     void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb) {
         put(key, v, bindDoneCb(cb));
     }
@@ -690,7 +694,7 @@ private:
         }
 
         bool matches(const TransPrefix prefix, uint16_t *seqno_return = nullptr) const {
-            if ((*this)[0] == prefix[0] && (*this)[1] == prefix[1]) {
+            if (std::equal(begin(), begin()+2, prefix.begin())) {
                 if (seqno_return)
                     *seqno_return = *reinterpret_cast<const uint16_t*>(&(*this)[2]);
                 return true;
@@ -869,7 +873,7 @@ private:
      * The values can be filtered by an arbitrary provided filter.
      */
     Search* search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
-    void announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& value, DoneCallback callback);
+    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback);
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
     std::list<Search>::iterator newSearch();

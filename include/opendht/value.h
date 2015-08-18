@@ -155,7 +155,7 @@ struct ValueType {
 
 template <typename Type>
 Blob
-pack(const Type& t) {
+packMsg(const Type& t) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack(t);
@@ -164,12 +164,12 @@ pack(const Type& t) {
 
 template <typename Type>
 Type
-unpack(Blob b) {
+unpackMsg(Blob b) {
     msgpack::unpacked msg_res = msgpack::unpack((const char*)b.data(), b.size());
     return msg_res.get().as<Type>();
 }
 
-msgpack::unpacked unpack(Blob b);
+msgpack::unpacked unpackMsg(Blob b);
 
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.
@@ -211,7 +211,7 @@ struct Value
     };
 
     static const Filter AllFilter() {
-        return [](const Value&){return true;};
+        return [](const Value&){std::cout << "AllFilter()" << std::endl;return true;};
     }
 
     static Filter TypeFilter(const ValueType& t) {
@@ -231,6 +231,52 @@ struct Value
         return [r](const Value& v) {
             return v.recipient == r;
         };
+    }
+
+    template <typename T>
+    struct Serializable
+    {
+        virtual const ValueType& getType() const = 0;
+        virtual void unpackValue(const Value& v) {
+            auto msg = msgpack::unpack((const char*)v.data.data(), v.data.size());
+            msgpack::object obj = msg.get();
+            obj.convert(static_cast<T*>(this));
+        }
+
+        virtual Value packValue() const {
+            return Value {getType(), static_cast<const T&>(*this)};
+        }
+        virtual ~Serializable() = default;
+    };
+
+    template <typename T,
+              typename std::enable_if<std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static Value pack(const T& obj)
+    {
+        return obj.packValue();
+    }
+
+    template <typename T,
+              typename std::enable_if<!std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static Value pack(const T& obj)
+    {
+        return {ValueType::USER_DATA.id, packMsg<T>(obj)};
+    }
+
+    template <typename T,
+              typename std::enable_if<std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static T unpack(const Value& v)
+    {
+        T msg;
+        msg.unpackValue(v);
+        return msg;
+    }
+
+    template <typename T,
+              typename std::enable_if<!std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static T unpack(const Value& v)
+    {
+        return unpackMsg<T>(v.data);
     }
 
     bool isEncrypted() const {
@@ -254,11 +300,11 @@ struct Value
     
     template <typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
-     : id(id), type(t), data(pack(d)) {}
+     : id(id), type(t), data(packMsg(d)) {}
 
     template <typename Type>
     Value(const ValueType& t, const Type& d, Id id = INVALID_ID)
-     : id(id), type(t.id), data(pack(d)) {}
+     : id(id), type(t.id), data(packMsg(d)) {}
 
     /** Custom user data constructor */
     Value(const Blob& userdata) : data(userdata) {}
@@ -269,9 +315,9 @@ struct Value
      : id(o.id), owner(std::move(o.owner)), recipient(o.recipient),
      type(o.type), data(std::move(o.data)), seq(o.seq), signature(std::move(o.signature)), cypher(std::move(o.cypher)) {}
 
-    template <typename ValueType>
-    Value(const ValueType& vs)
-     : Value(vs.packValue()) {}
+    template <typename Type>
+    Value(const Type& vs)
+     : Value(pack<Type>(vs)) {}
 
     Value(const msgpack::object& o) {
         msgpack_unpack(o);
@@ -407,40 +453,44 @@ struct Value
     Blob cypher {};
 };
 
-
-
-template <typename Type>
-struct ValueSerializable /* : public Serializable*/
+template <typename T,
+          typename std::enable_if<std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet(Value::Filter f)
 {
-    //ValueSerializable() {};
-    //ValueSerializable(const Type& t) : t(t) {};
+    return Value::Filter::chain({
+        Value::TypeFilter(T::TYPE),
+        T::getFilter(),
+        f
+    });
+}
 
-    virtual const ValueType& getType() const = 0;
-    //virtual void unpackValue(const Value& v);
-    virtual void unpackValue(const Value& v) {
-        auto msg = msgpack::unpack((const char*)v.data.data(), v.data.size());
-        msgpack::object obj = msg.get();
-        obj.convert(static_cast<Type*>(this));
-    }
+template <typename T,
+          typename std::enable_if<!std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet(Value::Filter f)
+{
+    return f;
+}
 
-    virtual Value packValue() const {
-        return Value {getType(), static_cast<const Type&>(*this)};
-    }
-    virtual ~ValueSerializable() = default;
+template <typename T,
+          typename std::enable_if<std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet()
+{
+    return Value::Filter::chain({
+        Value::TypeFilter(T::TYPE),
+        T::getFilter()
+    });
+}
 
-    //Type t;
-/*
-    Blob pack() {
-        return pack<Type>(*this);
-    }
-    void unpack(Blob&) {
-        return pack<Type>(*this);
-    }
-*/
-    //Blob getPacked() const;
-};
-
-
+template <typename T,
+          typename std::enable_if<!std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet()
+{
+    return Value::AllFilter();
+}
 
 template <class T>
 std::vector<T>
@@ -449,9 +499,7 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
     ret.reserve(vals.size());
     for (const auto& v : vals) {
         try {
-            T msg;
-            msg.unpackValue(*v);
-            ret.emplace_back(std::move(msg));
+            ret.emplace_back(Value::unpack<T>(*v));
         } catch (const std::exception&) {}
     }
     return ret;

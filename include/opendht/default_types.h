@@ -34,7 +34,7 @@
 
 namespace dht {
 
-struct DhtMessage : public ValueSerializable<DhtMessage>
+struct DhtMessage : public Value::Serializable<DhtMessage>
 {
     DhtMessage(std::string s = {}, Blob msg = {}) : service(s), data(msg) {}
     
@@ -62,11 +62,11 @@ public:
 };
 
 template <typename Type>
-struct SignedValue : public ValueSerializable<Type>
+struct SignedValue : public Value::Serializable<Type>
 {
     virtual void unpackValue(const Value& v) {
         from = v.owner.getId();
-        ValueSerializable<Type>::unpackValue(v);
+        Value::Serializable<Type>::unpackValue(v);
     }
     static Value::Filter getFilter() {
         return [](const Value& v){ return v.isSigned(); };
@@ -157,7 +157,7 @@ struct IceCandidates : public EncryptedValue<IceCandidates>
 
 /* "Peer" announcement
  */
-struct IpServiceAnnouncement : public ValueSerializable<IpServiceAnnouncement>
+struct IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
 {
     IpServiceAnnouncement(in_port_t p = 0) {
         ss.ss_family = 0;
@@ -170,7 +170,7 @@ struct IpServiceAnnouncement : public ValueSerializable<IpServiceAnnouncement>
     }
 
     IpServiceAnnouncement(const Blob& b) {
-        msgpack_unpack(unpack(b).get());
+        msgpack_unpack(unpackMsg(b).get());
     }
 
     template <typename Packer>

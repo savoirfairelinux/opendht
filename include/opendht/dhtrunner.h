@@ -73,22 +73,21 @@ public:
     void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter());
 
     template <class T>
-    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
+    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, Dht::DoneCallbackSimple dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
-        T::getFilter());
+        dcb,
+        getFilterSet<T>());
     }
     template <class T>
-    void get(InfoHash hash, std::function<bool(T&&)> cb)
+    void get(InfoHash hash, std::function<bool(T&&)> cb, Dht::DoneCallbackSimple dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
-                    T msg;
-                    msg.unpackValue(*v);
-                    if (not cb(std::move(msg)))
+                    if (not cb(Value::unpack<T>(*v)))
                         return false;
                 } catch (const std::exception&) {
                     continue;
@@ -96,7 +95,8 @@ public:
             }
             return true;
         },
-        T::getFilter());
+        dcb,
+        getFilterSet<T>());
     }
 
     std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter()) {
@@ -108,13 +108,14 @@ public:
             return true;
         }, [=](bool) {
             p->set_value(std::move(*values));
-        }, f);
+        },
+        f);
         return p->get_future();
     }
 
     template <class T>
     std::future<std::vector<T>> get(InfoHash key) {
-        auto p = std::make_shared<std::promise<std::vector<std::shared_ptr<dht::Value>>>>();
+        auto p = std::make_shared<std::promise<std::vector<T>>>();
         auto values = std::make_shared<std::vector<T>>();
 
         get<T>(key, [=](T&& v) {
@@ -138,17 +139,15 @@ public:
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
-        T::getFilter());
+        getFilterSet<T>());
     }
-    template <class T>
+    template <typename T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter())
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
-                    T msg;
-                    msg.unpackValue(*v);
-                    if (not cb(std::move(msg)))
+                    if (not cb(Value::unpack<T>(*v)))
                         return false;
                 } catch (const std::exception&) {
                     continue;
@@ -156,11 +155,7 @@ public:
             }
             return true;
         },
-        Value::Filter::chain({
-            Value::TypeFilter(T::TYPE),
-            T::getFilter(),
-            f
-        }));
+        getFilterSet<T>(f));
     }
 
     void cancelListen(InfoHash h, size_t token);
@@ -171,12 +166,12 @@ public:
     void put(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
         put(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
     }
-    void put(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
+    void put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb=nullptr);
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
-    void putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb=nullptr);
+    void putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb=nullptr);
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
         putSigned(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
     }

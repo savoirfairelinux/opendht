@@ -280,7 +280,7 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
 }
 
 void
-SecureDht::putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback)
+SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback)
 {
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;

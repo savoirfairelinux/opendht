@@ -42,7 +42,7 @@ bool
 DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
 {
     try {
-        auto msg = unpack<DhtMessage>(v->data);
+        auto msg = unpackMsg<DhtMessage>(v->data);
         if (msg.service.empty())
             return false;
     } catch (const std::exception& e) {}
@@ -56,7 +56,7 @@ DhtMessage::ServiceFilter(std::string s)
         Value::TypeFilter(TYPE),
         [s](const Value& v) {
             try {
-                return unpack<DhtMessage>(v.data).service == s;
+                return unpackMsg<DhtMessage>(v.data).service == s;
             } catch (const std::exception& e) {
                 return false;
             }
@@ -82,7 +82,7 @@ bool
 IpServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
 {
     try {
-        auto msg = unpack<IpServiceAnnouncement>(v->data);
+        auto msg = unpackMsg<IpServiceAnnouncement>(v->data);
         if (msg.getPort() == 0)
             return false;
         IpServiceAnnouncement sa_addr {from, fromlen};

@@ -342,7 +342,7 @@ DhtRunner::put(InfoHash hash, const std::shared_ptr<Value>& value, Dht::DoneCall
 }
 
 void
-DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallback cb)
+DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb)
 {
     put(InfoHash::get(key), std::forward<Value>(value), cb);
 }
@@ -369,7 +369,7 @@ DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 }
 
 void
-DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb)
+DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb)
 {
     putSigned(InfoHash::get(key), std::forward<Value>(value), cb);
 }

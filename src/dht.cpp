@@ -969,6 +969,7 @@ Dht::searchStep(Search& sr)
                     return sn.node->isExpired(now);
                 }) == sr.nodes.size())
         {
+            DHT_WARN("Search expired");
             // no nodes or all expired nodes
             sr.expired = true;
             if (sr.announce.empty() && sr.listeners.empty()) {
@@ -1287,7 +1288,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
 }
 
 void
-Dht::announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& value, DoneCallback callback)
+Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback)
 {
     if (!value) {
         if (callback)
@@ -1442,7 +1443,7 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 }
 
 void
-Dht::put(const InfoHash& id, const std::shared_ptr<Value>& val, DoneCallback callback)
+Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback)
 {
     now = clock::now();
 
@@ -2808,9 +2809,9 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
         unsigned k = 0;
 
         pk.pack(std::string("values"));
-        pk.pack_array(std::min(st.size(), 50ul));
+        pk.pack_array(std::min<size_t>(st.size(), 50));
         do {
-            pk.pack(st[j].data);
+            pk.pack(*st[j].data);
             k++;
             j = (j + 1) % st.size();
         } while (j != j0 && k < 50);

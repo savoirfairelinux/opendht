@@ -75,7 +75,7 @@ const ValueType ValueType::USER_DATA = {0, "User Data"};
 
 
 msgpack::unpacked
-unpack(Blob b) {
+unpackMsg(Blob b) {
     return msgpack::unpack((const char*)b.data(), b.size());
 }
 
