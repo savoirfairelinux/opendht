@@ -107,7 +107,9 @@ DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner:
                 }
                 {
                     std::lock_guard<std::mutex> lck(storage_mtx);
-                    if (not pending_ops.empty())
+                    if (not pending_ops_prio.empty())
+                        return true;
+                    if (not pending_ops.empty() and getStatus() >= Dht::Status::Connecting)
                         return true;
                 }
                 return false;
@@ -126,6 +128,11 @@ DhtRunner::join()
     if (rcv_thread.joinable())
         rcv_thread.join();
     {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops = decltype(pending_ops)();
+        pending_ops_prio = decltype(pending_ops_prio)();
+    }
+    {
         std::lock_guard<std::mutex> lck(dht_mtx);
         dht_.reset();
         status4 = Dht::Status::Disconnected;
@@ -142,11 +149,21 @@ DhtRunner::loop_()
     decltype(pending_ops) ops {};
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
-        ops = std::move(pending_ops);
+        ops = std::move(pending_ops_prio);
     }
     while (not ops.empty()) {
         ops.front()(*dht_);
         ops.pop();
+    }
+    if (getStatus() >= Dht::Status::Connecting) {
+        {
+            std::lock_guard<std::mutex> lck(storage_mtx);
+            ops = std::move(pending_ops);
+        }
+        while (not ops.empty()) {
+            ops.front()(*dht_);
+            ops.pop();
+        }
     }
 
     time_point wakeup {};
@@ -164,14 +181,13 @@ DhtRunner::loop_()
         }
     }
 
-    if (statusCb) {
-        Dht::Status nstatus4 = dht_->getStatus(AF_INET);
-        Dht::Status nstatus6 = dht_->getStatus(AF_INET6);
-        if (nstatus4 != status4 || nstatus6 != status6) {
-            status4 = nstatus4;
-            status6 = nstatus6;
+    Dht::Status nstatus4 = dht_->getStatus(AF_INET);
+    Dht::Status nstatus6 = dht_->getStatus(AF_INET6);
+    if (nstatus4 != status4 || nstatus6 != status6) {
+        status4 = nstatus4;
+        status6 = nstatus6;
+        if (statusCb)
             statusCb(status4, status6);
-        }
     }
 
     return wakeup;
@@ -426,7 +442,7 @@ void
 DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
+    pending_ops_prio.emplace([=](SecureDht& dht) {
         for (auto& node : nodes)
             dht.pingNode((sockaddr*)&node.first, node.second);
     });
@@ -437,7 +453,7 @@ void
 DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
+    pending_ops_prio.emplace([=](SecureDht& dht) {
         for (auto& node : nodes)
             dht.insertNode(node);
     });

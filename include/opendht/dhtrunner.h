@@ -102,7 +102,6 @@ public:
     std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter()) {
         auto p = std::make_shared<std::promise<std::vector<std::shared_ptr< dht::Value >>>>();
         auto values = std::make_shared<std::vector<std::shared_ptr< dht::Value >>>();
-
         get(key, [=](const std::vector<std::shared_ptr<dht::Value>>& vlist) {
             values->insert(values->end(), vlist.begin(), vlist.end());
             return true;
@@ -117,7 +116,6 @@ public:
     std::future<std::vector<T>> get(InfoHash key) {
         auto p = std::make_shared<std::promise<std::vector<T>>>();
         auto values = std::make_shared<std::vector<T>>();
-
         get<T>(key, [=](T&& v) {
             values->emplace_back(std::move(v));
             return true;
@@ -367,6 +365,10 @@ private:
 
     static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const char* host, const char* service);
 
+    Dht::Status getStatus() const {
+        return std::max(status4, status6);
+    }
+
     std::unique_ptr<SecureDht> dht_ {};
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
@@ -376,6 +378,7 @@ private:
     std::mutex sock_mtx {};
     std::vector<std::pair<Blob, std::pair<sockaddr_storage, socklen_t>>> rcv {};
 
+    std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
