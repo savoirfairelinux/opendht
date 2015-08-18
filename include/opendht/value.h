@@ -211,7 +211,7 @@ struct Value
     };
 
     static const Filter AllFilter() {
-        return [](const Value&){std::cout << "AllFilter()" << std::endl;return true;};
+        return [](const Value&){return true;};
     }
 
     static Filter TypeFilter(const ValueType& t) {
