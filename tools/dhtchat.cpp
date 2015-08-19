@@ -116,7 +116,8 @@ main(int argc, char **argv)
                         std::cout << "Message publishing failed !" << std::endl;
                 });
             } else {
-                dht.putSigned(room, dht::ImMessage(std::move(op)), [](bool ok) {
+                std::getline(iss, line);
+                dht.putSigned(room, dht::ImMessage(std::move(line)), [](bool ok) {
                     //dht.cancelPut(room, id);
                     if (not ok)
                         std::cout << "Message publishing failed !" << std::endl;
