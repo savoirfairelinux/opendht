@@ -57,8 +57,8 @@ main(int argc, char **argv)
     DhtRunner dht;
     dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true);
 
-    if (not params.bootstrap.empty())
-        dht.bootstrap(params.bootstrap[0].c_str(), params.bootstrap[1].c_str());
+    if (not params.bootstrap.first.empty())
+        dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
     std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
     std::cout << "Public key ID " << dht.getId() << std::endl;

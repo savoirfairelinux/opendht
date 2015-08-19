@@ -35,13 +35,16 @@ extern "C" {
 #include <gnutls/gnutls.h>
 #include <gnutls/abstract.h>
 #include <gnutls/x509.h>
+#include <nettle/gcm.h>
+#include <nettle/aes.h>
 }
 
 #include <random>
 #include <sstream>
-#include <random>
 #include <stdexcept>
 #include <cassert>
+
+static std::uniform_int_distribution<uint8_t> rand_byte;
 
 static gnutls_digest_algorithm_t get_dig_for_pub(gnutls_pubkey_t pubkey)
 {
@@ -81,6 +84,87 @@ static gnutls_digest_algorithm_t get_dig(gnutls_x509_crt_t crt)
 
 namespace dht {
 namespace crypto {
+
+static constexpr std::array<size_t, 3> AES_LENGTHS {128/8, 192/8, 256/8};
+
+size_t aesKeySize(size_t max)
+{
+    unsigned aes_key_len = 0;
+    for (size_t s = 0; s < AES_LENGTHS.size(); s++) {
+        if (AES_LENGTHS[s] <= max)
+            aes_key_len = AES_LENGTHS[s];
+        else break;
+    }
+    return aes_key_len;
+}
+
+bool aesKeySizeGood(size_t key_size)
+{
+    for (auto& i : AES_LENGTHS)
+        if (key_size == i)
+            return true;
+    return false;
+}
+
+#ifndef GCM_DIGEST_SIZE
+#define GCM_DIGEST_SIZE GCM_BLOCK_SIZE
+#endif
+
+Blob
+aesEncrypt(const Blob& data, const Blob& key)
+{
+    std::array<uint8_t, GCM_IV_SIZE> iv;
+    {
+        crypto::random_device rdev;
+        std::generate_n(iv.begin(), iv.size(), std::bind(rand_byte, std::ref(rdev)));
+    }
+    struct gcm_aes_ctx aes;
+    gcm_aes_set_key(&aes, key.size(), key.data());
+    gcm_aes_set_iv(&aes, iv.size(), iv.data());
+    gcm_aes_update(&aes, data.size(), data.data());
+
+    Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
+    std::copy(iv.begin(), iv.end(), ret.begin());
+    gcm_aes_encrypt(&aes, data.size(), ret.data() + GCM_IV_SIZE, data.data());
+    gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data.size());
+    return ret;
+}
+
+Blob
+aesDecrypt(const Blob& data, const Blob& key)
+{
+    if (not aesKeySizeGood(key.size()))
+        throw DecryptError("Wrong key size");
+
+    if (data.size() <= GCM_IV_SIZE + GCM_DIGEST_SIZE)
+        throw DecryptError("Wrong data size");
+
+    std::array<uint8_t, GCM_DIGEST_SIZE> digest;
+
+    struct gcm_aes_ctx aes;
+    gcm_aes_set_key(&aes, key.size(), key.data());
+    gcm_aes_set_iv(&aes, GCM_IV_SIZE, data.data());
+
+    size_t data_sz = data.size() - GCM_IV_SIZE - GCM_DIGEST_SIZE;
+    Blob ret(data_sz);
+    //gcm_aes_update(&aes, data_sz, data.data() + GCM_IV_SIZE);
+    gcm_aes_decrypt(&aes, data_sz, ret.data(), data.data() + GCM_IV_SIZE);
+    //gcm_aes_digest(aes, GCM_DIGEST_SIZE, digest.data());
+
+    // TODO compute the proper digest directly from the decryption pass
+    Blob ret_tmp(data_sz);
+    struct gcm_aes_ctx aes_d;
+    gcm_aes_set_key(&aes_d, key.size(), key.data());
+    gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data.data());
+    gcm_aes_update(&aes_d, ret.size() , ret.data());
+    gcm_aes_encrypt(&aes_d, ret.size(), ret_tmp.data(), ret.data());
+    gcm_aes_digest(&aes_d, GCM_DIGEST_SIZE, digest.data());
+
+    if (not std::equal(digest.begin(), digest.end(), data.end() - GCM_DIGEST_SIZE))
+        throw DecryptError("Can't decrypt data");
+
+    return ret;
+}
 
 PrivateKey::PrivateKey()
 {
@@ -195,6 +279,19 @@ PrivateKey::sign(const Blob& data) const
 }
 
 Blob
+PrivateKey::decryptBloc(const uint8_t* src, size_t src_size) const
+{
+    const gnutls_datum_t dat {(uint8_t*)src, (unsigned)src_size};
+    gnutls_datum_t out;
+    int err = gnutls_privkey_decrypt_data(key, 0, &dat, &out);
+    if (err != GNUTLS_E_SUCCESS)
+        throw DecryptError(std::string("Can't decrypt data: ") + gnutls_strerror(err));
+    Blob ret {out.data, out.data+out.size};
+    gnutls_free(out.data);
+    return ret;
+}
+
+Blob
 PrivateKey::decrypt(const Blob& cipher) const
 {
     if (!key)
@@ -208,20 +305,12 @@ PrivateKey::decrypt(const Blob& cipher) const
         throw CryptoException("Must be an RSA key");
 
     unsigned cypher_block_sz = key_len / 8;
-    if (cipher.size() % cypher_block_sz)
-        throw CryptoException("Unexpected cipher length");
+    if (cipher.size() < cypher_block_sz)
+        throw DecryptError("Unexpected cipher length");
+    else if (cipher.size() == cypher_block_sz)
+        return decryptBloc(cipher.data(), cypher_block_sz);
 
-    Blob ret;
-    for (auto cb = cipher.cbegin(), ce = cipher.cend(); cb < ce; cb += cypher_block_sz) {
-        const gnutls_datum_t dat {(uint8_t*)(&(*cb)), cypher_block_sz};
-        gnutls_datum_t out;
-        int err = gnutls_privkey_decrypt_data(key, 0, &dat, &out);
-        if (err != GNUTLS_E_SUCCESS)
-            throw DecryptError(std::string("Can't decrypt data: ") + gnutls_strerror(err));
-        ret.insert(ret.end(), out.data, out.data+out.size);
-        gnutls_free(out.data);
-    }
-    return ret;
+    return aesDecrypt(Blob {cipher.begin() + cypher_block_sz, cipher.end()}, decryptBloc(cipher.data(), cypher_block_sz));
 }
 
 Blob
@@ -256,7 +345,7 @@ PrivateKey::getPublicKey() const
 
 PublicKey::PublicKey(const Blob& dat) : pk(nullptr)
 {
-    unpackBlob(dat);
+    unpack(dat.data(), dat.size());
 }
 
 PublicKey::~PublicKey()
@@ -286,22 +375,29 @@ PublicKey::pack(Blob& b) const
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Could not export public key: ") + gnutls_strerror(err));
     tmp.resize(sz);
-    serialize<Blob>(tmp, b);
+    b.insert(b.end(), tmp.begin(), tmp.end());
 }
 
 void
-PublicKey::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
+PublicKey::unpack(const uint8_t* data, size_t data_size)
 {
-    Blob tmp = deserialize<Blob>(begin, end);
     if (pk)
         gnutls_pubkey_deinit(pk);
     gnutls_pubkey_init(&pk);
-    const gnutls_datum_t dat {(uint8_t*)tmp.data(), (unsigned)tmp.size()};
+    const gnutls_datum_t dat {(uint8_t*)data, (unsigned)data_size};
     int err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_PEM);
     if (err != GNUTLS_E_SUCCESS)
         err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_DER);
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Could not read public key: ") + gnutls_strerror(err));
+}
+
+void
+PublicKey::msgpack_unpack(msgpack::object o)
+{
+    if (o.type != msgpack::type::BIN)
+        throw msgpack::type_error();
+    unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
 }
 
 bool
@@ -312,6 +408,20 @@ PublicKey::checkSignature(const Blob& data, const Blob& signature) const {
     const gnutls_datum_t dat {(uint8_t*)data.data(), (unsigned)data.size()};
     int rc = gnutls_pubkey_verify_data2(pk, GNUTLS_SIGN_RSA_SHA512, 0, &dat, &sig);
     return rc >= 0;
+}
+
+void
+PublicKey::encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t dst_size) const
+{
+    const gnutls_datum_t key_dat {(uint8_t*)src, (unsigned)src_size};
+    gnutls_datum_t encrypted;
+    auto err = gnutls_pubkey_encrypt_data(pk, 0, &key_dat, &encrypted);
+    if (err != GNUTLS_E_SUCCESS)
+        throw CryptoException(std::string("Can't encrypt data: ") + gnutls_strerror(err));
+    if (encrypted.size != dst_size)
+        throw CryptoException("Unexpected cypherblock size");
+    std::copy_n(encrypted.data, encrypted.size, dst);
+    gnutls_free(encrypted.data);
 }
 
 Blob
@@ -327,27 +437,30 @@ PublicKey::encrypt(const Blob& data) const
     if (err != GNUTLS_PK_RSA)
         throw CryptoException("Must be an RSA key");
 
-    unsigned max_block_sz = key_len / 8 - 11;
-    unsigned cypher_block_sz = key_len / 8;
-    unsigned block_num = data.empty() ? 1 : 1 + (data.size() - 1) / max_block_sz;
-
-    Blob ret;
-    auto eb = data.cbegin();
-    auto ee = data.cend();
-    for (unsigned i=0; i<block_num; i++) {
-        auto blk_sz = std::min<unsigned>(ee - eb, max_block_sz);
-        const gnutls_datum_t dat {(uint8_t*)&(*eb), blk_sz};
-        gnutls_datum_t encrypted;
-        err = gnutls_pubkey_encrypt_data(pk, 0, &dat, &encrypted);
-        if (err != GNUTLS_E_SUCCESS)
-            throw CryptoException(std::string("Can't encrypt data: ") + gnutls_strerror(err));
-        if (encrypted.size != cypher_block_sz)
-            throw CryptoException("Unexpected cypherblock size");
-        ret.insert(ret.end(), encrypted.data, encrypted.data+encrypted.size);
-        eb += blk_sz;
-        gnutls_free(encrypted.data);
+    const unsigned max_block_sz = key_len / 8 - 11;
+    const unsigned cypher_block_sz = key_len / 8;
+    if (data.size() <= max_block_sz) {
+        Blob ret(cypher_block_sz);
+        encryptBloc(data.data(), data.size(), ret.data(), cypher_block_sz);
+        return ret;
     }
 
+    unsigned aes_key_sz = aesKeySize(max_block_sz);
+    if (aes_key_sz == 0)
+        throw CryptoException("Key is not long enough for AES128");
+    Blob key(aes_key_sz);
+    {
+        crypto::random_device rdev;
+        std::generate_n(key.begin(), key.size(), std::bind(rand_byte, std::ref(rdev)));
+    }
+    auto data_encrypted = aesEncrypt(data, key);
+
+    Blob ret;
+    ret.reserve(cypher_block_sz + data_encrypted.size());
+
+    ret.resize(cypher_block_sz);
+    encryptBloc(key.data(), key.size(), ret.data(), cypher_block_sz);
+    ret.insert(ret.end(), data_encrypted.begin(), data_encrypted.end());
     return ret;
 }
 
@@ -363,7 +476,7 @@ PublicKey::getId() const
 
 Certificate::Certificate(const Blob& certData) : cert(nullptr)
 {
-    unpackBlob(certData);
+    unpack(certData.data(), certData.size());
 }
 
 Certificate&
@@ -378,7 +491,7 @@ Certificate::operator=(Certificate&& o) noexcept
 }
 
 void
-Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
+Certificate::unpack(const uint8_t* dat, size_t dat_size)
 {
     if (cert) {
         gnutls_x509_crt_deinit(cert);
@@ -386,7 +499,7 @@ Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
     }
     gnutls_x509_crt_t* cert_list;
     unsigned cert_num;
-    const gnutls_datum_t crt_dt {(uint8_t*)&(*begin), (unsigned)(end-begin)};
+    const gnutls_datum_t crt_dt {(uint8_t*)dat, (unsigned)dat_size};
     int err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_PEM, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
     if (err != GNUTLS_E_SUCCESS)
         err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_DER, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
@@ -403,6 +516,14 @@ Certificate::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
         crt = crt->issuer.get();
     }
     gnutls_free(cert_list);
+}
+
+void
+Certificate::msgpack_unpack(msgpack::object o)
+{
+    if (o.type != msgpack::type::BIN)
+        throw msgpack::type_error();
+    unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
 }
 
 void

@@ -38,29 +38,14 @@ std::ostream& operator<< (std::ostream& s, const DhtMessage& v)
     return s;
 }
 
-void
-DhtMessage::pack(Blob& res) const
-{
-    serialize<std::string>(service, res);
-    serialize<Blob>(data, res);
-}
-
-void
-DhtMessage::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
-{
-    service = deserialize<std::string>(begin, end);
-    data = deserialize<Blob>(begin, end);
-}
-
 bool
 DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
 {
-    DhtMessage request;
     try {
-    	request.unpackBlob(v->data);
+        auto msg = unpackMsg<DhtMessage>(v->data);
+        if (msg.service.empty())
+            return false;
     } catch (const std::exception& e) {}
-    if (request.service.empty())
-        return false;
     return true;
 }
 
@@ -71,9 +56,7 @@ DhtMessage::ServiceFilter(std::string s)
         Value::TypeFilter(TYPE),
         [s](const Value& v) {
             try {
-                auto b = v.data.cbegin(), e = v.data.cend();
-                auto service = deserialize<std::string>(b, e);
-                return service == s;
+                return unpackMsg<DhtMessage>(v.data).service == s;
             } catch (const std::exception& e) {
                 return false;
             }
@@ -95,51 +78,20 @@ std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
     return s;
 }
 
-void
-IpServiceAnnouncement::pack(Blob& res) const
-{
-    serialize<in_port_t>(getPort(), res);
-    if (ss.ss_family == AF_INET) {
-        auto sa4 = reinterpret_cast<const sockaddr_in*>(&ss);
-        serialize<in_addr>(sa4->sin_addr, res);
-    } else if (ss.ss_family == AF_INET6) {
-        auto sa6 = reinterpret_cast<const sockaddr_in6*>(&ss);
-        serialize<in6_addr>(sa6->sin6_addr, res);
-    }
-}
-
-void
-IpServiceAnnouncement::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
-{
-    setPort(deserialize<in_port_t>(begin, end));
-    size_t addr_size = end - begin;
-    if (addr_size < sizeof(in_addr)) {
-        ss.ss_family = 0;
-    } else if (addr_size == sizeof(in_addr)) {
-        auto sa4 = reinterpret_cast<sockaddr_in*>(&ss);
-        sa4->sin_family = AF_INET;
-        sa4->sin_addr = deserialize<in_addr>(begin, end);
-    } else if (addr_size == sizeof(in6_addr)) {
-        auto sa6 = reinterpret_cast<sockaddr_in6*>(&ss);
-        sa6->sin6_family = AF_INET6;
-        sa6->sin6_addr = deserialize<in6_addr>(begin, end);
-    } else {
-        throw std::runtime_error("ServiceAnnouncement parse error.");
-    }
-}
-
 bool
 IpServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
 {
-    IpServiceAnnouncement request {};
-    request.unpackBlob(v->data);
-    if (request.getPort() == 0)
-        return false;
-    IpServiceAnnouncement sa_addr {from, fromlen};
-    sa_addr.setPort(request.getPort());
-    // argument v is modified (not the value).
-    v = std::make_shared<Value>(IpServiceAnnouncement::TYPE, sa_addr, v->id);
-    return true;
+    try {
+        auto msg = unpackMsg<IpServiceAnnouncement>(v->data);
+        if (msg.getPort() == 0)
+            return false;
+        IpServiceAnnouncement sa_addr {from, fromlen};
+        sa_addr.setPort(msg.getPort());
+        // argument v is modified (not the value).
+        v = std::make_shared<Value>(IpServiceAnnouncement::TYPE, sa_addr, v->id);
+        return true;
+    } catch (const std::exception& e) {}
+    return false;
 }
 
 const ValueType DhtMessage::TYPE = {1, "DHT message", std::chrono::minutes(5), DhtMessage::storePolicy, ValueType::DEFAULT_EDIT_POLICY};

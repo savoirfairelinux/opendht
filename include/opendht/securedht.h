@@ -99,7 +99,7 @@ public:
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
      */
-    void putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback);
+    void putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback);
     void putSigned(const InfoHash& hash, Value&& v, DoneCallback callback) {
         putSigned(hash, std::make_shared<Value>(std::move(v)), callback);
     }

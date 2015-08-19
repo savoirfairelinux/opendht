@@ -32,7 +32,7 @@
 
 #include "infohash.h"
 #include "crypto.h"
-#include "serialize.h"
+#include <msgpack.hpp>
 
 #ifndef _WIN32
 #include <netinet/in.h>
@@ -153,12 +153,23 @@ struct ValueType {
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
 
-struct ValueSerializable : public Serializable
-{
-    virtual const ValueType& getType() const = 0;
-    virtual void unpackValue(const Value& v);
-    virtual Value packValue() const;
-};
+template <typename Type>
+Blob
+packMsg(const Type& t) {
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack(t);
+    return {buffer.data(), buffer.data()+buffer.size()};
+}
+
+template <typename Type>
+Type
+unpackMsg(Blob b) {
+    msgpack::unpacked msg_res = msgpack::unpack((const char*)b.data(), b.size());
+    return msg_res.get().as<Type>();
+}
+
+msgpack::unpacked unpackMsg(Blob b);
 
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.
@@ -169,7 +180,7 @@ struct ValueSerializable : public Serializable
  * Values are stored at a given InfoHash in the Dht, but also have a
  * unique ID to distinguish between values stored at the same location.
  */
-struct Value : public Serializable
+struct Value
 {
     typedef uint64_t Id;
     static const Id INVALID_ID {0};
@@ -222,31 +233,57 @@ struct Value : public Serializable
         };
     }
 
-    /**
-     * Hold information about how the data is signed/encrypted.
-     * Class is final because bitset have no virtual destructor.
-     */
-    class ValueFlags final : public std::bitset<3> {
-    public:
-        using std::bitset<3>::bitset;
-        ValueFlags() {}
-        ValueFlags(bool sign, bool encrypted, bool have_recipient = false) : bitset<3>((sign ? 1:0) | (encrypted ? 2:0) | (have_recipient ? 4:0)) {}
-        bool isSigned() const {
-            return (*this)[0];
+    template <typename T>
+    struct Serializable
+    {
+        virtual const ValueType& getType() const = 0;
+        virtual void unpackValue(const Value& v) {
+            auto msg = msgpack::unpack((const char*)v.data.data(), v.data.size());
+            msgpack::object obj = msg.get();
+            obj.convert(static_cast<T*>(this));
         }
-        bool isEncrypted() const {
-            return (*this)[1];
+
+        virtual Value packValue() const {
+            return Value {getType(), static_cast<const T&>(*this)};
         }
-        bool haveRecipient() const {
-            return (*this)[2];
-        }
+        virtual ~Serializable() = default;
     };
 
+    template <typename T,
+              typename std::enable_if<std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static Value pack(const T& obj)
+    {
+        return obj.packValue();
+    }
+
+    template <typename T,
+              typename std::enable_if<!std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static Value pack(const T& obj)
+    {
+        return {ValueType::USER_DATA.id, packMsg<T>(obj)};
+    }
+
+    template <typename T,
+              typename std::enable_if<std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static T unpack(const Value& v)
+    {
+        T msg;
+        msg.unpackValue(v);
+        return msg;
+    }
+
+    template <typename T,
+              typename std::enable_if<!std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+    static T unpack(const Value& v)
+    {
+        return unpackMsg<T>(v.data);
+    }
+
     bool isEncrypted() const {
-        return flags.isEncrypted();
+        return not cypher.empty();
     }
     bool isSigned() const {
-        return flags.isSigned();
+        return isEncrypted() or not signature.empty();
     }
 
     Value() {}
@@ -260,12 +297,14 @@ struct Value : public Serializable
      : id(id), type(t), data(std::move(data)) {}
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
-    Value(ValueType::Id t, const Serializable& d, Id id = INVALID_ID)
-     : id(id), type(t), data(d.getPacked()) {}
-    Value(const ValueType& t, const Serializable& d, Id id = INVALID_ID)
-     : id(id), type(t.id), data(d.getPacked()) {}
-    Value(const ValueSerializable& d, Id id = INVALID_ID)
-     : id(id), type(d.getType().id), data(d.getPacked()) {}
+    
+    template <typename Type>
+    Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
+     : id(id), type(t), data(packMsg(d)) {}
+
+    template <typename Type>
+    Value(const ValueType& t, const Type& d, Id id = INVALID_ID)
+     : id(id), type(t.id), data(packMsg(d)) {}
 
     /** Custom user data constructor */
     Value(const Blob& userdata) : data(userdata) {}
@@ -273,41 +312,50 @@ struct Value : public Serializable
     Value(const uint8_t* dat_ptr, size_t dat_len) : data(dat_ptr, dat_ptr+dat_len) {}
 
     Value(Value&& o) noexcept
-     : id(o.id), flags(o.flags), owner(std::move(o.owner)), recipient(o.recipient),
+     : id(o.id), owner(std::move(o.owner)), recipient(o.recipient),
      type(o.type), data(std::move(o.data)), seq(o.seq), signature(std::move(o.signature)), cypher(std::move(o.cypher)) {}
+
+    template <typename Type>
+    Value(const Type& vs)
+     : Value(pack<Type>(vs)) {}
+
+    Value(const msgpack::object& o) {
+        msgpack_unpack(o);
+    }
 
     inline bool operator== (const Value& o) {
         return id == o.id &&
-        (flags.isEncrypted() ? cypher == o.cypher :
+        (isEncrypted() ? cypher == o.cypher :
         (owner == o.owner && type == o.type && data == o.data && signature == o.signature));
     }
 
     void setRecipient(const InfoHash& r) {
         recipient = r;
-        flags[2] = true;
     }
 
     void setCypher(Blob&& c) {
         cypher = std::move(c);
-        flags = {true, true, true};
     }
 
     /**
-     * Pack part of the data to be signed
+     * Pack part of the data to be signed (must always be done the same way)
      */
-    void packToSign(Blob& res) const;
-    Blob getToSign() const;
+    Blob getToSign() const {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        msgpack_pack_to_sign(pk);
+        return {buffer.data(), buffer.data()+buffer.size()};
+    }
 
     /**
      * Pack part of the data to be encrypted
      */
-    void packToEncrypt(Blob& res) const;
-    Blob getToEncrypt() const;
-
-    void pack(Blob& res) const;
-
-    void unpackBody(Blob::const_iterator& begin, Blob::const_iterator& end);
-    virtual void unpack(Blob::const_iterator& begin, Blob::const_iterator& end);
+    Blob getToEncrypt() const {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        msgpack_pack_to_encrypt(pk);
+        return {buffer.data(), buffer.data()+buffer.size()};
+    }
 
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream& s, const Value& v);
@@ -318,11 +366,53 @@ struct Value : public Serializable
         return ss.str();
     }
 
+    template <typename Packer>
+    void msgpack_pack_to_sign(Packer& pk) const
+    {
+        pk.pack_map((user_type.empty()?0:1) + (owner?(recipient == InfoHash() ? 4 : 5):2));
+        if (owner) { // isSigned
+            pk.pack(std::string("seq"));   pk.pack(seq);
+            pk.pack(std::string("owner")); owner.msgpack_pack(pk);
+            if (recipient != InfoHash()) {
+                pk.pack(std::string("to")); pk.pack(recipient);
+            }
+        }
+        pk.pack(std::string("type"));  pk.pack(type);
+        pk.pack(std::string("data"));  pk.pack_bin(data.size());
+                                       pk.pack_bin_body((const char*)data.data(), data.size());
+        if (not user_type.empty()) {
+            pk.pack(std::string("utype")); pk.pack(user_type);
+        }
+    }
+
+    template <typename Packer>
+    void msgpack_pack_to_encrypt(Packer& pk) const
+    {
+        if (isEncrypted()) {
+            pk.pack_bin(cypher.size());
+            pk.pack_bin_body((const char*)cypher.data(), cypher.size());
+        } else {
+            pk.pack_map(isSigned() ? 2 : 1);
+            pk.pack(std::string("body")); msgpack_pack_to_sign(pk);
+            if (isSigned()) {
+                pk.pack(std::string("sig")); pk.pack_bin(signature.size());
+                                             pk.pack_bin_body((const char*)signature.data(), signature.size());
+            }
+        }
+    }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack_map(2);
+        pk.pack(std::string("id"));  pk.pack(id);
+        pk.pack(std::string("dat")); msgpack_pack_to_encrypt(pk);
+    }
+
+    void msgpack_unpack(msgpack::object o);
+    void msgpack_unpack_body(const msgpack::object& o);
+
     Id id {INVALID_ID};
-
-    // data (part that is signed / encrypted)
-
-    ValueFlags flags {};
 
     /**
      * Public key of the signer.
@@ -343,6 +433,11 @@ struct Value : public Serializable
     Blob data {};
 
     /**
+     * Custom user-defined type
+     */
+    std::string user_type {};
+
+    /**
      * Sequence number to avoid replay attacks
      */
     uint16_t seq {0};
@@ -358,6 +453,45 @@ struct Value : public Serializable
     Blob cypher {};
 };
 
+template <typename T,
+          typename std::enable_if<std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet(Value::Filter f)
+{
+    return Value::Filter::chain({
+        Value::TypeFilter(T::TYPE),
+        T::getFilter(),
+        f
+    });
+}
+
+template <typename T,
+          typename std::enable_if<!std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet(Value::Filter f)
+{
+    return f;
+}
+
+template <typename T,
+          typename std::enable_if<std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet()
+{
+    return Value::Filter::chain({
+        Value::TypeFilter(T::TYPE),
+        T::getFilter()
+    });
+}
+
+template <typename T,
+          typename std::enable_if<!std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+Value::Filter
+getFilterSet()
+{
+    return Value::AllFilter();
+}
+
 template <class T>
 std::vector<T>
 unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
@@ -365,9 +499,7 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
     ret.reserve(vals.size());
     for (const auto& v : vals) {
         try {
-            T msg;
-            msg.unpackValue(*v);
-            ret.emplace_back(std::move(msg));
+            ret.emplace_back(Value::unpack<T>(*v));
         } catch (const std::exception&) {}
     }
     return ret;

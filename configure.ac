@@ -72,7 +72,9 @@ LT_LANG(C++)
 AX_CXX_COMPILE_STDCXX_11([noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
+PKG_CHECK_MODULES([nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
+PKG_CHECK_MODULES([msgpack], [msgpack >= 1.1])
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)

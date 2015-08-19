@@ -238,12 +238,8 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
                 try {
                     Value decrypted_val (decrypt(*v));
                     if (decrypted_val.recipient == getId()) {
-                        if (decrypted_val.owner.checkSignature(decrypted_val.getToSign(), decrypted_val.signature)) {
-                            if (not filter or filter(decrypted_val))
-                                tmpvals.push_back(std::make_shared<Value>(std::move(decrypted_val)));
-                        }
-                        else
-                            DHT_WARN("Signature verification failed for %s", v->toString().c_str());
+                        if (not filter or filter(decrypted_val))
+                            tmpvals.push_back(std::make_shared<Value>(std::move(decrypted_val)));
                     }
                     // Ignore values belonging to other people
                 } catch (const std::exception& e) {
@@ -284,7 +280,7 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
 }
 
 void
-SecureDht::putSigned(const InfoHash& hash, const std::shared_ptr<Value>& val, DoneCallback callback)
+SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback)
 {
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
@@ -343,17 +339,16 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
 void
 SecureDht::sign(Value& v) const
 {
-    if (v.flags.isEncrypted())
+    if (v.isEncrypted())
         throw DhtException("Can't sign encrypted data.");
     v.owner = key_->getPublicKey();
-    v.flags = Value::ValueFlags(true, false, v.flags[2]);
     v.signature = key_->sign(v.getToSign());
 }
 
 Value
 SecureDht::encrypt(Value& v, const crypto::PublicKey& to) const
 {
-    if (v.flags.isEncrypted())
+    if (v.isEncrypted())
         throw DhtException("Data is already encrypted.");
     v.setRecipient(to.getId());
     sign(v);
@@ -365,12 +360,20 @@ SecureDht::encrypt(Value& v, const crypto::PublicKey& to) const
 Value
 SecureDht::decrypt(const Value& v)
 {
-    if (not v.flags.isEncrypted())
+    if (not v.isEncrypted())
         throw DhtException("Data is not encrypted.");
+
     auto decrypted = key_->decrypt(v.cypher);
+
     Value ret {v.id};
-    auto pb = decrypted.cbegin(), pe = decrypted.cend();
-    ret.unpackBody(pb, pe);
+    auto msg = msgpack::unpack((const char*)decrypted.data(), decrypted.size());
+    ret.msgpack_unpack_body(msg.get());
+
+    if (ret.recipient != getId())
+        throw crypto::DecryptError("Recipient mismatch");
+    if (not ret.owner.checkSignature(ret.getToSign(), ret.signature))
+        throw crypto::DecryptError("Signature mismatch");
+
     return ret;
 }
 

@@ -138,12 +138,14 @@ public:
 
     static GetCallbackSimple
     bindGetCb(GetCallbackRaw raw_cb, void* user_data) {
+        if (not raw_cb) return {};
         return [=](const std::shared_ptr<Value>& value) {
             return raw_cb(value, user_data);
         };
     }
     static GetCallback
     bindGetCb(GetCallbackSimple cb) {
+        if (not cb) return {};
         return [=](const std::vector<std::shared_ptr<Value>>& values) {
             for (const auto& v : values)
                 if (not cb(v))
@@ -159,11 +161,13 @@ public:
 
     static DoneCallback
     bindDoneCb(DoneCallbackSimple donecb) {
+        if (not donecb) return {};
         using namespace std::placeholders;
         return std::bind(donecb, _1);
     }
     static DoneCallback
     bindDoneCb(DoneCallbackRaw raw_cb, void* user_data) {
+        if (not raw_cb) return {};
         return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
             raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
         };
@@ -266,7 +270,7 @@ public:
      * reannounced on a regular basis.
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash& key, const std::shared_ptr<Value>&, DoneCallback cb=nullptr);
+    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb=nullptr);
     void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb) {
         put(key, v, bindDoneCb(cb));
     }
@@ -359,7 +363,7 @@ private:
     static constexpr unsigned MAX_HASHES {16384};
 
     /* The maximum number of searches we keep data about. */
-    static constexpr unsigned MAX_SEARCHES {1024};
+    static constexpr unsigned MAX_SEARCHES {128};
 
     /* The time after which we can send get requests for
        a search in case of no answers. */
@@ -383,6 +387,7 @@ private:
 
     static constexpr unsigned TOKEN_SIZE {64};
 
+    static const std::string my_v;
 
     struct NodeCache {
         std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
@@ -673,6 +678,7 @@ private:
      */
     struct TransId final : public std::array<uint8_t, 4> {
         TransId() {}
+        TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
         TransId(const TransPrefix prefix, uint16_t seqno = 0) {
             std::copy_n(prefix.begin(), prefix.size(), begin());
             *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
@@ -688,7 +694,7 @@ private:
         }
 
         bool matches(const TransPrefix prefix, uint16_t *seqno_return = nullptr) const {
-            if (std::equal(begin(), begin()+1, prefix.begin())) {
+            if (std::equal(begin(), begin()+2, prefix.begin())) {
                 if (seqno_return)
                     *seqno_return = *reinterpret_cast<const uint16_t*>(&(*this)[2]);
                 return true;
@@ -708,7 +714,7 @@ private:
     int dht_socket6 {-1};
 
     InfoHash myid {};
-    static const uint8_t my_v[9];
+
     std::array<uint8_t, 8> secret {{}};
     std::array<uint8_t, 8> oldsecret {{}};
 
@@ -785,16 +791,24 @@ private:
     int sendError(const sockaddr*, socklen_t, TransId tid, uint16_t code, const char *message, bool include_id=false);
 
     void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
-    MessageType parseMessage(const uint8_t *buf, size_t buflen,
-                  TransId& tid,
-                  InfoHash& id_return, InfoHash& info_hash_return,
-                  InfoHash& target_return, in_port_t& port_return,
-                  Blob& token, Value::Id& value_id,
-                  uint8_t *nodes_return, unsigned *nodes_len,
-                  uint8_t *nodes6_return, unsigned *nodes6_len,
-                  std::vector<std::shared_ptr<Value>>& values_return,
-                  want_t* want_return, uint16_t& error_code, bool& ring,
-                  sockaddr* addr_return, socklen_t& addr_length_return);
+
+    struct ParsedMessage {
+        MessageType type;
+        InfoHash id;
+        InfoHash info_hash;
+        InfoHash target;
+        TransId tid;
+        Blob token;
+        Value::Id value_id;
+        Blob nodes4;
+        Blob nodes6;
+        std::vector<std::shared_ptr<Value>> values;
+        want_t want;
+        uint16_t error_code;
+        std::string ua;
+        Address addr;
+        void msgpack_unpack(msgpack::object o);
+    };
 
     void rotateSecrets();
 
@@ -859,7 +873,7 @@ private:
      * The values can be filtered by an arbitrary provided filter.
      */
     Search* search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
-    void announce(const InfoHash& id, sa_family_t af, const std::shared_ptr<Value>& value, DoneCallback callback);
+    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback);
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
     std::list<Search>::iterator newSearch();

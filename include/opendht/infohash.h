@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include <msgpack.hpp>
+
 #include <iostream>
 #include <iomanip>
 #include <array>
@@ -72,6 +74,10 @@ public:
      * If too long, only the first 2.HASH_LEN characters are read.
      */
     explicit InfoHash(const std::string& hex);
+
+    InfoHash(const msgpack::object& o) {
+        msgpack_unpack(o);
+    }
 
     /**
      * Find the lowest 1 bit in an id.
@@ -193,6 +199,20 @@ public:
     friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
 
     std::string toString() const;
+
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack_bin(HASH_LEN);
+        pk.pack_bin_body((char*)data(), HASH_LEN);
+    }
+
+    void msgpack_unpack(msgpack::object o) {
+        if (o.type != msgpack::type::BIN or o.via.bin.size != HASH_LEN)
+            throw msgpack::type_error();
+        std::copy_n(o.via.bin.ptr, HASH_LEN, data());
+    }
+
 };
 
 }

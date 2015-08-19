@@ -34,16 +34,13 @@
 
 namespace dht {
 
-struct DhtMessage : public ValueSerializable
+struct DhtMessage : public Value::Serializable<DhtMessage>
 {
     DhtMessage(std::string s = {}, Blob msg = {}) : service(s), data(msg) {}
-
+    
     std::string getService() const {
         return service;
     }
-
-    virtual void pack(Blob& res) const;
-    virtual void unpack(Blob::const_iterator& begin, Blob::const_iterator& end);
 
     static const ValueType TYPE;
     virtual const ValueType& getType() const {
@@ -61,14 +58,15 @@ struct DhtMessage : public ValueSerializable
 public:
     std::string service;
     Blob data;
+    MSGPACK_DEFINE(service, data);
 };
 
-
-struct SignedValue : public ValueSerializable
+template <typename Type>
+struct SignedValue : public Value::Serializable<Type>
 {
     virtual void unpackValue(const Value& v) {
         from = v.owner.getId();
-        ValueSerializable::unpackValue(v);
+        Value::Serializable<Type>::unpackValue(v);
     }
     static Value::Filter getFilter() {
         return [](const Value& v){ return v.isSigned(); };
@@ -77,15 +75,16 @@ public:
     dht::InfoHash from;
 };
 
-struct EncryptedValue : public SignedValue
+template <typename Type>
+struct EncryptedValue : public SignedValue<Type>
 {
     virtual void unpackValue(const Value& v) {
         to = v.recipient;
-        SignedValue::unpackValue(v);
+        SignedValue<Type>::unpackValue(v);
     }
     static Value::Filter getFilter() {
         return Value::Filter::chain(
-            SignedValue::getFilter(),
+            SignedValue<Type>::getFilter(),
             [](const Value& v){ return v.recipient != InfoHash(); }
         );
     }
@@ -94,7 +93,7 @@ public:
     dht::InfoHash to;
 };
 
-struct ImMessage : public SignedValue
+struct ImMessage : public SignedValue<ImMessage>
 {
     ImMessage() {}
     ImMessage(std::string&& msg)
@@ -107,14 +106,6 @@ struct ImMessage : public SignedValue
     static Value::Filter getFilter() {
         return SignedValue::getFilter();
     }
-    virtual void pack(Blob& data) const {
-        serialize<std::chrono::system_clock::time_point>(std::chrono::system_clock::now(), data);
-        data.insert(data.end(), im_message.begin(), im_message.end());
-    }
-    virtual void unpack(Blob::const_iterator& b, Blob::const_iterator& e) {
-        sent = deserialize<decltype(sent)>(b, e);
-        im_message = std::string(b, e);
-    }
     virtual void unpackValue(const Value& v) {
         to = v.recipient;
         SignedValue::unpackValue(v);
@@ -123,9 +114,10 @@ struct ImMessage : public SignedValue
     dht::InfoHash to;
     std::chrono::system_clock::time_point sent;
     std::string im_message;
+    MSGPACK_DEFINE(im_message);
 };
 
-struct TrustRequest : public EncryptedValue
+struct TrustRequest : public EncryptedValue<TrustRequest>
 {
     TrustRequest() {}
     TrustRequest(std::string s) : service(s) {}
@@ -138,22 +130,16 @@ struct TrustRequest : public EncryptedValue
     static Value::Filter getFilter() {
         return EncryptedValue::getFilter();
     }
-    virtual void pack(Blob& data) const {
-        serialize<std::string>(service, data);
-        serialize<Blob>(payload, data);
-    }
-    virtual void unpack(Blob::const_iterator& b, Blob::const_iterator& e) {
-        service = deserialize<std::string>(b, e);
-        payload = deserialize<Blob>(b, e);
-    }
+
     std::string service;
     Blob payload;
+    MSGPACK_DEFINE(service, payload);
 };
 
-struct IceCandidates : public EncryptedValue
+struct IceCandidates : public EncryptedValue<IceCandidates>
 {
     IceCandidates() {}
-    IceCandidates(Blob ice) : ice_data(ice) {}
+    IceCandidates(Value::Id msg_id, Blob ice) : id(msg_id), ice_data(ice) {}
 
     static const ValueType TYPE;
     virtual const ValueType& getType() const {
@@ -162,25 +148,16 @@ struct IceCandidates : public EncryptedValue
     static Value::Filter getFilter() {
         return EncryptedValue::getFilter();
     }
-    virtual void pack(Blob& data) const {
-        serialize<Blob>(ice_data, data);
-    }
-    virtual void unpack(Blob::const_iterator& b, Blob::const_iterator& e) {
-        ice_data = deserialize<Blob>(b, e);
-    }
-    virtual void unpackValue(const Value& v) {
-        EncryptedValue::unpackValue(v);
-        id = v.id;
-    }
 
     Value::Id id;
     Blob ice_data;
+    MSGPACK_DEFINE(id, ice_data);
 };
 
 
 /* "Peer" announcement
  */
-struct IpServiceAnnouncement : public ValueSerializable
+struct IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
 {
     IpServiceAnnouncement(in_port_t p = 0) {
         ss.ss_family = 0;
@@ -193,11 +170,36 @@ struct IpServiceAnnouncement : public ValueSerializable
     }
 
     IpServiceAnnouncement(const Blob& b) {
-        unpackBlob(b);
+        msgpack_unpack(unpackMsg(b).get());
     }
 
-    virtual void pack(Blob& res) const;
-    virtual void unpack(Blob::const_iterator& begin, Blob::const_iterator& end);
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack_array(2);
+        pk.pack(getPort());
+        if (ss.ss_family == AF_INET) {
+            pk.pack_bin(sizeof(in_addr));
+            pk.pack_bin_body((const char*)&reinterpret_cast<const sockaddr_in*>(&ss)->sin_addr, sizeof(in_addr));
+        } else if (ss.ss_family == AF_INET6) {
+            pk.pack_bin(sizeof(in6_addr));
+            pk.pack_bin_body((const char*)&reinterpret_cast<const sockaddr_in6*>(&ss)->sin6_addr, sizeof(in6_addr));
+        }
+    }
+
+    void msgpack_unpack(msgpack::object o)
+    {
+        if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
+        if (o.via.array.size < 2) throw msgpack::type_error();
+        setPort(o.via.array.ptr[0].as<in_port_t>());
+        auto ip_dat = o.via.array.ptr[1].as<Blob>();
+        if (ip_dat.size() == sizeof(in_addr))
+            std::copy(ip_dat.begin(), ip_dat.end(), (char*)&reinterpret_cast<sockaddr_in*>(&ss)->sin_addr);
+        else if (ip_dat.size() == sizeof(in6_addr))
+            std::copy(ip_dat.begin(), ip_dat.end(), (char*)&reinterpret_cast<sockaddr_in6*>(&ss)->sin6_addr);
+        else
+            throw msgpack::type_error();
+    }
 
     in_port_t getPort() const {
         return ntohs(reinterpret_cast<const sockaddr_in*>(&ss)->sin_port);

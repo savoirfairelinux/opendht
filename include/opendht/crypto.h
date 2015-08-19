@@ -31,7 +31,6 @@
 #pragma once
 
 #include "infohash.h"
-#include "serialize.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
@@ -41,6 +40,8 @@ extern "C" {
 
 #include <vector>
 #include <memory>
+
+typedef std::vector<uint8_t> Blob;
 
 namespace dht {
 namespace crypto {
@@ -75,7 +76,7 @@ Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {},
 /**
  * A public key.
  */
-struct PublicKey : public Serializable
+struct PublicKey
 {
     PublicKey() {}
     PublicKey(gnutls_pubkey_t k) : pk(k) {}
@@ -91,14 +92,25 @@ struct PublicKey : public Serializable
     bool checkSignature(const Blob& data, const Blob& signature) const;
     Blob encrypt(const Blob&) const;
 
-    void pack(Blob& b) const override;
+    void pack(Blob& b) const;
+    void unpack(const uint8_t* dat, size_t dat_size);
 
-    void unpack(Blob::const_iterator& begin, Blob::const_iterator& end) override;
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
+        Blob b;
+        pack(b);
+        p.pack_bin(b.size());
+        p.pack_bin_body((const char*)b.data(), b.size());
+    }
+
+    void msgpack_unpack(msgpack::object o);
 
     gnutls_pubkey_t pk {};
 private:
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
+    void encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t dst_size) const;
 };
 
 /**
@@ -134,6 +146,7 @@ struct PrivateKey
     /**
      * Generate a new RSA key pair
      * @param key_length : size of the modulus in bits
+     *      Minimim value: 2048
      *      Recommended values: 4096, 8192
      */
     static PrivateKey generate(unsigned key_length = 4096);
@@ -143,11 +156,12 @@ struct PrivateKey
 private:
     PrivateKey(const PrivateKey&) = delete;
     PrivateKey& operator=(const PrivateKey&) = delete;
+    Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
-struct Certificate : public Serializable {
+struct Certificate {
     Certificate() {}
 
     /**
@@ -155,11 +169,16 @@ struct Certificate : public Serializable {
      */
     Certificate(gnutls_x509_crt_t crt) : cert(crt) {}
 
+    Certificate(Certificate&& o) noexcept : cert(o.cert), issuer(std::move(o.issuer)) { o.cert = nullptr; };
+
     /**
      * Import certificate (PEM or DER) or certificate chain (PEM),
      * ordered from subject to issuer
      */
     Certificate(const Blob& crt);
+    Certificate(const uint8_t* dat, size_t dat_size) {
+        unpack(dat, dat_size);
+    }
 
     /**
      * Import certificate chain (PEM or DER),
@@ -179,12 +198,16 @@ struct Certificate : public Serializable {
         unpack(certs);
     }
 
-    Certificate(Certificate&& o) noexcept : cert(o.cert), issuer(std::move(o.issuer)) { o.cert = nullptr; };
     Certificate& operator=(Certificate&& o) noexcept;
     ~Certificate();
 
-    void pack(Blob& b) const override;
-    void unpack(Blob::const_iterator& begin, Blob::const_iterator& end) override;
+    void pack(Blob& b) const;
+    void unpack(const uint8_t* dat, size_t dat_size);
+    Blob getPacked() const {
+        Blob b;
+        pack(b);
+        return b;
+    }
 
     template<typename Iterator>
     void unpack(const Iterator& begin, const Iterator& end)
@@ -226,6 +249,17 @@ struct Certificate : public Serializable {
         }
         *this = tmp_issuer ? std::move(*tmp_issuer) : Certificate();
     }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
+        Blob b;
+        pack(b);
+        p.pack_bin(b.size());
+        p.pack_bin_body((const char*)b.data(), b.size());
+    }
+
+    void msgpack_unpack(msgpack::object o);
 
     operator bool() const { return cert; }
     PublicKey getPublicKey() const;
@@ -270,6 +304,15 @@ private:
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
+/**
+ * AES-GCM encryption. Key must be 128, 192 or 126 bits long (16, 24 or 32 bytes).
+ */
+Blob aesEncrypt(const Blob& data, const Blob& key);
+
+/**
+ * AES-GCM decryption.
+ */
+Blob aesDecrypt(const Blob& data, const Blob& key);
 
 }
 }

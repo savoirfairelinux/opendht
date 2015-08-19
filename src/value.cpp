@@ -38,11 +38,17 @@ namespace dht {
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     s << "Value[id:" << std::hex << v.id << std::dec << " ";
-    if (v.flags.isSigned())
+    if (v.isSigned())
         s << "signed (v" << v.seq << ") ";
-    if (v.flags.isEncrypted())
+    if (v.isEncrypted())
         s << "encrypted ";
-    else {
+    else if (v.isSigned()) {
+        if (v.recipient == InfoHash())
+            s << "signed (v" << v.seq << ") ";
+        else
+            s << "decrypted ";
+    }
+    if (not v.isEncrypted()) {
         if (v.type == IpServiceAnnouncement::TYPE.id) {
             s << IpServiceAnnouncement(v.data);
         } else if (v.type == CERTIFICATE_TYPE.id) {
@@ -57,7 +63,7 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
             s << "Data (type: " << v.type << " ): ";
             s << std::hex;
             for (size_t i=0; i<v.data.size(); i++)
-                s << std::setfill('0') << std::setw(2) << (unsigned)v.data[i];
+                s << std::setfill('0') << std::setw(2) << (unsigned)v.data[i] << " ";
             s << std::dec;
         }
     }
@@ -68,62 +74,45 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
 const ValueType ValueType::USER_DATA = {0, "User Data"};
 
 
-void
-Value::packToSign(Blob& res) const
-{
-    res.push_back(flags.to_ulong());
-    if (flags.isEncrypted()) {
-        res.insert(res.end(), cypher.begin(), cypher.end());
-    } else {
-        if (flags.isSigned()) {
-            serialize<decltype(seq)>(seq, res);
-            owner.pack(res);
-            if (flags.haveRecipient())
-                res.insert(res.end(), recipient.begin(), recipient.end());
+msgpack::unpacked
+unpackMsg(Blob b) {
+    return msgpack::unpack((const char*)b.data(), b.size());
+}
+
+msgpack::object*
+findMapValue(const msgpack::object& map, const std::string& key) {
+    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
+    for (unsigned i = 0; i < map.via.map.size; i++) {
+        auto& o = map.via.map.ptr[i];
+        if(o.key.type != msgpack::type::STR)
+            continue;
+        if (o.key.as<std::string>() == key) {
+            return &o.val;
         }
-        serialize<ValueType::Id>(type, res);
-        serialize<Blob>(data, res);
     }
-}
-
-Blob
-Value::getToSign() const
-{
-    Blob ret;
-    packToSign(ret);
-    return ret;
-}
-
-/**
- * Pack part of the data to be encrypted
- */
-void
-Value::packToEncrypt(Blob& res) const
-{
-    packToSign(res);
-    if (!flags.isEncrypted() && flags.isSigned())
-        serialize<Blob>(signature, res);
-}
-
-Blob
-Value::getToEncrypt() const
-{
-    Blob ret;
-    packToEncrypt(ret);
-    return ret;
+    return nullptr;
 }
 
 void
-Value::pack(Blob& res) const
+Value::msgpack_unpack(msgpack::object o)
 {
-    serialize<Id>(id, res);
-    packToEncrypt(res);
+    if (o.type != msgpack::type::MAP) throw msgpack::type_error();
+    if (o.via.map.size < 2) throw msgpack::type_error();
+
+    if (auto rid = findMapValue(o, "id")) {
+        id = rid->as<Id>();
+    } else
+        throw msgpack::type_error();
+
+    if (auto rdat = findMapValue(o, "dat")) {
+        msgpack_unpack_body(*rdat);
+    } else
+        throw msgpack::type_error();
 }
 
 void
-Value::unpackBody(Blob::const_iterator& begin, Blob::const_iterator& end)
+Value::msgpack_unpack_body(const msgpack::object& o)
 {
-    // clear optional fields
     owner = {};
     recipient = {};
     cypher.clear();
@@ -131,39 +120,48 @@ Value::unpackBody(Blob::const_iterator& begin, Blob::const_iterator& end)
     data.clear();
     type = 0;
 
-    flags = {deserialize<uint8_t>(begin, end)};
-    if (flags.isEncrypted()) {
-        cypher = {begin, end};
-        begin = end;
+    if (o.type == msgpack::type::BIN) {
+        auto dat = o.as<std::vector<char>>();
+        cypher = {dat.begin(), dat.end()};
     } else {
-        if(flags.isSigned()) {
-            seq = deserialize<decltype(seq)>(begin, end);
-            owner.unpack(begin, end);
-            if (flags.haveRecipient())
-               recipient = deserialize<InfoHash>(begin, end);
+        if (o.type != msgpack::type::MAP)
+            throw msgpack::type_error();
+        auto rbody = findMapValue(o, "body");
+        if (not rbody)
+            throw msgpack::type_error();
+
+        if (auto rdata = findMapValue(*rbody, "data")) {
+            auto dat = rdata->as<std::vector<char>>();
+            data = {dat.begin(), dat.end()};
+        } else
+            throw msgpack::type_error();
+
+        if (auto rtype = findMapValue(*rbody, "type")) {
+            type = rtype->as<ValueType::Id>();
+        } else
+            throw msgpack::type_error();
+
+        if (auto rutype = findMapValue(*rbody, "utype")) {
+            user_type = rutype->as<std::string>();
         }
-        type = deserialize<ValueType::Id>(begin, end);
-        data = deserialize<Blob>(begin, end);
-        if (flags.isSigned())
-            signature = deserialize<Blob>(begin, end);
+
+        if (auto rowner = findMapValue(*rbody, "owner")) {
+            if (auto rseq = findMapValue(*rbody, "seq"))
+                seq = rseq->as<decltype(seq)>();
+            else
+                throw msgpack::type_error();
+            owner.msgpack_unpack(*rowner);
+            if (auto rrecipient = findMapValue(*rbody, "to")) {
+                recipient = rrecipient->as<InfoHash>();
+            }
+
+            if (auto rsig = findMapValue(o, "sig")) {
+                auto dat = rsig->as<std::vector<char>>();
+                signature = {dat.begin(), dat.end()};
+            } else
+                throw msgpack::type_error();
+        }
     }
-}
-
-void
-Value::unpack(Blob::const_iterator& begin, Blob::const_iterator& end)
-{
-    id = deserialize<Id>(begin, end);
-    unpackBody(begin, end);
-}
-
-void
-ValueSerializable::unpackValue(const Value& v) {
-    unpackBlob(v.data);
-}
-
-Value
-ValueSerializable::packValue() const {
-    return Value {getType(), *this};
 }
 
 }
