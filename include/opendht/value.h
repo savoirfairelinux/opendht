@@ -313,7 +313,7 @@ struct Value
 
     Value(Value&& o) noexcept
      : id(o.id), owner(std::move(o.owner)), recipient(o.recipient),
-     type(o.type), data(std::move(o.data)), seq(o.seq), signature(std::move(o.signature)), cypher(std::move(o.cypher)) {}
+     type(o.type), data(std::move(o.data)), user_type(std::move(o.user_type)), seq(o.seq), signature(std::move(o.signature)), cypher(std::move(o.cypher)) {}
 
     template <typename Type>
     Value(const Type& vs)
