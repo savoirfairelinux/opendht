@@ -104,7 +104,7 @@ ValueType
 SecureDht::secureType(ValueType&& type)
 {
     type.storePolicy = [this,type](InfoHash id, std::shared_ptr<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
-        if (v->isSigned() && !v->isEncrypted()) {
+        if (v->isSigned()) {
             if (!v->owner.checkSignature(v->getToSign(), v->signature)) {
                 DHT_WARN("Signature verification failed");
                 return false;
@@ -115,7 +115,7 @@ SecureDht::secureType(ValueType&& type)
         return type.storePolicy(id, v, nid, a, al);
     };
     type.editPolicy = [this,type](InfoHash id, const std::shared_ptr<Value>& o, std::shared_ptr<Value>& n, InfoHash nid, const sockaddr* a, socklen_t al) {
-        if (!o->isSigned() || o->isEncrypted())
+        if (!o->isSigned())
             return type.editPolicy(id, o, n, nid, a, al);
         if (o->owner != n->owner) {
             DHT_WARN("Edition forbidden: owner changed.");

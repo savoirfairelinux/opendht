@@ -283,7 +283,7 @@ struct Value
         return not cypher.empty();
     }
     bool isSigned() const {
-        return isEncrypted() or not signature.empty();
+        return not signature.empty();
     }
 
     Value() {}

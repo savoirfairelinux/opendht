@@ -38,14 +38,11 @@ namespace dht {
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     s << "Value[id:" << std::hex << v.id << std::dec << " ";
-    if (v.isSigned())
-        s << "signed (v" << v.seq << ") ";
     if (v.isEncrypted())
         s << "encrypted ";
     else if (v.isSigned()) {
-        if (v.recipient == InfoHash())
-            s << "signed (v" << v.seq << ") ";
-        else
+        s << "signed (v" << v.seq << ") ";
+        if (v.recipient != InfoHash())
             s << "decrypted ";
     }
     if (not v.isEncrypted()) {
