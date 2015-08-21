@@ -45,7 +45,7 @@ void print_usage() {
 }
 
 void print_id_req() {
-    std::cout << "An identity is required to perform this operation (run with -i)" << std::cout;
+    std::cout << "An identity is required to perform this operation (run with -i)" << std::endl;
 }
 
 void print_node_info(const DhtRunner& dht, const dht_params& params) {
