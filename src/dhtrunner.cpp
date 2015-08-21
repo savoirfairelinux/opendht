@@ -209,7 +209,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
         }
     }
 
-#if 1
+#if 0
     if (sin6) {
         s6 = socket(PF_INET6, SOCK_DGRAM, 0);
         if(s6 >= 0) {
