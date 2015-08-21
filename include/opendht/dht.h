@@ -240,13 +240,13 @@ public:
      * @param f a filter function used to prefilter values.
      */
     void get(const InfoHash& key, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter());
-    void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
+    void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
         get(key, cb, bindDoneCb(donecb), f);
     }
     void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter()) {
         get(key, bindGetCb(cb), donecb, f);
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb=nullptr, Value::Filter f = Value::AllFilter()) {
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
         get(key, bindGetCb(cb), bindDoneCb(donecb), f);
     }
 

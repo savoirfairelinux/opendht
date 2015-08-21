@@ -2531,6 +2531,10 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
     if (now >= confirm_nodes_time) {
         bool soon = false;
 
+        if (searches.empty()) {
+            get(myid, GetCallbackSimple{});
+        }
+
         soon |= bucketMaintenance(buckets);
         soon |= bucketMaintenance(buckets6);
 
