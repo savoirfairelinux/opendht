@@ -145,7 +145,7 @@ const Dht::TransPrefix Dht::TransPrefix::GET_VALUES  = {"gt"};
 const Dht::TransPrefix Dht::TransPrefix::ANNOUNCE_VALUES  = {"pt"};
 const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"lt"};
 
-const std::string my_v = "RNG";
+const std::string Dht::my_v = "RNG";
 
 static constexpr InfoHash zeroes {};
 static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
@@ -2677,12 +2677,6 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const sockaddr *sa, socklen_t)
     pk.pack_bin_body((char*)addr_ptr, addr_len);
 }
 
-void
-insertV(msgpack::packer<msgpack::sbuffer>& pk)
-{
-    pk.pack("v"); pk.pack(my_v);
-}
-
 int
 Dht::send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen)
 {
@@ -2721,7 +2715,7 @@ Dht::sendPing(const sockaddr *sa, socklen_t salen, TransId tid)
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -2740,7 +2734,7 @@ Dht::sendPong(const sockaddr *sa, socklen_t salen, TransId tid)
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -2767,7 +2761,7 @@ Dht::sendFindNode(const sockaddr *sa, socklen_t salen, TransId tid,
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -2820,7 +2814,7 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -2948,7 +2942,7 @@ Dht::sendGetValues(const sockaddr *sa, socklen_t salen,
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -2970,7 +2964,7 @@ Dht::sendListen(const sockaddr* sa, socklen_t salen, TransId tid,
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -2989,7 +2983,7 @@ Dht::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid)
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -3013,7 +3007,7 @@ Dht::sendAnnounceValue(const sockaddr *sa, socklen_t salen, TransId tid,
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -3033,7 +3027,7 @@ Dht::sendValueAnnounced(const sockaddr *sa, socklen_t salen, TransId tid, Value:
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -3052,13 +3046,13 @@ Dht::sendError(const sockaddr *sa, socklen_t salen, TransId tid, uint16_t code, 
 
     if (include_id) {
         pk.pack(std::string("r")); pk.pack_map(1);
-        pk.pack(std::string("id")); pk.pack(myid);
+          pk.pack(std::string("id")); pk.pack(myid);
     }
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("e"));
-    pk.pack(std::string("v")); pk.pack(std::string("RNG1"));
+    pk.pack(std::string("v")); pk.pack(my_v);
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
