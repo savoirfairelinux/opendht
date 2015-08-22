@@ -37,8 +37,6 @@ namespace dht {
 namespace crypto {
 
 random_device::random_device() :
-   has_rdrand(hasRdrand()),
-   has_rdseed(hasRdseed()),
    gen(std::chrono::system_clock::now().time_since_epoch().count())
 {}
 
@@ -47,9 +45,9 @@ random_device::operator()()
 {
     result_type prand = dis(gen);
     result_type hwrand;
-    if (has_rdseed and rdseed(&hwrand))
+    if (hasRdseed() and rdseed(&hwrand))
         prand ^= hwrand;
-    else if (has_rdrand and rdrand(&hwrand))
+    else if (hasRdrand() and rdrand(&hwrand))
         prand ^= hwrand;
     return prand;
 }
@@ -78,7 +76,7 @@ random_device::hasIntelCpu()
 }
 
 bool
-random_device::hasRdrand()
+random_device::_hasRdrand()
 {
     if (!hasIntelCpu())
         return false;
@@ -92,7 +90,7 @@ random_device::hasRdrand()
 }
 
 bool
-random_device::hasRdseed()
+random_device::_hasRdseed()
 {
     if (!hasIntelCpu())
         return false;

@@ -68,7 +68,7 @@ public:
     }
 
     double entropy() const {
-        if (has_rdrand or has_rdseed)
+        if (hasRdrand() or hasRdseed())
             return 1.;
         return 0.;
     }
@@ -76,10 +76,20 @@ public:
 private:
     random_device& operator=(random_device&) = delete;
 
-    const bool has_rdrand;
-    const bool has_rdseed;
     pseudo_engine gen;
     std::uniform_int_distribution<result_type> dis {};
+
+    static bool hasIntelCpu();
+    static bool hasRdrand() {
+        static const bool hasrdrand = _hasRdrand();
+        return hasrdrand;
+    }
+    static bool hasRdseed() {
+        static const bool hasrdseed = _hasRdseed();
+        return hasrdseed;
+    }
+    static bool _hasRdrand();
+    static bool _hasRdseed();
 
     struct CPUIDinfo {
         unsigned int EAX;
@@ -88,9 +98,6 @@ private:
         unsigned int EDX;
         void get(const unsigned int func, const unsigned int subfunc);
     };
-    static bool hasIntelCpu();
-    static bool hasRdrand();
-    static bool hasRdseed();
     bool rdrandStep(result_type* r);
     bool rdrand(result_type* r);
     bool rdseedStep(result_type* r);
