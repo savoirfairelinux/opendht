@@ -45,6 +45,7 @@ cdef extern from "opendht/value.h" namespace "dht":
         Value(vector[uint8_t]) except +
         Value(const uint8_t* dat_ptr, size_t dat_len) except +
         string toString() const
+        vector[uint8_t] data
 
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity

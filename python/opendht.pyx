@@ -30,6 +30,7 @@
 from libcpp.map cimport map as map
 from libcpp cimport bool
 from libcpp.utility cimport pair
+from libcpp.string cimport string
 
 from cython.parallel import parallel, prange
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
@@ -117,6 +118,11 @@ cdef class Value(object):
         self._value.reset(new cpp.Value(val, len(val)))
     def __str__(self):
         return self._value.get().toString().decode()
+    property data:
+        def __get__(self):
+            string(<char*>self._value.get().data.data(), self._value.get().data.size())
+        def __set__(self, bytes value):
+            self._value.get().data = value
 
 cdef class NodeSetIter(object):
     cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]]* _nodes
