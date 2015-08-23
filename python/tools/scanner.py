@@ -20,9 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import time, sys
+import time, sys, os
 from pprint import pprint
 from math import cos, sin, pi
+from urllib import request
+import gzip
 
 sys.path.append('..')
 from opendht import *
@@ -69,6 +71,18 @@ exitax = plt.axes([0.92, 0.95, 0.07, 0.04])
 exitbtn = Button(exitax, 'Exit')
 reloadax = plt.axes([0.92, 0.90, 0.07, 0.04])
 button = Button(reloadax, 'Reload')
+
+def check_dl(fname, url):
+    if os.path.isfile(fname):
+        return
+    print('downloading', url)
+    ghandle = gzip.GzipFile(fileobj=request.urlopen(url))
+    with open(fname, 'wb') as out:
+        for line in ghandle:
+            out.write(line)
+
+check_dl("GeoLiteCity.dat", "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz")
+check_dl("GeoLiteCityv6.dat", "http://geolite.maxmind.com/download/geoip/database/GeoLiteCityv6-beta/GeoLiteCityv6.dat.gz")
 
 gi = GeoIP.open("GeoLiteCity.dat", GeoIP.GEOIP_INDEX_CACHE | GeoIP.GEOIP_CHECK_CACHE)
 gi6 = GeoIP.open("GeoLiteCityv6.dat", GeoIP.GEOIP_INDEX_CACHE | GeoIP.GEOIP_CHECK_CACHE)
