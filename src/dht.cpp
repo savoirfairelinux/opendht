@@ -3185,10 +3185,10 @@ Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
     if (auto rv = findMapValue(msg, "v"))
         ua = rv->as<std::string>();
 
-    if (r)
-        type = MessageType::Reply;
-    else if (e)
+    if (e)
         type = MessageType::Error;
+    else if (r)
+        type = MessageType::Reply;
     else if (y and y->as<std::string>() != "q")
         throw msgpack::type_error();
     else if (query == "ping")
