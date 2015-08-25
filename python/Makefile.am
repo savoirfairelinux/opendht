@@ -10,4 +10,8 @@ all-local: pybuild.stamp
 clean-local:
 	rm -rf $(builddir)/build $(builddir)/*.so
 
+install:
+	$(PYTHON) setup.py install
+	rm -rf $(builddir)/build
+
 endif
