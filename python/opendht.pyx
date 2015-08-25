@@ -120,7 +120,7 @@ cdef class Value(object):
         return self._value.get().toString().decode()
     property data:
         def __get__(self):
-            string(<char*>self._value.get().data.data(), self._value.get().data.size())
+            return string(<char*>self._value.get().data.data(), self._value.get().data.size())
         def __set__(self, bytes value):
             self._value.get().data = value
 
