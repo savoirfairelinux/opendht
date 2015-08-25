@@ -18,37 +18,37 @@ find_package (GnuTLS 3.1 REQUIRED)
 find_package (Msgpack 1.1 REQUIRED)
 
 list (APPEND opendht_SOURCES
-    src/infohash.cpp
-    src/crypto.cpp
-    src/default_types.cpp
-    src/value.cpp
-    src/dht.cpp
-    src/securedht.cpp
-    src/dhtrunner.cpp
+	src/infohash.cpp
+	src/crypto.cpp
+	src/default_types.cpp
+	src/value.cpp
+	src/dht.cpp
+	src/securedht.cpp
+	src/dhtrunner.cpp
 )
 
 list (APPEND opendht_HEADERS
-    include/opendht/rng.h
-    include/opendht/crypto.h
-    include/opendht/infohash.h
-    include/opendht/default_types.h
-    include/opendht/value.h
-    include/opendht/dht.h
-    include/opendht/securedht.h
-    include/opendht.h
+	include/opendht/rng.h
+	include/opendht/crypto.h
+	include/opendht/infohash.h
+	include/opendht/default_types.h
+	include/opendht/value.h
+	include/opendht/dht.h
+	include/opendht/securedht.h
+	include/opendht.h
 )
 
 configure_file (
-    opendht.pc.in
-    opendht.pc
-    @ONLY
+	opendht.pc.in
+	opendht.pc
+	@ONLY
 )
 
 include_directories (
- 	./
-    include/
-    include/opendht/
-    ${CMAKE_CURRENT_BINARY_DIR}/include/
+	./
+	include/
+	include/opendht/
+	${CMAKE_CURRENT_BINARY_DIR}/include/
 )
 
 if (OPENDHT_DEBUG)
@@ -58,15 +58,15 @@ else ()
 endif ()
 
 add_library (opendht SHARED
-    ${opendht_SOURCES}
-    ${opendht_HEADERS}
+	${opendht_SOURCES}
+	${opendht_HEADERS}
 )
 set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
 #set_target_properties (opendht PROPERTIES SOVERSION 1 VERSION 1.0.0)
 
 add_library (opendht-static STATIC
-    ${opendht_SOURCES}
-    ${opendht_HEADERS}
+	${opendht_SOURCES}
+	${opendht_HEADERS}
 )
 set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
 
