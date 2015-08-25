@@ -6,3 +6,9 @@ add_executable (dhtchat dhtchat.cpp tools_common.h)
 target_link_libraries (dhtnode LINK_PUBLIC opendht gnutls)
 target_link_libraries (dhtscanner LINK_PUBLIC opendht gnutls)
 target_link_libraries (dhtchat LINK_PUBLIC opendht gnutls)
+
+if (NOT DEFINED CMAKE_INSTALL_BINDIR)
+	set(CMAKE_INSTALL_BINDIR bin)
+endif ()
+
+install (TARGETS dhtnode dhtscanner dhtchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
