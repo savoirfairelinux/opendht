@@ -118,6 +118,18 @@ cdef class Value(object):
         self._value.reset(new cpp.Value(val, len(val)))
     def __str__(self):
         return self._value.get().toString().decode()
+    property owner:
+        def __get__(self):
+            h = InfoHash()
+            h._infohash = self._value.get().owner.getId()
+            return h
+    property recipient:
+        def __get__(self):
+            h = InfoHash()
+            h._infohash = self._value.get().recipient
+            return h
+        def __set__(self, InfoHash h):
+            self._value.get().recipient = h._infohash
     property data:
         def __get__(self):
             return string(<char*>self._value.get().data.data(), self._value.get().data.size())

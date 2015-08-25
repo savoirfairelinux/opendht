@@ -39,14 +39,6 @@ cdef extern from "opendht/infohash.h" namespace "dht":
         @staticmethod
         InfoHash getRandom()
 
-cdef extern from "opendht/value.h" namespace "dht":
-    cdef cppclass Value:
-        Value() except +
-        Value(vector[uint8_t]) except +
-        Value(const uint8_t* dat_ptr, size_t dat_len) except +
-        string toString() const
-        vector[uint8_t] data
-
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
     cdef Identity generateIdentity(string name, Identity ca, unsigned bits)
@@ -62,6 +54,18 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     cdef cppclass Certificate:
         Certificate()
         InfoHash getId() const
+
+cdef extern from "opendht/value.h" namespace "dht":
+    cdef cppclass Value:
+        Value() except +
+        Value(vector[uint8_t]) except +
+        Value(const uint8_t* dat_ptr, size_t dat_len) except +
+        string toString() const
+        uint64_t id
+        PublicKey owner
+        InfoHash recipient
+        vector[uint8_t] data
+        string user_type
 
 cdef extern from "opendht/dht.h" namespace "dht":
     cdef cppclass Node:
