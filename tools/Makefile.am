@@ -1,4 +1,4 @@
-libexec_PROGRAMS = dhtnode dhtchat dhtscanner
+bin_PROGRAMS = dhtnode dhtchat dhtscanner
 
 AM_CPPFLAGS = -I../include
 
