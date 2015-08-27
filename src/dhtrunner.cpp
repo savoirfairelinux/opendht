@@ -98,7 +98,7 @@ DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner:
             std::unique_lock<std::mutex> lk(dht_mtx);
             auto wakeup = loop_();
             cv.wait_until(lk, wakeup, [this]() {
-                if (not running) 
+                if (not running)
                     return true;
                 {
                     std::lock_guard<std::mutex> lck(sock_mtx);
@@ -272,7 +272,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error int DHT networking thread: " << e.what() << std::endl;
+            std::cerr << "Error in DHT networking thread: " << e.what() << std::endl;
         }
         if (s4 >= 0)
             close(s4);

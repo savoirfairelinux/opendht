@@ -89,7 +89,7 @@ struct Node {
 
     void update(const sockaddr* sa, socklen_t salen);
 
-    /** To be called when a message was sent to the noe */
+    /** To be called when a message was sent to the node */
     void requested(time_point now);
 
     /** To be called when a message was received from the node.
@@ -298,12 +298,12 @@ public:
 
     /**
      * Stop any put/announce operation at the given location,
-     * for values with the given id.
+     * for the value with the given id.
      */
     bool cancelPut(const InfoHash&, const Value::Id&);
 
     /**
-     * Listen for any changes involving a specified hash.
+     * Listen on the network for any changes involving a specified hash.
      * The node will register to receive updates from relevent nodes when
      * new values are added or removed.
      *
@@ -318,7 +318,7 @@ public:
 
     /**
      * Inform the DHT of lower-layer connectivity changes.
-     * This will cause the DHT to assume an IP address change.
+     * This will cause the DHT to assume a public IP address change.
      * The DHT will recontact neighbor nodes, re-register for listen ops etc.
      */
     void connectivityChanged();
@@ -492,7 +492,7 @@ private:
             if (ack == acked.end())
                 return time_point::min();
             return std::max(
-                ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN, 
+                ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN,
                 ack->second.request_time + Node::MAX_RESPONSE_TIME
             );
         }
@@ -516,7 +516,7 @@ private:
 
         /**
          * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
-         * 
+         *
          */
         bool candidate {false};
 

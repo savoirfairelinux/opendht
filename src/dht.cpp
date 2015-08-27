@@ -561,7 +561,7 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
     return inserted;
 }
 
-void 
+void
 Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
 {
     auto it = std::find_if(reported_addr.begin(), reported_addr.end(), [=](const ReportedAddr& addr){
@@ -849,11 +849,8 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
     n->getStatus.request_time = now;
     pinged(*n->node);
     if (n->node->pinged > 1 and not n->candidate) {
-        //std::cout << "New policy: node " << n->node->id << " now a candidate" << std::endl;
         n->candidate = true;
     }
-
-    //std::cout << "Sending GET to " << n->node->id << " for IPv" << (sr.af==AF_INET?'4':'6') << " search " << sr.id << " (now pinged " << n->node->pinged << ")" << std::endl;
 
     return n;
 }
@@ -1097,7 +1094,7 @@ Dht::Search::getUpdateTime(time_point now) const
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
         if (sn.getStatus.reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
-            // not isSynced 
+            // not isSynced
             ut = std::min(ut, std::max(
                 sn.getStatus.request_time + Node::MAX_RESPONSE_TIME,
                 get_step_time + SEARCH_GET_STEP));
@@ -1331,7 +1328,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         DHT_ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
         search_time = tm;
     }/* else {
-        DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)", 
+        DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)",
             tm.time_since_epoch().count(),
             print_dt(tm-clock::now()),
             print_dt(search_time-clock::now()));
@@ -2388,7 +2385,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     }
                 }
             }
-        } else if (msg.tid.matches(TransPrefix::LISTEN, &ttid)) { 
+        } else if (msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
             DHT_DEBUG("Got reply to listen.");
             Search *sr = findSearch(ttid, from->sa_family);
             if (!sr) {
@@ -2408,7 +2405,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else {
             DHT_WARN("Unexpected reply: ");
             DHT_WARN.logPrintable(buf, buflen);
-        } 
+        }
         break;
     case MessageType::Ping:
         newNode(msg.id, from, fromlen, 1);
