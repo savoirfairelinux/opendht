@@ -3226,34 +3226,4 @@ Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
         throw msgpack::type_error();
 }
 
-#ifdef HAVE_MEMMEM
-
-void *
-Dht::dht_memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen)
-{
-    return memmem(haystack, haystacklen, needle, needlelen);
-}
-
-#else
-
-void *
-Dht::dht_memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen)
-{
-    const char *h = (const char *)haystack;
-    const char *n = (const char *)needle;
-    size_t i;
-
-    /* size_t is unsigned */
-    if (needlelen > haystacklen)
-        return nullptr;
-
-    for (i = 0; i <= haystacklen - needlelen; i++) {
-        if (memcmp(h + i, n, needlelen) == 0)
-            return (void*)(h + i);
-    }
-    return nullptr;
-}
-
-#endif
-
 }

@@ -895,9 +895,6 @@ private:
 
     bool rateLimit();
     bool neighbourhoodMaintenance(RoutingTable&);
-
-    static void *dht_memmem(const void *haystack, size_t haystacklen, const void *needle, size_t needlelen);
-
 };
 
 }
