@@ -80,7 +80,15 @@ AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT 
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
 
 AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])])
-AM_COND_IF([USE_CYTHON], [AC_CONFIG_FILES([python/Makefile])])
+
+dnl Configure setup.py if we build the python module
+AM_COND_IF([USE_CYTHON], [
+    AC_SUBST(CURRENT_SOURCE_DIR, ".")
+    AC_SUBST(CURRENT_BINARY_DIR, ".")
+    AC_SUBST(PROJECT_SOURCE_DIR, "..")
+    AC_SUBST(PROJECT_BINARY_DIR, "../src/.libs")
+    AC_CONFIG_FILES([python/Makefile python/setup.py])
+])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile

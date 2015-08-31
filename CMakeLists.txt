@@ -1,5 +1,9 @@
 cmake_minimum_required (VERSION 2.8.6)
 project (opendht)
+set (opendht_VERSION_MAJOR 0)
+set (opendht_VERSION_MINOR 1)
+set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
+set (PACKAGE_VERSION ${opendht_VERSION})
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
@@ -76,6 +80,10 @@ endif ()
 
 if (OPENDHT_TOOLS)
 	add_subdirectory(tools)
+endif ()
+
+if (OPENDHT_PYTHON)
+	add_subdirectory(python)
 endif ()
 
 install (TARGETS opendht opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR})
