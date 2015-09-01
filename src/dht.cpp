@@ -970,7 +970,7 @@ Dht::searchStep(Search& sr)
         if (i > 0)
             sr.get_step_time = now;
         else if ((size_t)std::count_if(sr.nodes.begin(), sr.nodes.end(), [&](const SearchNode& sn) {
-                    return sn.node->isExpired(now);
+                    return sn.candidate or sn.node->isExpired(now);
                 }) == sr.nodes.size())
         {
             DHT_ERROR("[search %s IPv%c] expired", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
