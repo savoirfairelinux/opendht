@@ -145,7 +145,7 @@ const Dht::TransPrefix Dht::TransPrefix::GET_VALUES  = {"gt"};
 const Dht::TransPrefix Dht::TransPrefix::ANNOUNCE_VALUES  = {"pt"};
 const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"lt"};
 
-const std::string Dht::my_v = "RNG";
+const std::string Dht::my_v = "RNG1";
 
 static constexpr InfoHash zeroes {};
 static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
