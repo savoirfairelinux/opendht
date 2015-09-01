@@ -1770,7 +1770,7 @@ Dht::connectivityChanged()
 void
 Dht::rotateSecrets()
 {
-    uniform_duration_distribution<> time_dist(std::chrono::minutes(2), std::chrono::minutes(3));
+    uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
     rotate_secrets_time = now + time_dist(rd);
 
     oldsecret = secret;
