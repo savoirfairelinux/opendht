@@ -194,6 +194,10 @@ public:
      */
     Status getStatus(sa_family_t af) const;
 
+    Status getStatus() const {
+        return std::max(getStatus(AF_INET), getStatus(AF_INET6));
+    }
+
     /**
      * Returns true if the node is running (have access to an open socket).
      *

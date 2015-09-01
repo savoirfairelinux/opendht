@@ -2531,7 +2531,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
     if (now >= confirm_nodes_time) {
         bool soon = false;
 
-        if (searches.empty()) {
+        if (searches.empty() and getStatus() != Status::Disconnected) {
             get(myid, GetCallbackSimple{});
         }
 
