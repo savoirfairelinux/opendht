@@ -38,6 +38,8 @@ from cpython cimport ref
 
 cimport opendht_cpp as cpp
 
+import threading
+
 cdef inline bool get_callback(cpp.shared_ptr[cpp.Value] value, void *user_data) with gil:
     cb = (<object>user_data)['get']
     pv = Value()
@@ -267,10 +269,26 @@ cdef class DhtRunner(_WithID):
         return self.thisptr.getRoutingTablesLog(af).decode()
     def getSearchesLog(self, cpp.sa_family_t af):
         return self.thisptr.getSearchesLog(af).decode()
-    def get(self, InfoHash key, get_cb, done_cb):
-        cb_obj = {'get':get_cb, 'done':done_cb}
-        ref.Py_INCREF(cb_obj)
-        self.thisptr.get(key._infohash, cpp.Dht.bindGetCb(get_callback, <void*>cb_obj), cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
+    def get(self, InfoHash key, get_cb=None, done_cb=None):
+        if get_cb:
+            cb_obj = {'get':get_cb, 'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.get(key._infohash, cpp.Dht.bindGetCb(get_callback, <void*>cb_obj), cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
+        else:
+            lock = threading.Condition()
+            pending = 0
+            def tmp_done(ok, nodes):
+                nonlocal pending, lock
+                with lock:
+                    pending -= 1
+                    lock.notify()
+            res = []
+            with lock:
+                pending += 1
+                self.get(key, get_cb=lambda v: res.append(v), done_cb=tmp_done)
+                while pending > 0:
+                    lock.wait()
+            return res
     def put(self, InfoHash key, Value val, done_cb=None):
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
