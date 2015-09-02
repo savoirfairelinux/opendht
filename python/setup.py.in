@@ -21,13 +21,14 @@
 #    along with OpenDHT Python Wrapper. If not, see <http://www.gnu.org/licenses/>.
 #
 
-from distutils.core import setup, Extension
+from setuptools import setup, Extension
 from Cython.Build import cythonize
 from Cython.Distutils import build_ext
 
 setup(name="opendht",
       version="@PACKAGE_VERSION@",
       description="Python wrapper for opendht",
+      url='https://github.com/savoirfairelinux/opendht',
       author="Adrien Béraud, Guillaume Roguez",
       license="GPLv3",
       classifiers=[
