@@ -11,7 +11,7 @@ clean-local:
 	rm -rf $(builddir)/build $(builddir)/*.so
 
 install:
-	$(PYTHON) setup.py install --prefix=$(PYTHON_PREFIX)
+	$(PYTHON) setup.py install
 	rm -rf $(builddir)/build
 
 endif
