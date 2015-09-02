@@ -12,7 +12,12 @@ cdef extern from "<memory>" namespace "std" nogil:
         shared_ptr() except +
         T* get()
         T operator*()
-        void reset(T*);
+        void reset(T*)
+
+cdef extern from "<functional>" namespace "std" nogil:
+    cdef cppclass hash[T]:
+        hash() except +
+        size_t get "operator()"(T)
 
 cdef extern from "<future>" namespace "std" nogil:
     cdef cppclass shared_future[T]:
@@ -38,6 +43,8 @@ cdef extern from "opendht/infohash.h" namespace "dht":
         InfoHash get(string s)
         @staticmethod
         InfoHash getRandom()
+        bool operator==(InfoHash)
+        bool operator<(InfoHash)
 
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity

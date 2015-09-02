@@ -66,15 +66,28 @@ cdef class InfoHash(_WithID):
     cdef cpp.InfoHash _infohash
     def __init__(self, bytes str=b''):
         self._infohash = cpp.InfoHash(str)
-    def getBit(self, bit):
+    def __bool__(InfoHash self):
+        return not (self._infohash == cpp.InfoHash())
+    def __richcmp__(InfoHash self, InfoHash other, int op):
+        if op == 0:
+            return self._infohash < other._infohash
+        if op == 1:
+            return self._infohash < other._infohash or self._infohash == other._infohash
+        if op == 2:
+            return self._infohash == other._infohash
+        return NotImplemented
+    def __hash__(self):
+        cdef cpp.hash[cpp.InfoHash] hash_fn
+        return hash_fn.get(self._infohash)
+    def getBit(InfoHash self, bit):
         return self._infohash.getBit(bit)
-    def setBit(self, bit, b):
+    def setBit(InfoHash self, bit, b):
         self._infohash.setBit(bit, b)
-    def getId(self):
+    def getId(InfoHash self):
         return self
-    def toString(self):
+    def toString(InfoHash self):
         return self._infohash.toString()
-    def toFloat(self):
+    def toFloat(InfoHash self):
         return self._infohash.toFloat()
     @staticmethod
     def commonBits(InfoHash a, InfoHash b):
