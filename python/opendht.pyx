@@ -277,15 +277,19 @@ cdef class DhtRunner(_WithID):
         else:
             lock = threading.Condition()
             pending = 0
+            res = []
+            def tmp_get(v):
+                nonlocal res
+                res.append(v)
+                return True
             def tmp_done(ok, nodes):
                 nonlocal pending, lock
                 with lock:
                     pending -= 1
                     lock.notify()
-            res = []
             with lock:
                 pending += 1
-                self.get(key, get_cb=lambda v: res.append(v), done_cb=tmp_done)
+                self.get(key, get_cb=tmp_get, done_cb=tmp_done)
                 while pending > 0:
                     lock.wait()
             return res
