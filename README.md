@@ -15,6 +15,7 @@ See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
 Examples
 -
+### C++ example
 The `tools` directory includes simple example programs :
 * `dhtnode`, a command line tool, mostly used for debuging, allowing to perform operations supported by the library (get, put etc.) with text values.
 * `dhtchat`, a very simple IM client working over the dht.
@@ -58,6 +59,24 @@ int main()
     node.join();
     return 0;
 }
+```
+### Python 3 example
+```python
+import opendht as dht
+
+r = dht.DhtRunner()
+r.run()
+
+# Join the network through any running node,
+# here using a known bootstrap node.
+r.bootstrap("bootstrap.ring.cx", "4222")
+
+r.put(dht.InfoHash.get("unique_key"), dht.Value(b'some binary data'))
+
+# blocking call (provide a get_cb and an optional done_cb argument to make the call non-blocking)
+results = r.get(dht.InfoHash.get("unique_key"))
+for r in results:
+    print(r)
 ```
 
 How-to build and install
