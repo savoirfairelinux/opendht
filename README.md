@@ -62,6 +62,8 @@ int main()
 
 How-to build and install
 -
+### Using autotools
+
 ```bash
 # clone the repo
 git clone https://github.com/savoirfairelinux/opendht.git
@@ -70,6 +72,19 @@ git clone https://github.com/savoirfairelinux/opendht.git
 cd opendht
 ./autogen.sh && ./configure
 make
+sudo make install
+```
+### Using cmake
+
+```bash
+# clone the repo
+git clone https://github.com/savoirfairelinux/opendht.git
+
+# build and install
+cd opendht
+mkdir build && cd build
+cmake -DOPENDHT_PYTHON=ON ..
+make -j
 sudo make install
 ```
 
