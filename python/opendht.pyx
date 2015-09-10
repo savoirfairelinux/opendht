@@ -269,7 +269,14 @@ cdef class DhtRunner(_WithID):
         return self.thisptr.getRoutingTablesLog(af).decode()
     def getSearchesLog(self, cpp.sa_family_t af):
         return self.thisptr.getSearchesLog(af).decode()
+
     def get(self, InfoHash key, get_cb=None, done_cb=None):
+        """Retreive values associated with a key on the DHT.
+
+        key -- the key for which to search
+        get_cb -- is set, makes the operation non-blocking. Called when a value is found on the DHT.
+        done_cb -- optional callback used when get_cb is set. Called when the operation is completed.
+        """
         if get_cb:
             cb_obj = {'get':get_cb, 'done':done_cb}
             ref.Py_INCREF(cb_obj)
@@ -294,6 +301,12 @@ cdef class DhtRunner(_WithID):
                     lock.wait()
             return res
     def put(self, InfoHash key, Value val, done_cb=None):
+        """Publish a new value on the DHT at key.
+
+        key -- the DHT key where to put the value
+        val -- the value to put on the DHT
+        done_cb -- optional callback called when the operation is completed.
+        """
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.put(key._infohash, val._value, cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
