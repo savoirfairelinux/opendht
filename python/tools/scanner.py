@@ -114,20 +114,23 @@ def step(cur_h, cur_depth):
 
 def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
     global done, all_nodes
-    if arc:
-        arc.remove()
-        del arc
-    for l in lines:
-        l.set_color('#444444')
-    snodes = NodeSet()
-    snodes.extend(nodes)
-    all_nodes.extend(nodes)
-    depth = min(6, InfoHash.commonBits(snodes.first(), snodes.last())+4)
-    if cur_depth < depth:
-        for b in range(cur_depth, depth):
-            new_h = InfoHash(cur_h.toString());
-            new_h.setBit(b, 1);
-            step(new_h, b+1);
+    if nodes:
+        if arc:
+            arc.remove()
+            del arc
+        for l in lines:
+            l.set_color('#444444')
+        snodes = NodeSet()
+        snodes.extend(nodes)
+        all_nodes.extend(nodes)
+        depth = min(6, InfoHash.commonBits(snodes.first(), snodes.last())+4)
+        if cur_depth < depth:
+            for b in range(cur_depth, depth):
+                new_h = InfoHash(cur_h.toString());
+                new_h.setBit(b, 1);
+                step(new_h, b+1);
+    else:
+        print("step done with no nodes", ok, cur_h.toString().decode())
     done -= 1
 
 run = True
