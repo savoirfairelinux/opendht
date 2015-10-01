@@ -32,8 +32,6 @@ extern "C" {
 #include <gnutls/gnutls.h>
 }
 
-#include <sys/time.h>
-
 #ifndef _WIN32
 #include <arpa/inet.h>
 #else
@@ -46,7 +44,6 @@ extern "C" {
 
 #include <unistd.h>
 #include <fcntl.h>
-#include <cstdarg>
 #include <cstring>
 
 #ifndef MSG_CONFIRM
