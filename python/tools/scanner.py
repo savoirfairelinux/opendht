@@ -114,10 +114,10 @@ def step(cur_h, cur_depth):
 
 def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
     global done, all_nodes
+    if arc:
+        arc.remove()
+        del arc
     if nodes:
-        if arc:
-            arc.remove()
-            del arc
         for l in lines:
             l.set_color('#444444')
         snodes = NodeSet()
@@ -140,11 +140,14 @@ def exitcb(arg):
 exitbtn.on_clicked(exitcb)
 
 def restart(arg):
-    global collection, all_lines, points
+    global collection, all_lines, all_nodes, points, done
+    if done:
+        return
     for l in all_lines:
         l.remove()
         del l
     all_lines = []
+    all_nodes = NodeSet()
     if collection:
         collection.remove()
         del collection
