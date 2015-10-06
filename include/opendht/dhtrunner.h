@@ -256,6 +256,12 @@ public:
         return dht_->getNodesStats(af, good_return, dubious_return, cached_return, incoming_return);
     }
 
+    std::vector<unsigned> getNodeMessageStats(bool in = false) const
+    {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        return dht_->getNodeMessageStats(in);
+    }
+
     std::string getStorageLog() const
     {
         std::lock_guard<std::mutex> lck(dht_mtx);

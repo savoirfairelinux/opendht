@@ -127,5 +127,6 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void put(InfoHash key, shared_ptr[Value] val, Dht.DoneCallback done_cb)
         ListenToken listen(InfoHash key, Dht.GetCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)
+        vector[unsigned] getNodeMessageStats(bool i)
 
 ctypedef DhtRunner.Config Config

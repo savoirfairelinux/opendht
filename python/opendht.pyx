@@ -269,6 +269,12 @@ cdef class DhtRunner(_WithID):
         return self.thisptr.getRoutingTablesLog(af).decode()
     def getSearchesLog(self, cpp.sa_family_t af):
         return self.thisptr.getSearchesLog(af).decode()
+    def getNodeMessageStats(self):
+        stats = []
+        cdef cpp.vector[unsigned] res = self.thisptr.getNodeMessageStats(False)
+        for n in res:
+            stats.append(n)
+        return stats
 
     def get(self, InfoHash key, get_cb=None, done_cb=None):
         """Retreive values associated with a key on the DHT.

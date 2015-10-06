@@ -339,6 +339,9 @@ public:
     std::string getSearchesLog(sa_family_t) const;
 
     void dumpTables() const;
+    std::vector<unsigned> getNodeMessageStats(bool in = false) const {
+        return {out.ping, out.find, out.get, out.listen, out.put};
+    }
 
     /* This must be provided by the user. */
     static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
@@ -895,6 +898,17 @@ private:
 
     bool rateLimit();
     bool neighbourhoodMaintenance(RoutingTable&);
+
+    struct MessageStats {
+        unsigned ping {0};
+        unsigned find {0};
+        unsigned get {0};
+        unsigned put {0};
+        unsigned listen {0};
+    };
+
+    MessageStats in {}, out {};
+
 };
 
 }
