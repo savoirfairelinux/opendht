@@ -71,7 +71,7 @@ set_nonblocking(int fd, int nonblocking)
     if (rc < 0)
         return false;
     rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
-    return !(rc < 0);
+    return rc >= 0;
 }
 
 #endif
