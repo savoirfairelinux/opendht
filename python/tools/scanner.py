@@ -175,7 +175,7 @@ def generate_set():
         if addr[0] == '[':
             addr = addr[1:-1]
             if addr in node_ipv6:
-                node_ipv6[addr][1] = 1
+                node_ipv6[addr][1] += 1
             else:
                 node_ipv6[addr] = [n, 1]
         else:
