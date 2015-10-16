@@ -724,11 +724,10 @@ generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_leng
 
     // TODO: compute the subject key using the recommended RFC method
     auto pk_id = shared_key->getPublicKey().getId();
+    const std::string& uid_str = pk_id.toString();
+
     gnutls_x509_crt_set_subject_key_id(cert, &pk_id, sizeof(pk_id));
-
     gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_X520_COMMON_NAME, 0, name.data(), name.length());
-
-    const std::string& uid_str = shared_key->getPublicKey().getId().toString();
     gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, uid_str.data(), uid_str.length());
 
     {
