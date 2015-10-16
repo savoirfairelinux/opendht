@@ -2795,6 +2795,14 @@ Dht::sendFindNode(const sockaddr *sa, socklen_t salen, TransId tid,
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
+void
+packToken(msgpack::packer<msgpack::sbuffer>& pk, Blob token)
+{
+    pk.pack_array(token.size());
+    for (uint8_t b : token)
+        pk.pack(b);
+}
+
 int
 Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
                  const uint8_t *nodes, unsigned nodes_len,
@@ -2820,7 +2828,7 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
         pk.pack_bin_body((const char*)nodes6, nodes6_len);
     }
     if (not token.empty()) {
-        pk.pack(std::string("token")); pk.pack(token);
+        pk.pack(std::string("token")); packToken(pk, token);
     }
     if (not st.empty()) {
         // We treat the storage as a circular list, and serve a randomly
@@ -2989,7 +2997,7 @@ Dht::sendListen(const sockaddr* sa, socklen_t salen, TransId tid,
     pk.pack(std::string("a")); pk.pack_map(3);
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(infohash);
-      pk.pack(std::string("token")); pk.pack(token);
+      pk.pack(std::string("token")); packToken(pk, token);
 
     pk.pack(std::string("q")); pk.pack(std::string("listen"));
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
@@ -3034,7 +3042,7 @@ Dht::sendAnnounceValue(const sockaddr *sa, socklen_t salen, TransId tid,
       pk.pack(std::string("id"));     pk.pack(myid);
       pk.pack(std::string("h"));      pk.pack(infohash);
       pk.pack(std::string("values")); pk.pack_array(1); pk.pack(value);
-      pk.pack(std::string("token"));  pk.pack(token);
+      pk.pack(std::string("token"));  packToken(pk, token);
 
     pk.pack(std::string("q")); pk.pack(std::string("put"));
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
