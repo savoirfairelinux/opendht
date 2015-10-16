@@ -2403,16 +2403,19 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         break;
     case MessageType::Ping:
+        in_stats.ping++;
         newNode(msg.id, from, fromlen, 1);
         //DHT_DEBUG("Sending pong.");
         sendPong(from, fromlen, msg.tid);
         break;
     case MessageType::FindNode:
+        in_stats.find++;
         newNode(msg.id, from, fromlen, 1);
         DHT_DEBUG("[node %s %s] got 'find' request (%d).", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
         sendClosestNodes(from, fromlen, msg.tid, msg.target, msg.want);
         break;
     case MessageType::GetValues:
+        in_stats.get++;
         DHT_DEBUG("[node %s %s] got 'get' request for %s.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
         newNode(msg.id, from, fromlen, 1);
         if (msg.info_hash == zeroes) {
@@ -2432,6 +2435,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         break;
     case MessageType::AnnounceValue:
+        in_stats.put++;
         DHT_DEBUG("[node %s %s] got 'put' request for %s.",
             msg.id.toString().c_str(), print_addr(from, fromlen).c_str(),
             msg.info_hash.toString().c_str());
@@ -2486,6 +2490,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         break;
     case MessageType::Listen:
+        in_stats.listen++;
         DHT_DEBUG("[node %s %s] got 'listen' request for %s.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
         if (msg.info_hash == zeroes) {
             DHT_WARN("Listen with no info_hash.");
@@ -2737,7 +2742,7 @@ Dht::sendPing(const sockaddr *sa, socklen_t salen, TransId tid)
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
 
-    out.ping++;
+    out_stats.ping++;
 
     return send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -2785,7 +2790,7 @@ Dht::sendFindNode(const sockaddr *sa, socklen_t salen, TransId tid,
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
 
-    out.find++;
+    out_stats.find++;
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -2968,7 +2973,7 @@ Dht::sendGetValues(const sockaddr *sa, socklen_t salen,
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
 
-    out.get++;
+    out_stats.get++;
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -2992,7 +2997,7 @@ Dht::sendListen(const sockaddr* sa, socklen_t salen, TransId tid,
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
 
-    out.listen++;
+    out_stats.listen++;
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
@@ -3037,7 +3042,7 @@ Dht::sendAnnounceValue(const sockaddr *sa, socklen_t salen, TransId tid,
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
 
-    out.put++;
+    out_stats.put++;
 
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }

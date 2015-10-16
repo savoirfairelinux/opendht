@@ -340,7 +340,8 @@ public:
 
     void dumpTables() const;
     std::vector<unsigned> getNodeMessageStats(bool in = false) const {
-        return {out.ping, out.find, out.get, out.listen, out.put};
+        return in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
+                  : std::vector<unsigned>{out_stats.ping, out_stats.find, out_stats.get, out_stats.listen, out_stats.put};
     }
 
     /* This must be provided by the user. */
@@ -907,7 +908,7 @@ private:
         unsigned listen {0};
     };
 
-    MessageStats in {}, out {};
+    MessageStats in_stats {}, out_stats {};
 
 };
 
