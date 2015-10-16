@@ -712,7 +712,7 @@ generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_leng
     auto shared_crt = std::make_shared<Certificate>(cert);
 
     gnutls_x509_crt_set_activation_time(cert, time(NULL));
-    gnutls_x509_crt_set_expiration_time(cert, time(NULL) + (700 * 24 * 60 * 60));
+    gnutls_x509_crt_set_expiration_time(cert, time(NULL) + (5 * 365 * 24 * 60 * 60));
     if (gnutls_x509_crt_set_key(cert, shared_key->x509_key) != GNUTLS_E_SUCCESS) {
         std::cerr << "Error when setting certificate key" << std::endl;
         return {};
