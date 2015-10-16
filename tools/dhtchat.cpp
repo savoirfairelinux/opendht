@@ -30,6 +30,8 @@
  */
 
 #include "tools_common.h"
+#include <opendht/rng.h>
+
 extern "C" {
 #include <gnutls/gnutls.h>
 }
@@ -37,8 +39,10 @@ extern "C" {
 
 using namespace dht;
 
-const std::string printTime(const std::chrono::system_clock::time_point& t) {
-    auto now = std::chrono::system_clock::to_time_t(t);
+static std::mt19937_64 rd {dht::crypto::random_device{}()};
+static std::uniform_int_distribution<dht::Value::Id> rand_id;
+
+const std::string printTime(const std::time_t& now) {
     struct tm tstruct = *localtime(&now);
     char buf[80];
     strftime(buf, sizeof(buf), "%Y-%m-%d %X", &tstruct);
@@ -82,11 +86,12 @@ main(int argc, char **argv)
 
         std::istringstream iss(line);
         std::string op, idstr;
-        iss >> op >> idstr;
+        iss >> op;
         if (not connected) {
             if (op  == "x" || op == "q" || op == "exit" || op == "quit")
                 break;
             else if (op == "c") {
+                iss >> idstr;
                 room = InfoHash(idstr);
                 if (room == INVALID_ID) {
                     room = InfoHash::get(idstr);
@@ -95,9 +100,9 @@ main(int argc, char **argv)
 
                 dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
                     if (msg.from != myid)
-                        std::cout << msg.from.toString() << " at " << printTime(msg.sent)
-                                  << " (took " << print_dt(std::chrono::system_clock::now() - msg.sent)
-                                  << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.im_message << std::endl;
+                        std::cout << msg.from.toString() << " at " << printTime(msg.date)
+                                  << " (took " << print_dt(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
+                                  << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.id << " - " << msg.msg << std::endl;
                     return true;
                 });
                 connected = true;
@@ -105,19 +110,21 @@ main(int argc, char **argv)
                 std::cout << "Unknown command. Type 'c {hash}' to join a channel" << std::endl << std::endl;
             }
         } else {
+            auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
             if (op == "d") {
                 connected = false;
                 continue;
             } else if (op == "e") {
+                iss >> idstr;
                 std::getline(iss, line);
-                dht.putEncrypted(room, InfoHash(idstr), dht::ImMessage(std::move(line)), [](bool ok) {
+                dht.putEncrypted(room, InfoHash(idstr), dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
                     //dht.cancelPut(room, id);
                     if (not ok)
                         std::cout << "Message publishing failed !" << std::endl;
                 });
             } else {
                 std::getline(iss, line);
-                dht.putSigned(room, dht::ImMessage(std::move(line)), [](bool ok) {
+                dht.putSigned(room, dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
                     //dht.cancelPut(room, id);
                     if (not ok)
                         std::cout << "Message publishing failed !" << std::endl;

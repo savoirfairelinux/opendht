@@ -96,8 +96,8 @@ public:
 struct ImMessage : public SignedValue<ImMessage>
 {
     ImMessage() {}
-    ImMessage(std::string&& msg)
-      : sent(std::chrono::system_clock::now()), im_message(std::move(msg)) {}
+    ImMessage(dht::Value::Id id, std::string&& m, long d = 0)
+      : id(id), msg(std::move(m)), date(d) {}
 
     static const ValueType TYPE;
     virtual const ValueType& getType() const override {
@@ -112,9 +112,10 @@ struct ImMessage : public SignedValue<ImMessage>
     }
 
     dht::InfoHash to;
-    std::chrono::system_clock::time_point sent;
-    std::string im_message;
-    MSGPACK_DEFINE(im_message);
+    dht::Value::Id id;
+    std::string msg;
+    long date;
+    MSGPACK_DEFINE_MAP(id, msg, date);
 };
 
 struct TrustRequest : public EncryptedValue<TrustRequest>
