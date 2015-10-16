@@ -37,13 +37,13 @@ namespace dht {
 struct DhtMessage : public Value::Serializable<DhtMessage>
 {
     DhtMessage(std::string s = {}, Blob msg = {}) : service(s), data(msg) {}
-    
+
     std::string getService() const {
         return service;
     }
 
     static const ValueType TYPE;
-    virtual const ValueType& getType() const {
+    virtual const ValueType& getType() const override {
         return TYPE;
     }
     static Value::Filter getFilter() { return {}; }
@@ -64,7 +64,7 @@ public:
 template <typename Type>
 struct SignedValue : public Value::Serializable<Type>
 {
-    virtual void unpackValue(const Value& v) {
+    virtual void unpackValue(const Value& v) override {
         from = v.owner.getId();
         Value::Serializable<Type>::unpackValue(v);
     }
@@ -78,7 +78,7 @@ public:
 template <typename Type>
 struct EncryptedValue : public SignedValue<Type>
 {
-    virtual void unpackValue(const Value& v) {
+    virtual void unpackValue(const Value& v) override {
         to = v.recipient;
         SignedValue<Type>::unpackValue(v);
     }
@@ -100,13 +100,13 @@ struct ImMessage : public SignedValue<ImMessage>
       : sent(std::chrono::system_clock::now()), im_message(std::move(msg)) {}
 
     static const ValueType TYPE;
-    virtual const ValueType& getType() const {
+    virtual const ValueType& getType() const override {
         return TYPE;
     }
     static Value::Filter getFilter() {
         return SignedValue::getFilter();
     }
-    virtual void unpackValue(const Value& v) {
+    virtual void unpackValue(const Value& v) override {
         to = v.recipient;
         SignedValue::unpackValue(v);
     }
@@ -124,7 +124,7 @@ struct TrustRequest : public EncryptedValue<TrustRequest>
     TrustRequest(std::string s, const Blob& d) : service(s), payload(d) {}
 
     static const ValueType TYPE;
-    virtual const ValueType& getType() const {
+    virtual const ValueType& getType() const override {
         return TYPE;
     }
     static Value::Filter getFilter() {
@@ -142,7 +142,7 @@ struct IceCandidates : public EncryptedValue<IceCandidates>
     IceCandidates(Value::Id msg_id, Blob ice) : id(msg_id), ice_data(ice) {}
 
     static const ValueType TYPE;
-    virtual const ValueType& getType() const {
+    virtual const ValueType& getType() const override {
         return TYPE;
     }
     static Value::Filter getFilter() {
