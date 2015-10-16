@@ -227,20 +227,8 @@ private:
 };
 
 
-const std::array<std::reference_wrapper<const ValueType>, 5>
-DEFAULT_TYPES
-{
-    ValueType::USER_DATA,
-    DhtMessage::TYPE,
-    ImMessage::TYPE,
-    IceCandidates::TYPE,
-    TrustRequest::TYPE
-};
+extern const std::array<std::reference_wrapper<const ValueType>, 5> DEFAULT_TYPES;
 
-const std::array<std::reference_wrapper<const ValueType>, 1>
-DEFAULT_INSECURE_TYPES
-{
-    IpServiceAnnouncement::TYPE
-};
+extern const std::array<std::reference_wrapper<const ValueType>, 1> DEFAULT_INSECURE_TYPES;
 
 }
