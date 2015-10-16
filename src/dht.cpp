@@ -3114,6 +3114,28 @@ findMapValue(msgpack::object& map, const std::string& key) {
     return nullptr;
 }
 
+/**
+ * Provides backward compatibility with msgpack 1.0
+ */
+Blob
+getBlob(msgpack::object& o) {
+    switch (o.type) {
+    case msgpack::type::BIN:
+        return o.as<Blob>();
+    case msgpack::type::STR:
+        return {o.via.str.ptr, o.via.str.ptr+o.via.str.size};
+    case msgpack::type::ARRAY: {
+        Blob ret(o.via.array.size);
+        std::transform(o.via.array.ptr, o.via.array.ptr+o.via.array.size, ret.begin(), [](const msgpack::object& b) {
+            return b.as<uint8_t>();
+        });
+        return ret;
+    }
+    default:
+        throw msgpack::type_error();
+    }
+}
+
 void
 Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
@@ -3149,20 +3171,16 @@ Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
         target = {*rtarget};
 
     if (auto otoken = findMapValue(req, "token"))
-        token = otoken->as<Blob>();
+        token = getBlob(*otoken);
 
     if (auto vid = findMapValue(req, "vid"))
         value_id = vid->as<Value::Id>();
 
-    if (auto rnodes4 = findMapValue(req, "n4")) {
-        auto n4b = rnodes4->as<std::vector<char>>();
-        nodes4 = {n4b.begin(), n4b.end()};
-    }
+    if (auto rnodes4 = findMapValue(req, "n4"))
+        nodes4 = getBlob(*rnodes4);
 
-    if (auto rnodes6 = findMapValue(req, "n6")) {
-        auto n6b = rnodes6->as<std::vector<char>>();
-        nodes6 = {n6b.begin(), n6b.end()};
-    }
+    if (auto rnodes6 = findMapValue(req, "n6"))
+        nodes6 = getBlob(*rnodes6);
 
     if (auto sa = findMapValue(req, "sa")) {
         if (sa->type != msgpack::type::BIN)
