@@ -3121,7 +3121,7 @@ Blob
 getBlob(msgpack::object& o) {
     switch (o.type) {
     case msgpack::type::BIN:
-        return o.as<Blob>();
+        return {o.via.bin.ptr, o.via.bin.ptr+o.via.bin.size};
     case msgpack::type::STR:
         return {o.via.str.ptr, o.via.str.ptr+o.via.str.size};
     case msgpack::type::ARRAY: {
