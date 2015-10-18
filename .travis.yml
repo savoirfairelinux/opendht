@@ -11,14 +11,19 @@ compiler:
 
 addons:
   apt:
+    sources:
+    - ubuntu-toolchain-r-test
     packages:
-    - g++
-    - libgnutls-dev
+    - gcc-4.9
+    - g++-4.9
+    - libgnutls28-dev
+    - cmake
 
 before_install:
-  - echo $LANG
-  - echo $LC_ALL
-  - if [ $TRAVIS_OS_NAME == linux ]; then git clone https://github.com/msgpack/msgpack-c.git && cd msgpack-c && mkdir build && cmake -DCMAKE_INSTALL_PREFIX=$HOME/usr .. && make -j && make install; fi
+  - if [ $TRAVIS_OS_NAME == linux ] && [ $CXX == g++ ]; then export CXX=/usr/bin/g++-4.9 && export CC=/usr/bin/gcc-4.9; fi
+  - if [ $TRAVIS_OS_NAME == linux ]; then git clone https://github.com/msgpack/msgpack-c.git; fi
+  - if [ $TRAVIS_OS_NAME == linux ]; then cd msgpack-c && git checkout cpp-1.2.0 && mkdir build && mkdir -p $HOME/usr && cd build; fi
+  - if [ $TRAVIS_OS_NAME == linux ]; then cmake -DCMAKE_INSTALL_PREFIX=$HOME/usr -DMSGPACK_CXX11=ON -DMSGPACK_BUILD_EXAMPLES=OFF .. && make -j && make install && cd ../.. && pwd; fi
   - if [ $TRAVIS_OS_NAME == osx ]; then brew update && brew install llvm36 && brew install msgpack && brew install gnutls && brew link --force llvm36; fi
 
 before_script:
