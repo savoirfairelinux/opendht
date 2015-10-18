@@ -39,7 +39,7 @@ extern "C" {
 using namespace dht;
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-p local_port] [-b bootstrap_host]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-p local_port] [-b bootstrap_host:port]" << std::endl << std::endl;
     std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
     std::cout << "Report bugs to: http://opendht.net" << std::endl;
 }
@@ -61,7 +61,7 @@ void print_help() {
     std::cout << "Possible commands:" << std::endl
               << "  h, help    Print this help message." << std::endl
               << "  q, quit    Quit the program." << std::endl
-              << "  log        Print the full DHT log." << std::endl;
+              << "  log        Start/stop printing DHT logs." << std::endl;
 
     std::cout << std::endl << "Node information:" << std::endl
               << "  ll         Print basic information and stats about the current node." << std::endl
