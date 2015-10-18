@@ -56,6 +56,28 @@ void print_node_info(const DhtRunner& dht, const dht_params& params) {
         std::cout << "Public key ID " << dht.getId() << std::endl;
 }
 
+void print_help() {
+    std::cout << "OpenDht command line interface (CLI)" << std::endl;
+    std::cout << "Possible commands:" << std::endl
+              << "  h, help    Print this help message." << std::endl
+              << "  q, quit    Quit the program." << std::endl
+              << "  log        Print the full DHT log." << std::endl;
+
+    std::cout << std::endl << "Node information:" << std::endl
+              << "  ll         Print basic information and stats about the current node." << std::endl
+              << "  ls         Print basic information about current searches." << std::endl
+              << "  ld         Print basic information about currenty stored values on this node." << std::endl
+              << "  lr         Print the full current routing table of this node" << std::endl;
+
+    std::cout << std::endl << "Operations on the DHT:" << std::endl
+              << "  g [key]               Get values at [key]." << std::endl
+              << "  l [key]               Listen for value changes at [key]." << std::endl
+              << "  p [key] [str]         Put string value at [key]." << std::endl
+              << "  s [key] [str]         Put string value at [key], signed with our generated private key." << std::endl
+              << "  e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with its public key (if found)." << std::endl
+              << std::endl;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -103,25 +125,7 @@ main(int argc, char **argv)
             if (std::cin.eof() || op == "x" || op == "q" || op == "exit" || op == "quit") {
                 break;
             } else if (op == "h" || op == "help") {
-                std::cout << "OpenDht command line interface (CLI)" << std::endl;
-                std::cout << "Possible commands:" << std::endl;
-                std::cout << "  h, help    Print this help message." << std::endl;
-                std::cout << "  q, quit    Quit the program." << std::endl;
-                std::cout << "  log        Print the full DHT log." << std::endl;
-
-                std::cout << std::endl << "Node information:" << std::endl;
-                std::cout << "  ll         Print basic information and stats about the current node." << std::endl;
-                std::cout << "  ls         Print basic information about current searches." << std::endl;
-                std::cout << "  ld         Print basic information about currenty stored values on this node." << std::endl;
-                std::cout << "  lr         Print the full current routing table of this node" << std::endl;
-
-                std::cout << std::endl << "Operations on the DHT:" << std::endl;
-                std::cout << "  g [key]               Get values at [key]." << std::endl;
-                std::cout << "  l [key]               Listen for value changes at [key]." << std::endl;
-                std::cout << "  p [key] [str]         Put string value at [key]." << std::endl;
-                std::cout << "  s [key] [str]         Put string value at [key], signed with our generated private key." << std::endl;
-                std::cout << "  e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with its public key (if found)." << std::endl;
-                std::cout << std::endl;
+                print_help();
                 continue;
             } else if (op == "ll") {
                 print_node_info(dht, params);
