@@ -31,7 +31,6 @@ before_script:
   - if [ $TRAVIS_OS_NAME == osx ]; then travis_retry ./autogen.sh && ./configure; fi
 
 script:
-  - ls -R $HOME/usr
   - make -j
 
 notifications:
@@ -42,5 +41,4 @@ env:
   - LANG="en_US.UTF-8"
 
 os:
-  - linux
   - osx
