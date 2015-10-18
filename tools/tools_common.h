@@ -139,7 +139,7 @@ static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 struct dht_params {
     bool help {false}; // print help and exit
     bool log {false};
-    in_port_t port {DHT_DEFAULT_PORT};
+    in_port_t port {0};
     bool is_bootstrap_node {false};
     bool generate_identity {false};
     std::pair<std::string, std::string> bootstrap {};
@@ -162,7 +162,7 @@ parseArgs(int argc, char **argv) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
-                if (port_arg > 0 && port_arg < 0x10000)
+                if (port_arg >= 0 && port_arg < 0x10000)
                     params.port = port_arg;
                 else
                     std::cout << "Invalid port: " << port_arg << std::endl;

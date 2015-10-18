@@ -217,6 +217,22 @@ public:
         return getNodeId();
     }
 
+    /**
+     * Returns the currently bound address.
+     * @param f: address family of the bound address to retreive.
+     */
+    const Address& getBound(sa_family_t f = AF_INET) const {
+        return (f == AF_INET) ? bound4 : bound6;
+    }
+
+    /**
+     * Returns the currently bound port.
+     * @param f: address family of the bound port to retreive.
+     */
+    in_port_t getBoundPort(sa_family_t f = AF_INET) const {
+        return ((sockaddr_in*)&getBound(f).first)->sin_port;
+    }
+
     std::vector<NodeExport> exportNodes() const {
         std::lock_guard<std::mutex> lck(dht_mtx);
         if (!dht_)
@@ -393,6 +409,9 @@ private:
     Dht::Status status4 {Dht::Status::Disconnected},
                 status6 {Dht::Status::Disconnected};
     StatusCallback statusCb {nullptr};
+
+    Address bound4 {};
+    Address bound6 {};
 };
 
 }

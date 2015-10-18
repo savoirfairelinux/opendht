@@ -49,7 +49,7 @@ void print_id_req() {
 }
 
 void print_node_info(const DhtRunner& dht, const dht_params& params) {
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
+    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  dht.getBoundPort() << std::endl;
     if (params.is_bootstrap_node)
         std::cout << "Running in bootstrap mode (discouraged)." << std::endl;
     if (params.generate_identity)

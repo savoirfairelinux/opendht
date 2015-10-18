@@ -137,6 +137,8 @@ DhtRunner::join()
         dht_.reset();
         status4 = Dht::Status::Disconnected;
         status6 = Dht::Status::Disconnected;
+        bound4 = {};
+        bound6 = {};
     }
 }
 
@@ -200,16 +202,21 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
 
     int s4 = -1,
         s6 = -1;
+
+    bound4 = {};
     if (sin4) {
         s4 = socket(PF_INET, SOCK_DGRAM, 0);
         if(s4 >= 0) {
             int rc = bind(s4, (sockaddr*)sin4, sizeof(sockaddr_in));
             if(rc < 0)
                 throw DhtException("Can't bind IPv4 socket on " + dht::print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
+            bound4.second = sizeof(bound4.first);
+            getsockname(s4, (sockaddr*)&bound4.first, &bound4.second);
         }
     }
 
 #if 1
+    bound6 = {};
     if (sin6) {
         s6 = socket(PF_INET6, SOCK_DGRAM, 0);
         if(s6 >= 0) {
@@ -221,6 +228,8 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
             rc = bind(s6, (sockaddr*)sin6, sizeof(sockaddr_in6));
             if(rc < 0)
                 throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin6, sizeof(sockaddr_in6)));
+            bound6.second = sizeof(bound6.first);
+            getsockname(s6, (sockaddr*)&bound6.first, &bound6.second);
         }
     }
 #endif
