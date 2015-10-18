@@ -70,6 +70,7 @@ void print_help() {
               << "  lr         Print the full current routing table of this node" << std::endl;
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
+              << "  b ip:port             Ping potential node at given IP address/port." << std::endl
               << "  g [key]               Get values at [key]." << std::endl
               << "  l [key]               Listen for value changes at [key]." << std::endl
               << "  p [key] [str]         Put string value at [key]." << std::endl
@@ -154,6 +155,16 @@ main(int argc, char **argv)
                 auto addrs = dht.getPublicAddressStr();
                 for (const auto& addr : addrs)
                     std::cout << addr << std::endl;
+                continue;
+            } else if (op == "b") {
+                try {
+                    auto addr = splitPort(idstr);
+                    if (not addr.first.empty() and addr.second.empty())
+                        addr.second = std::to_string(DHT_DEFAULT_PORT);
+                    dht.bootstrap(addr.first.c_str(), addr.second.c_str());
+                } catch (const std::exception& e) {
+                    std::cout << e.what() << std::endl;
+                }
                 continue;
             } else if (op == "log") {
                 params.log = !params.log;
