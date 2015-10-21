@@ -123,7 +123,7 @@ This project is independent from another project called OpenDHT (Sean Rhea. Ph.D
 
 Dependencies
 -
-- msgpack-c, used for data serialisation.
+- msgpack-c 1.0+, used for data serialisation.
 - GnuTLS 3.1+, used to compute hashes and for the identity layer.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - Build tested with GCC 4.8+ (Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
