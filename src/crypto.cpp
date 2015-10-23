@@ -30,6 +30,7 @@
 
 #include "crypto.h"
 #include "rng.h"
+#include "value.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
@@ -395,9 +396,12 @@ PublicKey::unpack(const uint8_t* data, size_t data_size)
 void
 PublicKey::msgpack_unpack(msgpack::object o)
 {
-    if (o.type != msgpack::type::BIN)
-        throw msgpack::type_error();
-    unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
+    if (o.type == msgpack::type::BIN)
+        unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
+    else {
+        Blob dat = unpackBlob(o);
+        unpack(dat.data(), dat.size());
+    }
 }
 
 bool
@@ -521,9 +525,12 @@ Certificate::unpack(const uint8_t* dat, size_t dat_size)
 void
 Certificate::msgpack_unpack(msgpack::object o)
 {
-    if (o.type != msgpack::type::BIN)
-        throw msgpack::type_error();
-    unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
+    if (o.type == msgpack::type::BIN)
+        unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
+    else {
+        Blob dat = unpackBlob(o);
+        unpack(dat.data(), dat.size());
+    }
 }
 
 void

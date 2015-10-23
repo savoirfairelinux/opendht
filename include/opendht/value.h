@@ -505,4 +505,9 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
     return ret;
 }
 
+/**
+ * Provides backward compatibility with msgpack 1.0
+ */
+Blob unpackBlob(msgpack::object& o);
+
 }

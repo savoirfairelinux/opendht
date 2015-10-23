@@ -150,9 +150,33 @@ struct IceCandidates : public EncryptedValue<IceCandidates>
         return EncryptedValue::getFilter();
     }
 
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack_array(2);
+        pk.pack(id);
+#if 0
+        pk.pack_bin(ice_data.size());
+        pk.pack_bin_body((const char*)ice_data.data(), ice_data.size());
+#else
+        // hack for backward compatibility with old opendht compiled with msgpack 1.0
+        // remove when enough people have moved to new versions 
+        pk.pack_array(ice_data.size());
+        for (uint8_t b : ice_data)
+            pk.pack(b);
+#endif
+    }
+
+    void msgpack_unpack(msgpack::object o)
+    {
+        if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
+        if (o.via.array.size < 2) throw msgpack::type_error();
+        id = o.via.array.ptr[0].as<Value::Id>();
+        ice_data = unpackBlob(o.via.array.ptr[1]);
+    }
+
     Value::Id id;
     Blob ice_data;
-    MSGPACK_DEFINE(id, ice_data);
 };
 
 
