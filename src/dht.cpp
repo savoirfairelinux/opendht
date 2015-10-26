@@ -154,6 +154,7 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
+constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
@@ -182,7 +183,20 @@ Dht::getStatus(sa_family_t af) const
 
 void
 Dht::shutdown(ShutdownCallback cb) {
-    if (cb) { cb(); }
+    /****************************
+     *  Last store maintenance  *
+     ****************************/
+
+    auto remaining = std::make_shared<int>(0);
+    auto str_donecb = [=](bool, const std::vector<std::shared_ptr<Node>>&) {
+        --*remaining;
+        if (!*remaining && cb) { cb(); }
+    };
+
+    for (auto str : store) {
+        *remaining += maintainStorage(str.id, true, str_donecb);
+    }
+    if (!*remaining && cb) { cb(); }
 }
 
 bool
@@ -284,6 +298,41 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
     int bit1 = it->first.lowbit();
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
     return std::max(bit1, bit2)+1;
+}
+
+std::vector<std::shared_ptr<Node>>
+Dht::RoutingTable::findClosestNodes(const InfoHash id) const {
+    std::vector<std::shared_ptr<Node>> nodes {};
+    auto bucket = findBucket(id);
+
+    if (bucket == end()) { return nodes; }
+
+    auto sortedBucketInsert = [&](const Bucket &b) {
+            for (auto n : b.nodes) {
+                auto here = std::find_if(nodes.begin(), nodes.end(), [&id,&n](std::shared_ptr<Node> &node) {
+                        return id.xorCmp(node->id, n->id) < 0;
+                        });
+                nodes.insert(here, n);
+            }
+        };
+
+    // Inserting very closest nodes
+    sortedBucketInsert(*bucket);
+
+    // adjacent buckets contain remaining closest candidates
+    if (std::next(bucket) != this->end() && nodes.size() < TARGET_NODES) {
+        sortedBucketInsert(*std::next(bucket));
+    }
+    if (std::prev(bucket) != this->end() && nodes.size() < TARGET_NODES) {
+        sortedBucketInsert(*std::prev(bucket));
+    }
+
+    // shrink to the TARGET_NODES closest nodes.
+    if (nodes.size() > TARGET_NODES) {
+        nodes.resize(TARGET_NODES);
+    }
+
+    return nodes;
 }
 
 Dht::RoutingTable::iterator
@@ -744,16 +793,10 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     if (nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0 && node->isExpired(now))
         return false;
 
-    // Reset search timer if it was empty
-    if (nodes.empty()) {
-        step_time = TIME_INVALID;
-        get_step_time = TIME_INVALID;
-    }
-
     bool found = false;
     unsigned num_candidates = 0;
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
-        if (sn.candidate)
+        if (sn.candidate or sn.node->isExpired(now))
             num_candidates++;
         if (sn.node == node) {
             found = true;
@@ -761,20 +804,26 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         }
         return id.xorCmp(nid, sn.node->id) < 0;
     });
+
+    bool new_search_node = false;
     if (!found) {
-        if (nodes.size()-num_candidates >= SEARCH_NODES or nodes.size() >= SEARCH_NODES+TARGET_NODES/2) {
+        if (nodes.size()-num_candidates >= SEARCH_NODES) {
             if (node->isExpired(now))
                 return false;
-            if (n == nodes.end()) {
-                // search is full, try to remove an expired node
-                if (not removeExpiredNode(now))
-                    return false;
-                n = nodes.end();
-            }
+            if (n == nodes.end())
+                return false;
         }
+
+        // Reset search timer if the search is empty
+        if (nodes.empty()) {
+            step_time = TIME_INVALID;
+            get_step_time = TIME_INVALID;
+        }
+
         //bool synced = isSynced(now);
         n = nodes.insert(n, SearchNode(node));
         node->time = now;
+        new_search_node = true;
         /*if (synced) {
             n->candidate = true;
             //std::cout << "Adding candidate node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
@@ -789,15 +838,12 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     if (not token.empty()) {
         n->getStatus.reply_time = now;
         n->getStatus.request_time = TIME_INVALID;
-        if (n->candidate) {
-            n->candidate = false;
-            //std::cout << "Confirm candidate node " << node->id << " to synced search " << id << std::endl;
-        }
+        n->candidate = false;
         if (token.size() <= 64)
             n->token = token;
         expired = false;
     }
-    return true;
+    return new_search_node;
 }
 
 std::vector<std::shared_ptr<Node>>
@@ -932,8 +978,9 @@ Dht::searchStep(Search& sr)
                     //std::cout << "Sending announce_value to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
                     sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
-                                       TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid}, sr.id, *a.value,
-                                       n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
+                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid},
+                            sr.id, *a.value, a.created, n.token,
+                            n.node->reply_time >= now - UDP_REPLY_TIME);
                     if (a_status == n.acked.end()) {
                         n.acked[vid] = { now };
                     } else {
@@ -973,28 +1020,33 @@ Dht::searchStep(Search& sr)
                     return sn.candidate or sn.node->isExpired(now);
                 }) == sr.nodes.size())
         {
-            DHT_ERROR("[search %s IPv%c] expired", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
-            // no nodes or all expired nodes
-            sr.expired = true;
-            if (sr.announce.empty() && sr.listeners.empty()) {
-                // Listening or announcing requires keeping the cluster up to date.
-                sr.done = true;
-            }
-            {
-                auto get_cbs = std::move(sr.callbacks);
-                for (const auto& g : get_cbs) {
-                    if (g.done_cb)
-                        g.done_cb(false, {});
+            unsigned added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+            if (added) {
+                DHT_WARN("[search %s IPv%c] refilled with %u nodes", sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', added);
+            } else {
+                DHT_ERROR("[search %s IPv%c] expired", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
+                // no nodes or all expired nodes
+                sr.expired = true;
+                if (sr.announce.empty() && sr.listeners.empty()) {
+                    // Listening or announcing requires keeping the cluster up to date.
+                    sr.done = true;
                 }
-            }
-            {
-                std::vector<DoneCallback> a_cbs;
-                a_cbs.reserve(sr.announce.size());
-                for (const auto& a : sr.announce)
-                    if (a.callback)
-                        a_cbs.emplace_back(std::move(a.callback));
-                for (const auto& a : a_cbs)
-                    a(false, {});
+                {
+                    auto get_cbs = std::move(sr.callbacks);
+                    for (const auto& g : get_cbs) {
+                        if (g.done_cb)
+                            g.done_cb(false, {});
+                    }
+                }
+                {
+                    std::vector<DoneCallback> a_cbs;
+                    a_cbs.reserve(sr.announce.size());
+                    for (const auto& a : sr.announce)
+                        if (a.callback)
+                            a_cbs.emplace_back(std::move(a.callback));
+                    for (const auto& a : a_cbs)
+                        a(false, {});
+                }
             }
         }
     }
@@ -1035,13 +1087,15 @@ Dht::newSearch()
 }
 
 /* Insert the contents of a bucket into a search structure. */
-void
+unsigned
 Dht::Search::insertBucket(const Bucket& b, time_point now)
 {
+    unsigned inserted = 0;
     for (auto& n : b.nodes) {
-        if (not n->isExpired(now))
-            insertNode(n, now);
+        if (not n->isExpired(now) and insertNode(n, now))
+            inserted++;
     }
+    return inserted;
 }
 
 bool
@@ -1247,6 +1301,27 @@ Dht::bootstrapSearch(Dht::Search& sr)
         sr.insertBucket(*list.findBucket(myid), now);
 }
 
+unsigned
+Dht::Search::refill(const RoutingTable& r, time_point now) {
+    if (r.isEmpty() or r.front().af != af)
+        return 0;
+    unsigned added = 0;
+    auto b = r.findBucket(id);
+    auto n = b;
+    while (added < SEARCH_NODES && (std::next(n) != r.end() || b != r.begin())) {
+        if (std::next(n) != r.end()) {
+            added += insertBucket(*std::next(n), now);
+            n = std::next(n);
+        }
+        if (b != r.begin()) {
+            added += insertBucket(*std::prev(b), now);
+            b = std::prev(b);
+        }
+    }
+    //DHT_WARN("[search %s IPv%c] refilled with %u nodes", id.toString().c_str(), (af == AF_INET) ? '4' : '6', added);
+    return added;
+}
+
 /* Start a search. */
 Dht::Search*
 Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallback done_callback, Value::Filter filter)
@@ -1291,7 +1366,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
 }
 
 void
-Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback)
+Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created)
 {
     if (!value) {
         if (callback)
@@ -1312,16 +1387,26 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         return a.value->id == value->id;
     });
     if (a_sr == sr->announce.end())
-        sr->announce.emplace_back(Announce {value, callback});
+        sr->announce.emplace_back(Announce {value, created, callback});
     else {
         if (a_sr->value != value) {
             a_sr->value = value;
             for (auto& n : sr->nodes)
                 n.acked[value->id] = {};
         }
-        if (a_sr->callback)
-            a_sr->callback(false, {});
-        a_sr->callback = callback;
+        if (sr->isAnnounced(value->id, getType(value->type), now)) {
+            if (a_sr->callback)
+                a_sr->callback(true, {});
+            a_sr->callback = {};
+            if (callback) {
+                callback(true, {});
+            }
+            return;
+        } else {
+            if (a_sr->callback)
+                a_sr->callback(false, {});
+            a_sr->callback = callback;
+        }
     }
     auto tm = sr->getNextStepTime(types, now);
     if (tm < search_time) {
@@ -1389,7 +1474,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
     Storage* st = findStorage(id);
     size_t tokenlocal = 0;
     if (!st && store.size() < MAX_HASHES) {
-        store.push_back(Storage {id});
+        store.push_back(Storage {id, now});
         st = &store.back();
     }
     if (st) {
@@ -1449,7 +1534,7 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 }
 
 void
-Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback)
+Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, time_point created)
 {
     now = clock::now();
 
@@ -1477,13 +1562,13 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback)
         *done4 = true;
         *ok |= ok4;
         donecb(nodes);
-    });
+    }, created);
     announce(id, AF_INET6, val, [=](bool ok6, const std::vector<std::shared_ptr<Node>>& nodes) {
         DHT_DEBUG("Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
         donecb(nodes);
-    });
+    }, created);
 }
 
 struct OpStatus {
@@ -1659,13 +1744,14 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
 }
 
 Dht::ValueStorage*
-Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value)
+Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created)
 {
+    created = std::min(created, now);
     Storage *st = findStorage(id);
     if (!st) {
         if (store.size() >= MAX_HASHES)
             return nullptr;
-        store.push_back(Storage {id});
+        store.push_back(Storage {id, now});
         st = &store.back();
     }
 
@@ -1674,7 +1760,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value)
     });
     if (it != st->values.end()) {
         /* Already there, only need to refresh */
-        it->time = now;
+        it->time = created;
         if (it->data != value) {
             DHT_DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             it->data = value;
@@ -1685,7 +1771,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value)
         DHT_DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
         if (st->values.size() >= MAX_VALUES)
             return nullptr;
-        st->values.emplace_back(value, now);
+        st->values.emplace_back(value, created);
         storageChanged(*st, st->values.back());
         return &st->values.back();
     }
@@ -1698,7 +1784,7 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
     if (!st) {
         if (store.size() >= MAX_HASHES)
             return;
-        store.push_back(Storage {id});
+        store.push_back(Storage {id, now});
         st = &store.back();
     }
     sa_family_t af = from->sa_family;
@@ -1717,8 +1803,7 @@ void
 Dht::expireStorage()
 {
     auto i = store.begin();
-    while (i != store.end())
-    {
+    while (i != store.end()) {
         // put elements to remove at the end with std::partition,
         // and then remove them with std::vector::erase.
         i->listeners.erase(
@@ -1746,7 +1831,7 @@ Dht::expireStorage()
                 }),
             i->values.end());
 
-        if (i->values.empty() && i->listeners.empty()) {
+        if ((i->values.empty() && i->listeners.empty()) || (!i->want4 && !i->want6)) {
             DHT_DEBUG("Discarding expired value %s", i->id.toString().c_str());
             i = store.erase(i);
         }
@@ -2181,6 +2266,50 @@ Dht::bucketMaintenance(RoutingTable& list)
     return false;
 }
 
+size_t
+Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
+    int announce_per_af = 0;
+    auto *local_storage = findStorage(id);
+    if (!local_storage) { return 0; }
+
+    auto nodes = buckets.findClosestNodes(id);
+    auto nodes6 = buckets6.findClosestNodes(id);
+
+    if (!nodes.empty()) {
+        if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
+            for (auto &local_value_storage : local_storage->values) {
+                const auto& vt = getType(local_value_storage.data->type);
+                if (force || local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                    // gotta put that value there
+                    announce(id, AF_INET, local_value_storage.data, donecb, local_value_storage.time);
+                    ++announce_per_af;
+                }
+            }
+            local_storage->want4 = false;
+        }
+        else { local_storage->want4 = true; }
+    }
+    else { local_storage->want4 = false; }
+
+    if (!nodes6.empty()) {
+        if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
+            for (auto &local_value_storage : local_storage->values) {
+                const auto& vt = getType(local_value_storage.data->type);
+                if (force || local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                    // gotta put that value there
+                    announce(id, AF_INET6, local_value_storage.data, donecb, local_value_storage.time);
+                    ++announce_per_af;
+                }
+            }
+            local_storage->want6 = false;
+        }
+        else { local_storage->want6 = true; }
+    }
+    else { local_storage->want6 = false; }
+
+    return announce_per_af;
+}
+
 void
 Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
 {
@@ -2473,7 +2602,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 const auto& type = getType(lv->type);
                 if (type.editPolicy(msg.info_hash, lv, vc, msg.id, from, fromlen)) {
                     DHT_DEBUG("Editing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
-                    storageStore(msg.info_hash, vc);
+                    storageStore(msg.info_hash, vc, msg.created);
                 } else {
                     DHT_WARN("Rejecting edition of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
                 }
@@ -2482,7 +2611,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 const auto& type = getType(vc->type);
                 if (type.storePolicy(msg.info_hash, vc, msg.id, from, fromlen)) {
                     DHT_DEBUG("Storing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
-                    storageStore(msg.info_hash, vc);
+                    storageStore(msg.info_hash, vc, msg.created);
                 } else {
                     DHT_WARN("Rejecting storage of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
                 }
@@ -2581,7 +2710,18 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
         confirm_nodes_time = now + time_dis(rd);
     }
 
-    return std::min(confirm_nodes_time, search_time);
+    //data persistence
+    time_point storage_maintenance_time = time_point::max();
+    for (auto &str : store) {
+        if (now > str.maintenance_time) {
+            maintainStorage(str.id);
+            str.maintenance_time = now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
+
+        }
+        storage_maintenance_time = std::min(storage_maintenance_time, str.maintenance_time);
+    }
+
+    return std::min(confirm_nodes_time, std::min(search_time, storage_maintenance_time));
 }
 
 std::vector<Dht::ValuesExport>
@@ -3036,18 +3176,22 @@ Dht::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid)
 
 int
 Dht::sendAnnounceValue(const sockaddr *sa, socklen_t salen, TransId tid,
-                   const InfoHash& infohash, const Value& value,
+                   const InfoHash& infohash, const Value& value, time_point created,
                    const Blob& token, int confirm)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
 
-    pk.pack(std::string("a")); pk.pack_map(4);
+    pk.pack(std::string("a")); pk.pack_map((created < now ? 5 : 4));
       pk.pack(std::string("id"));     pk.pack(myid);
       pk.pack(std::string("h"));      pk.pack(infohash);
       pk.pack(std::string("values")); pk.pack_array(1); pk.pack(value);
-      pk.pack(std::string("token"));  packToken(pk, token);
+      if (created < now) {
+          pk.pack(std::string("c"));
+          pk.pack(to_time_t(created));
+      }
+      pk.pack(std::string("token"));  pk.pack(token);
 
     pk.pack(std::string("q")); pk.pack(std::string("put"));
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
@@ -3161,6 +3305,9 @@ Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
 
     if (auto rnodes4 = findMapValue(req, "n4"))
         nodes4 = unpackBlob(*rnodes4);
+
+    if (auto rcreated = findMapValue(req, "c"))
+        created = from_time_t(rcreated->as<std::time_t>());
 
     if (auto rnodes6 = findMapValue(req, "n6"))
         nodes6 = unpackBlob(*rnodes6);

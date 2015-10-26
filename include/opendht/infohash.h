@@ -168,7 +168,7 @@ public:
     {
         double v = 0.;
         for (unsigned i = 0; i < std::min<size_t>(HASH_LEN, sizeof(unsigned)-1); i++)
-            v += *(cbegin()+i)/(double)(1<<(8*(i+1)));  
+            v += *(cbegin()+i)/(double)(1<<(8*(i+1)));
         return v;
     }
 
@@ -224,7 +224,7 @@ namespace std
     {
         typedef dht::InfoHash argument_type;
         typedef std::size_t result_type;
- 
+
         result_type operator()(dht::InfoHash const& s) const
         {
             result_type r {};
