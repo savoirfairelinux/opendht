@@ -374,6 +374,11 @@ public:
     }
 
     /**
+     * Gracefuly disconnect from network.
+     */
+    void shutdown(Dht::ShutdownCallback cb);
+
+    /**
      * Quit and wait for all threads to terminate.
      * No callbacks will be called after this method returns.
      * All internal state will be lost. The DHT can then be run again with @run().

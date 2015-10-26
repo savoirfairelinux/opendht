@@ -5,12 +5,12 @@
 # distutils: libraries = opendht gnutls
 # cython: language_level=3
 #
-# Copyright (c) 2015 Savoir-Faire Linux Inc. 
+# Copyright (c) 2015 Savoir-Faire Linux Inc.
 # Author: Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # This wrapper is written for Cython 0.22
-# 
+#
 # This file is part of OpenDHT Python Wrapper.
 #
 #    OpenDHT Python Wrapper is free software:  you can redistribute it and/or modify
@@ -39,6 +39,12 @@ from cpython cimport ref
 cimport opendht_cpp as cpp
 
 import threading
+
+cdef inline void shutdown_callback(void* user_data) with gil:
+    cbs = <object>user_data
+    if 'shutdown' in cbs and cbs['shutdown']:
+        cbs['shutdown']()
+    ref.Py_DECREF(cbs)
 
 cdef inline bool get_callback(cpp.shared_ptr[cpp.Value] value, void *user_data) with gil:
     cb = (<object>user_data)['get']
@@ -239,6 +245,8 @@ cdef class DhtConfig(object):
         self._config.dht_config.id = id._id
     def setBootstrapMode(self, bool bootstrap):
         self._config.dht_config.node_config.is_bootstrap = bootstrap
+    def setNodeId(self, InfoHash id):
+        self._config.dht_config.node_config.node_id = id._infohash
 
 cdef class DhtRunner(_WithID):
     cdef cpp.DhtRunner* thisptr
@@ -252,15 +260,21 @@ cdef class DhtRunner(_WithID):
         return self.thisptr.getNodeId().toString()
     def bootstrap(self, str host, str port):
         self.thisptr.bootstrap(host.encode(), port.encode())
-    def run(self, Identity id = Identity(), is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6=""):
-        config = DhtConfig()
-        config.setIdentity(id)
+    def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=DhtConfig()):
+        if id:
+            config.setIdentity(id)
         if ipv4 or ipv6:
-            self.thisptr.run(ipv4.encode(), ipv6.encode(), str(port).encode(), config._config)
+            bind4 = ipv4.encode() if ipv4 else b''
+            bind6 = ipv6.encode() if ipv6 else b''
+            self.thisptr.run(bind4, bind6, str(port).encode(), config._config)
         else:
             self.thisptr.run(port, config._config)
     def join(self):
         self.thisptr.join()
+    def shutdown(self, shutdown_cb=None):
+        cb_obj = {'shutdown':shutdown_cb}
+        ref.Py_INCREF(cb_obj)
+        self.thisptr.shutdown(cpp.Dht.bindShutdownCb(shutdown_callback, <void*>cb_obj))
     def isRunning(self):
         return self.thisptr.isRunning()
     def getStorageLog(self):
@@ -327,5 +341,5 @@ cdef class DhtRunner(_WithID):
         return t
     def cancelListen(self, ListenToken token):
         self.thisptr.cancelListen(token._h, token._t)
-        # fixme: not thread safe
         ref.Py_DECREF(<object>token._cb['cb'])
+        # fixme: not thread safe

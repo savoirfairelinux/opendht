@@ -180,6 +180,11 @@ Dht::getStatus(sa_family_t af) const
     return Status::Connected;
 }
 
+void
+Dht::shutdown(ShutdownCallback cb) {
+    if (cb) { cb(); }
+}
+
 bool
 Dht::isRunning(sa_family_t af) const
 {

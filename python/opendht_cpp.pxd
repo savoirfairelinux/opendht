@@ -80,12 +80,15 @@ cdef extern from "opendht/dht.h" namespace "dht":
         InfoHash getId() const
         string getAddrStr() const
         bool isExpired() const
+    ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     cdef cppclass Dht:
         cppclass Config:
             InfoHash node_id
             bool is_bootstrap
+        cppclass ShutdownCallback:
+            ShutdownCallback() except +
         cppclass GetCallback:
             GetCallback() except +
             #GetCallback(GetCallbackRaw cb, void *user_data) except +
@@ -94,6 +97,8 @@ cdef extern from "opendht/dht.h" namespace "dht":
             #DoneCallback(DoneCallbackRaw, void *user_data) except +
         Dht() except +
         InfoHash getNodeId() const
+        @staticmethod
+        ShutdownCallback bindShutdownCb(ShutdownCallbackRaw cb, void *user_data)
         @staticmethod
         GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
         @staticmethod
@@ -119,6 +124,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void run(in_port_t, Config config)
         void run(const char*, const char*, const char*, Config config)
         void join()
+        void shutdown(Dht.ShutdownCallback)
         bool isRunning()
         string getStorageLog() const
         string getRoutingTablesLog(sa_family_t af) const

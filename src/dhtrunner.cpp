@@ -119,6 +119,15 @@ DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner:
 }
 
 void
+DhtRunner::shutdown(Dht::ShutdownCallback cb) {
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) mutable {
+        dht.shutdown(cb);
+    });
+    cv.notify_all();
+}
+
+void
 DhtRunner::join()
 {
     running = false;

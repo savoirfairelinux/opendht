@@ -133,6 +133,7 @@ public:
 
     typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
     typedef std::function<bool(std::shared_ptr<Value> value)> GetCallbackSimple;
+    typedef std::function<void()> ShutdownCallback;
 
     typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 
@@ -156,9 +157,14 @@ public:
 
     typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
     typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+    typedef void (*ShutdownCallbackRaw)(void *user_data);
 
     typedef std::function<void(bool success)> DoneCallbackSimple;
 
+    static ShutdownCallback
+    bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data) {
+        return [=]() { shutdown_cb_raw(user_data); };
+    }
     static DoneCallback
     bindDoneCb(DoneCallbackSimple donecb) {
         if (not donecb) return {};
@@ -197,6 +203,11 @@ public:
     Status getStatus() const {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
     }
+
+    /**
+     * Performs final operations before quitting.
+     */
+    void shutdown(ShutdownCallback cb);
 
     /**
      * Returns true if the node is running (have access to an open socket).
