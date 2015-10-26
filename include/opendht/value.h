@@ -64,6 +64,9 @@ using clock = std::chrono::steady_clock;
 using time_point = clock::time_point;
 using duration = clock::duration;
 
+time_point from_time_t(std::time_t t);
+std::time_t to_time_t(time_point t);
+
 static /*constexpr*/ const time_point TIME_INVALID = {time_point::min()};
 static /*constexpr*/ const time_point TIME_MAX {time_point::max()};
 

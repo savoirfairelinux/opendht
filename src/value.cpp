@@ -35,6 +35,16 @@
 
 namespace dht {
 
+time_point from_time_t(std::time_t t) {
+    return clock::now() + (std::chrono::system_clock::from_time_t(t) - std::chrono::system_clock::now());
+}
+
+std::time_t to_time_t(time_point t) {
+    return std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() + 
+            (t - clock::now()));
+}
+
+
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     s << "Value[id:" << std::hex << v.id << std::dec << " ";
