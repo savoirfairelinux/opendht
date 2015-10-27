@@ -2505,14 +2505,19 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     sr->get_step_time = now;
 
                 // If the value was just successfully announced, call the callback
-                for (auto& a : sr->announce) {
-                    if (!a.callback || !a.value || a.value->id != msg.value_id)
-                        continue;
+                auto a_to_remove = std::remove_if(sr->announce.begin(), sr->announce.end(), [&](Announce &a) {
+                    if (!a.value || a.value->id != msg.value_id)
+                        return false;
                     if (sr->isAnnounced(msg.value_id, getType(a.value->type), now)) {
-                        a.callback(true, sr->getNodes());
-                        a.callback = nullptr;
+                        if (a.callback) {
+                            a.callback(true, sr->getNodes());
+                            a.callback = nullptr;
+                        }
+                        return true;
                     }
-                }
+                    return false;
+                });
+                sr->announce.erase(a_to_remove, sr->announce.end());
             }
         } else if (msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
             DHT_DEBUG("Got reply to listen.");
