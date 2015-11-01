@@ -20,6 +20,9 @@ set (CMAKE_CXX_FLAGS "-std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dt
 
 find_package (GnuTLS 3.1 REQUIRED)
 find_package (Msgpack 1.1 REQUIRED)
+if (OPENDHT_TOOLS)
+	find_package (Readline 6 REQUIRED)
+endif ()
 
 list (APPEND opendht_SOURCES
 	src/infohash.cpp

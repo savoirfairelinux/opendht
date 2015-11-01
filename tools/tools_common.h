@@ -39,6 +39,8 @@
 
 #include <opendht.h>
 #include <getopt.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 /**
  * Terminal colors for logging
@@ -201,4 +203,16 @@ parseArgs(int argc, char **argv) {
         }
     }
     return params;
+}
+
+static const constexpr char* PROMPT = ">> ";
+
+std::string
+readLine(const char* prefix = PROMPT)
+{
+    const char* line_read = readline(prefix);
+    if (line_read && *line_read)
+        add_history(line_read);
+
+    return line_read ? std::string(line_read) : std::string("\0", 1);
 }

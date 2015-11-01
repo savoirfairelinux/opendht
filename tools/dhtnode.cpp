@@ -114,16 +114,21 @@ main(int argc, char **argv)
         print_node_info(dht, params);
         std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
+        // using the GNU History API
+        using_history();
+
         while (true)
         {
-            std::cout << ">> ";
-            std::string line;
-            std::getline(std::cin, line);
+            // using the GNU Readline API
+            std::string line = readLine();
+            if (!line.empty() && line[0] == '\0')
+                break;
+
             std::istringstream iss(line);
             std::string op, idstr, value;
             iss >> op >> idstr;
 
-            if (std::cin.eof() || op == "x" || op == "q" || op == "exit" || op == "quit") {
+            if (op == "x" || op == "q" || op == "exit" || op == "quit") {
                 break;
             } else if (op == "h" || op == "help") {
                 print_help();
