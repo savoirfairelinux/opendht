@@ -56,19 +56,19 @@ namespace Color {
         BG_DEFAULT  = 49
     };
     class Modifier {
-        Code code;
+        const Code code;
     public:
-        Modifier(Code pCode) : code(pCode) {}
+        constexpr Modifier(Code pCode) : code(pCode) {}
         friend std::ostream&
         operator<<(std::ostream& os, const Modifier& mod) {
-            return os << "\033[" << mod.code << "m";
+            return os << "\033[" << mod.code << 'm';
         }
     };
 }
 
-const Color::Modifier def(Color::FG_DEFAULT);
-const Color::Modifier red(Color::FG_RED);
-const Color::Modifier yellow(Color::FG_YELLOW);
+constexpr const Color::Modifier def(Color::FG_DEFAULT);
+constexpr const Color::Modifier red(Color::FG_RED);
+constexpr const Color::Modifier yellow(Color::FG_YELLOW);
 
 /**
  * Print va_list to std::ostream (used for logging).
@@ -145,7 +145,7 @@ struct dht_params {
     std::pair<std::string, std::string> bootstrap {};
 };
 
-static const struct option long_options[] = {
+static const constexpr struct option long_options[] = {
    {"help",       no_argument,       nullptr, 'h'},
    {"port",       required_argument, nullptr, 'p'},
    {"bootstrap",  optional_argument, nullptr, 'b'},
