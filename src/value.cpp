@@ -40,7 +40,7 @@ time_point from_time_t(std::time_t t) {
 }
 
 std::time_t to_time_t(time_point t) {
-    return std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() + 
+    return std::chrono::high_resolution_clock::to_time_t(std::chrono::system_clock::now() +
             (t - clock::now()));
 }
 
