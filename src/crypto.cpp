@@ -86,7 +86,7 @@ static gnutls_digest_algorithm_t get_dig(gnutls_x509_crt_t crt)
 namespace dht {
 namespace crypto {
 
-static constexpr std::array<size_t, 3> AES_LENGTHS {128/8, 192/8, 256/8};
+static constexpr std::array<size_t, 3> AES_LENGTHS {{128/8, 192/8, 256/8}};
 
 size_t aesKeySize(size_t max)
 {

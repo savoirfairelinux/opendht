@@ -143,11 +143,11 @@ const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"lt"};
 const std::string Dht::my_v = "RNG1";
 
 static constexpr InfoHash zeroes {};
-static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{
+static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{{
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF
-}};
+}}};
 
 constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
 constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
@@ -3283,9 +3283,9 @@ Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
         query = q->as<std::string>();
     }
 
-    auto& req = a ? *a : (r ? *r : *e);
-    if (not &req)
+    if (!a && !r && !e)
         throw msgpack::type_error();
+    auto& req = a ? *a : (r ? *r : *e);
 
     if (e) {
         if (e->type != msgpack::type::ARRAY)

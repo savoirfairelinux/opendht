@@ -713,7 +713,7 @@ private:
     };
 
     struct TransPrefix : public  std::array<uint8_t, 2>  {
-        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({(uint8_t)str[0], (uint8_t)str[1]}) {}
+        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
         static const TransPrefix PING;
         static const TransPrefix FIND_NODE;
         static const TransPrefix GET_VALUES;

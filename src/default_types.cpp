@@ -103,18 +103,18 @@ const ValueType IceCandidates::TYPE = {5, "ICE candidates", std::chrono::minutes
 
 const std::array<std::reference_wrapper<const ValueType>, 5>
 DEFAULT_TYPES
-{
+{{
     ValueType::USER_DATA,
     DhtMessage::TYPE,
     ImMessage::TYPE,
     IceCandidates::TYPE,
     TrustRequest::TYPE
-};
+}};
 
 const std::array<std::reference_wrapper<const ValueType>, 1>
 DEFAULT_INSECURE_TYPES
-{
+{{
     IpServiceAnnouncement::TYPE
-};
+}};
 
 }
