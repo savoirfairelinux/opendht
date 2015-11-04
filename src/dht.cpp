@@ -475,6 +475,25 @@ Dht::NodeCache::putNode(std::shared_ptr<Node> n) {
     list.push_back(n);
 }
 
+void
+Dht::NodeCache::clearBadNodes(sa_family_t family)
+{
+    if (family == 0) {
+        clearBadNodes(AF_INET);
+        clearBadNodes(AF_INET6);
+    } else {
+        auto& list = family == AF_INET ? cache_4 : cache_6;
+        for (auto n = list.begin(); n != list.end();) {
+            if (auto ln = n->lock()) {
+                ln->pinged = 0;
+                ++n;
+            } else {
+                n = list.erase(n);
+            }
+        }
+    }
+}
+
 /* Every bucket caches the address of a likely node.  Ping it. */
 int
 Dht::sendCachedPing(Bucket& b)
@@ -1847,6 +1866,7 @@ Dht::connectivityChanged()
     mybucket_grow_time = now;
     mybucket6_grow_time = now;
     reported_addr.clear();
+    cache.clearBadNodes();
     for (auto& s : searches)
         for (auto& sn : s.nodes)
             sn.listenStatus = {};

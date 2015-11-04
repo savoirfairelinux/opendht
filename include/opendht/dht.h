@@ -425,6 +425,13 @@ private:
         std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
         std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
         void putNode(std::shared_ptr<Node> n);
+
+        /**
+         * Reset the connectivity state of every node,
+         * Giving them a new chance if they where expired.
+         * To use in case of connectivity change etc.
+         */
+        void clearBadNodes(sa_family_t family = 0);
     private:
         std::list<std::weak_ptr<Node>> cache_4;
         std::list<std::weak_ptr<Node>> cache_6;
