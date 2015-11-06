@@ -78,6 +78,9 @@ PKG_CHECK_MODULES([msgpack], [msgpack >= 1.1])
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
+AM_COND_IF([ENABLE_TOOLS], [
+    AC_CHECK_HEADERS([readline/readline.h readline/history.h])
+])
 
 AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])])
 
