@@ -293,14 +293,14 @@ public:
         std::lock_guard<std::mutex> lck(dht_mtx);
         return dht_->getSearchesLog(af);
     }
-    std::vector<Address> getPublicAddress()
+    std::vector<Address> getPublicAddress(sa_family_t af = 0)
     {
         std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getPublicAddress();
+        return dht_->getPublicAddress(af);
     }
-    std::vector<std::string> getPublicAddressStr()
+    std::vector<std::string> getPublicAddressStr(sa_family_t af = 0)
     {
-        auto addrs = getPublicAddress();
+        auto addrs = getPublicAddress(af);
         std::vector<std::string> ret(addrs.size());
         std::transform(addrs.begin(), addrs.end(), ret.begin(), dht::printAddr);
         return ret;

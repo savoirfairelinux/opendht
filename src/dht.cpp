@@ -573,15 +573,15 @@ Dht::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
 }
 
 std::vector<Address>
-Dht::getPublicAddress()
+Dht::getPublicAddress(sa_family_t family)
 {
     std::sort(reported_addr.begin(), reported_addr.end(), [](const ReportedAddr& a, const ReportedAddr& b) {
         return a.first < b.first;
     });
     std::vector<Address> ret;
-    ret.reserve(reported_addr.size());
     for (const auto& addr : reported_addr)
-        ret.emplace_back(addr.second);
+        if (!family || family == addr.second.first.ss_family)
+            ret.emplace_back(addr.second);
     return ret;
 }
 

@@ -369,7 +369,7 @@ public:
     /* This must be provided by the user. */
     static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
 
-    std::vector<Address> getPublicAddress();
+    std::vector<Address> getPublicAddress(sa_family_t family = 0);
 
 protected:
     LogMethod DHT_DEBUG = NOLOG;
