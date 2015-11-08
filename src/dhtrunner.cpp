@@ -167,18 +167,21 @@ DhtRunner::loop_()
     }
 
     time_point wakeup {};
+    decltype(rcv) received {};
     {
         std::lock_guard<std::mutex> lck(sock_mtx);
-        if (not rcv.empty()) {
-            for (const auto& pck : rcv) {
-                auto& buf = pck.first;
-                auto& from = pck.second;
-                wakeup = dht_->periodic(buf.data(), buf.size()-1, (sockaddr*)&from.first, from.second);
-            }
-            rcv.clear();
-        } else {
-            wakeup = dht_->periodic(nullptr, 0, nullptr, 0);
+        // move to stack
+        received = std::move(rcv);
+    }
+    if (not received.empty()) {
+        for (const auto& pck : received) {
+            auto& buf = pck.first;
+            auto& from = pck.second;
+            wakeup = dht_->periodic(buf.data(), buf.size()-1, (sockaddr*)&from.first, from.second);
         }
+        received.clear();
+    } else {
+        wakeup = dht_->periodic(nullptr, 0, nullptr, 0);
     }
 
     Dht::Status nstatus4 = dht_->getStatus(AF_INET);
