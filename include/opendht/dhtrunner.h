@@ -335,8 +335,7 @@ public:
     /**
      * @param local4: Local IPv4 address and port to bind. Can be null.
      * @param local6: Local IPv6 address and port to bind. Can be null.
-     *         BEP-32 mandates that we should bind to one of our
-     *         global IPv6 addresses.
+     *         You should allways bind to a global IPv6 address.
      * @param identity: RSA key pair to use for cryptographic operations.
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
