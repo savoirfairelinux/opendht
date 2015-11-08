@@ -35,16 +35,6 @@
 
 namespace dht {
 
-time_point from_time_t(std::time_t t) {
-    return clock::now() + (std::chrono::system_clock::from_time_t(t) - std::chrono::system_clock::now());
-}
-
-std::time_t to_time_t(time_point t) {
-    return std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() + 
-            (t - clock::now()));
-}
-
-
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     s << "Value[id:" << std::hex << v.id << std::dec << " ";
@@ -166,25 +156,6 @@ Value::msgpack_unpack_body(const msgpack::object& o)
             } else
                 throw msgpack::type_error();
         }
-    }
-}
-
-Blob
-unpackBlob(msgpack::object& o) {
-    switch (o.type) {
-    case msgpack::type::BIN:
-        return {o.via.bin.ptr, o.via.bin.ptr+o.via.bin.size};
-    case msgpack::type::STR:
-        return {o.via.str.ptr, o.via.str.ptr+o.via.str.size};
-    case msgpack::type::ARRAY: {
-        Blob ret(o.via.array.size);
-        std::transform(o.via.array.ptr, o.via.array.ptr+o.via.array.size, ret.begin(), [](const msgpack::object& b) {
-            return b.as<uint8_t>();
-        });
-        return ret;
-    }
-    default:
-        throw msgpack::type_error();
     }
 }
 

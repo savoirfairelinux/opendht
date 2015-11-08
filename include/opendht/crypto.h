@@ -31,6 +31,7 @@
 #pragma once
 
 #include "infohash.h"
+#include "utils.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>
@@ -40,8 +41,6 @@ extern "C" {
 
 #include <vector>
 #include <memory>
-
-typedef std::vector<uint8_t> Blob;
 
 namespace dht {
 namespace crypto {

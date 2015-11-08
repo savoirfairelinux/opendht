@@ -25,6 +25,7 @@ if (OPENDHT_TOOLS)
 endif ()
 
 list (APPEND opendht_SOURCES
+	src/utils.cpp
 	src/infohash.cpp
 	src/crypto.cpp
 	src/default_types.cpp
@@ -35,6 +36,7 @@ list (APPEND opendht_SOURCES
 )
 
 list (APPEND opendht_HEADERS
+	include/opendht/utils.h
 	include/opendht/rng.h
 	include/opendht/crypto.h
 	include/opendht/infohash.h

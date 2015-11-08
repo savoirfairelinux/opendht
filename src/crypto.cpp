@@ -30,7 +30,6 @@
 
 #include "crypto.h"
 #include "rng.h"
-#include "value.h"
 
 extern "C" {
 #include <gnutls/gnutls.h>

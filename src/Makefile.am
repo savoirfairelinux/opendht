@@ -6,6 +6,7 @@ libopendht_la_LDFLAGS = @LDFLAGS@ @GNUTLS_LIBS@ @nettle_LIBS@
 
 libopendht_la_SOURCES = \
         dht.cpp \
+        utils.cpp \
         infohash.cpp \
         value.cpp \
         crypto.cpp \
@@ -20,6 +21,7 @@ endif
 nobase_include_HEADERS = \
         ../include/opendht.h \
         ../include/opendht/dht.h \
+        ../include/opendht/utils.h \
         ../include/opendht/infohash.h \
         ../include/opendht/value.h \
         ../include/opendht/crypto.h \

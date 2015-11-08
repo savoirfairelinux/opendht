@@ -45,13 +45,6 @@
 
 namespace dht {
 
-class DhtException : public std::runtime_error {
-    public:
-        DhtException(const std::string &str = "") :
-            std::runtime_error("DhtException occured: " + str) {}
-};
-
-
 /**
  * Represents an InfoHash.
  * An InfoHash is a byte array of HASH_LEN bytes.
