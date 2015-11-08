@@ -37,7 +37,7 @@ struct DhtMessage : public Value::Serializable<DhtMessage>
     }
     static Value::Filter getFilter() { return {}; }
 
-    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
+    static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len);
 
     static Value::Filter ServiceFilter(std::string s);
 

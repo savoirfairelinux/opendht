@@ -51,10 +51,35 @@ namespace dht {
 
 struct Value;
 
-typedef std::function<bool(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t)> StorePolicy;
-typedef std::function<bool(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t)> EditPolicy;
+/**
+ * A storage policy is applied once to every incoming value storage requests.
+ * If the policy returns false, the value is dropped.
+ *
+ * @param key: the key where the storage is requested.
+ * @param value: the value to be stored. The value can be edited by the storage policy.
+ * @param from: id of the requesting node.
+ * @param form_addr: network address of the incoming request.
+ * @param from_len: network address lendth of the incoming request.
+ */
+using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
 
-static constexpr size_t MAX_VALUE_SIZE {1024 * 128};
+/**
+ * An edition policy is applied once to every incoming value storage requests,
+ * if a value already exists for this key and value id.
+ * If the policy returns false, the edition request is ignored.
+ * The default behavior is to deny edition (see {ValueType::DEFAULT_EDIT_POLICY}).
+ * Some {ValueType}s may override this behavior (e.g. SignedValue).
+ *
+ * @param key: the key where the value is stored.
+ * @param old_val: the previously stored value.
+ * @param new_val: the new value to be stored. The value can be edited by the edit policy.
+ * @param from: id of the requesting node.
+ * @param form_addr: network address of the incoming request.
+ * @param from_len: network address lendth of the incoming request.
+ */
+using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
+
+static constexpr const size_t MAX_VALUE_SIZE {1024 * 128};
 
 struct ValueType {
     typedef uint16_t Id;
