@@ -54,6 +54,8 @@ struct Value;
 typedef std::function<bool(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t)> StorePolicy;
 typedef std::function<bool(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t)> EditPolicy;
 
+static constexpr size_t MAX_VALUE_SIZE {1024 * 128};
+
 struct ValueType {
     typedef uint16_t Id;
     ValueType () {}
@@ -73,9 +75,7 @@ struct ValueType {
     // Generic value type
     static const ValueType USER_DATA;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t) {
-        return true;
-    }
+    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t);
     static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t) {
         return false;
     }

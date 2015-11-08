@@ -59,10 +59,10 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
 
 const ValueType ValueType::USER_DATA = {0, "User Data"};
 
-
-msgpack::unpacked
-unpackMsg(Blob b) {
-    return msgpack::unpack((const char*)b.data(), b.size());
+bool
+ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
+{
+    return v->data.size() <= MAX_VALUE_SIZE;
 }
 
 msgpack::object*

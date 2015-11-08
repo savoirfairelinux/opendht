@@ -28,14 +28,14 @@ std::ostream& operator<< (std::ostream& s, const DhtMessage& v)
 }
 
 bool
-DhtMessage::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
+DhtMessage::storePolicy(InfoHash h, std::shared_ptr<Value>& v, InfoHash f, const sockaddr* fa, socklen_t fas)
 {
     try {
         auto msg = unpackMsg<DhtMessage>(v->data);
         if (msg.service.empty())
             return false;
     } catch (const std::exception& e) {}
-    return true;
+    return ValueType::DEFAULT_STORE_POLICY(h, v, f, fa, fas);
 }
 
 Value::Filter
@@ -68,7 +68,7 @@ std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
 }
 
 bool
-IpServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr* from, socklen_t fromlen)
+IpServiceAnnouncement::storePolicy(InfoHash h, std::shared_ptr<Value>& v, InfoHash f, const sockaddr* from, socklen_t fromlen)
 {
     try {
         auto msg = unpackMsg<IpServiceAnnouncement>(v->data);
@@ -78,7 +78,7 @@ IpServiceAnnouncement::storePolicy(InfoHash, std::shared_ptr<Value>& v, InfoHash
         sa_addr.setPort(msg.getPort());
         // argument v is modified (not the value).
         v = std::make_shared<Value>(IpServiceAnnouncement::TYPE, sa_addr, v->id);
-        return true;
+        return ValueType::DEFAULT_STORE_POLICY(h, v, f, from, fromlen);
     } catch (const std::exception& e) {}
     return false;
 }
@@ -88,7 +88,6 @@ const ValueType IpServiceAnnouncement::TYPE = {2, "Internet Service Announcement
 const ValueType ImMessage::TYPE = {3, "IM message", std::chrono::minutes(5)};
 const ValueType TrustRequest::TYPE = {4, "Certificate trust request", std::chrono::hours(24*7)};
 const ValueType IceCandidates::TYPE = {5, "ICE candidates", std::chrono::minutes(5)};
-
 
 const std::array<std::reference_wrapper<const ValueType>, 5>
 DEFAULT_TYPES
