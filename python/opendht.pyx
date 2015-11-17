@@ -6,8 +6,9 @@
 # cython: language_level=3
 #
 # Copyright (c) 2015 Savoir-Faire Linux Inc.
-# Author: Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
-# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+# Author(s): Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
+#            Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+#            Simon Désaulniers <sim.desaulniers@gmail.com>
 #
 # This wrapper is written for Cython 0.22
 #

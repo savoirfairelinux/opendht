@@ -1,6 +1,7 @@
 /*
  *  Copyright (C) 2014-2015 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *              Simon Désaulniers <sim.desaulniers@gmail.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by

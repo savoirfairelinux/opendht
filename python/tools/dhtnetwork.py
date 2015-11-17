@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2015 Savoir-Faire Linux Inc.
-# Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+# Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+#            Simon Désaulniers <sim.desaulniers@gmail.com>
 
 import sys
 import signal

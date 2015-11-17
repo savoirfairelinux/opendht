@@ -1,3 +1,7 @@
+# Copyright (C) 2015 Savoir-Faire Linux Inc.
+# Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+#            Simon Désaulniers <sim.desaulniers@gmail.com>
+
 from libc.stdint cimport *
 from libcpp cimport bool
 from libcpp.string cimport string

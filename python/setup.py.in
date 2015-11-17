@@ -29,7 +29,7 @@ setup(name="opendht",
       version="@PACKAGE_VERSION@",
       description="Python wrapper for opendht",
       url='https://github.com/savoirfairelinux/opendht',
-      author="Adrien Béraud, Guillaume Roguez",
+      author="Adrien Béraud, Guillaume Roguez, Simon Désaulniers",
       license="GPLv3",
       classifiers=[
           'Development Status :: 3 - Alpha',
