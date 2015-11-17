@@ -1407,7 +1407,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         return a.value->id == value->id;
     });
     if (a_sr == sr->announce.end())
-        sr->announce.emplace_back(Announce {value, created, callback});
+        sr->announce.emplace_back(Announce {value, std::min(now, created), callback});
     else {
         if (a_sr->value != value) {
             a_sr->value = value;
@@ -2529,12 +2529,15 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 auto a_to_remove = std::remove_if(sr->announce.begin(), sr->announce.end(), [&](Announce &a) {
                     if (!a.value || a.value->id != msg.value_id)
                         return false;
-                    if (sr->isAnnounced(msg.value_id, getType(a.value->type), now)) {
+                    auto type = getType(a.value->type);
+                    if (sr->isAnnounced(msg.value_id, type, now)) {
                         if (a.callback) {
                             a.callback(true, sr->getNodes());
                             a.callback = nullptr;
                         }
-                        return true;
+                        if (a.created + type.expiration < now) {
+                            return true;
+                        }
                     }
                     return false;
                 });
