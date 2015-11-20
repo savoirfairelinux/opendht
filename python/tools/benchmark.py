@@ -462,12 +462,17 @@ class PersistenceTest(FeatureTest):
                 DhtNetwork.log("Values didn't reach new hosting nodes after shutdown.")
 
     def run(self):
-        if self._test == 'delete':
-            self._deleteTest()
-        elif self._test == 'replace':
-            self._resplaceClusterTest()
-        elif self._test == 'mult_time':
-            self._multTimeTest()
+        try:
+            if self._test == 'delete':
+                self._deleteTest()
+            elif self._test == 'replace':
+                self._resplaceClusterTest()
+            elif self._test == 'mult_time':
+                self._multTimeTest()
+        except Exception as e:
+            print(e)
+        finally:
+            bootstrap.resize(1)
 
     #-----------
     #-  Tests  -
@@ -487,70 +492,64 @@ class PersistenceTest(FeatureTest):
 
         ops_count = []
 
-        try:
-            bootstrap.resize(3)
-            consumer = bootstrap.get(1)
-            producer = bootstrap.get(2)
+        bootstrap.resize(3)
+        consumer = bootstrap.get(1)
+        producer = bootstrap.get(2)
 
-            myhash = random_hash()
-            local_values = [Value(b'foo'), Value(b'bar'), Value(b'foobar')]
+        myhash = random_hash()
+        local_values = [Value(b'foo'), Value(b'bar'), Value(b'foobar')]
 
-            self._dhtPut(producer, myhash, *local_values)
+        self._dhtPut(producer, myhash, *local_values)
 
-            #checking if values were transfered
-            self._dhtGet(consumer, myhash)
-            if not FeatureTest.successfullTransfer(local_values, FeatureTest.foreign_values):
-                if FeatureTest.foreign_values:
-                    DhtNetwork.log('[GET]: Only ', len(FeatureTest.foreign_values) ,' on ',
-                            len(local_values), ' values successfully put.')
-                else:
-                    DhtNetwork.log('[GET]: 0 values successfully put')
-
-
-            if FeatureTest.foreign_values and FeatureTest.foreign_nodes:
-                DhtNetwork.log('Values are found on :')
-                for node in FeatureTest.foreign_nodes:
-                    DhtNetwork.log(node)
-
-                DhtNetwork.log("Waiting a minute for the network to settle down.")
-                time.sleep(60)
-
-                for _ in range(max(1, int(self.wb.node_num/32))):
-                    DhtNetwork.log('Removing all nodes hosting target values...')
-                    cluster_ops_count = 0
-                    for proc in self.wb.procs:
-                        DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
-                        proc.sendNodesRequest(
-                                DhtNetworkSubProcess.SHUTDOWN_NODE_REQ,
-                                FeatureTest.foreign_nodes
-                        )
-                        DhtNetwork.log('sending message stats request')
-                        stats = proc.sendGetMessageStats()
-                        cluster_ops_count += sum(stats[1:])
-                        #DhtNetwork.log("Waiting 15 seconds for packets to work their way effectively.")
-                        #time.sleep(15)
-                    ops_count.append(cluster_ops_count/self.wb.node_num)
-
-                    # checking if values were transfered to new nodes
-                    foreign_nodes_before_delete = FeatureTest.foreign_nodes
-                    DhtNetwork.log('[GET]: trying to fetch persistent values')
-                    self._dhtGet(consumer, myhash)
-                    new_nodes = set(FeatureTest.foreign_nodes) - set(foreign_nodes_before_delete)
-
-                    self._result(local_values, new_nodes)
-
-                if self._plot:
-                    plt.plot(ops_count, color='blue')
-                    plt.draw()
-                    plt.ioff()
-                    plt.show()
+        #checking if values were transfered
+        self._dhtGet(consumer, myhash)
+        if not FeatureTest.successfullTransfer(local_values, FeatureTest.foreign_values):
+            if FeatureTest.foreign_values:
+                DhtNetwork.log('[GET]: Only ', len(FeatureTest.foreign_values) ,' on ',
+                        len(local_values), ' values successfully put.')
             else:
-                DhtNetwork.log("[GET]: either couldn't fetch values or nodes hosting values...")
+                DhtNetwork.log('[GET]: 0 values successfully put')
 
-        except Exception as e:
-            print(e)
-        finally:
-            bootstrap.resize(1)
+
+        if FeatureTest.foreign_values and FeatureTest.foreign_nodes:
+            DhtNetwork.log('Values are found on :')
+            for node in FeatureTest.foreign_nodes:
+                DhtNetwork.log(node)
+
+            DhtNetwork.log("Waiting a minute for the network to settle down.")
+            time.sleep(60)
+
+            for _ in range(max(1, int(self.wb.node_num/32))):
+                DhtNetwork.log('Removing all nodes hosting target values...')
+                cluster_ops_count = 0
+                for proc in self.wb.procs:
+                    DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
+                    proc.sendNodesRequest(
+                            DhtNetworkSubProcess.SHUTDOWN_NODE_REQ,
+                            FeatureTest.foreign_nodes
+                    )
+                    DhtNetwork.log('sending message stats request')
+                    stats = proc.sendGetMessageStats()
+                    cluster_ops_count += sum(stats[1:])
+                    #DhtNetwork.log("Waiting 15 seconds for packets to work their way effectively.")
+                    #time.sleep(15)
+                ops_count.append(cluster_ops_count/self.wb.node_num)
+
+                # checking if values were transfered to new nodes
+                foreign_nodes_before_delete = FeatureTest.foreign_nodes
+                DhtNetwork.log('[GET]: trying to fetch persistent values')
+                self._dhtGet(consumer, myhash)
+                new_nodes = set(FeatureTest.foreign_nodes) - set(foreign_nodes_before_delete)
+
+                self._result(local_values, new_nodes)
+
+            if self._plot:
+                plt.plot(ops_count, color='blue')
+                plt.draw()
+                plt.ioff()
+                plt.show()
+        else:
+            DhtNetwork.log("[GET]: either couldn't fetch values or nodes hosting values...")
 
     def _resplaceClusterTest(self):
         """
@@ -565,37 +564,31 @@ class PersistenceTest(FeatureTest):
 
         bootstrap = self.bootstrap
 
-        try:
-            bootstrap.resize(3)
-            consumer = bootstrap.get(1)
-            producer = bootstrap.get(2)
+        bootstrap.resize(3)
+        consumer = bootstrap.get(1)
+        producer = bootstrap.get(2)
 
-            myhash = random_hash()
-            local_values = [Value(b'foo'), Value(b'bar'), Value(b'foobar')]
+        myhash = random_hash()
+        local_values = [Value(b'foo'), Value(b'bar'), Value(b'foobar')]
 
-            self._dhtPut(producer, myhash, *local_values)
-            self._dhtGet(consumer, myhash)
-            initial_nodes = FeatureTest.foreign_nodes
+        self._dhtPut(producer, myhash, *local_values)
+        self._dhtGet(consumer, myhash)
+        initial_nodes = FeatureTest.foreign_nodes
 
-            DhtNetwork.log('Replacing', clusters, 'random clusters successively...')
-            for n in range(clusters):
-                i = random.randint(0, len(self.wb.procs)-1)
-                proc = self.wb.procs[i]
-                DhtNetwork.log('Replacing', proc)
-                proc.sendShutdown()
-                self.wb.stop_cluster(i)
-                self.wb.start_cluster(i)
+        DhtNetwork.log('Replacing', clusters, 'random clusters successively...')
+        for n in range(clusters):
+            i = random.randint(0, len(self.wb.procs)-1)
+            proc = self.wb.procs[i]
+            DhtNetwork.log('Replacing', proc)
+            proc.sendShutdown()
+            self.wb.stop_cluster(i)
+            self.wb.start_cluster(i)
 
-            DhtNetwork.log('[GET]: trying to fetch persistent values')
-            self._dhtGet(consumer, myhash)
-            new_nodes = set(FeatureTest.foreign_nodes) - set(initial_nodes)
+        DhtNetwork.log('[GET]: trying to fetch persistent values')
+        self._dhtGet(consumer, myhash)
+        new_nodes = set(FeatureTest.foreign_nodes) - set(initial_nodes)
 
-            self._result(local_values, new_nodes)
-
-        except Exception as e:
-            print(e)
-        finally:
-            bootstrap.resize(1)
+        self._result(local_values, new_nodes)
 
     def _multTimeTest(self):
         """
@@ -642,47 +635,41 @@ class PersistenceTest(FeatureTest):
                             str(self.bootstrap.port))
                 flood_nodes.append(n)
 
-        try:
-            bootstrap.resize(N_PRODUCERS+2)
-            consumer = bootstrap.get(1)
-            producers = (bootstrap.get(n) for n in range(2,N_PRODUCERS+2))
-            for p in producers:
-                hashes.append(random_hash())
-                self._dhtPut(p, hashes[-1], *values)
+        bootstrap.resize(N_PRODUCERS+2)
+        consumer = bootstrap.get(1)
+        producers = (bootstrap.get(n) for n in range(2,N_PRODUCERS+2))
+        for p in producers:
+            hashes.append(random_hash())
+            self._dhtPut(p, hashes[-1], *values)
 
-            gottaGetThemAllPokeNodes(nodes=nodes)
+        gottaGetThemAllPokeNodes(nodes=nodes)
 
-            DhtNetwork.log("Values are found on:")
-            for n in nodes:
-                DhtNetwork.log(n)
+        DhtNetwork.log("Values are found on:")
+        for n in nodes:
+            DhtNetwork.log(n)
 
-            DhtNetwork.log("Creating 8 nodes around all of these nodes...")
-            for _hash in hashes:
-                createNodesAroundHash(_hash)
+        DhtNetwork.log("Creating 8 nodes around all of these nodes...")
+        for _hash in hashes:
+            createNodesAroundHash(_hash)
 
-            DhtNetwork.log('Waiting 10 minutes for normal storage maintenance.')
-            time.sleep(10*60)
+        DhtNetwork.log('Waiting 10 minutes for normal storage maintenance.')
+        time.sleep(10*60)
 
-            DhtNetwork.log('Deleting old nodes from previous search.')
-            for proc in self.wb.procs:
-                DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
-                proc.sendNodesRequest(
-                    DhtNetworkSubProcess.REMOVE_NODE_REQ,
-                    nodes
-                )
+        DhtNetwork.log('Deleting old nodes from previous search.')
+        for proc in self.wb.procs:
+            DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
+            proc.sendNodesRequest(
+                DhtNetworkSubProcess.REMOVE_NODE_REQ,
+                nodes
+            )
 
-            # new consumer (fresh cache)
-            bootstrap.resize(N_PRODUCERS+3)
-            consumer = bootstrap.get(N_PRODUCERS+2)
+        # new consumer (fresh cache)
+        bootstrap.resize(N_PRODUCERS+3)
+        consumer = bootstrap.get(N_PRODUCERS+2)
 
-            nodes_after_time = set([])
-            gottaGetThemAllPokeNodes(nodes=nodes_after_time)
-            self._result(values, nodes_after_time - nodes)
-
-        except Exception as e:
-            print(e)
-        finally:
-            bootstrap.resize(1)
+        nodes_after_time = set([])
+        gottaGetThemAllPokeNodes(nodes=nodes_after_time)
+        self._result(values, nodes_after_time - nodes)
 
 class PerformanceTest(FeatureTest):
     """
@@ -701,10 +688,16 @@ class PerformanceTest(FeatureTest):
         super(PerformanceTest, self).__init__(test, workbench)
 
     def run(self):
-        if self._test == 'gets':
-            self._getsTimesTest()
-        elif self._test == 'delete':
-            self._delete()
+        try:
+            if self._test == 'gets':
+                self._getsTimesTest()
+            elif self._test == 'delete':
+                self._delete()
+        except Exception as e:
+            print(e)
+        finally:
+            self.bootstrap.resize(1)
+
 
     ###########
     #  Tests  #
@@ -806,46 +799,40 @@ class PerformanceTest(FeatureTest):
 
         bootstrap = self.bootstrap
 
-        try:
-            bootstrap.resize(3)
-            consumer = bootstrap.get(1)
-            producer = bootstrap.get(2)
+        bootstrap.resize(3)
+        consumer = bootstrap.get(1)
+        producer = bootstrap.get(2)
 
-            myhash = random_hash()
-            local_values = [Value(b'foo'), Value(b'bar'), Value(b'foobar')]
+        myhash = random_hash()
+        local_values = [Value(b'foo'), Value(b'bar'), Value(b'foobar')]
 
-            for _ in range(max(1, int(self.wb.node_num/32))):
-                self._dhtGet(consumer, myhash)
-                DhtNetwork.log("Waiting 15 seconds...")
-                time.sleep(15)
+        for _ in range(max(1, int(self.wb.node_num/32))):
+            self._dhtGet(consumer, myhash)
+            DhtNetwork.log("Waiting 15 seconds...")
+            time.sleep(15)
 
-                self._dhtPut(producer, myhash, *local_values)
+            self._dhtPut(producer, myhash, *local_values)
 
-                #checking if values were transfered
-                self._dhtGet(consumer, myhash)
-                DhtNetwork.log('Values are found on :')
-                for node in FeatureTest.foreign_nodes:
-                    DhtNetwork.log(node)
+            #checking if values were transfered
+            self._dhtGet(consumer, myhash)
+            DhtNetwork.log('Values are found on :')
+            for node in FeatureTest.foreign_nodes:
+                DhtNetwork.log(node)
 
-                if not FeatureTest.successfullTransfer(local_values, FeatureTest.foreign_values):
-                    if FeatureTest.foreign_values:
-                        DhtNetwork.log('[GET]: Only ', len(FeatureTest.foreign_values) ,' on ',
-                                len(local_values), ' values successfully put.')
-                    else:
-                        DhtNetwork.log('[GET]: 0 values successfully put')
+            if not FeatureTest.successfullTransfer(local_values, FeatureTest.foreign_values):
+                if FeatureTest.foreign_values:
+                    DhtNetwork.log('[GET]: Only ', len(FeatureTest.foreign_values) ,' on ',
+                            len(local_values), ' values successfully put.')
+                else:
+                    DhtNetwork.log('[GET]: 0 values successfully put')
 
-                DhtNetwork.log('Removing all nodes hosting target values...')
-                for proc in self.wb.procs:
-                    DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
-                    proc.sendNodesRequest(
-                            DhtNetworkSubProcess.SHUTDOWN_NODE_REQ,
-                            FeatureTest.foreign_nodes
-                    )
-
-        except Exception as e:
-            print(e)
-        finally:
-            bootstrap.resize(1)
+            DhtNetwork.log('Removing all nodes hosting target values...')
+            for proc in self.wb.procs:
+                DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
+                proc.sendNodesRequest(
+                        DhtNetworkSubProcess.SHUTDOWN_NODE_REQ,
+                        FeatureTest.foreign_nodes
+                )
 
 if __name__ == '__main__':
 
