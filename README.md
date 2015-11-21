@@ -52,9 +52,6 @@ int main()
         return true; // return false to stop the search
     });
 
-    // here we could wait for some operations to complete
-    // instead of ending now.
-
     // wait for dht threads to end
     node.join();
     return 0;
@@ -73,7 +70,7 @@ r.bootstrap("bootstrap.ring.cx", "4222")
 
 r.put(dht.InfoHash.get("unique_key"), dht.Value(b'some binary data'))
 
-# blocking call (provide a get_cb and an optional done_cb argument to make the call non-blocking)
+# blocking call (provide callback arguments to make the call non-blocking)
 results = r.get(dht.InfoHash.get("unique_key"))
 for r in results:
     print(r)
