@@ -153,8 +153,11 @@ main(int argc, char **argv)
             } else if (op == "b") {
                 try {
                     auto addr = splitPort(idstr);
-                    if (not addr.first.empty() and addr.second.empty())
-                        addr.second = std::to_string(DHT_DEFAULT_PORT);
+                    if (not addr.first.empty() and addr.second.empty()){
+                        std::stringstream ss;
+                        ss << DHT_DEFAULT_PORT;
+                        addr.second = ss.str();
+                    }
                     dht.bootstrap(addr.first.c_str(), addr.second.c_str());
                 } catch (const std::exception& e) {
                     std::cout << e.what() << std::endl;
