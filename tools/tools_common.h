@@ -162,8 +162,11 @@ parseArgs(int argc, char **argv) {
         case 'b':
             if (optarg) {
                 params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
-                if (not params.bootstrap.first.empty() and params.bootstrap.second.empty())
-                    params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
+                if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()){
+                    std::stringstream ss;
+					ss << DHT_DEFAULT_PORT;
+					params.bootstrap.second = ss.str();
+                }
             }
             else
                 params.is_bootstrap_node = true;
