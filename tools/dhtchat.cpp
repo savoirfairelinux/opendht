@@ -38,6 +38,11 @@ const std::string printTime(const std::time_t& now) {
     return buf;
 }
 
+void print_node_info(const DhtRunner& dht, const dht_params& params) {
+    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  dht.getBoundPort() << std::endl;
+    std::cout << "Public key ID " << dht.getId() << std::endl;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -53,8 +58,7 @@ main(int argc, char **argv)
     if (not params.bootstrap.first.empty())
         dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
-    std::cout << "Public key ID " << dht.getId() << std::endl;
+    print_node_info(dht, params);
     std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
 
     bool connected {false};
@@ -114,7 +118,6 @@ main(int argc, char **argv)
                         std::cout << "Message publishing failed !" << std::endl;
                 });
             } else {
-                std::getline(iss, line);
                 dht.putSigned(room, dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
                     //dht.cancelPut(room, id);
                     if (not ok)
