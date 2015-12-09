@@ -359,7 +359,7 @@ DhtRunner::put(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 }
 
 void
-DhtRunner::put(InfoHash hash, const std::shared_ptr<Value>& value, Dht::DoneCallback cb)
+DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
@@ -385,14 +385,19 @@ DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
 }
 
 void
-DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
+DhtRunner::putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
-        dht.putSigned(hash, sv, cb);
+        dht.putSigned(hash, value, cb);
     });
     cv.notify_all();
+}
+
+void
+DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
+{
+    putSigned(hash, std::make_shared<Value>(std::move(value)), cb);
 }
 
 void
@@ -402,14 +407,19 @@ DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSim
 }
 
 void
-DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb)
+DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallback cb)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    auto sv = std::make_shared<Value>(std::move(value));
+    std::lock_guard<std::mutex> lck(storage_mtx);    
     pending_ops.emplace([=](SecureDht& dht) {
-        dht.putEncrypted(hash, to, sv, cb);
+        dht.putEncrypted(hash, to, value, cb);
     });
     cv.notify_all();
+}
+
+void
+DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb)
+{
+    putEncrypted(hash, to, std::make_shared<Value>(std::move(value)), cb);
 }
 
 void

@@ -149,26 +149,40 @@ public:
     void cancelListen(InfoHash h, size_t token);
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
-    void put(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
-    void put(InfoHash hash, const std::shared_ptr<Value>&, Dht::DoneCallback cb=nullptr);
+    void put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
+    void put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
+        put(hash, value, Dht::bindDoneCb(cb));
+    }
+
+    void put(InfoHash hash, Value&& value, Dht::DoneCallback cb={});
     void put(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
         put(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
     }
-    void put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb=nullptr);
+    void put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb={});
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
-    void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb=nullptr);
-    void putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb=nullptr);
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
+        putSigned(hash, value, Dht::bindDoneCb(cb));
+    }
+
+    void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb={});
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
         putSigned(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
     }
+    void putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb={});
 
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb=nullptr);
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
+        putEncrypted(hash, to, value, Dht::bindDoneCb(cb));
+    }
+
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb={});
     void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallbackSimple cb) {
         putEncrypted(hash, to, std::forward<Value>(value), Dht::bindDoneCb(cb));
     }
-    void putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb=nullptr);
+    void putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb={});
 
     void bootstrap(const char* host, const char* service);
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
