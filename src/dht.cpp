@@ -197,6 +197,7 @@ Dht::shutdown(ShutdownCallback cb) {
     for (auto str : store) {
         *remaining += maintainStorage(str.id, true, str_donecb);
     }
+    DHT_WARN("Shuting down node: %u ops remaining.", *remaining);
     if (!*remaining && cb) { cb(); }
 }
 
@@ -2617,32 +2618,32 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         for (const auto& v : msg.values) {
             if (v->id == Value::INVALID_ID) {
-                DHT_WARN("[node %s %s] incorrect value id",
-                    msg.id.toString().c_str(), print_addr(from, fromlen).c_str(),
-                    msg.info_hash.toString().c_str(), to_hex(msg.token.data(), msg.token.size()).c_str());
-
-                DHT_WARN("Incorrect value id ");
+                DHT_WARN("[value %s %s] incorrect value id", msg.info_hash.toString().c_str(), v->id);
                 sendError(from, fromlen, msg.tid, 203, "Put with invalid id");
                 continue;
             }
             auto lv = getLocalById(msg.info_hash, v->id);
             std::shared_ptr<Value> vc = v;
             if (lv) {
-                const auto& type = getType(lv->type);
-                if (type.editPolicy(msg.info_hash, lv, vc, msg.id, from, fromlen)) {
-                    DHT_DEBUG("Editing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
-                    storageStore(msg.info_hash, vc, msg.created);
+                if (*lv == *vc) {
+                    DHT_WARN("[value %s %lu] nothing to do.", msg.info_hash.toString().c_str(), lv->id);
                 } else {
-                    DHT_WARN("Rejecting edition of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
+                    const auto& type = getType(lv->type);
+                    if (type.editPolicy(msg.info_hash, lv, vc, msg.id, from, fromlen)) {
+                        DHT_DEBUG("[value %s %lu] editing %s.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());
+                        storageStore(msg.info_hash, vc, msg.created);
+                    } else {
+                        DHT_DEBUG("[value %s %lu] rejecting edition of %s because of storage policy.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());
+                    }
                 }
             } else {
                 // Allow the value to be edited by the storage policy
                 const auto& type = getType(vc->type);
                 if (type.storePolicy(msg.info_hash, vc, msg.id, from, fromlen)) {
-                    DHT_DEBUG("Storing value of type %s belonging to %s at %s.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
+                    DHT_DEBUG("[value %s %lu] storing %s.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());
                     storageStore(msg.info_hash, vc, msg.created);
                 } else {
-                    DHT_WARN("Rejecting storage of type %s belonging to %s at %s because of storage policy.", type.name.c_str(), v->owner.getId().toString().c_str(), msg.info_hash.toString().c_str());
+                    DHT_DEBUG("[value %s %lu] rejecting storage of %s.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());                    
                 }
             }
 

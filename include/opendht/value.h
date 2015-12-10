@@ -268,7 +268,7 @@ struct Value
     inline bool operator== (const Value& o) {
         return id == o.id &&
         (isEncrypted() ? cypher == o.cypher :
-        (owner == o.owner && type == o.type && data == o.data && signature == o.signature));
+        (owner == o.owner && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature));
     }
 
     void setRecipient(const InfoHash& r) {
