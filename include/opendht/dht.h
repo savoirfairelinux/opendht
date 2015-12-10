@@ -882,7 +882,7 @@ private:
     }
 
     void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
-    ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created=time_point::max());
+    ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
 

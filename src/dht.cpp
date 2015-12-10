@@ -984,7 +984,7 @@ Dht::searchStep(Search& sr)
             if (in) {
                 DHT_WARN("[search %s IPv%c] [value %lu] storing locally",
                     sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6', vid);
-                storageStore(sr.id, a.value);
+                storageStore(sr.id, a.value, a.created);
             }
             for (auto& n : sr.nodes) {
                 if (not n.isSynced(now) or (n.candidate and t >= TARGET_NODES))
@@ -2807,7 +2807,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     DHT_DEBUG("Discarding expired value at %s", h.first.toString().c_str());
                     continue;
                 }
-                auto st = storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)));
+                auto st = storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
                 st->time = val_time;
             }
         } catch (const std::exception&) {
