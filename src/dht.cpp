@@ -2535,9 +2535,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                             a.callback(true, sr->getNodes());
                             a.callback = nullptr;
                         }
-                        if (a.created + type.expiration < now) {
-                            return true;
-                        }
+                        return true;
                     }
                     return false;
                 });
