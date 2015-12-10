@@ -265,6 +265,21 @@ main(int argc, char **argv)
         std::cout << std::endl <<  e.what() << std::endl;
     }
 
+    std::condition_variable cv;
+    std::mutex m;
+    std::atomic_bool done {false};
+
+    dht.shutdown([&]()
+    {
+        std::lock_guard<std::mutex> lk(m);
+        done = true;
+        cv.notify_all();
+    });
+
+    // wait for shutdown        
+    std::unique_lock<std::mutex> lk(m);
+    cv.wait(lk, [&](){ return done.load(); });
+
     dht.join();
     gnutls_global_deinit();
 
