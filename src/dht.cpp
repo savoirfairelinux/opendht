@@ -2295,8 +2295,6 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     if (!local_storage) { return 0; }
 
     auto nodes = buckets.findClosestNodes(id);
-    auto nodes6 = buckets6.findClosestNodes(id);
-
     if (!nodes.empty()) {
         if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
             for (auto &local_value_storage : local_storage->values) {
@@ -2313,6 +2311,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     }
     else { local_storage->want4 = false; }
 
+    auto nodes6 = buckets6.findClosestNodes(id);
     if (!nodes6.empty()) {
         if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
             for (auto &local_value_storage : local_storage->values) {
@@ -2640,10 +2639,10 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                 // Allow the value to be edited by the storage policy
                 const auto& type = getType(vc->type);
                 if (type.storePolicy(msg.info_hash, vc, msg.id, from, fromlen)) {
-                    DHT_DEBUG("[value %s %lu] storing %s.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());
+                    DHT_DEBUG("[value %s %lu] storing %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());
                     storageStore(msg.info_hash, vc, msg.created);
                 } else {
-                    DHT_DEBUG("[value %s %lu] rejecting storage of %s.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());                    
+                    DHT_DEBUG("[value %s %lu] rejecting storage of %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());                    
                 }
             }
 
