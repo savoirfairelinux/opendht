@@ -76,7 +76,10 @@ for r in results:
     print(r)
 ```
 
-How-to build and install
+## How-to build and install
+
+Full instuctions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
+
 -
 ### Using autotools
 
