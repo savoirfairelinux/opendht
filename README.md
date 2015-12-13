@@ -4,7 +4,7 @@ A lightweight C++11 Distributed Hash Table implementation originally based on ht
 
  * Light and fast C++11 Kademlia DHT library.
  * Distributed shared key->value data-store
- * Clean and powerfull distributed map API with storage of arbitrary binary values (up to 128 KB). 
+ * Clean and powerfull distributed map API with storage of arbitrary binary values of up to 128 KB.
  * Optional public key cryptography layer providing data signature and encryption (using GnuTLS).
  * IPv4 and IPv6 support.
  * Python binding.
