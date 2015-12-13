@@ -78,7 +78,7 @@ for r in results:
 
 ## How-to build and install
 
-Full instuctions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
+Full instructions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
 
 -
 ### Using autotools
