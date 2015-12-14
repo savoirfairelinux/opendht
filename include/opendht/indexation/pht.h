@@ -105,9 +105,7 @@ struct Prefix {
 using Value = std::pair<InfoHash, dht::Value::Id>;
 
 struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
-    const ValueType& getType() const {
-        return ValueType::USER_DATA;
-    }
+    static const ValueType TYPE;
 
     virtual void unpackValue(const dht::Value& v) {
         Serializable<IndexEntry>::unpackValue(v);
