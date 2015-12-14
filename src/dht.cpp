@@ -1505,13 +1505,13 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
         return true;
     };
 
-    Storage* st = findStorage(id);
+    auto st = findStorage(id);
     size_t tokenlocal = 0;
-    if (!st && store.size() < MAX_HASHES) {
+    if (st == store.end() && store.size() < MAX_HASHES) {
         store.push_back(Storage {id, now});
-        st = &store.back();
+        st = std::prev(store.end());
     }
-    if (st) {
+    if (st != store.end()) {
         if (not st->values.empty()) {
             std::vector<std::shared_ptr<Value>> newvals {};
             newvals.reserve(st->values.size());
@@ -1552,9 +1552,9 @@ Dht::cancelListen(const InfoHash& id, size_t token)
         return false;
     }
     DHT_WARN("cancelListen %s with token %d", id.toString().c_str(), token);
-    Storage* st = findStorage(id);
+    auto st = findStorage(id);
     auto tokenlocal = std::get<0>(it->second);
-    if (st && tokenlocal)
+    if (st != store.end() && tokenlocal)
         st->local_listeners.erase(tokenlocal);
     for (auto& s : searches) {
         if (s.id != id) continue;
@@ -1674,7 +1674,7 @@ std::vector<std::shared_ptr<Value>>
 Dht::getLocal(const InfoHash& id, Value::Filter f) const
 {
     auto s = findStorage(id);
-    if (!s) return {};
+    if (s == store.end()) return {};
     std::vector<std::shared_ptr<Value>> vals;
     vals.reserve(s->values.size());
     for (auto& v : s->values)
@@ -1685,7 +1685,8 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
 std::shared_ptr<Value>
 Dht::getLocalById(const InfoHash& id, const Value::Id& vid) const
 {
-    if (auto s = findStorage(id)) {
+    auto s = findStorage(id);
+    if (s != store.end()) {
         for (auto& v : s->values)
             if (v.data->id == vid) return v.data;
     }
@@ -1739,18 +1740,6 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
     return canceled;
 }
 
-/* A struct storage stores all the stored peer addresses for a given info
-   hash. */
-
-Dht::Storage*
-Dht::findStorage(const InfoHash& id)
-{
-    for (auto& st : store)
-        if (st.id == id)
-            return &st;
-    return nullptr;
-}
-
 void
 Dht::storageChanged(Storage& st, ValueStorage& v)
 {
@@ -1781,12 +1770,12 @@ Dht::ValueStorage*
 Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created)
 {
     created = std::min(created, now);
-    Storage *st = findStorage(id);
-    if (!st) {
+    auto st = findStorage(id);
+    if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return nullptr;
         store.push_back(Storage {id, now});
-        st = &store.back();
+        st = std::prev(store.end());
     }
 
     auto it = std::find_if (st->values.begin(), st->values.end(), [&](const ValueStorage& vr) {
@@ -1814,12 +1803,12 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
 void
 Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid)
 {
-    Storage *st = findStorage(id);
-    if (!st) {
+    auto st = findStorage(id);
+    if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return;
         store.push_back(Storage {id, now});
-        st = &store.back();
+        st = std::prev(store.end());
     }
     sa_family_t af = from->sa_family;
     auto l = std::find_if(st->listeners.begin(), st->listeners.end(), [&](const Listener& l){
@@ -2304,8 +2293,8 @@ Dht::bucketMaintenance(RoutingTable& list)
 size_t
 Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     int announce_per_af = 0;
-    auto *local_storage = findStorage(id);
-    if (!local_storage) { return 0; }
+    auto local_storage = findStorage(id);
+    if (local_storage == store.end()) { return 0; }
 
     auto nodes = buckets.findClosestNodes(id);
     if (!nodes.empty()) {
@@ -2597,9 +2586,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             sendError(from, fromlen, msg.tid, 203, "Get_values with no info_hash");
             break;
         } else {
-            Storage* st = findStorage(msg.info_hash);
+            auto st = findStorage(msg.info_hash);
             Blob ntoken = makeToken(from, false);
-            if (st && st->values.size() > 0) {
+            if (st != store.end() && st->values.size() > 0) {
                  DHT_DEBUG("[node %s %s] sending %u values.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), st->values.size());
                  sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken, st->values);
             } else {

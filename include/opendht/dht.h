@@ -870,9 +870,15 @@ private:
     void reportedAddr(const sockaddr *sa, socklen_t sa_len);
 
     // Storage
-    Storage* findStorage(const InfoHash& id);
-    const Storage* findStorage(const InfoHash& id) const {
-        return const_cast<Dht*>(this)->findStorage(id);
+    decltype(Dht::store)::iterator findStorage(const InfoHash& id) {
+        return std::find_if(store.begin(), store.end(), [&](const Storage& st) {
+            return st.id == id;
+        });
+    }
+    decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const {
+        return std::find_if(store.cbegin(), store.cend(), [&](const Storage& st) {
+            return st.id == id;
+        });
     }
 
     void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
