@@ -159,10 +159,11 @@ public:
     }
 
     typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
-    typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
-    typedef void (*ShutdownCallbackRaw)(void *user_data);
-
     typedef std::function<void(bool success)> DoneCallbackSimple;
+
+    typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+    typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data);
+    typedef void (*ShutdownCallbackRaw)(void *user_data);
 
     static ShutdownCallback
     bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data) {
@@ -179,6 +180,13 @@ public:
         if (not raw_cb) return {};
         return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
             raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
+        };
+    }
+    static DoneCallbackSimple
+    bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
+        if (not raw_cb) return {};
+        return [=](bool success) {
+            raw_cb(success, user_data);
         };
     }
 
