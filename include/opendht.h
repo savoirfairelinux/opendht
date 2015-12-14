@@ -22,3 +22,4 @@
 #include "opendht/dhtrunner.h"
 #include "opendht/log.h"
 #include "opendht/default_types.h"
+#include "opendht/indexation/pht.h"

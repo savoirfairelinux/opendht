@@ -51,6 +51,7 @@ list (APPEND opendht_SOURCES
     src/network_engine.cpp
     src/securedht.cpp
     src/dhtrunner.cpp
+	src/indexation/pht.cpp
     src/argon2/argon2.c
     src/argon2/core.c
     src/argon2/blake2/blake2b.c
@@ -76,6 +77,7 @@ list (APPEND opendht_HEADERS
     include/opendht/securedht.h
     include/opendht/log.h
     include/opendht.h
+	include/opendht/indexation/pht.h
 )
 
 configure_file (
