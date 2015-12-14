@@ -62,6 +62,16 @@ public:
         return 0.;
     }
 
+    static bool hasRdrand() {
+        static const bool hasrdrand = _hasRdrand();
+        return hasrdrand;
+    }
+
+    static bool hasRdseed() {
+        static const bool hasrdseed = _hasRdseed();
+        return hasrdseed;
+    }
+
 private:
     random_device& operator=(random_device&) = delete;
 
@@ -69,14 +79,6 @@ private:
     std::uniform_int_distribution<result_type> dis {};
 
     static bool hasIntelCpu();
-    static bool hasRdrand() {
-        static const bool hasrdrand = _hasRdrand();
-        return hasrdrand;
-    }
-    static bool hasRdseed() {
-        static const bool hasrdseed = _hasRdseed();
-        return hasrdseed;
-    }
     static bool _hasRdrand();
     static bool _hasRdseed();
 
@@ -85,7 +87,7 @@ private:
         unsigned int EBX;
         unsigned int ECX;
         unsigned int EDX;
-        void get(const unsigned int func, const unsigned int subfunc);
+        CPUIDinfo(const unsigned int func, const unsigned int subfunc);
     };
     bool rdrandStep(result_type* r);
     bool rdrand(result_type* r);

@@ -41,8 +41,7 @@ random_device::operator()()
     return prand;
 }
 
-void
-random_device::CPUIDinfo::get(const unsigned int func, const unsigned int subfunc)
+random_device::CPUIDinfo::CPUIDinfo(const unsigned int func, const unsigned int subfunc)
 {
     __asm__ __volatile__ (
         "cpuid"
@@ -54,42 +53,22 @@ random_device::CPUIDinfo::get(const unsigned int func, const unsigned int subfun
 bool
 random_device::hasIntelCpu()
 {
-    CPUIDinfo info;
-    info.get(0, 0);
-    if (memcmp((char *) (&info.EBX), "Genu", 4) == 0
-     && memcmp((char *) (&info.EDX), "ineI", 4) == 0
-     && memcmp((char *) (&info.ECX), "ntel", 4) == 0) {
-        return true;
-    }
-    return false;
+    CPUIDinfo info (0, 0);
+    return (memcmp((char *) (&info.EBX), "Genu", 4) == 0
+         && memcmp((char *) (&info.EDX), "ineI", 4) == 0
+         && memcmp((char *) (&info.ECX), "ntel", 4) == 0);
 }
 
 bool
 random_device::_hasRdrand()
 {
-    if (!hasIntelCpu())
-        return false;
-
-    CPUIDinfo info;
-    info.get(1, 0);
-    static const constexpr unsigned int RDRAND_FLAG = (1 << 30);
-    if ((info.ECX & RDRAND_FLAG) == RDRAND_FLAG)
-        return true;
-    return false;
+    return hasIntelCpu() && (CPUIDinfo {1, 0}.ECX & (1 << 30));
 }
 
 bool
 random_device::_hasRdseed()
 {
-    if (!hasIntelCpu())
-        return false;
-
-    CPUIDinfo info;
-    info.get(7, 0);
-    static const constexpr unsigned int RDSEED_FLAG = (1 << 18);
-    if ((info.ECX & RDSEED_FLAG) == RDSEED_FLAG)
-        return true;
-    return false;
+    return hasIntelCpu() && (CPUIDinfo {7, 0}.ECX & (1 << 18));
 }
 
 bool
