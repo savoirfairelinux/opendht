@@ -25,3 +25,4 @@
 #include "opendht/securedht.h"
 #include "opendht/dhtrunner.h"
 #include "opendht/default_types.h"
+#include "opendht/indexation/pht.h"
