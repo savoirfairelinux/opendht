@@ -20,6 +20,7 @@ from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
+from libcpp.map cimport map
 
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
@@ -27,6 +28,7 @@ ctypedef unsigned short int sa_family_t;
 cdef extern from "<memory>" namespace "std" nogil:
     cdef cppclass shared_ptr[T]:
         shared_ptr() except +
+        shared_ptr(T*) except +
         T* get()
         T operator*()
         void reset(T*)
@@ -155,4 +157,21 @@ cdef extern from "opendht/log.h" namespace "dht::log":
     void enableLogging(DhtRunner& dht)
     void disableLogging(DhtRunner& dht)
     void enableFileLogging(DhtRunner& dht, const string& path)
+
+cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
+    cdef cppclass Prefix:
+        Prefix() except +
+        Prefix(vector[uint8_t]) except +
+        string toString() const
+    ctypedef pair[InfoHash, uint64_t] IndexValue "dht::indexation::Value"
+    ctypedef map[string, Prefix] IndexKey "dht::indexation::Pht::Key"
+    ctypedef void (*LookupCallbackRaw)(vector[shared_ptr[IndexValue]]* values, Prefix* p, void* user_data);
+    cdef cppclass Pht:
+        cppclass LookupCallback:
+            LookupCallback() except +
+        Pht(string, shared_ptr[DhtRunner]) except +
+        void lookup(IndexKey k, LookupCallback cb, Dht.DoneCallbackSimple doneCb);
+        void insert(IndexKey k, IndexValue v, Dht.DoneCallbackSimple cb)
+        @staticmethod
+        LookupCallback bindLookupCb(LookupCallbackRaw cb, void *user_data)
 

@@ -40,6 +40,17 @@ cimport opendht_cpp as cpp
 
 import threading
 
+cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* values, cpp.Prefix* p, void *user_data) with gil:
+    cbs = <object>user_data
+    if 'lookup' in cbs and cbs['lookup']:
+        vals = []
+        for val in deref(values):
+            v = IndexValue()
+            v._value = val
+            vals.append(v)
+        cbs['lookup'](vals, p.toString())
+    ref.Py_DECREF(cbs)
+
 cdef inline void shutdown_callback(void* user_data) with gil:
     cbs = <object>user_data
     if 'shutdown' in cbs and cbs['shutdown']:
@@ -64,6 +75,12 @@ cdef inline void done_callback(bool done, cpp.vector[cpp.shared_ptr[cpp.Node]]* 
         cbs['done'](done, node_ids)
     ref.Py_DECREF(cbs)
 
+cdef inline void done_callback_simple(bool done, void *user_data) with gil:
+    cbs = <object>user_data
+    if 'done' in cbs and cbs['done']:
+        cbs['done'](done)
+    ref.Py_DECREF(cbs)
+
 cdef class _WithID(object):
     def __repr__(self):
         return "<%s '%s'>" % (self.__class__.__name__, str(self))
@@ -72,7 +89,7 @@ cdef class _WithID(object):
 
 cdef class InfoHash(_WithID):
     cdef cpp.InfoHash _infohash
-    def __init__(self, bytes str=b''):
+    def __cinit__(self, bytes str=b''):
         self._infohash = cpp.InfoHash(str)
     def __bool__(InfoHash self):
         return not (self._infohash == cpp.InfoHash())
@@ -254,28 +271,28 @@ cdef class DhtConfig(object):
         self._config.dht_config.node_config.node_id = id._infohash
 
 cdef class DhtRunner(_WithID):
-    cdef cpp.DhtRunner* thisptr
+    cdef cpp.shared_ptr[cpp.DhtRunner] thisptr
     def __cinit__(self):
-        self.thisptr = new cpp.DhtRunner()
+        self.thisptr.reset(new cpp.DhtRunner())
     def getId(self):
         h = InfoHash()
-        h._infohash = self.thisptr.getId()
+        h._infohash = self.thisptr.get().getId()
         return h
     def getNodeId(self):
-        return self.thisptr.getNodeId().toString()
+        return self.thisptr.get().getNodeId().toString()
     def bootstrap(self, str host, str port):
-        self.thisptr.bootstrap(host.encode(), port.encode())
+        self.thisptr.get().bootstrap(host.encode(), port.encode())
     def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=DhtConfig()):
         if id:
             config.setIdentity(id)
         if ipv4 or ipv6:
             bind4 = ipv4.encode() if ipv4 else b''
             bind6 = ipv6.encode() if ipv6 else b''
-            self.thisptr.run(bind4, bind6, str(port).encode(), config._config)
+            self.thisptr.get().run(bind4, bind6, str(port).encode(), config._config)
         else:
-            self.thisptr.run(port, config._config)
+            self.thisptr.get().run(port, config._config)
     def join(self):
-        self.thisptr.join()
+        self.thisptr.get().join()
     def shutdown(self, shutdown_cb=None):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
@@ -287,16 +304,16 @@ cdef class DhtRunner(_WithID):
     def enableFileLogging(self, str path):
         cpp.enableFileLogging(self.thisptr[0], path)
     def isRunning(self):
-        return self.thisptr.isRunning()
+        return self.thisptr.get().isRunning()
     def getStorageLog(self):
-        return self.thisptr.getStorageLog().decode()
+        return self.thisptr.get().getStorageLog().decode()
     def getRoutingTablesLog(self, cpp.sa_family_t af):
-        return self.thisptr.getRoutingTablesLog(af).decode()
+        return self.thisptr.get().getRoutingTablesLog(af).decode()
     def getSearchesLog(self, cpp.sa_family_t af):
-        return self.thisptr.getSearchesLog(af).decode()
+        return self.thisptr.get().getSearchesLog(af).decode()
     def getNodeMessageStats(self):
         stats = []
-        cdef cpp.vector[unsigned] res = self.thisptr.getNodeMessageStats(False)
+        cdef cpp.vector[unsigned] res = self.thisptr.get().getNodeMessageStats(False)
         for n in res:
             stats.append(n)
         return stats
@@ -304,9 +321,11 @@ cdef class DhtRunner(_WithID):
     def get(self, InfoHash key, get_cb=None, done_cb=None):
         """Retreive values associated with a key on the DHT.
 
-        key -- the key for which to search
-        get_cb -- is set, makes the operation non-blocking. Called when a value is found on the DHT.
-        done_cb -- optional callback used when get_cb is set. Called when the operation is completed.
+        key     -- the key for which to search
+        get_cb  -- is set, makes the operation non-blocking. Called when a value
+                   is found on the DHT.
+        done_cb -- optional callback used when get_cb is set. Called when the
+                   operation is completed.
         """
         if get_cb:
             cb_obj = {'get':get_cb, 'done':done_cb}
@@ -334,8 +353,8 @@ cdef class DhtRunner(_WithID):
     def put(self, InfoHash key, Value val, done_cb=None):
         """Publish a new value on the DHT at key.
 
-        key -- the DHT key where to put the value
-        val -- the value to put on the DHT
+        key     -- the DHT key where to put the value
+        val     -- the value to put on the DHT
         done_cb -- optional callback called when the operation is completed.
         """
         if done_cb:
@@ -368,6 +387,62 @@ cdef class DhtRunner(_WithID):
         t._t = self.thisptr.listen(t._h, cpp.bindGetCb(get_callback, <void*>cb_obj)).share()
         return t
     def cancelListen(self, ListenToken token):
-        self.thisptr.cancelListen(token._h, token._t)
+        self.thisptr.get().cancelListen(token._h, token._t)
         ref.Py_DECREF(<object>token._cb['cb'])
         # fixme: not thread safe
+
+cdef class IndexValue(object):
+    cdef cpp.shared_ptr[cpp.IndexValue] _value
+    def __init__(self, InfoHash h, cpp.uint64_t vid=0):
+       cdef cpp.InfoHash hh = h._infohash
+       self._value.reset(new cpp.IndexValue(hh, vid))
+    def getKey(self):
+        h = InfoHash()
+        h._infohash = self._value.get().first
+        return h
+    def getValueId(self):
+        return self._value.get().second
+
+cdef class Pht(object):
+    cdef cpp.Pht* thisptr
+    def __cinit__(self, bytes name, DhtRunner dht):
+        self.thisptr = new cpp.Pht(name, dht.thisptr)
+    def lookup(self, key, lookup_cb=None, done_cb=None):
+        """Query the Index with a specified key.
+
+        key       -- the key for to the entry in the index.
+        lookup_cb -- function called when the operation is completed. This
+                     function takes a list of IndexValue objects and a string
+                     representation of the prefix where the value was indexed in
+                     the PHT.
+        """
+        cb_obj = {'lookup':lookup_cb, 'done':done_cb} # TODO: donecallback is to be removed
+        ref.Py_INCREF(cb_obj)
+        cdef cpp.IndexKey cppk
+        for kk, v in key.items():
+            cppk[bytes(kk, 'utf-8')] = cpp.Prefix(bytes(v))
+        self.thisptr.lookup(
+                cppk,
+                cpp.Pht.bindLookupCb(lookup_callback, <void*>cb_obj),
+                cpp.Dht.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
+        )
+    def insert(self, key, IndexValue value, done_cb=None):
+        """Add an index entry to the Index.
+
+        key     -- the key for to the entry in the index.
+        value   -- an IndexValue object describing the indexed value.
+        done_cb -- Called when the operation is completed.
+        """
+        cb_obj = {'done':done_cb}
+        cdef cpp.IndexKey cppk
+        for kk, v in key.items():
+            cppk[bytes(kk, 'utf-8')] = cpp.Prefix(bytes(v))
+        cdef cpp.IndexValue val
+        val.first = (<InfoHash>value.getKey())._infohash
+        val.second = value.getValueId()
+        self.thisptr.insert(
+                cppk,
+                val,
+                cpp.Dht.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
+        )
+
