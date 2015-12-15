@@ -144,7 +144,7 @@ struct IceCandidates : public EncryptedValue<IceCandidates>
     {
         pk.pack_array(2);
         pk.pack(id);
-#if 0
+#if 1
         pk.pack_bin(ice_data.size());
         pk.pack_bin_body((const char*)ice_data.data(), ice_data.size());
 #else
