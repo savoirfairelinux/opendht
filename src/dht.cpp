@@ -313,7 +313,7 @@ Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
         for (auto n : b.nodes) {
             auto here = std::find_if(nodes.begin(), nodes.end(),
                 [&id,&n](std::shared_ptr<Node> &node) {
-                    return id.xorCmp(node->id, n->id) < 0;
+                    return id.xorCmp(n->id, node->id) < 0;
                 }
             );
             nodes.insert(here, n);
@@ -338,7 +338,9 @@ Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
     }
 
     // shrink to the count closest nodes.
-    nodes.resize(count);
+    if (nodes.size() > count) {
+        nodes.resize(count);
+    }
     return nodes;
 }
 
@@ -2381,8 +2383,6 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     uint16_t ttid = 0;
 
     switch (msg.type) {
-    //TODO: handle case where put was made to node claiming to be outside of a
-    // valid range.
     case MessageType::Error:
         if (msg.tid.length != 4) return;
         if (msg.error_code == 401 && msg.id != zeroes && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
