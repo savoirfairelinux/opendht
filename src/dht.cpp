@@ -1854,7 +1854,7 @@ Dht::expireStorage()
                 }),
             i->values.end());
 
-        if ((i->values.empty() && i->listeners.empty()) || (!i->want4 && !i->want6)) {
+        if (i->values.empty() && i->listeners.empty()) {
             DHT_DEBUG("Discarding expired value %s", i->id.toString().c_str());
             i = store.erase(i);
         }
@@ -2292,43 +2292,48 @@ Dht::bucketMaintenance(RoutingTable& list)
 
 size_t
 Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
-    int announce_per_af = 0;
+    size_t announce_per_af = 0;
     auto local_storage = findStorage(id);
     if (local_storage == store.end()) { return 0; }
+
+    bool want4 = true, want6 = true;
 
     auto nodes = buckets.findClosestNodes(id);
     if (!nodes.empty()) {
         if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
-            for (auto &local_value_storage : local_storage->values) {
-                const auto& vt = getType(local_value_storage.data->type);
-                if (force || local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+            for (auto &value : local_storage->values) {
+                const auto& vt = getType(value.data->type);
+                if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
-                    announce(id, AF_INET, local_value_storage.data, donecb, local_value_storage.time);
+                    announce(id, AF_INET, value.data, donecb, value.time);
                     ++announce_per_af;
                 }
             }
-            local_storage->want4 = false;
+            want4 = false;
         }
-        else { local_storage->want4 = true; }
     }
-    else { local_storage->want4 = false; }
+    else { want4 = false; }
 
     auto nodes6 = buckets6.findClosestNodes(id);
     if (!nodes6.empty()) {
         if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
-            for (auto &local_value_storage : local_storage->values) {
-                const auto& vt = getType(local_value_storage.data->type);
-                if (force || local_value_storage.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+            for (auto &value : local_storage->values) {
+                const auto& vt = getType(value.data->type);
+                if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
-                    announce(id, AF_INET6, local_value_storage.data, donecb, local_value_storage.time);
+                    announce(id, AF_INET6, value.data, donecb, value.time);
                     ++announce_per_af;
                 }
             }
-            local_storage->want6 = false;
+            want6 = false;
         }
-        else { local_storage->want6 = true; }
     }
-    else { local_storage->want6 = false; }
+    else { want6 = false; }
+
+    if (not want4 and not want6) {
+        DHT_DEBUG("Discarding storage values %s", id.toString().c_str());
+        local_storage->values.clear();
+    }
 
     return announce_per_af;
 }
