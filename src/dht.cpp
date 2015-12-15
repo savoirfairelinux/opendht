@@ -1048,13 +1048,19 @@ Dht::searchStep(Search& sr)
                     return sn.candidate or sn.node->isExpired(now);
                 }) == sr.nodes.size())
         {
-            unsigned added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+            unsigned added = 0;
+            if (not sr.refilled) {
+                added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+                sr.refilled = true;
+            }
             if (added) {
                 DHT_WARN("[search %s IPv%c] refilled with %u nodes", sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', added);
             } else {
                 DHT_ERROR("[search %s IPv%c] expired", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
                 // no nodes or all expired nodes
                 sr.expired = true;
+                // reset refilled since the search is now expired.
+                sr.refilled = false;
                 if (sr.announce.empty() && sr.listeners.empty()) {
                     // Listening or announcing requires keeping the cluster up to date.
                     sr.done = true;
@@ -2622,10 +2628,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         }
         {
             // We store a value only if we think we're part of the
-            // 2*TARGET_NODES nodes around the target id.
-            auto closest_nodes = (from->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(msg.info_hash, 2*TARGET_NODES);
+            // SEARCH_NODES nodes around the target id.
+            auto closest_nodes = (from->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(msg.info_hash, SEARCH_NODES);
             if (msg.info_hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
-                std::cerr << "my id [" << myid << "] is too far from " << msg.info_hash << ". Dropping value." << std::endl;
                 DHT_WARN("[node %s %s] announce too far from the target id. Dropping value.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
                 for (auto& v : msg.values) {

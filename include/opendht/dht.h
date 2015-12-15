@@ -609,6 +609,7 @@ private:
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
+        bool refilled {false};
         std::vector<SearchNode> nodes {};
         std::vector<Announce> announce {};
         std::vector<Get> callbacks {};

@@ -134,7 +134,7 @@ class DhtNetworkSubProcess(NSPopen):
     SHUTDOWN_CLUSTER_REQ      = b"sdc"
     DUMP_STORAGE_REQ          = b"strl"
     MESSAGE_STATS             = b"gms"
-    
+
 
     # tokens
     NOTIFY_TOKEN     = 'notify'
@@ -515,13 +515,13 @@ class PersistenceTest(FeatureTest):
                         DhtNetwork.log("Waiting 15 seconds for packets to work their way effectively.")
                         time.sleep(15)
                     ops_count.append(cluster_ops_count/self.wb.node_num)
-                    
+
                     # checking if values were transfered to new nodes
                     foreign_nodes_before_delete = PersistenceTest.foreign_nodes
                     DhtNetwork.log('[GET]: trying to fetch persistent values')
                     self._dhtGet(consumer, myhash)
                     new_nodes = set(PersistenceTest.foreign_nodes) - set(foreign_nodes_before_delete)
-                    
+
                     self._result(local_values, new_nodes)
 
                 if self._plot:
@@ -602,7 +602,7 @@ class PersistenceTest(FeatureTest):
         nodes = set([])
 
         # prevents garbage collecting of unused flood nodes during the test.
-        flood_nodes = [] 
+        flood_nodes = []
 
         def gottaGetThemAllPokeNodes(nodes=None):
             nonlocal consumer, hashes
