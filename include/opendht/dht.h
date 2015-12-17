@@ -243,13 +243,6 @@ public:
 
     int pingNode(const sockaddr*, socklen_t);
 
-    /**
-     * Maintains the store. For each storage, if values don't belong there
-     * anymore because this node is too far from the target, values are sent to
-     * the appropriate nodes.
-     */
-    void maintainStore(bool force=false);
-
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
     /**
@@ -459,7 +452,7 @@ private:
 
         InfoHash middle(const RoutingTable::const_iterator&) const;
 
-        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id) const;
+        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, size_t count = TARGET_NODES) const;
 
         RoutingTable::iterator findBucket(const InfoHash& id);
         RoutingTable::const_iterator findBucket(const InfoHash& id) const;
@@ -616,6 +609,7 @@ private:
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
+        bool refilled {false};
         std::vector<SearchNode> nodes {};
         std::vector<Announce> announce {};
         std::vector<Get> callbacks {};
@@ -886,6 +880,11 @@ private:
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
 
+    /**
+     * For a given storage, if values don't belong there anymore because this
+     * node is too far from the target, values are sent to the appropriate
+     * nodes.
+     */
     size_t maintainStorage(InfoHash id, bool force=false, DoneCallback donecb=nullptr);
 
     // Buckets

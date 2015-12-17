@@ -303,37 +303,44 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
 }
 
 std::vector<std::shared_ptr<Node>>
-Dht::RoutingTable::findClosestNodes(const InfoHash id) const {
+Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
     std::vector<std::shared_ptr<Node>> nodes {};
     auto bucket = findBucket(id);
 
     if (bucket == end()) { return nodes; }
 
     auto sortedBucketInsert = [&](const Bucket &b) {
-            for (auto n : b.nodes) {
-                auto here = std::find_if(nodes.begin(), nodes.end(), [&id,&n](std::shared_ptr<Node> &node) {
-                        return id.xorCmp(node->id, n->id) < 0;
-                        });
-                nodes.insert(here, n);
+        for (auto n : b.nodes) {
+            auto here = std::find_if(nodes.begin(), nodes.end(),
+                [&id,&n](std::shared_ptr<Node> &node) {
+                    return id.xorCmp(n->id, node->id) < 0;
+                }
+            );
+            nodes.insert(here, n);
+        }
+    };
+
+    auto itn = bucket;
+    auto itp = std::prev(bucket);
+    while (nodes.size() < count && (itn != end() || itp != end())) {
+        if (itn != end()) {
+            sortedBucketInsert(*itn);
+            itn = std::next(itn);
+        }
+        if (itp != end()) {
+            sortedBucketInsert(*itp);
+            if (itp == begin()) {
+                itp = end();
+                continue;
             }
-        };
-
-    // Inserting very closest nodes
-    sortedBucketInsert(*bucket);
-
-    // adjacent buckets contain remaining closest candidates
-    if (std::next(bucket) != this->end() && nodes.size() < TARGET_NODES) {
-        sortedBucketInsert(*std::next(bucket));
-    }
-    if (std::prev(bucket) != this->end() && nodes.size() < TARGET_NODES) {
-        sortedBucketInsert(*std::prev(bucket));
+            itp = std::prev(itp);
+        }
     }
 
-    // shrink to the TARGET_NODES closest nodes.
-    if (nodes.size() > TARGET_NODES) {
-        nodes.resize(TARGET_NODES);
+    // shrink to the count closest nodes.
+    if (nodes.size() > count) {
+        nodes.resize(count);
     }
-
     return nodes;
 }
 
@@ -1041,13 +1048,19 @@ Dht::searchStep(Search& sr)
                     return sn.candidate or sn.node->isExpired(now);
                 }) == sr.nodes.size())
         {
-            unsigned added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+            unsigned added = 0;
+            if (not sr.refilled) {
+                added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+                sr.refilled = true;
+            }
             if (added) {
                 DHT_WARN("[search %s IPv%c] refilled with %u nodes", sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', added);
             } else {
                 DHT_ERROR("[search %s IPv%c] expired", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
                 // no nodes or all expired nodes
                 sr.expired = true;
+                // reset refilled since the search is now expired.
+                sr.refilled = false;
                 if (sr.announce.empty() && sr.listeners.empty()) {
                     // Listening or announcing requires keeping the cluster up to date.
                     sr.done = true;
@@ -2613,6 +2626,20 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             sendError(from, fromlen, msg.tid, 401, "Put with wrong token", true);
             break;
         }
+        {
+            // We store a value only if we think we're part of the
+            // SEARCH_NODES nodes around the target id.
+            auto closest_nodes = (from->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(msg.info_hash, SEARCH_NODES);
+            if (msg.info_hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
+                DHT_WARN("[node %s %s] announce too far from the target id. Dropping value.",
+                        msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
+                for (auto& v : msg.values) {
+                    sendValueAnnounced(from, fromlen, msg.tid, v->id);
+                }
+                break;
+            }
+        }
+
         for (const auto& v : msg.values) {
             if (v->id == Value::INVALID_ID) {
                 DHT_WARN("[value %s %s] incorrect value id", msg.info_hash.toString().c_str(), v->id);
@@ -2640,7 +2667,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     DHT_DEBUG("[value %s %lu] storing %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());
                     storageStore(msg.info_hash, vc, msg.created);
                 } else {
-                    DHT_DEBUG("[value %s %lu] rejecting storage of %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());                    
+                    DHT_DEBUG("[value %s %lu] rejecting storage of %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());
                 }
             }
 
