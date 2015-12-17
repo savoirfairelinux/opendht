@@ -221,6 +221,12 @@ struct Value
         return unpackMsg<T>(v.data);
     }
 
+    template <typename T>
+    T unpack()
+    {
+        return unpack<T>(*this);
+    }
+
     bool isEncrypted() const {
         return not cypher.empty();
     }
@@ -261,6 +267,9 @@ struct Value
     Value(const Type& vs)
      : Value(pack<Type>(vs)) {}
 
+    /**
+     * Unpack a serialized value
+     */
     Value(const msgpack::object& o) {
         msgpack_unpack(o);
     }
