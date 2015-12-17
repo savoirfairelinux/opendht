@@ -13,6 +13,15 @@ Documentation
 -
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
+#### How-to build and install
+
+Build instructions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
+
+#### How-to build a simple client app
+```bash
+g++ main.cpp -std=c++11 -lopendht -lgnutls
+```
+
 Examples
 -
 ### C++ example
@@ -74,43 +83,6 @@ r.put(dht.InfoHash.get("unique_key"), dht.Value(b'some binary data'))
 results = r.get(dht.InfoHash.get("unique_key"))
 for r in results:
     print(r)
-```
-
-## How-to build and install
-
-Full instructions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
-
--
-### Using autotools
-
-```bash
-# clone the repo
-git clone https://github.com/savoirfairelinux/opendht.git
-
-# build and install
-cd opendht
-./autogen.sh && ./configure
-make
-sudo make install
-```
-### Using cmake
-
-```bash
-# clone the repo
-git clone https://github.com/savoirfairelinux/opendht.git
-
-# build and install
-cd opendht
-mkdir build && cd build
-cmake -DOPENDHT_PYTHON=ON ..
-make -j
-sudo make install
-```
-
-How-to build a simple client app
--
-```bash
-g++ main.cpp -std=c++11 -lopendht -lgnutls
 ```
 
 Licence
