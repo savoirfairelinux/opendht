@@ -175,38 +175,52 @@ struct Value
         };
     }
 
-    template <typename T>
-    struct Serializable
+    class SerializableBase
     {
+    public:
+        SerializableBase() {}
+        virtual ~SerializableBase() {};
         virtual const ValueType& getType() const = 0;
+        virtual void unpackValue(const Value& v) = 0;
+        virtual Value packValue() const = 0;
+    };
+
+    template <typename Derived, typename Base=SerializableBase>
+	class Serializable : public Base
+	{
+	public:
+		using Base::Base;
+
+        virtual const ValueType& getType() const {
+            return Derived::TYPE;
+        }
+
         virtual void unpackValue(const Value& v) {
             auto msg = msgpack::unpack((const char*)v.data.data(), v.data.size());
-            msgpack::object obj = msg.get();
-            obj.convert(static_cast<T*>(this));
+            msg.get().convert(static_cast<Derived*>(this));
         }
 
         virtual Value packValue() const {
-            return Value {getType(), static_cast<const T&>(*this)};
+            return Value {getType(), static_cast<const Derived&>(*this)};
         }
-        virtual ~Serializable() = default;
     };
 
     template <typename T,
-              typename std::enable_if<std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+              typename std::enable_if<std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static Value pack(const T& obj)
     {
         return obj.packValue();
     }
 
     template <typename T,
-              typename std::enable_if<!std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+              typename std::enable_if<!std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static Value pack(const T& obj)
     {
         return {ValueType::USER_DATA.id, packMsg<T>(obj)};
     }
 
     template <typename T,
-              typename std::enable_if<std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+              typename std::enable_if<std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static T unpack(const Value& v)
     {
         T msg;
@@ -215,7 +229,7 @@ struct Value
     }
 
     template <typename T,
-              typename std::enable_if<!std::is_base_of<Serializable<T>, T>::value, T>::type* = nullptr>
+              typename std::enable_if<!std::is_base_of<SerializableBase, T>::value, T>::type* = nullptr>
     static T unpack(const Value& v)
     {
         return unpackMsg<T>(v.data);
@@ -245,7 +259,7 @@ struct Value
      : id(id), type(t), data(std::move(data)) {}
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
-    
+
     template <typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
      : id(id), type(t), data(packMsg(d)) {}
@@ -405,7 +419,7 @@ struct Value
 };
 
 template <typename T,
-          typename std::enable_if<std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+          typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet(Value::Filter f)
 {
@@ -417,7 +431,7 @@ getFilterSet(Value::Filter f)
 }
 
 template <typename T,
-          typename std::enable_if<!std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+          typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet(Value::Filter f)
 {
@@ -425,7 +439,7 @@ getFilterSet(Value::Filter f)
 }
 
 template <typename T,
-          typename std::enable_if<std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+          typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet()
 {
@@ -436,7 +450,7 @@ getFilterSet()
 }
 
 template <typename T,
-          typename std::enable_if<!std::is_base_of<Value::Serializable<T>, T>::value, T>::type* = nullptr>
+          typename std::enable_if<!std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter
 getFilterSet()
 {

@@ -23,18 +23,17 @@
 
 namespace dht {
 
-struct DhtMessage : public Value::Serializable<DhtMessage>
+class DhtMessage : public Value::Serializable<DhtMessage>
 {
+public:
+    static const ValueType TYPE;
+
     DhtMessage(std::string s = {}, Blob msg = {}) : service(s), data(msg) {}
 
     std::string getService() const {
         return service;
     }
 
-    static const ValueType TYPE;
-    virtual const ValueType& getType() const override {
-        return TYPE;
-    }
     static Value::Filter getFilter() { return {}; }
 
     static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len);
@@ -44,57 +43,64 @@ struct DhtMessage : public Value::Serializable<DhtMessage>
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream&, const DhtMessage&);
 
-public:
     std::string service;
     Blob data;
     MSGPACK_DEFINE(service, data);
 };
 
-template <typename Type>
-struct SignedValue : public Value::Serializable<Type>
+template <typename T>
+class SignedValue : public Value::Serializable<T>
 {
+private:
+    using BaseClass = Value::Serializable<T>;
+
+public:
     virtual void unpackValue(const Value& v) override {
         from = v.owner.getId();
-        Value::Serializable<Type>::unpackValue(v);
+        BaseClass::unpackValue(v);
     }
+
     static Value::Filter getFilter() {
         return [](const Value& v){ return v.isSigned(); };
     }
-public:
+
     dht::InfoHash from;
 };
 
-template <typename Type>
-struct EncryptedValue : public SignedValue<Type>
+template <typename T>
+class EncryptedValue : public SignedValue<T>
 {
+public:
+    using BaseClass = SignedValue<T>;
+
+public:
     virtual void unpackValue(const Value& v) override {
         to = v.recipient;
-        SignedValue<Type>::unpackValue(v);
+        BaseClass::unpackValue(v);
     }
+
     static Value::Filter getFilter() {
         return Value::Filter::chain(
-            SignedValue<Type>::getFilter(),
+            BaseClass::getFilter(),
             [](const Value& v){ return v.recipient != InfoHash(); }
         );
     }
 
-public:
     dht::InfoHash to;
 };
 
-struct ImMessage : public SignedValue<ImMessage>
+class ImMessage : public SignedValue<ImMessage>
 {
+private:
+    using BaseClass = SignedValue<ImMessage>;
+
+public:
+    static const ValueType TYPE;
+
     ImMessage() {}
     ImMessage(dht::Value::Id id, std::string&& m, long d = 0)
-      : id(id), msg(std::move(m)), date(d) {}
+        : id(id), msg(std::move(m)), date(d) {}
 
-    static const ValueType TYPE;
-    virtual const ValueType& getType() const override {
-        return TYPE;
-    }
-    static Value::Filter getFilter() {
-        return SignedValue::getFilter();
-    }
     virtual void unpackValue(const Value& v) override {
         to = v.recipient;
         SignedValue::unpackValue(v);
@@ -103,20 +109,22 @@ struct ImMessage : public SignedValue<ImMessage>
     dht::InfoHash to;
     dht::Value::Id id;
     std::string msg;
-    long date;
+    long date {0};
     MSGPACK_DEFINE_MAP(id, msg, date);
 };
 
-struct TrustRequest : public EncryptedValue<TrustRequest>
+class TrustRequest : public EncryptedValue<TrustRequest>
 {
+private:
+    using BaseClass = EncryptedValue<TrustRequest>;
+
+public:
+    static const ValueType TYPE;
+
     TrustRequest() {}
     TrustRequest(std::string s) : service(s) {}
     TrustRequest(std::string s, const Blob& d) : service(s), payload(d) {}
 
-    static const ValueType TYPE;
-    virtual const ValueType& getType() const override {
-        return TYPE;
-    }
     static Value::Filter getFilter() {
         return EncryptedValue::getFilter();
     }
@@ -126,15 +134,17 @@ struct TrustRequest : public EncryptedValue<TrustRequest>
     MSGPACK_DEFINE(service, payload);
 };
 
-struct IceCandidates : public EncryptedValue<IceCandidates>
+class IceCandidates : public EncryptedValue<IceCandidates>
 {
+private:
+    using BaseClass = EncryptedValue<IceCandidates>;
+
+public:
+    static const ValueType TYPE;
+
     IceCandidates() {}
     IceCandidates(Value::Id msg_id, Blob ice) : id(msg_id), ice_data(ice) {}
 
-    static const ValueType TYPE;
-    virtual const ValueType& getType() const override {
-        return TYPE;
-    }
     static Value::Filter getFilter() {
         return EncryptedValue::getFilter();
     }
@@ -168,11 +178,16 @@ struct IceCandidates : public EncryptedValue<IceCandidates>
     Blob ice_data;
 };
 
-
 /* "Peer" announcement
  */
-struct IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
+class IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
 {
+private:
+    using BaseClass = Value::Serializable<IpServiceAnnouncement>;
+
+public:
+    static const ValueType TYPE;
+
     IpServiceAnnouncement(in_port_t p = 0) {
         ss.ss_family = 0;
         setPort(p);
@@ -226,7 +241,6 @@ struct IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
         return ss;
     }
 
-    static const ValueType TYPE;
     virtual const ValueType& getType() const {
         return TYPE;
     }
