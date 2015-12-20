@@ -20,16 +20,22 @@
 
 // Common utility methods used by C++ OpenDHT tools.
 
+#include <opendht.h>
+#include <getopt.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <signal.h>
+#include <unistd.h>
+
 #include <string>
 #include <vector>
 #include <chrono>
 #include <iostream>
 #include <sstream>
-
-#include <opendht.h>
-#include <getopt.h>
-#include <readline/readline.h>
-#include <readline/history.h>
+#include <fstream>
 
 /**
  * Terminal colors for logging
@@ -88,6 +94,19 @@ enableLogging(dht::DhtRunner& dht)
 }
 
 void
+enableFileLogging(dht::DhtRunner& dht, const std::string& path)
+{
+    auto logfile = std::make_shared<std::fstream>();
+    logfile->open(path, std::ios::out);
+
+    dht.setLoggers(
+        [=](char const* m, va_list args){ printLog(*logfile, m, args); },
+        [=](char const* m, va_list args){ printLog(*logfile, m, args); },
+        [=](char const* m, va_list args){ printLog(*logfile, m, args); }
+    );
+}
+
+void
 disableLogging(dht::DhtRunner& dht)
 {
     dht.setLoggers(dht::NOLOG, dht::NOLOG, dht::NOLOG);
@@ -130,9 +149,11 @@ static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 struct dht_params {
     bool help {false}; // print help and exit
     bool log {false};
+    std::string logfile {};
     in_port_t port {0};
     bool is_bootstrap_node {false};
     bool generate_identity {false};
+    bool daemonize {false};
     std::pair<std::string, std::string> bootstrap {};
 };
 
@@ -142,6 +163,7 @@ static const constexpr struct option long_options[] = {
    {"bootstrap",  optional_argument, nullptr, 'b'},
    {"identity",   no_argument      , nullptr, 'i'},
    {"verbose",    no_argument      , nullptr, 'v'},
+   {"daemonize",  no_argument      , nullptr, 'd'},
    {nullptr,      0,                 nullptr,  0}
 };
 
@@ -149,7 +171,7 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, ":hivp:b:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, ":hidv:p:b:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -162,7 +184,7 @@ parseArgs(int argc, char **argv) {
         case 'b':
             if (optarg) {
                 params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
-                if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()){
+                if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
                     std::stringstream ss;
                     ss << DHT_DEFAULT_PORT;
                     params.bootstrap.second = ss.str();
@@ -175,15 +197,23 @@ parseArgs(int argc, char **argv) {
             params.help = true;
             break;
         case 'v':
+            if (optarg)
+                params.logfile = {optarg};
             params.log = true;
             break;
         case 'i':
             params.generate_identity = true;
             break;
+        case 'd':
+            params.daemonize = true;
+            break;
         case ':':
             switch (optopt) {
             case 'b':
                 params.is_bootstrap_node = true;
+                break;
+            case 'v':
+                params.log = true;
                 break;
             default:
                 std::cout << "option requires an argument -- '" << optopt << '\'' << std::endl;
@@ -207,4 +237,44 @@ readLine(const char* prefix = PROMPT)
         add_history(line_read);
 
     return line_read ? std::string(line_read) : std::string("\0", 1);
+}
+
+void signal_handler(int sig)
+{
+    switch(sig) {
+    case SIGHUP:
+        break;
+    case SIGTERM:
+        exit(EXIT_SUCCESS);
+        break;
+    }
+}
+
+void daemonize()
+{
+    pid_t pid = fork();
+    if (pid < 0) exit(EXIT_FAILURE);
+    if (pid > 0) exit(EXIT_SUCCESS);
+
+    umask(0);
+
+    pid_t sid = setsid();
+    if (sid < 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    if ((chdir("/")) < 0) {
+        exit(EXIT_FAILURE);
+    }
+
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    signal(SIGCHLD,SIG_IGN); /* ignore child */
+    signal(SIGTSTP,SIG_IGN); /* ignore tty signals */
+    signal(SIGTTOU,SIG_IGN);
+    signal(SIGTTIN,SIG_IGN);
+    signal(SIGHUP,signal_handler); /* catch hangup signal */
+    signal(SIGTERM,signal_handler); /* catch kill signal */
 }
