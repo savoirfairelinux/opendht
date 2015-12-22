@@ -166,7 +166,7 @@ public:
 #endif
     }
 
-    void msgpack_unpack(msgpack::object o)
+    virtual void msgpack_unpack(msgpack::object o)
     {
         if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
         if (o.via.array.size < 2) throw msgpack::type_error();
@@ -216,7 +216,7 @@ public:
         }
     }
 
-    void msgpack_unpack(msgpack::object o)
+    virtual void msgpack_unpack(msgpack::object o)
     {
         if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
         if (o.via.array.size < 2) throw msgpack::type_error();
