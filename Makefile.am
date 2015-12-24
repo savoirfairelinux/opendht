@@ -1,3 +1,5 @@
+AM_CXXFLAGS = -pthread
+
 SUBDIRS = src
 
 if ENABLE_TOOLS
