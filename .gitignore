@@ -41,3 +41,7 @@ Makefile.in
 *.l[ao]
 *~
 *.pc
+
+# KDevelop
+.kdev4/
+*.kdev4
