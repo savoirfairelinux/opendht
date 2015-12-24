@@ -16,10 +16,10 @@ option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_DEBUG "Build with debug flags" OFF)
 
-set (CMAKE_CXX_FLAGS "-std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor ${CMAKE_CXX_FLAGS}")
+set (CMAKE_CXX_FLAGS "-pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor ${CMAKE_CXX_FLAGS}")
 
 find_package (GnuTLS 3.1 REQUIRED)
-find_package (Msgpack 1.1 REQUIRED)
+find_package (Msgpack 1.2 REQUIRED)
 if (OPENDHT_TOOLS)
 	find_package (Readline 6 REQUIRED)
 endif ()
