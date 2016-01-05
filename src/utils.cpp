@@ -26,8 +26,9 @@ time_point from_time_t(std::time_t t) {
 }
 
 std::time_t to_time_t(time_point t) {
-    return std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() + 
-            (t - clock::now()));
+    return std::chrono::system_clock::to_time_t(
+            std::chrono::system_clock::now() +
+            std::chrono::duration_cast<std::chrono::system_clock::duration>(t - clock::now()));
 }
 
 Blob
