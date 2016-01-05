@@ -757,7 +757,7 @@ class PerformanceTest(FeatureTest):
                 with lock:
                     done += 1
                     start = time.time()
-                    bootstrap.front().get(PyInfoHash.getRandom(), getcb, donecb)
+                    bootstrap.front().get(InfoHash.getRandom(), getcb, donecb)
                     while done > 0:
                         lock.wait()
                         update_plot()
