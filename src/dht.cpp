@@ -858,9 +858,16 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         }*//* else {
             std::cout << "Adding real node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
         }*/
-        while (nodes.size()-num_candidates > SEARCH_NODES)
-            if (not removeExpiredNode(now))
-                nodes.pop_back();
+        if (nodes.size()-num_candidates > SEARCH_NODES) {
+            removeExpiredNode(now);
+
+            auto farthest_good_node = std::find_if(nodes.rbegin(), nodes.rend(),
+                    [=](std::shared_ptr<Node>& n) { return n->isGood(now); }
+                    );
+            if (farthest_good_node != nodes.rend()) {
+                nodes.erase(farthest_good_node.base());
+            }
+        }
         expired = false;
     }
     if (not token.empty()) {
