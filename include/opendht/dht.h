@@ -621,9 +621,6 @@ private:
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
-        bool refilled {false};
-
-        /* search routing table */
         std::vector<SearchNode> nodes {};
 
         /* pending puts */
