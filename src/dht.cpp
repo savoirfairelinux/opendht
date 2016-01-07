@@ -860,7 +860,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
             removeExpiredNode(now);
 
             auto farthest_good_node = std::find_if(nodes.rbegin(), nodes.rend(),
-                    [=](std::shared_ptr<Node>& n) { return n->isGood(now); }
+                    [=](const SearchNode& n) { return n.node->isGood(now); }
                     );
             if (farthest_good_node != nodes.rend()) {
                 nodes.erase(farthest_good_node.base());
@@ -942,13 +942,13 @@ Dht::searchStep(Search& sr)
     DHT_DEBUG("[search %s IPv%c] step", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
     sr.step_time = now;
 
+    if (sr.nodes.size()-sr.getNumberOfCandidates(now) < SEARCH_NODES) {
+        auto added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+        DHT_WARN("[search %s IPv%c] refilled with %u nodes", sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', added);
+    }
+
     /* Check if the first TARGET_NODES (8) live nodes have replied. */
     if (sr.isSynced(now)) {
-
-        if (sr.nodes.size()-sr.getNumberOfCandidates(now) < SEARCH_NODES and not sr.refilled) {
-            auto added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
-            DHT_WARN("[search %s IPv%c] refilled with %u nodes", sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', added);
-        }
 
         if (not sr.callbacks.empty()) {
             // search is synced but some (newer) get operations are not complete
@@ -1062,8 +1062,6 @@ Dht::searchStep(Search& sr)
             DHT_ERROR("[search %s IPv%c] expired", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
             // no nodes or all expired nodes
             sr.expired = true;
-            // reset refilled since the search is now expired.
-            sr.refilled = false;
             if (sr.announce.empty() && sr.listeners.empty()) {
                 // Listening or announcing requires keeping the cluster up to date.
                 sr.done = true;
@@ -1362,7 +1360,6 @@ Dht::Search::refill(const RoutingTable& r, time_point now) {
             b = std::prev(b);
         }
     }
-    refilled = true;
 
     return added;
 }
