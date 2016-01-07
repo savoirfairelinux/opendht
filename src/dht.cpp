@@ -1,6 +1,6 @@
 /*
-Copyright (c) 2009-2014 Juliusz Chroboczek
-Copyright (c) 2014-2015 Savoir-faire Linux Inc.
+Copyright (C) 2009-2014 Juliusz Chroboczek
+Copyright (C) 2014-2016 Savoir-faire Linux Inc.
 
 Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>,
             Juliusz Chroboczek <jch@pps.univ–paris–diderot.fr>

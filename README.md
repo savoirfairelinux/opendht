@@ -87,7 +87,7 @@ for r in results:
 
 Licence
 -
-Copyright (C) 2014-2015 Savoir-Faire Linux Inc.
+Copyright (C) 2014-2016 Savoir-faire Linux Inc.
 
 Licenced under the GNU General Public License version 3, though the core routing library (dht.cpp) is licenced under the MIT licence.
 

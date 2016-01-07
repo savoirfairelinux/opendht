@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015 Savoir-Faire Linux Inc.
+# Copyright (c) 2015-2016 Savoir-faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy

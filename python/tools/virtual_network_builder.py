@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (C) 2015 Savoir-Faire Linux Inc.
+# Copyright (c) 2015-2016 Savoir-faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 
 import argparse, subprocess

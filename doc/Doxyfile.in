@@ -353,7 +353,7 @@ DOCSET_PUBLISHER_ID    = com.savoirfairelinux
 # The default value is: Publisher.
 # This tag requires that the tag GENERATE_DOCSET is set to YES.
 
-DOCSET_PUBLISHER_NAME  = Savoir-Faire Linux
+DOCSET_PUBLISHER_NAME  = Savoir-faire Linux
 
 # If the GENERATE_HTMLHELP tag is set to YES then doxygen generates three
 # additional HTML index files: index.hhp, index.hhc, and index.hhk. The
