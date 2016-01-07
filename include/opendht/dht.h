@@ -660,6 +660,11 @@ private:
         bool isListening(time_point now) const;
 
         /**
+         * @return The number of non-good search nodes.
+         */
+        unsigned getNumberOfBadNodes(time_point now);
+
+        /**
          * ret = 0 : no announce required.
          * ret > 0 : (re-)announce required at time ret.
          */

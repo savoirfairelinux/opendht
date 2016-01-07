@@ -823,10 +823,8 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         return false;
 
     bool found = false;
-    unsigned num_candidates = 0;
+    unsigned num_bad_nodes = getNumberOfBadNodes(now);
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
-        if (sn.candidate or sn.node->isExpired(now))
-            num_candidates++;
         if (sn.node == node) {
             found = true;
             return true;
@@ -836,7 +834,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
 
     bool new_search_node = false;
     if (!found) {
-        if (nodes.size()-num_candidates >= SEARCH_NODES) {
+        if (nodes.size()-num_bad_nodes >= SEARCH_NODES) {
             if (node->isExpired(now))
                 return false;
             if (n == nodes.end())
@@ -859,7 +857,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         }*//* else {
             std::cout << "Adding real node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
         }*/
-        if (nodes.size()-num_candidates > SEARCH_NODES) {
+        if (nodes.size()-num_bad_nodes > SEARCH_NODES) {
             removeExpiredNode(now);
 
             auto farthest_not_expired_node = std::find_if(nodes.rbegin(), nodes.rend(),
@@ -1158,6 +1156,13 @@ Dht::Search::isSynced(time_point now) const
     return i > 0;
 }
 
+unsigned Dht::Search::getNumberOfBadNodes(time_point now) {
+    return std::count_if(nodes.begin(), nodes.end(),
+            [=](const SearchNode& sn) {
+                return sn.candidate or sn.node->isExpired(now);
+            });
+}
+
 time_point
 Dht::Search::getLastGetTime() const
 {
@@ -1351,6 +1356,7 @@ Dht::Search::refill(const RoutingTable& r, time_point now) {
     if (r.isEmpty() or r.front().af != af)
         return 0;
     unsigned added = 0;
+    auto num_bad_nodes = getNumberOfBadNodes(now);
     auto b = r.findBucket(id);
     auto n = b;
     while (added < SEARCH_NODES && (std::next(n) != r.end() || b != r.begin())) {
