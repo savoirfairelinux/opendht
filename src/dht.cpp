@@ -822,10 +822,8 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         return false;
 
     bool found = false;
-    unsigned num_candidates = 0;
+    unsigned num_candidates = getNumberOfCandidates(now);
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
-        if (sn.candidate or sn.node->isExpired(now))
-            num_candidates++;
         if (sn.node == node) {
             found = true;
             return true;
@@ -1154,6 +1152,13 @@ Dht::Search::isSynced(time_point now) const
     return i > 0;
 }
 
+unsigned Dht::Search::getNumberOfCandidates(time_point now) {
+    return std::count_if(nodes.begin(), nodes.end(),
+            [=](const SearchNode& sn) {
+                return sn.candidate or sn.node->isExpired(now);
+            });
+}
+
 time_point
 Dht::Search::getLastGetTime() const
 {
@@ -1347,6 +1352,7 @@ Dht::Search::refill(const RoutingTable& r, time_point now) {
     if (r.isEmpty() or r.front().af != af)
         return 0;
     unsigned added = 0;
+    auto num_candidates = getNumberOfCandidates(now);
     auto b = r.findBucket(id);
     auto n = b;
     while (added < SEARCH_NODES && (std::next(n) != r.end() || b != r.begin())) {
