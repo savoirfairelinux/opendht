@@ -16,19 +16,238 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import sys
 import signal
 import random
 import time
 import threading
 import queue
+import re
 
 import ipaddress
 import netifaces
-
 import numpy as np
+from pyroute2.netns.process.proxy import NSPopen
 
 from opendht import *
+
+
+# TODO: find where token "notifyend" gets printed...
+class DhtNetworkSubProcess(NSPopen):
+    """
+    Handles communication with DhtNetwork sub process.
+
+    When instanciated, the object's thread is started and will read the sub
+    process' stdout until it finds 'DhtNetworkSubProcess.NOTIFY_TOKEN' token,
+    therefor, waits for the sub process to spawn.
+    """
+    # requests
+    REMOVE_NODE_REQ           = b"rn"
+    SHUTDOWN_NODE_REQ         = b"sdn"
+    SHUTDOWN_REPLACE_NODE_REQ = b'sdrn'
+    SHUTDOWN_CLUSTER_REQ      = b"sdc"
+    DUMP_STORAGE_REQ          = b"strl"
+    MESSAGE_STATS             = b"gms"
+
+
+    # tokens
+    NOTIFY_TOKEN     = 'notify'
+    NOTIFY_END_TOKEN = 'notifyend'
+
+    def __init__(self, ns, cmd, quit=False, **kwargs):
+        super(DhtNetworkSubProcess, self).__init__(ns, cmd, **kwargs)
+        self._setStdoutFlags()
+        self._virtual_ns = ns
+
+        self._quit = quit
+        self._lock = threading.Condition()
+        self._in_queue = queue.Queue()
+        self._out_queue = queue.Queue()
+
+        # starting thread
+        self._thread = threading.Thread(target=self._communicate)
+        self._thread.daemon = True
+        self._thread.start()
+
+    def __repr__(self):
+        return 'DhtNetwork on virtual namespace "%s"' % self._virtual_ns
+
+    def _setStdoutFlags(self):
+        """
+        Sets non-blocking read flags for subprocess stdout file descriptor.
+        """
+        import fcntl
+        flags = self.stdout.fcntl(fcntl.F_GETFL)
+        self.stdout.fcntl(fcntl.F_SETFL, flags | os.O_NDELAY)
+
+    def _communicate(self):
+        """
+        Communication thread. This reads and writes to the sub process.
+        """
+        ENCODING = 'utf-8'
+        sleep_time = 0.1
+        stdin_line, stdout_line = '', ''
+
+        # first read of process living. Expecting NOTIFY_TOKEN
+        while DhtNetworkSubProcess.NOTIFY_TOKEN not in stdout_line:
+            stdout_line = self.stdout.readline().decode()
+            time.sleep(sleep_time)
+
+        with self._lock:
+            self._out_queue.put(stdout_line)
+
+        while not self._quit:
+            with self._lock:
+                try:
+                    stdin_line = self._in_queue.get_nowait()
+
+                    # sending data to sub process
+                    self.stdin.write(stdin_line if isinstance(stdin_line, bytes) else
+                            bytes(str(stdin_line), encoding=ENCODING))
+                    self.stdin.flush()
+                except queue.Empty:
+                    #waiting for next stdin req to send
+                    self._lock.wait(timeout=sleep_time)
+
+            # reading response from sub process
+            for stdout_line in iter(self.stdout.readline, b''):
+                stdout_line = stdout_line.decode().replace('\n', '')
+                if stdout_line:
+                    with self._lock:
+                        self._out_queue.put(stdout_line)
+
+        with self._lock:
+            self._lock.notify()
+
+    def stop_communicating(self):
+        """
+        Stops the I/O thread from communicating with the subprocess.
+        """
+        if not self._quit:
+            self._quit = True
+            with self._lock:
+                self._lock.notify()
+                self._lock.wait()
+
+    def quit(self):
+        """
+        Notifies thread and sub process to terminate. This is blocking call
+        until the sub process finishes.
+        """
+        self.stop_communicating()
+        self.send_signal(signal.SIGINT);
+        self.wait()
+        self.release()
+
+    def send(self, msg):
+        """
+        Send data to sub process.
+        """
+        with self._lock:
+            self._in_queue.put(msg)
+            self._lock.notify()
+
+    def getline(self):
+        """
+        Read line from sub process.
+
+        @return:  A line on sub process' stdout.
+        @rtype :  str
+        """
+        line = ''
+        with self._lock:
+            try:
+                line = self._out_queue.get_nowait()
+            except queue.Empty:
+                pass
+        return line
+
+    def getlinesUntilNotify(self, answer_cb=None):
+        """
+        Reads the stdout queue until a proper notification is given by the sub
+        process.
+
+        @param answer_cb: Callback to call when an answer is given after notify.
+                          The function takes a list of lines as argument.
+        @type  answer_cb:  function
+        """
+        notified = False
+        answer = []
+        while True:
+            out = self.getline()
+            if out.split(' ')[0] == DhtNetworkSubProcess.NOTIFY_TOKEN:
+                notified = True
+            elif notified and out.split(' ')[0] == DhtNetworkSubProcess.NOTIFY_END_TOKEN:
+                if answer_cb:
+                    answer_cb(answer)
+                break
+            elif notified:
+                answer.append(out)
+            elif out:
+                yield out
+            else:
+                time.sleep(0.1)
+
+    def sendGetMessageStats(self):
+        """
+        Sends DhtNetwork sub process statistics request about nodes messages
+        sent.
+
+        @return: A list [num_nodes, ping, find, get, put, listen].
+        @rtype : list
+        """
+        stats = []
+        def cb(answer):
+            """
+            Callback fed to getlinesUntilNotify made to recover answer from the
+            DhtNetwork sub process.
+
+            :answer: the list of lines answered by the sub process.
+            """
+            nonlocal stats
+            if answer:
+                stats = [int(v) for v in re.findall("[0-9]+", answer.pop())]
+
+        self.send(DhtNetworkSubProcess.MESSAGE_STATS + b'\n')
+        for line in self.getlinesUntilNotify(answer_cb=cb):
+            DhtNetwork.log(line)
+
+        return stats
+
+    def sendNodesRequest(self, request, ids):
+        """
+        Shutsdown nodes on the DhtNetwork sub process.
+
+        @param request: The request
+        @type  request: bytes
+        @param     ids: ids of nodes concerned by the request.
+        @type      ids: list
+        """
+        serialized_req = request + b' ' + b' '.join(map(bytes, ids))
+        self.send(serialized_req + b'\n')
+        for line in self.getlinesUntilNotify():
+            DhtNetwork.log(line)
+
+    def sendShutdown(self):
+        """
+        Shutdown the whole cluster. This does not terminate comunicating thread;
+        use quit().
+        """
+        self.send(DhtNetworkSubProcess.SHUTDOWN_CLUSTER_REQ + b'\n')
+        for line in self.getlinesUntilNotify():
+            DhtNetwork.log(line)
+
+    def sendDumpStorage(self, ids):
+        """
+        Dumps storage log from nodes with id in `ids`.
+        """
+        serialized_req = DhtNetworkSubProcess.DUMP_STORAGE_REQ + b' ' + \
+                    b' '.join(map(bytes, ids))
+        self.send(serialized_req + b'\n')
+        for line in self.getlinesUntilNotify():
+            DhtNetwork.log(line)
+
 
 class DhtNetwork(object):
     nodes = []
@@ -94,10 +313,10 @@ class DhtNetwork(object):
     def end_node(self, id=None, shutdown=False, last_msg_stats=None):
         """
         Ends a running node.
-        
+
         @param id: The 40 hex chars id of the node.
         @type  id: bytes
-        
+
         @return: If a node was deleted or not.
         @rtype : boolean
         """
@@ -158,6 +377,7 @@ class DhtNetwork(object):
         stats_list = [len(self.nodes)]
         stats_list.extend(stats.tolist())
         return stats_list
+
 
 if __name__ == '__main__':
     import argparse
