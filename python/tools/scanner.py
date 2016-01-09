@@ -166,6 +166,8 @@ def restart(arg):
 collection = None
 points = []
 not_found = []
+infos = [ringx.text(1.2, -0.8, ""),
+         ringx.text(1.2, -0.9, "")]
 
 def generate_set():
     node_ipv4 = {}
@@ -226,6 +228,10 @@ def update_plot():
     collection = ringx.add_collection(RegularPolyCollection(
                 fig.dpi, 6, sizes=(10,), facecolors=colors,
                 offsets = xys, transOffset = ringx.transData))
+
+    node_ip4s, node_ip6s = generate_set()
+    infos[0].set_text("{} different IPv4s".format(len(node_ip4s)))
+    infos[1].set_text("{} different IPv6s".format(len(node_ip6s)))
 
 if run:
     # start first step
