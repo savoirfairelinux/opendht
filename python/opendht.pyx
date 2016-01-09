@@ -157,6 +157,11 @@ cdef class Value(object):
             return string(<char*>self._value.get().data.data(), self._value.get().data.size())
         def __set__(self, bytes value):
             self._value.get().data = value
+    property id:
+        def __get__(self):
+            return self._value.get().id
+        def __set__(self, cpp.uint64_t value):
+            self._value.get().id = value
 
 cdef class NodeSetIter(object):
     cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]]* _nodes
