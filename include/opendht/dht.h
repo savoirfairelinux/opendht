@@ -604,6 +604,7 @@ private:
         sa_family_t af;
 
         uint16_t tid;
+        time_point refill_time {time_point::min()};
         time_point step_time {time_point::min()};           /* the time of the last search_step */
         time_point get_step_time {time_point::min()};       /* the time of the last get time */
 

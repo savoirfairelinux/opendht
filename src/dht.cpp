@@ -942,8 +942,14 @@ Dht::searchStep(Search& sr)
     DHT_DEBUG("[search %s IPv%c] step", sr.id.toString().c_str(), sr.af == AF_INET ? '4' : '6');
     sr.step_time = now;
 
-    if (sr.nodes.size()-sr.getNumberOfCandidates(now) < SEARCH_NODES) {
+    /*
+     * The accurate delay between two refills has not been strongly determined.
+     * TODO: Emprical analysis over refill timeout.
+     */
+    if (sr.refill_time + Node::NODE_EXPIRE_TIME < now and sr.nodes.size()-sr.getNumberOfCandidates(now) < SEARCH_NODES) {
         auto added = sr.refill(sr.af == AF_INET ? buckets : buckets6, now);
+        if (added)
+            sr.refill_time = now;
         DHT_WARN("[search %s IPv%c] refilled with %u nodes", sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', added);
     }
 
