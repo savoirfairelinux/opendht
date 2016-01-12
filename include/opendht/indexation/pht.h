@@ -28,10 +28,13 @@ struct Prefix {
     Prefix() {}
     Prefix(InfoHash h) : size_(h.size() * 8), content_(h.begin(), h.end()) {}
     Prefix(const Blob& d) : size_(d.size()*8), content_(d) {}
-    Prefix(const Prefix& p, size_t first) : size_(first), content_(p.content_.begin(), p.content_.begin()+first/8) {
-       auto rem = first % 8;
-       if (rem)
-           content_.push_back(p.content_[first/8] & (0xFF << (7 - rem)));
+    Prefix(const Prefix& p, size_t first) :
+        size_(std::min(first, p.content_.size()*8)),
+        content_(Blob(p.content_.begin(), p.content_.begin()+size_/8))
+    {
+        auto rem = size_ % 8;
+        if (rem)
+            content_.push_back(p.content_[size_/8] & (0xFF << (7 - rem)));
     }
 
     Prefix getPrefix(ssize_t len) const {
@@ -50,12 +53,12 @@ struct Prefix {
      * @return The prefix of this sibling.
      */
     Prefix getSibling() const {
-       Prefix copy = *this;
-       if (size_) {
-          size_t last_bit =  (8 - size_) % 8;
-          copy.content_.back() ^= (1 << last_bit);
-       }
-       return copy;
+        Prefix copy = *this;
+        if (size_) {
+            size_t last_bit =  (8 - size_) % 8;
+            copy.content_.back() ^= (1 << last_bit);
+        }
+        return copy;
     }
 
     InfoHash hash() const {
