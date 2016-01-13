@@ -60,16 +60,16 @@ void print_help() {
               << "  lr         Print the full current routing table of this node" << std::endl;
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
-              << "  b ip:port             Ping potential node at given IP address/port." << std::endl
-              << "  g [key] [where]       Get values at [key]. [where] is the 'where' part of an SQL-ish string." << std::endl
-              << "  q [key] [query]       Query field values at [key]. [query] is an SQL-ish string." << std::endl
-              << "  l [key] [where]       Listen for value changes at [key]. [where] is the 'where' part of an SQL-ish string." << std::endl
-              << "  p [key] [str]         Put string value at [key]." << std::endl
-              << "  s [key] [str]         Put string value at [key], signed with our generated private key." << std::endl
-              << "  e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with its public key (if found)." << std::endl;
+              << "  b <ip:port>             Ping potential node at given IP address/port." << std::endl
+              << "  g <key>               Get values at <key>." << std::endl
+              << "  l <key>               Listen for value changes at <key>." << std::endl
+              << "  p <key> <str>         Put string value at <key>." << std::endl
+              << "  s <key> <str>         Put string value at <key>, signed with our generated private key." << std::endl
+              << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl;
     std::cout << std::endl << "Indexation operations on the DHT:" << std::endl
-              << "  il [name] [key]          Lookup the index named [name] with the key [key]." << std::endl
-              << "  ii [name] [key] [value]  Inserts the value [value] under the key [key] in the index named [name]." << std::endl
+              << "  il <name> <key> [exact match]   Lookup the index named <name> with the key <key>." << std::endl
+              << "                                  Set [exact match] to 'false' for inexact match lookup." << std::endl
+              << "  ii <name> <key> <value>         Inserts the value <value> under the key <key> in the index named <name>." << std::endl
               << std::endl;
 }
 
@@ -265,6 +265,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
             });
         }
         else if (op == "il") {
+            std::string exact_match;
+            iss >> exact_match;
             indexes.at(index).lookup(createPhtKey(parseStringMap(keystr)),
                 [=](std::vector<std::shared_ptr<indexation::Value>>& vals, indexation::Prefix p) {
                     std::cout << "Pht::lookup: at prefix \"" << p.toString() << "\"" << ", hash is " << p.hash() << std::endl;
@@ -278,7 +280,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
                     if (not ok) {
                         std::cout << "Pht::lookup: dht Get failed." << std::endl;
                     }
-                }
+                }, exact_match.size() != 0 and exact_match == "false" ? false : true
             );
         }
         else if (op == "ii") {
