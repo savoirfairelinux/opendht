@@ -4,10 +4,12 @@
 namespace dht {
 namespace indexation {
 
-void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo,
-                       std::shared_ptr<int> hi,
-                       std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals,
-                       LookupCallback cb, Dht::DoneCallbackSimple done_cb)
+const ValueType IndexEntry::TYPE = ValueType::USER_DATA;
+
+void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
+        std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals,
+        LookupCallback cb, Dht::DoneCallbackSimple done_cb,
+        std::shared_ptr<unsigned> max_common_prefix_len)
 {
     struct node_lookup_result {
         bool done {false};
@@ -28,7 +30,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo,
         } else {
             // internal node
             *lo = mid+1;
-            lookupStep(p, lo, hi, vals, cb, done_cb);
+            lookupStep(p, lo, hi, vals, cb, done_cb, max_common_prefix_len);
         }
     };
     if (*lo <= *hi) {
@@ -42,8 +44,27 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo,
             else {
                 IndexEntry entry;
                 entry.unpackValue(*value);
-                if (entry.prefix == p.content_)
+
+                auto add_value = [&](bool better = true) {
                     vals->emplace_back(std::make_shared<Value>(entry.value));
+                    if (better and max_common_prefix_len)
+                        *max_common_prefix_len = Prefix::commonBits(p, vals->front()->first);
+                };
+                if (max_common_prefix_len) {
+                    if (vals->empty()) {
+                        add_value();
+                    } else {
+                        auto common_bits = Prefix::commonBits(vals->front()->first, p.getPrefix(mid));
+                        if (common_bits == *max_common_prefix_len)
+                            add_value(false);
+                        else if (common_bits > *max_common_prefix_len) {
+                            vals->clear();
+                            add_value();
+                        }
+                    }
+                }
+                else if (entry.prefix == p.content_)
+                    add_value(false);
             }
             return true;
         };
@@ -59,7 +80,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo,
                         if (not first_res->is_pht) {
                             // Not a PHT node.
                             *hi = mid-1;
-                            lookupStep(p, lo, hi, vals, cb, done_cb);
+                            lookupStep(p, lo, hi, vals, cb, done_cb, max_common_prefix_len);
                         } else {
                             first_res->done = true;
                             if (second_res->done)
@@ -88,12 +109,13 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo,
     }
 }
 
-void Pht::lookup(Key k, Pht::LookupCallback cb, Dht::DoneCallbackSimple done_cb) {
+void Pht::lookup(Key k, Pht::LookupCallback cb, Dht::DoneCallbackSimple done_cb, bool exact_match) {
     auto values = std::make_shared<std::vector<std::shared_ptr<Value>>>();
     auto prefix = linearize(k);
     auto lo = std::make_shared<int>(0);
     auto hi = std::make_shared<int>(prefix.size_);
-    lookupStep(prefix, lo, hi, values, cb, done_cb);
+    std::shared_ptr<unsigned> max_common_prefix_len = not exact_match ? std::make_shared<unsigned>(0) : nullptr;
+    lookupStep(prefix, lo, hi, values, cb, done_cb, max_common_prefix_len);
 }
 
 void Pht::updateCanary(Prefix p) {
@@ -145,7 +167,7 @@ void Pht::insert(Key k, Value v, Dht::DoneCallbackSimple done_cb) {
                 updateCanary(*final_prefix);
                 dht_->put(final_prefix->hash(), std::move(entry), done_cb);
             }
-        }
+        }, nullptr
     );
 }
 
