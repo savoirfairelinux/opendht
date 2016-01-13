@@ -15,6 +15,15 @@
 namespace dht {
 namespace indexation {
 
+/*!
+ * @class   Prefix
+ * @brief   A blob structure which prefixes a Key in the PHT.
+ * @details
+ * Since the PHT structure is a "trie", every node in this structure have a
+ * label which is defined by the path from the root of the trie to the node. If
+ * the node in question is a leaf, *the label is a prefix of all the keys
+ * contained in the leaf*.
+ */
 struct Prefix {
     Prefix() {}
     Prefix(InfoHash h) : size_(h.size() * 8), content_(h.begin(), h.end()) {}
@@ -32,6 +41,12 @@ struct Prefix {
             len += size_;
         return Prefix(*this, len);
     }
+
+    /**
+     * This methods gets the prefix of its sibling in the PHT structure.
+     *
+     * @return The prefix of this sibling.
+     */
     Prefix getSibling() const {
        Prefix copy = *this;
        if (size_) {
@@ -57,6 +72,30 @@ struct Prefix {
             for (unsigned b=0; b<bn; b++)
                 ss << (char)((content_[n] & (1 << (7 - b))) ? '1':'0');
         return ss.str();
+    }
+
+    static inline unsigned commonBits(const Prefix& p1, const Prefix& p2) {
+        unsigned i, j;
+        uint8_t x;
+        auto longest_prefix_size = std::min(p1.size_, p2.size_);
+
+        for (i = 0; i < longest_prefix_size; i++) {
+            if (p1.content_.data()[i] != p2.content_.data()[i])
+                break;
+        }
+
+        if (i == longest_prefix_size)
+            return 8*longest_prefix_size;
+
+        x = p1.content_.data()[i] ^ p2.content_.data()[i];
+
+        j = 0;
+        while ((x & 0x80) == 0) {
+            x <<= 1;
+            j++;
+        }
+
+        return 8 * i + j;
     }
 
     size_t size_ {0};
@@ -111,7 +150,7 @@ public:
     /**
      * Lookup a key for a value.
      */
-    void lookup(Key k, LookupCallback cb = {}, Dht::DoneCallbackSimple doneCb = {});
+    void lookup(Key k, LookupCallback cb = {}, Dht::DoneCallbackSimple doneCb = {}, bool exact_match = true);
     /**
      * Adds an entry into the index.
      */
@@ -135,10 +174,10 @@ private:
      * Performs a step in the lookup operation. Each steps are performed
      * asynchronously.
      */
-    void lookupStep(Prefix k, std::shared_ptr<int> lo,
-                       std::shared_ptr<int> hi,
-                       std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals,
-                       LookupCallback cb, Dht::DoneCallbackSimple done_cb);
+    void lookupStep(Prefix k, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
+            std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals,
+            LookupCallback cb, Dht::DoneCallbackSimple done_cb,
+            std::shared_ptr<unsigned> max_common_prefix_len);
 
     /**
      * Updates the canary token on the node responsible for the specified
