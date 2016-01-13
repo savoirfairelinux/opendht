@@ -42,6 +42,8 @@ struct Prefix {
         return Prefix(*this, len);
     }
 
+    Prefix getFullSize() { return Prefix(*this, content_.size()*8); }
+
     /**
      * This methods gets the prefix of its sibling in the PHT structure.
      *
