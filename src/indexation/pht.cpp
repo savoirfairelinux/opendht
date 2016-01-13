@@ -24,6 +24,12 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         if (is_leaf or *lo > *hi) {
             // leaf node
             if (cb)
+                if (vals->size() == 0 and max_common_prefix_len and mid > 0) {
+                    auto p_ = (p.getPrefix(mid)).getSibling().getFullSize();
+                    *lo = mid;
+                    *hi = p_.size_;
+                    lookupStep(p_, lo, hi, vals, cb, done_cb, max_common_prefix_len);
+                }
                 cb(*vals, p.getPrefix(mid));
             if (done_cb)
                 done_cb(true);
