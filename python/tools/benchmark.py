@@ -23,9 +23,6 @@ import signal
 import argparse
 import time
 
-import numpy as np
-import matplotlib.pyplot as plt
-
 from dht.network import DhtNetwork
 from dht.network import DhtNetworkSubProcess
 from dht.tests import PerformanceTest, PersistenceTest
