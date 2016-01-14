@@ -18,6 +18,21 @@ def random_hash():
     return InfoHash(''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(40)).encode())
 
 
+def reset_before_test(featureTestMethod):
+    """
+    This is a decorator for all test methods needing reset().
+
+    @param featureTestMethod: The method to be decorated. All decorated methods
+                              must have 'self' object as first arg.
+    @type  featureTestMethod: function
+    """
+    def call(*args, **kwargs):
+        self = args[0]
+        if isinstance(self, FeatureTest):
+            self._reset()
+        return featureTestMethod(*args, **kwargs)
+    return call
+
 class FeatureTest(object):
     done = 0
     lock = None
@@ -38,7 +53,12 @@ class FeatureTest(object):
         self._test = test
         self._workbench = workbench
 
-    def reset(self):
+    def _reset(self):
+        """
+        Resets some static variables.
+
+        This method is most likely going to be called before each tests.
+        """
         FeatureTest.done = 0
         FeatureTest.lock = threading.Condition()
 
@@ -61,12 +81,11 @@ class DhtFeatureTest(FeatureTest):
     foreignValues = None
 
     def __init__(self, test, workbench):
-        self._test = test
-        self.wb = workbench
-        self.bootstrap = self.wb.get_bootstrap()
+        super(DhtFeatureTest, self).__init__(test, workbench)
+        self.bootstrap = self._workbench.get_bootstrap()
 
-    def reset(self):
-        super(DhtFeatureTest, self).reset()
+    def _reset(self):
+        super(DhtFeatureTest, self)._reset()
         DhtFeatureTest.foreignNodes = []
         DhtFeatureTest.foreignValues = []
 
@@ -179,12 +198,12 @@ class PersistenceTest(DhtFeatureTest):
     #  Tests  #
     ###########
 
+    @reset_before_test
     def _deleteTest(self):
         """
         It uses Dht shutdown call from the API to gracefuly finish the nodes one
         after the other.
         """
-        self.reset();
         bootstrap = self.bootstrap
 
         ops_count = []
@@ -249,11 +268,11 @@ class PersistenceTest(DhtFeatureTest):
             DhtNetwork.log("[GET]: either couldn't fetch values or nodes hosting values...")
 
     #TODO: complete this test.
+    @reset_before_test
     def _replaceClusterTest(self):
         """
         It replaces all clusters one after the other.
         """
-        self.reset();
 
         #clusters = opts['clusters'] if 'clusters' in opts else 5
         clusters = 5
@@ -287,6 +306,7 @@ class PersistenceTest(DhtFeatureTest):
         self._result(local_values, new_nodes)
 
     #TODO: complete this test.
+    @reset_before_test
     def _multTimeTest(self):
         """
         Multiple put() calls are made from multiple nodes to multiple hashes
@@ -294,7 +314,6 @@ class PersistenceTest(DhtFeatureTest):
         enable storage maintenance each nodes. Therefor, this tests will wait 10
         minutes for the nodes to trigger storage maintenance.
         """
-        self.reset();
         bootstrap = self.bootstrap
 
         N_PRODUCERS = 16
@@ -398,6 +417,7 @@ class PerformanceTest(DhtFeatureTest):
     #  Tests  #
     ###########
 
+    @reset_before_test
     def _getsTimesTest(self):
         """
         Tests for performance of the DHT doing multiple get() operation.
@@ -481,13 +501,13 @@ class PerformanceTest(DhtFeatureTest):
         plt.ioff()
         plt.show()
 
+    @reset_before_test
     def _delete(self):
         """
         Tests for performance of get() and put() operations on the network while
         deleting around the target hash.
         """
 
-        self.reset();
 
         bootstrap = self.bootstrap
 
