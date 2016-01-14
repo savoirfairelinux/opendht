@@ -7,6 +7,9 @@ import random
 import string
 import time
 
+import numpy as np
+import matplotlib.pyplot as plt
+
 from opendht import *
 from dht.network import DhtNetwork, DhtNetworkSubProcess
 
@@ -32,6 +35,7 @@ def reset_before_test(featureTestMethod):
             self._reset()
         return featureTestMethod(*args, **kwargs)
     return call
+
 
 class FeatureTest(object):
     done = 0
