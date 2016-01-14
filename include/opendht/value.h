@@ -80,7 +80,7 @@ using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& val
  */
 using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
 
-static constexpr const size_t MAX_VALUE_SIZE {1024 * 128};
+static constexpr const size_t MAX_VALUE_SIZE {1024 * 56};
 
 struct ValueType {
     typedef uint16_t Id;
