@@ -50,7 +50,6 @@ cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* val
             v._value = val
             vals.append(v)
         cbs['lookup'](vals, p.toString())
-    ref.Py_DECREF(cbs)
 
 cdef inline void shutdown_callback(void* user_data) with gil:
     cbs = <object>user_data
@@ -435,6 +434,7 @@ cdef class Pht(object):
         done_cb -- Called when the operation is completed.
         """
         cb_obj = {'done':done_cb}
+        ref.Py_INCREF(cb_obj)
         cdef cpp.IndexKey cppk
         for kk, v in key.items():
             cppk[bytes(kk, 'utf-8')] = cpp.Prefix(bytes(v))
