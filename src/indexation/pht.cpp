@@ -19,9 +19,13 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
     auto mid = (*lo + *hi)/2;
     auto first_res = std::make_shared<node_lookup_result>();
     auto second_res = std::make_shared<node_lookup_result>();
-    auto on_done = [=](){
+    auto on_done = [=](bool ok){
         bool is_leaf = first_res->is_pht and not second_res->is_pht;
-        if (is_leaf or *lo > *hi) {
+        if (not ok) {
+            if (done_cb)
+                done_cb(false);
+        }
+        else if (is_leaf or *lo > *hi) {
             // leaf node
             if (cb)
                 if (vals->size() == 0 and max_common_prefix_len and mid > 0) {
@@ -33,10 +37,14 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                 cb(*vals, p.getPrefix(mid));
             if (done_cb)
                 done_cb(true);
-        } else {
+        } else if (first_res->is_pht) {
             // internal node
             *lo = mid+1;
             lookupStep(p, lo, hi, vals, cb, done_cb, max_common_prefix_len);
+        } else {
+            // first get failed before second.
+            if (done_cb)
+                done_cb(false);
         }
     };
     if (*lo <= *hi) {
@@ -79,8 +87,9 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                 [=](bool ok) {
                     if (not ok) {
                         // DHT failed
-                        if (done_cb)
-                            done_cb(false);
+                        first_res->done = true;
+                        if (done_cb and second_res->done)
+                            on_done(false);
                     }
                     else {
                         if (not first_res->is_pht) {
@@ -90,7 +99,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                         } else {
                             first_res->done = true;
                             if (second_res->done)
-                                on_done();
+                                on_done(true);
                         }
                     }
                 }, pht_filter);
@@ -100,18 +109,19 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                     [=](bool ok) {
                         if (not ok) {
                             // DHT failed
-                            if (done_cb)
-                                done_cb(false);
+                            second_res->done = true;
+                            if (done_cb and first_res->done)
+                                on_done(false);
                         }
                         else {
                             second_res->done = true;
                             if (first_res->done)
-                                on_done();
+                                on_done(true);
                         }
                     }, pht_filter);
 
     } else {
-        on_done();
+        on_done(true);
     }
 }
 
