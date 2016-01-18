@@ -919,7 +919,10 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
         print_addr(n->node->ss, n->node->sslen).c_str(),
         n->node->pinged, print_dt(now-n->getStatus.request_time));
 
-    sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
+    if (sr.callbacks.empty() and sr.listeners.empty())
+        sendFindNode((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::FIND_NODE, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
+    else
+        sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
     n->getStatus.request_time = now;
     pinged(*n->node);
     if (n->node->pinged > 1 and not n->candidate) {
@@ -1388,6 +1391,8 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         sr->nodes.clear();
         sr->nodes.reserve(SEARCH_NODES+1);
         DHT_WARN("[search %s IPv%c] new search", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+        if (search_id == 0)
+            search_id++;
     }
 
     if (callback)
@@ -2424,7 +2429,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             bool gp = false;
             Search *sr = nullptr;
             std::shared_ptr<Node> n;
-            if (msg.tid.matches(TransPrefix::GET_VALUES, &ttid)) {
+            if (msg.tid.matches(TransPrefix::GET_VALUES, &ttid) or msg.tid.matches(TransPrefix::FIND_NODE, &ttid)) {
                 gp = true;
                 sr = findSearch(ttid, from->sa_family);
             }
@@ -2576,13 +2581,15 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         //DHT_DEBUG("Sending pong.");
         sendPong(from, fromlen, msg.tid);
         break;
-    case MessageType::FindNode:
+    case MessageType::FindNode: {
         in_stats.find++;
         newNode(msg.id, from, fromlen, 1);
         DHT_DEBUG("[node %s %s] got 'find' request (%d).", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
-        sendClosestNodes(from, fromlen, msg.tid, msg.target, msg.want);
+        Blob ntoken = makeToken(from, false);
+        sendClosestNodes(from, fromlen, msg.tid, msg.target, msg.want, ntoken);
         break;
-    case MessageType::GetValues:
+    }
+    case MessageType::GetValues: {
         in_stats.get++;
         DHT_DEBUG("[node %s %s] got 'get' request for %s.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
         newNode(msg.id, from, fromlen, 1);
@@ -2602,6 +2609,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             }
         }
         break;
+    }
     case MessageType::AnnounceValue:
         in_stats.put++;
         DHT_DEBUG("[node %s %s] got 'put' request for %s.",
@@ -2988,6 +2996,36 @@ Dht::sendFindNode(const sockaddr *sa, socklen_t salen, TransId tid,
     return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
+int
+Dht::sendGetValues(const sockaddr *sa, socklen_t salen,
+               TransId tid, const InfoHash& infohash,
+               want_t want, int confirm)
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5);
+
+    pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
+      pk.pack(std::string("id")); pk.pack(myid);
+      pk.pack(std::string("h"));  pk.pack(infohash);
+    if (want > 0) {
+      pk.pack(std::string("w"));
+      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
+      if (want & WANT4) pk.pack(AF_INET);
+      if (want & WANT6) pk.pack(AF_INET6);
+    }
+
+    pk.pack(std::string("q")); pk.pack(std::string("get"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(my_v);
+
+    out_stats.get++;
+
+    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
+}
+
 void
 packToken(msgpack::packer<msgpack::sbuffer>& pk, Blob token)
 {
@@ -3147,36 +3185,6 @@ Dht::sendClosestNodes(const sockaddr *sa, socklen_t salen, TransId tid,
         DHT_ERROR("Can't send value: buffer not large enough !");
         return -1;
     }
-}
-
-int
-Dht::sendGetValues(const sockaddr *sa, socklen_t salen,
-               TransId tid, const InfoHash& infohash,
-               want_t want, int confirm)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
-
-    pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
-      pk.pack(std::string("id")); pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(infohash);
-    if (want > 0) {
-      pk.pack(std::string("w"));
-      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
-      if (want & WANT4) pk.pack(AF_INET);
-      if (want & WANT6) pk.pack(AF_INET6);
-    }
-
-    pk.pack(std::string("q")); pk.pack(std::string("get"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    out_stats.get++;
-
-    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
 }
 
 int

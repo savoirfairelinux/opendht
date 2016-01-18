@@ -812,8 +812,8 @@ private:
     int sendPing(const sockaddr*, socklen_t, TransId tid);
     int sendPong(const sockaddr*, socklen_t, TransId tid);
 
-    int sendFindNode(const sockaddr*, socklen_t, TransId tid,
-                        const InfoHash& target, want_t want, int confirm);
+    int sendFindNode (const sockaddr*, socklen_t, TransId tid, const InfoHash& target, want_t want, int confirm);
+    int sendGetValues(const sockaddr*, socklen_t, TransId tid, const InfoHash& target, want_t want, int confirm);
 
     int sendNodesValues(const sockaddr*, socklen_t, TransId tid,
                               const uint8_t *nodes, unsigned nodes_len,
@@ -824,8 +824,6 @@ private:
                                const InfoHash& id, want_t want, const Blob& token={},
                                const std::vector<ValueStorage>& st = {});
 
-    int sendGetValues(const sockaddr*, socklen_t, TransId tid,
-                            const InfoHash& infohash, want_t want, int confirm);
 
     int sendListen(const sockaddr*, socklen_t, TransId,
                             const InfoHash&, const Blob& token, int confirm);
