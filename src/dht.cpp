@@ -2798,7 +2798,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
     }
 
     //data persistence
-    time_point storage_maintenance_time = time_point::max();
+    /*time_point storage_maintenance_time = time_point::max();
     for (auto &str : store) {
         if (now > str.maintenance_time) {
             maintainStorage(str.id);
@@ -2806,9 +2806,9 @@ Dht::periodic(const uint8_t *buf, size_t buflen,
 
         }
         storage_maintenance_time = std::min(storage_maintenance_time, str.maintenance_time);
-    }
+    }*/
 
-    return std::min(confirm_nodes_time, std::min(search_time, storage_maintenance_time));
+    return std::min(confirm_nodes_time, search_time);
 }
 
 std::vector<Dht::ValuesExport>
