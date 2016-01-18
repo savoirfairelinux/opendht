@@ -131,7 +131,11 @@ struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
 
 class Pht {
     static constexpr const char* INDEX_PREFIX = "index.pht.";
-    static constexpr const size_t MAX_NODE_ENTRY_COUNT {128};
+
+    /* This is the maximum number of entries per node. This parameter is
+     * critical and influences the traffic alot during a lookup operation.
+     */
+    static constexpr const size_t MAX_NODE_ENTRY_COUNT {16};
 
 public:
     using Key = std::map<std::string, Prefix>;
@@ -180,7 +184,7 @@ private:
     void lookupStep(Prefix k, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
             std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals,
             LookupCallback cb, Dht::DoneCallbackSimple done_cb,
-            std::shared_ptr<unsigned> max_common_prefix_len);
+            std::shared_ptr<unsigned> max_common_prefix_len, bool all_values = false);
 
     /**
      * Updates the canary token on the node responsible for the specified
