@@ -2107,21 +2107,25 @@ Dht::getStorageLog() const
 {
     using namespace std::chrono;
     std::stringstream out;
+    size_t total_values {};
+    size_t total_size {};
     for (const auto& st : store) {
-        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values:" << std::endl;
+        size_t storage_size {};
+        for (const auto& v : st.values)
+            storage_size += v.data->cypher.size() + v.data->data.size() + v.data->signature.size()  + v.data->user_type.size();
+        total_size += storage_size;
+        total_values += st.values.size();
+        storage_size /= 1024;
+        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values (" << storage_size << " kB)" << std::endl;
         for (const auto& l : st.listeners) {
             out << "   " << "Listener " << l.id << " " << print_addr((sockaddr*)&l.ss, l.sslen);
             auto since = duration_cast<seconds>(now - l.time);
             auto expires = duration_cast<seconds>(l.time + Node::NODE_EXPIRE_TIME - now);
             out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
         }
-        for (const auto& v : st.values) {
-            const auto& type = getType(v.data->type);
-            auto since = duration_cast<seconds>(now - v.time);
-            auto expires = duration_cast<seconds>(v.time + type.expiration - now);
-            out << "   " << *v.data << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
-        }
     }
+    total_size /= 1024;
+    out << "Total " << store.size() << " storages, " << total_values << " values (" << total_size << " kB)" << std::endl;
     return out.str();
 }
 
