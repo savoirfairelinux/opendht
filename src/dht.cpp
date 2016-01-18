@@ -3080,7 +3080,7 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
             pk.pack(*st[j].data);
             k++;
             j = (j + 1) % st.size();
-        } while (j != j0 && k < 50);
+        } while (j != j0 && k < 50 && buffer.size() < MAX_VALUE_SIZE);
     }
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
