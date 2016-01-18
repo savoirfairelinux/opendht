@@ -86,7 +86,7 @@ struct ValueType {
     typedef uint16_t Id;
     ValueType () {}
 
-    ValueType (Id id, std::string name, duration e = std::chrono::hours(1))
+    ValueType (Id id, std::string name, duration e = std::chrono::minutes(10))
     : id(id), name(name), expiration(e) {}
 
     ValueType (Id id, std::string name, duration e, StorePolicy&& sp, EditPolicy&& ep)
@@ -108,7 +108,7 @@ struct ValueType {
 
     Id id {0};
     std::string name {};
-    duration expiration {60 * 60};
+    duration expiration {60 * 10};
     StorePolicy storePolicy {DEFAULT_STORE_POLICY};
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
