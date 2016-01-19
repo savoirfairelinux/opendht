@@ -132,12 +132,12 @@ struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
 class Pht {
     static constexpr const char* INDEX_PREFIX = "index.pht.";
 
+public:
     /* This is the maximum number of entries per node. This parameter is
      * critical and influences the traffic alot during a lookup operation.
      */
     static constexpr const size_t MAX_NODE_ENTRY_COUNT {16};
 
-public:
     using Key = std::map<std::string, Prefix>;
 
     using LookupCallback = std::function<void(std::vector<std::shared_ptr<Value>>& values, Prefix p)>;
