@@ -369,9 +369,11 @@ cdef class DhtRunner(_WithID):
 
 cdef class IndexValue(object):
     cdef cpp.shared_ptr[cpp.IndexValue] _value
-    def __init__(self, InfoHash h, cpp.uint64_t vid=0):
+    def __init__(self, InfoHash h=None, cpp.uint64_t vid=0):
        cdef cpp.InfoHash hh = h._infohash
        self._value.reset(new cpp.IndexValue(hh, vid))
+    def __str__(self):
+        return "(" + self.getKey().toString().decode() +", "+ str(self.getValueId()) +")"
     def getKey(self):
         h = InfoHash()
         h._infohash = self._value.get().first
@@ -383,6 +385,9 @@ cdef class Pht(object):
     cdef cpp.Pht* thisptr
     def __cinit__(self, bytes name, DhtRunner dht):
         self.thisptr = new cpp.Pht(name, dht.thisptr)
+    property MAX_NODE_ENTRY_COUNT:
+        def __get__(self):
+            return cpp.PHT_MAX_NODE_ENTRY_COUNT
     def lookup(self, key, lookup_cb=None, done_cb=None):
         """Query the Index with a specified key.
 
