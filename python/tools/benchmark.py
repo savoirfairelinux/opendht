@@ -27,7 +27,7 @@ import random
 
 from dht.network import DhtNetwork
 from dht.network import DhtNetworkSubProcess
-from dht.tests import PerformanceTest, PersistenceTest
+from dht.tests import PerformanceTest, PersistenceTest, PhtTest
 from dht import virtual_network_builder
 from dht import network as dhtnetwork
 
@@ -157,6 +157,10 @@ if __name__ == '__main__':
     featureArgs = parser.add_mutually_exclusive_group(required=True)
     featureArgs.add_argument('--performance', action='store_true', default=False,
             help='Launches performance benchmark test. Available args for "-t" are: gets.')
+    featureArgs.add_argument('--pht', action='store_true', default=False,
+            help='Launches PHT benchmark test. '\
+                    'Available args for "-t" are: insert. '\
+                    'Use "-m" option for fixing number of keys to create during the test.')
     featureArgs.add_argument('--data-persistence', action='store_true', default=0,
             help='Launches data persistence benchmark test. '\
                  'Available args for "-t" are: delete, replace, mult_time. '\
@@ -192,6 +196,10 @@ if __name__ == '__main__':
             PerformanceTest(args.test, wb, test_opt).run()
         elif args.data_persistence:
             PersistenceTest(args.test, wb, test_opt).run()
+        elif args.pht:
+            if args.m:
+                test_opt.update({ 'num_keys' : args.m })
+            PhtTest(args.test, wb, test_opt).run()
 
     except Exception as e:
         print(e)

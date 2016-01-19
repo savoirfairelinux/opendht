@@ -163,6 +163,7 @@ ctypedef DhtRunner.Config Config
 
 
 cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
+    size_t PHT_MAX_NODE_ENTRY_COUNT "dht::indexation::Pht::MAX_NODE_ENTRY_COUNT"
     cdef cppclass Prefix:
         Prefix() except +
         Prefix(vector[uint8_t]) except +
