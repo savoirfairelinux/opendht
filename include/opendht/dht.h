@@ -604,12 +604,12 @@ private:
         sa_family_t af;
 
         uint16_t tid;
+        time_point refill_time {time_point::min()};
         time_point step_time {time_point::min()};           /* the time of the last search_step */
         time_point get_step_time {time_point::min()};       /* the time of the last get time */
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
-        bool refilled {false};
         std::vector<SearchNode> nodes {};
         std::vector<Announce> announce {};
         std::vector<Get> callbacks {};
@@ -639,6 +639,11 @@ private:
 
         bool isAnnounced(Value::Id id, const ValueType& type, time_point now) const;
         bool isListening(time_point now) const;
+
+        /**
+         * @return The number of non-good search nodes.
+         */
+        unsigned getNumberOfCandidates(time_point now);
 
         /**
          * ret = 0 : no announce required.
