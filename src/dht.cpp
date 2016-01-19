@@ -2434,8 +2434,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             Search *sr = nullptr;
             std::shared_ptr<Node> n;
             if (msg.tid.matches(TransPrefix::GET_VALUES, &ttid) or msg.tid.matches(TransPrefix::FIND_NODE, &ttid)) {
-                gp = true;
-                sr = findSearch(ttid, from->sa_family);
+                gp = ttid != 0;
+                if (gp)
+                    sr = findSearch(ttid, from->sa_family);
             }
             if (msg.nodes4.size() % 26 != 0 || msg.nodes6.size() % 38 != 0) {
                 DHT_WARN("Unexpected length for node info!");
@@ -3070,17 +3071,25 @@ Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
         // chosen slice.  In order to make sure we fit,
         // we limit ourselves to 50 values.
         std::uniform_int_distribution<> pos_dis(0, st.size()-1);
+        std::vector<Blob> subset {};
+        subset.reserve(std::min<size_t>(st.size(), 50));
+
+        size_t total_size = 0;
         unsigned j0 = pos_dis(rd);
         unsigned j = j0;
         unsigned k = 0;
 
-        pk.pack(std::string("values"));
-        pk.pack_array(std::min<size_t>(st.size(), 50));
         do {
-            pk.pack(*st[j].data);
+            subset.emplace_back(packMsg(*st[j].data));
+            total_size += subset.back().size();
             k++;
             j = (j + 1) % st.size();
-        } while (j != j0 && k < 50 && buffer.size() < MAX_VALUE_SIZE);
+        } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
+
+        pk.pack(std::string("values"));
+        pk.pack_array(subset.size());
+        for (const auto& b : subset)
+            buffer.write((const char*)b.data(), b.size());
     }
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
