@@ -45,3 +45,13 @@ Makefile.in
 # KDevelop
 .kdev4/
 *.kdev4
+
+# Python
+*.pyc
+
+# git backup files
+*.orig
+
+# vim swap files
+*.swp
+*.swo
