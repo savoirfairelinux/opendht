@@ -242,7 +242,7 @@ class PhtTest(FeatureTest):
     def run(self):
         try:
             if self._test == 'insert':
-                self._massIndexTest()
+                self._insertTest()
         except Exception as e:
             print(e)
         finally:
