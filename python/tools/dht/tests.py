@@ -203,6 +203,9 @@ class PhtTest(FeatureTest):
             all_entries[PhtTest.prefix] = [e.__str__()
                                            for e in PhtTest.indexEntries]
 
+        for p in all_entries.keys():
+            DhtNetwork.log('All entries under prefix', p, ':')
+            DhtNetwork.log(all_entries[p])
         PhtTest.drawTrie(all_entries)
 
 
