@@ -1517,13 +1517,8 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
         st = std::prev(store.end());
     }
     if (st != store.end()) {
-        if (not st->values.empty()) {
-            std::vector<std::shared_ptr<Value>> newvals {};
-            newvals.reserve(st->values.size());
-            for (auto& v : st->values) {
-                if (not f || f(*v.data))
-                    newvals.push_back(v.data);
-            }
+        if (not st->empty()) {
+            std::vector<std::shared_ptr<Value>> newvals = st->get(f);
             if (not newvals.empty()) {
                 if (!cb(newvals))
                     return 0;
@@ -1541,7 +1536,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
     auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
 
-    DHT_WARN("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
+    DHT_DEBUG("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
     return token;
 }
@@ -1556,7 +1551,7 @@ Dht::cancelListen(const InfoHash& id, size_t token)
         DHT_WARN("Listen token not found: %d", token);
         return false;
     }
-    DHT_WARN("cancelListen %s with token %d", id.toString().c_str(), token);
+    DHT_DEBUG("cancelListen %s with token %d", id.toString().c_str(), token);
     auto st = findStorage(id);
     auto tokenlocal = std::get<0>(it->second);
     if (st != store.end() && tokenlocal)
@@ -1680,21 +1675,15 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
 {
     auto s = findStorage(id);
     if (s == store.end()) return {};
-    std::vector<std::shared_ptr<Value>> vals;
-    vals.reserve(s->values.size());
-    for (auto& v : s->values)
-        if (!f || f(*v.data)) vals.push_back(v.data);
-    return vals;
+    return s->get(f);
 }
 
 std::shared_ptr<Value>
 Dht::getLocalById(const InfoHash& id, const Value::Id& vid) const
 {
     auto s = findStorage(id);
-    if (s != store.end()) {
-        for (auto& v : s->values)
-            if (v.data->id == vid) return v.data;
-    }
+    if (s != store.end())
+        return s->get(vid);
     return {};
 }
 
@@ -1771,38 +1760,61 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
     }
 }
 
-Dht::ValueStorage*
+bool
 Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created)
 {
     created = std::min(created, now);
     auto st = findStorage(id);
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
-            return nullptr;
+            return false;
         store.push_back(Storage {id, now});
         st = std::prev(store.end());
     }
 
-    auto it = std::find_if (st->values.begin(), st->values.end(), [&](const ValueStorage& vr) {
+    auto store = st->store(value, created, max_store_size - total_store_size);
+    if (std::get<0>(store)) {
+        total_store_size += std::get<1>(store);
+        total_values += std::get<2>(store);
+        storageChanged(*st, *std::get<0>(store));
+    }
+    return std::get<0>(store);
+}
+
+std::tuple<Dht::ValueStorage*, ssize_t, ssize_t>
+Dht::Storage::store(const std::shared_ptr<Value>& value, time_point created, ssize_t size_left) {
+
+    auto it = std::find_if (values.begin(), values.end(), [&](const ValueStorage& vr) {
         return vr.data == value || vr.data->id == value->id;
     });
-    if (it != st->values.end()) {
+    if (it != values.end()) {
         /* Already there, only need to refresh */
         it->time = created;
-        if (it->data != value) {
-            DHT_DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
+        ssize_t size_diff = value->size() - it->data->size();
+        if (size_diff <= size_left and it->data != value) {
+            //DHT_DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             it->data = value;
-            storageChanged(*st, *it);
+            total_size += size_diff;
+            return std::make_tuple(&(*it), size_diff, 0);
         }
-        return &*it;
+        return std::make_tuple(nullptr, 0, 0);
     } else {
-        DHT_DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
-        if (st->values.size() >= MAX_VALUES)
-            return nullptr;
-        st->values.emplace_back(value, created);
-        storageChanged(*st, st->values.back());
-        return &st->values.back();
+        //DHT_DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
+        ssize_t size = value->size();
+        if (size <= size_left and values.size() < MAX_VALUES) {
+            total_size += size;
+            values.emplace_back(value, created);
+            return std::make_tuple(&values.back(), size, 1);
+        }
+        return std::make_tuple(nullptr, 0, 0);
     }
+}
+
+void
+Dht::Storage::clear()
+{
+    values.clear();
+    total_size = 0;
 }
 
 void
@@ -1820,7 +1832,7 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
         return l.ss.ss_family == af && l.id == node;
     });
     if (l == st->listeners.end()) {
-        sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->values);
+        sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->getValues());
         st->listeners.emplace_back(node, from, fromlen, tid, now);
     }
     else
@@ -1846,26 +1858,39 @@ Dht::expireStorage()
                 }),
             i->listeners.end());
 
-        i->values.erase(
-            std::partition(i->values.begin(), i->values.end(),
-                [&](const ValueStorage& v)
-                {
-                    if (!v.data) return false; // should not happen
-                    const auto& type = getType(v.data->type);
-                    bool expired = v.time + type.expiration < now;
-                    if (expired)
-                        DHT_DEBUG("Discarding expired value %s", v.data->toString().c_str());
-                    return !expired;
-                }),
-            i->values.end());
+        auto stats = i->expire(types, now);
+        total_store_size += stats.first;
+        total_values += stats.second;
 
-        if (i->values.empty() && i->listeners.empty()) {
+        if (i->empty() && i->listeners.empty()) {
             DHT_DEBUG("Discarding expired value %s", i->id.toString().c_str());
             i = store.erase(i);
         }
         else
             ++i;
     }
+}
+
+std::pair<ssize_t, ssize_t>
+Dht::Storage::expire(const std::map<ValueType::Id, ValueType>& types, time_point now)
+{
+    auto r = std::partition(values.begin(), values.end(), [&](const ValueStorage& v) {
+        if (!v.data) return false; // should not happen
+        auto type_it = types.find(v.data->type);
+        const ValueType& type = (type_it == types.end()) ? ValueType::USER_DATA : type_it->second;
+        bool expired = v.time + type.expiration < now;
+        //if (expired)
+        //    DHT_DEBUG("Discarding expired value %s", v.data->toString().c_str());
+        return !expired;
+    });
+    ssize_t del_num = std::distance(r, values.end());
+    ssize_t size_diff {};
+    std::for_each(r, values.end(), [&](const ValueStorage& v){
+        size_diff -= v.data->size();
+    });
+    total_size += size_diff;
+    values.erase(r, values.end());
+    return {size_diff, -del_num};
 }
 
 void
@@ -2107,16 +2132,8 @@ Dht::getStorageLog() const
 {
     using namespace std::chrono;
     std::stringstream out;
-    size_t total_values {};
-    size_t total_size {};
     for (const auto& st : store) {
-        size_t storage_size {};
-        for (const auto& v : st.values)
-            storage_size += v.data->cypher.size() + v.data->data.size() + v.data->signature.size()  + v.data->user_type.size();
-        total_size += storage_size;
-        total_values += st.values.size();
-        storage_size /= 1024;
-        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.values.size() << " values (" << storage_size << " kB)" << std::endl;
+        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.valueCount() << " values (" << st.totalSize() << " bytes)" << std::endl;
         for (const auto& l : st.listeners) {
             out << "   " << "Listener " << l.id << " " << print_addr((sockaddr*)&l.ss, l.sslen);
             auto since = duration_cast<seconds>(now - l.time);
@@ -2124,11 +2141,9 @@ Dht::getStorageLog() const
             out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
         }
     }
-    total_size /= 1024;
-    out << "Total " << store.size() << " storages, " << total_values << " values (" << total_size << " kB)" << std::endl;
+    out << "Total " << store.size() << " storages, " << total_values << " values (" << (total_store_size/1024) << " ĶB)" << std::endl;
     return out.str();
 }
-
 
 std::string
 Dht::getRoutingTablesLog(sa_family_t af) const
@@ -2310,7 +2325,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     auto nodes = buckets.findClosestNodes(id);
     if (!nodes.empty()) {
         if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
-            for (auto &value : local_storage->values) {
+            for (auto &value : local_storage->getValues()) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
@@ -2326,7 +2341,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     auto nodes6 = buckets6.findClosestNodes(id);
     if (!nodes6.empty()) {
         if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
-            for (auto &value : local_storage->values) {
+            for (auto &value : local_storage->getValues()) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
@@ -2341,7 +2356,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
 
     if (not want4 and not want6) {
         DHT_DEBUG("Discarding storage values %s", id.toString().c_str());
-        local_storage->values.clear();
+        local_storage->clear();
     }
 
     return announce_per_af;
@@ -2605,9 +2620,9 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         } else {
             auto st = findStorage(msg.info_hash);
             Blob ntoken = makeToken(from, false);
-            if (st != store.end() && st->values.size() > 0) {
-                 DHT_DEBUG("[node %s %s] sending %u values.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), st->values.size());
-                 sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken, st->values);
+            if (st != store.end() && not st->empty()) {
+                 DHT_DEBUG("[node %s %s] sending %u values.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), st->valueCount());
+                 sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken, st->getValues());
             } else {
                 DHT_DEBUG("[node %s %s] sending nodes.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
                 sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken);
@@ -2796,8 +2811,8 @@ Dht::exportValues() const
 
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
-        pk.pack_array(h.values.size());
-        for (const auto& v : h.values) {
+        pk.pack_array(h.getValues().size());
+        for (const auto& v : h.getValues()) {
             pk.pack_array(2);
             pk.pack(v.time.time_since_epoch().count());
             v.data->msgpack_pack(pk);
@@ -2838,8 +2853,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     DHT_DEBUG("Discarding expired value at %s", h.first.toString().c_str());
                     continue;
                 }
-                auto st = storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
-                st->time = val_time;
+                storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
             }
         } catch (const std::exception&) {
             DHT_ERROR("Error reading values at %s", h.first.toString().c_str());

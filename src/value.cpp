@@ -80,6 +80,12 @@ findMapValue(const msgpack::object& map, const std::string& key) {
     return nullptr;
 }
 
+size_t
+Value::size() const
+{
+    return cypher.size() + data.size() + signature.size()  + user_type.size();
+}
+
 void
 Value::msgpack_unpack(msgpack::object o)
 {

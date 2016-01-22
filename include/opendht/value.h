@@ -331,6 +331,9 @@ struct Value
         return ss.str();
     }
 
+    /** Return the size in bytes used by this value in memory (minimum). */
+    size_t size() const;
+
     template <typename Packer>
     void msgpack_pack_to_sign(Packer& pk) const
     {

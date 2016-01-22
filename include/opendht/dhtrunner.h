@@ -237,6 +237,20 @@ public:
         return ntohs(((sockaddr_in*)&getBound(f).first)->sin_port);
     }
 
+    std::pair<size_t, size_t> getStoreSize() const {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        if (!dht_)
+            return {};
+        return dht_->getStoreSize();
+    }
+
+    void setStorageLimit(size_t limit = Dht::DEFAULT_STORAGE_LIMIT) {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        if (!dht_)
+            throw std::runtime_error("dht is not running");
+        return dht_->setStorageLimit(limit);
+    }
+
     std::vector<NodeExport> exportNodes() const {
         std::lock_guard<std::mutex> lck(dht_mtx);
         if (!dht_)

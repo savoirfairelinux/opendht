@@ -138,6 +138,8 @@ public:
 
     typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 
+    static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
+
     static GetCallbackSimple
     bindGetCb(GetCallbackRaw raw_cb, void* user_data) {
         if (not raw_cb) return {};
@@ -360,6 +362,21 @@ public:
         return stats;
     }
 
+    /**
+     * Set the in-memory storage limit in bytes
+     */
+    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) {
+        max_store_size = limit;
+    }
+
+    /**
+     * Returns the total memory usage of stored values and the number
+     * of stored values.
+     */
+    std::pair<size_t, size_t> getStoreSize() const {
+        return {total_store_size, total_values};
+    }
+
     /* This must be provided by the user. */
     static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
 
@@ -411,7 +428,7 @@ private:
 
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
 
-    static constexpr unsigned TOKEN_SIZE {64};
+    static constexpr size_t TOKEN_SIZE {64};
 
     static const std::string my_v;
 
@@ -593,27 +610,29 @@ private:
     /**
      * A search is a pointer to the nodes we think are responsible
      * for storing values for a given hash.
-     *
-     * A Search has 3 states:
-     * - Idle (nothing to do)
-     * - Syncing (Some nodes not synced)
-     * - Announcing (Some announces not performed on all nodes)
      */
     struct Search {
         InfoHash id {};
         sa_family_t af;
 
         uint16_t tid;
-        time_point step_time {time_point::min()};           /* the time of the last search_step */
-        time_point get_step_time {time_point::min()};       /* the time of the last get time */
+        time_point step_time {time_point::min()};           /* the time of the last search step */
+        time_point get_step_time {time_point::min()};       /* the time of the last get step */
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
         bool refilled {false};
+
+        /* search routing table */
         std::vector<SearchNode> nodes {};
+
+        /* pending puts */
         std::vector<Announce> announce {};
+
+        /* pending gets */
         std::vector<Get> callbacks {};
 
+        /* listeners */
         std::map<size_t, LocalListener> listeners {};
         size_t listener_token = 1;
 
@@ -694,13 +713,61 @@ private:
     struct Storage {
         InfoHash id;
         time_point maintenance_time {};
-        std::vector<ValueStorage> values {};
         std::vector<Listener> listeners {};
         std::map<size_t, LocalListener> local_listeners {};
         size_t listener_token {1};
 
         Storage() {}
         Storage(InfoHash id, time_point now) : id(id), maintenance_time(now+MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {}
+
+        bool empty() const {
+            return values.empty();
+        }
+
+        void clear();
+
+        size_t valueCount() const {
+            return values.size();
+        }
+
+        size_t totalSize() const {
+            return total_size;
+        }
+
+        const std::vector<ValueStorage>& getValues() const { return values; }
+
+        std::vector<std::shared_ptr<Value>> get(Value::Filter f = {}) const {
+            std::vector<std::shared_ptr<Value>> newvals {};
+            if (not f) newvals.reserve(values.size());
+            for (auto& v : values) {
+                if (not f || f(*v.data))
+                    newvals.push_back(v.data);
+            }
+            return newvals;
+        }
+
+        std::shared_ptr<Value> get(Value::Id vid) const {
+            for (auto& v : values)
+                if (v.data->id == vid) return v.data;
+            return {};
+        }
+
+        /**
+         * Stores a new value in this storage, or replace a previous value
+         *
+         * @return <storage, change_size, change_value_num>
+         *      storage: set if a change happened
+         *      change_size: size difference
+         *      change_value_num: change of value number (0 or 1)
+         */
+        std::tuple<ValueStorage*, ssize_t, ssize_t>
+        store(const std::shared_ptr<Value>& value, time_point created, ssize_t size_left);
+
+        std::pair<ssize_t, ssize_t> expire(const std::map<ValueType::Id, ValueType>& types, time_point now);
+
+    private:
+        std::vector<ValueStorage> values {};
+        size_t total_size {};
     };
 
     enum class MessageType {
@@ -783,7 +850,12 @@ private:
     // the stuff
     RoutingTable buckets {};
     RoutingTable buckets6 {};
+
     std::vector<Storage> store {};
+    size_t total_values {0};
+    size_t total_store_size {0};
+    size_t max_store_size {DEFAULT_STORAGE_LIMIT};
+
     std::list<Search> searches {};
     uint16_t search_id {0};
 
@@ -879,7 +951,7 @@ private:
     }
 
     void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
-    ValueStorage* storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
+    bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
 
