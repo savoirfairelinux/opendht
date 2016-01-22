@@ -2435,7 +2435,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
             std::shared_ptr<Node> n;
             if (msg.tid.matches(TransPrefix::GET_VALUES, &ttid) or msg.tid.matches(TransPrefix::FIND_NODE, &ttid)) {
                 gp = ttid != 0;
-                if (gp)
+                if (gp and not msg.token.empty())
                     sr = findSearch(ttid, from->sa_family);
             }
             if (msg.nodes4.size() % 26 != 0 || msg.nodes6.size() % 38 != 0) {
