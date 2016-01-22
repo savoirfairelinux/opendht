@@ -276,7 +276,7 @@ public:
     /**
      * Get locally stored data for the given key and value id.
      */
-    std::shared_ptr<Value> getLocalById(const InfoHash& key, const Value::Id& vid) const;
+    std::shared_ptr<Value> getLocalById(const InfoHash& key, Value::Id vid) const;
 
     /**
      * Announce a value on all available protocols (IPv4, IPv6), and
@@ -736,6 +736,12 @@ private:
 
         const std::vector<ValueStorage>& getValues() const { return values; }
 
+        std::shared_ptr<Value> getById(Value::Id vid) const {
+            for (auto& v : values)
+                if (v.data->id == vid) return v.data;
+            return {};
+        }
+
         std::vector<std::shared_ptr<Value>> get(Value::Filter f = {}) const {
             std::vector<std::shared_ptr<Value>> newvals {};
             if (not f) newvals.reserve(values.size());
@@ -744,12 +750,6 @@ private:
                     newvals.push_back(v.data);
             }
             return newvals;
-        }
-
-        std::shared_ptr<Value> get(Value::Id vid) const {
-            for (auto& v : values)
-                if (v.data->id == vid) return v.data;
-            return {};
         }
 
         /**

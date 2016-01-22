@@ -1679,11 +1679,11 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
 }
 
 std::shared_ptr<Value>
-Dht::getLocalById(const InfoHash& id, const Value::Id& vid) const
+Dht::getLocalById(const InfoHash& id, Value::Id vid) const
 {
     auto s = findStorage(id);
     if (s != store.end())
-        return s->get(vid);
+        return s->getById(vid);
     return {};
 }
 
