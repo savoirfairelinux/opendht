@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright (C) 2015 Savoir-Faire Linux Inc.
 # Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
@@ -181,7 +182,7 @@ class PersistenceTest(DhtFeatureTest):
                                   'hosting nodes.')
 
                     for proc in self._workbench.procs:
-                        proc.sendDumpStorage(DhtFeatureTest.foreignNodes)
+                        proc.sendNodesRequest(DhtNetworkSubProcess.DUMP_STORAGE_REQ, DhtFeatureTest.foreignNodes)
             else:
                 DhtNetwork.log("Values didn't reach new hosting nodes after shutdown.")
 
@@ -299,7 +300,7 @@ class PersistenceTest(DhtFeatureTest):
             i = random.randint(0, len(self._workbench.procs)-1)
             proc = self._workbench.procs[i]
             DhtNetwork.log('Replacing', proc)
-            proc.sendShutdown()
+            proc.sendNodesRequest(DhtNetworkSubProcess.SHUTDOWN_CLUSTER_REQ)
             self._workbench.stop_cluster(i)
             self._workbench.start_cluster(i)
 
