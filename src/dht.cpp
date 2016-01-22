@@ -192,6 +192,7 @@ Dht::shutdown(ShutdownCallback cb) {
     auto str_donecb = [=](bool, const std::vector<std::shared_ptr<Node>>&) {
         --*remaining;
         if (!*remaining && cb) { cb(); }
+        else DHT_WARN("Shuting down node: %u ops remaining.", *remaining);
     };
 
     for (auto str : store) {
@@ -1422,11 +1423,15 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         return;
     }
     sr->done = false;
+    sr->expired = false;
     auto a_sr = std::find_if(sr->announce.begin(), sr->announce.end(), [&](const Announce& a){
         return a.value->id == value->id;
     });
-    if (a_sr == sr->announce.end())
+    if (a_sr == sr->announce.end()) {
         sr->announce.emplace_back(Announce {value, std::min(now, created), callback});
+        for (auto& n : sr->nodes)
+            n.acked[value->id] = {};
+    }
     else {
         if (a_sr->value != value) {
             a_sr->value = value;
@@ -1451,12 +1456,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
     if (tm < search_time) {
         DHT_ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
         search_time = tm;
-    }/* else {
-        DHT_DEBUG("search_time NOT changed to %ld (in %lf - actual in %lf)",
-            tm.time_since_epoch().count(),
-            print_dt(tm-clock::now()),
-            print_dt(search_time-clock::now()));
-    }*/
+    }
 }
 
 size_t
