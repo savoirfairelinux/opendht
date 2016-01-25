@@ -37,7 +37,8 @@ from opendht import *
 # useful functions
 b_space_join = lambda *l: b' '.join(map(bytes, l))
 
-# TODO: find where token "notifyend" gets printed...
+# TODO: find where token "notifyend" gets printed... Or switch to MSGPACK for
+# serialisation of packets between both processes.
 class DhtNetworkSubProcess(NSPopen):
     """
     Handles communication with DhtNetwork sub process.
@@ -47,6 +48,8 @@ class DhtNetworkSubProcess(NSPopen):
     therefor, waits for the sub process to spawn.
     """
     # requests
+    NODE_PUT_REQ              = b"np"
+    NEW_NODE_REQ              = b"nn"
     REMOVE_NODE_REQ           = b"rn"
     SHUTDOWN_NODE_REQ         = b"sdn"
     SHUTDOWN_REPLACE_NODE_REQ = b'sdrn'
@@ -173,7 +176,7 @@ class DhtNetworkSubProcess(NSPopen):
         process.
 
         @param answer_cb: Callback to call when an answer is given after notify.
-                          The function takes a list of lines as argument.
+                          The function takes a list of strings as argument.
         @type  answer_cb:  function
         """
         notified = False
@@ -227,6 +230,18 @@ class DhtNetworkSubProcess(NSPopen):
 
         self._sendRequest(DhtNetworkSubProcess.MESSAGE_STATS, answer_cb=cb)
         return stats
+
+    def sendNodePutRequest(self, _hash, value):
+        """
+        Sends a put operation request.
+
+        @param _hash: the hash of the value.
+        @type  _hash: bytes.
+        @param value: the value.
+        @type  value: bytes.
+        """
+        self._sendRequest(b_space_join(DhtNetworkSubProcess.NODE_PUT_REQ, _hash,
+            value))
 
     def sendNodesRequest(self, request, ids=b''):
         """
@@ -469,6 +484,8 @@ if __name__ == '__main__':
                 except queue.Empty:
                     pass
                 else:
+                    NODE_PUT_REQ              = DhtNetworkSubProcess.NODE_PUT_REQ.decode()
+                    NEW_NODE_REQ              = DhtNetworkSubProcess.NEW_NODE_REQ.decode()
                     REMOVE_NODE_REQ           = DhtNetworkSubProcess.REMOVE_NODE_REQ.decode()
                     SHUTDOWN_NODE_REQ         = DhtNetworkSubProcess.SHUTDOWN_NODE_REQ.decode()
                     SHUTDOWN_REPLACE_NODE_REQ = DhtNetworkSubProcess.SHUTDOWN_REPLACE_NODE_REQ.decode()
@@ -479,18 +496,30 @@ if __name__ == '__main__':
                     if req in [SHUTDOWN_NODE_REQ,
                                SHUTDOWN_REPLACE_NODE_REQ,
                                REMOVE_NODE_REQ]:
-                        DhtNetwork.log('got node deletion request.')
-                        for n in req_args:
+                        def delete_request(req, n):
+                            global msg_stats
                             if req == SHUTDOWN_NODE_REQ:
                                 net.end_node(id=n, shutdown=True, last_msg_stats=msg_stats)
                             elif req == SHUTDOWN_REPLACE_NODE_REQ:
                                 net.replace_node(id=n, shutdown=True, last_msg_stats=msg_stats)
                             elif req == REMOVE_NODE_REQ:
                                 net.end_node(id=n, last_msg_stats=msg_stats)
+
+                        if len(req) > 0:
+                            for n in req_args:
+                                delete_request(req, n)
+                        else:
+                            delete_request(req, net.get().getNodeId())
                     elif req == SHUTDOWN_CLUSTER_REQ:
                         for n in net.nodes:
-                            n.end_node(shutdown=True, last_msg_stats=msg_stats)
+                            net.end_node(id=n[2], shutdown=True, last_msg_stats=msg_stats)
                         quit = True
+                    elif req == NEW_NODE_REQ:
+                        net.launch_node()
+                    elif req == NODE_PUT_REQ:
+                        _hash, v = req_args[:2]
+                        net.get().put(InfoHash(_hash), Value(v))
+
                     elif req == DUMP_STORAGE_REQ:
                         for n in [m[1] for m in net.nodes if m[1].getNodeId() in req_args]:
                             net.log(n.getStorageLog())

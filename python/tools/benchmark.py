@@ -23,6 +23,7 @@ import subprocess
 import signal
 import argparse
 import time
+import random
 
 from dht.network import DhtNetwork
 from dht.network import DhtNetworkSubProcess
@@ -150,17 +151,22 @@ if __name__ == '__main__':
     testArgs.add_argument('-t', '--test', type=str, default=None, required=True, help='Specifies the test.')
     testArgs.add_argument('-o', '--opt', type=str, default=[], nargs='+',
             help='Options passed to tests routines.')
+    testArgs.add_argument('-m', type=int, default=None, help='Generic size option passed to tests.')
+    testArgs.add_argument('-e', type=int, default=None, help='Generic size option passed to tests.')
 
     featureArgs = parser.add_mutually_exclusive_group(required=True)
-    featureArgs.add_argument('--performance', action='store_true', default=0,
+    featureArgs.add_argument('--performance', action='store_true', default=False,
             help='Launches performance benchmark test. Available args for "-t" are: gets.')
     featureArgs.add_argument('--data-persistence', action='store_true', default=0,
             help='Launches data persistence benchmark test. '\
-                    'Available args for "-t" are: delete, replace, mult_time. '\
-                    'Available args for "-o" are : dump_str_log')
+                 'Available args for "-t" are: delete, replace, mult_time. '\
+                 'Available args for "-o" are : dump_str_log, keep_alive, trigger, traffic_plot, op_plot. '\
+                 'Use "-m" to specify the number of producers on the DHT.'\
+                 'Use "-e" to specify the number of values to put on the DHT.')
 
 
     args = parser.parse_args()
+    test_opt = { o : True for o in args.opt }
 
     wb = WorkBench(args.ifname, args.virtual_locs, args.node_num, loss=args.loss,
             delay=args.delay, disable_ipv4=args.disable_ipv4,
@@ -175,10 +181,17 @@ if __name__ == '__main__':
         for i in range(wb.clusters):
             wb.start_cluster(i)
 
+        # recover -e and -m values.
+        if args.e:
+            test_opt.update({ 'num_values' : args.e })
+        if args.m:
+            test_opt.update({ 'num_producers' : args.m })
+
+        # run the test
         if args.performance:
-            PerformanceTest(args.test, wb, *args.opt).run()
+            PerformanceTest(args.test, wb, test_opt).run()
         elif args.data_persistence:
-            PersistenceTest(args.test, wb, *args.opt).run()
+            PersistenceTest(args.test, wb, test_opt).run()
 
     except Exception as e:
         print(e)
