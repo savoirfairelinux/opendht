@@ -223,7 +223,8 @@ private:
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
             InfoHash&,
-            want_t)> onGetValues {};
+            want_t,
+            Query)> onGetValues {};
     /**
      * @brief on listen request callback.
      *
@@ -235,7 +236,8 @@ private:
     std::function<RequestAnswer(std::shared_ptr<Node>,
             InfoHash&,
             Blob&,
-            uint16_t)> onListen {};
+            uint16_t,
+            Query)> onListen {};
     /**
      * @brief on announce request callback.
      *

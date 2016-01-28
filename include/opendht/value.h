@@ -133,14 +133,18 @@ struct Value
                 return f1(v) and f2(v);
             };
         }
-        static Filter chain(std::initializer_list<Filter> l) {
-            const std::vector<Filter> list(l.begin(), l.end());
-            return [list](const Value& v){
-                for (const auto& f : list)
+        template <typename T>
+        static Filter chain(T&& set) {
+            using namespace std::placeholders;
+            return std::bind([](const Value& v, T& s) {
+                for (const auto& f : s)
                     if (f and not f(v))
                         return false;
                 return true;
-            };
+            }, _1, std::move(set));
+        }
+        static Filter chain(std::initializer_list<Filter> l) {
+            return chain(std::move(l));
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return AllFilter();
@@ -156,6 +160,11 @@ struct Value
 
     static Filter TypeFilter(const ValueType& t) {
         const auto tid = t.id;
+        return [tid](const Value& v) {
+            return v.type == tid;
+        };
+    }
+    static Filter TypeFilter(const ValueType::Id& tid) {
         return [tid](const Value& v) {
             return v.type == tid;
         };
@@ -421,6 +430,93 @@ struct Value
 };
 
 using ValuesExport = std::pair<InfoHash, Blob>;
+
+struct FilterDescription
+{
+    enum class Type
+    {
+        None,
+        Id,
+        ValueType
+    };
+
+    FilterDescription() {}
+    FilterDescription(Type t, uint64_t target) : type(t), value(target) {}
+
+    Value::Filter getLocalFilter() const {
+        switch (type) {
+        case Type::Id:
+            return Value::IdFilter(value);
+        case Type::ValueType:
+            return Value::TypeFilter(value);
+        default:
+            return Value::AllFilter();
+        }
+    }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
+        p.pack_map(2);
+        p.pack(std::string("t")); p.pack(type);
+        p.pack(std::string("v")); if (value_str.empty()) p.pack(value);
+                                  else                   p.pack(value_str);
+    }
+
+    void msgpack_unpack(msgpack::object msg) {
+        if (auto t = findMapValue(msg, "t"))
+            type = (Type)t->as<unsigned>();
+        else
+            throw msgpack::type_error();
+
+        auto v = findMapValue(msg, "v");
+        if (not v)
+            throw msgpack::type_error();
+        else if (v->type == msgpack::type::STR)
+            value_str = v->as<std::string>();
+        else
+            value = v->as<decltype(value)>();
+    }
+
+private:
+    Type type {Type::None};
+    uint64_t value {0};
+    std::string value_str {};
+};
+
+struct Query
+{
+    Query& setValueId(Value::Id id) {
+        filters_.emplace_back(FilterDescription::Type::Id, id);
+        return *this;
+    }
+
+    Query& setValueType(ValueType::Id type) {
+        filters_.emplace_back(FilterDescription::Type::ValueType, type);
+        return *this;
+    }
+
+    Value::Filter getFilter() const {
+        std::vector<Value::Filter> fset(filters_.size());
+        std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FilterDescription& f){
+            return f.getLocalFilter();
+        });
+        return Value::Filter::chain(std::move(fset));
+    }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
+        p.pack(filters_);
+    }
+
+    void msgpack_unpack(msgpack::object msg) {
+        filters_ = msg.as<decltype(filters_)>();
+    }
+
+private:
+    std::vector<FilterDescription> filters_;
+};
 
 template <typename T,
           typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>

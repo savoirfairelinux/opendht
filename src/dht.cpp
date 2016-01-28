@@ -1149,7 +1149,7 @@ Dht::Search::refill(const RoutingTable& r, time_point now) {
 
 /* Start a search. */
 std::shared_ptr<Dht::Search>
-Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallback done_callback, Value::Filter filter)
+Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallback done_callback, Value::Filter filter, Query q)
 {
     if (!isRunning(af)) {
         DHT_LOG.ERR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
@@ -1195,7 +1195,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     }
 
     if (callback)
-        sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback});
+        sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback, .query=q});
     bootstrapSearch(*sr);
 
     if (sr->nextSearchStep)
@@ -1216,7 +1216,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
     }
     auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
-    auto sr = srp == srs.end() ? search(id, af, nullptr, nullptr) : srp->second;
+    auto sr = srp == srs.end() ? search(id, af) : srp->second;
     if (!sr) {
         if (callback)
             callback(false, {});
@@ -1272,7 +1272,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     //DHT_LOG.WARN("listenTo %s", id.toString().c_str());
     auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
-    std::shared_ptr<Search> sr = (srp == srs.end()) ? search(id, af, nullptr, nullptr) : srp->second;
+    std::shared_ptr<Search> sr = (srp == srs.end()) ? search(id, af) : srp->second;
     if (!sr)
         throw DhtException("Can't create search");
     DHT_LOG.ERR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
@@ -1426,7 +1426,7 @@ struct OpStatus {
 };
 
 void
-Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter&& filter)
+Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter&& filter, Query&& q)
 {
     scheduler.syncTime();
 
@@ -1476,13 +1476,13 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
         status4->done = true;
         status4->ok = ok;
         done_l(nodes);
-    });
+    }, filter, q);
     Dht::search(id, AF_INET6, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
         //DHT_LOG.WARN("DHT done IPv6");
         status6->done = true;
         status6->ok = ok;
         done_l(nodes);
-    });
+    }, filter, q);
 }
 
 std::vector<std::shared_ptr<Value>>
@@ -1603,6 +1603,8 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
 
     for (const auto& l : st.listeners) {
         DHT_LOG.DEBUG("Storage changed. Sending update to %s.", l.first->toString().c_str());
+        if (l.filter and not l.filter(*v.data))
+            continue;
         std::vector<std::shared_ptr<Value>> vals;
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
@@ -1669,7 +1671,7 @@ Dht::Storage::clear()
 }
 
 void
-Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t rid)
+Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t rid, const Query& query)
 {
     const auto& now = scheduler.time();
     auto st = findStorage(id);
@@ -1681,16 +1683,14 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
     }
     auto l = st->listeners.find(node);
     if (l == st->listeners.end()) {
-        const auto& stvalues = st->getValues();
-        if (not stvalues.empty()) {
-            std::vector<std::shared_ptr<Value>> values(stvalues.size());
-            std::transform(stvalues.begin(), stvalues.end(), values.begin(), [=](const ValueStorage& vs) { return vs.data; });
-
+        auto filter = query.getFilter();
+        auto vals = st->get(filter);
+        if (not vals.empty()) {
             network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->ss, false),
                     buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
-                    values);
+                    std::move(vals));
         }
-        st->listeners.emplace(node, Listener {rid, now});
+        st->listeners.emplace(node, Listener {rid, now, std::move(filter)});
     }
     else
         l->second.refresh(rid, now);
@@ -2053,8 +2053,8 @@ Dht::Dht(int s, int s6, Config config)
             std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
             std::bind(&Dht::onPing, this, _1),
             std::bind(&Dht::onFindNode, this, _1, _2, _3),
-            std::bind(&Dht::onGetValues, this, _1, _2, _3),
-            std::bind(&Dht::onListen, this, _1, _2, _3, _4),
+            std::bind(&Dht::onGetValues, this, _1, _2, _3, _4),
+            std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5),
             std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5))
 {
     scheduler.syncTime();
@@ -2484,7 +2484,7 @@ Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& target, want_t want)
 }
 
 NetworkEngine::RequestAnswer
-Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
+Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query& query)
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("[node %s] Eek! Got get_values with no info_hash.", node->toString().c_str());
@@ -2497,11 +2497,7 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
     answer.nodes4 = buckets.findClosestNodes(hash, now, TARGET_NODES);
     answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
     if (st != store.end() && not st->empty()) {
-        auto values = st->getValues();
-        answer.values.resize(values.size());
-        std::transform(values.begin(), values.end(), answer.values.begin(), [](const ValueStorage& vs) {
-            return vs.data;
-        });
+        answer.values = st->get(query.getFilter());
         DHT_LOG.DEBUG("[node %s] sending %u values.", node->toString().c_str(), answer.values.size());
     } else {
         DHT_LOG.DEBUG("[node %s] sending nodes.", node->toString().c_str());
@@ -2565,7 +2561,7 @@ Dht::onGetValuesDone(const Request& status,
 }
 
 NetworkEngine::RequestAnswer
-Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid)
+Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, const Query& query)
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("Listen with no info_hash.");
@@ -2578,7 +2574,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
         DHT_LOG.WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
-    storageAddListener(hash, node, rid);
+    storageAddListener(hash, node, rid, query);
     return {};
 }
 

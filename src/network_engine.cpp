@@ -72,6 +72,7 @@ struct ParsedMessage {
     Blob nodes4_raw, nodes6_raw;                /* IPv4 nodes in response to a 'find' request */
     std::vector<std::shared_ptr<Node>> nodes4, nodes6;
     std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
+    Query query;                                /* query describing a filter to apply on values. */
     want_t want;                                /* states if ipv4 or ipv6 request */
     uint16_t error_code;                        /* error code in case of error */
     std::string ua;
@@ -404,7 +405,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.get;
-                RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
+                RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want, msg.query);
                 auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes4, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
                 break;
@@ -428,7 +429,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.listen;
-                RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid.getTid());
+                RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid.getTid(), msg.query);
                 sendListenConfirmation(from, fromlen, msg.tid);
                 break;
             }
@@ -921,35 +922,40 @@ NetworkEngine::sendError(const sockaddr* sa,
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-msgpack::object*
-findMapValue(msgpack::object& map, const std::string& key) {
-    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
-    for (unsigned i = 0; i < map.via.map.size; i++) {
-        auto& o = map.via.map.ptr[i];
-        if(o.key.type != msgpack::type::STR)
-            continue;
-        if (o.key.as<std::string>() == key) {
-            return &o.val;
-        }
-    }
-    return nullptr;
-}
-
 void
 ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
     auto y = findMapValue(msg, "y");
-    auto a = findMapValue(msg, "a");
     auto r = findMapValue(msg, "r");
     auto e = findMapValue(msg, "e");
 
-    std::string query;
-    if (auto q = findMapValue(msg, "q")) {
-        if (q->type != msgpack::type::STR)
+    std::string q;
+    if (auto rq = findMapValue(msg, "q")) {
+        if (rq->type != msgpack::type::STR)
             throw msgpack::type_error();
-        query = q->as<std::string>();
+        q = rq->as<std::string>();
     }
 
+    if (e)
+        type = MessageType::Error;
+    else if (r)
+        type = MessageType::Reply;
+    else if (y and y->as<std::string>() != "q")
+        throw msgpack::type_error();
+    else if (q == "ping")
+        type = MessageType::Ping;
+    else if (q == "find")
+        type = MessageType::FindNode;
+    else if (q == "get")
+        type = MessageType::GetValues;
+    else if (q == "listen")
+        type = MessageType::Listen;
+    else if (q == "put")
+        type = MessageType::AnnounceValue;
+    else
+        throw msgpack::type_error();
+
+    auto a = findMapValue(msg, "a");
     if (!a && !r && !e)
         throw msgpack::type_error();
     auto& req = a ? *a : (r ? *r : *e);
@@ -968,6 +974,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
 
     if (auto rtarget = findMapValue(req, "target"))
         target = {*rtarget};
+
+    if (auto rquery = findMapValue(req, "q"))
+        query.msgpack_unpack(*rquery);
 
     if (auto otoken = findMapValue(req, "token"))
         token = unpackBlob(*otoken);
@@ -1041,24 +1050,6 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
     if (auto rv = findMapValue(msg, "v"))
         ua = rv->as<std::string>();
 
-    if (e)
-        type = MessageType::Error;
-    else if (r)
-        type = MessageType::Reply;
-    else if (y and y->as<std::string>() != "q")
-        throw msgpack::type_error();
-    else if (query == "ping")
-        type = MessageType::Ping;
-    else if (query == "find")
-        type = MessageType::FindNode;
-    else if (query == "get")
-        type = MessageType::GetValues;
-    else if (query == "listen")
-        type = MessageType::Listen;
-    else if (query == "put")
-        type = MessageType::AnnounceValue;
-    else
-        throw msgpack::type_error();
 }
 
 }
