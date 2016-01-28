@@ -1201,7 +1201,7 @@ Dht::Search::getUpdateTime(time_point now) const
         if (not sn.candidate and ++i == TARGET_NODES)
             break;
     }
-    if (not callbacks.empty() and d == 0) {
+    if ((not callbacks.empty() or not announce.empty()) and d == 0) {
         // If all synced/updated but some callbacks remain, step now to clear them
         return now;
     }
