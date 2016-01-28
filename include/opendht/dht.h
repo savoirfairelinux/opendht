@@ -132,15 +132,15 @@ public:
                         cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={});
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}) {
-        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Query q&& = {});
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Query q&& = {}) {
+        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}) {
-        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Query q&& = {}) {
+        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}) {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Query q&& = {}) {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
 
     /**
@@ -154,14 +154,10 @@ public:
     std::shared_ptr<Value> getLocalById(const InfoHash& key, Value::Id vid) const;
 
     /**
-     * Announce a value on all available protocols (IPv4, IPv6), and
-     * automatically re-announce when it's about to expire.
+     * Announce a value on all available protocols (IPv4, IPv6).
+     *
      * The operation will start as soon as the node is connected to the network.
      * The done callback will be called once, when the first announce succeeds, or fails.
-     *
-     * A "put" operation will never end by itself because the value will need to be
-     * reannounced on a regular basis.
-     * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
     void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb=nullptr, time_point created=time_point::max());
     void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
@@ -296,6 +292,7 @@ private:
         Value::Filter filter;
         GetCallback get_cb;
         DoneCallback done_cb;
+        Query query;
     };
 
     /**
@@ -335,8 +332,9 @@ private:
     struct Listener {
         size_t rid {};
         time_point time {};
+        Value::Filter filter {};
 
-        /*constexpr*/ Listener(size_t rid, time_point t) : rid(rid), time(t) {}
+        /*constexpr*/ Listener(size_t rid, time_point t, Value::Filter f) : rid(rid), time(t), filter(f) {}
 
         void refresh(size_t tid, time_point t) {
             rid = tid;
@@ -403,7 +401,7 @@ private:
     decltype(Dht::store)::iterator findStorage(const InfoHash& id);
     decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const;
 
-    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid);
+    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, const Query& q = {});
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
@@ -452,7 +450,7 @@ private:
      * specified infohash (id), using the specified IP version (IPv4 or IPv6).
      * The values can be filtered by an arbitrary provided filter.
      */
-    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
+    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
@@ -485,9 +483,9 @@ private:
     void onFindNodeDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
     NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr, const Query& q);
     /* when we receive a listen request */
-    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
+    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, const Query& query);
     void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
