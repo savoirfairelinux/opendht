@@ -431,9 +431,17 @@ struct Value
 
 using ValuesExport = std::pair<InfoHash, Blob>;
 
+/*!
+ * @struct  FilterDescription
+ * @brief   Describes a filter.
+ * @details
+ * This is a description of a filter to be joined into a query. This is meant
+ * to narrow the set of values received to a set of values corresponding to the
+ * description.
+ */
 struct FilterDescription
 {
-    enum class Type
+    enum class Field
     {
         None,
         Id,
@@ -447,39 +455,65 @@ struct FilterDescription
     };
 
     FilterDescription() {}
-    FilterDescription(Type t, uint64_t target) : type(t), value(target) {}
+    FilterDescription(Field t) : type(t) {}
 
-    Value::Filter getLocalFilter() const {
-        // TODO: add these types filters:
-        // - OwnerPk
-        // - RecipientHash
-        // - UserType
-        // - Signature
-        switch (type) {
-        case Type::Id:
-            return Value::IdFilter(value);
-        case Type::ValueType:
-            return Value::TypeFilter(value);
-        default:
-            return Value::AllFilter();
+    template <typename Packer>
+    void msgpack_pack(Packer& p) {
+        p.pack_map(1);
+        p.pack(std::string("t")); p.pack(field);
+    }
+
+    void msgpack_unpack(msgpack::object msg) {
+        if (auto t = findMapValue(msg, "t"))
+            field = (Field)t->as<unsigned>();
+        else
+            throw msgpack::type_error();
+    }
+
+protected:
+    Field field {Field::None};
+};
+
+/**
+ * This is meant to narrow data to a set of specified fields. This is equivalent
+ * to a SQL "SELECT" statement.
+ */
+using FieldFilterDescription = FilterDescription;
+
+/*!
+ * @class   ValueFilterDescription
+ * @brief   Describes a value filter.
+ * @details
+ * This filter description is meant to narrow data to a set of values for which
+ * the specified field corresponds. This is equivalent to a SQL "WHERE" statement.
+ */
+struct ValueFilterDescription : public FilterDescription
+{
+    ValueFilterDescription() {}
+    ValueFilterDescription(Field t, uint64_t target) : FilterDescription(t), value(target) {}
+
+    Value::Filter getLocalValueFilter() const {
+        switch (field) {
+            case Field::Id:
+                return Value::IdFilter(value);
+            case Field::ValueType:
+                return Value::TypeFilter(value);
+            default:
+                return Value::AllFilter();
         }
     }
 
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {
-        p.pack_map(2);
-        p.pack(std::string("t")); p.pack(type);
+        FilterDescription::msgpack_pack(p);
+        p.pack_map(1);
         p.pack(std::string("v")); if (value_str.empty()) p.pack(value);
                                   else                   p.pack(value_str);
     }
 
     void msgpack_unpack(msgpack::object msg) {
-        if (auto t = findMapValue(msg, "t"))
-            type = (Type)t->as<unsigned>();
-        else
-            throw msgpack::type_error();
-
+        FilterDescription::msgpack_unpack(msg);
         auto v = findMapValue(msg, "v");
         if (not v)
             throw msgpack::type_error();
@@ -490,27 +524,19 @@ struct FilterDescription
     }
 
 private:
-    Type type {Type::None};
-    union {
-        uint64_t id;
-        uint16_t valueType;
-        crypto::PublicKey owner;
-        InfoHash recipient;
-        std::string userType;
-        Blob signature;
-    } value_ {0};
+    uint64_t value {0};
     std::string value_str {};
 };
 
 struct Query
 {
     Query& setValueId(Value::Id id) {
-        filters_.emplace_back(FilterDescription::Type::Id, id);
+        valueFilters_.emplace_back(FilterDescription::Field::Id, id);
         return *this;
     }
 
     Query& setValueType(ValueType::Id type) {
-        filters_.emplace_back(FilterDescription::Type::ValueType, type);
+        valueFilters_.emplace_back(FilterDescription::Field::ValueType, type);
         return *this;
     }
 
@@ -532,12 +558,14 @@ struct Query
     Query& setSignature() {
         // TODO
         return *this;
+    Query& require(FilterDescription::Field field) {
+
     }
 
     Value::Filter getFilter() const {
-        std::vector<Value::Filter> fset(filters_.size());
-        std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FilterDescription& f){
-            return f.getLocalFilter();
+        std::vector<Value::Filter> fset(valueFilters_.size());
+        std::transform(valueFilters_.begin(), valueFilters_.end(), fset.begin(), [](const ValueFilterDescription& f){
+            return f.getLocalValueFilter();
         });
         return Value::Filter::chain(std::move(fset));
     }
@@ -545,15 +573,19 @@ struct Query
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {
-        p.pack(filters_);
+        p.pack(valueFilters_);
+        p.pack(fieldFilters_);
     }
 
     void msgpack_unpack(msgpack::object msg) {
-        filters_ = msg.as<decltype(filters_)>();
+        valueFilters_ = msg.as<decltype(valueFilters_)>();
+        fieldFilters_ = msg.as<decltype(fieldFilters_)>();
+
     }
 
 private:
-    std::vector<FilterDescription> filters_;
+    std::vector<ValueFilterDescription> valueFilters_;
+    std::vector<FieldFilterDescription> fieldFilters_;
 };
 
 template <typename T,
