@@ -491,7 +491,14 @@ struct FilterDescription
 
 private:
     Type type {Type::None};
-    uint64_t value {0};
+    union {
+        uint64_t id;
+        uint16_t valueType;
+        crypto::PublicKey owner;
+        InfoHash recipient;
+        std::string userType;
+        Blob signature;
+    } value_ {0};
     std::string value_str {};
 };
 
