@@ -156,4 +156,21 @@ Value::msgpack_unpack_body(const msgpack::object& o)
     }
 }
 
+template <typename T>
+bool satisfied(std::vector<T> fds, std::vector<T> qfds)
+{
+    for (auto& fd : fds) {
+        auto correspondance = std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; });
+        if (correspondance == qfds.end())
+            return false; /* the query is not satisfied */
+    }
+    return true;
+};
+
+bool
+Query::isSatisfiedBy(Query& q) const
+{
+    return satisfied(valueFilters_, q.valueFilters_) and satisfied(fieldFilters_, q.fieldFilters_);
+}
+
 }

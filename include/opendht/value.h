@@ -456,15 +456,11 @@ struct FilterDescription
     };
 
     FilterDescription() {}
-    FilterDescription(Field t) : field(t) {}
+    FilterDescription(Field f) : field(f) {}
 
     Field getField() { return field; }
 
-    template <typename Packer>
-    void msgpack_pack(Packer& p) {
-        p.pack_map(1);
-        p.pack(std::string("t")); p.pack(field);
-    }
+    bool operator==(FilterDescription& fd) { return field == fd.field; }
 
     void msgpack_unpack(msgpack::object msg) {
         if (auto t = findMapValue(msg, "t"))
@@ -481,7 +477,17 @@ protected:
  * This is meant to narrow data to a set of specified fields. This is equivalent
  * to a SQL "SELECT" statement.
  */
-using FieldFilterDescription = FilterDescription;
+struct FieldFilterDescription : public FilterDescription
+{
+    FieldFilterDescription() {}
+    FieldFilterDescription(Field f) : FilterDescription(f) {}
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) {
+        p.pack_map(1);
+        p.pack(std::string("t")); p.pack(field);
+    }
+};
 
 /*!
  * @class   ValueFilterDescription
@@ -493,7 +499,11 @@ using FieldFilterDescription = FilterDescription;
 struct ValueFilterDescription : public FilterDescription
 {
     ValueFilterDescription() {}
-    ValueFilterDescription(Field t, uint64_t target) : FilterDescription(t), value(target) {}
+    ValueFilterDescription(Field f, uint64_t target) : FilterDescription(f), value(target) {}
+
+    bool operator==(ValueFilterDescription& vfd) {
+        return field == vfd.field and value == vfd.value;
+    }
 
     Value::Filter getLocalValueFilter() const {
         switch (field) {
@@ -509,8 +519,8 @@ struct ValueFilterDescription : public FilterDescription
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {
-        FilterDescription::msgpack_pack(p);
-        p.pack_map(1);
+        p.pack_map(2);
+        p.pack(std::string("t")); p.pack(field);
         p.pack(std::string("v")); if (value_str.empty()) p.pack(value);
                                   else                   p.pack(value_str);
     }
@@ -531,6 +541,14 @@ private:
     std::string value_str {};
 };
 
+/*!
+ * @class   Query
+ * @brief   Describes a query destined to another peer.
+ * @details
+ * This class describes the list of filters on field values and the field
+ * itselves to include in the peer response to a GET operation. See
+ * FilterDescription.
+ */
 struct Query
 {
     Query& setValueId(Value::Id id) {
@@ -584,6 +602,11 @@ struct Query
         return fields;
     }
 
+    /**
+     * Tell if the query is satisfied by another query.
+     */
+    bool isSatisfiedBy(Query& q) const;
+
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {
@@ -594,7 +617,6 @@ struct Query
     void msgpack_unpack(msgpack::object msg) {
         valueFilters_ = msg.as<decltype(valueFilters_)>();
         fieldFilters_ = msg.as<decltype(fieldFilters_)>();
-
     }
 
 private:
