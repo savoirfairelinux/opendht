@@ -35,6 +35,7 @@
 #include <functional>
 #include <memory>
 #include <chrono>
+#include <set>
 
 namespace dht {
 
@@ -455,7 +456,9 @@ struct FilterDescription
     };
 
     FilterDescription() {}
-    FilterDescription(Field t) : type(t) {}
+    FilterDescription(Field t) : field(t) {}
+
+    Field getField() { return field; }
 
     template <typename Packer>
     void msgpack_pack(Packer& p) {
@@ -558,16 +561,27 @@ struct Query
     Query& setSignature() {
         // TODO
         return *this;
-    Query& require(FilterDescription::Field field) {
-
     }
 
-    Value::Filter getFilter() const {
+    Query& requireField(FilterDescription::Field field) {
+        fieldFilters_.emplace_back(field);
+        return *this;
+    }
+
+    Value::Filter getValueFilter() const {
         std::vector<Value::Filter> fset(valueFilters_.size());
         std::transform(valueFilters_.begin(), valueFilters_.end(), fset.begin(), [](const ValueFilterDescription& f){
             return f.getLocalValueFilter();
         });
         return Value::Filter::chain(std::move(fset));
+    }
+
+    std::set<FilterDescription::Field> getFieldFilter() {
+        std::set<FilterDescription::Field> fields {};
+        for (auto f : fieldFilters_) {
+            fields.insert(f.getField());
+        }
+        return fields;
     }
 
     template <typename Packer>
