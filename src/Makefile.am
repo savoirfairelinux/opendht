@@ -9,6 +9,7 @@ libopendht_la_LIBADD = ./argon2/libargon2.la
 
 libopendht_la_SOURCES = \
         dht.cpp \
+		network_engine.cpp \
         utils.cpp \
         infohash.cpp \
         value.cpp \
@@ -24,6 +25,7 @@ endif
 nobase_include_HEADERS = \
         ../include/opendht.h \
         ../include/opendht/dht.h \
+        ../include/opendht/network_engine.h \
         ../include/opendht/utils.h \
         ../include/opendht/infohash.h \
         ../include/opendht/value.h \

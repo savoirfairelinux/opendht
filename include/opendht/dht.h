@@ -42,6 +42,7 @@ THE SOFTWARE.
 
 namespace dht {
 
+using want_t = int_fast8_t;
 using Address = std::pair<sockaddr_storage, socklen_t>;
 
 std::string print_addr(const sockaddr* sa, socklen_t slen);
@@ -181,8 +182,6 @@ public:
             raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
         };
     }
-
-    using want_t = int_fast8_t;
 
     Dht() {}
 
@@ -429,8 +428,6 @@ private:
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
 
     static constexpr size_t TOKEN_SIZE {64};
-
-    static const std::string my_v;
 
     struct NodeCache {
         std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
