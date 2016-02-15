@@ -10,7 +10,9 @@
 #include <iostream>
 #include <sstream>
 
-#include "opendht.h"
+#include "../value.h"
+#include "../dhtrunner.h"
+#include "../infohash.h"
 
 namespace dht {
 namespace indexation {
