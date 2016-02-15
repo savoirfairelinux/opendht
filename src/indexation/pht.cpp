@@ -166,7 +166,6 @@ void Pht::insert(Key k, Value v, Dht::DoneCallbackSimple done_cb) {
     lookupStep(kp, lo, hi, vals,
         [=](std::vector<std::shared_ptr<Value>>& values, Prefix p) {
             *final_prefix = Prefix(p);
-            return true;
         },
         [=](bool ok){
             if (not ok) {
