@@ -20,7 +20,8 @@ libopendht_la_SOURCES = \
         crypto.cpp \
         securedht.cpp \
         dhtrunner.cpp \
-        default_types.cpp
+        default_types.cpp \
+        indexation/pht.cpp
 
 if WIN32
 libopendht_la_SOURCES += rng.cpp
@@ -43,4 +44,5 @@ nobase_include_HEADERS = \
         ../include/opendht/dhtrunner.h \
         ../include/opendht/default_types.h \
         ../include/opendht/log.h \
-        ../include/opendht/rng.h
+        ../include/opendht/rng.h \
+        ../include/opendht/indexation/pht.h
