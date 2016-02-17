@@ -47,10 +47,6 @@ extern "C" {
 #include <fcntl.h>
 #include <cstring>
 
-#ifndef MSG_CONFIRM
-#define MSG_CONFIRM 0
-#endif
-
 #ifdef _WIN32
 
 static bool
@@ -76,9 +72,6 @@ set_nonblocking(int fd, int nonblocking)
 }
 
 #endif
-
-#define WANT4 1
-#define WANT6 2
 
 static std::mt19937 rd {dht::crypto::random_device{}()};
 static std::uniform_int_distribution<uint8_t> rand_byte;
@@ -134,14 +127,6 @@ print_dt(DT d) {
 }
 
 namespace dht {
-
-const Dht::TransPrefix Dht::TransPrefix::PING = {"pn"};
-const Dht::TransPrefix Dht::TransPrefix::FIND_NODE  = {"fn"};
-const Dht::TransPrefix Dht::TransPrefix::GET_VALUES  = {"gt"};
-const Dht::TransPrefix Dht::TransPrefix::ANNOUNCE_VALUES  = {"pt"};
-const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"lt"};
-
-const std::string Dht::my_v = "RNG1";
 
 static constexpr InfoHash zeroes {};
 
@@ -508,10 +493,11 @@ Dht::sendCachedPing(Bucket& b)
         return 0;
 
     DHT_DEBUG("Sending ping to cached node.");
-    int rc = sendPing((sockaddr*)&b.cached, b.cachedlen, TransId{TransPrefix::PING});
+    //TODO
+    //int rc = sendPing((sockaddr*)&b.cached, b.cachedlen, TransId{TransPrefix::PING});
     b.cached.ss_family = 0;
     b.cachedlen = 0;
-    return rc;
+    return 0;
 }
 
 /* Called whenever we send a request to a node, increases the ping count
@@ -715,7 +701,8 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                 dubious = true;
                 if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
                     DHT_DEBUG("Sending ping to dubious node.");
-                    sendPing((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::PING});
+                    //TODO
+                    //sendPing((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::PING});
                     n->pinged++;
                     n->pinged_time = now;
                     //pinged(n, b);
@@ -922,9 +909,11 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
         n->node->pinged, print_dt(now-n->getStatus.request_time));
 
     if (sr.callbacks.empty() and sr.listeners.empty())
-        sendFindNode((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::FIND_NODE, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
-    else
-        sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
+        //TODO
+        //sendFindNode((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::FIND_NODE, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
+        //TODO
+    //else
+    //    sendGetValues((sockaddr*)&n->node->ss, n->node->sslen, TransId {TransPrefix::GET_VALUES, sr.tid}, sr.id, -1, n->node->reply_time >= now - UDP_REPLY_TIME);
     n->getStatus.request_time = now;
     pinged(*n->node);
     if (n->node->pinged > 1 and not n->candidate) {
@@ -989,7 +978,8 @@ Dht::searchStep(Search& sr)
                         print_addr(n.node->ss, n.node->sslen).c_str());
                     //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
+                    //TODO
+                    //sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
                     n.pending = true;
                     n.listenStatus.request_time = now;
                 }
@@ -1022,10 +1012,11 @@ Dht::searchStep(Search& sr)
                         print_addr(n.node->ss, n.node->sslen).c_str());
                     //std::cout << "Sending announce_value to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
-                            TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid},
-                            sr.id, *a.value, a.created, n.token,
-                            n.node->reply_time >= now - UDP_REPLY_TIME);
+                    //TODO
+                    //sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
+                    //        TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid},
+                    //        sr.id, *a.value, a.created, n.token,
+                    //        n.node->reply_time >= now - UDP_REPLY_TIME);
                     if (a_status == n.acked.end()) {
                         n.acked[vid] = { now };
                     } else {
@@ -1767,7 +1758,8 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
         std::vector<ValueStorage> vals;
         vals.push_back(v);
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
-        sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, vals);
+        //TODO
+        //sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, vals);
     }
 }
 
@@ -1843,7 +1835,8 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
         return l.ss.ss_family == af && l.id == node;
     });
     if (l == st->listeners.end()) {
-        sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->getValues());
+        //TODO
+        //sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->getValues());
         st->listeners.emplace_back(node, from, fromlen, tid, now);
     }
     else
@@ -2260,9 +2253,10 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
     auto n = q->randomNode();
     if (n) {
         DHT_DEBUG("[find %s IPv%c] sending find for neighborhood maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
-        sendFindNode((sockaddr*)&n->ss, n->sslen,
-                       TransId {TransPrefix::FIND_NODE}, id, want,
-                       n->reply_time >= now - UDP_REPLY_TIME);
+        //TODO
+        //sendFindNode((sockaddr*)&n->ss, n->sslen,
+        //               TransId {TransPrefix::FIND_NODE}, id, want,
+        //               n->reply_time >= now - UDP_REPLY_TIME);
         pinged(*n, &(*q));
     }
 
@@ -2312,9 +2306,10 @@ Dht::bucketMaintenance(RoutingTable& list)
                 }
 
                 DHT_DEBUG("[find %s IPv%c] sending for bucket maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
-                sendFindNode((sockaddr*)&n->ss, n->sslen,
-                               TransId {TransPrefix::FIND_NODE}, id, want,
-                               n->reply_time >= now - UDP_REPLY_TIME);
+                //TODO
+                //sendFindNode((sockaddr*)&n->ss, n->sslen,
+                //               TransId {TransPrefix::FIND_NODE}, id, want,
+                //               n->reply_time >= now - UDP_REPLY_TIME);
                 pinged(*n, &(*q));
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
@@ -2373,442 +2368,10 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     return announce_per_af;
 }
 
-void
-Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
-{
-    if (buflen == 0)
-        return;
-
-    if (isMartian(from, fromlen))
-        return;
-
-    if (isNodeBlacklisted(from, fromlen)) {
-        DHT_DEBUG("Received packet from blacklisted node.");
-        return;
-    }
-
-    //DHT_DEBUG("processMessage %p %lu %p %lu", buf, buflen, from, fromlen);
-
-    ParsedMessage msg;
-    try {
-        msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
-        msg.msgpack_unpack(msg_res.get());
-        if (msg.type != MessageType::Error && msg.id == zeroes)
-            throw DhtException("no or invalid InfoHash");
-    } catch (const std::exception& e) {
-        DHT_WARN("Can't process message of size %lu: %s.", buflen, e.what());
-        DHT_DEBUG.logPrintable(buf, buflen);
-        return;
-    }
-
-    if (msg.id == myid) {
-        DHT_DEBUG("Received message from self.");
-        return;
-    }
-
-    if (msg.type > MessageType::Reply) {
-        /* Rate limit requests. */
-        if (!rateLimit()) {
-            DHT_WARN("Dropping request due to rate limiting.");
-            return;
-        }
-    }
-
-    //std::cout << "Message from " << id << " IPv" << (from->sa_family==AF_INET?'4':'6') << std::endl;
-    uint16_t ttid = 0;
-
-    switch (msg.type) {
-    case MessageType::Error:
-        if (msg.tid.length != 4) return;
-        if (msg.error_code == 401 && msg.id != zeroes && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid) || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
-            auto esr = findSearch(ttid, from->sa_family);
-            if (!esr) return;
-            auto ne = newNode(msg.id, from, fromlen, 2);
-            unsigned cleared = 0;
-            for (auto& sr : searches) {
-                for (auto& n : sr.nodes) {
-                    if (n.node != ne) continue;
-                    cleared++;
-                    n.getStatus.request_time = TIME_INVALID;
-                    n.getStatus.reply_time = TIME_INVALID;
-                    if (searchSendGetValues(sr))
-                        sr.get_step_time = now;
-                    break;
-                }
-            }
-            DHT_WARN("[node %s %s] token flush (%d searches affected)", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), cleared);
-        } else {
-            DHT_WARN("[node %s %s] received unknown error message %u", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.error_code);
-            DHT_WARN.logPrintable(buf, buflen);
-        }
-        break;
-    case MessageType::Reply:
-        if (msg.tid.length != 4) {
-            DHT_ERROR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
-            DHT_ERROR.logPrintable(buf, buflen);
-            /* This is really annoying, as it means that we will
-               time-out all our searches that go through this node.
-               Kill it. */
-            blacklistNode(&msg.id, from, fromlen);
-            return;
-        }
-        if (msg.tid.matches(TransPrefix::PING)) {
-            DHT_DEBUG("[node %s %s] Pong!", msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
-            newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
-        } else if (msg.tid.matches(TransPrefix::FIND_NODE) or msg.tid.matches(TransPrefix::GET_VALUES)) {
-            bool gp = false;
-            Search *sr = nullptr;
-            std::shared_ptr<Node> n;
-            if (msg.tid.matches(TransPrefix::GET_VALUES, &ttid) or msg.tid.matches(TransPrefix::FIND_NODE, &ttid)) {
-                gp = ttid != 0;
-                if (gp and not msg.token.empty())
-                    sr = findSearch(ttid, from->sa_family);
-            }
-            if (msg.nodes4.size() % 26 != 0 || msg.nodes6.size() % 38 != 0) {
-                DHT_WARN("Unexpected length for node info!");
-                blacklistNode(&msg.id, from, fromlen);
-                break;
-            } else if (gp && sr == nullptr) {
-                DHT_WARN("Unknown search with tid %u !", ttid);
-                n = newNode(msg.id, from, fromlen, 1);
-            } else {
-                n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
-                for (unsigned i = 0; i < msg.nodes4.size() / 26; i++) {
-                    uint8_t *ni = msg.nodes4.data() + i * 26;
-                    const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
-                    if (ni_id == myid)
-                        continue;
-                    sockaddr_in sin;
-                    std::fill_n((uint8_t*)&sin, sizeof(sockaddr_in), 0);
-                    sin.sin_family = AF_INET;
-                    memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
-                    memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
-                    auto sn = newNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0);
-                    if (sn && sr && sr->af == AF_INET) {
-                        sr->insertNode(sn, now);
-                    }
-                }
-                for (unsigned i = 0; i < msg.nodes6.size() / 38; i++) {
-                    uint8_t *ni = msg.nodes6.data() + i * 38;
-                    InfoHash* ni_id = reinterpret_cast<InfoHash*>(ni);
-                    if (*ni_id == myid)
-                        continue;
-                    sockaddr_in6 sin6;
-                    std::fill_n((uint8_t*)&sin6, sizeof(sockaddr_in6), 0);
-                    sin6.sin6_family = AF_INET6;
-                    memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
-                    memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
-                    auto sn = newNode(*ni_id, (sockaddr*)&sin6, sizeof(sin6), 0);
-                    if (sn && sr && sr->af == AF_INET6) {
-                        sr->insertNode(sn, now);
-                    }
-                }
-                if (sr) {
-                    /* Since we received a reply, the number of
-                       requests in flight has decreased.  Let's push
-                       another request. */
-                   DHT_DEBUG("[search %s IPv%c] found nodes: %u IPv4, %u IPv6",
-                       sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                       msg.nodes4.size()/26, msg.nodes6.size()/38);
-                    //std::cout << "Received reply from " << id << ", sending new message..." << std::endl;
-                    if (searchSendGetValues(*sr))
-                        sr->get_step_time = now;
-                }
-            }
-            if (sr) {
-                sr->insertNode(n, now, msg.token);
-                if (!msg.values.empty()) {
-                    DHT_DEBUG("[search %s IPv%c] found %u values",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        msg.values.size());
-                    for (auto& cb : sr->callbacks) {
-                        if (!cb.get_cb) continue;
-                        std::vector<std::shared_ptr<Value>> tmp;
-                        std::copy_if(msg.values.begin(), msg.values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
-                            return not static_cast<bool>(cb.filter) or cb.filter(*v);
-                        });
-                        if (not tmp.empty())
-                            cb.get_cb(tmp);
-                    }
-                    std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
-                    for (auto& l : sr->listeners) {
-                        if (!l.second.get_cb) continue;
-                        std::vector<std::shared_ptr<Value>> tmp;
-                        std::copy_if(msg.values.begin(), msg.values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
-                            return not static_cast<bool>(l.second.filter) or l.second.filter(*v);
-                        });
-                        if (not tmp.empty())
-                            tmp_lists.emplace_back(l.second.get_cb, tmp);
-                    }
-                    for (auto& l : tmp_lists)
-                        l.first(l.second);
-                }
-                // Force to recompute the next step time
-                if (sr->isSynced(now))
-                    search_time = now;
-            }
-        } else if (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)) {
-            Search *sr = findSearch(ttid, from->sa_family);
-            if (!sr || msg.value_id == Value::INVALID_ID) {
-                DHT_DEBUG("Unknown search or announce!");
-                newNode(msg.id, from, fromlen, 1);
-            } else {
-                DHT_DEBUG("[search %s IPv%c] got reply to put!",
-                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    msg.values.size());
-
-                auto n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
-                for (auto& sn : sr->nodes)
-                    if (sn.node == n) {
-                        auto it = sn.acked.emplace(msg.value_id, SearchNode::RequestStatus{});
-                        it.first->second.reply_time = now;
-                        break;
-                    }
-                /* See comment for gp above. */
-                if (searchSendGetValues(*sr))
-                    sr->get_step_time = now;
-
-                // If the value was just successfully announced, call the callback
-                auto a_to_remove = std::remove_if(sr->announce.begin(), sr->announce.end(), [&](Announce &a) {
-                    if (!a.value || a.value->id != msg.value_id)
-                        return false;
-                    auto type = getType(a.value->type);
-                    if (sr->isAnnounced(msg.value_id, type, now)) {
-                        if (a.callback) {
-                            a.callback(true, sr->getNodes());
-                            a.callback = nullptr;
-                        }
-                        return true;
-                    }
-                    return false;
-                });
-                sr->announce.erase(a_to_remove, sr->announce.end());
-            }
-        } else if (msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
-            DHT_DEBUG("Got reply to listen.");
-            Search *sr = findSearch(ttid, from->sa_family);
-            if (!sr) {
-                DHT_DEBUG("Unknown search or announce!");
-                newNode(msg.id, from, fromlen, 1);
-            } else {
-                auto n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
-                for (auto& sn : sr->nodes)
-                    if (sn.node == n) {
-                        sn.listenStatus.reply_time = now;
-                        break;
-                    }
-                /* See comment for gp above. */
-                if (searchSendGetValues(*sr))
-                    sr->get_step_time = now;
-            }
-        } else {
-            DHT_WARN("Unexpected reply: ");
-            DHT_WARN.logPrintable(buf, buflen);
-        }
-        break;
-    case MessageType::Ping:
-        in_stats.ping++;
-        newNode(msg.id, from, fromlen, 1);
-        //DHT_DEBUG("Sending pong.");
-        sendPong(from, fromlen, msg.tid);
-        break;
-    case MessageType::FindNode: {
-        in_stats.find++;
-        newNode(msg.id, from, fromlen, 1);
-        DHT_DEBUG("[node %s %s] got 'find' request (%d).", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
-        Blob ntoken = makeToken(from, false);
-        sendClosestNodes(from, fromlen, msg.tid, msg.target, msg.want, ntoken);
-        break;
-    }
-    case MessageType::GetValues: {
-        in_stats.get++;
-        DHT_DEBUG("[node %s %s] got 'get' request for %s.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
-        newNode(msg.id, from, fromlen, 1);
-        if (msg.info_hash == zeroes) {
-            DHT_WARN("[node %s %s] Eek! Got get_values with no info_hash.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
-            sendError(from, fromlen, msg.tid, 203, "Get_values with no info_hash");
-            break;
-        } else {
-            auto st = findStorage(msg.info_hash);
-            Blob ntoken = makeToken(from, false);
-            if (st != store.end() && not st->empty()) {
-                 DHT_DEBUG("[node %s %s] sending %u values.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), st->valueCount());
-                 sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken, st->getValues());
-            } else {
-                DHT_DEBUG("[node %s %s] sending nodes.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
-                sendClosestNodes(from, fromlen, msg.tid, msg.info_hash, msg.want, ntoken);
-            }
-        }
-        break;
-    }
-    case MessageType::AnnounceValue:
-        in_stats.put++;
-        DHT_DEBUG("[node %s %s] got 'put' request for %s.",
-            msg.id.toString().c_str(), print_addr(from, fromlen).c_str(),
-            msg.info_hash.toString().c_str());
-        newNode(msg.id, from, fromlen, 1);
-        if (msg.info_hash == zeroes) {
-            DHT_WARN("Put with no info_hash.");
-            sendError(from, fromlen, msg.tid, 203, "Put with no info_hash");
-            break;
-        }
-        if (!tokenMatch(msg.token, from)) {
-            DHT_WARN("[node %s %s] incorrect token %s for 'put'.",
-                msg.id.toString().c_str(), print_addr(from, fromlen).c_str(),
-                msg.info_hash.toString().c_str(), to_hex(msg.token.data(), msg.token.size()).c_str());
-            sendError(from, fromlen, msg.tid, 401, "Put with wrong token", true);
-            break;
-        }
-        {
-            // We store a value only if we think we're part of the
-            // SEARCH_NODES nodes around the target id.
-            auto closest_nodes = (from->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(msg.info_hash, SEARCH_NODES);
-            if (msg.info_hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
-                DHT_WARN("[node %s %s] announce too far from the target id. Dropping value.",
-                        msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
-                for (auto& v : msg.values) {
-                    sendValueAnnounced(from, fromlen, msg.tid, v->id);
-                }
-                break;
-            }
-        }
-
-        for (const auto& v : msg.values) {
-            if (v->id == Value::INVALID_ID) {
-                DHT_WARN("[value %s %s] incorrect value id", msg.info_hash.toString().c_str(), v->id);
-                sendError(from, fromlen, msg.tid, 203, "Put with invalid id");
-                continue;
-            }
-            auto lv = getLocalById(msg.info_hash, v->id);
-            std::shared_ptr<Value> vc = v;
-            if (lv) {
-                if (*lv == *vc) {
-                    DHT_WARN("[value %s %lu] nothing to do.", msg.info_hash.toString().c_str(), lv->id);
-                } else {
-                    const auto& type = getType(lv->type);
-                    if (type.editPolicy(msg.info_hash, lv, vc, msg.id, from, fromlen)) {
-                        DHT_DEBUG("[value %s %lu] editing %s.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());
-                        storageStore(msg.info_hash, vc, msg.created);
-                    } else {
-                        DHT_DEBUG("[value %s %lu] rejecting edition of %s because of storage policy.", msg.info_hash.toString().c_str(), lv->id, vc->toString().c_str());
-                    }
-                }
-            } else {
-                // Allow the value to be edited by the storage policy
-                const auto& type = getType(vc->type);
-                if (type.storePolicy(msg.info_hash, vc, msg.id, from, fromlen)) {
-                    DHT_DEBUG("[value %s %lu] storing %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());
-                    storageStore(msg.info_hash, vc, msg.created);
-                } else {
-                    DHT_DEBUG("[value %s %lu] rejecting storage of %s.", msg.info_hash.toString().c_str(), vc->id, vc->toString().c_str());
-                }
-            }
-
-            /* Note that if storageStore failed, we lie to the requestor.
-               This is to prevent them from backtracking, and hence
-               polluting the DHT. */
-            sendValueAnnounced(from, fromlen, msg.tid, v->id);
-        }
-        break;
-    case MessageType::Listen:
-        in_stats.listen++;
-        DHT_DEBUG("[node %s %s] got 'listen' request for %s.", msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
-        if (msg.info_hash == zeroes) {
-            DHT_WARN("Listen with no info_hash.");
-            sendError(from, fromlen, msg.tid, 203, "Listen with no info_hash");
-            break;
-        }
-        if (!tokenMatch(msg.token, from)) {
-            DHT_WARN("[node %s %s] incorrect token %s for 'listen'.",
-                msg.id.toString().c_str(), print_addr(from, fromlen).c_str(),
-                msg.info_hash.toString().c_str(), to_hex(msg.token.data(), msg.token.size()).c_str());
-            sendError(from, fromlen, msg.tid, 401, "Listen with wrong token", true);
-            break;
-        }
-        if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
-            break;
-        }
-        newNode(msg.id, from, fromlen, 1);
-        storageAddListener(msg.info_hash, msg.id, from, fromlen, ttid);
-        sendListenConfirmation(from, fromlen, msg.tid);
-        break;
-    }
-}
-
 time_point
-Dht::periodic(const uint8_t *buf, size_t buflen,
-             const sockaddr *from, socklen_t fromlen)
+Dht::periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
 {
-    using namespace std::chrono;
-    now = clock::now();
-
-    processMessage(buf, buflen, from, fromlen);
-
-    if (now >= rotate_secrets_time)
-        rotateSecrets();
-
-    if (now >= expire_stuff_time) {
-        expireBuckets(buckets);
-        expireBuckets(buckets6);
-        expireStorage();
-        expireSearches();
-    }
-
-    if (now > search_time) {
-        search_time = time_point::max();
-        for (auto& sr : searches) {
-            auto step = sr.getNextStepTime(types, now);
-            if (step <= now) {
-                searchStep(sr);
-                step = sr.getNextStepTime(types, now);
-            }
-            search_time = std::min(search_time, step);
-        }
-        /*if (search_time == time_point::max())
-            DHT_DEBUG("next search time : (none)");
-        else
-            DHT_DEBUG("next search time : %lf s%s", print_dt(search_time-now), (search_time < now)?" (ASAP)":"");*/
-    }
-
-    if (now >= confirm_nodes_time) {
-        bool soon = false;
-
-        if (searches.empty() and getStatus() != Status::Disconnected) {
-            get(myid, GetCallbackSimple{});
-        }
-
-        soon |= bucketMaintenance(buckets);
-        soon |= bucketMaintenance(buckets6);
-
-        if (!soon) {
-            if (mybucket_grow_time >= now - seconds(150))
-                soon |= neighbourhoodMaintenance(buckets);
-            if (mybucket6_grow_time >= now - seconds(150))
-                soon |= neighbourhoodMaintenance(buckets6);
-        }
-
-        /* In order to maintain all buckets' age within 600 seconds, worst
-           case is roughly 27 seconds, assuming the table is 22 bits deep.
-           We want to keep a margin for neighborhood maintenance, so keep
-           this within 25 seconds. */
-        auto time_dis = soon ?
-               uniform_duration_distribution<> {seconds(5) , seconds(25)}
-             : uniform_duration_distribution<> {seconds(60), seconds(180)};
-        confirm_nodes_time = now + time_dis(rd);
-    }
-
-    //data persistence
-    time_point storage_maintenance_time = time_point::max();
-    for (auto &str : store) {
-        if (now > str.maintenance_time) {
-            maintainStorage(str.id);
-            str.maintenance_time = now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
-
-        }
-        storage_maintenance_time = std::min(storage_maintenance_time, str.maintenance_time);
-    }
-
-    return std::min(confirm_nodes_time, std::min(search_time, storage_maintenance_time));
+    //TODO
 }
 
 std::vector<Dht::ValuesExport>
@@ -2919,567 +2482,8 @@ int
 Dht::pingNode(const sockaddr *sa, socklen_t salen)
 {
     DHT_DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
-    return sendPing(sa, salen, TransId {TransPrefix::PING});
-}
-
-void
-insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const sockaddr *sa, socklen_t)
-{
-    size_t addr_len = (sa->sa_family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr);
-    void* addr_ptr = (sa->sa_family == AF_INET) ? (void*)&((sockaddr_in*)sa)->sin_addr
-                                                : (void*)&((sockaddr_in6*)sa)->sin6_addr;
-    pk.pack("sa");
-    pk.pack_bin(addr_len);
-    pk.pack_bin_body((char*)addr_ptr, addr_len);
-}
-
-int
-Dht::send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen)
-{
-    if (salen == 0)
-        return -1;
-
-    if (isNodeBlacklisted(sa, salen)) {
-        DHT_DEBUG("Attempting to send to blacklisted node.");
-        return -1;
-    }
-
-    int s;
-    if (sa->sa_family == AF_INET)
-        s = dht_socket;
-    else if (sa->sa_family == AF_INET6)
-        s = dht_socket6;
-    else
-        s = -1;
-
-    if (s < 0)
-        return -1;
-    return sendto(s, buf, len, flags, sa, salen);
-}
-
-int
-Dht::sendPing(const sockaddr *sa, socklen_t salen, TransId tid)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
-
-    pk.pack(std::string("a")); pk.pack_map(1);
-      pk.pack(std::string("id")); pk.pack(myid);
-
-    pk.pack(std::string("q")); pk.pack(std::string("ping"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    out_stats.ping++;
-
-    return send(buffer.data(), buffer.size(), 0, sa, salen);
-}
-
-int
-Dht::sendPong(const sockaddr *sa, socklen_t salen, TransId tid)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
-
-    pk.pack(std::string("r")); pk.pack_map(2);
-      pk.pack(std::string("id")); pk.pack(myid);
-      insertAddr(pk, sa, salen);
-
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    return send(buffer.data(), buffer.size(), 0, sa, salen);
-}
-
-int
-Dht::sendFindNode(const sockaddr *sa, socklen_t salen, TransId tid,
-               const InfoHash& target, want_t want, int confirm)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
-
-    pk.pack(std::string("a")); pk.pack_map(2 + (want>0?1:0));
-      pk.pack(std::string("id"));     pk.pack(myid);
-      pk.pack(std::string("target")); pk.pack(target);
-    if (want > 0) {
-      pk.pack(std::string("w"));
-      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
-      if (want & WANT4) pk.pack(AF_INET);
-      if (want & WANT6) pk.pack(AF_INET6);
-    }
-
-    pk.pack(std::string("q")); pk.pack(std::string("find"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    out_stats.find++;
-
-    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
-}
-
-int
-Dht::sendGetValues(const sockaddr *sa, socklen_t salen,
-               TransId tid, const InfoHash& infohash,
-               want_t want, int confirm)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
-
-    pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
-      pk.pack(std::string("id")); pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(infohash);
-    if (want > 0) {
-      pk.pack(std::string("w"));
-      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
-      if (want & WANT4) pk.pack(AF_INET);
-      if (want & WANT6) pk.pack(AF_INET6);
-    }
-
-    pk.pack(std::string("q")); pk.pack(std::string("get"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    out_stats.get++;
-
-    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
-}
-
-void
-packToken(msgpack::packer<msgpack::sbuffer>& pk, Blob token)
-{
-    pk.pack_bin(token.size());
-    pk.pack_bin_body((char*)token.data(), token.size());
-}
-
-int
-Dht::sendNodesValues(const sockaddr *sa, socklen_t salen, TransId tid,
-                 const uint8_t *nodes, unsigned nodes_len,
-                 const uint8_t *nodes6, unsigned nodes6_len,
-                 const std::vector<ValueStorage>& st, const Blob& token)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
-
-    pk.pack(std::string("r"));
-    pk.pack_map(2 + (not st.empty()?1:0) + (nodes_len>0?1:0) + (nodes6_len>0?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
-    insertAddr(pk, sa, salen);
-    if (nodes_len > 0) {
-        pk.pack(std::string("n4"));
-        pk.pack_bin(nodes_len);
-        pk.pack_bin_body((const char*)nodes, nodes_len);
-    }
-    if (nodes6_len > 0) {
-        pk.pack(std::string("n6"));
-        pk.pack_bin(nodes6_len);
-        pk.pack_bin_body((const char*)nodes6, nodes6_len);
-    }
-    if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
-    }
-    if (not st.empty()) {
-        // We treat the storage as a circular list, and serve a randomly
-        // chosen slice.  In order to make sure we fit,
-        // we limit ourselves to 50 values.
-        std::uniform_int_distribution<> pos_dis(0, st.size()-1);
-        std::vector<Blob> subset {};
-        subset.reserve(std::min<size_t>(st.size(), 50));
-
-        size_t total_size = 0;
-        unsigned j0 = pos_dis(rd);
-        unsigned j = j0;
-        unsigned k = 0;
-
-        do {
-            subset.emplace_back(packMsg(*st[j].data));
-            total_size += subset.back().size();
-            k++;
-            j = (j + 1) % st.size();
-        } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
-
-        pk.pack(std::string("values"));
-        pk.pack_array(subset.size());
-        for (const auto& b : subset)
-            buffer.write((const char*)b.data(), b.size());
-    }
-
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    return send(buffer.data(), buffer.size(), 0, sa, salen);
-}
-
-unsigned
-Dht::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n)
-{
-    unsigned i, size;
-
-    if (n.ss.ss_family == AF_INET)
-        size = HASH_LEN + sizeof(in_addr) + sizeof(in_port_t); // 26
-    else if (n.ss.ss_family == AF_INET6)
-        size = HASH_LEN + sizeof(in6_addr) + sizeof(in_port_t); // 38
-    else
-        return numnodes;
-
-    for (i = 0; i < numnodes; i++) {
-        const InfoHash* nid = reinterpret_cast<const InfoHash*>(nodes + size * i);
-        if (InfoHash::cmp(n.id, *nid) == 0)
-            return numnodes;
-        if (id.xorCmp(n.id, *nid) < 0)
-            break;
-    }
-
-    if (i >= TARGET_NODES)
-        return numnodes;
-
-    if (numnodes < TARGET_NODES)
-        numnodes++;
-
-    if (i < numnodes - 1)
-        memmove(nodes + size * (i + 1), nodes + size * i, size * (numnodes - i - 1));
-
-    if (n.ss.ss_family == AF_INET) {
-        sockaddr_in *sin = (sockaddr_in*)&n.ss;
-        memcpy(nodes + size * i, n.id.data(), HASH_LEN);
-        memcpy(nodes + size * i + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
-        memcpy(nodes + size * i + HASH_LEN + sizeof(in_addr), &sin->sin_port, 2);
-    }
-    else if (n.ss.ss_family == AF_INET6) {
-        sockaddr_in6 *sin6 = (sockaddr_in6*)&n.ss;
-        memcpy(nodes + size * i, n.id.data(), HASH_LEN);
-        memcpy(nodes + size * i + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
-        memcpy(nodes + size * i + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, 2);
-    }
-
-    return numnodes;
-}
-
-unsigned
-Dht::bufferClosestNodes(uint8_t* nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const
-{
-    for (const auto& n : b.nodes) {
-        if (n->isGood(now))
-            numnodes = insertClosestNode(nodes, numnodes, id, *n);
-    }
-    return numnodes;
-}
-
-int
-Dht::sendClosestNodes(const sockaddr *sa, socklen_t salen, TransId tid,
-                    const InfoHash& id, want_t want, const Blob& token, const std::vector<ValueStorage>& st)
-{
-    uint8_t nodes[8 * 26];
-    uint8_t nodes6[8 * 38];
-    unsigned numnodes = 0, numnodes6 = 0;
-
-    if (want < 0)
-        want = sa->sa_family == AF_INET ? WANT4 : WANT6;
-
-    if ((want & WANT4)) {
-        auto b = buckets.findBucket(id);
-        if (b != buckets.end()) {
-            numnodes = bufferClosestNodes(nodes, numnodes, id, *b);
-            if (std::next(b) != buckets.end())
-                numnodes = bufferClosestNodes(nodes, numnodes, id, *std::next(b));
-            if (b != buckets.begin())
-                numnodes = bufferClosestNodes(nodes, numnodes, id, *std::prev(b));
-        }
-    }
-
-    if ((want & WANT6)) {
-        auto b = buckets6.findBucket(id);
-        if (b != buckets6.end()) {
-            numnodes6 = bufferClosestNodes(nodes6, numnodes6, id, *b);
-            if (std::next(b) != buckets6.end())
-                numnodes6 = bufferClosestNodes(nodes6, numnodes6, id, *std::next(b));
-            if (b != buckets6.begin())
-                numnodes6 = bufferClosestNodes(nodes6, numnodes6, id, *std::prev(b));
-        }
-    }
-    //DHT_DEBUG("sending closest nodes (%d+%d nodes.)", numnodes, numnodes6);
-
-    try {
-        return sendNodesValues(sa, salen, tid,
-                                nodes, numnodes * 26,
-                                nodes6, numnodes6 * 38,
-                                st, token);
-    } catch (const std::overflow_error& e) {
-        DHT_ERROR("Can't send value: buffer not large enough !");
-        return -1;
-    }
-}
-
-int
-Dht::sendListen(const sockaddr* sa, socklen_t salen, TransId tid,
-                        const InfoHash& infohash, const Blob& token, int confirm)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
-
-    pk.pack(std::string("a")); pk.pack_map(3);
-      pk.pack(std::string("id"));    pk.pack(myid);
-      pk.pack(std::string("h"));     pk.pack(infohash);
-      pk.pack(std::string("token")); packToken(pk, token);
-
-    pk.pack(std::string("q")); pk.pack(std::string("listen"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    out_stats.listen++;
-
-    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
-}
-
-int
-Dht::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
-
-    pk.pack(std::string("r")); pk.pack_map(2);
-      pk.pack(std::string("id")); pk.pack(myid);
-      insertAddr(pk, sa, salen);
-
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    return send(buffer.data(), buffer.size(), 0, sa, salen);
-}
-
-int
-Dht::sendAnnounceValue(const sockaddr *sa, socklen_t salen, TransId tid,
-                   const InfoHash& infohash, const Value& value, time_point created,
-                   const Blob& token, int confirm)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
-
-    pk.pack(std::string("a")); pk.pack_map((created < now ? 5 : 4));
-      pk.pack(std::string("id"));     pk.pack(myid);
-      pk.pack(std::string("h"));      pk.pack(infohash);
-      pk.pack(std::string("values")); pk.pack_array(1); pk.pack(value);
-      if (created < now) {
-          pk.pack(std::string("c"));
-          pk.pack(to_time_t(created));
-      }
-      pk.pack(std::string("token"));  pk.pack(token);
-
-    pk.pack(std::string("q")); pk.pack(std::string("put"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    out_stats.put++;
-
-    return send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, sa, salen);
-}
-
-int
-Dht::sendValueAnnounced(const sockaddr *sa, socklen_t salen, TransId tid, Value::Id vid)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
-
-    pk.pack(std::string("r")); pk.pack_map(3);
-      pk.pack(std::string("id"));  pk.pack(myid);
-      pk.pack(std::string("vid")); pk.pack(vid);
-      insertAddr(pk, sa, salen);
-
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    return send(buffer.data(), buffer.size(), 0, sa, salen);
-}
-
-int
-Dht::sendError(const sockaddr *sa, socklen_t salen, TransId tid, uint16_t code, const char *message, bool include_id)
-{
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (include_id?1:0));
-
-    pk.pack(std::string("e")); pk.pack_array(2);
-      pk.pack(code);
-      pk.pack_str(strlen(message));
-      pk.pack_str_body(message, strlen(message));
-
-    if (include_id) {
-        pk.pack(std::string("r")); pk.pack_map(1);
-          pk.pack(std::string("id")); pk.pack(myid);
-    }
-
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("e"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-
-    return send(buffer.data(), buffer.size(), 0, sa, salen);
-}
-
-msgpack::object*
-findMapValue(msgpack::object& map, const std::string& key) {
-    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
-    for (unsigned i = 0; i < map.via.map.size; i++) {
-        auto& o = map.via.map.ptr[i];
-        if(o.key.type != msgpack::type::STR)
-            continue;
-        if (o.key.as<std::string>() == key) {
-            return &o.val;
-        }
-    }
-    return nullptr;
-}
-
-void
-Dht::ParsedMessage::msgpack_unpack(msgpack::object msg)
-{
-    auto y = findMapValue(msg, "y");
-    auto a = findMapValue(msg, "a");
-    auto r = findMapValue(msg, "r");
-    auto e = findMapValue(msg, "e");
-
-    std::string query;
-    if (auto q = findMapValue(msg, "q")) {
-        if (q->type != msgpack::type::STR)
-            throw msgpack::type_error();
-        query = q->as<std::string>();
-    }
-
-    if (!a && !r && !e)
-        throw msgpack::type_error();
-    auto& req = a ? *a : (r ? *r : *e);
-
-    if (e) {
-        if (e->type != msgpack::type::ARRAY)
-            throw msgpack::type_error();
-        error_code = e->via.array.ptr[0].as<uint16_t>();
-    }
-
-    if (auto rid = findMapValue(req, "id"))
-        id = {*rid};
-
-    if (auto rh = findMapValue(req, "h"))
-        info_hash = {*rh};
-
-    if (auto rtarget = findMapValue(req, "target"))
-        target = {*rtarget};
-
-    if (auto otoken = findMapValue(req, "token"))
-        token = unpackBlob(*otoken);
-
-    if (auto vid = findMapValue(req, "vid"))
-        value_id = vid->as<Value::Id>();
-
-    if (auto rnodes4 = findMapValue(req, "n4"))
-        nodes4 = unpackBlob(*rnodes4);
-
-    if (auto rcreated = findMapValue(req, "c"))
-        created = from_time_t(rcreated->as<std::time_t>());
-
-    if (auto rnodes6 = findMapValue(req, "n6"))
-        nodes6 = unpackBlob(*rnodes6);
-
-    if (auto sa = findMapValue(req, "sa")) {
-        if (sa->type != msgpack::type::BIN)
-            throw msgpack::type_error();
-        auto l = sa->via.bin.size;
-        if (l == sizeof(in_addr)) {
-            auto a = (sockaddr_in*)&addr.first;
-            std::fill_n((uint8_t*)a, sizeof(sockaddr_in), 0);
-            a->sin_family = AF_INET;
-            a->sin_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin_addr);
-            addr.second = sizeof(sockaddr_in);
-        } else if (l == sizeof(in6_addr)) {
-            auto a = (sockaddr_in6*)&addr.first;
-            std::fill_n((uint8_t*)a, sizeof(sockaddr_in6), 0);
-            a->sin6_family = AF_INET6;
-            a->sin6_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin6_addr);
-            addr.second = sizeof(sockaddr_in6);
-        }
-    } else
-        addr.second = 0;
-
-    if (auto rvalues = findMapValue(req, "values")) {
-        if (rvalues->type != msgpack::type::ARRAY)
-            throw msgpack::type_error();
-        for (size_t i = 0; i < rvalues->via.array.size; i++)
-            try {
-                values.emplace_back(std::make_shared<Value>(rvalues->via.array.ptr[i]));
-            } catch (const std::exception& e) {
-                //DHT_WARN("Error reading value: %s", e.what());
-            }
-    }
-
-    if (auto w = findMapValue(req, "w")) {
-        if (w->type != msgpack::type::ARRAY)
-            throw msgpack::type_error();
-        want = 0;
-        for (unsigned i=0; i<w->via.array.size; i++) {
-            auto& val = w->via.array.ptr[i];
-            try {
-                auto w = val.as<sa_family_t>();
-                if (w == AF_INET)
-                    want |= WANT4;
-                else if(w == AF_INET6)
-                    want |= WANT6;
-            } catch (const std::exception& e) {};
-        }
-    } else {
-        want = -1;
-    }
-
-    if (auto t = findMapValue(msg, "t"))
-        tid = {t->as<std::array<char, 4>>()};
-
-    if (auto rv = findMapValue(msg, "v"))
-        ua = rv->as<std::string>();
-
-    if (e)
-        type = MessageType::Error;
-    else if (r)
-        type = MessageType::Reply;
-    else if (y and y->as<std::string>() != "q")
-        throw msgpack::type_error();
-    else if (query == "ping")
-        type = MessageType::Ping;
-    else if (query == "find")
-        type = MessageType::FindNode;
-    else if (query == "get")
-        type = MessageType::GetValues;
-    else if (query == "listen")
-        type = MessageType::Listen;
-    else if (query == "put")
-        type = MessageType::AnnounceValue;
-    else
-        throw msgpack::type_error();
+    //return sendPing(sa, salen, TransId {TransPrefix::PING});
+    return 0;
 }
 
 }

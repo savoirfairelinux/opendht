@@ -56,9 +56,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
 void
 packToken(msgpack::packer<msgpack::sbuffer>& pk, Blob token)
 {
-    pk.pack_array(token.size());
-    for (uint8_t b : token)
-        pk.pack(b);
+    pk.pack_bin(token.size());
+    pk.pack_bin_body((char*)token.data(), token.size());
 }
 
 void
