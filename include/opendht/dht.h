@@ -795,58 +795,6 @@ private:
         size_t total_size {};
     };
 
-    enum class MessageType {
-        Error = 0,
-        Reply,
-        Ping,
-        FindNode,
-        GetValues,
-        AnnounceValue,
-        Listen
-    };
-
-    struct TransPrefix : public  std::array<uint8_t, 2>  {
-        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
-        static const TransPrefix PING;
-        static const TransPrefix FIND_NODE;
-        static const TransPrefix GET_VALUES;
-        static const TransPrefix ANNOUNCE_VALUES;
-        static const TransPrefix LISTEN;
-    };
-
-    /* Transaction-ids are 4-bytes long, with the first two bytes identifying
-     * the kind of request, and the remaining two a sequence number in
-     * host order.
-     */
-    struct TransId final : public std::array<uint8_t, 4> {
-        TransId() {}
-        TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
-        TransId(const TransPrefix prefix, uint16_t seqno = 0) {
-            std::copy_n(prefix.begin(), prefix.size(), begin());
-            *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
-        }
-
-        TransId(const char* q, size_t l) : array<uint8_t, 4>() {
-            if (l > 4) {
-                length = 0;
-            } else {
-                std::copy_n(q, l, begin());
-                length = l;
-            }
-        }
-
-        bool matches(const TransPrefix prefix, uint16_t *seqno_return = nullptr) const {
-            if (std::equal(begin(), begin()+2, prefix.begin())) {
-                if (seqno_return)
-                    *seqno_return = *reinterpret_cast<const uint16_t*>(&(*this)[2]);
-                return true;
-            } else
-                return false;
-        }
-
-        unsigned length {4};
-    };
-
     // prevent copy
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
@@ -903,58 +851,6 @@ private:
 
     using ReportedAddr = std::pair<unsigned, Address>;
     std::vector<ReportedAddr> reported_addr;
-
-    // Networking & packet handling
-    int send(const char* buf, size_t len, int flags, const sockaddr*, socklen_t);
-    int sendPing(const sockaddr*, socklen_t, TransId tid);
-    int sendPong(const sockaddr*, socklen_t, TransId tid);
-
-    int sendFindNode (const sockaddr*, socklen_t, TransId tid, const InfoHash& target, want_t want, int confirm);
-    int sendGetValues(const sockaddr*, socklen_t, TransId tid, const InfoHash& target, want_t want, int confirm);
-
-    int sendNodesValues(const sockaddr*, socklen_t, TransId tid,
-                              const uint8_t *nodes, unsigned nodes_len,
-                              const uint8_t *nodes6, unsigned nodes6_len,
-                              const std::vector<ValueStorage>& st, const Blob& token);
-
-    int sendClosestNodes(const sockaddr*, socklen_t, TransId tid,
-                               const InfoHash& id, want_t want, const Blob& token={},
-                               const std::vector<ValueStorage>& st = {});
-
-
-    int sendListen(const sockaddr*, socklen_t, TransId,
-                            const InfoHash&, const Blob& token, int confirm);
-
-    int sendListenConfirmation(const sockaddr*, socklen_t, TransId);
-
-    int sendAnnounceValue(const sockaddr*, socklen_t, TransId, const InfoHash&,
-            const Value&, time_point created, const Blob& token,
-            int confirm);
-
-    int sendValueAnnounced(const sockaddr*, socklen_t, TransId, Value::Id);
-
-    int sendError(const sockaddr*, socklen_t, TransId tid, uint16_t code, const char *message, bool include_id=false);
-
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
-
-    struct ParsedMessage {
-        MessageType type;
-        InfoHash id;
-        InfoHash info_hash;
-        InfoHash target;
-        TransId tid;
-        Blob token;
-        Value::Id value_id;
-        time_point created { time_point::max() };
-        Blob nodes4;
-        Blob nodes6;
-        std::vector<std::shared_ptr<Value>> values;
-        want_t want;
-        uint16_t error_code;
-        std::string ua;
-        Address addr;
-        void msgpack_unpack(msgpack::object o);
-    };
 
     void rotateSecrets();
 
