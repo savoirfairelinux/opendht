@@ -69,7 +69,7 @@ struct Node {
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
         : id(id), ss(), sslen(salen) {
         std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-        if (salen < sizeof(ss))
+        if ((unsigned)salen < sizeof(ss))
             std::fill_n((uint8_t*)&ss+salen, sizeof(ss)-salen, 0);
     }
     InfoHash getId() const {
