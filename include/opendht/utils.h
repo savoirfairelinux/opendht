@@ -24,8 +24,19 @@
 #include <chrono>
 #include <random>
 #include <functional>
+#include <map>
 
 #include <cstdarg>
+
+template <typename Key, typename Item, typename Condition>
+void erase_if(std::map<Key, Item>& map, const Condition& condition)
+{
+    for (auto it = map.begin(); it != map.end(); ) {
+        if (condition(*it)) {
+            it = map.erase(it);
+        } else { ++it; }
+    }
+}
 
 namespace dht {
 
