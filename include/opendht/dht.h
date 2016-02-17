@@ -27,6 +27,9 @@ THE SOFTWARE.
 
 #pragma once
 
+#define WANT4 1
+#define WANT6 2
+
 #include "infohash.h"
 #include "value.h"
 

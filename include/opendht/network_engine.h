@@ -26,9 +26,6 @@ THE SOFTWARE.
 
 #pragma once
 
-#define WANT4 1
-#define WANT6 2
-
 #include "dht.h"
 #include "value.h"
 #include "infohash.h"
@@ -250,6 +247,7 @@ private:
     static const constexpr size_t NODE4_INFO_BUF_LEN {26};
     /* the length of a node info buffer in ipv6 format */
     static const constexpr size_t NODE6_INFO_BUF_LEN {38};
+    /* TODO: ???? */
     static const std::string my_v;
 
     /* DHT info */
@@ -328,6 +326,13 @@ private:
         Address addr;
         void msgpack_unpack(msgpack::object o);
     };
+
+    //TODO: balancer ce code dans NetworkEngine::processMessage
+    //void onReply(ParsedMessage& msg) {
+    //    if (msg.tid.length != 4)
+    //        throw DhtProtocolException {DhtProtocolException::TRUNCATED_ID};
+    //    onNewNode(msg.id, msg.);
+    //}
 
     /**
      * When a request has expired, i.e when Request::MAX_ATTEMPT_COUNT attempts
