@@ -21,6 +21,35 @@
 
 namespace dht {
 
+std::string
+dht::print_addr(const sockaddr* sa, socklen_t slen)
+{
+    char hbuf[NI_MAXHOST];
+    char sbuf[NI_MAXSERV];
+    std::stringstream out;
+    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+        if (sa->sa_family == AF_INET6)
+            out << "[" << hbuf << "]";
+        else
+            out << hbuf;
+        if (strcmp(sbuf, "0"))
+            out << ":" << sbuf;
+    } else
+        out << "[invalid address]";
+    return out.str();
+}
+
+std::string
+dht::print_addr(const sockaddr_storage& ss, socklen_t sslen)
+{
+    return print_addr((const sockaddr*)&ss, sslen);
+}
+
+std::string
+dht::printAddr(const Address& addr) {
+    return print_addr((const sockaddr*)&addr.first, addr.second);
+}
+
 time_point from_time_t(std::time_t t) {
     return clock::now() + (std::chrono::system_clock::from_time_t(t) - std::chrono::system_clock::now());
 }

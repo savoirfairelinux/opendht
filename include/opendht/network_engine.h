@@ -26,9 +26,9 @@ THE SOFTWARE.
 
 #pragma once
 
-#include "dht.h"
 #include "value.h"
 #include "infohash.h"
+#include "node.h"
 #include "utils.h"
 #include "rng.h"
 
