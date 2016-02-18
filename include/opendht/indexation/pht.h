@@ -36,7 +36,7 @@ struct Prefix {
     {
         auto rem = size_ % 8;
         if (rem)
-            content_.push_back(p.content_[size_/8] & (0xFF << (7 - rem)));
+            content_.push_back(p.content_[size_/8] & (0xFF << (8 - rem)));
     }
 
     Prefix getPrefix(ssize_t len) const {
