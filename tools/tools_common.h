@@ -144,6 +144,47 @@ splitPort(const std::string& s) {
     return {s.substr(0,found), s.substr(found+1)};
 }
 
+/*
+ * The mapString shall have the following format:
+ *
+ *      k1:v1[,k2:v2[,...]]
+ */
+std::map<std::string, std::string> parseStringMap(std::string mapString) {
+    std::istringstream keySs(mapString);
+    std::string mapStr;
+    std::map<std::string, std::string> map;
+
+    while (std::getline(keySs, mapStr, ',')) {
+        std::istringstream mapSs(mapStr);
+        std::string key, value;
+
+        while (std::getline(mapSs, key, ':')) {
+            std::getline(mapSs, value, ':');
+            map[key] = { value };
+        }
+    }
+    return map;
+}
+
+dht::indexation::Pht::Key createPhtKey(std::map<std::string, std::string> pht_key_str_map) {
+    dht::indexation::Pht::Key pht_key;
+    for (auto f : pht_key_str_map) {
+        dht::Blob prefix {f.second.begin(), f.second.end()};
+        pht_key.emplace(f.first, prefix);
+    }
+    return pht_key;
+}
+
+bool isInfoHash(dht::InfoHash& h) {
+    static constexpr dht::InfoHash INVALID_ID {};
+
+    if (h == INVALID_ID) {
+        std::cout << "Syntax error: invalid InfoHash." << std::endl;
+        return false;
+    }
+    return true;
+}
+
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 
 struct dht_params {

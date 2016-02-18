@@ -33,6 +33,7 @@ list (APPEND opendht_SOURCES
 	src/dht.cpp
 	src/securedht.cpp
 	src/dhtrunner.cpp
+	src/indexation/pht.cpp
 )
 
 list (APPEND opendht_HEADERS
@@ -45,6 +46,7 @@ list (APPEND opendht_HEADERS
 	include/opendht/dht.h
 	include/opendht/securedht.h
 	include/opendht.h
+	include/opendht/indexation/pht.h
 )
 
 configure_file (

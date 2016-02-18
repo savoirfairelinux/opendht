@@ -20,6 +20,7 @@ from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
+from libcpp.map cimport map
 
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
@@ -27,6 +28,7 @@ ctypedef unsigned short int sa_family_t;
 cdef extern from "<memory>" namespace "std" nogil:
     cdef cppclass shared_ptr[T]:
         shared_ptr() except +
+        shared_ptr(T*) except +
         T* get()
         T operator*()
         void reset(T*)
@@ -100,6 +102,7 @@ cdef extern from "opendht/dht.h" namespace "dht":
     ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
+    ctypedef void (*DoneCallbackSimpleRaw)(bool done, void *user_data)
     cdef cppclass Dht:
         cppclass Config:
             InfoHash node_id
@@ -112,6 +115,8 @@ cdef extern from "opendht/dht.h" namespace "dht":
         cppclass DoneCallback:
             DoneCallback() except +
             #DoneCallback(DoneCallbackRaw, void *user_data) except +
+        cppclass DoneCallbackSimple:
+            DoneCallbackSimple() except +
         Dht() except +
         InfoHash getNodeId() const
         @staticmethod
@@ -120,6 +125,8 @@ cdef extern from "opendht/dht.h" namespace "dht":
         GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
         @staticmethod
         DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
+        @staticmethod
+        DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw cb, void *user_data)
 
 cdef extern from "opendht/dht.h" namespace "dht":
     cdef cppclass SecureDht:
@@ -153,3 +160,23 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         vector[unsigned] getNodeMessageStats(bool i)
 
 ctypedef DhtRunner.Config Config
+
+
+cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
+    size_t PHT_MAX_NODE_ENTRY_COUNT "dht::indexation::Pht::MAX_NODE_ENTRY_COUNT"
+    cdef cppclass Prefix:
+        Prefix() except +
+        Prefix(vector[uint8_t]) except +
+        string toString() const
+    ctypedef pair[InfoHash, uint64_t] IndexValue "dht::indexation::Value"
+    ctypedef map[string, Prefix] IndexKey "dht::indexation::Pht::Key"
+    ctypedef void (*LookupCallbackRaw)(vector[shared_ptr[IndexValue]]* values, Prefix* p, void* user_data);
+    cdef cppclass Pht:
+        cppclass LookupCallback:
+            LookupCallback() except +
+        Pht(string, shared_ptr[DhtRunner]) except +
+        void lookup(IndexKey k, LookupCallback cb, Dht.DoneCallbackSimple doneCb);
+        void insert(IndexKey k, IndexValue v, Dht.DoneCallbackSimple cb)
+        @staticmethod
+        LookupCallback bindLookupCb(LookupCallbackRaw cb, void *user_data)
+
