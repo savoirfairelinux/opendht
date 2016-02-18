@@ -19,6 +19,9 @@
 
 #pragma once
 
+#define WANT4 1
+#define WANT6 2
+
 #include <msgpack.hpp>
 
 #include <chrono>
@@ -39,6 +42,13 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
 }
 
 namespace dht {
+
+using Address = std::pair<sockaddr_storage, socklen_t>;
+using want_t = int_fast8_t;
+
+std::string print_addr(const sockaddr* sa, socklen_t slen);
+std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+std::string printAddr(const Address& addr);
 
 class DhtException : public std::runtime_error {
     public:

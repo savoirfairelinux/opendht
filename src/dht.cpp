@@ -91,35 +91,6 @@ to_hex(const uint8_t *buf, size_t buflen)
     return s.str();
 }
 
-std::string
-dht::print_addr(const sockaddr* sa, socklen_t slen)
-{
-    char hbuf[NI_MAXHOST];
-    char sbuf[NI_MAXSERV];
-    std::stringstream out;
-    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
-        if (sa->sa_family == AF_INET6)
-            out << "[" << hbuf << "]";
-        else
-            out << hbuf;
-        if (strcmp(sbuf, "0"))
-            out << ":" << sbuf;
-    } else
-        out << "[invalid address]";
-    return out.str();
-}
-
-std::string
-dht::print_addr(const sockaddr_storage& ss, socklen_t sslen)
-{
-    return print_addr((const sockaddr*)&ss, sslen);
-}
-
-std::string
-dht::printAddr(const Address& addr) {
-    return print_addr((const sockaddr*)&addr.first, addr.second);
-}
-
 template <class DT>
 static double
 print_dt(DT d) {
@@ -129,10 +100,6 @@ print_dt(DT d) {
 namespace dht {
 
 static constexpr InfoHash zeroes {};
-
-constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
-constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
-constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
 constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
@@ -371,63 +338,6 @@ Dht::findNode(const InfoHash& id, sa_family_t af) const
         if (n->id == id) return n;
     return {};
 }
-
-/* This is our definition of a known-good node. */
-bool
-Node::isGood(time_point now) const
-{
-    return
-        not isExpired(now) &&
-        reply_time >= now - NODE_GOOD_TIME &&
-        time >= now - NODE_EXPIRE_TIME;
-}
-
-bool
-Node::isExpired(time_point now) const
-{
-    return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
-}
-
-bool
-Node::isMessagePending(time_point now) const
-{
-    return reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME > now;
-}
-
-void
-Node::update(const sockaddr* sa, socklen_t salen)
-{
-    std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-    sslen = salen;
-}
-
-/** To be called when a message was sent to the node */
-void
-Node::requested(time_point now)
-{
-    pinged++;
-    if (reply_time > pinged_time || pinged_time + MAX_RESPONSE_TIME < now)
-        pinged_time = now;
-}
-
-/** To be called when a message was received from the node.
- Answer should be true if the message was an aswer to a request we made*/
-void
-Node::received(time_point now, bool answer)
-{
-    time = now;
-    if (answer) {
-        pinged = 0;
-        reply_time = now;
-    }
-}
-
-std::ostream& operator<< (std::ostream& s, const Node& h)
-{
-    s << h.id << " " << print_addr(h.ss, h.sslen);
-    return s;
-}
-
 
 std::shared_ptr<Node>
 Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
@@ -2207,9 +2117,6 @@ Dht::Dht(int s, int s6, Config config)
     DHT_DEBUG("DHT initialised with node ID %s", myid.toString().c_str());
 }
 
-
-Dht::~Dht()
-{}
 
 /* Rate control for requests we receive. */
 bool
