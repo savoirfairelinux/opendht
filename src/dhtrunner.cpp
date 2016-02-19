@@ -241,7 +241,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
     rcv_thread = std::thread([this,s4,s6]() {
         try {
             while (true) {
-                uint8_t buf[4096 * 64];
+                std::array<uint8_t, 1024 * 64> buf;
                 sockaddr_storage from;
                 socklen_t fromlen;
 
@@ -268,15 +268,15 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
                 if(rc > 0) {
                     fromlen = sizeof(from);
                     if(s4 >= 0 && FD_ISSET(s4, &readfds))
-                        rc = recvfrom(s4, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from, &fromlen);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from, &fromlen);
                     else
                         break;
                     if (rc > 0) {
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
-                            rcv.emplace_back(Blob {buf, buf+rc+1}, std::make_pair(from, fromlen));
+                            rcv.emplace_back(Blob {buf.begin(), buf.begin()+rc+1}, std::make_pair(from, fromlen));
                         }
                         cv.notify_all();
                     }
