@@ -251,7 +251,8 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
 }
 
 std::vector<std::shared_ptr<Node>>
-Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
+Dht::RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) const
+{
     std::vector<std::shared_ptr<Node>> nodes {};
     auto bucket = findBucket(id);
 
@@ -259,6 +260,9 @@ Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
 
     auto sortedBucketInsert = [&](const Bucket &b) {
         for (auto n : b.nodes) {
+            if (not n->isGood(now))
+                continue;
+
             auto here = std::find_if(nodes.begin(), nodes.end(),
                 [&id,&n](std::shared_ptr<Node> &node) {
                     return id.xorCmp(n->id, node->id) < 0;
@@ -2235,7 +2239,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
 
     bool want4 = true, want6 = true;
 
-    auto nodes = buckets.findClosestNodes(id);
+    auto nodes = buckets.findClosestNodes(id, now);
     if (!nodes.empty()) {
         if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
             for (auto &value : local_storage->getValues()) {
@@ -2251,7 +2255,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     }
     else { want4 = false; }
 
-    auto nodes6 = buckets6.findClosestNodes(id);
+    auto nodes6 = buckets6.findClosestNodes(id, now);
     if (!nodes6.empty()) {
         if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
             for (auto &value : local_storage->getValues()) {

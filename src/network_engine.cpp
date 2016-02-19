@@ -351,10 +351,84 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-void
-NetworkEngine::sendClosestNodes(const sockaddr* sa, socklen_t salen, TransId tid, const InfoHash& id, want_t want,
-        const Blob& token, const std::vector<std::shared_ptr<Value>>& st) {
-    //TODO
+unsigned
+NetworkEngine::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n)
+{
+    unsigned i, size;
+
+    if (n.ss.ss_family == AF_INET)
+        size = HASH_LEN + sizeof(in_addr) + sizeof(in_port_t); // 26
+    else if (n.ss.ss_family == AF_INET6)
+        size = HASH_LEN + sizeof(in6_addr) + sizeof(in_port_t); // 38
+    else
+        return numnodes;
+
+    for (i = 0; i < numnodes; i++) {
+        const InfoHash* nid = reinterpret_cast<const InfoHash*>(nodes + size * i);
+        if (InfoHash::cmp(n.id, *nid) == 0)
+            return numnodes;
+        if (id.xorCmp(n.id, *nid) < 0)
+            break;
+    }
+
+    if (i >= TARGET_NODES)
+        return numnodes;
+
+    if (numnodes < TARGET_NODES)
+        numnodes++;
+
+    if (i < numnodes - 1)
+        memmove(nodes + size * (i + 1), nodes + size * i, size * (numnodes - i - 1));
+
+    if (n.ss.ss_family == AF_INET) {
+        sockaddr_in *sin = (sockaddr_in*)&n.ss;
+        memcpy(nodes + size * i, n.id.data(), HASH_LEN);
+        memcpy(nodes + size * i + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
+        memcpy(nodes + size * i + HASH_LEN + sizeof(in_addr), &sin->sin_port, 2);
+    }
+    else if (n.ss.ss_family == AF_INET6) {
+        sockaddr_in6 *sin6 = (sockaddr_in6*)&n.ss;
+        memcpy(nodes + size * i, n.id.data(), HASH_LEN);
+        memcpy(nodes + size * i + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
+        memcpy(nodes + size * i + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, 2);
+    }
+
+    return numnodes;
+}
+
+std::pair<uint8_t*, uint8_t*>
+NetworkEngine::bufferNodes(const sockaddr *sa, socklen_t salen, TransId tid, const InfoHash& id, want_t want,
+        const Blob& token, const std::vector<std::shared_ptr<Node>>& nodes,
+        const std::vector<std::shared_ptr<Node>>& nodes6)
+{
+    uint8_t bnodes[8 * 26];
+    uint8_t bnodes6[8 * 38];
+
+    if (want < 0)
+        want = sa->sa_family == AF_INET ? WANT4 : WANT6;
+
+    auto buff = [=](uint8_t* nodes, const InfoHash& id, const std::vector<std::shared_ptr<Node>>& closest_nodes) {
+        size_t numnodes = 0;
+        for (const auto& n : closest_nodes) {
+            numnodes = insertClosestNode(nodes, numnodes, id, *n);
+        }
+    };
+
+    if ((want & WANT4)) {
+        buff(bnodes, id, nodes);
+    }
+
+    if ((want & WANT6)) {
+        buff(bnodes6, id, nodes6);
+    }
+    //DHT_DEBUG("sending closest nodes (%d+%d nodes.)", numnodes, numnodes6);
+
+    return std::make_pair(bnodes, bnodes6);
+    //try {
+    //} catch (const std::overflow_error& e) {
+    //    DHT_ERROR("Can't send value: buffer not large enough !");
+    //    return -1;
+    //}
 }
 
 //TODO: out_stats.listen++;
