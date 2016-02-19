@@ -45,7 +45,7 @@ class CryptoException : public std::runtime_error {
 };
 
 /**
- * Exception thrown when an expected decryption failed.
+ * Exception thrown when a decryption error happened.
  */
 class DecryptError : public CryptoException {
     public:
@@ -108,7 +108,12 @@ struct PrivateKey
 {
     PrivateKey();
     //PrivateKey(gnutls_privkey_t k) : key(k) {}
+
+    /**
+     * Takes ownership of an existing gnutls_x509_privkey.
+     */
     PrivateKey(gnutls_x509_privkey_t k);
+
     PrivateKey(PrivateKey&& o) noexcept;
     PrivateKey& operator=(PrivateKey&& o) noexcept;
 

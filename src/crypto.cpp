@@ -78,7 +78,7 @@ static constexpr std::array<size_t, 3> AES_LENGTHS {{128/8, 192/8, 256/8}};
 
 size_t aesKeySize(size_t max)
 {
-    unsigned aes_key_len = 0;
+    size_t aes_key_len = 0;
     for (size_t s = 0; s < AES_LENGTHS.size(); s++) {
         if (AES_LENGTHS[s] <= max)
             aes_key_len = AES_LENGTHS[s];
@@ -311,7 +311,7 @@ PrivateKey::serialize(const std::string& password) const
     Blob buffer;
     buffer.resize(buf_sz);
     int err = password.empty()
-        ? gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr, GNUTLS_PKCS_PLAIN, buffer.data(), &buf_sz)
+        ? gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr,          GNUTLS_PKCS_PLAIN,         buffer.data(), &buf_sz)
         : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, buffer.data(), &buf_sz);
     if (err != GNUTLS_E_SUCCESS) {
         std::cerr << "Could not export private key - " << gnutls_strerror(err) << std::endl;
@@ -393,7 +393,8 @@ PublicKey::msgpack_unpack(msgpack::object o)
 }
 
 bool
-PublicKey::checkSignature(const Blob& data, const Blob& signature) const {
+PublicKey::checkSignature(const Blob& data, const Blob& signature) const
+{
     if (!pk)
         return false;
     const gnutls_datum_t sig {(uint8_t*)signature.data(), (unsigned)signature.size()};
@@ -431,12 +432,17 @@ PublicKey::encrypt(const Blob& data) const
 
     const unsigned max_block_sz = key_len / 8 - 11;
     const unsigned cypher_block_sz = key_len / 8;
+
+    /* Use plain RSA if the data is small enough */
     if (data.size() <= max_block_sz) {
         Blob ret(cypher_block_sz);
         encryptBloc(data.data(), data.size(), ret.data(), cypher_block_sz);
         return ret;
     }
 
+    /* Otherwise use RSA+AES-GCM,
+       using the max. AES key size that can fit
+       in a single RSA packet () */
     unsigned aes_key_sz = aesKeySize(max_block_sz);
     if (aes_key_sz == 0)
         throw CryptoException("Key is not long enough for AES128");
