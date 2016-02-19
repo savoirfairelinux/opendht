@@ -102,18 +102,16 @@ bool aesKeySizeGood(size_t key_size)
 Blob
 aesEncrypt(const Blob& data, const Blob& key)
 {
-    std::array<uint8_t, GCM_IV_SIZE> iv;
+    Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
     {
         crypto::random_device rdev;
-        std::generate_n(iv.begin(), iv.size(), std::bind(rand_byte, std::ref(rdev)));
+        std::generate_n(ret.begin(), GCM_IV_SIZE, std::bind(rand_byte, std::ref(rdev)));
     }
     struct gcm_aes_ctx aes;
     gcm_aes_set_key(&aes, key.size(), key.data());
-    gcm_aes_set_iv(&aes, iv.size(), iv.data());
+    gcm_aes_set_iv(&aes, GCM_IV_SIZE, ret.data());
     gcm_aes_update(&aes, data.size(), data.data());
 
-    Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
-    std::copy(iv.begin(), iv.end(), ret.begin());
     gcm_aes_encrypt(&aes, data.size(), ret.data() + GCM_IV_SIZE, data.data());
     gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data.size());
     return ret;
