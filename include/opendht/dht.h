@@ -322,8 +322,6 @@ protected:
 
 private:
 
-    static constexpr unsigned TARGET_NODES {8};
-
     /* When performing a search, we search for up to SEARCH_NODES closest nodes
        to the destination, and use the additional ones to backtrack if any of
        the target 8 turn out to be dead. */
@@ -400,7 +398,7 @@ private:
 
         InfoHash middle(const RoutingTable::const_iterator&) const;
 
-        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, size_t count = TARGET_NODES) const;
+        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, time_point now, size_t count = TARGET_NODES) const;
 
         RoutingTable::iterator findBucket(const InfoHash& id);
         RoutingTable::const_iterator findBucket(const InfoHash& id) const;
@@ -835,8 +833,6 @@ private:
     void expireBuckets(RoutingTable&);
     int sendCachedPing(Bucket& b);
     bool bucketMaintenance(RoutingTable&);
-    static unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
-    unsigned bufferClosestNodes(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const;
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes

@@ -43,6 +43,8 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
 
 namespace dht {
 
+static constexpr unsigned TARGET_NODES {8};
+
 using Address = std::pair<sockaddr_storage, socklen_t>;
 using want_t = int_fast8_t;
 

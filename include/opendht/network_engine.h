@@ -93,7 +93,8 @@ public:
     struct RequestAnswer {
         Blob ntoken;
         std::vector<std::shared_ptr<Value>> values;
-        std::vector<Node> nodes;
+        std::vector<std::shared_ptr<Node>> nodes;
+        std::vector<std::shared_ptr<Node>> nodes6;
     };
 
 private:
@@ -394,7 +395,7 @@ private:
      *************/
     /* answer to a ping  request */
     void sendPong(const sockaddr* sa, socklen_t salen, TransId tid);
-    /* answer to findnodes request */
+    /* answer to findnodes/getvalues request */
     void sendNodesValues(const sockaddr* sa,
             socklen_t salen,
             TransId tid,
@@ -404,13 +405,16 @@ private:
             unsigned nodes6_len,
             const std::vector<std::shared_ptr<Value>>& st,
             const Blob& token);
-    void sendClosestNodes(const sockaddr* sa,
+    unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
+    std::pair<uint8_t*, uint8_t*>
+        bufferNodes(const sockaddr *sa,
             socklen_t salen,
             TransId tid,
             const InfoHash& id,
             want_t want,
-            const Blob& token={},
-            const std::vector<std::shared_ptr<Value>>& st = {});
+            const Blob& token,
+            const std::vector<std::shared_ptr<Node>>& nodes,
+            const std::vector<std::shared_ptr<Node>>& nodes6);
     /* answer to a listen request */
     void sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid);
     /* answer to put request */
