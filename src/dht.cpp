@@ -538,7 +538,8 @@ void
 Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
 {
     auto it = std::find_if(reported_addr.begin(), reported_addr.end(), [=](const ReportedAddr& addr){
-        return (addr.second.second == sa_len) && std::equal((uint8_t*)&addr.second.first, (uint8_t*)&addr.second.first + addr.second.second, (uint8_t*)sa);
+        return (addr.second.second == sa_len) &&
+            std::equal((uint8_t*)&addr.second.first, (uint8_t*)&addr.second.first + addr.second.second, (uint8_t*)sa);
     });
     if (it == reported_addr.end()) {
         if (reported_addr.size() < 32)
@@ -550,7 +551,7 @@ Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
 std::shared_ptr<Node>
-Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm, const sockaddr* addr, socklen_t addr_length)
+Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm)
 {
     if (id == myid || isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
         return nullptr;
@@ -561,12 +562,6 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
         return nullptr;
 
     bool mybucket = list.contains(b, myid);
-
-    if (confirm == 2) {
-        b->time = now;
-        if (addr and addr_length)
-            reportedAddr(addr, addr_length);
-    }
 
     for (auto& n : b->nodes) {
         if (n->id != id) continue;
@@ -1735,7 +1730,7 @@ Dht::Storage::clear()
 }
 
 void
-Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid)
+Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, size_t rid)
 {
     auto st = findStorage(id);
     if (st == store.end()) {
@@ -1751,10 +1746,10 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
     if (l == st->listeners.end()) {
         //TODO
         //sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->getValues());
-        st->listeners.emplace_back(node, from, fromlen, tid, now);
+        st->listeners.emplace_back(node, from, fromlen, rid, now);
     }
     else
-        l->refresh(from, fromlen, tid, now);
+        l->refresh(from, fromlen, rid, now);
 }
 
 void
@@ -2118,6 +2113,20 @@ Dht::Dht(int s, int s6, Config config)
     expireBuckets(buckets);
     expireBuckets(buckets6);
 
+
+    using namespace std::placeholders;
+    network_engine = std::unique_ptr<NetworkEngine>(
+          new NetworkEngine {
+              NetworkEngine::DhtInfo {myid, dht_socket, dht_socket6},
+              std::bind(&Dht::newNode, this, _1, _2, _3, _4),
+              std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
+              std::bind(&Dht::onPing, this, _1),
+              std::bind(&Dht::onFindNode, this, _1, _2, _3),
+              std::bind(&Dht::onGetValues, this, _1, _2, _3),
+              std::bind(&Dht::onListen, this, _1, _2, _3, _4),
+              std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5)
+          }
+    );
     DHT_DEBUG("DHT initialised with node ID %s", myid.toString().c_str());
 }
 
@@ -2395,6 +2404,163 @@ Dht::pingNode(const sockaddr *sa, socklen_t salen)
     DHT_DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
     //return sendPing(sa, salen, TransId {TransPrefix::PING});
     return 0;
+}
+
+void
+Dht::onReportedAddr(const InfoHash& id, sockaddr* addr , socklen_t addr_length) {
+    const auto& b = (addr->sa_family == AF_INET ? buckets : buckets6).findBucket(id);
+    b->time = now;
+    if (addr and addr_length)
+        reportedAddr(addr, addr_length);
+}
+
+NetworkEngine::RequestAnswer
+Dht::onPing(std::shared_ptr<Node> node) {
+    in_stats.ping++;
+    //DHT_DEBUG("Sending pong.");
+    return std::move(NetworkEngine::RequestAnswer {});
+}
+
+NetworkEngine::RequestAnswer
+Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want) {
+    in_stats.find++;
+    DHT_DEBUG("[node %s %s] got 'find' request (%d).", node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), want);
+    Blob ntoken = makeToken((sockaddr*)&node->ss, false);
+
+    NetworkEngine::RequestAnswer answer {
+        ntoken,
+        {},
+        buckets.findClosestNodes(hash, now, TARGET_NODES),
+        buckets6.findClosestNodes(hash, now, TARGET_NODES)
+    };
+    return std::move(answer);
+}
+
+NetworkEngine::RequestAnswer
+Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want) {
+    NetworkEngine::RequestAnswer* answer;
+    in_stats.get++;
+    DHT_DEBUG("[node %s %s] got 'get' request for %s.", node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
+    if (hash == zeroes) {
+        DHT_WARN("[node %s %s] Eek! Got get_values with no info_hash.", node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+        throw DhtProtocolException {DhtProtocolException::NON_AUTHORITATIVE_INFORMATION, DhtProtocolException::GET_NO_INFOHASH};
+    } else {
+        auto st = findStorage(hash);
+        Blob ntoken = makeToken((sockaddr*)&node->ss, false);
+        answer = new NetworkEngine::RequestAnswer {
+            ntoken,
+                {},
+                buckets.findClosestNodes(hash, now, TARGET_NODES),
+                buckets6.findClosestNodes(hash, now, TARGET_NODES)
+        };
+        if (st != store.end() && not st->empty()) {
+            DHT_DEBUG("[node %s %s] sending %u values.", node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), st->valueCount());
+            //answer->values.insert(answer->values.end(), st->getValues());
+            auto values = st->getValues();
+            answer->values.resize(values.size());
+            std::transform(values.begin(), values.end(), answer->values.begin(), [](const ValueStorage& vs) {
+                return std::move(vs.data);
+            });
+        } else {
+            DHT_DEBUG("[node %s %s] sending nodes.", node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+        }
+    }
+    return std::move(*answer);
+}
+
+NetworkEngine::RequestAnswer
+Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid) {
+    in_stats.listen++;
+    DHT_DEBUG("[node %s %s] got 'listen' request for %s.", node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
+    if (hash == zeroes) {
+        DHT_WARN("Listen with no info_hash.");
+        throw DhtProtocolException {DhtProtocolException::NON_AUTHORITATIVE_INFORMATION, DhtProtocolException::LISTEN_NO_INFOHASH};
+    }
+    if (!tokenMatch(token, (sockaddr*)&node->ss)) {
+        DHT_WARN("[node %s %s] incorrect token %s for 'listen'.",
+            node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
+            hash.toString().c_str(), to_hex(token.data(), token.size()).c_str());
+        throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
+    }
+    //TODO in NetworkEngine
+    //if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
+    //    break;
+    //}
+    storageAddListener(hash, node->id, (sockaddr*)&node->ss, node->sslen, rid);
+    return std::move(NetworkEngine::RequestAnswer {});
+}
+
+NetworkEngine::RequestAnswer
+Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> values, time_point created) {
+    in_stats.put++;
+    DHT_DEBUG("[node %s %s] got 'put' request for %s.",
+        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
+        hash.toString().c_str());
+    if (hash == zeroes) {
+        DHT_WARN("Put with no info_hash.");
+        throw DhtProtocolException {DhtProtocolException::NON_AUTHORITATIVE_INFORMATION, DhtProtocolException::PUT_NO_INFOHASH};
+    }
+    if (!tokenMatch(token, (sockaddr*)&node->ss)) {
+        DHT_WARN("[node %s %s] incorrect token %s for 'put'.",
+            node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
+            hash.toString().c_str(), to_hex(token.data(), token.size()).c_str());
+        throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
+    }
+    {
+        // We store a value only if we think we're part of the
+        // SEARCH_NODES nodes around the target id.
+        auto closest_nodes = (((sockaddr*)&node->ss)->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(hash, now, SEARCH_NODES);
+        if (hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
+            DHT_WARN("[node %s %s] announce too far node->ss the target id. Dropping value.",
+                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+            //TODO: NetworkEngine
+            //for (auto& v : values) {
+            //    sendValueAnnounced(node->ss, node->sslen, msg.tid, v->id);
+            //}
+            return std::move(NetworkEngine::RequestAnswer {});
+        }
+    }
+
+    for (const auto& v : values) {
+        if (v->id == Value::INVALID_ID) {
+            DHT_WARN("[value %s %s] incorrect value id", hash.toString().c_str(), v->id);
+            throw DhtProtocolException {
+                DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
+                DhtProtocolException::PUT_INVALID_ID
+            };
+        }
+        auto lv = getLocalById(hash, v->id);
+        std::shared_ptr<Value> vc = v;
+        if (lv) {
+            if (*lv == *vc) {
+                DHT_WARN("[value %s %lu] nothing to do.", hash.toString().c_str(), lv->id);
+            } else {
+                const auto& type = getType(lv->type);
+                if (type.editPolicy(hash, lv, vc, node->id, (sockaddr*)&node->ss, node->sslen)) {
+                    DHT_DEBUG("[value %s %lu] editing %s.", hash.toString().c_str(), lv->id, vc->toString().c_str());
+                    storageStore(hash, vc, created);
+                } else {
+                    DHT_DEBUG("[value %s %lu] rejecting edition of %s because of storage policy.", hash.toString().c_str(), lv->id, vc->toString().c_str());
+                }
+            }
+        } else {
+            // Allow the value to be edited by the storage policy
+            const auto& type = getType(vc->type);
+            if (type.storePolicy(hash, vc, node->id, (sockaddr*)&node->ss, node->sslen)) {
+                DHT_DEBUG("[value %s %lu] storing %s.", hash.toString().c_str(), vc->id, vc->toString().c_str());
+                storageStore(hash, vc, created);
+            } else {
+                DHT_DEBUG("[value %s %lu] rejecting storage of %s.", hash.toString().c_str(), vc->id, vc->toString().c_str());
+            }
+        }
+
+        /* Note that if storageStore failed, we lie to the requestor.
+           This is to prevent them node->ss backtracking, and hence
+           polluting the DHT. */
+        //TODO: NetworkEngine
+        //sendValueAnnounced(node->ss, node->sslen, msg.tid, v->id);
+    }
+    return std::move(NetworkEngine::RequestAnswer {});
 }
 
 }
