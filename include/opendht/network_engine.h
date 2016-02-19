@@ -50,12 +50,12 @@ public:
     static const constexpr uint16_t TRUNCATED_ID {421};                  /* id was truncated. */
     static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {422};       /* node info length is wrong */
 
-    static const std::string VALUES_BUT_NO_INFOHASH;
-    static const std::string LISTEN_NO_INFOHASH;
-    static const std::string LISTEN_WRONG_TOKEN;
-    static const std::string PUT_NO_INFOHASH;
-    static const std::string PUT_WRONG_TOKEN;
-    static const std::string PUT_INVALID_ID;
+    static const std::string GET_NO_INFOHASH; /* received get request with no infohash */
+    static const std::string LISTEN_NO_INFOHASH;     /* got listen request without infohash */
+    static const std::string LISTEN_WRONG_TOKEN;     /* wrong token in listen request */
+    static const std::string PUT_NO_INFOHASH;        /* no infohash in put request */
+    static const std::string PUT_WRONG_TOKEN;        /* got put request with wrong token */
+    static const std::string PUT_INVALID_ID;         /* invalid id in put request */
 
     DhtProtocolException(uint16_t code, const std::string& msg="") : DhtException(msg), code(code), msg(msg) {}
 
@@ -107,13 +107,13 @@ private:
      * @param saddr (type: sockaddr*) sockaddr* pointer containing address ip information.
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      */
-    std::function<std::shared_ptr<Node>(InfoHash, sockaddr*, socklen_t, int)> onNewNode;
+    std::function<std::shared_ptr<Node>(const InfoHash&, const sockaddr*, socklen_t, int)> onNewNode;
     /**
      * @brief when an addres is reported from a distant node.
      *
      * @param arg1  Arg description
      */
-    std::function<void(sockaddr*, socklen_t)> onReportedAddr;
+    std::function<void(const InfoHash&, sockaddr*, socklen_t)> onReportedAddr;
     /**
      * @brief on ping request callback.
      *
@@ -129,7 +129,7 @@ private:
      *             or ipv6.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash,
+            InfoHash&,
             want_t)> onFindNode {};
     /**
      * @brief on "get values" request callback.
@@ -140,7 +140,7 @@ private:
      *             or ipv6.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash,
+            InfoHash&,
             want_t)> onGetValues {};
     /**
      * @brief on listen request callback.
@@ -151,8 +151,8 @@ private:
      * @param rid (type: size_t) request id.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash,
-            Blob,
+            InfoHash&,
+            Blob&,
             size_t)> onListen {};
     /**
      * @brief on announce request callback.
@@ -164,9 +164,9 @@ private:
      * @param created (type: time_point) time when the value was created.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash,
-            Blob,
-            std::shared_ptr<Value>,
+            InfoHash&,
+            Blob&,
+            std::vector<std::shared_ptr<Value>>,
             time_point)> onAnnounce {};
 
 public:
@@ -179,23 +179,26 @@ public:
 
     // Config from Dht.
     struct DhtInfo {
-        InfoHash& myid;
-        int& dht_socket;
-        int& dht_socket6;
+        const InfoHash& myid;
+        const int& dht_socket;
+        const int& dht_socket6;
     };
 
     NetworkEngine(DhtInfo info,
+            decltype(NetworkEngine::onNewNode) onNewNode,
+            decltype(NetworkEngine::onReportedAddr) onReportedAddr,
             decltype(NetworkEngine::onPing) onPing,
             decltype(NetworkEngine::onFindNode) onFindNode,
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
-        onPing(onPing), onFindNode(onFindNode), onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce),
-        myid(info.myid), dht_socket(info.dht_socket), dht_socket6(info.dht_socket6)
+        onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
+        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
+        dht_socket(info.dht_socket), dht_socket6(info.dht_socket6)
     {
         req_ids = std::uniform_int_distribution<decltype(req_ids)>{1}(rd_device);
     }
-    virtual ~NetworkEngine();
+    virtual ~NetworkEngine() {};
 
 
     /**
@@ -238,7 +241,7 @@ public:
             RequestCb on_done,
             RequestCb on_expired);
 
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now);
+    time_point processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now);
 
 private:
     /***************

@@ -630,17 +630,17 @@ private:
         InfoHash id {};
         sockaddr_storage ss;
         socklen_t sslen {};
-        uint16_t tid {};
+        size_t rid {};
         time_point time {};
 
         /*constexpr*/ Listener() : ss() {}
-        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) : id(id), ss(), sslen(fromlen), tid(ttid), time(t) {
+        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t rid, time_point t) : id(id), ss(), sslen(fromlen), rid(rid), time(t) {
             memcpy(&ss, from, fromlen);
         }
-        void refresh(const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) {
+        void refresh(const sockaddr *from, socklen_t fromlen, size_t rid, time_point t) {
             memcpy(&ss, from, fromlen);
             sslen = fromlen;
-            tid = ttid;
+            this->rid = rid;
             time = t;
         }
     };
@@ -769,6 +769,8 @@ private:
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
 
+    std::unique_ptr<NetworkEngine> network_engine {};
+
     // timing
     time_point now;
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
@@ -800,7 +802,7 @@ private:
         });
     }
 
-    void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
+    void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, size_t tid);
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
@@ -836,7 +838,7 @@ private:
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm, const sockaddr* addr=nullptr, socklen_t addr_length=0);
+    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);
@@ -884,6 +886,19 @@ private:
 
     MessageStats in_stats {}, out_stats {};
 
+    /* when our address is reported by a distant peer. */
+    void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
+    /* when we receive a ping request */
+    NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
+    /* when we receive a "find node" request */
+    NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
+    /* when we receive a "get values" request */
+    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
+    /* when we receive a listen request */
+    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
+    /* when we receive an announce request */
+    NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
+            InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
 };
 
 }

@@ -30,7 +30,7 @@ THE SOFTWARE.
 
 namespace dht {
 
-const std::string DhtProtocolException::VALUES_BUT_NO_INFOHASH {"Get_values with no info_hash"};
+const std::string DhtProtocolException::GET_NO_INFOHASH {"Get_values with no info_hash"};
 const std::string DhtProtocolException::LISTEN_NO_INFOHASH {"Listen with no info_hash"};
 const std::string DhtProtocolException::LISTEN_WRONG_TOKEN {"Listen with wrong token"};
 const std::string DhtProtocolException::PUT_NO_INFOHASH {"Put with no info_hash"};
