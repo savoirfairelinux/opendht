@@ -46,11 +46,139 @@ const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::FIND_NODE  = {"fn"}
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::GET_VALUES  = {"gt"};
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES  = {"pt"};
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN  = {"lt"};
+constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
+
+/* Rate control for requests we receive. */
+bool
+NetworkEngine::rateLimit()
+{
+    using namespace std::chrono;
+    while (not rate_limit_time.empty() and duration_cast<seconds>(now - rate_limit_time.front()) > seconds(1))
+        rate_limit_time.pop();
+
+    if (rate_limit_time.size() >= MAX_REQUESTS_PER_SEC)
+        return false;
+
+    rate_limit_time.emplace(now);
+    return true;
+}
 
 void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now) {
-    //TODO
     this->now = now;
+    ParsedMessage msg;
+    try {
+        msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
+        msg.msgpack_unpack(msg_res.get());
+        if (msg.type != MessageType::Error && msg.id == zeroes)
+            throw DhtException("no or invalid InfoHash");
+    } catch (const std::exception& e) {
+        DHT_LOG.WARN("Can't process message of size %lu: %s.", buflen, e.what());
+        DHT_LOG.DEBUG.logPrintable(buf, buflen);
+        return;
+    }
+
+    if (msg.id == myid) {
+        DHT_LOG.DEBUG("Received message from self.");
+        return;
+    }
+
+    if (msg.type > MessageType::Reply) {
+        /* Rate limit requests. */
+        if (!rateLimit()) {
+            DHT_LOG.WARN("Dropping request due to rate limiting.");
+            return;
+        }
+    }
+
+    if (msg.tid.length != 4) {
+        DHT_LOG.ERROR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
+        DHT_LOG.ERROR.logPrintable(buf, buflen);
+        throw DhtProtocolException {DhtProtocolException::INVALID_REPLY_TID};
+    }
+
+    uint16_t ttid = 0;
+    if (msg.type == MessageType::Error or msg.type == MessageType::Reply) {
+        auto node = onNewNode(msg.id, from, fromlen, 2);
+        switch (msg.type) {
+        case MessageType::Error: {
+            if (msg.error_code == DhtProtocolException::UNAUTHORIZED
+                    && msg.id != zeroes
+                    && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)
+                        || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
+                onError(node, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
+            } else {
+                DHT_LOG.WARN("[node %s %s] received unknown error message %u",
+                        msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.error_code);
+                DHT_LOG.WARN.logPrintable(buf, buflen);
+            }
+            break;
+        }
+        case MessageType::Reply:
+            const auto& reqp = requests.find(msg.tid[2]);
+            Request* req = nullptr;
+            if (reqp != requests.end())
+                req = &(*reqp->second);
+
+            if (not req)
+                throw DhtProtocolException {DhtProtocolException::INVALID_REPLY_TID, "", msg.id};
+
+            req->on_done(req->id, std::move(msg));
+            break;
+        }
+    } else {
+        auto node = onNewNode(msg.id, from, fromlen, 1);
+        try {
+            switch (msg.type) {
+            case MessageType::Ping:
+                in_stats.ping++;
+                DHT_LOG.DEBUG("Sending pong.");
+                onPing(node);
+                sendPong(from, fromlen, msg.tid);
+                break;
+            case MessageType::FindNode: {
+                in_stats.find++;
+                DHT_LOG.DEBUG("[node %s %s] got 'find' request (%d).",
+                        msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
+                RequestAnswer answer = onFindNode(node, msg.info_hash, msg.want);
+                auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, answer.ntoken);
+                break;
+            }
+            case MessageType::GetValues: {
+                in_stats.get++;
+                RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
+                auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
+                break;
+            }
+            case MessageType::AnnounceValue: {
+                in_stats.put++;
+                onAnnounce(node, msg.info_hash, msg.token, msg.values, msg.created);
+
+                /* Note that if storageStore failed, we lie to the requestor.
+                   This is to prevent them from backtracking, and hence
+                   polluting the DHT. */
+                for (auto& v : msg.values) {
+                   sendValueAnnounced(from, fromlen, msg.tid, v->id);
+                }
+                break;
+            }
+            case MessageType::Listen:
+                if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
+                   break;
+                }
+                in_stats.listen++;
+                RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid[2]);
+                sendListenConfirmation(from, fromlen, msg.tid);
+                break;
+            }
+        } catch (const std::overflow_error& e) {
+            DHT_LOG.ERROR("Can't send value: buffer not large enough !");
+        } catch (DhtProtocolException& e) {
+            sendError(from, fromlen, msg.tid, e.getCode(), e.getMsg().c_str());
+        }
+    }
 }
 
 void
@@ -76,12 +204,6 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const sockaddr *sa, 
 {
     if (salen == 0)
         return -1;
-
-    //TODO: dans la DHT
-    //if (isNodeBlacklisted(sa, salen)) {
-    //    DHT_DEBUG("Attempting to send to blacklisted node.");
-    //    return -1;
-    //}
 
     int s;
     if (sa->sa_family == AF_INET)
@@ -127,7 +249,6 @@ NetworkEngine::clearExpiredRequests(size_t rid) {
     }
 }
 
-// TODO: dht out_stats.ping++;
 size_t
 NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired) {
     auto tid = TransId {TransPrefix::PING};
@@ -153,6 +274,7 @@ NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on
     };
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), 0, (sockaddr*)&n->ss, n->sslen);
+    out_stats.ping++;
     return tid[2];
 }
 
@@ -174,7 +296,6 @@ NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-// TODO: dht out_stats.find++;
 size_t
 NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want, int confirm,
         RequestCb on_done, RequestCb on_expired) {
@@ -212,11 +333,11 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
     };
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    out_stats.find++;
     return tid[2];
 }
 
 
-// TODO: DHT out_stats.get++;
 size_t
 NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, want_t want, int confirm,
         RequestCb on_done, RequestCb on_expired) {
@@ -244,7 +365,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {getNewRequestId(), n, std::move(b),
         [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            //TODO
+            on_done(n, rid, deserializeNodesValues(msg));
         },
         [=](size_t rid, bool s) { /* on expired */
             on_expired(n, rid, {});
@@ -253,6 +374,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
     };
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    out_stats.get++;
     return tid[2];
 }
 
@@ -260,7 +382,7 @@ NetworkEngine::RequestAnswer
 NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
     RequestAnswer req_a {msg.token, std::move(msg.values)};
     if (msg.nodes4.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6.size() % NODE6_INFO_BUF_LEN != 0) {
-        //TODO: retourner l'erreur dans la couche supérieure pour blacklist
+        throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     } else {
         // deserialize nodes
         for (unsigned i = 0; i < msg.nodes4.size() / NODE4_INFO_BUF_LEN; i++) {
@@ -291,28 +413,26 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
     return std::move(req_a);
 }
 
-//TODO
 void
-NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid, const uint8_t *nodes,
-        unsigned nodes_len, const uint8_t *nodes6, unsigned nodes6_len,
+NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid, const Blob nodes, const Blob nodes6,
         const std::vector<std::shared_ptr<Value>>& st, const Blob& token) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4);
 
     pk.pack(std::string("r"));
-    pk.pack_map(2 + (not st.empty()?1:0) + (nodes_len>0?1:0) + (nodes6_len>0?1:0) + (not token.empty()?1:0));
+    pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
     pk.pack(std::string("id")); pk.pack(myid);
     insertAddr(pk, sa, salen);
-    if (nodes_len > 0) {
+    if (nodes.size() > 0) {
         pk.pack(std::string("n4"));
-        pk.pack_bin(nodes_len);
-        pk.pack_bin_body((const char*)nodes, nodes_len);
+        pk.pack_bin(nodes.size());
+        pk.pack_bin_body((const char*)nodes.data(), nodes.size());
     }
-    if (nodes6_len > 0) {
+    if (nodes6.size() > 0) {
         pk.pack(std::string("n6"));
-        pk.pack_bin(nodes6_len);
-        pk.pack_bin_body((const char*)nodes6, nodes6_len);
+        pk.pack_bin(nodes6.size());
+        pk.pack_bin_body((const char*)nodes6.data(), nodes6.size());
     }
     if (not token.empty()) {
         pk.pack(std::string("token")); packToken(pk, token);
@@ -342,6 +462,8 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
         for (const auto& b : subset)
             buffer.write((const char*)b.data(), b.size());
     }
+
+    DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
@@ -396,46 +518,42 @@ NetworkEngine::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHa
     return numnodes;
 }
 
-std::pair<uint8_t*, uint8_t*>
-NetworkEngine::bufferNodes(const sockaddr *sa, socklen_t salen, TransId tid, const InfoHash& id, want_t want,
-        const Blob& token, const std::vector<std::shared_ptr<Node>>& nodes,
-        const std::vector<std::shared_ptr<Node>>& nodes6)
+std::pair<Blob, Blob>
+NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
+        const std::vector<std::shared_ptr<Node>>& nodes, const std::vector<std::shared_ptr<Node>>& nodes6)
 {
-    uint8_t bnodes[8 * 26];
-    uint8_t bnodes6[8 * 38];
+    uint8_t bnodes[8 * NODE4_INFO_BUF_LEN];
+    uint8_t bnodes6[8 * NODE6_INFO_BUF_LEN];
+    size_t numnodes, numnodes6 = 0;
 
     if (want < 0)
-        want = sa->sa_family == AF_INET ? WANT4 : WANT6;
+        want = af == AF_INET ? WANT4 : WANT6;
 
     auto buff = [=](uint8_t* nodes, const InfoHash& id, const std::vector<std::shared_ptr<Node>>& closest_nodes) {
         size_t numnodes = 0;
         for (const auto& n : closest_nodes) {
             numnodes = insertClosestNode(nodes, numnodes, id, *n);
         }
+        return numnodes;
     };
 
     if ((want & WANT4)) {
-        buff(bnodes, id, nodes);
+        numnodes = buff(bnodes, id, nodes);
     }
 
     if ((want & WANT6)) {
-        buff(bnodes6, id, nodes6);
+        numnodes6 = buff(bnodes6, id, nodes6);
     }
-    //DHT_DEBUG("sending closest nodes (%d+%d nodes.)", numnodes, numnodes6);
 
-    return std::make_pair(bnodes, bnodes6);
-    //try {
-    //} catch (const std::overflow_error& e) {
-    //    DHT_ERROR("Can't send value: buffer not large enough !");
-    //    return -1;
-    //}
+    Blob bn4(8 * NODE4_INFO_BUF_LEN), bn6(8 * NODE6_INFO_BUF_LEN);
+    bn4.insert(bn4.begin(), bnodes, bnodes + (8*NODE4_INFO_BUF_LEN));
+    bn6.insert(bn6.begin(), bnodes6, bnodes6 + (8*NODE6_INFO_BUF_LEN));
+    return {std::move(bn4), std::move(bn6)};
 }
 
-//TODO: out_stats.listen++;
 size_t
 NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token, int confirm,
         RequestCb on_done, RequestCb on_expired) {
-    //TODO
     auto tid = TransId {TransPrefix::LISTEN};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -456,7 +574,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {getNewRequestId(), n, std::move(b),
         [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            //TODO
+            on_done(n, rid, {});
         },
         [=](size_t rid, bool s) { /* on expired */
             on_expired(n, rid, {});
@@ -465,12 +583,12 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     };
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    out_stats.listen++;
     return tid[2];
 }
 
 void
 NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid) {
-    //TODO
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4);
@@ -487,11 +605,9 @@ NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, Trans
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-//TODO: out_stats.put++;
 size_t
 NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infohash, const Value& value, time_point created,
         const Blob& token, int confirm, RequestCb on_done, RequestCb on_expired) {
-    //TODO
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -516,7 +632,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {getNewRequestId(), n, std::move(b),
         [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            //TODO
+            on_done(n, rid, {});
         },
         [=](size_t rid, bool s) { /* on expired */
             on_expired(n, rid, {});
@@ -525,6 +641,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     };
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    out_stats.put++;
     return tid[2];
 }
 
@@ -668,7 +785,7 @@ NetworkEngine::ParsedMessage::msgpack_unpack(msgpack::object msg)
             try {
                 values.emplace_back(std::make_shared<Value>(rvalues->via.array.ptr[i]));
             } catch (const std::exception& e) {
-                //DHT_WARN("Error reading value: %s", e.what());
+                //DHT_LOG.WARN("Error reading value: %s", e.what());
             }
     }
 

@@ -38,6 +38,7 @@ THE SOFTWARE.
 #include <algorithm>
 #include <memory>
 #include <random>
+#include <queue>
 
 namespace dht {
 
@@ -47,29 +48,32 @@ public:
     static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
     static const constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
     // for internal use (custom).
-    static const constexpr uint16_t TRUNCATED_ID {421};                  /* id was truncated. */
+    static const constexpr uint16_t INVALID_REPLY_TID {421};             /* id was truncated. */
     static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {422};       /* node info length is wrong */
 
-    static const std::string GET_NO_INFOHASH; /* received get request with no infohash */
-    static const std::string LISTEN_NO_INFOHASH;     /* got listen request without infohash */
-    static const std::string LISTEN_WRONG_TOKEN;     /* wrong token in listen request */
-    static const std::string PUT_NO_INFOHASH;        /* no infohash in put request */
-    static const std::string PUT_WRONG_TOKEN;        /* got put request with wrong token */
-    static const std::string PUT_INVALID_ID;         /* invalid id in put request */
+    static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
+    static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
+    static const std::string LISTEN_WRONG_TOKEN; /* wrong token in "listen" request */
+    static const std::string PUT_NO_INFOHASH;    /* no infohash in "put" request */
+    static const std::string PUT_WRONG_TOKEN;    /* got "put" request with wrong token */
+    static const std::string PUT_INVALID_ID;     /* invalid id in "put" request */
 
-    DhtProtocolException(uint16_t code, const std::string& msg="") : DhtException(msg), code(code), msg(msg) {}
+    DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
+        : DhtException(msg), code(code), msg(msg), failing_node_id(failing_node_id) {}
 
-    std::string getMsg() { return msg; }
-    uint16_t getCode() { return code; }
+    std::string getMsg() const { return msg; }
+    uint16_t getCode() const { return code; }
+    const InfoHash getNodeId() const { return failing_node_id; }
 
 private:
     uint16_t code;
+    const InfoHash failing_node_id;
     std::string msg;
 };
 
 /*!
  * @class   NetworkEngine
- * @brief   A protocol abstraction of communication on the network.
+ * @brief   An abstraction of communication protocol on the network.
  * @details
  * The NetworkEngine processes all requests to nodes by offering a public
  * interface for handling sending and receiving packets. The following
@@ -98,6 +102,13 @@ public:
     };
 
 private:
+
+    /**
+     * @brief when we receive an error message.
+     *
+     * @param node (type: std::shared_ptr<Node>) the node we received the error from.
+     */
+    std::function<void(std::shared_ptr<Node>, DhtProtocolException e)> onError;
     /**
      * @brief when a new node happens.
      *
@@ -160,7 +171,7 @@ private:
      * @param node (type: std::shared_ptr<Node>) the requesting node.
      * @param vhash (type: InfoHash) hash of the value of interest.
      * @param token (type: Blob) security token.
-     * @param value (type: std::shared_ptr<Value>) value to send.
+     * @param values (type: std::vector<std::shared_ptr<Value>>) values to store.
      * @param created (type: time_point) time when the value was created.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
@@ -186,6 +197,7 @@ public:
     };
 
     NetworkEngine(DhtInfo info,
+            decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
             decltype(NetworkEngine::onPing) onPing,
@@ -193,7 +205,7 @@ public:
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
-        onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
+        onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
         onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
         dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG)
     {
@@ -215,6 +227,7 @@ public:
      *  Requests  *
      **************/
     size_t sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired);
+    size_t sendPing(sockaddr* n, socklen_t salen, RequestCb on_done, RequestCb on_expired);
     size_t sendFindNode(std::shared_ptr<Node> n,
             const InfoHash& target,
             want_t want,
@@ -242,12 +255,31 @@ public:
             RequestCb on_done,
             RequestCb on_expired);
 
-    time_point processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now);
+    /**
+     * Parses a message and calls appropriate callbacks.
+     *
+     * @param buf  The buffer containing the binary message.
+     * @param buflen  The length of the buffer.
+     * @param from  The address info of the sender.
+     * @param fromlen  The length of the corresponding sockaddr structure.
+     * @param now  The time to adjust the clock in the network engine.
+     */
+    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now);
+
+    std::vector<unsigned> getNodeMessageStats(bool in) {
+        auto stats = in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
+        : std::vector<unsigned>{out_stats.ping, out_stats.find, out_stats.get, out_stats.listen, out_stats.put};
+        if (in) { in_stats = {}; }
+        else { out_stats = {}; }
+
+        return stats;
+    }
 
 private:
     /***************
      *  Constants  *
      ***************/
+    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
     static const constexpr size_t NODE4_INFO_BUF_LEN {26};
     /* the length of a node info buffer in ipv6 format */
@@ -262,6 +294,7 @@ private:
     const Logger& DHT_LOG;
 
 
+    bool rateLimit();
 
     struct TransPrefix : public  std::array<uint8_t, 2>  {
         TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
@@ -334,13 +367,6 @@ private:
         void msgpack_unpack(msgpack::object o);
     };
 
-    //TODO: balancer ce code dans NetworkEngine::processMessage
-    //void onReply(ParsedMessage& msg) {
-    //    if (msg.tid.length != 4)
-    //        throw DhtProtocolException {DhtProtocolException::TRUNCATED_ID};
-    //    onNewNode(msg.id, msg.);
-    //}
-
     /**
      * When a request has expired, i.e when Request::MAX_ATTEMPT_COUNT attempts
      * of processing the request have been made, we consider a node expired.
@@ -369,7 +395,7 @@ private:
                 std::function<void(size_t, bool)> on_expired) :
             id(id), node(node), msg(msg), on_done(on_done), on_expired(on_expired) {}
 
-        bool expired() { return attempt_count >= Request::MAX_ATTEMPT_COUNT; }
+        bool expired() const { return attempt_count >= Request::MAX_ATTEMPT_COUNT; }
 
         std::function<void(size_t, ParsedMessage&&)> on_done {};
         std::function<void(size_t, bool)> on_expired {};
@@ -392,6 +418,14 @@ private:
         return req_ids == Request::INVALID_ID ? ++req_ids : req_ids;
     }
 
+    struct MessageStats {
+        unsigned ping {0};
+        unsigned find {0};
+        unsigned get {0};
+        unsigned put {0};
+        unsigned listen {0};
+    };
+
 
     // basic wrapper for socket sendto function
     int send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen);
@@ -405,20 +439,14 @@ private:
     void sendNodesValues(const sockaddr* sa,
             socklen_t salen,
             TransId tid,
-            const uint8_t *nodes,
-            unsigned nodes_len,
-            const uint8_t *nodes6,
-            unsigned nodes6_len,
+            const Blob nodes,
+            const Blob nodes6,
             const std::vector<std::shared_ptr<Value>>& st,
             const Blob& token);
     unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
-    std::pair<uint8_t*, uint8_t*>
-        bufferNodes(const sockaddr *sa,
-            socklen_t salen,
-            TransId tid,
+    std::pair<Blob, Blob> bufferNodes(sa_family_t af,
             const InfoHash& id,
             want_t want,
-            const Blob& token,
             const std::vector<std::shared_ptr<Node>>& nodes,
             const std::vector<std::shared_ptr<Node>>& nodes6);
     /* answer to a listen request */
@@ -435,13 +463,14 @@ private:
 
     RequestAnswer deserializeNodesValues(ParsedMessage& msg);
 
+    std::queue<time_point> rate_limit_time {};
     static std::mt19937 rd_device;
     time_point now;
 
     // requests handling
     uint32_t req_ids {1};
     std::map<size_t, std::shared_ptr<Request>> requests;
-    std::map<time_point, std::function<void()>> timers; /** callbacks in case of expired requests. */
+    MessageStats in_stats {}, out_stats {};
 };
 
 }

@@ -280,19 +280,15 @@ public:
     std::vector<ValuesExport> exportValues() const;
     void importValues(const std::vector<ValuesExport>&);
 
-    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const;
+    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
+            unsigned *incoming_return) const;
     std::string getStorageLog() const;
     std::string getRoutingTablesLog(sa_family_t) const;
     std::string getSearchesLog(sa_family_t) const;
 
     void dumpTables() const;
     std::vector<unsigned> getNodeMessageStats(bool in = false) {
-        auto stats = in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
-                  : std::vector<unsigned>{out_stats.ping, out_stats.find, out_stats.get, out_stats.listen, out_stats.put};
-        if (in) { in_stats = {}; }
-        else { out_stats = {}; }
-
-        return stats;
+        return network_engine->getNodeMessageStats(in);
     }
 
     /**
@@ -354,8 +350,6 @@ private:
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
-
-    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
 
     static constexpr size_t TOKEN_SIZE {64};
 
@@ -776,7 +770,6 @@ private:
     time_point search_time {time_point::max()};
     time_point confirm_nodes_time {time_point::min()};
     time_point rotate_secrets_time {time_point::min()};
-    std::queue<time_point> rate_limit_time {};
 
     using ReportedAddr = std::pair<unsigned, Address>;
     std::vector<ReportedAddr> reported_addr;
@@ -871,19 +864,11 @@ private:
     void searchStep(Search& sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
-    bool rateLimit();
     bool neighbourhoodMaintenance(RoutingTable&);
 
-    struct MessageStats {
-        unsigned ping {0};
-        unsigned find {0};
-        unsigned get {0};
-        unsigned put {0};
-        unsigned listen {0};
-    };
+    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
-    MessageStats in_stats {}, out_stats {};
-
+    void onError(std::shared_ptr<Node> node, DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
     /* when we receive a ping request */
