@@ -316,9 +316,7 @@ public:
     std::vector<Address> getPublicAddress(sa_family_t family = 0);
 
 protected:
-    LogMethod DHT_DEBUG = NOLOG;
-    LogMethod DHT_WARN = NOLOG;
-    LogMethod DHT_ERROR = NOLOG;
+    Logger DHT_LOG;
 
 private:
 

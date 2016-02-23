@@ -182,6 +182,7 @@ public:
         const InfoHash& myid;
         const int& dht_socket;
         const int& dht_socket6;
+        const Logger& DHT_LOG;
     };
 
     NetworkEngine(DhtInfo info,
@@ -194,7 +195,7 @@ public:
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
         onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
         onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
-        dht_socket(info.dht_socket), dht_socket6(info.dht_socket6)
+        dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG)
     {
         req_ids = std::uniform_int_distribution<decltype(req_ids)>{1}(rd_device);
     }
@@ -258,6 +259,8 @@ private:
     const InfoHash& myid;
     const int& dht_socket;
     const int& dht_socket6;
+    const Logger& DHT_LOG;
+
 
 
     struct TransPrefix : public  std::array<uint8_t, 2>  {
