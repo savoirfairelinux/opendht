@@ -31,6 +31,19 @@
 
 #include <cstdarg>
 
+namespace dht {
+
+static constexpr InfoHash zeroes;
+static constexpr InfoHash ones;
+static constexpr unsigned TARGET_NODES {8};
+
+using Address = std::pair<sockaddr_storage, socklen_t>;
+using want_t = int_fast8_t;
+
+std::string print_addr(const sockaddr* sa, socklen_t slen);
+std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+std::string printAddr(const Address& addr);
+
 template <typename Key, typename Item, typename Condition>
 void erase_if(std::map<Key, Item>& map, const Condition& condition)
 {
@@ -40,17 +53,6 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
         } else { ++it; }
     }
 }
-
-namespace dht {
-
-static constexpr unsigned TARGET_NODES {8};
-
-using Address = std::pair<sockaddr_storage, socklen_t>;
-using want_t = int_fast8_t;
-
-std::string print_addr(const sockaddr* sa, socklen_t slen);
-std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
-std::string printAddr(const Address& addr);
 
 class DhtException : public std::runtime_error {
     public:
