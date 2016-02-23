@@ -120,6 +120,12 @@ private:
     std::function<void(char const*, va_list)> func;
 };
 
+struct Logger {
+    LogMethod DEBUG = NOLOG;
+    LogMethod WARN = NOLOG;
+    LogMethod ERROR = NOLOG;
+};
+
 // Serialization related definitions and utility functions
 
 typedef std::vector<uint8_t> Blob;
