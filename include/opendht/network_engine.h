@@ -213,6 +213,22 @@ public:
     }
     virtual ~NetworkEngine() {};
 
+    /**
+     * Sends values (with closest nodes) to a listenner.
+     *
+     * @param sa  The address of the listenner.
+     * @param sslen  The length of the sockaddr structure.
+     * @param rid  The request id of the initial listen request.
+     * @param hash  The hash key of the value.
+     * @param want  Wether to send ipv4 and/or ipv6 nodes.
+     * @param ntoken  Listen security token.
+     * @param nodes  The ipv4 closest nodes.
+     * @param nodes6  The ipv6 closest nodes.
+     * @param values  The values to send.
+     */
+    void tellListener(const sockaddr* sa, socklen_t salen, size_t rid, InfoHash hash, want_t want, Blob ntoken,
+            std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
+            std::vector<std::shared_ptr<Value>> values);
 
     /**
      * Cancel an ongoing request before it's processed.

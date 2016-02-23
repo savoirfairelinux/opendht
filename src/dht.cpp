@@ -1660,12 +1660,14 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
     }
 
     for (const auto& l : st.listeners) {
-        DHT_LOG.WARN("Storage changed. Sending update to %s %s.", l.id.toString().c_str(), print_addr((sockaddr*)&l.ss, l.sslen).c_str());
-        std::vector<ValueStorage> vals;
-        vals.push_back(v);
+        DHT_LOG.WARN("Storage changed. Sending update to %s %s.",
+                l.id.toString().c_str(), print_addr((sockaddr*)&l.ss, l.sslen).c_str());
+        std::vector<std::shared_ptr<Value>> vals;
+        vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
-        //TODO
-        //sendClosestNodes((const sockaddr*)&l.ss, l.sslen, TransId {TransPrefix::GET_VALUES, l.tid}, st.id, WANT4 | WANT6, ntoken, vals);
+        network_engine->tellListener((const sockaddr*)&l.ss, l.sslen, l.rid, st.id, WANT4 | WANT6, ntoken,
+                buckets.findClosestNodes(st.id, now, TARGET_NODES), buckets6.findClosestNodes(st.id, now, TARGET_NODES),
+                vals);
     }
 }
 
