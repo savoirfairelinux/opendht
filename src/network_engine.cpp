@@ -48,6 +48,20 @@ const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES  = 
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN  = {"lt"};
 constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
 
+void
+NetworkEngine::tellListener(const sockaddr *sa, socklen_t salen, size_t rid, InfoHash hash, want_t want,
+        Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
+        std::vector<std::shared_ptr<Value>> values)
+{
+    auto nnodes = bufferNodes(sa->sa_family, hash, want, nodes, nodes6);
+    try {
+        sendNodesValues(sa, salen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
+                values, ntoken);
+    } catch (const std::overflow_error& e) {
+        DHT_LOG.ERROR("Can't send value: buffer not large enough !");
+    }
+}
+
 /* Rate control for requests we receive. */
 bool
 NetworkEngine::rateLimit()
