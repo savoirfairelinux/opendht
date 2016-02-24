@@ -30,6 +30,13 @@ extern "C" {
 
 namespace dht {
 
+static constexpr InfoHash zeroes {};
+static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{{
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF
+}}};
+
 InfoHash::InfoHash(const std::string& hex) {
     if (hex.size() < 2*HASH_LEN) {
         fill(0);

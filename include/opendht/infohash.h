@@ -197,6 +197,8 @@ public:
 
 };
 
+static constexpr InfoHash zeroes;
+static constexpr InfoHash ones;
 }
 
 namespace std
