@@ -33,8 +33,6 @@
 
 namespace dht {
 
-static constexpr InfoHash zeroes;
-static constexpr InfoHash ones;
 static constexpr unsigned TARGET_NODES {8};
 
 using Address = std::pair<sockaddr_storage, socklen_t>;
