@@ -304,7 +304,8 @@ Dht::RoutingTable::depth(const RoutingTable::const_iterator& it) const
 }
 
 std::vector<std::shared_ptr<Node>>
-Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
+Dht::RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) const
+{
     std::vector<std::shared_ptr<Node>> nodes {};
     auto bucket = findBucket(id);
 
@@ -312,6 +313,9 @@ Dht::RoutingTable::findClosestNodes(const InfoHash id, size_t count) const {
 
     auto sortedBucketInsert = [&](const Bucket &b) {
         for (auto n : b.nodes) {
+            if (not n->isGood(now))
+                continue;
+
             auto here = std::find_if(nodes.begin(), nodes.end(),
                 [&id,&n](std::shared_ptr<Node> &node) {
                     return id.xorCmp(n->id, node->id) < 0;
@@ -2322,7 +2326,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
 
     bool want4 = true, want6 = true;
 
-    auto nodes = buckets.findClosestNodes(id);
+    auto nodes = buckets.findClosestNodes(id, now);
     if (!nodes.empty()) {
         if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
             for (auto &value : local_storage->getValues()) {
@@ -2338,7 +2342,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     }
     else { want4 = false; }
 
-    auto nodes6 = buckets6.findClosestNodes(id);
+    auto nodes6 = buckets6.findClosestNodes(id, now);
     if (!nodes6.empty()) {
         if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
             for (auto &value : local_storage->getValues()) {
@@ -2651,7 +2655,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
         {
             // We store a value only if we think we're part of the
             // SEARCH_NODES nodes around the target id.
-            auto closest_nodes = (from->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(msg.info_hash, SEARCH_NODES);
+            auto closest_nodes = (from->sa_family == AF_INET ? buckets : buckets6).findClosestNodes(msg.info_hash, now, SEARCH_NODES);
             if (msg.info_hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
                 DHT_WARN("[node %s %s] announce too far from the target id. Dropping value.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str());
@@ -3159,14 +3163,14 @@ Dht::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, co
     return numnodes;
 }
 
-unsigned
-Dht::bufferClosestNodes(uint8_t* nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const
+void
+Dht::bufferClosestNodes(uint8_t* nodes, const InfoHash& id,
+                        const std::vector<std::shared_ptr<Node>>& closest_nodes) const
 {
-    for (const auto& n : b.nodes) {
-        if (n->isGood(now))
-            numnodes = insertClosestNode(nodes, numnodes, id, *n);
+    size_t numnodes = 0;
+    for (const auto& n : closest_nodes) {
+        numnodes = insertClosestNode(nodes, numnodes, id, *n);
     }
-    return numnodes;
 }
 
 int
@@ -3181,25 +3185,15 @@ Dht::sendClosestNodes(const sockaddr *sa, socklen_t salen, TransId tid,
         want = sa->sa_family == AF_INET ? WANT4 : WANT6;
 
     if ((want & WANT4)) {
-        auto b = buckets.findBucket(id);
-        if (b != buckets.end()) {
-            numnodes = bufferClosestNodes(nodes, numnodes, id, *b);
-            if (std::next(b) != buckets.end())
-                numnodes = bufferClosestNodes(nodes, numnodes, id, *std::next(b));
-            if (b != buckets.begin())
-                numnodes = bufferClosestNodes(nodes, numnodes, id, *std::prev(b));
-        }
+        auto closest_nodes = buckets.findClosestNodes(id, now, TARGET_NODES);
+        bufferClosestNodes(nodes, id, closest_nodes);
+        numnodes = closest_nodes.size();
     }
 
     if ((want & WANT6)) {
-        auto b = buckets6.findBucket(id);
-        if (b != buckets6.end()) {
-            numnodes6 = bufferClosestNodes(nodes6, numnodes6, id, *b);
-            if (std::next(b) != buckets6.end())
-                numnodes6 = bufferClosestNodes(nodes6, numnodes6, id, *std::next(b));
-            if (b != buckets6.begin())
-                numnodes6 = bufferClosestNodes(nodes6, numnodes6, id, *std::prev(b));
-        }
+        auto closest_nodes = buckets6.findClosestNodes(id, now, TARGET_NODES);
+        bufferClosestNodes(nodes6, id, closest_nodes);
+        numnodes6 = closest_nodes.size();
     }
     //DHT_DEBUG("sending closest nodes (%d+%d nodes.)", numnodes, numnodes6);
 

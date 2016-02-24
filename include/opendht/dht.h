@@ -469,7 +469,7 @@ private:
 
         InfoHash middle(const RoutingTable::const_iterator&) const;
 
-        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, size_t count = TARGET_NODES) const;
+        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, time_point now, size_t count = TARGET_NODES) const;
 
         RoutingTable::iterator findBucket(const InfoHash& id);
         RoutingTable::const_iterator findBucket(const InfoHash& id) const;
@@ -984,7 +984,7 @@ private:
     int sendCachedPing(Bucket& b);
     bool bucketMaintenance(RoutingTable&);
     static unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
-    unsigned bufferClosestNodes(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const;
+    void bufferClosestNodes(uint8_t *nodes, const InfoHash& id, const std::vector<std::shared_ptr<Node>>& closest_nodes) const;
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
