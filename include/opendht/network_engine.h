@@ -79,11 +79,14 @@ private:
  * interface for handling sending and receiving packets. The following
  * parameters specify callbacks for DHT work:
  *
- * @param onPing       callback for ping request.
- * @param onFindNode   callback for "find node" request.
- * @param onGetValues  callback for "get values" request.
- * @param onListen     callback for "listen" request.
- * @param onAnnounce   callback for "announce" request.
+ * @param onError        callback for handling error messages.
+ * @param onNewNode      callback for handling new nodes.
+ * @param onReportedAddr callback for reporting an our address as seen from the other peer.
+ * @param onPing         callback for ping request.
+ * @param onFindNode     callback for "find node" request.
+ * @param onGetValues    callback for "get values" request.
+ * @param onListen       callback for "listen" request.
+ * @param onAnnounce     callback for "announce" request.
  */
 class NetworkEngine final {
 public:
@@ -101,14 +104,32 @@ public:
         std::vector<std::shared_ptr<Node>> nodes6;
     };
 
+    /*!
+     * @class   RequestStatus
+     * @brief   Request info for DHT layer.
+     * @details
+     * Request info associated to a NetworkEngine request. This enables
+     * interracting with the NetworkEngine by cancelling a request or extracting
+     * information like the reply time for that request.
+     */
+    struct RequestStatus {
+        std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
+        bool canceled {false};                     /* whether the request is canceled before done. */
+        bool completed {false};                    /* whether the request is completed. */
+        time_point start {time_point::min()};      /* time when the request is created. */
+        time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
+        time_point reply_time {time_point::min()}; /* time when we received the response from the node. */
+    };
+
 private:
 
     /**
      * @brief when we receive an error message.
      *
-     * @param node (type: std::shared_ptr<Node>) the node we received the error from.
+     * @param node (type: std::shared_ptr<Request>) the associated request for
+     *             which we got an error;
      */
-    std::function<void(std::shared_ptr<Node>, DhtProtocolException e)> onError;
+    std::function<void(std::shared_ptr<RequestStatus>, DhtProtocolException)> onError;
     /**
      * @brief when a new node happens.
      *
@@ -117,12 +138,15 @@ private:
      * @param id (type: InfoHash) id of the node.
      * @param saddr (type: sockaddr*) sockaddr* pointer containing address ip information.
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
+     * @param confirm (type: int) 1 if the node sent a message, 2 if it sent us a reply.
      */
     std::function<std::shared_ptr<Node>(const InfoHash&, const sockaddr*, socklen_t, int)> onNewNode;
     /**
      * @brief when an addres is reported from a distant node.
      *
-     * @param arg1  Arg description
+     * @param id (type: InfoHash) id of the node.
+     * @param saddr (type: sockaddr*) sockaddr* pointer containing address ip information.
+     * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      */
     std::function<void(const InfoHash&, sockaddr*, socklen_t)> onReportedAddr;
     /**
@@ -159,12 +183,12 @@ private:
      * @param node (type: std::shared_ptr<Node>) the requesting node.
      * @param vhash (type: InfoHash) hash of the value of interest.
      * @param token (type: Blob) security token.
-     * @param rid (type: size_t) request id.
+     * @param rid (type: uint16_t) request id.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
             InfoHash&,
             Blob&,
-            size_t)> onListen {};
+            uint16_t)> onListen {};
     /**
      * @brief on announce request callback.
      *
@@ -186,7 +210,7 @@ public:
      *
      * @param success (type: bool) true if no error occured, else false.
      */
-    using RequestCb = std::function<void(std::shared_ptr<Node>, size_t rid, RequestAnswer&&)>;
+    using RequestCb = std::function<void(std::shared_ptr<RequestStatus>, RequestAnswer&&)>;
 
     // Config from Dht.
     struct DhtInfo {
@@ -209,7 +233,7 @@ public:
         onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
         dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG)
     {
-        req_ids = std::uniform_int_distribution<decltype(req_ids)>{1}(rd_device);
+        transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
     }
     virtual ~NetworkEngine() {};
 
@@ -226,50 +250,47 @@ public:
      * @param nodes6  The ipv6 closest nodes.
      * @param values  The values to send.
      */
-    void tellListener(const sockaddr* sa, socklen_t salen, size_t rid, InfoHash hash, want_t want, Blob ntoken,
+    void tellListener(const sockaddr* sa, socklen_t salen, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
             std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
             std::vector<std::shared_ptr<Value>> values);
-
-    /**
-     * Cancel an ongoing request before it's processed.
-     *
-     * @param rid  The request id.
-     *
-     * @return true if it can be canceled, false otherwise.
-     */
-    bool cancelRequest(size_t rid);
 
     /**************
      *  Requests  *
      **************/
-    size_t sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired);
-    size_t sendPing(sockaddr* n, socklen_t salen, RequestCb on_done, RequestCb on_expired);
-    size_t sendFindNode(std::shared_ptr<Node> n,
-            const InfoHash& target,
-            want_t want,
-            int confirm,
-            RequestCb on_done,
-            RequestCb on_expired);
-    size_t sendGetValues(std::shared_ptr<Node> n,
-            const InfoHash& target,
-            want_t want,
-            int confirm,
-            RequestCb on_done,
-            RequestCb on_expired);
-    size_t sendListen(std::shared_ptr<Node> n,
-            const InfoHash& infohash,
-            const Blob& token,
-            int confirm,
-            RequestCb on_done,
-            RequestCb on_expired);
-    size_t sendAnnounceValue(std::shared_ptr<Node> n,
-            const InfoHash& infohash,
-            const Value& v,
-            time_point created,
-            const Blob& token,
-            int confirm,
-            RequestCb on_done,
-            RequestCb on_expired);
+    std::shared_ptr<RequestStatus>
+        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired);
+    std::shared_ptr<RequestStatus>
+        sendPing(sockaddr* n, socklen_t salen, RequestCb on_done, RequestCb on_expired);
+    std::shared_ptr<RequestStatus>
+        sendFindNode(std::shared_ptr<Node> n,
+                const InfoHash& target,
+                want_t want,
+                int confirm,
+                RequestCb on_done,
+                RequestCb on_expired);
+    std::shared_ptr<RequestStatus>
+        sendGetValues(std::shared_ptr<Node> n,
+                const InfoHash& target,
+                want_t want,
+                int confirm,
+                RequestCb on_done,
+                RequestCb on_expired);
+    std::shared_ptr<RequestStatus>
+        sendListen(std::shared_ptr<Node> n,
+                const InfoHash& infohash,
+                const Blob& token,
+                int confirm,
+                RequestCb on_done,
+                RequestCb on_expired);
+    std::shared_ptr<RequestStatus>
+        sendAnnounceValue(std::shared_ptr<Node> n,
+                const InfoHash& infohash,
+                const Value& v,
+                time_point created,
+                const Blob& token,
+                int confirm,
+                RequestCb on_done,
+                RequestCb on_expired);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -309,7 +330,6 @@ private:
     const int& dht_socket6;
     const Logger& DHT_LOG;
 
-
     bool rateLimit();
 
     struct TransPrefix : public  std::array<uint8_t, 2>  {
@@ -326,6 +346,8 @@ private:
      * host order.
      */
     struct TransId final : public std::array<uint8_t, 4> {
+        static const constexpr uint16_t INVALID {0};
+
         TransId() {}
         TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
         TransId(const TransPrefix prefix, uint16_t seqno = 0) {
@@ -383,15 +405,6 @@ private:
         void msgpack_unpack(msgpack::object o);
     };
 
-    /**
-     * When a request has expired, i.e when Request::MAX_ATTEMPT_COUNT attempts
-     * of processing the request have been made, we consider a node expired.
-     * Therefor, the requests for this node can be cancelled.
-     *
-     * @param rid  The request id.
-     */
-    void clearExpiredRequests(size_t rid);
-
     /*!
      * @class   Request
      * @brief   An atomic request destined to a node.
@@ -402,26 +415,25 @@ private:
      */
     struct Request {
         static const constexpr size_t MAX_ATTEMPT_COUNT {3};
-        static const constexpr uint32_t INVALID_ID {0};
 
-        Request(uint32_t id,
+        Request(uint16_t tid,
                 std::shared_ptr<Node> node,
                 Blob &&msg,
-                std::function<void(size_t, ParsedMessage&&)> on_done,
-                std::function<void(size_t, bool)> on_expired) :
-            id(id), node(node), msg(msg), on_done(on_done), on_expired(on_expired) {}
+                std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&&)> on_done,
+                std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired) :
+            tid(tid), msg(msg), on_done(on_done), on_expired(on_expired) {
+                status->node = node;
+            }
 
         bool expired() const { return attempt_count >= Request::MAX_ATTEMPT_COUNT; }
 
-        std::function<void(size_t, ParsedMessage&&)> on_done {};
-        std::function<void(size_t, bool)> on_expired {};
+        std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&&)> on_done {};
+        std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired {};
 
-        uint32_t id {INVALID_ID};
-        unsigned attempt_count {0};              /* number of attempt to process the request. */
-        time_point start {clock::now()};         /* time when the request is created. */
-        time_point last_try {time_point::min()}; /* time of the last attempt to process the request. */
-        std::shared_ptr<Node> node {};           /* the node to whom the request is destined. */
-        Blob msg {};                             /* the serialized message. */
+        const uint16_t tid {0};                    /* the request id. */
+        std::shared_ptr<RequestStatus> status {}; /* the request info for DHT layer. */
+        unsigned attempt_count {0};               /* number of attempt to process the request. */
+        Blob msg {};                              /* the serialized message. */
     };
 
     /**
@@ -429,9 +441,9 @@ private:
      *
      * @return the new id.
      */
-    uint32_t getNewRequestId() {
-        ++req_ids;
-        return req_ids == Request::INVALID_ID ? ++req_ids : req_ids;
+    uint16_t getNewTid() {
+        ++transaction_id;
+        return transaction_id == TransId::INVALID ? ++transaction_id : transaction_id;
     }
 
     struct MessageStats {
@@ -484,8 +496,8 @@ private:
     time_point now;
 
     // requests handling
-    uint32_t req_ids {1};
-    std::map<size_t, std::shared_ptr<Request>> requests;
+    uint16_t transaction_id {1};
+    std::map<uint16_t, std::shared_ptr<Request>> requests;
     MessageStats in_stats {}, out_stats {};
 };
 

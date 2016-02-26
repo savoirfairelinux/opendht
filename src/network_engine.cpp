@@ -38,7 +38,7 @@ const std::string DhtProtocolException::PUT_WRONG_TOKEN {"Put with wrong token"}
 const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid id"};
 
 const std::string NetworkEngine::my_v {"RNG1"};
-const constexpr uint32_t NetworkEngine::Request::INVALID_ID;
+const constexpr uint16_t NetworkEngine::TransId::INVALID;
 static std::mt19937 rd_device {dht::crypto::random_device{}()};
 
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::PING = {"pn"};
@@ -49,7 +49,7 @@ const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN  = {"lt"};
 constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
 
 void
-NetworkEngine::tellListener(const sockaddr *sa, socklen_t salen, size_t rid, InfoHash hash, want_t want,
+NetworkEngine::tellListener(const sockaddr *sa, socklen_t salen, uint16_t rid, InfoHash hash, want_t want,
         Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
         std::vector<std::shared_ptr<Value>> values)
 {
@@ -114,13 +114,21 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
     uint16_t ttid = 0;
     if (msg.type == MessageType::Error or msg.type == MessageType::Reply) {
         auto node = onNewNode(msg.id, from, fromlen, 2);
+        Request* req = nullptr;
+        const auto& reqp = requests.find(msg.tid[2]);
+        if (reqp != requests.end())
+            req = &(*reqp->second);
+
+        if (not req)
+            throw DhtProtocolException {DhtProtocolException::INVALID_REPLY_TID, "", msg.id};
+
         switch (msg.type) {
         case MessageType::Error: {
             if (msg.error_code == DhtProtocolException::UNAUTHORIZED
                     && msg.id != zeroes
                     && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)
                         || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
-                onError(node, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
+                onError(req->status, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
             } else {
                 DHT_LOG.WARN("[node %s %s] received unknown error message %u",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.error_code);
@@ -129,15 +137,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
         case MessageType::Reply:
-            const auto& reqp = requests.find(msg.tid[2]);
-            Request* req = nullptr;
-            if (reqp != requests.end())
-                req = &(*reqp->second);
-
-            if (not req)
-                throw DhtProtocolException {DhtProtocolException::INVALID_REPLY_TID, "", msg.id};
-
-            req->on_done(req->id, std::move(msg));
+            req->on_done(req->status, msg.tid[2], std::move(msg));
             break;
         }
     } else {
@@ -232,40 +232,9 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const sockaddr *sa, 
     return sendto(s, buf, len, flags, sa, salen);
 }
 
-bool
-NetworkEngine::cancelRequest(size_t rid) {
-    // ids are at most 32bit.
-    if ((rid >> 32) != 0) {
-        //TODO: utiliser exception?
-        return false;
-    } else {
-        auto rit = requests.find(rid);
-        if (rit == requests.end()) {
-            return false;
-        } else {
-            requests.erase(rit);
-            return true;
-        }
-    }
-}
-
-void
-NetworkEngine::clearExpiredRequests(size_t rid) {
-    auto reqp = requests.find(rid);
-    if (reqp != requests.end() and reqp->second->expired()) {
-        auto& req = reqp->second;
-        erase_if(requests, [=,&req](std::pair<const size_t, std::shared_ptr<Request>>& rp) {
-            auto& r = rp.second;
-            if (r->node->id == req->node->id && r->expired()) {
-                return true;
-            } else { return false; }
-        });
-    }
-}
-
-size_t
+std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired) {
-    auto tid = TransId {TransPrefix::PING};
+    auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
@@ -280,16 +249,17 @@ NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on
     pk.pack(std::string("v")); pk.pack(my_v);
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {getNewRequestId(), n, std::move(b), nullptr,
-        [=](size_t rid, bool s) { /* on expired */
-            on_expired(n, rid, {});
-            clearExpiredRequests(rid);
+    Request req {tid[2], n, std::move(b), nullptr,
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+            on_expired(req_status, {});
+            requests.erase(tid);
         }
     };
+    auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), 0, (sockaddr*)&n->ss, n->sslen);
     out_stats.ping++;
-    return tid[2];
+    return std::move(req_status);
 }
 
 void
@@ -310,10 +280,10 @@ NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-size_t
+std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want, int confirm,
         RequestCb on_done, RequestCb on_expired) {
-    auto tid = TransId {TransPrefix::FIND_NODE};
+    auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
@@ -336,26 +306,27 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {getNewRequestId(), n, std::move(b),
-        [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            on_done(n, rid, deserializeNodesValues(msg));
+    Request req {tid[2], n, std::move(b),
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+            on_done(req_status, deserializeNodesValues(msg));
         },
-        [=](size_t rid, bool s) { /* on expired */
-            on_expired(n, rid, {});
-            clearExpiredRequests(rid);
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+            on_expired(req_status, {});
+            requests.erase(tid);
         }
     };
+    auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
     out_stats.find++;
-    return tid[2];
+    return std::move(req_status);
 }
 
 
-size_t
+std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, want_t want, int confirm,
         RequestCb on_done, RequestCb on_expired) {
-    auto tid = TransId {TransPrefix::GET_VALUES};
+    auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
@@ -377,19 +348,20 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
     pk.pack(std::string("v")); pk.pack(my_v);
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {getNewRequestId(), n, std::move(b),
-        [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            on_done(n, rid, deserializeNodesValues(msg));
+    Request req {tid[2], n, std::move(b),
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+            on_done(req_status, deserializeNodesValues(msg));
         },
-        [=](size_t rid, bool s) { /* on expired */
-            on_expired(n, rid, {});
-            clearExpiredRequests(rid);
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+            on_expired(req_status, {});
+            requests.erase(tid);
         }
     };
+    auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
     out_stats.get++;
-    return tid[2];
+    return std::move(req_status);
 }
 
 NetworkEngine::RequestAnswer
@@ -565,10 +537,10 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
     return {std::move(bn4), std::move(bn6)};
 }
 
-size_t
+std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token, int confirm,
         RequestCb on_done, RequestCb on_expired) {
-    auto tid = TransId {TransPrefix::LISTEN};
+    auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
@@ -586,19 +558,20 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
 
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {getNewRequestId(), n, std::move(b),
-        [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            on_done(n, rid, {});
+    Request req {tid[2], n, std::move(b),
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+            on_done(req_status, {});
         },
-        [=](size_t rid, bool s) { /* on expired */
-            on_expired(n, rid, {});
-            clearExpiredRequests(rid);
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+            on_expired(req_status, {});
+            requests.erase(tid);
         }
     };
+    auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
     out_stats.listen++;
-    return tid[2];
+    return std::move(req_status);
 }
 
 void
@@ -619,10 +592,10 @@ NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, Trans
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-size_t
+std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infohash, const Value& value, time_point created,
         const Blob& token, int confirm, RequestCb on_done, RequestCb on_expired) {
-    auto tid = TransId {TransPrefix::ANNOUNCE_VALUES};
+    auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
@@ -644,19 +617,20 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     pk.pack(std::string("v")); pk.pack(my_v);
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {getNewRequestId(), n, std::move(b),
-        [=](size_t rid, ParsedMessage&& msg) { /* on done */
-            on_done(n, rid, {});
+    Request req {tid[2], n, std::move(b),
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+            on_done(req_status, {});
         },
-        [=](size_t rid, bool s) { /* on expired */
-            on_expired(n, rid, {});
-            clearExpiredRequests(rid);
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+            on_expired(req_status, {});
+            requests.erase(tid);
         }
     };
+    auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
     send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
     out_stats.put++;
-    return tid[2];
+    return std::move(req_status);
 }
 
 void

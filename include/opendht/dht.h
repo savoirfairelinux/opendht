@@ -868,7 +868,7 @@ private:
 
     void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
-    void onError(std::shared_ptr<Node> node, DhtProtocolException e);
+    void onError(std::shared_ptr<NetworkEngine::RequestStatus> node, DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
     /* when we receive a ping request */
