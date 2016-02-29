@@ -29,6 +29,7 @@ THE SOFTWARE.
 
 #include "infohash.h"
 #include "value.h"
+#include "utils.h"
 #include "network_engine.h"
 
 #include <string>
@@ -750,7 +751,8 @@ private:
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    std::list<Search> searches {};
+    std::map<InfoHash, Search> searches4 {};
+    std::map<InfoHash, Search> searches6 {};
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
@@ -851,7 +853,7 @@ private:
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
-    std::list<Search>::iterator newSearch();
+    Search* newSearch(InfoHash id, sa_family_t af);
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
