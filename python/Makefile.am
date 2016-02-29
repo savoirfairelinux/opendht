@@ -10,8 +10,13 @@ all-local: pybuild.stamp
 clean-local:
 	rm -rf $(builddir)/build $(builddir)/*.so
 
-install:
+install-exec-local:
 	$(PYTHON) setup.py install
 	rm -rf $(builddir)/build
+
+if HAVE_PIP
+uninstall-local:
+	/usr/bin/yes | $(PIP) uninstall $(PACKAGE)
+endif
 
 endif
