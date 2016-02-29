@@ -442,15 +442,16 @@ Dht::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
             pinged(*n);
         }
         /* Discard it from any searches in progress. */
-        for (auto& sr : searches) {
-            auto sni = std::begin(sr.nodes);
-            while (sni != std::end(sr.nodes)) {
-                if ((*sni).node == n)
-                    sni = sr.nodes.erase(sni);
-                else
-                    ++sni;
+        auto black_list_in = [&](std::map<InfoHash, Search> srs) {
+            for (auto& srp : srs) {
+                auto& sr = srp.second;
+                sr.nodes.erase(std::partition(sr.nodes.begin(), sr.nodes.end(), [&](SearchNode& sn) {
+                    return sn.node != n;
+                }), sr.nodes.end());
             }
-        }
+        };
+        black_list_in(searches4);
+        black_list_in(searches6);
     }
     /* And make sure we don't hear from it again. */
     memcpy(&blacklist[next_blacklisted], sa, salen);
@@ -518,11 +519,13 @@ Dht::RoutingTable::split(const RoutingTable::iterator& b)
 bool
 Dht::trySearchInsert(const std::shared_ptr<Node>& node)
 {
+    if (not node) return false;
+
     bool inserted = false;
     auto family = node->getFamily();
-    if (not node) return inserted;
-    for (auto& s : searches) {
-        if (s.af != family) continue;
+    auto srs = family == AF_INET ? searches4 : searches6;
+    for (auto& srp : srs) {
+        auto& s = srp.second;
         if (s.insertNode(node, now)) {
             inserted = true;
             search_time = std::min(search_time, s.getNextStepTime(types, now));
@@ -663,20 +666,6 @@ Dht::expireBuckets(RoutingTable& list)
     expire_stuff_time = now + duration(time_dis(rd));
 }
 
-/* While a search is in progress, we don't necessarily keep the nodes being
-   walked in the main bucket table.  A search in progress is identified by
-   a unique transaction id, a short (and hence small enough to fit in the
-   transaction id of the protocol packets). */
-
-Dht::Search *
-Dht::findSearch(unsigned short tid, sa_family_t af)
-{
-    auto sr = std::find_if (searches.begin(), searches.end(), [tid,af](const Search& s){
-        return s.tid == tid && s.af == af;
-    });
-    return sr == searches.end() ? nullptr : &(*sr);
-}
-
 bool
 Dht::Search::removeExpiredNode(time_point now)
 {
@@ -783,9 +772,12 @@ void
 Dht::expireSearches()
 {
     auto t = now - SEARCH_EXPIRE_TIME;
-    searches.remove_if([t](const Search& sr) {
+    auto expired = [t](std::pair<const InfoHash, Search>& srp) {
+        auto& sr = srp.second;
         return sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty() && sr.step_time < t;
-    });
+    };
+    erase_if(searches4, expired);
+    erase_if(searches6, expired);
 }
 
 Dht::SearchNode*
@@ -998,25 +990,26 @@ Dht::searchStep(Search& sr)
 }
 
 
-std::list<Dht::Search>::iterator
-Dht::newSearch()
+Dht::Search*
+Dht::newSearch(InfoHash id, sa_family_t af)
 {
-    auto oldest = searches.begin();
-    for (auto i = searches.begin(); i != searches.end(); ++i) {
-        if (i->done && (oldest->step_time > i->step_time))
-            oldest = i;
-    }
+    auto srs = af == AF_INET ? searches4 : searches6;
+    auto o = std::min_element(srs.begin(), srs.end(),
+        [](std::pair<const InfoHash, Search>& lsr, std::pair<const InfoHash, Search>& rsr) {
+            return lsr.second.done && rsr.second.step_time > lsr.second.step_time;
+        });
+    Search* oldest = o != srs.end() ? &(o->second) : nullptr;
 
     /* The oldest slot is expired. */
-    if (oldest != searches.end() && oldest->announce.empty() && oldest->listeners.empty() && oldest->step_time < now - SEARCH_EXPIRE_TIME) {
+    if (oldest && oldest->announce.empty() && oldest->listeners.empty() && oldest->step_time < now - SEARCH_EXPIRE_TIME) {
         DHT_LOG.WARN("Reusing expired search %s", oldest->id.toString().c_str());
         return oldest;
     }
 
     /* Allocate a new slot. */
-    if (searches.size() < MAX_SEARCHES) {
-        searches.push_front(Search {});
-        return searches.begin();
+    if (searches4.size() + searches6.size() < MAX_SEARCHES) {
+        srs[id] = Search {};
+        return &srs[id];
     }
 
     /* Oh, well, never mind.  Reuse the oldest slot. */
@@ -1279,16 +1272,17 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         return nullptr;
     }
 
-    auto sr = std::find_if (searches.begin(), searches.end(), [id,af](const Search& s) {
-        return s.id == id && s.af == af;
-    });
+    auto srs = (af == AF_INET ? searches4 : searches6);
+    auto srp = srs.find(id);
+    Search* sr = nullptr;
 
-    if (sr != searches.end()) {
+    if (srp != srs.end()) {
+        sr = &srp->second;
         sr->done = false;
         sr->expired = false;
     } else {
-        sr = newSearch();
-        if (sr == searches.end())
+        sr = newSearch(id, af);
+        if (not sr)
             return nullptr;
         sr->af = af;
         sr->tid = search_id++;
@@ -1321,10 +1315,9 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             callback(false, {});
         return;
     }
-    auto sri = std::find_if (searches.begin(), searches.end(), [id,af](const Search& s) {
-        return s.id == id && s.af == af;
-    });
-    Search* sr = (sri == searches.end()) ? search(id, af, nullptr, nullptr) : &(*sri);
+    auto srs = (af == AF_INET ? searches4 : searches6);
+    auto srp = srs.find(id);
+    Search* sr = (srp == srs.end()) ? search(id, af, nullptr, nullptr) : &srp->second;
     if (!sr) {
         if (callback)
             callback(false, {});
@@ -1375,10 +1368,9 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
        // DHT_LOG.ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
 
     //DHT_LOG.WARN("listenTo %s", id.toString().c_str());
-    auto sri = std::find_if (searches.begin(), searches.end(), [id,af](const Search& s) {
-        return s.id == id && s.af == af;
-    });
-    Search* sr = (sri == searches.end()) ? search(id, af, nullptr, nullptr) : &(*sri);
+    auto srs = af == AF_INET ? searches4 : searches6;
+    auto srp = srs.find(id);
+    Search* sr = (srp == srs.end()) ? search(id, af, nullptr, nullptr) : &srp->second;
     if (!sr)
         throw DhtException("Can't create search");
     DHT_LOG.ERROR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
@@ -1464,13 +1456,19 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     auto tokenlocal = std::get<0>(it->second);
     if (st != store.end() && tokenlocal)
         st->local_listeners.erase(tokenlocal);
-    for (auto& s : searches) {
-        if (s.id != id) continue;
-        auto af_token = s.af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
-        if (af_token == 0)
-            continue;
-        s.listeners.erase(af_token);
-    }
+
+    auto searches_cancel_listen = [&](std::map<InfoHash, Search> srs) {
+        for (auto& sp : srs) {
+            auto& s = sp.second;
+            if (s.id != id) continue;
+            auto af_token = s.af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
+            if (af_token == 0)
+                continue;
+            s.listeners.erase(af_token);
+        }
+    };
+    searches_cancel_listen(searches4);
+    searches_cancel_listen(searches6);
     listeners.erase(it);
     return true;
 }
@@ -1599,27 +1597,38 @@ std::vector<std::shared_ptr<Value>>
 Dht::getPut(const InfoHash& id)
 {
     std::vector<std::shared_ptr<Value>> ret;
-    for (const auto& search: searches) {
-        if (search.id != id)
-            continue;
+    auto find_values = [&](std::map<InfoHash, Search> srs) {
+        auto srp = srs.find(id);
+        if (srp == srs.end())
+            return;
+        auto& search = srp->second;
         ret.reserve(ret.size() + search.announce.size());
         for (const auto& a : search.announce)
             ret.push_back(a.value);
-    }
+    };
+    find_values(searches4);
+    find_values(searches6);
     return ret;
 }
 
 std::shared_ptr<Value>
 Dht::getPut(const InfoHash& id, const Value::Id& vid)
 {
-    for (const auto& search : searches) {
-        if (search.id != id)
-            continue;
+    auto find_value = [&](std::map<InfoHash, Search> srs) {
+        auto srp = srs.find(id);
+        if (srp == srs.end())
+            return std::shared_ptr<Value> {};
+        auto& search = srp->second;
         for (const auto& a : search.announce) {
             if (a.value->id == vid)
                 return a.value;
         }
-    }
+        return std::shared_ptr<Value> {};
+    };
+    auto v4 = find_value(searches4);
+    if (v4) return v4;
+    auto v6 = find_value(searches6);
+    if (v6) return v6;
     return {};
 }
 
@@ -1627,18 +1636,23 @@ bool
 Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 {
     bool canceled {false};
-    for (auto& search: searches) {
-        if (search.id != id)
-            continue;
-        for (auto it = search.announce.begin(); it != search.announce.end();) {
+    auto sr_cancel_put = [&](std::map<InfoHash, Search> srs) {
+        auto srp = srs.find(id);
+        if (srp == srs.end())
+            return;
+
+        auto& sr = srp->second;
+        for (auto it = sr.announce.begin(); it != sr.announce.end();) {
             if (it->value->id == vid) {
                 canceled = true;
-                it = search.announce.erase(it);
+                it = sr.announce.erase(it);
             }
             else
                 ++it;
         }
-    }
+    };
+    sr_cancel_put(searches4);
+    sr_cancel_put(searches6);
     return canceled;
 }
 
@@ -1813,9 +1827,13 @@ Dht::connectivityChanged()
     mybucket6_grow_time = now;
     reported_addr.clear();
     cache.clearBadNodes();
-    for (auto& s : searches)
-        for (auto& sn : s.nodes)
-            sn.listenStatus = {};
+    auto stop_listen = [&](std::map<InfoHash, Search> srs) {
+        for (auto& sp : srs)
+            for (auto& sn : sp.second.nodes)
+                sn.listenStatus = {};
+    };
+    stop_listen(searches4);
+    stop_listen(searches6);
 }
 
 void
@@ -2030,8 +2048,12 @@ Dht::dumpTables() const
     for (const auto& b : buckets6)
         dumpBucket(b, out);
 
-    for (const auto& sr : searches)
-        dumpSearch(sr, out);
+    auto dump_searches = [&](std::map<InfoHash, Search> srs) {
+        for (auto& srp : srs)
+            dumpSearch(srp.second, out);
+    };
+    dump_searches(searches4);
+    dump_searches(searches6);
     out << std::endl;
 
     out << getStorageLog() << std::endl;
@@ -2072,9 +2094,12 @@ Dht::getSearchesLog(sa_family_t af) const
 {
     std::stringstream out;
     out << "s:synched, u:updated, a:announced, c:candidate, f:cur req, x:expired, *:known" << std::endl;
-    for (const auto& sr : searches)
+    auto srs = af == AF_INET ? searches4 : searches6;
+    for (const auto& srp : srs) {
+        auto& sr = srp.second;
         if (af == 0 or sr.af == af)
             dumpSearch(sr, out);
+    }
     return out.str();
 }
 
