@@ -237,7 +237,7 @@ public:
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
-        myid(info.myid), dht_socket(info.dht_socket), dht_socket6(info.dht_socket6),DHT_LOG(info.DHT_LOG),
+        myid(info.myid), dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG),
         scheduler(scheduler), onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing),
         onFindNode(onFindNode), onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce)
     {
