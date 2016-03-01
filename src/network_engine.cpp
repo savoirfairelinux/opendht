@@ -37,6 +37,7 @@ const std::string DhtProtocolException::PUT_NO_INFOHASH {"Put with no info_hash"
 const std::string DhtProtocolException::PUT_WRONG_TOKEN {"Put with wrong token"};
 const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid id"};
 
+constexpr std::chrono::seconds NetworkEngine::UDP_REPLY_TIME;
 const std::string NetworkEngine::my_v {"RNG1"};
 const constexpr uint16_t NetworkEngine::TransId::INVALID;
 static std::mt19937 rd_device {dht::crypto::random_device{}()};
@@ -281,7 +282,7 @@ NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
 }
 
 std::shared_ptr<NetworkEngine::RequestStatus>
-NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want, int confirm,
+NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
         RequestCb on_done, RequestCb on_expired) {
     auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
     msgpack::sbuffer buffer;
@@ -317,14 +318,15 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
     };
     auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
-    send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            (sockaddr*)&n->ss, n->sslen);
     out_stats.find++;
     return std::move(req_status);
 }
 
 
 std::shared_ptr<NetworkEngine::RequestStatus>
-NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, want_t want, int confirm,
+NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
         RequestCb on_done, RequestCb on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
@@ -359,7 +361,8 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
     };
     auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
-    send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            (sockaddr*)&n->ss, n->sslen);
     out_stats.get++;
     return std::move(req_status);
 }
@@ -538,7 +541,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 std::shared_ptr<NetworkEngine::RequestStatus>
-NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token, int confirm,
+NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token,
         RequestCb on_done, RequestCb on_expired) {
     auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
     msgpack::sbuffer buffer;
@@ -569,7 +572,8 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     };
     auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
-    send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            (sockaddr*)&n->ss, n->sslen);
     out_stats.listen++;
     return std::move(req_status);
 }
@@ -594,7 +598,7 @@ NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, Trans
 
 std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infohash, const Value& value, time_point created,
-        const Blob& token, int confirm, RequestCb on_done, RequestCb on_expired) {
+        const Blob& token, RequestCb on_done, RequestCb on_expired) {
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -628,7 +632,8 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     };
     auto req_status = std::make_shared<RequestStatus>(req.status);
     requests.emplace(std::move(req));
-    send(buffer.data(), buffer.size(), confirm ? 0 : MSG_CONFIRM, (sockaddr*)&n->ss, n->sslen);
+    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            (sockaddr*)&n->ss, n->sslen);
     out_stats.put++;
     return std::move(req_status);
 }

@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include "value.h"
 #include "infohash.h"
 #include "node.h"
+#include "scheduler.h"
 #include "utils.h"
 #include "rng.h"
 
@@ -119,6 +120,13 @@ public:
         time_point start {time_point::min()};      /* time when the request is created. */
         time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
         time_point reply_time {time_point::min()}; /* time when we received the response from the node. */
+
+        bool expired(time_point now) const {
+            return reply_time < last_try && now > last_try + Node::MAX_RESPONSE_TIME;
+        }
+        bool pending(time_point now) const {
+            return reply_time < last_try && now - last_try <= Node::MAX_RESPONSE_TIME;
+        }
     };
 
 private:
@@ -220,7 +228,7 @@ public:
         const Logger& DHT_LOG;
     };
 
-    NetworkEngine(DhtInfo info,
+    NetworkEngine(DhtInfo info, std::shared_ptr<Scheduler> scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -229,9 +237,9 @@ public:
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
-        onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
-        dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG)
+        myid(info.myid), dht_socket(info.dht_socket), dht_socket6(info.dht_socket6),DHT_LOG(info.DHT_LOG),
+        scheduler(scheduler), onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing),
+        onFindNode(onFindNode), onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce)
     {
         transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
     }
@@ -265,21 +273,18 @@ public:
         sendFindNode(std::shared_ptr<Node> n,
                 const InfoHash& target,
                 want_t want,
-                int confirm,
                 RequestCb on_done,
                 RequestCb on_expired);
     std::shared_ptr<RequestStatus>
         sendGetValues(std::shared_ptr<Node> n,
                 const InfoHash& target,
                 want_t want,
-                int confirm,
                 RequestCb on_done,
                 RequestCb on_expired);
     std::shared_ptr<RequestStatus>
         sendListen(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
                 const Blob& token,
-                int confirm,
                 RequestCb on_done,
                 RequestCb on_expired);
     std::shared_ptr<RequestStatus>
@@ -288,7 +293,6 @@ public:
                 const Value& v,
                 time_point created,
                 const Blob& token,
-                int confirm,
                 RequestCb on_done,
                 RequestCb on_expired);
 
@@ -321,7 +325,9 @@ private:
     static const constexpr size_t NODE4_INFO_BUF_LEN {26};
     /* the length of a node info buffer in ipv6 format */
     static const constexpr size_t NODE6_INFO_BUF_LEN {38};
-    /* TODO: ???? */
+    /* TODO */
+    static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
+    /* TODO */
     static const std::string my_v;
 
     /* DHT info */
@@ -430,7 +436,7 @@ private:
         std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&&)> on_done {};
         std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired {};
 
-        const uint16_t tid {0};                    /* the request id. */
+        const uint16_t tid {0};                   /* the request id. */
         std::shared_ptr<RequestStatus> status {}; /* the request info for DHT layer. */
         unsigned attempt_count {0};               /* number of attempt to process the request. */
         Blob msg {};                              /* the serialized message. */
@@ -499,6 +505,8 @@ private:
     uint16_t transaction_id {1};
     std::map<uint16_t, std::shared_ptr<Request>> requests;
     MessageStats in_stats {}, out_stats {};
+
+    std::shared_ptr<Scheduler> scheduler;
 };
 
 }
