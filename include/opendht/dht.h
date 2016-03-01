@@ -132,29 +132,18 @@ public:
     // [[deprecated]]
     using NodeExport = dht::NodeExport;
 
-    typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
-    typedef std::function<bool(std::shared_ptr<Value> value)> GetCallbackSimple;
+    typedef std::function<bool(std::shared_ptr<Value> value)> GetCallback;
     typedef std::function<void()> ShutdownCallback;
 
     typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 
     static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 
-    static GetCallbackSimple
+    static GetCallback
     bindGetCb(GetCallbackRaw raw_cb, void* user_data) {
         if (not raw_cb) return {};
         return [=](const std::shared_ptr<Value>& value) {
             return raw_cb(value, user_data);
-        };
-    }
-    static GetCallback
-    bindGetCb(GetCallbackSimple cb) {
-        if (not cb) return {};
-        return [=](const std::vector<std::shared_ptr<Value>>& values) {
-            for (const auto& v : values)
-                if (not cb(v))
-                    return false;
-            return true;
         };
     }
 
@@ -261,12 +250,6 @@ public:
     void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
         get(key, cb, bindDoneCb(donecb), f);
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter()) {
-        get(key, bindGetCb(cb), donecb, f);
-    }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), f);
-    }
 
     /**
      * Get locally stored data for the given hash.
@@ -324,9 +307,6 @@ public:
      * @return a token to cancel the listener later.
      */
     size_t listen(const InfoHash&, GetCallback, Value::Filter = Value::AllFilter());
-    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
-        return listen(key, bindGetCb(cb), f);
-    }
 
     bool cancelListen(const InfoHash&, size_t token);
 
