@@ -426,31 +426,19 @@ private:
     struct SearchNode {
         SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
-        struct RequestStatus {
-            time_point request_time {time_point::min()};    /* the time of the last unanswered request */
-            time_point reply_time {time_point::min()};      /* the time of the last confirmation */
-            RequestStatus() {};
-            RequestStatus(time_point q, time_point a = time_point::min()) : request_time(q), reply_time(a) {};
-            bool expired(time_point now) const {
-                return reply_time < request_time && now > request_time + Node::MAX_RESPONSE_TIME;
-            }
-            bool pending(time_point now) const {
-                return reply_time < request_time && now - request_time <= Node::MAX_RESPONSE_TIME;
-            }
-        };
-        typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
+        using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<NetworkEngine::RequestStatus>>;
 
         /**
          * Can we use this node to listen/announce now ?
          */
         bool isSynced(time_point now) const {
             return not node->isExpired(now) and
-                   getStatus.reply_time >= now - Node::NODE_EXPIRE_TIME;
+                   getStatus->reply_time >= now - Node::NODE_EXPIRE_TIME;
         }
         bool canGet(time_point now, time_point update) const {
             return not node->isExpired(now) and
-                   (now > getStatus.reply_time + Node::NODE_EXPIRE_TIME or update > getStatus.reply_time) and
-                   now > getStatus.request_time + Node::MAX_RESPONSE_TIME;
+                   (now > getStatus->reply_time + Node::NODE_EXPIRE_TIME or update > getStatus->reply_time) and
+                   now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -458,18 +446,18 @@ private:
             if (ack == acked.end()) {
                 return false;
             }
-            return ack->second.reply_time + type.expiration > now;
+            return ack->second->reply_time + type.expiration > now;
         }
         bool isListening(time_point now) const {
-            return listenStatus.reply_time + LISTEN_EXPIRE_TIME > now;
+            return listenStatus->reply_time + LISTEN_EXPIRE_TIME > now;
         }
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end())
                 return time_point::min();
             return std::max(
-                ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN,
-                ack->second.request_time + Node::MAX_RESPONSE_TIME
+                ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN,
+                ack->second->last_try + Node::MAX_RESPONSE_TIME
             );
         }
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
@@ -477,8 +465,8 @@ private:
         }
         time_point getListenTime() const {
             return std::max(
-                listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
-                listenStatus.request_time + Node::MAX_RESPONSE_TIME
+                listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
+                listenStatus->last_try + Node::MAX_RESPONSE_TIME
             );
         }
         bool isBad(const time_point& now) const {
@@ -487,9 +475,9 @@ private:
 
         std::shared_ptr<Node> node {};
 
-        RequestStatus getStatus {};    /* get/sync status */
-        RequestStatus listenStatus {};
-        AnnounceStatusMap acked {};    /* announcement status for a given value id */
+        std::shared_ptr<NetworkEngine::RequestStatus> getStatus {};    /* get/sync status */
+        std::shared_ptr<NetworkEngine::RequestStatus> listenStatus {};
+        AnnounceStatusMap acked {};                                    /* announcement status for a given value id */
 
         Blob token {};
 
@@ -877,8 +865,10 @@ private:
     NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
     NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
+    void onFindNodeDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
     /* when we receive a "get values" request */
     NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
+    void onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
     /* when we receive a listen request */
     NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
     /* when we receive an announce request */

@@ -384,7 +384,7 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
             sin.sin_family = AF_INET;
             memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
             memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
-            req_a.nodes.emplace_back(Node {ni_id, (sockaddr*)&sin, sizeof(sin)});
+            req_a.nodes.emplace_back(onNewNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0));
         }
         for (unsigned i = 0; i < msg.nodes6.size() / NODE6_INFO_BUF_LEN; i++) {
             uint8_t *ni = msg.nodes6.data() + i * NODE6_INFO_BUF_LEN;
@@ -396,7 +396,7 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
             sin6.sin6_family = AF_INET6;
             memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
             memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
-            req_a.nodes.emplace_back(Node {ni_id, (sockaddr*)&sin6, sizeof(sin6)});
+            req_a.nodes.emplace_back(onNewNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), 0));
         }
     }
     return std::move(req_a);
