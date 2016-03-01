@@ -104,7 +104,6 @@ constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
-constexpr std::chrono::seconds Dht::UDP_REPLY_TIME;
 
 void
 Dht::setLoggers(LogMethod&& error, LogMethod&& warn, LogMethod&& debug)

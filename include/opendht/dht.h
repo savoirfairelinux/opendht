@@ -31,6 +31,7 @@ THE SOFTWARE.
 #include "value.h"
 #include "utils.h"
 #include "network_engine.h"
+#include "scheduler.h"
 
 #include <string>
 #include <array>
@@ -345,8 +346,6 @@ private:
     static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME {30};
 
     static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
-
-    static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
 
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
@@ -766,6 +765,7 @@ private:
     std::unique_ptr<NetworkEngine> network_engine {};
 
     // timing
+    std::shared_ptr<Scheduler> scheduler;
     time_point now;
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
     time_point expire_stuff_time {time_point::min()};

@@ -62,21 +62,29 @@ public:
     /**
      * Runs the jobs to do up to now.
      *
-     * @param now  The time reference to "now".
+     * @return The time reference to "now".
      */
-    void run(time_point now) {
+    time_point run() {
+        now = clock::now();
         for (auto t = timers.begin(); t != timers.end(); ) {
             if (t->first > now)
-                return;
+                return now;
             t->second->do_();
             t = timers.erase(t);
         }
+        return now;
     }
 
-    time_point getNextJobTime() { return timers.begin()->first; }
+    inline time_point getNextJobTime() { return timers.begin()->first; }
 
+    /**
+     * Accessors for the common time reference used for synchronizing
+     * operations.
+     */
+    inline time_point time() const { return now; }
 
 private:
+    time_point now {time_point::min()};
     std::multimap<time_point, std::shared_ptr<Job>> timers {}; /* the jobs ordered by time */
 };
 
