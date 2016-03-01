@@ -45,7 +45,7 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
 {
     std::cout << "step at " << cur_h << ", depth " << cur_depth << std::endl;
     done++;
-    dht.get(cur_h, [all_nodes](const std::vector<std::shared_ptr<Value>>& /*values*/) {
+    dht.get(cur_h, [all_nodes](std::shared_ptr<Value> /*values*/) {
         return true;
     }, [&,all_nodes,cur_h,cur_depth](bool, const std::vector<std::shared_ptr<Node>>& nodes) {
         all_nodes->insert(nodes.begin(), nodes.end());
