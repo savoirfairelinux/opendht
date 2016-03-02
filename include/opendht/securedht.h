@@ -86,9 +86,6 @@ public:
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
     void get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& = {});
-    void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb, Value::Filter&& f = {}) {
-        get(id, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f));
-    }
 
     size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {});
 
