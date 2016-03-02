@@ -48,14 +48,10 @@ public:
     virtual ~DhtRunner();
 
     void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f={});
-
-    void get(InfoHash id, Dht::GetCallback cb, Dht::DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
-        get(id, cb, Dht::bindDoneCb(donecb), f);
-    }
-    void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter());
+    void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb={}, Value::Filter f = Value::AllFilter());
 
     template <class T>
-    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, Dht::DoneCallbackSimple dcb={})
+    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, Dht::DoneCallback dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
@@ -64,7 +60,7 @@ public:
         getFilterSet<T>());
     }
     template <class T>
-    void get(InfoHash hash, std::function<bool(T&&)> cb, Dht::DoneCallbackSimple dcb={})
+    void get(InfoHash hash, std::function<bool(T&&)> cb, Dht::DoneCallback dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
@@ -134,38 +130,17 @@ public:
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
     void put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
-    void put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
-        put(hash, value, Dht::bindDoneCb(cb));
-    }
-
     void put(InfoHash hash, Value&& value, Dht::DoneCallback cb={});
-    void put(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
-        put(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
-    }
-    void put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb={});
+    void put(const std::string& key, Value&& value, Dht::DoneCallback cb={});
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
     void putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
-        putSigned(hash, value, Dht::bindDoneCb(cb));
-    }
-
     void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb={});
-    void putSigned(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
-        putSigned(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
-    }
-    void putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb={});
+    void putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb={});
 
     void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
-        putEncrypted(hash, to, value, Dht::bindDoneCb(cb));
-    }
-
     void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallbackSimple cb) {
-        putEncrypted(hash, to, std::forward<Value>(value), Dht::bindDoneCb(cb));
-    }
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb={});
 
     void bootstrap(const char* host, const char* service);

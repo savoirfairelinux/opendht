@@ -189,7 +189,7 @@ Dht::shutdown(ShutdownCallback cb) {
      ****************************/
 
     auto remaining = std::make_shared<int>(0);
-    auto str_donecb = [=](bool, const std::vector<std::shared_ptr<Node>>&) {
+    auto str_donecb = [=](bool) {
         --*remaining;
         if (!*remaining && cb) { cb(); }
         else DHT_WARN("Shuting down node: %u ops remaining.", *remaining);
@@ -949,7 +949,7 @@ Dht::searchStep(Search& sr)
             for (auto b = sr.callbacks.begin(); b != sr.callbacks.end();) {
                 if (sr.isDone(*b, now)) {
                     if (b->done_cb)
-                        b->done_cb(true, sr.getNodes());
+                        b->done_cb(true, &sr);
                     b = sr.callbacks.erase(b);
                 }
                 else
@@ -1073,17 +1073,17 @@ Dht::searchStep(Search& sr)
                     auto get_cbs = std::move(sr.callbacks);
                     for (const auto& g : get_cbs) {
                         if (g.done_cb)
-                            g.done_cb(false, {});
+                            g.done_cb(false, &sr);
                     }
                 }
                 {
-                    std::vector<DoneCallback> a_cbs;
+                    std::vector<SearchDoneCb> a_cbs;
                     a_cbs.reserve(sr.announce.size());
                     for (const auto& a : sr.announce)
                         if (a.callback)
                             a_cbs.emplace_back(std::move(a.callback));
                     for (const auto& a : a_cbs)
-                        a(false, {});
+                        a(false, &sr);
                 }
             }
         }
@@ -1362,12 +1362,12 @@ Dht::Search::refill(const RoutingTable& r, time_point now) {
 
 /* Start a search. */
 Dht::Search*
-Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallback done_callback, Value::Filter filter)
+Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, SearchDoneCb done_callback, Value::Filter filter)
 {
     if (!isRunning(af)) {
         DHT_ERROR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         if (done_callback)
-            done_callback(false, {});
+            done_callback(false, nullptr);
         return nullptr;
     }
 
@@ -1406,11 +1406,11 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
 }
 
 void
-Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created)
+Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, SearchDoneCb callback, time_point created)
 {
     if (!value) {
         if (callback)
-            callback(false, {});
+            callback(false, nullptr);
         return;
     }
     auto sri = std::find_if (searches.begin(), searches.end(), [id,af](const Search& s) {
@@ -1419,7 +1419,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
     Search* sr = (sri == searches.end()) ? search(id, af, nullptr, nullptr) : &(*sri);
     if (!sr) {
         if (callback)
-            callback(false, {});
+            callback(false, nullptr);
         return;
     }
     sr->done = false;
@@ -1440,15 +1440,15 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         }
         if (sr->isAnnounced(value->id, getType(value->type), now)) {
             if (a_sr->callback)
-                a_sr->callback(true, {});
+                a_sr->callback(true, sr);
             a_sr->callback = {};
             if (callback) {
-                callback(true, {});
+                callback(true, sr);
             }
             return;
         } else {
             if (a_sr->callback)
-                a_sr->callback(false, {});
+                a_sr->callback(false, sr);
             a_sr->callback = callback;
         }
     }
@@ -1576,24 +1576,24 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, 
     auto done = std::make_shared<bool>(false);
     auto done4 = std::make_shared<bool>(false);
     auto done6 = std::make_shared<bool>(false);
-    auto donecb = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
+    auto donecb = [=]() {
         // Callback as soon as the value is announced on one of the available networks
         if (callback && !*done && (*ok || (*done4 && *done6))) {
-            callback(*ok, nodes);
+            callback(*ok);
             *done = true;
         }
     };
-    announce(id, AF_INET, val, [=](bool ok4, const std::vector<std::shared_ptr<Node>>& nodes) {
+    announce(id, AF_INET, val, [=](bool ok4, Search*) {
         DHT_DEBUG("Announce done IPv4 %d", ok4);
         *done4 = true;
         *ok |= ok4;
-        donecb(nodes);
+        donecb();
     }, created);
-    announce(id, AF_INET6, val, [=](bool ok6, const std::vector<std::shared_ptr<Node>>& nodes) {
+    announce(id, AF_INET6, val, [=](bool ok6, Search*) {
         DHT_DEBUG("Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
-        donecb(nodes);
+        donecb();
     }, created);
 }
 
@@ -1611,17 +1611,15 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     auto status4 = std::make_shared<OpStatus>();
     auto status6 = std::make_shared<OpStatus>();
     auto vals = std::make_shared<std::vector<std::shared_ptr<Value>>>();
-    auto all_nodes = std::make_shared<std::vector<std::shared_ptr<Node>>>();
 
-    auto done_l = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
+    auto done_l = [=]() {
         if (status->done)
             return;
-        all_nodes->insert(all_nodes->end(), nodes.begin(), nodes.end());
         if (status->ok || (status4->done && status6->done)) {
             bool ok = status->ok || status4->ok || status6->ok;
             status->done = true;
             if (donecb)
-                donecb(ok, *all_nodes);
+                donecb(ok);
         }
     };
     auto cb = [=](std::shared_ptr<Value> v) {
@@ -1636,7 +1634,7 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
                 vals->emplace_back(v);
             }
         }
-        done_l({});
+        done_l();
         return !status->ok;
     };
 
@@ -1644,17 +1642,50 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     for (const auto& v : getLocal(id, filter))
         cb(v);
 
-    Dht::search(id, AF_INET, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
+    Dht::search(id, AF_INET, cb, [=](bool ok, Search*) {
+        status4->done = true;
+        status4->ok = ok;
+        done_l();
+    });
+    Dht::search(id, AF_INET6, cb, [=](bool ok, Search*) {
+        status6->done = true;
+        status6->ok = ok;
+        done_l();
+    });
+}
+
+void
+Dht::find(const InfoHash& id, NodesCallback cb)
+{
+    now = clock::now();
+
+    auto status = std::make_shared<OpStatus>();
+    auto status4 = std::make_shared<OpStatus>();
+    auto status6 = std::make_shared<OpStatus>();
+    auto all_nodes = std::make_shared<std::vector<std::shared_ptr<Node>>>();
+
+    auto done_l = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
+        if (status->done)
+            return;
+        all_nodes->insert(all_nodes->end(), nodes.begin(), nodes.end());
+        if (status->ok || (status4->done && status6->done)) {
+            bool ok = status->ok || status4->ok || status6->ok;
+            status->done = true;
+            if (cb)
+                cb(ok, *all_nodes);
+        }
+    };
+    Dht::search(id, AF_INET, {}, [=](bool ok, Search* sr) {
         //DHT_WARN("DHT done IPv4");
         status4->done = true;
         status4->ok = ok;
-        done_l(nodes);
+        done_l(sr->getNodes());
     });
-    Dht::search(id, AF_INET6, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
+    Dht::search(id, AF_INET6, {}, [=](bool ok, Search* sr) {
         //DHT_WARN("DHT done IPv6");
         status6->done = true;
         status6->ok = ok;
-        done_l(nodes);
+        done_l(sr->getNodes());
     });
 }
 
@@ -2300,12 +2331,21 @@ Dht::bucketMaintenance(RoutingTable& list)
 }
 
 size_t
-Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
+Dht::maintainStorage(InfoHash id, bool force, DoneCallback callback) {
     size_t announce_per_af = 0;
     auto local_storage = findStorage(id);
     if (local_storage == store.end()) { return 0; }
 
     bool want4 = true, want6 = true;
+    auto done4 = std::make_shared<bool>(false);
+    auto done6 = std::make_shared<bool>(false);
+    auto ok = std::make_shared<bool>(false);
+    auto donecb = [=]() {
+        // Callback as soon as the value is announced on one of the available networks
+        if (callback && (*done4 && *done6)) {
+            callback(*ok);
+        }
+    };
 
     auto nodes = buckets.findClosestNodes(id);
     if (!nodes.empty()) {
@@ -2314,7 +2354,10 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
-                    announce(id, AF_INET, value.data, donecb, value.time);
+                    announce(id, AF_INET, value.data, [=](bool ok4, Search*){
+                        *ok |= ok4;
+                        donecb();
+                    }, value.time);
                     ++announce_per_af;
                 }
             }
@@ -2330,7 +2373,10 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
-                    announce(id, AF_INET6, value.data, donecb, value.time);
+                    announce(id, AF_INET6, value.data, [=](bool ok4, Search*){
+                        *ok |= ok4;
+                        donecb();
+                    }, value.time);
                     ++announce_per_af;
                 }
             }
@@ -2545,7 +2591,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
                     auto type = getType(a.value->type);
                     if (sr->isAnnounced(msg.value_id, type, now)) {
                         if (a.callback) {
-                            a.callback(true, sr->getNodes());
+                            a.callback(true, sr);
                             a.callback = nullptr;
                         }
                         return true;

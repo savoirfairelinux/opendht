@@ -147,24 +147,25 @@ public:
         };
     }
 
-    typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
-    typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+    typedef void (*NodesCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>* nodes, void *user_data);
+    typedef void (*DoneCallbackRaw)(bool, void *user_data);
     typedef void (*ShutdownCallbackRaw)(void *user_data);
 
-    typedef std::function<void(bool success)> DoneCallbackSimple;
+    using DoneCallback = std::function<void(bool success)>;
+    using NodesCallback = std::function<void(bool, const std::vector<std::shared_ptr<Node>>& nodes)>;
 
     static ShutdownCallback
     bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data) {
         return [=]() { shutdown_cb_raw(user_data); };
     }
     static DoneCallback
-    bindDoneCb(DoneCallbackSimple donecb) {
+    bindDoneCb(DoneCallbackRaw donecb, void* user_data) {
         if (not donecb) return {};
         using namespace std::placeholders;
-        return std::bind(donecb, _1);
+        return std::bind(donecb, _1, user_data);
     }
-    static DoneCallback
-    bindDoneCb(DoneCallbackRaw raw_cb, void* user_data) {
+    static NodesCallback
+    bindNodeCb(NodesCallbackRaw raw_cb, void* user_data) {
         if (not raw_cb) return {};
         return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
             raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
@@ -247,9 +248,6 @@ public:
      * @param f a filter function used to prefilter values.
      */
     void get(const InfoHash& key, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter());
-    void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
-        get(key, cb, bindDoneCb(donecb), f);
-    }
 
     /**
      * Get locally stored data for the given hash.
@@ -271,16 +269,10 @@ public:
      * reannounced on a regular basis.
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb=nullptr, time_point created=time_point::max());
-    void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
-        put(key, v, bindDoneCb(cb), created);
-    }
+    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb={}, time_point created=time_point::max());
 
-    void put(const InfoHash& key, Value&& v, DoneCallback cb=nullptr, time_point created=time_point::max()) {
+    void put(const InfoHash& key, Value&& v, DoneCallback cb={}, time_point created=time_point::max()) {
         put(key, std::make_shared<Value>(std::move(v)), cb, created);
-    }
-    void put(const InfoHash& key, Value&& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
-        put(key, std::forward<Value>(v), bindDoneCb(cb), created);
     }
 
     /**
@@ -309,6 +301,8 @@ public:
     size_t listen(const InfoHash&, GetCallback, Value::Filter = Value::AllFilter());
 
     bool cancelListen(const InfoHash&, size_t token);
+
+    void find(const InfoHash&, NodesCallback);
 
     /**
      * Inform the DHT of lower-layer connectivity changes.
@@ -560,6 +554,10 @@ private:
         bool pending {false};
     };
 
+    struct Search;
+
+    using SearchDoneCb = std::function<void(bool, Search*)>;
+
     /**
      * A single "get" operation data
      */
@@ -567,7 +565,7 @@ private:
         time_point start;
         Value::Filter filter;
         GetCallback get_cb;
-        DoneCallback done_cb;
+        SearchDoneCb done_cb;
     };
 
     /**
@@ -576,7 +574,7 @@ private:
     struct Announce {
         std::shared_ptr<Value> value;
         time_point created;
-        DoneCallback callback;
+        SearchDoneCb callback;
     };
 
     /**
@@ -986,8 +984,8 @@ private:
      * specified infohash (id), using the specified IP version (IPv4 or IPv6).
      * The values can be filtered by an arbitrary provided filter.
      */
-    Search* search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
-    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
+    Search* search(const InfoHash& id, sa_family_t af, GetCallback = {}, SearchDoneCb = {}, Value::Filter = {});
+    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, SearchDoneCb callback, time_point created=time_point::max());
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
     std::list<Search>::iterator newSearch();

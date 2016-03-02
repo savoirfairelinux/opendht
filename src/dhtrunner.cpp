@@ -303,7 +303,7 @@ DhtRunner::get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value
 }
 
 void
-DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallbackSimple dcb, Value::Filter f)
+DhtRunner::get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f)
 {
     get(InfoHash::get(key), vcb, dcb, f);
 }
@@ -369,7 +369,7 @@ DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb
 }
 
 void
-DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb)
+DhtRunner::put(const std::string& key, Value&& value, Dht::DoneCallback cb)
 {
     put(InfoHash::get(key), std::forward<Value>(value), cb);
 }
@@ -401,7 +401,7 @@ DhtRunner::putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb)
 }
 
 void
-DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb)
+DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallback cb)
 {
     putSigned(InfoHash::get(key), std::forward<Value>(value), cb);
 }
