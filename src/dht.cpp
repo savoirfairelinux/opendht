@@ -957,7 +957,7 @@ Dht::searchStep(Search& sr)
                         );
                     }
                     if (a_status == n.acked.end()) {
-                        n.acked[vid] = { now };
+                        n.acked[vid] = std::make_shared<NetworkEngine::RequestStatus>(now);
                     } else {
                         a_status->second->last_try = now;
                     }
@@ -1108,7 +1108,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or sn.candidate)
             continue;
-        if (sn.getStatus.reply_time < limit)
+        if (sn.getStatus->reply_time < limit)
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -1125,7 +1125,7 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
-        if (sn.getStatus.reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
+        if (sn.getStatus->reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
             // not isSynced
             ut = std::min(ut, std::max(
                 sn.getStatus->last_try + Node::MAX_RESPONSE_TIME,
@@ -1135,7 +1135,7 @@ Dht::Search::getUpdateTime(time_point now) const
         } else {
             ut = std::min(ut, std::max(
                 sn.getStatus->last_try + Node::MAX_RESPONSE_TIME,
-                sn.getStatus.reply_time + Node::NODE_EXPIRE_TIME));
+                sn.getStatus->reply_time + Node::NODE_EXPIRE_TIME));
         }
         t++;
         if (not sn.candidate and ++i == TARGET_NODES)
@@ -2037,16 +2037,16 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << (n.node->isExpired(now) ? 'x' : ' ') << "]";
 
         out << " ["
-            << (n.getStatus.pending(now) ? 'f' : (n.getStatus.expired(now) ? 'x' : ' '))
+            << (n.getStatus->pending(now) ? 'f' : (n.getStatus->expired(now) ? 'x' : ' '))
             << (n.isSynced(now) ? 's' : '-')
-            << ((n.getStatus.reply_time > last_get) ? 'u' : '-') << "] ";
+            << ((n.getStatus->reply_time > last_get) ? 'u' : '-') << "] ";
 
         if (not sr.listeners.empty()) {
             if (n.listenStatus->last_try == time_point::min())
                 out << "     ";
             else
                 out << "["
-                    << (n.listenStatus.pending(now) ? 'f' : (n.listenStatus.expired(now) ? 'x' : ' '))
+                    << (n.listenStatus->pending(now) ? 'f' : (n.listenStatus->expired(now) ? 'x' : ' '))
                     << (n.isListening(now) ? 'l' : '-') << "] ";
         }
 
@@ -2063,11 +2063,11 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                         out << ' ';
                     } else {
                         auto& astatus = ack->second;
-                        if (astatus.reply_time + getType(a.value->type).expiration > now)
+                        if (astatus->reply_time + getType(a.value->type).expiration > now)
                             out << 'a';
-                        else if (astatus.pending(now))
+                        else if (astatus->pending(now))
                             out << 'f';
-                        else if (astatus.expired(now))
+                        else if (astatus->expired(now))
                             out << 'x';
                         else
                             out << ' ';
@@ -2524,7 +2524,7 @@ Dht::onError(std::shared_ptr<NetworkEngine::RequestStatus> status, DhtProtocolEx
                 if (n.node != status->node) continue;
                 cleared++;
                 n.getStatus->last_try = TIME_INVALID;
-                n.getStatus.reply_time = TIME_INVALID;
+                n.getStatus->reply_time = TIME_INVALID;
                 if (searchSendGetValues(sr))
                     sr.get_step_time = now;
                 break;
