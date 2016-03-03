@@ -871,9 +871,11 @@ private:
     void onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
     /* when we receive a listen request */
     NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
+    void onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
+    void onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
 };
 
 }
