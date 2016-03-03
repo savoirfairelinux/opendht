@@ -812,7 +812,7 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
             }
         };
     auto onExpired =
-        [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
+        [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable {
             if (srp) {
                 searchStep(*srp);
             }
@@ -896,8 +896,7 @@ Dht::searchStep(Search& sr)
                                     searchStep(*srp);
                                 }
                             },
-                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                                NetworkEngine::RequestAnswer&& answer) mutable
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
                             { /* on expired */
                                 if (srp) {
                                     searchStep(*srp);
@@ -940,15 +939,13 @@ Dht::searchStep(Search& sr)
                     {
                         auto srp = &sr;
                         network_engine->sendAnnounceValue(n.node, sr.id, *a.value, a.created, n.token,
-                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                                NetworkEngine::RequestAnswer&& answer) mutable
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
                             { /* on done */
                                 if (srp) {
                                     searchStep(*srp);
                                 }
                             },
-                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                                NetworkEngine::RequestAnswer&& answer) mutable
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
                             { /* on expired */
                                 if (srp) {
                                     searchStep(*srp);
@@ -2232,11 +2229,12 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
         auto sr = q->af == AF_INET ? searches4.find(id) : searches6.find(id);
         auto srp = &sr->second;
         network_engine->sendFindNode(n, id, want,
-          [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable
+          [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+              NetworkEngine::RequestAnswer&& answer) mutable
           { /* on done */
               onGetValuesDone(status, answer, srp);
           },
-          [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable
+          [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
           { /* on expired */
               searchStep(*srp);
           }
@@ -2298,8 +2296,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                     { /* on done */
                         onGetValuesDone(status, answer, srp);
                     },
-                    [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                        NetworkEngine::RequestAnswer&& answer) mutable
+                    [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
                     { /* on expired */
                         searchStep(*srp);
                     }
@@ -2545,7 +2542,7 @@ Dht::onReportedAddr(const InfoHash& id, sockaddr* addr , socklen_t addr_length)
 }
 
 NetworkEngine::RequestAnswer
-Dht::onPing(std::shared_ptr<Node> node)
+Dht::onPing(std::shared_ptr<Node>)
 {
     return {};
 }
@@ -2568,7 +2565,7 @@ Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want)
 }
 
 NetworkEngine::RequestAnswer
-Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want)
+Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
 {
     NetworkEngine::RequestAnswer* answer;
     DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
@@ -2667,7 +2664,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 }
 
 void
-Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr)
+Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&, Search* sr)
 {
    DHT_LOG.DEBUG("Got reply to listen.");
    if (sr) {
@@ -2773,19 +2770,18 @@ Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Networ
 
     // If the value was just successfully announced, call the callback
     sr->announce.erase(std::remove_if(sr->announce.begin(), sr->announce.end(),
-        [&](std::pair<const uint16_t, Announce>& ap) {
-        auto& a = ap.second;
-        if (!a.value || a.value->id != v->id)
-            return false;
-        auto type = getType(a.value->type);
-        if (sr->isAnnounced(v->id, type, now)) {
-            if (a.callback) {
-                a.callback(true, sr->getNodes());
-                a.callback = nullptr;
+        [&](Announce& a) {
+            if (!a.value || a.value->id != v->id)
+                return false;
+            auto type = getType(a.value->type);
+            if (sr->isAnnounced(v->id, type, now)) {
+                if (a.callback) {
+                    a.callback(true, sr->getNodes());
+                    a.callback = nullptr;
+                }
+                return true;
             }
-            return true;
-        }
-        return false;
+            return false;
     }), sr->announce.end());
 }
 

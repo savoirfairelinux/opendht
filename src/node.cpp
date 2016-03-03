@@ -33,6 +33,7 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 /* This is our definition of a known-good node. */
+bool
 Node::isGood(time_point now) const
 {
     return
@@ -79,6 +80,12 @@ Node::received(time_point now, bool answer)
         pinged = 0;
         reply_time = now;
     }
+}
+
+std::ostream& operator<< (std::ostream& s, const Node& h)
+{
+    s << h.id << " " << print_addr(h.ss, h.sslen);
+    return s;
 }
 
 }
