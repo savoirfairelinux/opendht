@@ -38,7 +38,7 @@ const std::string printTime(const std::time_t& now) {
     return buf;
 }
 
-void print_node_info(const DhtRunner& dht, const dht_params& params) {
+void print_node_info(const DhtRunner& dht, const dht_params&) {
     std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  dht.getBoundPort() << std::endl;
     std::cout << "Public key ID " << dht.getId() << std::endl;
 }

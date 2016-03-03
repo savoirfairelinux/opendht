@@ -18,11 +18,12 @@
  */
 
 #include "utils.h"
+#include "default_types.h"
 
 namespace dht {
 
 std::string
-dht::print_addr(const sockaddr* sa, socklen_t slen)
+print_addr(const sockaddr* sa, socklen_t slen)
 {
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
@@ -40,13 +41,13 @@ dht::print_addr(const sockaddr* sa, socklen_t slen)
 }
 
 std::string
-dht::print_addr(const sockaddr_storage& ss, socklen_t sslen)
+print_addr(const sockaddr_storage& ss, socklen_t sslen)
 {
     return print_addr((const sockaddr*)&ss, sslen);
 }
 
 std::string
-dht::printAddr(const Address& addr) {
+printAddr(const Address& addr) {
     return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 

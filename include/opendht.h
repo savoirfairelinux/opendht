@@ -20,6 +20,7 @@
 #pragma once
 
 #include "opendht/dht.h"
+#include "opendht/node.h"
 #include "opendht/value.h"
 #include "opendht/infohash.h"
 #include "opendht/securedht.h"

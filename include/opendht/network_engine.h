@@ -60,16 +60,16 @@ public:
     static const std::string PUT_INVALID_ID;     /* invalid id in "put" request */
 
     DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
-        : DhtException(msg), code(code), msg(msg), failing_node_id(failing_node_id) {}
+        : DhtException(msg), msg(msg), code(code), failing_node_id(failing_node_id) {}
 
     std::string getMsg() const { return msg; }
     uint16_t getCode() const { return code; }
     const InfoHash getNodeId() const { return failing_node_id; }
 
 private:
+    std::string msg;
     uint16_t code;
     const InfoHash failing_node_id;
-    std::string msg;
 };
 
 /*!
@@ -121,6 +121,9 @@ public:
         time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
         time_point reply_time {time_point::min()}; /* time when we received the response from the node. */
 
+        RequestStatus() {}
+        RequestStatus(time_point start, time_point reply_time = time_point::min())
+            : start(start), last_try(start), reply_time(reply_time) {}
         bool expired(time_point now) const {
             return reply_time < last_try && now > last_try + Node::MAX_RESPONSE_TIME;
         }
@@ -237,9 +240,9 @@ public:
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
-        myid(info.myid), dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG),
-        scheduler(scheduler), onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing),
-        onFindNode(onFindNode), onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce)
+        onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
+        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
+        dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG), scheduler(scheduler)
     {
         transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
     }
@@ -268,7 +271,10 @@ public:
     std::shared_ptr<RequestStatus>
         sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired);
     std::shared_ptr<RequestStatus>
-        sendPing(sockaddr* n, socklen_t salen, RequestCb on_done, RequestCb on_expired);
+        sendPing(sockaddr* sa, socklen_t salen, RequestCb on_done, RequestCb on_expired)
+    {
+        sendPing(std::make_shared<Node>(InfoHash {}, sa, salen), on_done, on_expired);
+    }
     std::shared_ptr<RequestStatus>
         sendFindNode(std::shared_ptr<Node> n,
                 const InfoHash& target,
@@ -427,7 +433,7 @@ private:
                 Blob &&msg,
                 std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&&)> on_done,
                 std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired) :
-            tid(tid), msg(msg), on_done(on_done), on_expired(on_expired) {
+            on_done(on_done), on_expired(on_expired), tid(tid), msg(msg) {
                 status->node = node;
             }
 
@@ -437,9 +443,9 @@ private:
         std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired {};
 
         const uint16_t tid {0};                   /* the request id. */
+        Blob msg {};                              /* the serialized message. */
         std::shared_ptr<RequestStatus> status {}; /* the request info for DHT layer. */
         unsigned attempt_count {0};               /* number of attempt to process the request. */
-        Blob msg {};                              /* the serialized message. */
     };
 
     /**

@@ -40,7 +40,7 @@ const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid id"};
 constexpr std::chrono::seconds NetworkEngine::UDP_REPLY_TIME;
 const std::string NetworkEngine::my_v {"RNG1"};
 const constexpr uint16_t NetworkEngine::TransId::INVALID;
-static std::mt19937 rd_device {dht::crypto::random_device{}()};
+std::mt19937 NetworkEngine::rd_device {dht::crypto::random_device{}()};
 
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::PING = {"pn"};
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::FIND_NODE  = {"fn"};
@@ -141,6 +141,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         case MessageType::Reply:
             req->on_done(req->status, msg.tid[2], std::move(msg));
             break;
+        default:
+            break;
         }
     } else {
         auto node = onNewNode(msg.id, from, fromlen, 1);
@@ -180,13 +182,16 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 }
                 break;
             }
-            case MessageType::Listen:
+            case MessageType::Listen: {
                 if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
-                   break;
+                    break;
                 }
                 in_stats.listen++;
                 RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid[2]);
                 sendListenConfirmation(from, fromlen, msg.tid);
+                break;
+            }
+            default:
                 break;
             }
         } catch (const std::overflow_error& e) {
@@ -251,14 +256,17 @@ NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on
     pk.pack(std::string("v")); pk.pack(my_v);
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {tid[2], n, std::move(b), nullptr,
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+    Request req {tid[2], n, std::move(b),
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&&){
+            on_done(req_status, {});
+        },
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
             on_expired(req_status, {});
             requests.erase(tid);
         }
     };
-    auto req_status = std::make_shared<RequestStatus>(req.status);
-    requests.emplace(std::move(req));
+    auto req_status = req.status;
+    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
     send(buffer.data(), buffer.size(), 0, (sockaddr*)&n->ss, n->sslen);
     out_stats.ping++;
     return std::move(req_status);
@@ -309,16 +317,16 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&& msg) { /* on done */
             on_done(req_status, deserializeNodesValues(msg));
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
             on_expired(req_status, {});
             requests.erase(tid);
         }
     };
-    auto req_status = std::make_shared<RequestStatus>(req.status);
-    requests.emplace(std::move(req));
+    auto req_status = req.status;
+    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
     send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             (sockaddr*)&n->ss, n->sslen);
     out_stats.find++;
@@ -352,16 +360,16 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&& msg) { /* on done */
             on_done(req_status, deserializeNodesValues(msg));
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
             on_expired(req_status, {});
             requests.erase(tid);
         }
     };
-    auto req_status = std::make_shared<RequestStatus>(req.status);
-    requests.emplace(std::move(req));
+    auto req_status = req.status;
+    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
     send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             (sockaddr*)&n->ss, n->sslen);
     out_stats.get++;
@@ -370,7 +378,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
 
 NetworkEngine::RequestAnswer
 NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
-    RequestAnswer req_a {msg.token, std::move(msg.values)};
+    RequestAnswer req_a {msg.token, std::move(msg.values), {}, {}};
     if (msg.nodes4.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     } else {
@@ -514,7 +522,6 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 {
     uint8_t bnodes[8 * NODE4_INFO_BUF_LEN];
     uint8_t bnodes6[8 * NODE6_INFO_BUF_LEN];
-    size_t numnodes, numnodes6 = 0;
 
     if (want < 0)
         want = af == AF_INET ? WANT4 : WANT6;
@@ -524,15 +531,14 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
         for (const auto& n : closest_nodes) {
             numnodes = insertClosestNode(nodes, numnodes, id, *n);
         }
-        return numnodes;
     };
 
     if ((want & WANT4)) {
-        numnodes = buff(bnodes, id, nodes);
+        buff(bnodes, id, nodes);
     }
 
     if ((want & WANT6)) {
-        numnodes6 = buff(bnodes6, id, nodes6);
+        buff(bnodes6, id, nodes6);
     }
 
     Blob bn4(8 * NODE4_INFO_BUF_LEN), bn6(8 * NODE6_INFO_BUF_LEN);
@@ -563,16 +569,16 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&&) { /* on done */
             on_done(req_status, {});
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
             on_expired(req_status, {});
             requests.erase(tid);
         }
     };
-    auto req_status = std::make_shared<RequestStatus>(req.status);
-    requests.emplace(std::move(req));
+    auto req_status = req.status;
+    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
     send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             (sockaddr*)&n->ss, n->sslen);
     out_stats.listen++;
@@ -623,20 +629,20 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.DEBUG("Unknown search or announce!");
             } else {
                 on_done(req_status, {});
             }
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
+        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
             on_expired(req_status, {});
             requests.erase(tid);
         }
     };
-    auto req_status = std::make_shared<RequestStatus>(req.status);
-    requests.emplace(std::move(req));
+    auto req_status = req.status;
+    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
     send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             (sockaddr*)&n->ss, n->sslen);
     out_stats.put++;
