@@ -403,8 +403,7 @@ Dht::sendCachedPing(Bucket& b)
         return 0;
 
     DHT_LOG.DEBUG("Sending ping to cached node.");
-    //TODO
-    //int rc = sendPing((sockaddr*)&b.cached, b.cachedlen, TransId{TransPrefix::PING});
+    network_engine->sendPing((sockaddr*)&b.cached, b.cachedlen, nullptr, nullptr);
     b.cached.ss_family = 0;
     b.cachedlen = 0;
     return 0;
@@ -609,8 +608,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                 dubious = true;
                 if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
                     DHT_LOG.DEBUG("Sending ping to dubious node.");
-                    //TODO
-                    //sendPing((sockaddr*)&n->ss, n->sslen, TransId {TransPrefix::PING});
+                    network_engine->sendPing(n, nullptr, nullptr);
                     n->pinged++;
                     n->pinged_time = now;
                     //pinged(n, b);
@@ -805,14 +803,24 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
         print_addr(n->node->ss, n->node->sslen).c_str(),
         n->node->pinged, print_dt(now-n->getStatus->last_try));
 
+    auto srp = &sr;
     auto onDone =
         [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
-            searchStep(sr);
+            if (srp) {
+                onGetValuesDone(status, answer, srp);
+                searchStep(*srp);
+            }
+        };
+    auto onExpired =
+        [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
+            if (srp) {
+                searchStep(*srp);
+            }
         };
     if (sr.callbacks.empty() and sr.listeners.empty())
-        network_engine->sendFindNode(n->node, sr.id, -1, onDone, onDone);
+        network_engine->sendFindNode(n->node, sr.id, -1, onDone, onExpired);
     else
-       network_engine->sendGetValues(n->node, sr.id, -1, onDone, onDone);
+        network_engine->sendGetValues(n->node, sr.id, -1, onDone, onExpired);
     n->getStatus->last_try = now;
     pinged(*n->node);
     if (n->node->pinged > 1 and not n->candidate) {
@@ -877,8 +885,26 @@ Dht::searchStep(Search& sr)
                         print_addr(n.node->ss, n.node->sslen).c_str());
                     //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    //TODO
-                    //sendListen((sockaddr*)&n.node->ss, n.node->sslen, TransId {TransPrefix::LISTEN, sr.tid}, sr.id, n.token, n.node->reply_time >= now - UDP_REPLY_TIME);
+                    {
+                        auto srp = &sr;
+                        network_engine->sendListen(n.node, sr.id, n.token,
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                                    NetworkEngine::RequestAnswer&& answer) mutable
+                            { /* on done */
+                                if (srp) {
+                                    onListenDone(status, answer, srp);
+                                    searchStep(*srp);
+                                }
+                            },
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                                NetworkEngine::RequestAnswer&& answer) mutable
+                            { /* on expired */
+                                if (srp) {
+                                    searchStep(*srp);
+                                }
+                            }
+                        );
+                    }
                     n.pending = true;
                     n.listenStatus->last_try = now;
                 }
@@ -911,11 +937,25 @@ Dht::searchStep(Search& sr)
                         print_addr(n.node->ss, n.node->sslen).c_str());
                     //std::cout << "Sending announce_value to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    //TODO
-                    //sendAnnounceValue((sockaddr*)&n.node->ss, n.node->sslen,
-                    //        TransId {TransPrefix::ANNOUNCE_VALUES, sr.tid},
-                    //        sr.id, *a.value, a.created, n.token,
-                    //        n.node->reply_time >= now - UDP_REPLY_TIME);
+                    {
+                        auto srp = &sr;
+                        network_engine->sendAnnounceValue(n.node, sr.id, *a.value, a.created, n.token,
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                                NetworkEngine::RequestAnswer&& answer) mutable
+                            { /* on done */
+                                if (srp) {
+                                    searchStep(*srp);
+                                }
+                            },
+                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                                NetworkEngine::RequestAnswer&& answer) mutable
+                            { /* on expired */
+                                if (srp) {
+                                    searchStep(*srp);
+                                }
+                            }
+                        );
+                    }
                     if (a_status == n.acked.end()) {
                         n.acked[vid] = { now };
                     } else {
@@ -1758,8 +1798,13 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
         return l.ss.ss_family == af && l.id == node;
     });
     if (l == st->listeners.end()) {
-        //TODO
-        //sendClosestNodes(from, fromlen, TransId {TransPrefix::GET_VALUES, tid}, st->id, WANT4 | WANT6, makeToken(from, false), st->getValues());
+        auto stvalues = st->getValues();
+        std::vector<std::shared_ptr<Value>> values(stvalues.size());
+        std::transform(stvalues.begin(), stvalues.end(), values.begin(), [=](ValueStorage& vs) { return vs.data; });
+
+        network_engine->tellListener(from, fromlen, rid, id, WANT4 | WANT6, makeToken(from, false),
+                buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
+                values);
         st->listeners.emplace_back(node, from, fromlen, rid, now);
     }
     else
@@ -2184,10 +2229,18 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
     auto n = q->randomNode();
     if (n) {
         DHT_LOG.DEBUG("[find %s IPv%c] sending find for neighborhood maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
-        //TODO
-        //sendFindNode((sockaddr*)&n->ss, n->sslen,
-        //               TransId {TransPrefix::FIND_NODE}, id, want,
-        //               n->reply_time >= now - UDP_REPLY_TIME);
+        auto sr = q->af == AF_INET ? searches4.find(id) : searches6.find(id);
+        auto srp = &sr->second;
+        network_engine->sendFindNode(n, id, want,
+          [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable
+          { /* on done */
+              onGetValuesDone(status, answer, srp);
+          },
+          [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable
+          { /* on expired */
+              searchStep(*srp);
+          }
+        );
         pinged(*n, &(*q));
     }
 
@@ -2237,10 +2290,20 @@ Dht::bucketMaintenance(RoutingTable& list)
                 }
 
                 DHT_LOG.DEBUG("[find %s IPv%c] sending for bucket maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
-                //TODO
-                //sendFindNode((sockaddr*)&n->ss, n->sslen,
-                //               TransId {TransPrefix::FIND_NODE}, id, want,
-                //               n->reply_time >= now - UDP_REPLY_TIME);
+                auto sr = q->af == AF_INET ? searches4.find(id) : searches6.find(id);
+                auto srp = &sr->second;
+                network_engine->sendFindNode(n, id, want,
+                    [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                        NetworkEngine::RequestAnswer&& answer) mutable
+                    { /* on done */
+                        onGetValuesDone(status, answer, srp);
+                    },
+                    [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                        NetworkEngine::RequestAnswer&& answer) mutable
+                    { /* on expired */
+                        searchStep(*srp);
+                    }
+                );
                 pinged(*n, &(*q));
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
@@ -2540,7 +2603,11 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want)
 }
 
 void
-Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr) {
+Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr)
+{
+    if (not sr)
+        return;
+
     auto now = scheduler->time();
     if (sr == nullptr)
         return;
@@ -2574,6 +2641,7 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
     // Force to recompute the next step time
     if (sr->isSynced(now))
         search_time = now;
+    searchStep(*sr); /* trigger a searchstep after a response. */
 }
 
 NetworkEngine::RequestAnswer
@@ -2596,6 +2664,22 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
     }
     storageAddListener(hash, node->id, (sockaddr*)&node->ss, node->sslen, rid);
     return {};
+}
+
+void
+Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr)
+{
+   DHT_LOG.DEBUG("Got reply to listen.");
+   if (sr) {
+       for (auto& sn : sr->nodes)
+           if (sn.node == status->node) {
+               sn.listenStatus->reply_time = now;
+               break;
+           }
+       /* See comment for gp above. */
+       if (searchSendGetValues(*sr))
+           sr->get_step_time = now;
+   }
 }
 
 NetworkEngine::RequestAnswer
@@ -2670,64 +2754,39 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
     return {};
 }
 
-//void Dht::onAnnounceDone() {
-//    auto srp = searches.find(ttid);
-//    Search *sr = srp != searches.end() ? srp->second : nullptr;
-//    if (!sr || msg.value_id == Value::INVALID_ID) {
-//        DHT_DEBUG("Unknown search or announce!");
-//        newNode(msg.id, from, fromlen, 1);
-//    } else {
-//        DHT_DEBUG("[search %s IPv%c] got reply to put!",
-//            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-//            msg.values.size());
+void
+Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& answer, Search* sr)
+{
+    DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",
+            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+            answer.values.size());
 
-//        auto n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
-//        for (auto& sn : sr->nodes)
-//            if (sn.node == n) {
-//                auto it = sn.announceStatus.emplace(msg.value_id, SearchNode::RequestStatus{});
-//                it.first->second.reply_time = now;
-//                break;
-//            }
-//        [> See comment for gp above. <]
-//        if (searchSendGetValues(*sr))
-//            sr->get_step_time = now;
+    auto& v = answer.values.front();
+    for (auto& sn : sr->nodes)
+        if (sn.node == status->node) {
+            auto it = sn.acked[v->id] = status;
+            break;
+        }
+    /* See comment for gp above. */
+    if (searchSendGetValues(*sr))
+        sr->get_step_time = now;
 
-//        // If the value was just successfully announced, call the callback
-//        erase_if(sr->announce, [&](std::pair<const uint16_t, Announce>& ap) {
-//            auto& a = ap.second;
-//            if (!a.value || a.value->id != msg.value_id)
-//                return false;
-//            auto type = getType(a.value->type);
-//            if (sr->isAnnounced(msg.value_id, type, now)) {
-//                if (a.callback) {
-//                    a.callback(true, sr->getNodes());
-//                    a.callback = nullptr;
-//                }
-//                return true;
-//            }
-//            return false;
-//        });
-//    }
-//}
-
-//void Dht::onListenDone() {
-//    DHT_DEBUG("Got reply to listen.");
-//    auto srp = searches.find(ttid);
-//    Search *sr = srp != searches.end() ? srp->second : nullptr;
-//    if (!sr) {
-//        DHT_DEBUG("Unknown search or announce!");
-//        newNode(msg.id, from, fromlen, 1);
-//    } else {
-//        auto n = newNode(msg.id, from, fromlen, 2, (sockaddr*)&msg.addr.first, msg.addr.second);
-//        for (auto& sn : sr->nodes)
-//            if (sn.node == n) {
-//                sn.listenStatus.reply_time = now;
-//                break;
-//            }
-//        [> See comment for gp above. <]
-//        if (searchSendGetValues(*sr))
-//            sr->get_step_time = now;
-//    }
-//}
+    // If the value was just successfully announced, call the callback
+    sr->announce.erase(std::remove_if(sr->announce.begin(), sr->announce.end(),
+        [&](std::pair<const uint16_t, Announce>& ap) {
+        auto& a = ap.second;
+        if (!a.value || a.value->id != v->id)
+            return false;
+        auto type = getType(a.value->type);
+        if (sr->isAnnounced(v->id, type, now)) {
+            if (a.callback) {
+                a.callback(true, sr->getNodes());
+                a.callback = nullptr;
+            }
+            return true;
+        }
+        return false;
+    }), sr->announce.end());
+}
 
 }

@@ -115,6 +115,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
     uint16_t ttid = 0;
     if (msg.type == MessageType::Error or msg.type == MessageType::Reply) {
         auto node = onNewNode(msg.id, from, fromlen, 2);
+        onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
         Request* req = nullptr;
         const auto& reqp = requests.find(msg.tid[2]);
         if (reqp != requests.end())
@@ -623,7 +624,11 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
         [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&& msg) { /* on done */
-            on_done(req_status, {});
+            if (msg.value_id == Value::INVALID_ID) {
+                DHT_LOG.DEBUG("Unknown search or announce!");
+            } else {
+                on_done(req_status, {});
+            }
         },
         [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool s) { /* on expired */
             on_expired(req_status, {});
