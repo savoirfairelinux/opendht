@@ -87,7 +87,7 @@ struct Prefix {
         auto longest_prefix_size = std::min(p1.size_, p2.size_);
 
         for (i = 0; i < longest_prefix_size; i++) {
-            if (p1.content_.data()[i] != p2.content_.data()[i])
+            if (p1.content_.data()[i] != p2.content_.data()[i] || i == longest_prefix_size)
                 break;
         }
 
