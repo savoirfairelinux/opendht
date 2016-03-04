@@ -277,15 +277,15 @@ class PhtTest(FeatureTest):
         # Index all entries.
         for key in keys:
             PhtTest.key = key
-            pht.insert(key, IndexValue(random_hash()), PhtTest.insertDoneCb)
             with FeatureTest.lock:
+                pht.insert(key, IndexValue(random_hash()), PhtTest.insertDoneCb)
                 FeatureTest.lock.wait()
 
         # Recover entries now that the trie is complete.
         for key in keys:
             PhtTest.key = key
-            pht.lookup(key, PhtTest.lookupCb, PhtTest.lookupDoneCb)
             with FeatureTest.lock:
+                pht.lookup(key, PhtTest.lookupCb, PhtTest.lookupDoneCb)
                 FeatureTest.lock.wait()
 
             all_entries[PhtTest.prefix] = [e.__str__()
