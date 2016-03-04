@@ -223,15 +223,8 @@ public:
      */
     using RequestCb = std::function<void(std::shared_ptr<RequestStatus>, RequestAnswer&&)>;
 
-    // Config from Dht.
-    struct DhtInfo {
-        const InfoHash& myid;
-        const int& dht_socket;
-        const int& dht_socket6;
-        const Logger& DHT_LOG;
-    };
-
-    NetworkEngine(DhtInfo info, std::shared_ptr<Scheduler> scheduler,
+    NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
+    NetworkEngine(InfoHash& myid, int s, int s6, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -241,8 +234,8 @@ public:
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
         onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(info.myid),
-        dht_socket(info.dht_socket), dht_socket6(info.dht_socket6), DHT_LOG(info.DHT_LOG), scheduler(scheduler)
+        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(myid),
+        dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
     {
         transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
     }
@@ -264,6 +257,9 @@ public:
     void tellListener(const sockaddr* sa, socklen_t salen, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
             std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
             std::vector<std::shared_ptr<Value>> values);
+
+    bool isRunning(sa_family_t af) const;
+    inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
 
     /**************
      *  Requests  *
@@ -338,8 +334,8 @@ private:
 
     /* DHT info */
     const InfoHash& myid;
-    const int& dht_socket;
-    const int& dht_socket6;
+    const int dht_socket {-1};
+    const int dht_socket6 {-1};
     const Logger& DHT_LOG;
 
     bool rateLimit();
@@ -512,7 +508,7 @@ private:
     std::map<uint16_t, std::shared_ptr<Request>> requests;
     MessageStats in_stats {}, out_stats {};
 
-    std::shared_ptr<Scheduler> scheduler;
+    Scheduler& scheduler;
 };
 
 }

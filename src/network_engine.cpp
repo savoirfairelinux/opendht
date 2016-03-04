@@ -63,6 +63,21 @@ NetworkEngine::tellListener(const sockaddr *sa, socklen_t salen, uint16_t rid, I
     }
 }
 
+bool
+NetworkEngine::isRunning(sa_family_t af) const
+{
+    switch (af) {
+    case 0:
+        return dht_socket  >= 0 ||  dht_socket6 >= 0;
+    case AF_INET:
+        return dht_socket  >= 0;
+    case AF_INET6:
+        return dht_socket6 >= 0;
+    default:
+        return false;
+    }
+}
+
 /* Rate control for requests we receive. */
 bool
 NetworkEngine::rateLimit()
