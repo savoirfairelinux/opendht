@@ -119,7 +119,7 @@ public:
         };
     }
 
-    Dht() {}
+    Dht() : network_engine(DHT_LOG, scheduler) {}
 
     /**
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
@@ -290,7 +290,7 @@ public:
 
     void dumpTables() const;
     std::vector<unsigned> getNodeMessageStats(bool in = false) {
-        return network_engine->getNodeMessageStats(in);
+        return network_engine.getNodeMessageStats(in);
     }
 
     /**
@@ -708,10 +708,6 @@ private:
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
-    // socket descriptors
-    int dht_socket {-1};
-    int dht_socket6 {-1};
-
     InfoHash myid {};
 
     std::array<uint8_t, 8> secret {{}};
@@ -740,6 +736,7 @@ private:
 
     std::map<InfoHash, Search> searches4 {};
     std::map<InfoHash, Search> searches6 {};
+    //std::map<std::shared_ptr<NetworkEngine::RequestStatus>, Search*> searches {}; /* not used for now */
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
@@ -750,16 +747,16 @@ private:
     sockaddr_storage blacklist[BLACKLISTED_MAX] {};
     unsigned next_blacklisted = 0;
 
-    std::unique_ptr<NetworkEngine> network_engine {};
-
     // timing
-    std::shared_ptr<Scheduler> scheduler;
+    Scheduler scheduler {};
     time_point now;
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
     time_point expire_stuff_time {time_point::min()};
     time_point search_time {time_point::max()};
     time_point confirm_nodes_time {time_point::min()};
     time_point rotate_secrets_time {time_point::min()};
+
+    NetworkEngine network_engine;
 
     using ReportedAddr = std::pair<unsigned, Address>;
     std::vector<ReportedAddr> reported_addr;

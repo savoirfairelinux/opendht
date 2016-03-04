@@ -99,6 +99,8 @@ print_dt(DT d) {
 
 namespace dht {
 
+using namespace std::placeholders;
+
 constexpr std::chrono::seconds Dht::SEARCH_GET_STEP;
 constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
@@ -146,19 +148,7 @@ Dht::shutdown(ShutdownCallback cb) {
 }
 
 bool
-Dht::isRunning(sa_family_t af) const
-{
-    switch (af) {
-    case 0:
-        return dht_socket  >= 0 ||  dht_socket6 >= 0;
-    case AF_INET:
-        return dht_socket  >= 0;
-    case AF_INET6:
-        return dht_socket6 >= 0;
-    default:
-        return false;
-    }
-}
+Dht::isRunning(sa_family_t af) const { return network_engine.isRunning(af); }
 
 bool
 Dht::isMartian(const sockaddr *sa, socklen_t len)
@@ -403,7 +393,7 @@ Dht::sendCachedPing(Bucket& b)
         return 0;
 
     DHT_LOG.DEBUG("Sending ping to cached node.");
-    network_engine->sendPing((sockaddr*)&b.cached, b.cachedlen, nullptr, nullptr);
+    network_engine.sendPing((sockaddr*)&b.cached, b.cachedlen, nullptr, nullptr);
     b.cached.ss_family = 0;
     b.cachedlen = 0;
     return 0;
@@ -608,7 +598,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                 dubious = true;
                 if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
                     DHT_LOG.DEBUG("Sending ping to dubious node.");
-                    network_engine->sendPing(n, nullptr, nullptr);
+                    network_engine.sendPing(n, nullptr, nullptr);
                     n->pinged++;
                     n->pinged_time = now;
                     //pinged(n, b);
@@ -818,9 +808,9 @@ Dht::searchSendGetValues(Search& sr, SearchNode* pn, bool update)
             }
         };
     if (sr.callbacks.empty() and sr.listeners.empty())
-        network_engine->sendFindNode(n->node, sr.id, -1, onDone, onExpired);
+        network_engine.sendFindNode(n->node, sr.id, -1, onDone, onExpired);
     else
-        network_engine->sendGetValues(n->node, sr.id, -1, onDone, onExpired);
+        network_engine.sendGetValues(n->node, sr.id, -1, onDone, onExpired);
     n->getStatus->last_try = now;
     pinged(*n->node);
     if (n->node->pinged > 1 and not n->candidate) {
@@ -887,7 +877,7 @@ Dht::searchStep(Search& sr)
 
                     {
                         auto srp = &sr;
-                        network_engine->sendListen(n.node, sr.id, n.token,
+                        network_engine.sendListen(n.node, sr.id, n.token,
                             [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
                                     NetworkEngine::RequestAnswer&& answer) mutable
                             { /* on done */
@@ -938,7 +928,7 @@ Dht::searchStep(Search& sr)
 
                     {
                         auto srp = &sr;
-                        network_engine->sendAnnounceValue(n.node, sr.id, *a.value, a.created, n.token,
+                        network_engine.sendAnnounceValue(n.node, sr.id, *a.value, a.created, n.token,
                             [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
                             { /* on done */
                                 if (srp) {
@@ -1717,7 +1707,7 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
         std::vector<std::shared_ptr<Value>> vals;
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
-        network_engine->tellListener((const sockaddr*)&l.ss, l.sslen, l.rid, st.id, WANT4 | WANT6, ntoken,
+        network_engine.tellListener((const sockaddr*)&l.ss, l.sslen, l.rid, st.id, WANT4 | WANT6, ntoken,
                 buckets.findClosestNodes(st.id, now, TARGET_NODES), buckets6.findClosestNodes(st.id, now, TARGET_NODES),
                 vals);
     }
@@ -1799,7 +1789,7 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
         std::vector<std::shared_ptr<Value>> values(stvalues.size());
         std::transform(stvalues.begin(), stvalues.end(), values.begin(), [=](ValueStorage& vs) { return vs.data; });
 
-        network_engine->tellListener(from, fromlen, rid, id, WANT4 | WANT6, makeToken(from, false),
+        network_engine.tellListener(from, fromlen, rid, id, WANT4 | WANT6, makeToken(from, false),
                 buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                 values);
         st->listeners.emplace_back(node, from, fromlen, rid, now);
@@ -2147,8 +2137,16 @@ Dht::getSearchesLog(sa_family_t af) const
 }
 
 Dht::Dht(int s, int s6, Config config)
- : dht_socket(s), dht_socket6(s6), myid(config.node_id), is_bootstrap(config.is_bootstrap),
-   now(clock::now()), mybucket_grow_time(now), mybucket6_grow_time(now)
+ : myid(config.node_id), is_bootstrap(config.is_bootstrap),
+    network_engine(myid, s, s6, DHT_LOG, scheduler,
+            std::bind(&Dht::onError, this, _1, _2),
+            std::bind(&Dht::newNode, this, _1, _2, _3, _4),
+            std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
+            std::bind(&Dht::onPing, this, _1),
+            std::bind(&Dht::onFindNode, this, _1, _2, _3),
+            std::bind(&Dht::onGetValues, this, _1, _2, _3),
+            std::bind(&Dht::onListen, this, _1, _2, _3, _4),
+            std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5))
 {
     if (s < 0 && s6 < 0)
         return;
@@ -2181,20 +2179,6 @@ Dht::Dht(int s, int s6, Config config)
     expireBuckets(buckets6);
 
 
-    using namespace std::placeholders;
-    network_engine = std::unique_ptr<NetworkEngine>(
-          new NetworkEngine {
-              NetworkEngine::DhtInfo {myid, dht_socket, dht_socket6, DHT_LOG}, scheduler,
-              std::bind(&Dht::onError, this, _1, _2),
-              std::bind(&Dht::newNode, this, _1, _2, _3, _4),
-              std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
-              std::bind(&Dht::onPing, this, _1),
-              std::bind(&Dht::onFindNode, this, _1, _2, _3),
-              std::bind(&Dht::onGetValues, this, _1, _2, _3),
-              std::bind(&Dht::onListen, this, _1, _2, _3, _4),
-              std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5)
-          }
-    );
     DHT_LOG.DEBUG("DHT initialised with node ID %s", myid.toString().c_str());
 }
 
@@ -2228,7 +2212,7 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
         DHT_LOG.DEBUG("[find %s IPv%c] sending find for neighborhood maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
         auto sr = q->af == AF_INET ? searches4.find(id) : searches6.find(id);
         auto srp = &sr->second;
-        network_engine->sendFindNode(n, id, want,
+        network_engine.sendFindNode(n, id, network_engine.want(),
           [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
               NetworkEngine::RequestAnswer&& answer) mutable
           { /* on done */
@@ -2273,7 +2257,7 @@ Dht::bucketMaintenance(RoutingTable& list)
             if (n) {
                 want_t want = -1;
 
-                if (dht_socket >= 0 && dht_socket6 >= 0) {
+                if (network_engine.want() != want) {
                     auto otherbucket = findBucket(id, q->af == AF_INET ? AF_INET6 : AF_INET);
                     if (otherbucket && otherbucket->nodes.size() < TARGET_NODES)
                         /* The corresponding bucket in the other family
@@ -2290,7 +2274,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                 DHT_LOG.DEBUG("[find %s IPv%c] sending for bucket maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
                 auto sr = q->af == AF_INET ? searches4.find(id) : searches6.find(id);
                 auto srp = &sr->second;
-                network_engine->sendFindNode(n, id, want,
+                network_engine.sendFindNode(n, id, want,
                     [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
                         NetworkEngine::RequestAnswer&& answer) mutable
                     { /* on done */
@@ -2373,7 +2357,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     }
 
     try {
-        network_engine->processMessage(buf, buflen, from, fromlen, now);
+        network_engine.processMessage(buf, buflen, from, fromlen, now);
     } catch (DhtProtocolException& e) {
         auto code = e.getCode();
         if (code == DhtProtocolException::INVALID_REPLY_TID
@@ -2504,7 +2488,7 @@ int
 Dht::pingNode(const sockaddr *sa, socklen_t salen)
 {
     DHT_LOG.DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
-    //return sendPing(sa, salen, TransId {TransPrefix::PING});
+    network_engine.sendPing(sa, salen, nullptr, nullptr);
     return -1;
 }
 
