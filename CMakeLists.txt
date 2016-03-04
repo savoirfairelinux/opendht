@@ -83,6 +83,9 @@ if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
 	set(CMAKE_INSTALL_LIBDIR lib)
 endif ()
 
+target_link_libraries(opendht-static gnutls nettle)
+target_link_libraries(opendht gnutls nettle)
+
 if (OPENDHT_TOOLS)
 	add_subdirectory(tools)
 endif ()
