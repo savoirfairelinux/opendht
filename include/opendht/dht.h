@@ -734,9 +734,9 @@ private:
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    std::map<InfoHash, Search> searches4 {};
-    std::map<InfoHash, Search> searches6 {};
-    //std::map<std::shared_ptr<NetworkEngine::RequestStatus>, Search*> searches {}; /* not used for now */
+    std::map<InfoHash, std::shared_ptr<Search>> searches4 {};
+    std::map<InfoHash, std::shared_ptr<Search>> searches6 {};
+    //std::map<std::shared_ptr<NetworkEngine::RequestStatus>, std::shared_ptr<Search>> searches {}; /* not used for now */
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
@@ -830,11 +830,11 @@ private:
      * specified infohash (id), using the specified IP version (IPv4 or IPv6).
      * The values can be filtered by an arbitrary provided filter.
      */
-    Search* search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
+    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
-    Search* newSearch(InfoHash id, sa_family_t af);
+    std::shared_ptr<Search> newSearch(InfoHash id, sa_family_t af);
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
@@ -845,9 +845,9 @@ private:
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
      */
-    SearchNode* searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = true);
+    SearchNode* searchSendGetValues(std::shared_ptr<Search> sr, SearchNode *n = nullptr, bool update = true);
 
-    void searchStep(Search& sr);
+    void searchStep(std::shared_ptr<Search> sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
     bool neighbourhoodMaintenance(RoutingTable&);
@@ -861,17 +861,17 @@ private:
     NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
     NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onFindNodeDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
+    void onFindNodeDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
     NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
+    void onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a listen request */
     NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
-    void onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
+    void onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
-    void onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, Search* sr);
+    void onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
 };
 
 }
