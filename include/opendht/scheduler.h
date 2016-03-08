@@ -75,13 +75,14 @@ public:
         return now;
     }
 
-    inline time_point getNextJobTime() { return timers.begin()->first; }
+    inline time_point getNextJobTime() const { return timers.begin()->first; }
 
     /**
      * Accessors for the common time reference used for synchronizing
      * operations.
      */
-    inline time_point time() const { return now; }
+    inline const time_point& time() const { return now; }
+    inline time_point syncTime() { return (now = clock::now()); }
 
 private:
     time_point now {time_point::min()};
