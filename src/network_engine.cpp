@@ -94,8 +94,7 @@ NetworkEngine::rateLimit()
 }
 
 void
-NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now) {
-    this->now = now;
+NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen) {
     ParsedMessage msg;
     try {
         msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
@@ -164,13 +163,13 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         try {
             switch (msg.type) {
             case MessageType::Ping:
-                in_stats.ping++;
+                ++in_stats.ping;
                 DHT_LOG.DEBUG("Sending pong.");
                 onPing(node);
                 sendPong(from, fromlen, msg.tid);
                 break;
             case MessageType::FindNode: {
-                in_stats.find++;
+                ++in_stats.find;
                 DHT_LOG.DEBUG("[node %s %s] got 'find' request (%d).",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
                 RequestAnswer answer = onFindNode(node, msg.info_hash, msg.want);
@@ -179,14 +178,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 break;
             }
             case MessageType::GetValues: {
-                in_stats.get++;
+                ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
                 break;
             }
             case MessageType::AnnounceValue: {
-                in_stats.put++;
+                ++in_stats.put;
                 onAnnounce(node, msg.info_hash, msg.token, msg.values, msg.created);
 
                 /* Note that if storageStore failed, we lie to the requestor.
@@ -201,7 +200,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
                     break;
                 }
-                in_stats.listen++;
+                ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid[2]);
                 sendListenConfirmation(from, fromlen, msg.tid);
                 break;
@@ -466,7 +465,7 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
         do {
             subset.emplace_back(packMsg(st[j]->data));
             total_size += subset.back().size();
-            k++;
+            ++k;
             j = (j + 1) % st.size();
         } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
 
@@ -510,7 +509,7 @@ NetworkEngine::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHa
         return numnodes;
 
     if (numnodes < TARGET_NODES)
-        numnodes++;
+        ++numnodes;
 
     if (i < numnodes - 1)
         memmove(nodes + size * (i + 1), nodes + size * i, size * (numnodes - i - 1));

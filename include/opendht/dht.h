@@ -749,12 +749,7 @@ private:
 
     // timing
     Scheduler scheduler {};
-    time_point now;
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
-    time_point expire_stuff_time {time_point::min()};
-    time_point search_time {time_point::max()};
-    time_point confirm_nodes_time {time_point::min()};
-    time_point rotate_secrets_time {time_point::min()};
 
     NetworkEngine network_engine;
 
@@ -790,6 +785,7 @@ private:
      * node is too far from the target, values are sent to the appropriate
      * nodes.
      */
+    void dataPersistence();
     size_t maintainStorage(InfoHash id, bool force=false, DoneCallback donecb=nullptr);
 
     // Buckets
@@ -842,6 +838,9 @@ private:
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
+
+    void confirmNodes();
+    void expire();
 
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
