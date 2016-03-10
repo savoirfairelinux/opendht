@@ -2632,8 +2632,6 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
 {
     const auto& now = scheduler.time();
     NetworkEngine::RequestAnswer* answer;
-    DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
-            node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
     if (hash == zeroes) {
         DHT_LOG.WARN("[node %s %s] Eek! Got get_values with no info_hash.",
                 node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
@@ -2706,8 +2704,6 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
 NetworkEngine::RequestAnswer
 Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid)
 {
-    DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
-            node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
     if (hash == zeroes) {
         DHT_LOG.WARN("Listen with no info_hash.");
         throw DhtProtocolException {
@@ -2746,9 +2742,6 @@ NetworkEngine::RequestAnswer
 Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> values,
         time_point created)
 {
-    DHT_LOG.DEBUG("[node %s %s] got 'put' request for %s.",
-        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
-        hash.toString().c_str());
     if (hash == zeroes) {
         DHT_LOG.WARN("Put with no info_hash.");
         throw DhtProtocolException {
