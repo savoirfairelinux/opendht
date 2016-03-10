@@ -2153,12 +2153,12 @@ Dht::getSearchesLog(sa_family_t af) const
 {
     std::stringstream out;
     out << "s:synched, u:updated, a:announced, c:candidate, f:cur req, x:expired, *:known" << std::endl;
-    auto& srs = af == AF_INET ? searches4 : searches6;
-    for (const auto& srp : srs) {
-        auto& sr = srp.second;
-        if (af == 0 or sr->af == af)
-            dumpSearch(*sr, out);
-    }
+    if (not af or af == AF_INET)
+        for (const auto& sr : searches4)
+            dumpSearch(*sr.second, out);
+    if (not af or af == AF_INET6)
+        for (const auto& sr : searches6)
+            dumpSearch(*sr.second, out);
     return out.str();
 }
 
