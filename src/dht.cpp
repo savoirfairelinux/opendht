@@ -919,8 +919,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             for (auto& n : sr->nodes) {
                 if (not n.isSynced(now) or (n.candidate and t >= TARGET_NODES))
                     continue;
-                auto a_status = n.acked.find(vid);
-                auto at = n.getAnnounceTime(a_status, type);
+                auto at = n.getAnnounceTime(vid, type);
                 if ( at <= now ) {
                     DHT_LOG.WARN("[search %s IPv%c] [node %s %s] sending 'put'",
                         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
@@ -1032,7 +1031,7 @@ Dht::newSearch(InfoHash id, sa_family_t af)
 
     /* Allocate a new slot. */
     if (searches4.size() + searches6.size() < MAX_SEARCHES) {
-        auto sr = std::make_shared<Search>(Search {});
+        auto sr = std::make_shared<Search>();
         srs[id] = sr;
         return sr;
     }
@@ -1092,7 +1091,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or sn.candidate)
             continue;
-        if (sn.getStatus->reply_time < limit)
+        if (not sn.getStatus or sn.getStatus->reply_time < limit)
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -1109,18 +1108,15 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
-        if (sn.getStatus->reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
+        if (not sn.getStatus or sn.getStatus->reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
             // not isSynced
-            ut = std::min(ut, std::max(
-                sn.getStatus->last_try + Node::MAX_RESPONSE_TIME,
-                get_step_time + SEARCH_GET_STEP));
+            ut = std::min(ut, get_step_time + SEARCH_GET_STEP);
             if (not sn.candidate)
                 d++;
         } else {
-            ut = std::min(ut, std::max(
-                sn.getStatus->last_try + Node::MAX_RESPONSE_TIME,
-                sn.getStatus->reply_time + Node::NODE_EXPIRE_TIME));
+            ut = std::min(ut, sn.getStatus->reply_time + Node::NODE_EXPIRE_TIME);
         }
+
         t++;
         if (not sn.candidate and ++i == TARGET_NODES)
             break;
@@ -1295,11 +1291,11 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         DHT_LOG.ERROR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         if (done_callback)
             done_callback(false, {});
-        return nullptr;
+        return {};
     }
 
-    auto& srs = (af == AF_INET ? searches4 : searches6);
-    auto srp = srs.find(id);
+    auto& srs = af == AF_INET ? searches4 : searches6;
+    const auto& srp = srs.find(id);
     std::shared_ptr<Search> sr {};
 
     if (srp != srs.end()) {
@@ -1309,7 +1305,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     } else {
         sr = newSearch(id, af);
         if (not sr)
-            return nullptr;
+            return {};
         sr->af = af;
         sr->tid = search_id++;
         sr->step_time = TIME_INVALID;
@@ -1342,9 +1338,9 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             callback(false, {});
         return;
     }
-    auto& srs = (af == AF_INET ? searches4 : searches6);
+    auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
-    auto sr = (srp == srs.end()) ? search(id, af, nullptr, nullptr) : srp->second;
+    auto sr = srp == srs.end() ? search(id, af, nullptr, nullptr) : srp->second;
     if (!sr) {
         if (callback)
             callback(false, {});
@@ -2035,18 +2031,35 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
             out << ' ';
         out << (n.node->isExpired(now) ? 'x' : ' ') << "]";
 
-        out << " ["
-            << (n.getStatus->pending(now) ? 'f' : (n.getStatus->expired(now) ? 'x' : ' '))
-            << (n.isSynced(now) ? 's' : '-')
-            << ((n.getStatus->reply_time > last_get) ? 'u' : '-') << "] ";
+        {
+            bool pending {false}, expired {false};
+            time_point reply {time_point::min()};
+            if (n.getStatus) {
+                pending = n.getStatus->pending(now);
+                expired = n.getStatus->expired(now);
+                reply = n.getStatus->reply_time;
+            }
+            out << " ["
+                << (pending ? 'f' : (expired ? 'x' : ' ')) << (n.isSynced(now) ? 's' : '-')
+                << ((reply > last_get) ? 'u' : '-') << "] ";
+        }
 
-        if (not sr.listeners.empty()) {
-            if (n.listenStatus->last_try == time_point::min())
-                out << "     ";
-            else
-                out << "["
-                    << (n.listenStatus->pending(now) ? 'f' : (n.listenStatus->expired(now) ? 'x' : ' '))
-                    << (n.isListening(now) ? 'l' : '-') << "] ";
+        {
+            bool pending {false}, expired {false};
+            time_point reply {time_point::min()};
+            if (n.listenStatus) {
+                pending = n.listenStatus->pending(now);
+                expired = n.listenStatus->expired(now);
+                reply = n.listenStatus->reply_time;
+            }
+            if (not sr.listeners.empty() and n.listenStatus) {
+                if (n.listenStatus->last_try == time_point::min())
+                    out << "     ";
+                else
+                    out << "["
+                        << (n.listenStatus->pending(now) ? 'f' : (n.listenStatus->expired(now) ? 'x' : ' '))
+                        << (n.isListening(now) ? 'l' : '-') << "] ";
+            }
         }
 
         if (not sr.announce.empty()) {

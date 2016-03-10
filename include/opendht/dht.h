@@ -432,10 +432,16 @@ private:
          * Can we use this node to listen/announce now ?
          */
         bool isSynced(time_point now) const {
+            if (not getStatus)
+                return false;
+
             return not node->isExpired(now) and
                    getStatus->reply_time >= now - Node::NODE_EXPIRE_TIME;
         }
         bool canGet(time_point now, time_point update) const {
+            if (not getStatus)
+                return true;
+
             return not node->isExpired(now) and
                    (now > getStatus->reply_time + Node::NODE_EXPIRE_TIME or update > getStatus->reply_time) and
                    now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
@@ -449,6 +455,9 @@ private:
             return ack->second->reply_time + type.expiration > now;
         }
         bool isListening(time_point now) const {
+            if (not listenStatus)
+                return false;
+
             return listenStatus->reply_time + LISTEN_EXPIRE_TIME > now;
         }
 
@@ -464,6 +473,9 @@ private:
             return getAnnounceTime(acked.find(vid), type);
         }
         time_point getListenTime() const {
+            if (not listenStatus)
+                return time_point::min();
+
             return std::max(
                 listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
                 listenStatus->last_try + Node::MAX_RESPONSE_TIME
