@@ -72,7 +72,7 @@ public:
             t->second->do_();
             t = timers.erase(t);
         }
-        return now;
+        return getNextJobTime();
     }
 
     inline time_point getNextJobTime() const { return timers.begin()->first; }
@@ -85,7 +85,7 @@ public:
     inline time_point syncTime() { return (now = clock::now()); }
 
 private:
-    time_point now {time_point::min()};
+    time_point now {clock::now()};
     std::multimap<time_point, std::shared_ptr<Job>> timers {}; /* the jobs ordered by time */
 };
 

@@ -405,7 +405,7 @@ Dht::sendCachedPing(Bucket& b)
 void
 Dht::pinged(Node& n, Bucket* b)
 {
-    auto now = scheduler.time();
+    const auto& now = scheduler.time();
     if (not n.isExpired(now)) {
         n.requested(now);
         if (n.pinged >= 3) {
@@ -508,7 +508,7 @@ Dht::RoutingTable::split(const RoutingTable::iterator& b)
 bool
 Dht::trySearchInsert(const std::shared_ptr<Node>& node)
 {
-    auto now = scheduler.time();
+    const auto& now = scheduler.time();
     if (not node) return false;
 
     bool inserted = false;
@@ -543,7 +543,7 @@ Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
 std::shared_ptr<Node>
 Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm)
 {
-    auto now = scheduler.time();
+    const auto& now = scheduler.time();
     if (id == myid || isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
         return nullptr;
 
