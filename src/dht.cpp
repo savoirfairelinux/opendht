@@ -2235,23 +2235,8 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
     auto n = q->randomNode();
     if (n) {
         DHT_LOG.DEBUG("[find %s IPv%c] sending find for neighborhood maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
-        auto& srs = q->af == AF_INET ? searches4 : searches6;
-        const auto& srp = srs.find(id);
-        if (srp != srs.end()) {
-            auto& sr = srp->second;
-            network_engine.sendFindNode(n, id, network_engine.want(),
-              [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                  NetworkEngine::RequestAnswer&& answer) mutable
-              { /* on done */
-                  onGetValuesDone(status, answer, sr);
-              },
-              [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
-              { /* on expired */
-                  searchStep(sr);
-              }
-            );
-            pinged(*n, &(*q));
-        }
+        network_engine.sendFindNode(n, id, network_engine.want(), nullptr, nullptr);
+        pinged(*n, &(*q));
     }
 
     return true;
@@ -2300,19 +2285,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                 }
 
                 DHT_LOG.DEBUG("[find %s IPv%c] sending for bucket maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
-                auto srp = q->af == AF_INET ? searches4.find(id) : searches6.find(id);
-                auto sr = srp->second;
-                network_engine.sendFindNode(n, id, want,
-                    [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                        NetworkEngine::RequestAnswer&& answer) mutable
-                    { /* on done */
-                        onGetValuesDone(status, answer, sr);
-                    },
-                    [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
-                    { /* on expired */
-                        searchStep(sr);
-                    }
-                );
+                network_engine.sendFindNode(n, id, want, nullptr, nullptr);
                 pinged(*n, &(*q));
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
