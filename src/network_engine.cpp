@@ -173,15 +173,17 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 sendPong(from, fromlen, msg.tid);
                 break;
             case MessageType::FindNode: {
-                ++in_stats.find;
                 DHT_LOG.DEBUG("[node %s %s] got 'find' request (%d).",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
+                ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg.info_hash, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, answer.ntoken);
                 break;
             }
             case MessageType::GetValues: {
+                DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
+                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
@@ -189,6 +191,9 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 break;
             }
             case MessageType::AnnounceValue: {
+                DHT_LOG.DEBUG("[node %s %s] got 'put' request for %s.",
+                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
+                    hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg.info_hash, msg.token, msg.values, msg.created);
 
@@ -201,6 +206,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 break;
             }
             case MessageType::Listen: {
+                DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
+                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
                 if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
                     break;
                 }
@@ -415,7 +422,8 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
             sin.sin_family = AF_INET;
             memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
             memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
-            req_a.nodes.emplace_back(onNewNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0));
+            if (auto n = onNewNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0))
+                req_a.nodes.emplace_back(std::move(n));
         }
         for (unsigned i = 0; i < msg.nodes6.size() / NODE6_INFO_BUF_LEN; i++) {
             uint8_t *ni = msg.nodes6.data() + i * NODE6_INFO_BUF_LEN;
@@ -427,14 +435,15 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
             sin6.sin6_family = AF_INET6;
             memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
             memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
-            req_a.nodes.emplace_back(onNewNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), 0));
+            if (auto n = onNewNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), 0))
+                req_a.nodes.emplace_back(std::move(n));
         }
     }
-    return std::move(req_a);
+    return req_a;
 }
 
 void
-NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid, const Blob nodes, const Blob nodes6,
+NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid, const Blob& nodes, const Blob& nodes6,
         const std::vector<std::shared_ptr<Value>>& st, const Blob& token) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -542,31 +551,29 @@ std::pair<Blob, Blob>
 NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
         const std::vector<std::shared_ptr<Node>>& nodes, const std::vector<std::shared_ptr<Node>>& nodes6)
 {
-    uint8_t bnodes[8 * NODE4_INFO_BUF_LEN];
-    uint8_t bnodes6[8 * NODE6_INFO_BUF_LEN];
-
     if (want < 0)
         want = af == AF_INET ? WANT4 : WANT6;
 
-    auto buff = [=](uint8_t* nodes, const InfoHash& id, const std::vector<std::shared_ptr<Node>>& closest_nodes) {
+    auto buff = [=](Blob& nodes, const InfoHash& id, const std::vector<std::shared_ptr<Node>>& closest_nodes) {
         size_t numnodes = 0;
-        for (const auto& n : closest_nodes) {
-            numnodes = insertClosestNode(nodes, numnodes, id, *n);
-        }
+        for (const auto& n : closest_nodes)
+            numnodes = insertClosestNode(nodes.data(), numnodes, id, *n);
+        return numnodes;
     };
 
-    if ((want & WANT4)) {
-        buff(bnodes, id, nodes);
+    Blob bnodes4;
+    if (want & WANT4) {
+        bnodes4.resize(NODE4_INFO_BUF_LEN * TARGET_NODES);
+        bnodes4.resize(NODE4_INFO_BUF_LEN * buff(bnodes4, id, nodes));
     }
 
-    if ((want & WANT6)) {
-        buff(bnodes6, id, nodes6);
+    Blob bnodes6;
+    if (want & WANT6) {
+        bnodes6.resize(NODE6_INFO_BUF_LEN * TARGET_NODES);
+        bnodes6.resize(NODE6_INFO_BUF_LEN * buff(bnodes6, id, nodes6));
     }
 
-    Blob bn4(8 * NODE4_INFO_BUF_LEN), bn6(8 * NODE6_INFO_BUF_LEN);
-    bn4.insert(bn4.begin(), bnodes, bnodes + (8*NODE4_INFO_BUF_LEN));
-    bn6.insert(bn6.begin(), bnodes6, bnodes6 + (8*NODE6_INFO_BUF_LEN));
-    return {std::move(bn4), std::move(bn6)};
+    return {std::move(bnodes4), std::move(bnodes6)};
 }
 
 std::shared_ptr<NetworkEngine::RequestStatus>

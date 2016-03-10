@@ -313,7 +313,7 @@ public:
      * @param fromlen  The length of the corresponding sockaddr structure.
      * @param now  The time to adjust the clock in the network engine.
      */
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen, time_point now);
+    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
     std::vector<unsigned> getNodeMessageStats(bool in) {
         auto stats = in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
@@ -512,8 +512,8 @@ private:
     void sendNodesValues(const sockaddr* sa,
             socklen_t salen,
             TransId tid,
-            const Blob nodes,
-            const Blob nodes6,
+            const Blob& nodes,
+            const Blob& nodes6,
             const std::vector<std::shared_ptr<Value>>& st,
             const Blob& token);
     unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
