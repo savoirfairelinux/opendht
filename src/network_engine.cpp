@@ -123,7 +123,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
     if (msg.tid.length != 4) {
         DHT_LOG.ERROR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
         DHT_LOG.ERROR.logPrintable(buf, buflen);
-        throw DhtProtocolException {DhtProtocolException::INVALID_REPLY_TID};
+        throw DhtProtocolException {DhtProtocolException::INVALID_TID_SIZE};
     }
 
     uint16_t ttid = 0;
@@ -136,7 +136,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             req = &(*reqp->second);
 
         if (not req)
-            throw DhtProtocolException {DhtProtocolException::INVALID_REPLY_TID, "", msg.id};
+            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg.id};
 
         switch (msg.type) {
         case MessageType::Error: {

@@ -49,8 +49,9 @@ public:
     static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
     static const constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
     // for internal use (custom).
-    static const constexpr uint16_t INVALID_REPLY_TID {421};             /* id was truncated. */
-    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {422};       /* node info length is wrong */
+    static const constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
+    static const constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
+    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is wrong */
 
     static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
     static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
