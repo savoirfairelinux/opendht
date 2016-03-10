@@ -114,9 +114,12 @@ public:
      * information like the reply time for that request.
      */
     struct RequestStatus {
+        static const constexpr size_t MAX_ATTEMPT_COUNT {3};
+
         std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
-        bool canceled {false};                     /* whether the request is canceled before done. */
+        bool cancelled {false};                    /* whether the request is canceled before done. */
         bool completed {false};                    /* whether the request is completed. */
+        unsigned attempt_count {0};                /* number of attempt to process the request. */
         time_point start {time_point::min()};      /* time when the request is created. */
         time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
         time_point reply_time {time_point::min()}; /* time when we received the response from the node. */
@@ -124,8 +127,10 @@ public:
         RequestStatus() {}
         RequestStatus(time_point start, time_point reply_time = time_point::min())
             : start(start), last_try(start), reply_time(reply_time) {}
+
         bool expired(time_point now) const {
-            return reply_time < last_try && now > last_try + Node::MAX_RESPONSE_TIME;
+            return now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= RequestStatus::MAX_ATTEMPT_COUNT
+                and not completed;
         }
         bool pending(time_point now) const {
             return reply_time < last_try && now - last_try <= Node::MAX_RESPONSE_TIME;
@@ -422,27 +427,58 @@ private:
      * request is done.
      */
     struct Request {
-        static const constexpr size_t MAX_ATTEMPT_COUNT {3};
-
         Request(uint16_t tid,
                 std::shared_ptr<Node> node,
                 Blob &&msg,
-                std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&&)> on_done,
-                std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired) :
-            on_done(on_done), on_expired(on_expired), tid(tid), msg(msg) {
+                std::function<void(std::shared_ptr<RequestStatus> req_status, ParsedMessage&&)> on_done,
+                std::function<void(std::shared_ptr<RequestStatus> req_status, bool)> on_expired) :
+            on_done(on_done), on_expired(on_expired), tid(tid), msg(msg), status(std::make_shared<RequestStatus>()) {
                 status->node = node;
             }
 
-        bool expired() const { return attempt_count >= Request::MAX_ATTEMPT_COUNT; }
-
-        std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, ParsedMessage&&)> on_done {};
-        std::function<void(std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool)> on_expired {};
+        std::function<void(std::shared_ptr<RequestStatus> req_status, ParsedMessage&&)> on_done {};
+        std::function<void(std::shared_ptr<RequestStatus> req_status, bool)> on_expired {};
 
         const uint16_t tid {0};                   /* the request id. */
         Blob msg {};                              /* the serialized message. */
         std::shared_ptr<RequestStatus> status {}; /* the request info for DHT layer. */
-        unsigned attempt_count {0};               /* number of attempt to process the request. */
     };
+
+    void requestStep(std::shared_ptr<Request> req) {
+        if (req->status->completed or req->status->cancelled)
+            return;
+        auto now = scheduler.time();
+        if (req->status->expired(now)) {
+            req->on_expired(req->status, false);
+            requests.erase(req->tid);
+            return;
+        }
+
+        send((char*)req->msg.data(), req->msg.size(),
+                (req->status->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+                (sockaddr*)&req->status->node->ss, req->status->node->sslen);
+        ++req->status->attempt_count;
+        req->status->last_try = now;
+        std::weak_ptr<Request> wreq = req;
+        scheduler.add(req->status->last_try + Node::MAX_RESPONSE_TIME, [this,wreq]() {
+            if (auto req = wreq.lock()) {
+                DHT_LOG.DEBUG("Resending unreplied request %d", req->tid);
+                requestStep(req);
+            }
+        });
+    }
+
+    /**
+     * Sends a request to a node. RequestStatus::MAX_ATTEMPT_COUNT attempts will
+     * be made before the request expires.
+     */
+    void sendRequest(Request&& request) {
+        auto sreq = std::make_shared<Request>(std::move(request));
+        sreq->status->start = scheduler.time();
+        DHT_LOG.DEBUG("New transaction with id %d", request.tid);
+        requests.emplace(request.tid, sreq);
+        requestStep(sreq);
+    }
 
     /**
      * Generates a new request id, skipping the invalid id.

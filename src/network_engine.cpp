@@ -270,20 +270,22 @@ NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on
     pk.pack(std::string("v")); pk.pack(my_v);
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&&){
-            on_done(req_status, {});
+    Request req {tid[2], std::make_shared<Node>(InfoHash {}, sa, salen), std::move(b),
+        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&&){
+            if (on_done) {
+                on_done(req_status, {});
+            }
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
-            on_expired(req_status, {});
-            requests.erase(tid);
+        [=](std::shared_ptr<RequestStatus> req_status, bool) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, {});
+            }
         }
     };
     auto req_status = req.status;
-    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
-    send(buffer.data(), buffer.size(), 0, (sockaddr*)&n->ss, n->sslen);
-    out_stats.ping++;
-    return std::move(req_status);
+    sendRequest(std::move(req));
+    ++out_stats.ping;
+    return req_status;
 }
 
 void
@@ -331,20 +333,21 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&& msg) { /* on done */
-            on_done(req_status, deserializeNodesValues(msg));
+        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&& msg) { /* on done */
+            if (on_done) {
+                on_done(req_status, deserializeNodesValues(msg));
+            }
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
-            on_expired(req_status, {});
-            requests.erase(tid);
+        [=](std::shared_ptr<RequestStatus> req_status, bool) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, {});
+            }
         }
     };
     auto req_status = req.status;
-    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
-    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            (sockaddr*)&n->ss, n->sslen);
-    out_stats.find++;
-    return std::move(req_status);
+    sendRequest(std::move(req));
+    ++out_stats.find;
+    return req_status;
 }
 
 
@@ -374,20 +377,21 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&& msg) { /* on done */
-            on_done(req_status, deserializeNodesValues(msg));
+        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&& msg) { /* on done */
+            if (on_done) {
+                on_done(req_status, deserializeNodesValues(msg));
+            }
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
-            on_expired(req_status, {});
-            requests.erase(tid);
+        [=](std::shared_ptr<RequestStatus> req_status, bool) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, {});
+            }
         }
     };
     auto req_status = req.status;
-    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
-    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            (sockaddr*)&n->ss, n->sslen);
-    out_stats.get++;
-    return std::move(req_status);
+    sendRequest(std::move(req));
+    ++out_stats.get;
+    return req_status;
 }
 
 NetworkEngine::RequestAnswer
@@ -583,20 +587,21 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&&) { /* on done */
-            on_done(req_status, {});
+        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&&) { /* on done */
+            if (on_done) {
+                on_done(req_status, {});
+            }
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
-            on_expired(req_status, {});
-            requests.erase(tid);
+        [=](std::shared_ptr<RequestStatus> req_status, bool) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, {});
+            }
         }
     };
     auto req_status = req.status;
-    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
-    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            (sockaddr*)&n->ss, n->sslen);
-    out_stats.listen++;
-    return std::move(req_status);
+    sendRequest(std::move(req));
+    ++out_stats.listen;
+    return req_status;
 }
 
 void
@@ -643,24 +648,25 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid[2], n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t, ParsedMessage&& msg) { /* on done */
+        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.DEBUG("Unknown search or announce!");
             } else {
-                on_done(req_status, {});
+                if (on_done) {
+                    on_done(req_status, {});
+                }
             }
         },
-        [=](std::shared_ptr<RequestStatus> req_status, uint16_t tid, bool) { /* on expired */
-            on_expired(req_status, {});
-            requests.erase(tid);
+        [=](std::shared_ptr<RequestStatus> req_status, bool) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, {});
+            }
         }
     };
     auto req_status = req.status;
-    requests.emplace(tid[2], std::make_shared<Request>(std::move(req)));
-    send(buffer.data(), buffer.size(), (n->reply_time >= scheduler->time() - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            (sockaddr*)&n->ss, n->sslen);
-    out_stats.put++;
-    return std::move(req_status);
+    sendRequest(std::move(req));
+    ++out_stats.put;
+    return req_status;
 }
 
 void
