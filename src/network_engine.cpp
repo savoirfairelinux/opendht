@@ -128,8 +128,6 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
 
     uint16_t ttid = 0;
     if (msg.type == MessageType::Error or msg.type == MessageType::Reply) {
-        auto node = onNewNode(msg.id, from, fromlen, 2);
-        onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
         Request* req = nullptr;
         const auto& reqp = requests.find(msg.tid[2]);
         if (reqp != requests.end())
@@ -138,12 +136,16 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         if (not req)
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg.id};
 
+        auto node = onNewNode(msg.id, from, fromlen, 2);
+        onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
         switch (msg.type) {
         case MessageType::Error: {
             if (msg.error_code == DhtProtocolException::UNAUTHORIZED
                     && msg.id != zeroes
                     && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)
                         || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
+                req->status->last_try = TIME_INVALID;
+                req->status->reply_time = TIME_INVALID;
                 onError(req->status, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
             } else {
                 DHT_LOG.WARN("[node %s %s] received unknown error message %u",
@@ -153,7 +155,9 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
         case MessageType::Reply:
-            req->on_done(req->status, msg.tid[2], std::move(msg));
+            req->on_done(req->status, std::move(msg));
+            req->status->reply_time = scheduler.time();
+            requests.erase(reqp);
             break;
         default:
             break;
