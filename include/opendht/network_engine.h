@@ -43,6 +43,10 @@ THE SOFTWARE.
 
 namespace dht {
 
+#ifndef MSG_CONFIRM
+#define MSG_CONFIRM 0
+#endif
+
 class DhtProtocolException : public DhtException {
 public:
     // sent to another peer (http-like).

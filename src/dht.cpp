@@ -1646,7 +1646,7 @@ Dht::getPut(const InfoHash& id, const Value::Id& vid)
         if (srp == srs.end())
             return std::shared_ptr<Value> {};
         auto& search = srp->second;
-        for (const auto& a : search->announce) {
+        for (auto& a : search->announce) {
             if (a.value->id == vid)
                 return a.value;
         }
@@ -2565,9 +2565,9 @@ Dht::pingNode(const sockaddr *sa, socklen_t salen)
 void
 Dht::onError(std::shared_ptr<NetworkEngine::RequestStatus> status, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
-        //TODO: utiliser map de search
-        /*auto esr = findSearch(ttid, from->sa_family);*/
-        //if (!esr) return;
+        //TODO
+        //auto esr = searches.find(status);
+        //if (esr == searches.end()) return;
         unsigned cleared = 0;
         for (auto& srp : status->node->ss.ss_family == AF_INET ? searches4 : searches6) {
             auto sr = srp.second;
@@ -2803,8 +2803,7 @@ Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Networ
 {
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-            answer.values.size());
+            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', answer.values.size());
 
     if (searchSendGetValues(sr))
         sr->get_step_time = now;
