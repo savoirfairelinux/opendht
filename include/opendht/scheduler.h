@@ -42,7 +42,7 @@ namespace dht {
 class Scheduler {
 public:
     struct Job {
-        bool canceled;
+        bool cancelled;
         std::function<void()> do_;
     };
 
@@ -62,20 +62,22 @@ public:
     /**
      * Runs the jobs to do up to now.
      *
-     * @return The time reference to "now".
+     * @return The time for the next job to run.
      */
     time_point run() {
-        now = clock::now();
+        syncTime();
         for (auto t = timers.begin(); t != timers.end(); ) {
             if (t->first > now)
-                return now;
+                break;
             t->second->do_();
             t = timers.erase(t);
         }
         return getNextJobTime();
     }
 
-    inline time_point getNextJobTime() const { return timers.begin()->first; }
+    inline time_point getNextJobTime() const {
+        return not timers.empty() ? timers.begin()->first : time_point::max();
+    }
 
     /**
      * Accessors for the common time reference used for synchronizing
