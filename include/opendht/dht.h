@@ -436,14 +436,14 @@ private:
                 return false;
 
             return not node->isExpired(now) and
-                   getStatus->reply_time >= now - Node::NODE_EXPIRE_TIME;
+                   last_get_reply >= now - Node::NODE_EXPIRE_TIME;
         }
         bool canGet(time_point now, time_point update) const {
             if (not getStatus)
                 return true;
 
             return not node->isExpired(now) and
-                   (now > getStatus->reply_time + Node::NODE_EXPIRE_TIME or update > getStatus->reply_time) and
+                   (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply) and
                    now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
         }
 
@@ -487,6 +487,7 @@ private:
 
         std::shared_ptr<Node> node {};
 
+        time_point last_get_reply {time_point::min()};                 /* last time we heard of this search node. */
         std::shared_ptr<NetworkEngine::RequestStatus> getStatus {};    /* get/sync status */
         std::shared_ptr<NetworkEngine::RequestStatus> listenStatus {};
         AnnounceStatusMap acked {};                                    /* announcement status for a given value id */
