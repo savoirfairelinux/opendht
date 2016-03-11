@@ -272,12 +272,11 @@ public:
      *  Requests  *
      **************/
     std::shared_ptr<RequestStatus>
-        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired);
+        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired) {
+            return sendPing((sockaddr*)&n->ss, n->sslen, on_done, on_expired);
+        }
     std::shared_ptr<RequestStatus>
-        sendPing(sockaddr* sa, socklen_t salen, RequestCb on_done, RequestCb on_expired)
-    {
-        sendPing(std::make_shared<Node>(InfoHash {}, sa, salen), on_done, on_expired);
-    }
+        sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestCb on_expired);
     std::shared_ptr<RequestStatus>
         sendFindNode(std::shared_ptr<Node> n,
                 const InfoHash& target,
@@ -464,7 +463,6 @@ private:
         std::weak_ptr<Request> wreq = req;
         scheduler.add(req->status->last_try + Node::MAX_RESPONSE_TIME, [this,wreq]() {
             if (auto req = wreq.lock()) {
-                DHT_LOG.DEBUG("Resending unreplied request %d", req->tid);
                 requestStep(req);
             }
         });
