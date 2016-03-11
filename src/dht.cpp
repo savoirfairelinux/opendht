@@ -518,6 +518,8 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         auto& s = srp.second;
         if (s->insertNode(node, now)) {
             inserted = true;
+            DHT_LOG.DEBUG("[search %s IPv%c] node %s added",
+                    s->id.toString().c_str(), s->af == AF_INET ? '4' : '6', node->id.toString().c_str());
             scheduler.add(s->getNextStepTime(types, now), std::bind(&Dht::searchStep, this, s));
         }
     }
@@ -570,6 +572,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
     }
 
     /* New node. */
+    DHT_LOG.DEBUG("[node %s] %s, potential new node.", id.toString().c_str(), print_addr(sa, salen).c_str());
 
     if (mybucket) {
         if (sa->sa_family == AF_INET)
@@ -600,7 +603,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             if (not n->isGood(now)) {
                 dubious = true;
                 if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
-                    DHT_LOG.DEBUG("Sending ping to dubious node.");
+                    DHT_LOG.DEBUG("Sending ping to dubious node. %p", n.get());
                     network_engine.sendPing(n, nullptr, nullptr);
                     n->pinged++;
                     n->pinged_time = now;
@@ -758,9 +761,13 @@ void
 Dht::expireSearches()
 {
     auto t = scheduler.time() - SEARCH_EXPIRE_TIME;
-    auto expired = [t](std::pair<const InfoHash, std::shared_ptr<Search>>& srp) {
+    auto expired = [&](std::pair<const InfoHash, std::shared_ptr<Search>>& srp) {
         auto& sr = srp.second;
-        return sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty() && sr->step_time < t;
+        auto b = sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty() && sr->step_time < t;
+        if (b) {
+            DHT_LOG.DEBUG("Removing search %s ", srp.first.toString().c_str());
+            return b;
+        } else { return false; }
     };
     erase_if(searches4, expired);
     erase_if(searches6, expired);
@@ -791,7 +798,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
         n->node->id.toString().c_str(),
         print_addr(n->node->ss, n->node->sslen).c_str(),
-        n->node->pinged, print_dt(now-n->getStatus->last_try));
+        n->node->pinged);
 
     auto onDone =
         [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
@@ -825,8 +832,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 void
 Dht::searchStep(std::shared_ptr<Search> sr)
 {
-    if (not sr)
-        return;
+    if (not sr) return;
 
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] step", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
@@ -878,24 +884,22 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         print_addr(n.node->ss, n.node->sslen).c_str());
                     //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    {
-                        n.listenStatus = network_engine.sendListen(n.node, sr->id, n.token,
-                            [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
-                                    NetworkEngine::RequestAnswer&& answer) mutable
-                            { /* on done */
-                                if (sr) {
-                                    onListenDone(status, answer, sr);
-                                    searchStep(sr);
-                                }
-                            },
-                            [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
-                            { /* on expired */
-                                if (sr) {
-                                    searchStep(sr);
-                                }
+                    n.listenStatus = network_engine.sendListen(n.node, sr->id, n.token,
+                        [=](std::shared_ptr<NetworkEngine::RequestStatus> status,
+                                NetworkEngine::RequestAnswer&& answer) mutable
+                        { /* on done */
+                            if (sr) {
+                                onListenDone(status, answer, sr);
+                                searchStep(sr);
                             }
-                        );
-                    }
+                        },
+                        [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
+                        { /* on expired */
+                            if (sr) {
+                                searchStep(sr);
+                            }
+                        }
+                    );
                     n.pending = true;
                     n.listenStatus->last_try = now;
                 }
@@ -921,13 +925,11 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                     continue;
                 auto at = n.getAnnounceTime(vid, type);
                 if ( at <= now ) {
-                    DHT_LOG.WARN("[search %s IPv%c] [node %s %s] sending 'put'",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        n.node->id.toString().c_str(),
-                        print_addr(n.node->ss, n.node->sslen).c_str());
+                    DHT_LOG.WARN("[search %s IPv%c] [node %s %s] sending 'put' (vid: %d)",
+                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', n.node->id.toString().c_str(),
+                        print_addr(n.node->ss, n.node->sslen).c_str(), vid);
                     //std::cout << "Sending announce_value to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    {
                     n.acked[vid] = network_engine.sendAnnounceValue(n.node, sr->id, *a.value, a.created, n.token,
                         [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable
                         { /* on done */
@@ -1325,8 +1327,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
 
     bootstrapSearch(*sr);
     searchStep(sr);
-    //search_time = now;
-    return &(*sr);
+    return sr;
 }
 
 void
@@ -2420,6 +2421,7 @@ Dht::confirmNodes(bool reschedule)
     const auto& now = scheduler.time();
 
     if (searches4.empty() and searches6.empty() and getStatus() != Status::Disconnected) {
+        DHT_LOG.DEBUG("[confirm nodes] initial 'get' for my id (%s).", myid.toString().c_str());
         get(myid, GetCallbackSimple{});
     }
 
@@ -2749,7 +2751,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
         auto closest_nodes = (
                 ((sockaddr*)&node->ss)->sa_family == AF_INET ? buckets : buckets6
             ).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
-        if (hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
+        if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
             DHT_LOG.WARN("[node %s %s] announce too far from the target id. Dropping value.",
                     node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
             return {};

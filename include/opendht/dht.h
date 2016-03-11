@@ -851,7 +851,7 @@ private:
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
 
-    void confirmNodes();
+    void confirmNodes(bool reschedule = false);
     void expire();
 
     /**

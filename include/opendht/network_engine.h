@@ -477,7 +477,6 @@ private:
     void sendRequest(Request&& request) {
         auto sreq = std::make_shared<Request>(std::move(request));
         sreq->status->start = scheduler.time();
-        DHT_LOG.DEBUG("New transaction with id %d", request.tid);
         requests.emplace(request.tid, sreq);
         requestStep(sreq);
     }
