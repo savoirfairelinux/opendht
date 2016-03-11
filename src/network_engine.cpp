@@ -183,7 +183,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             }
             case MessageType::GetValues: {
                 DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
-                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
+                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
@@ -193,7 +193,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             case MessageType::AnnounceValue: {
                 DHT_LOG.DEBUG("[node %s %s] got 'put' request for %s.",
                     node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
-                    hash.toString().c_str());
+                    msg.info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg.info_hash, msg.token, msg.values, msg.created);
 
@@ -207,7 +207,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             }
             case MessageType::Listen: {
                 DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
-                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), hash.toString().c_str());
+                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), msg.info_hash.toString().c_str());
                 if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
                     break;
                 }
@@ -407,7 +407,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
 
 NetworkEngine::RequestAnswer
 NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
-    RequestAnswer req_a {msg.token, std::move(msg.values), {}, {}};
+    RequestAnswer req_a {msg.token, 0, std::move(msg.values), {}, {}};
     if (msg.nodes4.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     } else {
@@ -664,7 +664,9 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
                 DHT_LOG.DEBUG("Unknown search or announce!");
             } else {
                 if (on_done) {
-                    on_done(req_status, {});
+                    RequestAnswer answer {};
+                    answer.vid = msg.value_id;
+                    on_done(req_status, std::move(answer));
                 }
             }
         },

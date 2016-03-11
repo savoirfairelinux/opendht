@@ -449,7 +449,7 @@ private:
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
             auto ack = acked.find(vid);
-            if (ack == acked.end()) {
+            if (ack == acked.end() or not ack->second) {
                 return false;
             }
             return ack->second->reply_time + type.expiration > now;
@@ -462,7 +462,7 @@ private:
         }
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
-            if (ack == acked.end())
+            if (ack == acked.end() or not ack->second)
                 return time_point::min();
             return std::max(
                 ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN,

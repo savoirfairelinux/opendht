@@ -101,6 +101,7 @@ public:
      */
     struct RequestAnswer {
         Blob ntoken;
+        Value::Id vid;
         std::vector<std::shared_ptr<Value>> values;
         std::vector<std::shared_ptr<Node>> nodes;
         std::vector<std::shared_ptr<Node>> nodes6;

@@ -2075,11 +2075,11 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                         out << ' ';
                     } else {
                         auto& astatus = ack->second;
-                        if (astatus->reply_time + getType(a.value->type).expiration > now)
+                        if (astatus and astatus->reply_time + getType(a.value->type).expiration > now)
                             out << 'a';
-                        else if (astatus->pending(now))
+                        else if (astatus and astatus->pending(now))
                             out << 'f';
-                        else if (astatus->expired(now))
+                        else if (astatus and astatus->expired(now))
                             out << 'x';
                         else
                             out << ' ';
@@ -2174,6 +2174,7 @@ Dht::Dht(int s, int s6, Config config)
             std::bind(&Dht::onListen, this, _1, _2, _3, _4),
             std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5))
 {
+    scheduler.syncTime();
     if (s < 0 && s6 < 0)
         return;
 
@@ -2602,16 +2603,15 @@ Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want)
     const auto& now = scheduler.time();
     Blob ntoken = makeToken((sockaddr*)&node->ss, false);
     std::vector<std::shared_ptr<Node>> nodes, nodes6;
-    if ((want & WANT4)) {
+    if (want & WANT4) {
         auto tmp = buckets.findClosestNodes(hash, now, TARGET_NODES);
         nodes.insert(nodes.begin(), tmp.begin(), tmp.end());
     }
-    if ((want & WANT6)) {
+    if (want & WANT6) {
         auto tmp = buckets6.findClosestNodes(hash, now, TARGET_NODES);
         nodes6.insert(nodes6.begin(), tmp.begin(), tmp.end());
     }
-    NetworkEngine::RequestAnswer answer {ntoken, {}, std::move(nodes), std::move(nodes6)};
-    return answer;
+    return NetworkEngine::RequestAnswer {ntoken, Value::INVALID_ID, {}, std::move(nodes), std::move(nodes6)};
 }
 
 NetworkEngine::RequestAnswer
@@ -2628,6 +2628,7 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
         Blob ntoken = makeToken((sockaddr*)&node->ss, false);
         answer = new NetworkEngine::RequestAnswer {
             ntoken,
+            0,
             {},
             buckets.findClosestNodes(hash, now, TARGET_NODES),
             buckets6.findClosestNodes(hash, now, TARGET_NODES)
@@ -2795,8 +2796,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
 }
 
 void
-Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus>,
-        NetworkEngine::RequestAnswer& answer,
+Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& answer,
         std::shared_ptr<Search> sr)
 {
     const auto& now = scheduler.time();
@@ -2804,17 +2804,18 @@ Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus>,
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
             answer.values.size());
 
-    auto& v = answer.values.front();
     if (searchSendGetValues(sr))
         sr->get_step_time = now;
+
+    status->reply_time = scheduler.time();
 
     // If the value was just successfully announced, call the callback
     sr->announce.erase(std::remove_if(sr->announce.begin(), sr->announce.end(),
         [&](Announce& a) {
-            if (!a.value || a.value->id != v->id)
+            if (!a.value || a.value->id != answer.vid)
                 return false;
             auto type = getType(a.value->type);
-            if (sr->isAnnounced(v->id, type, now)) {
+            if (sr->isAnnounced(answer.vid, type, now)) {
                 if (a.callback) {
                     a.callback(true, sr->getNodes());
                     a.callback = nullptr;
