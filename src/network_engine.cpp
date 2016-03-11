@@ -155,8 +155,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
         case MessageType::Reply:
-            req->on_done(req->status, std::move(msg));
             req->status->reply_time = scheduler.time();
+            req->on_done(req->status, std::move(msg));
             requests.erase(reqp);
             break;
         default:

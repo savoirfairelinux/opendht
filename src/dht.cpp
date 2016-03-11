@@ -2659,6 +2659,10 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
 
     const auto& now = scheduler.time();
     sr->insertNode(status->node, now, a.ntoken);
+    for (auto& sn : sr->nodes) {
+        if (sn.node->id == status->node->id)
+            sn.last_get_reply = status->reply_time;
+    }
     if (!a.values.empty()) {
         DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
