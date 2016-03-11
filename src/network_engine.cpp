@@ -265,7 +265,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const sockaddr *sa, 
 }
 
 std::shared_ptr<NetworkEngine::RequestStatus>
-NetworkEngine::sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired) {
+NetworkEngine::sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestCb on_expired) {
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
