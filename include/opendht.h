@@ -20,6 +20,8 @@
 #pragma once
 
 #include "opendht/dht.h"
+#include "opendht/scheduler.h"
+#include "opendht/network_engine.h"
 #include "opendht/node.h"
 #include "opendht/value.h"
 #include "opendht/infohash.h"

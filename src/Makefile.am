@@ -12,6 +12,7 @@ libopendht_la_SOURCES = \
 		network_engine.cpp \
         utils.cpp \
         infohash.cpp \
+		node.cpp \
         value.cpp \
         crypto.cpp \
         securedht.cpp \
@@ -26,8 +27,10 @@ nobase_include_HEADERS = \
         ../include/opendht.h \
         ../include/opendht/dht.h \
         ../include/opendht/network_engine.h \
+		../include/opendht/scheduler.h \
         ../include/opendht/utils.h \
         ../include/opendht/infohash.h \
+		../include/opendht/node.h \
         ../include/opendht/value.h \
         ../include/opendht/crypto.h \
         ../include/opendht/securedht.h \
