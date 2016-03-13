@@ -56,6 +56,7 @@ list (APPEND opendht_HEADERS
 	include/opendht/value.h
 	include/opendht/dht.h
     include/opendht/network_engine.h
+    include/opendht/scheduler.h
 	include/opendht/securedht.h
 	include/opendht/log.h
 	include/opendht.h
