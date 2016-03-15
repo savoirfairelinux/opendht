@@ -576,6 +576,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             mybucket_grow_time = now;
         else
             mybucket6_grow_time = now;
+        scheduler.add(now, std::bind(&Dht::confirmNodes, this, false));
     }
 
     /* First, try to get rid of a known-bad node. */
