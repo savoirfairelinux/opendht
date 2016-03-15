@@ -378,10 +378,14 @@ private:
             }
         }
 
-        bool matches(const TransPrefix prefix, uint16_t *seqno_return = nullptr) const {
+        uint16_t getTid() const {
+            return *reinterpret_cast<const uint16_t*>(&(*this)[2]);
+        }
+
+        bool matches(const TransPrefix prefix, uint16_t* tid = nullptr) const {
             if (std::equal(begin(), begin()+2, prefix.begin())) {
-                if (seqno_return)
-                    *seqno_return = *reinterpret_cast<const uint16_t*>(&(*this)[2]);
+                if (tid)
+                    *tid = getTid();
                 return true;
             } else
                 return false;
