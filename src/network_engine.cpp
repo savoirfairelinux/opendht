@@ -363,7 +363,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
 
 std::shared_ptr<NetworkEngine::RequestStatus>
-NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
+NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, want_t want,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
@@ -372,7 +372,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, wa
 
     pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
       pk.pack(std::string("id")); pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(target);
+      pk.pack(std::string("h"));  pk.pack(info_hash);
     if (want > 0) {
       pk.pack(std::string("w"));
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
