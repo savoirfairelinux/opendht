@@ -2720,19 +2720,12 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 }
 
 void
-Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&, std::shared_ptr<Search> sr)
+Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search> sr)
 {
-    const auto& now = scheduler.time();
     DHT_LOG.DEBUG("Got reply to listen.");
     if (sr) {
-        for (auto& sn : sr->nodes)
-            if (sn.node == status->node) {
-                sn.listenStatus->reply_time = now;
-                break;
-            }
+        onGetValuesDone(status, answer, sr);
         /* See comment for gp above. */
-        if (searchSendGetValues(sr))
-            sr->get_step_time = now;
     }
 }
 
