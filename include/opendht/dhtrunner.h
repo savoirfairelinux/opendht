@@ -224,7 +224,7 @@ public:
         return dht_->exportValues();
     }
 
-    void setLoggers(LogMethod&& error = NOLOG, LogMethod&& warn = NOLOG, LogMethod&& debug = NOLOG) {
+    void setLoggers(LogMethod&& error = (LogMethod&&)NOLOG, LogMethod&& warn = (LogMethod&&)NOLOG, LogMethod&& debug = (LogMethod&&)NOLOG) {
         std::lock_guard<std::mutex> lck(dht_mtx);
         dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
     }
@@ -308,14 +308,14 @@ public:
      */
     void run(in_port_t port, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false) {
         run(port, {
-            .dht_config = {
-                .node_config = {
-                    .node_id = {},
-                    .is_bootstrap = is_bootstrap
+            /*.dht_config = */{
+                /*.node_config = */{
+                    /*.node_id = */{},
+                    /*.is_bootstrap = */is_bootstrap
                 },
-                .id = identity
+                /*.id = */identity
             },
-            .threaded = threaded
+            /*.threaded = */threaded
         });
     }
     void run(in_port_t port, Config config);

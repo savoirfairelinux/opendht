@@ -90,7 +90,7 @@ struct LogMethod {
     void logPrintable(const uint8_t *buf, size_t buflen) const {
         std::string buf_clean(buflen, '\0');
         for (size_t i=0; i<buflen; i++)
-            buf_clean[i] = std::isprint(buf[i]) ? buf[i] : '.';
+            buf_clean[i] = isprint(buf[i]) ? buf[i] : '.';
         (*this)("%s", buf_clean.c_str());
     }
 private:

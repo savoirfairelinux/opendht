@@ -38,7 +38,7 @@ InfoHash::InfoHash(const std::string& hex) {
     const auto p = (const char*)hex.data();
     for (size_t i = 0; i < HASH_LEN; i++) {
         unsigned res = 0;
-        sscanf(p + 2*i, "%02x", &res);
+        sscanf_s(p + 2*i, "%02x", &res);
         (*this)[i] = res;
     }
 }
@@ -65,7 +65,11 @@ InfoHash::getRandom()
 {
     InfoHash h;
     crypto::random_device rdev;
-    std::uniform_int_distribution<uint8_t> rand_byte;
+#ifdef _WIN32
+	static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
+	static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
     std::generate(h.begin(), h.end(), std::bind(rand_byte, std::ref(rdev)));
     return h;
 }

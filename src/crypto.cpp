@@ -33,7 +33,11 @@ extern "C" {
 #include <stdexcept>
 #include <cassert>
 
+#ifdef _WIN32
+static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
 static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
 static gnutls_digest_algorithm_t get_dig_for_pub(gnutls_pubkey_t pubkey)
 {
