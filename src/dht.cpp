@@ -2054,18 +2054,16 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 
         {
             bool pending {false}, expired {false};
-            time_point reply {time_point::min()};
             if (n.listenStatus) {
                 pending = n.listenStatus->pending(now);
                 expired = n.listenStatus->expired(now);
-                reply = n.listenStatus->reply_time;
             }
             if (not sr.listeners.empty() and n.listenStatus) {
                 if (n.listenStatus->last_try == time_point::min())
                     out << "     ";
                 else
                     out << "["
-                        << (n.listenStatus->pending(now) ? 'f' : (n.listenStatus->expired(now) ? 'x' : ' '))
+                        << (pending ? 'f' : (expired ? 'x' : ' '))
                         << (n.isListening(now) ? 'l' : '-') << "] ";
             }
         }
