@@ -28,7 +28,7 @@
 
 namespace dht {
 
-class Node;
+struct Node;
 
 enum class NodeStatus {
     Disconnected, // 0 nodes

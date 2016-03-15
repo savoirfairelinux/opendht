@@ -5,8 +5,12 @@
 
 namespace dht {
 
-static std::mt19937 rd {dht::crypto::random_device{}()};
+static std::mt19937 rd{ dht::crypto::random_device{}() };
+#ifdef _WIN32
+static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
 static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
 std::shared_ptr<Node>
 Bucket::randomNode()

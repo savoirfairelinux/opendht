@@ -38,7 +38,12 @@ extern "C" {
 #include <random>
 #include <sstream>
 
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#include <io.h>
+#endif
+
 #include <fcntl.h>
 #include <cstring>
 
@@ -69,7 +74,11 @@ set_nonblocking(int fd, int nonblocking)
 #endif
 
 static std::mt19937 rd {dht::crypto::random_device{}()};
+#ifdef _WIN32
+static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
 static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
 namespace dht {
 
@@ -92,7 +101,7 @@ struct Dht::Storage {
     Storage() {}
     Storage(InfoHash id, time_point now) : id(id), maintenance_time(now+MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {}
 
-#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9
+#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9 || defined(_WIN32)
     // GCC-bug: remove me when support of GCC < 4.9.2 is abandoned
     Storage(Storage&& o) noexcept
         : id(std::move(o.id))
@@ -327,11 +336,11 @@ struct Dht::Search {
 };
 
 void
-Dht::setLoggers(LogMethod&& error, LogMethod&& warn, LogMethod&& debug)
+Dht::setLoggers(LogMethod error, LogMethod warn, LogMethod debug)
 {
-    DHT_LOG.DEBUG = std::move(debug);
-    DHT_LOG.WARN = std::move(warn);
-    DHT_LOG.ERR = std::move(error);
+    DHT_LOG.DEBUG = debug;
+    DHT_LOG.WARN = warn;
+    DHT_LOG.ERR = error;
 }
 
 NodeStatus
@@ -1196,7 +1205,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     }
 
     if (callback)
-        sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback});
+        sr->callbacks.push_back({/*.start=*/scheduler.time(), /*.filter=*/filter, /*.get_cb=*/callback, /*.done_cb=*/done_callback});
     bootstrapSearch(*sr);
 
     if (sr->nextSearchStep)
@@ -1231,13 +1240,13 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
     if (a_sr == sr->announce.end()) {
         sr->announce.emplace_back(Announce {value, std::min(now, created), callback});
         for (auto& n : sr->nodes)
-            n.acked[value->id] = {};
+            n.acked[value->id].reset();
     }
     else {
         if (a_sr->value != value) {
             a_sr->value = value;
             for (auto& n : sr->nodes)
-                n.acked[value->id] = {};
+                n.acked[value->id].reset();
         }
         if (sr->isAnnounced(value->id, getType(value->type), now)) {
             if (a_sr->callback)
@@ -1759,7 +1768,7 @@ Dht::connectivityChanged()
     auto stop_listen = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
         for (auto& sp : srs)
             for (auto& sn : sp.second->nodes)
-                sn.listenStatus = {};
+                sn.listenStatus.reset();
     };
     stop_listen(searches4);
     stop_listen(searches6);

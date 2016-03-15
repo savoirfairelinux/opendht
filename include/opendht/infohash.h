@@ -41,6 +41,10 @@ typedef uint16_t in_port_t;
 #include <stdexcept>
 #include <cstring>
 
+#ifdef _WIN32
+#include <iso646.h>
+#endif
+
 // bytes
 #define HASH_LEN 20u
 
@@ -94,7 +98,11 @@ public:
      * Forget about the ``XOR-metric''.  An id is just a path from the
      * root of the tree, so bits are numbered from the start.
      */
+#ifdef WIN32_NATIVE
+    static inline int cmp(const InfoHash& __restrict id1, const InfoHash& __restrict id2) {
+#else
     static inline int cmp(const InfoHash& __restrict__ id1, const InfoHash& __restrict__ id2) {
+#endif
         return std::memcmp(id1.data(), id2.data(), HASH_LEN);
     }
 
