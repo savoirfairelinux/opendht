@@ -406,20 +406,20 @@ private:
 
     struct ParsedMessage {
         MessageType type;
-        InfoHash id;
-        InfoHash info_hash;
-        InfoHash target;
-        TransId tid;
-        Blob token;
-        Value::Id value_id;
-        time_point created { time_point::max() };
-        Blob nodes4;
-        Blob nodes6;
-        std::vector<std::shared_ptr<Value>> values;
-        want_t want;
-        uint16_t error_code;
+        InfoHash id;                                /* the id of the sender */
+        InfoHash info_hash;                         /* hash for which values are requested */
+        InfoHash target;                            /* target id around which to find nodes */
+        TransId tid;                                /* transaction id */
+        Blob token;                                 /* security token */
+        Value::Id value_id;                         /* the value id */
+        time_point created { time_point::max() };   /* time when value was first created */
+        Blob nodes4;                                /* IPv4 nodes in response to a 'find' request */
+        Blob nodes6;                                /* IPv6 nodes in response to a 'find' request */
+        std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
+        want_t want;                                /* states if ipv4 or ipv6 request */
+        uint16_t error_code;                        /* error code in case of error */
         std::string ua;
-        Address addr;
+        Address addr;                               /* reported address by the distant node */
         void msgpack_unpack(msgpack::object o);
     };
 
