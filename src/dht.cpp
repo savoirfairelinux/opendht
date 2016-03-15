@@ -518,8 +518,6 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         auto& s = srp.second;
         if (s->insertNode(node, now)) {
             inserted = true;
-            DHT_LOG.DEBUG("[search %s IPv%c] node %s added",
-                    s->id.toString().c_str(), s->af == AF_INET ? '4' : '6', node->id.toString().c_str());
             scheduler.add(s->getNextStepTime(types, now), std::bind(&Dht::searchStep, this, s));
         }
     }
@@ -572,7 +570,6 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
     }
 
     /* New node. */
-    DHT_LOG.DEBUG("[node %s] %s, potential new node.", id.toString().c_str(), print_addr(sa, salen).c_str());
 
     if (mybucket) {
         if (sa->sa_family == AF_INET)
@@ -603,7 +600,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             if (not n->isGood(now)) {
                 dubious = true;
                 if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
-                    DHT_LOG.DEBUG("Sending ping to dubious node. %p", n.get());
+                    DHT_LOG.DEBUG("Sending ping to dubious node.");
                     network_engine.sendPing(n, nullptr, nullptr);
                     n->pinged++;
                     n->pinged_time = now;
@@ -804,12 +801,25 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
             if (sr) {
                 onGetValuesDone(status, answer, sr);
-                searchStep(sr);
+                if (searchSendGetValues(sr))
+                    sr->get_step_time = now;
             }
         };
     auto onExpired =
-        [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable {
+        [=](std::shared_ptr<NetworkEngine::RequestStatus> status, bool over) mutable {
             if (sr) {
+                if (not over) {
+                    auto srn = std::find_if(sr->nodes.begin(), sr->nodes.end(), [&status](SearchNode& sn) {
+                        return status->node == sn.node;
+                    });
+                    if (srn != sr->nodes.end()) {
+                        DHT_LOG.DEBUG("[search %s] sn %s now candidate...",
+                                sr->id.toString().c_str(), srn->node->id.toString().c_str());
+                        srn->candidate = true;
+                    }
+                }
+                if (searchSendGetValues(sr))
+                    sr->get_step_time = now;
                 searchStep(sr);
             }
         };
@@ -820,10 +830,6 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         rstatus = network_engine.sendGetValues(n->node, sr->id, -1, onDone, onExpired);
     n->getStatus = rstatus;
     pinged(*n->node);
-    if (n->node->pinged > 1 and not n->candidate) {
-        n->candidate = true;
-    }
-
     return n;
 }
 
@@ -893,7 +899,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                 searchStep(sr);
                             }
                         },
-                        [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
+                        [=](std::shared_ptr<NetworkEngine::RequestStatus>, bool) mutable
                         { /* on expired */
                             if (sr) {
                                 searchStep(sr);
@@ -938,7 +944,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                 searchStep(sr);
                             }
                         },
-                        [=](std::shared_ptr<NetworkEngine::RequestStatus>, NetworkEngine::RequestAnswer&&) mutable
+                        [=](std::shared_ptr<NetworkEngine::RequestStatus>, bool) mutable
                         { /* on expired */
                             if (sr) { searchStep(sr); }
                         }
@@ -2691,9 +2697,7 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
             l.first(l.second);
     }
     // Force to recompute the next step time
-    if (sr->isSynced(now))
-        scheduler.add(now, std::bind(&Dht::searchStep, this, sr));
-    searchStep(sr); /* trigger a searchstep after a response. */
+    scheduler.add(now, std::bind(&Dht::searchStep, this, sr));
 }
 
 NetworkEngine::RequestAnswer

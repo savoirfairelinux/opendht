@@ -227,12 +227,8 @@ private:
             time_point)> onAnnounce {};
 
 public:
-    /**
-     * @brief callback after the processing of a request is over.
-     *
-     * @param success (type: bool) true if no error occured, else false.
-     */
     using RequestCb = std::function<void(std::shared_ptr<RequestStatus>, RequestAnswer&&)>;
+    using RequestExpiredCb = std::function<void(std::shared_ptr<RequestStatus>, bool)>;
 
     NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
     NetworkEngine(InfoHash& myid, int s, int s6, Logger& log, Scheduler& scheduler,
@@ -276,29 +272,29 @@ public:
      *  Requests  *
      **************/
     std::shared_ptr<RequestStatus>
-        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestCb on_expired) {
+        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestExpiredCb on_expired) {
             return sendPing((sockaddr*)&n->ss, n->sslen, on_done, on_expired);
         }
     std::shared_ptr<RequestStatus>
-        sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestCb on_expired);
+        sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired);
     std::shared_ptr<RequestStatus>
         sendFindNode(std::shared_ptr<Node> n,
                 const InfoHash& target,
                 want_t want,
                 RequestCb on_done,
-                RequestCb on_expired);
+                RequestExpiredCb on_expired);
     std::shared_ptr<RequestStatus>
         sendGetValues(std::shared_ptr<Node> n,
                 const InfoHash& target,
                 want_t want,
                 RequestCb on_done,
-                RequestCb on_expired);
+                RequestExpiredCb on_expired);
     std::shared_ptr<RequestStatus>
         sendListen(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
                 const Blob& token,
                 RequestCb on_done,
-                RequestCb on_expired);
+                RequestExpiredCb on_expired);
     std::shared_ptr<RequestStatus>
         sendAnnounceValue(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
@@ -306,7 +302,7 @@ public:
                 time_point created,
                 const Blob& token,
                 RequestCb on_done,
-                RequestCb on_expired);
+                RequestExpiredCb on_expired);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -454,9 +450,11 @@ private:
             return;
         auto now = scheduler.time();
         if (req->status->expired(now)) {
-            req->on_expired(req->status, false);
+            req->on_expired(req->status, true);
             requests.erase(req->tid);
             return;
+        } else if (req->status->attempt_count == 1) {
+            req->on_expired(req->status, false);
         }
 
         send((char*)req->msg.data(), req->msg.size(),

@@ -183,7 +183,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             }
             case MessageType::GetValues: {
                 DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
-                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), msg.info_hash.toString().c_str());
+                        msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes, answer.nodes6);
@@ -192,7 +192,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             }
             case MessageType::AnnounceValue: {
                 DHT_LOG.DEBUG("[node %s %s] got 'put' request for %s.",
-                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
+                    msg.id.toString().c_str(), print_addr(from, fromlen).c_str(),
                     msg.info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg.info_hash, msg.token, msg.values, msg.created);
@@ -207,7 +207,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             }
             case MessageType::Listen: {
                 DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
-                        node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), msg.info_hash.toString().c_str());
+                        msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
                     break;
                 }
@@ -265,7 +265,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const sockaddr *sa, 
 }
 
 std::shared_ptr<NetworkEngine::RequestStatus>
-NetworkEngine::sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestCb on_expired) {
+NetworkEngine::sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -319,7 +319,7 @@ NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
 
 std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
-        RequestCb on_done, RequestCb on_expired) {
+        RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -364,7 +364,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
 std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
-        RequestCb on_done, RequestCb on_expired) {
+        RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -578,7 +578,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 
 std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token,
-        RequestCb on_done, RequestCb on_expired) {
+        RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -635,7 +635,7 @@ NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, Trans
 
 std::shared_ptr<NetworkEngine::RequestStatus>
 NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infohash, const Value& value, time_point created,
-        const Blob& token, RequestCb on_done, RequestCb on_expired) {
+        const Blob& token, RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
