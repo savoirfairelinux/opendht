@@ -2600,17 +2600,17 @@ Dht::onPing(std::shared_ptr<Node>)
 }
 
 NetworkEngine::RequestAnswer
-Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want)
+Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
     Blob ntoken = makeToken((sockaddr*)&node->ss, false);
     std::vector<std::shared_ptr<Node>> nodes, nodes6;
     if (want & WANT4) {
-        auto tmp = buckets.findClosestNodes(hash, now, TARGET_NODES);
+        auto tmp = buckets.findClosestNodes(target, now, TARGET_NODES);
         nodes.insert(nodes.begin(), tmp.begin(), tmp.end());
     }
     if (want & WANT6) {
-        auto tmp = buckets6.findClosestNodes(hash, now, TARGET_NODES);
+        auto tmp = buckets6.findClosestNodes(target, now, TARGET_NODES);
         nodes6.insert(nodes6.begin(), tmp.begin(), tmp.end());
     }
     return NetworkEngine::RequestAnswer {ntoken, Value::INVALID_ID, {}, std::move(nodes), std::move(nodes6)};
@@ -2620,7 +2620,7 @@ NetworkEngine::RequestAnswer
 Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
 {
     const auto& now = scheduler.time();
-    NetworkEngine::RequestAnswer* answer;
+    std::shared_ptr<NetworkEngine::RequestAnswer> answer {};
     if (hash == zeroes) {
         DHT_LOG.WARN("[node %s %s] Eek! Got get_values with no info_hash.",
                 node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
@@ -2628,12 +2628,12 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
     } else {
         auto st = findStorage(hash);
         Blob ntoken = makeToken((sockaddr*)&node->ss, false);
-        answer = new NetworkEngine::RequestAnswer {
-            ntoken,
-            0,
-            {},
-            buckets.findClosestNodes(hash, now, TARGET_NODES),
-            buckets6.findClosestNodes(hash, now, TARGET_NODES)
+        answer = std::shared_ptr<NetworkEngine::RequestAnswer> {
+            new NetworkEngine::RequestAnswer {
+                ntoken, 0, {},
+                buckets.findClosestNodes(hash, now, TARGET_NODES),
+                buckets6.findClosestNodes(hash, now, TARGET_NODES)
+            }
         };
         if (st != store.end() && not st->empty()) {
             DHT_LOG.DEBUG("[node %s %s] sending %u values.",
@@ -2657,6 +2657,7 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
     if (not sr)
         return;
 
+    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get'", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
     const auto& now = scheduler.time();
     sr->insertNode(status->node, now, a.ntoken);
     for (auto& sn : sr->nodes) {

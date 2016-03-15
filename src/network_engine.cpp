@@ -176,7 +176,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                 DHT_LOG.DEBUG("[node %s %s] got 'find' request (%d).",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
                 ++in_stats.find;
-                RequestAnswer answer = onFindNode(node, msg.info_hash, msg.want);
+                RequestAnswer answer = onFindNode(node, msg.target, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, answer.ntoken);
                 break;
@@ -186,7 +186,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                         node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
-                auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
+                auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
                 break;
             }
