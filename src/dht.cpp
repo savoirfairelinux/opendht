@@ -2641,13 +2641,13 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
             }
         };
         if (st != store.end() && not st->empty()) {
-            DHT_LOG.DEBUG("[node %s %s] sending %u values.",
-                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), st->valueCount());
             auto values = st->getValues();
             answer->values.resize(values.size());
             std::transform(values.begin(), values.end(), answer->values.begin(), [](const ValueStorage& vs) {
                 return vs.data;
             });
+            DHT_LOG.DEBUG("[node %s %s] sending %u values.",
+                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), answer->values.size());
         } else {
             DHT_LOG.DEBUG("[node %s %s] sending nodes.",
                     node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
