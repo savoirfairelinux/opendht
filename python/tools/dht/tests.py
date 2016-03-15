@@ -211,7 +211,7 @@ class DhtFeatureTest(FeatureTest):
         for val in values:
             with FeatureTest.lock:
                 vstr = val.__str__()[:100]
-                DhtNetwork.log('[PUT]: %s' % vstr + ("..." if len(vstr) > 100 else ""))
+                DhtNetwork.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
                 FeatureTest.done += 1
                 while FeatureTest.done > 0:
                     producer.put(_hash, val, DhtFeatureTest.putDoneCb)
@@ -223,6 +223,7 @@ class DhtFeatureTest(FeatureTest):
         with FeatureTest.lock:
             FeatureTest.done += 1
             while FeatureTest.done > 0:
+                DhtNetwork.log('[GET]:', _hash.toString())
                 consumer.get(_hash, DhtFeatureTest.getcb, DhtFeatureTest.getDoneCb)
                 FeatureTest.lock.wait()
 
@@ -453,9 +454,6 @@ class PersistenceTest(DhtFeatureTest):
             DhtNetwork.log('Values are found on :')
             for node in DhtFeatureTest.foreignNodes:
                 DhtNetwork.log(node)
-
-            #DhtNetwork.log("Waiting a minute for the network to settle down.")
-            #time.sleep(60)
 
             for _ in range(max(1, int(self._workbench.node_num/32))):
                 DhtNetwork.log('Removing all nodes hosting target values...')
