@@ -33,6 +33,7 @@
 typedef uint16_t in_port_t;
 #endif
 #else
+#include <iso646.h>
 #include <ws2tcpip.h>
 typedef uint16_t sa_family_t;
 typedef uint16_t in_port_t;

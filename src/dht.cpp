@@ -37,7 +37,12 @@ extern "C" {
 #include <random>
 #include <sstream>
 
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#include <io.h>
+#endif
+
 #include <fcntl.h>
 #include <cstring>
 
@@ -68,7 +73,11 @@ set_nonblocking(int fd, int nonblocking)
 #endif
 
 static std::mt19937 rd {dht::crypto::random_device{}()};
+#ifdef _WIN32
+static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
 static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
 namespace dht {
 

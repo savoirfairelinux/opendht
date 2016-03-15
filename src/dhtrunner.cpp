@@ -21,7 +21,11 @@
 #include "dhtrunner.h"
 #include "securedht.h"
 
-#include <unistd.h> // close(fd)
+#ifndef _WIN32
+#include <unistd.h>
+#else
+#include <io.h>
+#endif
 
 #ifndef _WIN32
 #include <sys/socket.h>
@@ -374,7 +378,7 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
     rcv_thread = std::thread([this,s4,s6]() {
         try {
             while (true) {
-                struct timeval tv {.tv_sec = 0, .tv_usec = 250000};
+                struct timeval tv {/*.tv_sec = */0, /*.tv_usec = */250000};
                 fd_set readfds;
 
                 FD_ZERO(&readfds);
