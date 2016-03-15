@@ -72,13 +72,19 @@ static constexpr const size_t MAX_VALUE_SIZE {1024 * 14};
 
 struct ValueType {
     typedef uint16_t Id;
+
+    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t);
+    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t) {
+        return false;
+    }
+
     ValueType () {}
 
     ValueType (Id id, std::string name, duration e = std::chrono::minutes(10))
     : id(id), name(name), expiration(e) {}
 
-    ValueType (Id id, std::string name, duration e, StorePolicy&& sp, EditPolicy&& ep)
-     : id(id), name(name), expiration(e), storePolicy(std::move(sp)), editPolicy(std::move(ep)) {}
+    ValueType (Id id, std::string name, duration e, StorePolicy sp, EditPolicy ep = DEFAULT_EDIT_POLICY)
+     : id(id), name(name), expiration(e), storePolicy(sp), editPolicy(ep) {}
 
     virtual ~ValueType() {}
 
@@ -89,10 +95,6 @@ struct ValueType {
     // Generic value type
     static const ValueType USER_DATA;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t);
-    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t) {
-        return false;
-    }
 
     Id id {0};
     std::string name {};

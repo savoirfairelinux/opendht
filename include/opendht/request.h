@@ -21,7 +21,7 @@
 namespace dht {
 
 class NetworkEngine;
-class ParsedMessage;
+struct ParsedMessage;
 
 /*!
  * @class   Request

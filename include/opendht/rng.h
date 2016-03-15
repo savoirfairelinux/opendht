@@ -24,6 +24,7 @@
 namespace dht {
 namespace crypto {
 
+#ifndef WIN32_NATIVE
 #ifdef _WIN32
 
 /**
@@ -101,6 +102,9 @@ private:
 
 using random_device = std::random_device;
 
+#endif
+#else
+using random_device = std::random_device;
 #endif
 
 }} // dht::crypto

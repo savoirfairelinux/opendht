@@ -27,7 +27,7 @@
 
 namespace dht {
 
-class Request;
+struct Request;
 
 struct Node {
     friend class NetworkEngine;

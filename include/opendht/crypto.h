@@ -31,6 +31,10 @@ extern "C" {
 #include <vector>
 #include <memory>
 
+#ifdef _WIN32
+#include <iso646.h>
+#endif
+
 namespace dht {
 namespace crypto {
 

@@ -232,7 +232,7 @@ public:
 
     std::vector<ValuesExport> exportValues() const;
 
-    void setLoggers(LogMethod&& error = NOLOG, LogMethod&& warn = NOLOG, LogMethod&& debug = NOLOG);
+    void setLoggers(LogMethod err = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
 
     void registerType(const ValueType& type);
 
@@ -270,14 +270,14 @@ public:
      */
     void run(in_port_t port, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false) {
         run(port, {
-            .dht_config = {
-                .node_config = {
-                    .node_id = {},
-                    .is_bootstrap = is_bootstrap
+            /*.dht_config = */{
+                /*.node_config = */{
+                    /*.node_id = */{},
+                    /*.is_bootstrap = */is_bootstrap
                 },
-                .id = identity
+                /*.id = */identity
             },
-            .threaded = threaded
+            /*.threaded = */threaded
         });
     }
     void run(in_port_t port, Config config);
