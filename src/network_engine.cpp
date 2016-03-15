@@ -480,7 +480,7 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
         unsigned k = 0;
 
         do {
-            subset.emplace_back(packMsg(st[j]->data));
+            subset.emplace_back(packMsg(st[j]));
             total_size += subset.back().size();
             ++k;
             j = (j + 1) % st.size();
