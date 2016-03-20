@@ -83,8 +83,9 @@ public:
      */
     time_point run() {
         syncTime();
-        for (auto t = timers.begin(); t != timers.end(); ) {
-            if (t->first > now)
+        while (not timers.empty()) {
+            auto timer = timers.begin();
+            if (timer->first > now)
                 break;
 
             auto& job = timer->second;
@@ -92,7 +93,7 @@ public:
                 job->do_();
                 job->done = true;
             }
-            t = timers.erase(t);
+            timers.erase(timer);
         }
         return getNextJobTime();
     }
