@@ -452,6 +452,7 @@ private:
     void requestStep(std::shared_ptr<Request> req) {
         if (req->status->completed or req->status->cancelled)
             return;
+
         auto now = scheduler.time();
         if (req->status->expired(now)) {
             req->on_expired(req->status, true);

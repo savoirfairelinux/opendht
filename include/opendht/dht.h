@@ -469,9 +469,11 @@ private:
                 ack->second->last_try + Node::MAX_RESPONSE_TIME
             );
         }
+
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
             return getAnnounceTime(acked.find(vid), type);
         }
+
         time_point getListenTime() const {
             if (not listenStatus)
                 return time_point::min();
@@ -544,6 +546,7 @@ private:
         time_point refill_time {time_point::min()};
         time_point step_time {time_point::min()};           /* the time of the last search step */
         time_point get_step_time {time_point::min()};       /* the time of the last get step */
+        std::shared_ptr<Scheduler::Job> nextSearchStep {};
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
@@ -762,6 +765,7 @@ private:
 
     // timing
     Scheduler scheduler {};
+    std::shared_ptr<Scheduler::Job> nextNodesConfirmation {};
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     NetworkEngine network_engine;
@@ -852,7 +856,7 @@ private:
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
 
-    void confirmNodes(bool reschedule = false);
+    void confirmNodes();
     void expire();
 
     /**

@@ -42,6 +42,7 @@ namespace dht {
 class Scheduler {
 public:
     struct Job {
+        bool done;
         bool cancelled;
         std::function<void()> do_;
     };
@@ -51,12 +52,28 @@ public:
      *
      * @param time  The time upon which the job shall be executed.
      * @param job_func  The job function to execute.
+     *
+     * @return pointer to the newly scheduled job.
      */
-    std::weak_ptr<Scheduler::Job>
-    add(time_point time, std::function<void()> job_func) {
-        auto job = std::make_shared<Job>(Job {false, std::move(job_func)});
+    std::shared_ptr<Scheduler::Job> add(time_point time, std::function<void()> job_func) {
+        auto job = std::make_shared<Job>(Job {false, false, std::move(job_func)});
         timers.emplace(std::move(time), job);
         return job;
+    }
+
+    /**
+     * Reschedules a job.
+     *
+     * @param time  The time at which the job shall be rescheduled.
+     * @param job  The job to edit.
+     *
+     * @return pointer to the newly scheduled job.
+     */
+    std::shared_ptr<Scheduler::Job> edit(const std::shared_ptr<Scheduler::Job>& job, time_point time) {
+        if (not job)
+            return {};
+        job->cancelled = true;
+        return add(time, std::move(job->do_));
     }
 
     /**
@@ -69,7 +86,12 @@ public:
         for (auto t = timers.begin(); t != timers.end(); ) {
             if (t->first > now)
                 break;
-            t->second->do_();
+
+            auto& job = timer->second;
+            if (not job->cancelled and job->do_) {
+                job->do_();
+                job->done = true;
+            }
             t = timers.erase(t);
         }
         return getNextJobTime();

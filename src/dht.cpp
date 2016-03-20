@@ -518,7 +518,7 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         auto& s = srp.second;
         if (s->insertNode(node, now)) {
             inserted = true;
-            scheduler.add(s->getNextStepTime(types, now), std::bind(&Dht::searchStep, this, s));
+            s->nextSearchStep = scheduler.edit(s->nextSearchStep, s->getNextStepTime(types, now));
         }
     }
     return inserted;
@@ -576,7 +576,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             mybucket_grow_time = now;
         else
             mybucket6_grow_time = now;
-        scheduler.add(now, std::bind(&Dht::confirmNodes, this, false));
+        nextNodesConfirmation = scheduler.edit(nextNodesConfirmation, now);
     }
 
     /* First, try to get rid of a known-bad node. */
@@ -1328,12 +1328,14 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         if (search_id == 0)
             search_id++;
     }
+    if (sr->nextSearchStep)
+        sr->nextSearchStep->cancelled = true;
+    sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
 
     if (callback)
         sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback});
 
     bootstrapSearch(*sr);
-    searchStep(sr);
     return sr;
 }
 
@@ -1384,7 +1386,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             a_sr->callback = callback;
         }
     }
-    scheduler.add(sr->getNextStepTime(types, now), std::bind(&Dht::searchStep, this, sr));
+    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
     //TODO
     //if (tm < search_time) {
     //    DHT_LOG.ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(),l
@@ -1411,7 +1413,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     sr->done = false;
     auto token = ++sr->listener_token;
     sr->listeners.emplace(token, LocalListener{f, cb});
-    scheduler.add(sr->getNextStepTime(types, now), std::bind(&Dht::searchStep, this, sr));
+    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
     return token;
 }
 
@@ -1866,7 +1868,7 @@ void
 Dht::connectivityChanged()
 {
     const auto& now = scheduler.time();
-    scheduler.add(now, std::bind(&Dht::confirmNodes, this, false));
+    nextNodesConfirmation = scheduler.edit(nextNodesConfirmation, now);
     mybucket_grow_time = now;
     mybucket6_grow_time = now;
     reported_addr.clear();
@@ -2200,7 +2202,7 @@ Dht::Dht(int s, int s6, Config config)
 
     uniform_duration_distribution<> time_dis {std::chrono::seconds(0), std::chrono::seconds(3)};
     auto confirm_nodes_time = scheduler.time() + time_dis(rd);
-    scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this, true));
+    nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
 
     // Fill old secret
     {
@@ -2419,7 +2421,7 @@ Dht::expire()
 }
 
 void
-Dht::confirmNodes(bool reschedule)
+Dht::confirmNodes()
 {
     using namespace std::chrono;
     bool soon = false;
@@ -2449,8 +2451,7 @@ Dht::confirmNodes(bool reschedule)
     : uniform_duration_distribution<> {seconds(60), seconds(180)};
     auto confirm_nodes_time = now + time_dis(rd);
 
-    if (reschedule)
-        scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this, reschedule));
+    nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
 }
 
 std::vector<Dht::ValuesExport>
@@ -2696,7 +2697,7 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
             l.first(l.second);
     }
     // Force to recompute the next step time
-    scheduler.add(now, std::bind(&Dht::searchStep, this, sr));
+    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, now);
 }
 
 NetworkEngine::RequestAnswer
