@@ -155,6 +155,56 @@ aesDecrypt(const Blob& data, const Blob& key)
     return ret;
 }
 
+Blob stretchKey(const std::string& password)
+{
+    Blob tmp {password.begin(), password.end()};
+    Blob res {};
+    size_t res_size = 64; // 512/8
+    res.resize(res_size);
+
+    {
+        // res = h(key)
+        const gnutls_datum_t gdat {(uint8_t*)tmp.data(), (unsigned)tmp.size()};
+        if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gdat, res.data(), &res_size))
+            throw CryptoException("Can't compute hash !");
+    }
+
+    Blob dat {};
+    dat.reserve(std::max(tmp.size(), res_size) + res_size + 1);
+    for (unsigned i=0; i<1024 * 128; i++) {
+        // attempt to prevent reusing internal state
+        // dat = (i+7)%256 + res + tmp
+        dat.emplace_back((i+7)&0xFF);
+        dat.insert(dat.end(), res.begin(), res.end());
+        dat.insert(dat.end(), tmp.begin(), tmp.end());
+
+        // tmp = res
+        tmp.clear();
+        tmp.insert(tmp.end(), res.begin(), res.end());
+
+        // res = h(dat)
+        const gnutls_datum_t gdat {(uint8_t*)dat.data(), (unsigned)dat.size()};
+        if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gdat, res.data(), &res_size))
+            throw CryptoException("Can't compute hash !");
+
+        dat.clear();
+    }
+
+    return res;
+}
+
+Blob hash(const Blob& data)
+{
+    Blob res;
+    size_t res_size = 64;
+    res.resize(res_size);
+    const gnutls_datum_t gdat {(uint8_t*)data.data(), (unsigned)data.size()};
+    if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gdat, res.data(), &res_size))
+        throw CryptoException("Can't compute hash !");
+    res.resize(res_size);
+    return res;
+}
+
 PrivateKey::PrivateKey()
 {
 #if GNUTLS_VERSION_NUMBER < 0x030300

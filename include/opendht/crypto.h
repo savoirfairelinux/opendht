@@ -325,5 +325,12 @@ Blob aesEncrypt(const Blob& data, const Blob& key);
  */
 Blob aesDecrypt(const Blob& data, const Blob& key);
 
+Blob hash(const Blob& data);
+
+/**
+ * 
+ */
+Blob stretchKey(const std::string& password);
+
 }
 }
