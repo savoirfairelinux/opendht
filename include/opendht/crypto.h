@@ -53,11 +53,11 @@ class DecryptError : public CryptoException {
 };
 
 /**
- * Generate an RSA key pair (2048 bits) and a certificate.
+ * Generate an RSA key pair (4096 bits) and a certificate.
  * @param name the name used in the generated certificate
  * @param ca if set, the certificate authority that will sign the generated certificate.
  *           If not set, the generated certificate will be a self-signed CA.
- * @param key_length stength of the generated provste key (bits).
+ * @param key_length stength of the generated private key (bits).
  */
 Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
@@ -67,6 +67,10 @@ Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {},
 struct PublicKey
 {
     PublicKey() {}
+
+    /**
+     * Takes ownership of an existing gnutls_pubkey.
+     */
     PublicKey(gnutls_pubkey_t k) : pk(k) {}
     PublicKey(const Blob& pk);
     PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };
@@ -202,6 +206,14 @@ struct Certificate {
         return b;
     }
 
+    /**
+     * Import certificate chain (PEM or DER).
+     * Certificates are not checked during import.
+     *
+     * Iterator is the type of an iterator or pointer to
+     * gnutls_x509_crt_t or Blob instances to import, that should be
+     * ordered from subject to issuer.
+     */
     template<typename Iterator>
     void unpack(const Iterator& begin, const Iterator& end)
     {
@@ -218,10 +230,16 @@ struct Certificate {
         *this = first ? std::move(*first) : Certificate();
     }
 
-
     /**
-     * Import certificate chain (PEM or DER),
-     * ordered from subject to issuer
+     * Import certificate chain (PEM or DER).
+     * Certificates are not checked during import.
+     *
+     * Iterator is the type of an iterator or pointer to the bytes of
+     * the certificates to import.
+     *
+     * @param certs list of (begin, end) iterator pairs, pointing to the
+     *              PEM or DER certificate data to import, that should be
+     *              ordered from subject to issuer.
      */
     template<typename Iterator>
     void unpack(const std::vector<std::pair<Iterator, Iterator>>& certs)
@@ -298,7 +316,7 @@ private:
 };
 
 /**
- * AES-GCM encryption. Key must be 128, 192 or 126 bits long (16, 24 or 32 bytes).
+ * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
  */
 Blob aesEncrypt(const Blob& data, const Blob& key);
 
