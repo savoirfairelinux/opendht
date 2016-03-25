@@ -128,7 +128,7 @@ public:
         unsigned attempt_count {0};                /* number of attempt to process the request. */
         time_point start {time_point::min()};      /* time when the request is created. */
         time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
-        time_point reply_time {time_point::min()}; /* time when we received the response from the node. */
+        time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
 
         RequestStatus() {}
         RequestStatus(time_point start, time_point reply_time = time_point::min())

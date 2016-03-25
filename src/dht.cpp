@@ -738,6 +738,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     }
     if (not token.empty()) {
         n->candidate = false;
+        n->last_get_reply = now;
         if (token.size() <= 64)
             n->token = token;
         expired = false;
@@ -2388,8 +2389,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     } catch (DhtProtocolException& e) {
         DHT_LOG.ERROR("Can't parse message from %s: %s", e.getNodeId().toString().c_str(), e.what());
         auto code = e.getCode();
-        if (code == DhtProtocolException::INVALID_TID_SIZE
-                or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
+        if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
             /* This is really annoying, as it means that we will
                time-out all our searches that go through this node.
                Kill it. */
@@ -2666,10 +2666,6 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, Netwo
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get'", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
     const auto& now = scheduler.time();
     sr->insertNode(status->node, now, a.ntoken);
-    for (auto& sn : sr->nodes) {
-        if (sn.node->id == status->node->id)
-            sn.last_get_reply = status->reply_time;
-    }
     if (!a.values.empty()) {
         DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
