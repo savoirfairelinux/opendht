@@ -140,7 +140,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             if (msg.error_code == DhtProtocolException::UNAUTHORIZED
                     && msg.id != zeroes
                     && (msg.tid.matches(TransPrefix::ANNOUNCE_VALUES, &ttid)
-                        || msg.tid.matches(TransPrefix::LISTEN, &ttid))) {
+                    || msg.tid.matches(TransPrefix::LISTEN, &ttid)))
+            {
                 req->status->last_try = TIME_INVALID;
                 req->status->reply_time = TIME_INVALID;
                 onError(req->status, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
