@@ -803,8 +803,6 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
             if (sr) {
                 onGetValuesDone(status, answer, sr);
-                if (searchSendGetValues(sr))
-                    sr->get_step_time = now;
             }
         };
     auto onExpired =
@@ -2656,40 +2654,55 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
 }
 
 void
-Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr)
+Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status,
+        NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr)
 {
-    if (not sr)
+    if (not sr) {
+        DHT_LOG.WARN("[search unknown] got reply to 'get'. Ignoring.");
         return;
+    }
 
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get'", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
     const auto& now = scheduler.time();
     sr->insertNode(status->node, now, a.ntoken);
-    if (!a.values.empty()) {
-        DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
-                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                a.values.size());
-        for (auto& cb : sr->callbacks) {
-            if (!cb.get_cb) continue;
-            std::vector<std::shared_ptr<Value>> tmp;
-            std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
-                    return not static_cast<bool>(cb.filter) or cb.filter(*v);
-                    });
-            if (not tmp.empty())
-                cb.get_cb(tmp);
+    if (not a.ntoken.empty()) {
+        if (!a.values.empty()) {
+            DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
+                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                    a.values.size());
+            for (auto& cb : sr->callbacks) {
+                if (!cb.get_cb) continue;
+                std::vector<std::shared_ptr<Value>> tmp;
+                std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
+                    [&](const std::shared_ptr<Value>& v) {
+                        return not static_cast<bool>(cb.filter) or cb.filter(*v);
+                    }
+                );
+                if (not tmp.empty())
+                    cb.get_cb(tmp);
+            }
+            std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
+            for (auto& l : sr->listeners) {
+                if (!l.second.get_cb) continue;
+                std::vector<std::shared_ptr<Value>> tmp;
+                std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
+                    [&](const std::shared_ptr<Value>& v) {
+                        return not static_cast<bool>(l.second.filter) or l.second.filter(*v);
+                    }
+                );
+                if (not tmp.empty())
+                    tmp_lists.emplace_back(l.second.get_cb, tmp);
+            }
+            for (auto& l : tmp_lists)
+                l.first(l.second);
         }
-        std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
-        for (auto& l : sr->listeners) {
-            if (!l.second.get_cb) continue;
-            std::vector<std::shared_ptr<Value>> tmp;
-            std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp), [&](const std::shared_ptr<Value>& v) {
-                    return not static_cast<bool>(l.second.filter) or l.second.filter(*v);
-                    });
-            if (not tmp.empty())
-                tmp_lists.emplace_back(l.second.get_cb, tmp);
-        }
-        for (auto& l : tmp_lists)
-            l.first(l.second);
-    }
+    } else
+        DHT_LOG.WARN("[node %s %s] no token provided. Ignoring response content.",
+            status->node->id.toString().c_str(), print_addr(status->node->ss, status->node->sslen).c_str());
+
+    if (searchSendGetValues(sr)) /* always keep a 'get' request in progress if possible. */
+        sr->get_step_time = now;
+
     // Force to recompute the next step time
     sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, now);
 }
