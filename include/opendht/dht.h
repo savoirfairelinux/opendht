@@ -489,7 +489,7 @@ private:
 
         std::shared_ptr<Node> node {};
 
-        time_point last_get_reply {time_point::min()};                 /* last time we heard of this search node. */
+        time_point last_get_reply {time_point::min()};                 /* last time received valid token */
         std::shared_ptr<NetworkEngine::RequestStatus> getStatus {};    /* get/sync status */
         std::shared_ptr<NetworkEngine::RequestStatus> listenStatus {};
         AnnounceStatusMap acked {};                                    /* announcement status for a given value id */
