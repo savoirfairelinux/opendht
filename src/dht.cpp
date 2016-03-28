@@ -1101,7 +1101,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or sn.candidate)
             continue;
-        if (not sn.getStatus or sn.getStatus->reply_time < limit)
+        if (sn.last_get_reply < limit)
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -1118,13 +1118,13 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
-        if (not sn.getStatus or sn.getStatus->reply_time < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
+        if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
             // not isSynced
             ut = std::min(ut, get_step_time + SEARCH_GET_STEP);
             if (not sn.candidate)
                 d++;
         } else {
-            ut = std::min(ut, sn.getStatus->reply_time + Node::NODE_EXPIRE_TIME);
+            ut = std::min(ut, sn.last_get_reply + Node::NODE_EXPIRE_TIME);
         }
 
         t++;
@@ -2044,15 +2044,13 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 
         {
             bool pending {false}, expired {false};
-            time_point reply {time_point::min()};
             if (n.getStatus) {
                 pending = n.getStatus->pending(now);
                 expired = n.getStatus->expired(now);
-                reply = n.getStatus->reply_time;
             }
             out << " ["
                 << (pending ? 'f' : (expired ? 'x' : ' ')) << (n.isSynced(now) ? 's' : '-')
-                << ((reply > last_get) ? 'u' : '-') << "] ";
+                << ((n.last_get_reply > last_get) ? 'u' : '-') << "] ";
         }
 
         {
@@ -2722,7 +2720,6 @@ Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkE
     DHT_LOG.DEBUG("Got reply to listen.");
     if (sr) {
         onGetValuesDone(status, answer, sr);
-        /* See comment for gp above. */
     }
 }
 
