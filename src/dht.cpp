@@ -2731,10 +2731,19 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 void
 Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus>& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
-    DHT_LOG.DEBUG("Got reply to listen.");
+    DHT_LOG.DEBUG("[search %s] Got reply to listen.", sr->id.toString().c_str());
+    const auto& now = scheduler.time();
     if (sr) {
-        onGetValuesDone(status, answer, sr);
-    }
+        if (not answer.values.empty()) { /* got new values from listen request */
+            DHT_LOG.DEBUG("[listen %s] Got new values.", sr->id.toString().c_str());
+            onGetValuesDone(status, answer, sr);
+        }
+
+        if (searchSendGetValues(sr))
+            sr->get_step_time = now;
+        sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, now);
+    } else
+        DHT_LOG.DEBUG("Unknown search or announce!");
 }
 
 NetworkEngine::RequestAnswer

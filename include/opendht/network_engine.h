@@ -436,8 +436,9 @@ private:
                 std::shared_ptr<Node> node,
                 Blob &&msg,
                 std::function<void(std::shared_ptr<RequestStatus> req_status, ParsedMessage&&)> on_done,
-                std::function<void(std::shared_ptr<RequestStatus> req_status, bool)> on_expired) :
-            on_done(on_done), on_expired(on_expired), tid(tid), msg(msg), status(std::make_shared<RequestStatus>()) {
+                std::function<void(std::shared_ptr<RequestStatus> req_status, bool)> on_expired, bool persistent = false) :
+            on_done(on_done), on_expired(on_expired), tid(tid), msg(msg), status(std::make_shared<RequestStatus>()),
+            persistent(persistent) {
                 status->node = node;
             }
 
@@ -447,6 +448,7 @@ private:
         const uint16_t tid {0};                   /* the request id. */
         Blob msg {};                              /* the serialized message. */
         std::shared_ptr<RequestStatus> status {}; /* the request info for DHT layer. */
+        bool persistent {false};                  /* the request is not erased upon completion. */
     };
 
     void requestStep(std::shared_ptr<Request> req) {
