@@ -2696,9 +2696,11 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status,
             for (auto& l : tmp_lists)
                 l.first(l.second);
         }
-    } else
+    } else {
         DHT_LOG.WARN("[node %s %s] no token provided. Ignoring response content.",
-            status->node->id.toString().c_str(), print_addr(status->node->ss, status->node->sslen).c_str());
+                status->node->id.toString().c_str(), print_addr(status->node->ss, status->node->sslen).c_str());
+        blacklistNode(&status->node->id, (sockaddr*)&status->node->ss, status->node->sslen);
+    }
 
     if (searchSendGetValues(sr)) /* always keep a 'get' request in progress if possible. */
         sr->get_step_time = now;
