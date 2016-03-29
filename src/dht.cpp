@@ -2208,8 +2208,7 @@ Dht::Dht(int s, int s6, Config config)
     }
     rotateSecrets();
 
-    expireBuckets(buckets);
-    expireBuckets(buckets6);
+    expire();
 
     DHT_LOG.DEBUG("DHT initialised with node ID %s", myid.toString().c_str());
 }
