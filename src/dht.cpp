@@ -908,7 +908,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         }
                     );
                     n.pending = true;
-                    n.listenStatus->last_try = now;
                 }
                 t++;
                 if (not n.candidate and ++i == LISTEN_NODES)
