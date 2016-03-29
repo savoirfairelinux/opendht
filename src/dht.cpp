@@ -802,6 +802,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     auto onDone =
         [=](std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer&& answer) mutable {
             if (sr) {
+                sr->insertNode(status->node, scheduler.time(), answer.ntoken);
                 onGetValuesDone(status, answer, sr);
             }
         };
@@ -2663,7 +2664,6 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status,
 
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get'", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
     const auto& now = scheduler.time();
-    sr->insertNode(status->node, now, a.ntoken);
     if (not a.ntoken.empty()) {
         if (!a.values.empty()) {
             DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
@@ -2729,7 +2729,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 }
 
 void
-Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search> sr)
+Dht::onListenDone(std::shared_ptr<NetworkEngine::RequestStatus>& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
     DHT_LOG.DEBUG("Got reply to listen.");
     if (sr) {
@@ -2807,8 +2807,8 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
 }
 
 void
-Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& answer,
-        std::shared_ptr<Search> sr)
+Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus>& status, NetworkEngine::RequestAnswer& answer,
+        std::shared_ptr<Search>& sr)
 {
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",
