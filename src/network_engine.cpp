@@ -153,7 +153,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
         case MessageType::Reply:
-            requests.erase(reqp);
+             if (not reqp->second->persistent)
+                requests.erase(reqp);
             req->status->reply_time = scheduler.time();
             req->status->completed = true;
             req->on_done(req->status, std::move(msg));
@@ -597,22 +598,15 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     Request req {tid.getTid(), n, std::move(b),
-        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&&) { /* on done */
-            requests.emplace(tid.getTid(), std::make_shared<Request>(
-                tid.getTid(), req_status->node, Blob {},
-                [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&& msg){
-                    DHT_LOG.DEBUG("[listen %s] got new values", infohash.toString().c_str());
-                    if (on_done)
-                        on_done(req_status, deserializeNodesValues(msg));
-                }, nullptr
-            ));
+        [=](std::shared_ptr<RequestStatus> req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
-                on_done(req_status, {});
+                on_done(req_status, deserializeNodesValues(msg));
         },
         [=](std::shared_ptr<RequestStatus> req_status, bool) { /* on expired */
             if (on_expired)
                 on_expired(req_status, {});
-        }
+        },
+        true
     };
     auto req_status = req.status;
     sendRequest(std::move(req));
