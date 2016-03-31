@@ -426,7 +426,7 @@ private:
     struct SearchNode {
         SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
-        using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<NetworkEngine::RequestStatus>>;
+        using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<NetworkEngine::Request>>;
 
         /**
          * Can we use this node to listen/announce now ?
@@ -490,8 +490,8 @@ private:
         std::shared_ptr<Node> node {};
 
         time_point last_get_reply {time_point::min()};                 /* last time received valid token */
-        std::shared_ptr<NetworkEngine::RequestStatus> getStatus {};    /* get/sync status */
-        std::shared_ptr<NetworkEngine::RequestStatus> listenStatus {};
+        std::shared_ptr<NetworkEngine::Request> getStatus {};          /* get/sync status */
+        std::shared_ptr<NetworkEngine::Request> listenStatus {};
         AnnounceStatusMap acked {};                                    /* announcement status for a given value id */
 
         Blob token {};
@@ -752,7 +752,7 @@ private:
 
     std::map<InfoHash, std::shared_ptr<Search>> searches4 {};
     std::map<InfoHash, std::shared_ptr<Search>> searches6 {};
-    //std::map<std::shared_ptr<NetworkEngine::RequestStatus>, std::shared_ptr<Search>> searches {}; /* not used for now */
+    //std::map<std::shared_ptr<NetworkEngine::Request>, std::shared_ptr<Search>> searches {}; /* not used for now */
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
@@ -871,24 +871,24 @@ private:
 
     void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
-    void onError(std::shared_ptr<NetworkEngine::RequestStatus> node, DhtProtocolException e);
+    void onError(std::shared_ptr<NetworkEngine::Request> node, DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
     /* when we receive a ping request */
     NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
     NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onFindNodeDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    void onFindNodeDone(std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
     NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onGetValuesDone(std::shared_ptr<NetworkEngine::RequestStatus> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    void onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a listen request */
     NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
-    void onListenDone(std::shared_ptr<NetworkEngine::RequestStatus>& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    void onListenDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
-    void onAnnounceDone(std::shared_ptr<NetworkEngine::RequestStatus>& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    void onAnnounceDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
 };
 
 }
