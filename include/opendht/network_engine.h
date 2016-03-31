@@ -237,6 +237,17 @@ public:
         const bool persistent {false};            /* the request is not erased upon completion. */
     };
 
+    /**
+     * Cancel a request. Setting req->cancelled = true is not enough in the case
+     * a request is "persistent".
+     */
+    void cancelRequest(std::shared_ptr<Request>& req) {
+        if (req) {
+            req->cancelled = true;
+            requests.erase(req->tid);
+        }
+    }
+
 private:
 
     /**

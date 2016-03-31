@@ -153,7 +153,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
         case MessageType::Reply:
-             if (not reqp->second->persistent)
+             if (not reqp->second->persistent or reqp->second->cancelled)
                 requests.erase(reqp);
             req->reply_time = scheduler.time();
             req->completed = true;
