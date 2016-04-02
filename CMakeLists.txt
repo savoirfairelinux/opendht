@@ -32,7 +32,7 @@ list (APPEND opendht_SOURCES
 	src/infohash.cpp
 	src/crypto.cpp
 	src/default_types.cpp
-    src/node.cpp
+	src/node.cpp
 	src/value.cpp
 	src/dht.cpp
 	src/network_engine.cpp
@@ -52,11 +52,11 @@ list (APPEND opendht_HEADERS
 	include/opendht/crypto.h
 	include/opendht/infohash.h
 	include/opendht/default_types.h
-    include/opendht/node.h
+	include/opendht/node.h
 	include/opendht/value.h
 	include/opendht/dht.h
-    include/opendht/network_engine.h
-    include/opendht/scheduler.h
+	include/opendht/network_engine.h
+	include/opendht/scheduler.h
 	include/opendht/securedht.h
 	include/opendht/log.h
 	include/opendht.h
