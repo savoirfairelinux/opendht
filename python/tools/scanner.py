@@ -20,6 +20,7 @@ from pprint import pprint
 from math import cos, sin, pi
 from urllib import request
 import gzip
+import asyncio
 
 sys.path.append('..')
 from opendht import *
@@ -96,6 +97,8 @@ all_lines = []
 
 plt.pause(2)
 
+loop = asyncio.get_event_loop()
+
 def step(cur_h, cur_depth):
     global done, all_nodes, all_lines
     done += 1
@@ -105,7 +108,7 @@ def step(cur_h, cur_depth):
     arc = ringx.add_patch(mpatches.Wedge([0.,0,], 1., a*180/pi, b*180/pi, fill=True, color="blue", alpha=0.5))
     lines = ringx.plot([0, cos(a)], [0, sin(a)], 'k-', lw=1.2)
     all_lines.extend(lines)
-    r.get(cur_h, gcb, lambda d, nodes: nextstep(cur_h, cur_depth, d, nodes, arc=arc, lines=lines))
+    r.get(cur_h, gcb, lambda d, nodes: loop.call_soon_threadsafe(nextstep, cur_h, cur_depth, d, nodes, arc, lines))
 
 def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
     global done, all_nodes
@@ -239,6 +242,8 @@ def d(arg):
 
 while run:
     while run and done > 0:
+        loop.stop()
+        loop.run_forever()
         update_plot()
         plt.draw()
         plt.pause(.5)
