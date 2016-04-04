@@ -148,6 +148,7 @@ if __name__ == '__main__':
     ifConfArgs.add_argument('-no6', '--disable-ipv6', action="store_true", help='Enable IPv6')
 
     testArgs = parser.add_argument_group('Test arguments')
+    testArgs.add_argument('--bs-dht-log', action='store_true', default=False, help='Enables dht log in bootstrap.')
     testArgs.add_argument('-t', '--test', type=str, default=None, required=True, help='Specifies the test.')
     testArgs.add_argument('-o', '--opt', type=str, default=[], nargs='+',
             help='Options passed to tests routines.')
@@ -174,6 +175,9 @@ if __name__ == '__main__':
     wb.create_virtual_net()
 
     bootstrap = wb.get_bootstrap()
+    if args.bs_dht_log:
+        bootstrap.enableLogging()
+
     bootstrap.resize(1)
     print("Launching", wb.node_num, "nodes (", wb.clusters, "clusters of", wb.node_per_loc, "nodes)")
 
