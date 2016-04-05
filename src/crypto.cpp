@@ -79,9 +79,8 @@ static constexpr std::array<size_t, 3> AES_LENGTHS {{128/8, 192/8, 256/8}};
 size_t aesKeySize(size_t max)
 {
     size_t aes_key_len = 0;
-    for (size_t s = 0; s < AES_LENGTHS.size(); s++) {
-        if (AES_LENGTHS[s] <= max)
-            aes_key_len = AES_LENGTHS[s];
+    for (size_t s : AES_LENGTHS) {
+        if (s <= max) aes_key_len = s;
         else break;
     }
     return aes_key_len;
@@ -102,6 +101,9 @@ bool aesKeySizeGood(size_t key_size)
 Blob
 aesEncrypt(const Blob& data, const Blob& key)
 {
+    if (not aesKeySizeGood(key.size()))
+        throw DecryptError("Wrong key size");
+
     Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
     {
         crypto::random_device rdev;
@@ -143,7 +145,7 @@ aesDecrypt(const Blob& data, const Blob& key)
     struct gcm_aes_ctx aes_d;
     gcm_aes_set_key(&aes_d, key.size(), key.data());
     gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data.data());
-    gcm_aes_update(&aes_d, ret.size() , ret.data());
+    gcm_aes_update(&aes_d, ret.size(), ret.data());
     gcm_aes_encrypt(&aes_d, ret.size(), ret_tmp.data(), ret.data());
     gcm_aes_digest(&aes_d, GCM_DIGEST_SIZE, digest.data());
 
