@@ -132,7 +132,6 @@ class WorkBench():
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser(description='Run, test and benchmark a '\
             'DHT network on a local virtual network with simulated packet '\
             'loss and latency.')
@@ -165,19 +164,30 @@ if __name__ == '__main__':
                  'Use "-m" to specify the number of producers on the DHT.'\
                  'Use "-e" to specify the number of values to put on the DHT.')
 
-
     args = parser.parse_args()
     test_opt = { o : True for o in args.opt }
 
     wb = WorkBench(args.ifname, args.virtual_locs, args.node_num, loss=args.loss,
             delay=args.delay, disable_ipv4=args.disable_ipv4,
             disable_ipv6=args.disable_ipv6)
-    wb.create_virtual_net()
-
     bootstrap = wb.get_bootstrap()
-    if args.bs_dht_log:
-        bootstrap.enableLogging()
 
+    bs_dht_log_enabled = False
+    def toggle_bs_dht_log(signum, frame):
+        global bs_dht_log_enabled, bootstrap
+        if bs_dht_log_enabled:
+            bootstrap.front().disableLogging()
+            bs_dht_log_enabled = False
+        else:
+            bootstrap.front().enableLogging()
+            bs_dht_log_enabled = True
+    signal.signal(signal.SIGUSR1, toggle_bs_dht_log)
+
+    if args.bs_dht_log:
+        bs_dht_log_enabled = True
+        bootstrap.front().enableLogging()
+
+    wb.create_virtual_net()
     bootstrap.resize(1)
     print("Launching", wb.node_num, "nodes (", wb.clusters, "clusters of", wb.node_per_loc, "nodes)")
 
