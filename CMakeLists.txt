@@ -33,6 +33,12 @@ list (APPEND opendht_SOURCES
 	src/dht.cpp
 	src/securedht.cpp
 	src/dhtrunner.cpp
+	src/argon2/argon2.c
+	src/argon2/core.c
+	src/argon2/blake2/blake2b.c
+	src/argon2/thread.c
+	src/argon2/encoding.c
+	src/argon2/ref.c
 )
 
 list (APPEND opendht_HEADERS

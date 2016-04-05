@@ -1,6 +1,6 @@
 AC_INIT(opendht, 0.5.2)
 AC_CONFIG_AUX_DIR(ac)
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CANONICAL_HOST
@@ -103,6 +103,7 @@ AM_COND_IF([USE_CYTHON], [
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
+                 src/argon2/Makefile
                  tools/Makefile
                  opendht.pc])
 AC_OUTPUT

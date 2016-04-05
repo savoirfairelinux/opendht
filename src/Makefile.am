@@ -1,8 +1,11 @@
+SUBDIRS = argon2
+
 lib_LTLIBRARIES = libopendht.la
 
 AM_CPPFLAGS = -I../include/opendht
 libopendht_la_CXXFLAGS = @CXXFLAGS@
 libopendht_la_LDFLAGS = @LDFLAGS@ @GNUTLS_LIBS@ @nettle_LIBS@
+libopendht_la_LIBADD = ./argon2/libargon2.la
 
 libopendht_la_SOURCES = \
         dht.cpp \

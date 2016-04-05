@@ -315,22 +315,28 @@ private:
     friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
+Blob hash(const Blob& data);
+
+/**
+ * Generates an encryption key from a text password,
+ * making the key longer to bruteforce.
+ * The generated key also depends on a unique salt value of any size,
+ * that can be transmitted in clear, and will be generated if
+ * not provided (32 bytes).
+ */
+Blob stretchKey(const std::string& password, Blob& salt);
+
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
  */
 Blob aesEncrypt(const Blob& data, const Blob& key);
+Blob aesEncrypt(const Blob& data, const std::string& password);
 
 /**
  * AES-GCM decryption.
  */
 Blob aesDecrypt(const Blob& data, const Blob& key);
-
-Blob hash(const Blob& data);
-
-/**
- * 
- */
-Blob stretchKey(const std::string& password);
+Blob aesDecrypt(const Blob& data, const std::string& password);
 
 }
 }

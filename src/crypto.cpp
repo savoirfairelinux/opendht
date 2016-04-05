@@ -26,6 +26,8 @@ extern "C" {
 #include <gnutls/x509.h>
 #include <nettle/gcm.h>
 #include <nettle/aes.h>
+
+#include "argon2/argon2.h"
 }
 
 #include <random>
@@ -75,6 +77,7 @@ namespace dht {
 namespace crypto {
 
 static constexpr std::array<size_t, 3> AES_LENGTHS {{128/8, 192/8, 256/8}};
+static constexpr size_t PASSWORD_SALT_LENGTH {16};
 
 size_t aesKeySize(size_t max)
 {
@@ -98,8 +101,7 @@ bool aesKeySizeGood(size_t key_size)
 #define GCM_DIGEST_SIZE GCM_BLOCK_SIZE
 #endif
 
-Blob
-aesEncrypt(const Blob& data, const Blob& key)
+Blob aesEncrypt(const Blob& data, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
@@ -119,8 +121,17 @@ aesEncrypt(const Blob& data, const Blob& key)
     return ret;
 }
 
-Blob
-aesDecrypt(const Blob& data, const Blob& key)
+Blob aesEncrypt(const Blob& data, const std::string& password)
+{
+    Blob salt;
+    Blob key = stretchKey(password, salt);
+    key.resize(256 / 8);
+    Blob encrypted = aesEncrypt(data, key);
+    encrypted.insert(encrypted.begin(), salt.begin(), salt.end());
+    return encrypted;
+}
+
+Blob aesDecrypt(const Blob& data, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
@@ -155,42 +166,30 @@ aesDecrypt(const Blob& data, const Blob& key)
     return ret;
 }
 
-Blob stretchKey(const std::string& password)
+Blob aesDecrypt(const Blob& data, const std::string& password)
 {
-    Blob tmp {password.begin(), password.end()};
-    Blob res {};
-    size_t res_size = 64; // 512/8
-    res.resize(res_size);
+    if (data.size() <= PASSWORD_SALT_LENGTH)
+        throw DecryptError("Wrong data size");    
+    Blob salt {data.begin(), data.begin()+PASSWORD_SALT_LENGTH};
+    Blob key = stretchKey(password, salt);
+    key.resize(256 / 8);
+    Blob encrypted {data.begin()+PASSWORD_SALT_LENGTH, data.end()};
+    return aesDecrypt(encrypted, key);
+}
 
-    {
-        // res = h(key)
-        const gnutls_datum_t gdat {(uint8_t*)tmp.data(), (unsigned)tmp.size()};
-        if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gdat, res.data(), &res_size))
-            throw CryptoException("Can't compute hash !");
+Blob stretchKey(const std::string& password, Blob& salt)
+{
+    if (salt.empty()) {
+        salt.resize(PASSWORD_SALT_LENGTH);
+        crypto::random_device rdev;
+        std::generate_n(salt.begin(), salt.size(), std::bind(rand_byte, std::ref(rdev)));
     }
-
-    Blob dat {};
-    dat.reserve(std::max(tmp.size(), res_size) + res_size + 1);
-    for (unsigned i=0; i<1024 * 128; i++) {
-        // attempt to prevent reusing internal state
-        // dat = (i+7)%256 + res + tmp
-        dat.emplace_back((i+7)&0xFF);
-        dat.insert(dat.end(), res.begin(), res.end());
-        dat.insert(dat.end(), tmp.begin(), tmp.end());
-
-        // tmp = res
-        tmp.clear();
-        tmp.insert(tmp.end(), res.begin(), res.end());
-
-        // res = h(dat)
-        const gnutls_datum_t gdat {(uint8_t*)dat.data(), (unsigned)dat.size()};
-        if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gdat, res.data(), &res_size))
-            throw CryptoException("Can't compute hash !");
-
-        dat.clear();
-    }
-
-    return res;
+    Blob res;
+    res.resize(32);
+    auto ret = argon2i_hash_raw(16, 64*1024, 1, password.data(), password.size(), salt.data(), salt.size(), res.data(), res.size());
+    if (ret != ARGON2_OK)
+        throw CryptoException("Can't compute argon2i !");
+    return hash(res);
 }
 
 Blob hash(const Blob& data)
