@@ -19,9 +19,7 @@ install-exec-local:
 if HAVE_PIP
 uninstall-local:
 	/usr/bin/yes | $(PIP) uninstall $(PACKAGE)
-else
-uninstall-local:
-	while read -r file; do rm -rvf $$file ; done <$(PYTHON_INSTALL_RECORD)
 endif
 
 endif
+
