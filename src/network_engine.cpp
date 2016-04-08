@@ -78,13 +78,13 @@ bool
 NetworkEngine::rateLimit()
 {
     using namespace std::chrono;
-    while (not rate_limit_time.empty() and duration_cast<seconds>(now - rate_limit_time.front()) > seconds(1))
+    while (not rate_limit_time.empty() and duration_cast<seconds>(scheduler.time() - rate_limit_time.front()) > seconds(1))
         rate_limit_time.pop();
 
     if (rate_limit_time.size() >= MAX_REQUESTS_PER_SEC)
         return false;
 
-    rate_limit_time.emplace(now);
+    rate_limit_time.emplace(scheduler.time());
     return true;
 }
 
@@ -631,11 +631,11 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
 
-    pk.pack(std::string("a")); pk.pack_map((created < now ? 5 : 4));
+    pk.pack(std::string("a")); pk.pack_map((created < scheduler.time() ? 5 : 4));
       pk.pack(std::string("id"));     pk.pack(myid);
       pk.pack(std::string("h"));      pk.pack(infohash);
       pk.pack(std::string("values")); pk.pack_array(1); pk.pack(value);
-      if (created < now) {
+      if (created < scheduler.time()) {
           pk.pack(std::string("c"));
           pk.pack(to_time_t(created));
       }

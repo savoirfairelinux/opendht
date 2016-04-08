@@ -539,7 +539,6 @@ private:
 
     std::queue<time_point> rate_limit_time {};
     static std::mt19937 rd_device;
-    time_point now;
 
     // requests handling
     uint16_t transaction_id {1};
