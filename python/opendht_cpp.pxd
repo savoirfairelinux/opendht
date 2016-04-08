@@ -153,3 +153,9 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         vector[unsigned] getNodeMessageStats(bool i)
 
 ctypedef DhtRunner.Config Config
+
+cdef extern from "opendht/log.h" namespace "dht::log":
+    void enableLogging(DhtRunner& dht)
+    void disableLogging(DhtRunner& dht)
+    void enableFileLogging(DhtRunner& dht, const string& path)
+
