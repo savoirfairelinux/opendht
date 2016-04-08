@@ -137,9 +137,9 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
         } else if (op == "log") {
             params.log = !params.log;
             if (params.log)
-                enableLogging(dht);
+                log::enableLogging(dht);
             else
-                disableLogging(dht);
+                log::disableLogging(dht);
             continue;
         }
 
@@ -261,9 +261,9 @@ main(int argc, char **argv)
 
         if (params.log) {
             if (not params.logfile.empty())
-                enableFileLogging(dht, params.logfile);
+                log::enableFileLogging(dht, params.logfile);
             else
-                enableLogging(dht);
+                log::enableLogging(dht);
         }
 
         if (not params.bootstrap.first.empty()) {

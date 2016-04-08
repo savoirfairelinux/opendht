@@ -24,4 +24,5 @@
 #include "opendht/infohash.h"
 #include "opendht/securedht.h"
 #include "opendht/dhtrunner.h"
+#include "opendht/log.h"
 #include "opendht/default_types.h"
