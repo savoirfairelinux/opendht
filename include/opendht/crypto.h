@@ -34,11 +34,6 @@ extern "C" {
 namespace dht {
 namespace crypto {
 
-struct PrivateKey;
-struct Certificate;
-
-typedef std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certificate>> Identity;
-
 class CryptoException : public std::runtime_error {
     public:
         CryptoException(const std::string& str) : std::runtime_error(str) {};
@@ -51,15 +46,6 @@ class DecryptError : public CryptoException {
     public:
         DecryptError(const std::string& str = "") : CryptoException(str) {};
 };
-
-/**
- * Generate an RSA key pair (4096 bits) and a certificate.
- * @param name the name used in the generated certificate
- * @param ca if set, the certificate authority that will sign the generated certificate.
- *           If not set, the generated certificate will be a self-signed CA.
- * @param key_length stength of the generated private key (bits).
- */
-Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
 /**
  * A public key.
@@ -155,7 +141,7 @@ private:
     PrivateKey& operator=(const PrivateKey&) = delete;
     Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
-    friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
+    //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
 struct Certificate {
@@ -311,9 +297,19 @@ struct Certificate {
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
-
-    friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
+
+using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certificate>>;
+
+/**
+ * Generate an RSA key pair (4096 bits) and a certificate.
+ * @param name the name used in the generated certificate
+ * @param ca if set, the certificate authority that will sign the generated certificate.
+ *           If not set, the generated certificate will be a self-signed CA.
+ * @param key_length stength of the generated private key (bits).
+ */
+Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
+
 
 Blob hash(const Blob& data);
 
