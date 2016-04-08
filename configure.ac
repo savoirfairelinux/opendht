@@ -16,21 +16,27 @@ AM_PROG_AR
 dnl Check for Doxygen
 AC_ARG_ENABLE([doc], [AS_HELP_STRING([--disable-doc], [Disable documentation generation (doxygen)])])
 AS_IF([test "x$enable_doc" != "xno"], [
-  AC_CHECK_PROGS([DOXYGEN], [doxygen])
-  AS_IF([test -z "$DOXYGEN"],[AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])])
-])
+       AC_CHECK_PROGS([DOXYGEN], [doxygen])
+       AS_IF([test -z "$DOXYGEN"],[AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])])
+       ])
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
 dnl Check for Python
 AC_ARG_ENABLE([python], [AS_HELP_STRING([--disable-python], [Disble python binding])])
 AS_IF([test "x$enable_python" != "xno"], [
-  AM_PATH_PYTHON([3.3],, [:])
-  AS_IF([test -n "$PYTHON"],[
-    AC_CHECK_PROGS([CYTHON], [cython])
-    AS_IF([test -z "$CYTHON"],[AC_MSG_WARN([Cython not found - continuing without python support])])
-  ])
-])
+       AM_PATH_PYTHON([3.3],, [:])
+       AS_IF([test -n "$PYTHON"],[
+              AC_CHECK_PROGS([CYTHON], [cython])
+              AS_IF([test -z "$CYTHON"],[AC_MSG_WARN([Cython not found - continuing without python support])])
+              ])
+       ])
 AM_CONDITIONAL([USE_CYTHON], [test -n "$CYTHON"])
+dnl Check for pip support (uninstall)
+AS_IF([test -n "$PYTHON"],[
+       AC_CHECK_PROGS([PIP], [pip3])
+       AS_IF([test -z "$PIP"],[AC_MSG_WARN([pip not found - continuing without python uninstall support])])
+       AM_CONDITIONAL([HAVE_PIP], [test -n "$PIP"])
+       ])
 
 case "${host_os}" in
   "")
