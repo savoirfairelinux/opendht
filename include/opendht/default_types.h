@@ -22,6 +22,16 @@
 #include "value.h"
 
 namespace dht {
+enum class ImStatus : uint8_t {
+    NONE = 0,
+    TYPING,
+    RECEIVED,
+    READ
+};
+}
+MSGPACK_ADD_ENUM(dht::ImStatus);
+
+namespace dht {
 
 class DhtMessage : public Value::Serializable<DhtMessage>
 {
@@ -89,6 +99,9 @@ public:
     dht::InfoHash to;
 };
 
+
+
+
 class ImMessage : public SignedValue<ImMessage>
 {
 private:
@@ -110,7 +123,9 @@ public:
     dht::Value::Id id;
     std::string msg;
     long date {0};
-    MSGPACK_DEFINE_MAP(id, msg, date);
+    ImStatus status {ImStatus::NONE};
+
+    MSGPACK_DEFINE_MAP(id, msg, date, status);
 };
 
 class TrustRequest : public EncryptedValue<TrustRequest>
