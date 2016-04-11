@@ -723,6 +723,9 @@ private:
         Storage() {}
         Storage(InfoHash id, time_point now) : id(id), maintenance_time(now+MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {}
 
+        Storage(Storage&&) noexcept = default;
+        Storage& operator=(Storage&&) = default;
+
         bool empty() const {
             return values.empty();
         }
@@ -769,6 +772,9 @@ private:
         std::pair<ssize_t, ssize_t> expire(const std::map<ValueType::Id, ValueType>& types, time_point now);
 
     private:
+        Storage(const Storage&) = delete;
+        Storage& operator=(const Storage&) = delete;
+
         std::vector<ValueStorage> values {};
         size_t total_size {};
     };
