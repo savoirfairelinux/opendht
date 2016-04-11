@@ -28,4 +28,5 @@ nobase_include_HEADERS = \
         ../include/opendht/securedht.h \
         ../include/opendht/dhtrunner.h \
         ../include/opendht/default_types.h \
+        ../include/opendht/log.h \
         ../include/opendht/rng.h
