@@ -195,7 +195,7 @@ Dht::shutdown(ShutdownCallback cb) {
         else DHT_WARN("Shuting down node: %u ops remaining.", *remaining);
     };
 
-    for (auto str : store) {
+    for (const auto& str : store) {
         *remaining += maintainStorage(str.id, true, str_donecb);
     }
     DHT_WARN("Shuting down node: %u ops remaining.", *remaining);
@@ -1527,7 +1527,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
     auto st = findStorage(id);
     size_t tokenlocal = 0;
     if (st == store.end() && store.size() < MAX_HASHES) {
-        store.push_back(Storage {id, now});
+        store.emplace_back(id, now);
         st = std::prev(store.end());
     }
     if (st != store.end()) {
@@ -1782,7 +1782,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return false;
-        store.push_back(Storage {id, now});
+        store.emplace_back(id, now);
         st = std::prev(store.end());
     }
 
@@ -1838,7 +1838,7 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return;
-        store.push_back(Storage {id, now});
+        store.emplace_back(id, now);
         st = std::prev(store.end());
     }
     sa_family_t af = from->sa_family;
