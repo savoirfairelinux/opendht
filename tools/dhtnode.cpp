@@ -260,10 +260,14 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
                     }
                     std::cout << "Pht::lookup: done." << std::endl;
                 },
-                [](bool ok) {
+                [start](bool ok) {
                     if (not ok) {
                         std::cout << "Pht::lookup: dht Get failed." << std::endl;
                     }
+                    
+                    auto end = std::chrono::high_resolution_clock::now();
+                    std::cout << "Pht::lookup: took " << print_dt(end-start) << "s)" << std::endl;
+
                 }, exact_match.size() != 0 and exact_match == "false" ? false : true
             );
         }
