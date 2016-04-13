@@ -49,6 +49,24 @@ def random_hash():
     """
     return InfoHash(random_str_val(size=40).encode())
 
+def timer(f, *args):
+    """
+    Start a timer which count time taken for execute function f
+
+    @param f : Function to time
+    @type  f : function
+
+    @param args : Arguments of the function f
+    @type  args : list
+
+    @rtype : timer
+    @return : Time taken by the function f
+    """
+    start = time.time()
+    f(*args)
+
+    return time.time() - start
+
 def reset_before_test(featureTestMethod):
     """
     This is a decorator for all test methods needing reset().
@@ -191,7 +209,6 @@ class FeatureTest(object):
     def run(self):
         raise NotImplementedError('This method must be implemented.')
 
-
 ##################################
 #               PHT              #
 ##################################
@@ -220,6 +237,7 @@ class PhtTest(FeatureTest):
         """
         super(PhtTest, self).__init__(test, workbench)
         self._num_keys = opts['num_keys'] if 'num_keys' in opts else 32
+        self._timer = True if 'timer' in opts else False
 
     def _reset(self):
         super(PhtTest, self)._reset()
@@ -309,14 +327,18 @@ class PhtTest(FeatureTest):
         for key in keys:
             PhtTest.key = key
             with FeatureTest.lock:
-                pht.insert(key, IndexValue(random_hash()), PhtTest.insertDoneCb)
+                time_taken = timer(pht.insert, key, IndexValue(random_hash()), PhtTest.insertDoneCb)
+                if self._timer:
+                    DhtNetwork.log('This insert step took : ', time_taken, 'second')
                 FeatureTest.lock.wait()
 
         # Recover entries now that the trie is complete.
         for key in keys:
             PhtTest.key = key
             with FeatureTest.lock:
-                pht.lookup(key, PhtTest.lookupCb, PhtTest.lookupDoneCb)
+                time_taken = timer(pht.lookup, key, PhtTest.lookupCb, PhtTest.lookupDoneCb)
+                if self._timer:
+                    DhtNetwork.log('This lookup step took : ', time_taken, 'second')
                 FeatureTest.lock.wait()
 
             all_entries[PhtTest.prefix] = [e.__str__()
@@ -326,7 +348,6 @@ class PhtTest(FeatureTest):
             DhtNetwork.log('All entries under prefix', p, ':')
             DhtNetwork.log(all_entries[p])
         PhtTest.drawTrie(all_entries)
-
 
 ##################################
 #               DHT              #
@@ -402,7 +423,6 @@ class DhtFeatureTest(FeatureTest):
             if nodes is not None:
                 for n in DhtFeatureTest.foreignNodes:
                     nodes.add(n)
-
 
 class PersistenceTest(DhtFeatureTest):
     """
@@ -748,8 +768,7 @@ class PersistenceTest(DhtFeatureTest):
 
         hashes = []
 
-        # Generating considerable amount of values of size 1KB.
-        # TODO: Utiliser fonction _initialSetOfValues.
+    # Generating considerable amount of values of size 1KB.
         VALUE_SIZE = 1024
         NUM_VALUES = self._num_values if self._num_values else 50
         values = [Value(random_str_val(size=VALUE_SIZE).encode()) for _ in range(NUM_VALUES)]

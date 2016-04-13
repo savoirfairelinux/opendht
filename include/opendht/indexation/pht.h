@@ -200,7 +200,7 @@ private:
                 curr_node = std::make_shared<Node>();
                 root_ = curr_node;
             }
-            
+
             curr_node->last_reply = now;
 
             /* Iterate through all bit of the Blob */
@@ -209,7 +209,7 @@ private:
                 /* According to the bit define which node is the next one */
                 auto& next = ( p.isActivBit(i) ) ? curr_node->right_child : curr_node->left_child;
 
-                /** 
+                /**
                  * If lock, node exists
                  * else create it
                  */
@@ -239,7 +239,7 @@ private:
         int lookup(const Prefix& p) {
             int pos = 0;
             auto now = clock::now(), last_node_time = now;
-            
+
             /* Before lookup remove the useless one [i.e. too old] */
             while ( leaves_.size() > 0 &&  leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
                 leaves_.erase(leaves_.begin());
@@ -264,11 +264,11 @@ private:
 
             if ( pos > 0 ) {
                 auto to_erase = leaves_.find(last_node_time);
-                if ( to_erase != leaves_.end() ) 
+                if ( to_erase != leaves_.end() )
                     leaves_.erase( to_erase );
 
                 leaves_.emplace( std::move(now), std::move(curr_node) );
-            } 
+            }
 
             return --pos;
         }
