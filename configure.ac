@@ -28,15 +28,12 @@ AS_IF([test "x$enable_python" != "xno"], [
        AS_IF([test -n "$PYTHON"],[
               AC_CHECK_PROGS([CYTHON], [cython])
               AS_IF([test -z "$CYTHON"],[AC_MSG_WARN([Cython not found - continuing without python support])])
+              AC_CHECK_PROGS([PIP], [pip3])
+              AS_IF([test -z "$PIP"],[AC_MSG_WARN([pip not found - continuing without python uninstall support])])
               ])
        ])
 AM_CONDITIONAL([USE_CYTHON], [test -n "$CYTHON"])
-dnl Check for pip support (uninstall)
-AS_IF([test -n "$PYTHON"],[
-       AC_CHECK_PROGS([PIP], [pip3])
-       AS_IF([test -z "$PIP"],[AC_MSG_WARN([pip not found - continuing without python uninstall support])])
-       AM_CONDITIONAL([HAVE_PIP], [test -n "$PIP"])
-       ])
+AM_CONDITIONAL([HAVE_PIP], [test -n "$PIP"])
 
 case "${host_os}" in
   "")
