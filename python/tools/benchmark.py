@@ -160,6 +160,7 @@ if __name__ == '__main__':
     featureArgs.add_argument('--pht', action='store_true', default=False,
             help='Launches PHT benchmark test. '\
                     'Available args for "-t" are: insert. '\
+                    'Timer available by adding "timer" to "-o" args'\
                     'Use "-m" option for fixing number of keys to create during the test.')
     featureArgs.add_argument('--data-persistence', action='store_true', default=0,
             help='Launches data persistence benchmark test. '\
