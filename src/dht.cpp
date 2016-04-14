@@ -864,7 +864,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
                 [=](const SearchNode& n) { return n.node->isGood(now) or n.candidate; }
             );
             if (farthest_not_expired_node != nodes.rend()) {
-                nodes.erase(farthest_not_expired_node.base());
+                nodes.erase(std::prev(farthest_not_expired_node.base()));
             } // else, all nodes are expired.
         }
         expired = false;
