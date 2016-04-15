@@ -2846,7 +2846,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
 
         try {
             msgpack::unpacked msg;
-            msgpack::unpack(&msg, (const char*)h.second.data(), h.second.size());
+            msgpack::unpack(msg, (const char*)h.second.data(), h.second.size());
             auto valarr = msg.get();
             if (valarr.type != msgpack::type::ARRAY)
                 throw msgpack::type_error();

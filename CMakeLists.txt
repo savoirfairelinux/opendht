@@ -17,6 +17,7 @@ option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_DEBUG "Build with debug flags" OFF)
 
 set (CMAKE_CXX_FLAGS "-pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor ${CMAKE_CXX_FLAGS}")
+set (CMAKE_CXX_FLAGS "-DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT ${CMAKE_CXX_FLAGS}")
 
 find_package (GnuTLS 3.1 REQUIRED)
 find_package (Msgpack 1.2 REQUIRED)

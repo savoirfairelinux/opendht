@@ -197,7 +197,7 @@ struct Value
 
         virtual void unpackValue(const Value& v) {
             auto msg = msgpack::unpack((const char*)v.data.data(), v.data.size());
-            msg.get().convert(static_cast<Derived*>(this));
+            msg.get().convert(*static_cast<Derived*>(this));
         }
 
         virtual Value packValue() const {
