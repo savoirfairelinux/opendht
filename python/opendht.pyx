@@ -280,6 +280,12 @@ cdef class DhtRunner(_WithID):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.shutdown(cpp.Dht.bindShutdownCb(shutdown_callback, <void*>cb_obj))
+    def enableLogging(self):
+        cpp.enableLogging(self.thisptr[0])
+    def disableLogging(self):
+        cpp.disableLogging(self.thisptr[0])
+    def enableFileLogging(self, str path):
+        cpp.enableFileLogging(self.thisptr[0], path)
     def isRunning(self):
         return self.thisptr.isRunning()
     def getStorageLog(self):
