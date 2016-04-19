@@ -203,9 +203,6 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             case MessageType::Listen: {
                 DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
-                if (!msg.tid.matches(TransPrefix::LISTEN, &ttid)) {
-                    break;
-                }
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid.getTid());
                 sendListenConfirmation(from, fromlen, msg.tid);
