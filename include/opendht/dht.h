@@ -723,8 +723,21 @@ private:
         Storage() {}
         Storage(InfoHash id, time_point now) : id(id), maintenance_time(now+MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {}
 
-        Storage(Storage&&) noexcept = default;
-        Storage& operator=(Storage&&) = default;
+#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 9 && __GNUC_PATCHLEVEL__ < 2
+        // GCC-bug: remove me when support of GCC < 4.9.2 is abandoned
+        Storage(Storage&& o) noexcept
+			: id(std::move(o.id))
+            , maintenance_time(std::move(o.maintenance_time))
+            , listeners(std::move(o.listeners))
+            , local_listeners(std::move(o.local_listeners))
+            , listener_token(std::move(o.listener_token))
+            , values(std::move(o.values))
+            , total_size(std::move(o.total_size)) {}
+#else
+        Storage(Storage&& o) noexcept = default;
+#endif
+
+        Storage& operator=(Storage&& o) = default;
 
         bool empty() const {
             return values.empty();
