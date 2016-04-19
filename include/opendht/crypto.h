@@ -47,6 +47,11 @@ class DecryptError : public CryptoException {
         DecryptError(const std::string& str = "") : CryptoException(str) {};
 };
 
+struct PrivateKey;
+struct Certificate;
+
+using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certificate>>;
+
 /**
  * A public key.
  */
@@ -115,7 +120,7 @@ struct PrivateKey
 
     /**
      * Sign the provided binary object.
-     * @returns the signed data.
+     * @returns the signature data.
      */
     Blob sign(const Blob&) const;
 
@@ -292,6 +297,8 @@ struct Certificate {
      */
     std::string toString(bool chain = true) const;
 
+    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
+
     gnutls_x509_crt_t cert {};
     std::shared_ptr<Certificate> issuer {};
 private:
@@ -299,7 +306,6 @@ private:
     Certificate& operator=(const Certificate&) = delete;
 };
 
-using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certificate>>;
 
 /**
  * Generate an RSA key pair (4096 bits) and a certificate.
@@ -308,9 +314,13 @@ using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certific
  *           If not set, the generated certificate will be a self-signed CA.
  * @param key_length stength of the generated private key (bits).
  */
+Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
 Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
 
+/**
+ * SHA512
+ */
 Blob hash(const Blob& data);
 
 /**

@@ -747,23 +747,40 @@ PrivateKey::generate(unsigned key_length)
     return PrivateKey{key};
 }
 
-crypto::Identity
-generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_length)
+Identity
+generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_length, bool is_ca)
 {
 #if GNUTLS_VERSION_NUMBER < 0x030300
     if (gnutls_global_init() != GNUTLS_E_SUCCESS)
         return {};
 #endif
-    auto shared_key = std::make_shared<PrivateKey>(PrivateKey::generate(key_length));
+    auto key = std::make_shared<PrivateKey>(PrivateKey::generate(key_length));
 
+    auto cert = std::make_shared<Certificate>(Certificate::generate(*key, name, ca, is_ca));
+
+#if GNUTLS_VERSION_NUMBER < 0x030300
+    gnutls_global_deinit();
+#endif
+    return {std::move(key), std::move(cert)};
+}
+
+
+Identity
+generateIdentity(const std::string& name, Identity ca, unsigned key_length) {
+    return generateIdentity(name, ca, key_length, !ca.first || !ca.second);
+}
+
+Certificate
+Certificate::generate(const PrivateKey& key, const std::string& name, Identity ca, bool is_ca)
+{
     gnutls_x509_crt_t cert;
-    if (gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
+    if (not key.x509_key or gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         return {};
-    auto shared_crt = std::make_shared<Certificate>(cert);
+    Certificate ret {cert};
 
     gnutls_x509_crt_set_activation_time(cert, time(NULL));
-    gnutls_x509_crt_set_expiration_time(cert, time(NULL) + (5 * 365 * 24 * 60 * 60));
-    if (gnutls_x509_crt_set_key(cert, shared_key->x509_key) != GNUTLS_E_SUCCESS) {
+    gnutls_x509_crt_set_expiration_time(cert, time(NULL) + (20 * 365 * 24 * 60 * 60));
+    if (gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
         std::cerr << "Error when setting certificate key" << std::endl;
         return {};
     }
@@ -773,7 +790,7 @@ generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_leng
     }
 
     // TODO: compute the subject key using the recommended RFC method
-    auto pk_id = shared_key->getPublicKey().getId();
+    auto pk_id = key.getPublicKey().getId();
     const std::string uid_str = pk_id.toString();
 
     gnutls_x509_crt_set_subject_key_id(cert, &pk_id, sizeof(pk_id));
@@ -787,31 +804,30 @@ generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_leng
         gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
     }
 
+    unsigned key_usage = GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT;
+    if (is_ca) {
+        gnutls_x509_crt_set_ca_status(cert, 1);
+        key_usage |= GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN;
+    }
+    gnutls_x509_crt_set_key_usage(cert, key_usage);
+
     if (ca.first && ca.second) {
-        gnutls_x509_crt_set_key_usage (cert, GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT);
         //if (gnutls_x509_crt_sign2(cert, ca.second->cert, ca.first->x509_key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
         if (gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
             std::cerr << "Error when signing certificate" << std::endl;
             return {};
         }
-        shared_crt->issuer = ca.second;
+        ret.issuer = ca.second;
     } else {
-        gnutls_x509_crt_set_ca_status(cert, 1);
-        gnutls_x509_crt_set_key_usage (cert, GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_KEY_CERT_SIGN);
         //if (gnutls_x509_crt_sign2(cert, cert, key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
-        if (gnutls_x509_crt_privkey_sign(cert, cert, shared_key->key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
+        if (gnutls_x509_crt_privkey_sign(cert, cert, key.key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
             std::cerr << "Error when signing certificate" << std::endl;
             return {};
         }
     }
 
-#if GNUTLS_VERSION_NUMBER < 0x030300
-    gnutls_global_deinit();
-#endif
-
-    return {shared_key, shared_crt};
+    return ret;
 }
 
 }
-
 }
