@@ -2812,7 +2812,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
 }
 
 void
-Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& answer,
+Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::Request>&, NetworkEngine::RequestAnswer& answer,
         std::shared_ptr<Search>& sr)
 {
     const auto& now = scheduler.time();
@@ -2821,8 +2821,6 @@ Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngi
 
     if (searchSendGetValues(sr))
         sr->get_step_time = now;
-
-    status->reply_time = scheduler.time();
 
     // If the value was just successfully announced, call the callback
     sr->announce.erase(std::remove_if(sr->announce.begin(), sr->announce.end(),
