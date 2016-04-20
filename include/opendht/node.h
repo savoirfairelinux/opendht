@@ -35,13 +35,14 @@ struct NodeExport {
 };
 
 struct Node {
+	friend class NetworkEngine;
+
     InfoHash id {};
     sockaddr_storage ss;
     socklen_t sslen {0};
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
     time_point pinged_time {time_point::min()};     /* time of last message sent */
-    unsigned pinged {0};           /* how many requests we sent since last reply */
 
     Node() : ss() {
         std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
@@ -77,6 +78,11 @@ struct Node {
       Answer should be true if the message was an aswer to a request we made*/
     void received(time_point now, bool answer);
 
+	/**
+	 * Resets the state of the node so it's not expired anymore.
+	 */
+	void reset() { pinged = 0; }
+
     friend std::ostream& operator<< (std::ostream& s, const Node& h);
 
     static constexpr const std::chrono::minutes NODE_GOOD_TIME {120};
@@ -86,6 +92,9 @@ struct Node {
 
     /* Time for a request to timeout */
     static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {3};
+
+private:
+    unsigned pinged {0}; /* how many requests we sent since last reply */
 };
 
 }

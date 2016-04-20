@@ -44,6 +44,16 @@ const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES  = 
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN  = {"lt"};
 constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
 
+/* Called whenever we send a request to a node, increases the ping count
+   and, if that reaches 3, sends a ping to a new candidate. */
+void
+NetworkEngine::pinged(Node& n)
+{
+    const auto& now = scheduler.time();
+    if (not n.isExpired(now))
+        n.requested(now);
+}
+
 void
 NetworkEngine::tellListener(const sockaddr *sa, socklen_t salen, uint16_t rid, InfoHash hash, want_t want,
         Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
