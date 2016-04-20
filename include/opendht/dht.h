@@ -495,10 +495,6 @@ private:
          *
          */
         bool candidate {false};
-
-        // Generic temporary flag.
-        // Must be reset to false after use by the algorithm.
-        bool pending {false};
     };
 
     /**
@@ -827,8 +823,6 @@ private:
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);
-
-    void pinged(Node& n, Bucket *b = nullptr);
 
     void blacklistNode(const InfoHash* id, const sockaddr*, socklen_t);
     bool isNodeBlacklisted(const sockaddr*, socklen_t) const;

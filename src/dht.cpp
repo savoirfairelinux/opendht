@@ -370,7 +370,7 @@ Dht::NodeCache::clearBadNodes(sa_family_t family)
         auto& list = family == AF_INET ? cache_4 : cache_6;
         for (auto n = list.begin(); n != list.end();) {
             if (auto ln = n->lock()) {
-                ln->pinged = 0;
+                ln->reset();
                 ++n;
             } else {
                 n = list.erase(n);
@@ -394,22 +394,6 @@ Dht::sendCachedPing(Bucket& b)
     return 0;
 }
 
-/* Called whenever we send a request to a node, increases the ping count
-   and, if that reaches 3, sends a ping to a new candidate. */
-void
-Dht::pinged(Node& n, Bucket* b)
-{
-    const auto& now = scheduler.time();
-    if (not n.isExpired(now)) {
-        n.requested(now);
-        if (n.pinged >= 3) {
-            if (not b)
-                b = findBucket(n.id, n.ss.ss_family);
-            if (b) sendCachedPing(*b);
-        }
-    }
-}
-
 /* The internal blacklist is an LRU cache of nodes that have sent
    incorrect messages. */
 void
@@ -418,12 +402,7 @@ Dht::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
     DHT_LOG.WARN("Blacklisting broken node.");
 
     if (id) {
-        /* Make the node easy to discard. */
         auto n = findNode(*id, sa->sa_family);
-        if (n) {
-            n->pinged = 3;
-            pinged(*n);
-        }
         /* Discard it from any searches in progress. */
         auto black_list_in = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
             for (auto& srp : srs) {
@@ -597,9 +576,6 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
                 if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
                     DHT_LOG.DEBUG("Sending ping to dubious node.");
                     network_engine.sendPing(n, nullptr, nullptr);
-                    n->pinged++;
-                    n->pinged_time = now;
-                    //pinged(n, b);
                     break;
                 }
             }
@@ -637,8 +613,8 @@ Dht::expireBuckets(RoutingTable& list)
 {
     for (auto& b : list) {
         bool changed = false;
-        b.nodes.remove_if([&changed](const std::shared_ptr<Node>& n) {
-            if (n->pinged >= 4) {
+        b.nodes.remove_if([this,&changed](const std::shared_ptr<Node>& n) {
+            if (n->isExpired(scheduler.time())) {
                 changed = true;
                 return true;
             }
@@ -787,11 +763,10 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             return nullptr;
     }
 
-    DHT_LOG.DEBUG("[search %s IPv%c] [node %s %s] sending 'get' (p %d)",
+    DHT_LOG.DEBUG("[search %s IPv%c] [node %s %s] sending 'get'",
         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
         n->node->id.toString().c_str(),
-        print_addr(n->node->ss, n->node->sslen).c_str(),
-        n->node->pinged);
+        print_addr(n->node->ss, n->node->sslen).c_str());
 
     auto onDone =
         [=](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable {
@@ -824,7 +799,6 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     else
         rstatus = network_engine.sendGetValues(n->node, sr->id, -1, onDone, onExpired);
     n->getStatus = rstatus;
-    pinged(*n->node);
     return n;
 }
 
@@ -902,7 +876,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                             }
                         }
                     );
-                    n.pending = true;
                 }
                 t++;
                 if (not n.candidate and ++i == LISTEN_NODES)
@@ -944,9 +917,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                             if (sr) { searchStep(sr); }
                         }
                     );
-                    // use the "pending" flag so we update the "pinged"
-                    // fields after sending the announce requests for every value to announce
-                    n.pending = true;
                 }
                 t++;
                 if (not n.candidate and ++i == TARGET_NODES)
@@ -962,11 +932,8 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         SearchNode* sent;
         do {
             sent = searchSendGetValues(sr);
-            if (sent) {
-                sent->pending = false;
-                if (not sent->candidate)
-                    i++;
-            }
+            if (sent and not sent->candidate)
+                i++;
         }
         while (sent and i < 3);
         DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests.",
@@ -1003,14 +970,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             }
         }
     }
-
-    for (auto& n : sr->nodes) {
-        if (n.pending) {
-            n.pending = false;
-            pinged(*n.node);
-        }
-    }
-
 }
 
 
@@ -1989,8 +1948,6 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
             out << " age " << duration_cast<seconds>(now - n->time).count() << ", reply: " << duration_cast<seconds>(now - n->reply_time).count();
         else
             out << " age " << duration_cast<seconds>(now - n->time).count();
-        if (n->pinged)
-            out << " [p " << n->pinged << "]";
         if (n->isExpired(now))
             out << " [expired]";
         else if (n->isGood(now))
@@ -2031,10 +1988,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << ' ' << (n.candidate ? 'c' : ' ');
         out << " ["
             << (n.node->isMessagePending(now) ? 'f':' ');
-        if (n.node->pinged)
-            out << n.node->pinged;
-        else
-            out << ' ';
+        out << ' ';
         out << (n.node->isExpired(now) ? 'x' : ' ') << "]";
 
         {
@@ -2238,7 +2192,6 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
     if (n) {
         DHT_LOG.DEBUG("[find %s IPv%c] sending find for neighborhood maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
         network_engine.sendFindNode(n, id, network_engine.want(), nullptr, nullptr);
-        pinged(*n, &(*q));
     }
 
     return true;
@@ -2288,7 +2241,6 @@ Dht::bucketMaintenance(RoutingTable& list)
 
                 DHT_LOG.DEBUG("[find %s IPv%c] sending for bucket maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
                 network_engine.sendFindNode(n, id, want, nullptr, nullptr);
-                pinged(*n, &(*q));
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
                 return true;
