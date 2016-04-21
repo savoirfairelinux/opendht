@@ -39,6 +39,7 @@ public:
     struct Job {
         bool done;
         bool cancelled;
+		time_point time;
         std::function<void()> do_;
     };
 
@@ -51,8 +52,10 @@ public:
      * @return pointer to the newly scheduled job.
      */
     std::shared_ptr<Scheduler::Job> add(time_point time, std::function<void()> job_func) {
-        auto job = std::make_shared<Job>(Job {false, false, std::move(job_func)});
-        timers.emplace(std::move(time), job);
+		auto scheduled_time = std::max(time, now); /* This should prevent running an auto rescheduling job forever
+													  before the Scheduler::run method ends. */
+        auto job = std::make_shared<Job>(Job {false, false, scheduled_time, std::move(job_func)});
+        timers.emplace(std::move(scheduled_time), job);
         return job;
     }
 
@@ -80,7 +83,12 @@ public:
         syncTime();
         while (not timers.empty()) {
             auto timer = timers.begin();
-            if (timer->first > now)
+			/*
+			 * Running jobs scheduled before "now" prevents run+rescheduling
+			 * loops before this method ends. It is garanteed by the fact that a
+			 * job will at least be scheduled for "now" and not before.
+			 */
+			if (not (timer->first < now))
                 break;
 
             auto& job = timer->second;
