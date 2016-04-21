@@ -68,6 +68,12 @@ using duration = clock::duration;
 time_point from_time_t(std::time_t t);
 std::time_t to_time_t(time_point t);
 
+template <class DT>
+static double
+print_dt(DT d) {
+    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+}
+
 static /*constexpr*/ const time_point TIME_INVALID = {time_point::min()};
 static /*constexpr*/ const time_point TIME_MAX {time_point::max()};
 

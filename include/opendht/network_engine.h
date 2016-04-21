@@ -211,7 +211,10 @@ public:
         }
 
         bool pending(time_point now) const {
-            return reply_time < last_try && now - last_try <= Node::MAX_RESPONSE_TIME;
+            return not cancelled  
+               and not completed 
+               and reply_time < last_try
+               and now - last_try <= Node::MAX_RESPONSE_TIME;
         }
 
         Request() {}
@@ -222,13 +225,13 @@ public:
                 Blob &&msg,
                 std::function<void(std::shared_ptr<Request> req_status, ParsedMessage&&)> on_done,
                 std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired, bool persistent = false) :
-            node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(msg), persistent(persistent) { }
+            node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), persistent(persistent) { }
 
         std::function<void(std::shared_ptr<Request> req_status, ParsedMessage&&)> on_done {};
         std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired {};
 
         const uint16_t tid {0};                   /* the request id. */
-        Blob msg {};                              /* the serialized message. */
+        const Blob msg {};                              /* the serialized message. */
         const bool persistent {false};            /* the request is not erased upon completion. */
     };
 
@@ -239,6 +242,8 @@ public:
     void cancelRequest(std::shared_ptr<Request>& req) {
         if (req) {
             req->cancelled = true;
+            req->on_done = {};
+            req->on_expired = {};
             requests.erase(req->tid);
         }
     }
@@ -346,7 +351,17 @@ public:
     {
         transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
     }
-    virtual ~NetworkEngine() {};
+    virtual ~NetworkEngine() {
+        clear();
+    };
+
+    void clear() {
+        for (auto& req : requests) {
+            req.second->on_expired = {};
+            req.second->on_done = {};
+        }
+        requests.clear();
+    }
 
     /**
      * Sends values (with closest nodes) to a listenner.
@@ -455,6 +470,8 @@ private:
         auto now = scheduler.time();
         if (req->expired(now)) {
             req->on_expired(req, true);
+            req->on_expired = {};
+            req->on_done = {};
             requests.erase(req->tid);
             return;
         } else if (req->attempt_count == 1) {
@@ -481,7 +498,10 @@ private:
      */
     void sendRequest(std::shared_ptr<Request>& request) {
         request->start = scheduler.time();
-        requests.emplace(request->tid, request);
+        auto e = requests.emplace(request->tid, request);
+        if (!e.second) {
+            DHT_LOG.ERROR("Request already existed !");
+        }
         requestStep(request);
     }
 

@@ -163,6 +163,10 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             req->reply_time = scheduler.time();
             req->completed = true;
             req->on_done(req, std::move(msg));
+            if (not req->persistent) {
+                req->on_done = {};
+                req->on_expired = {};
+            }
             break;
         default:
             break;
@@ -284,7 +288,8 @@ NetworkEngine::sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, 
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), std::make_shared<Node>(InfoHash {}, sa, salen), std::move(b),
-        [=](std::shared_ptr<Request> req_status, ParsedMessage&&){
+        [=](std::shared_ptr<Request> req_status, ParsedMessage&&) {
+            DHT_LOG.DEBUG("Got pong from %s", print_addr(req_status->node->ss, req_status->node->sslen).c_str());
             if (on_done) {
                 on_done(req_status, {});
             }
