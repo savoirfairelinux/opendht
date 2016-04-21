@@ -477,10 +477,10 @@ protected:
  * This is meant to narrow data to a set of specified fields. This is equivalent
  * to a SQL "SELECT" statement.
  */
-struct FieldFilterDescription : public FilterDescription
+struct FieldSelectorDescription : public FilterDescription
 {
-    FieldFilterDescription() {}
-    FieldFilterDescription(Field f) : FilterDescription(f) {}
+    FieldSelectorDescription() {}
+    FieldSelectorDescription(Field f) : FilterDescription(f) {}
 
     template <typename Packer>
     void msgpack_pack(Packer& p) {
@@ -621,7 +621,7 @@ struct Query
 
 private:
     std::vector<ValueFilterDescription> valueFilters_;
-    std::vector<FieldFilterDescription> fieldFilters_;
+    std::vector<FieldSelectorDescription> fieldFilters_;
 };
 
 template <typename T,
