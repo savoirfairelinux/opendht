@@ -120,7 +120,12 @@ public:
      * and an ID for the node.
      */
     Dht(int s, int s6, Config config);
-    virtual ~Dht() {}
+    virtual ~Dht() {
+        for (auto& s : searches4)
+            s.second->clear();
+        for (auto& s : searches6)
+            s.second->clear();
+    }
 
     /**
      * Get the ID of the node.
@@ -426,19 +431,18 @@ private:
          * Can we use this node to listen/announce now ?
          */
         bool isSynced(time_point now) const {
-            if (not getStatus)
-                return false;
-
+            /*if (not getStatus)
+                return false;*/
             return not node->isExpired(now) and
-                   last_get_reply >= now - Node::NODE_EXPIRE_TIME;
+                   not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
         }
         bool canGet(time_point now, time_point update) const {
-            if (not getStatus)
-                return true;
-
+            /*if (not getStatus)
+                return true;*/
             return not node->isExpired(now) and
-                   (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply) and
-                   now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
+                   (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
+                   and (not getStatus or not getStatus->pending(now));
+                   // and now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -599,6 +603,14 @@ private:
         unsigned refill(const RoutingTable&, time_point now);
 
         std::vector<std::shared_ptr<Node>> getNodes() const;
+
+        void clear() {
+            announce.clear();
+            callbacks.clear();
+            listeners.clear();
+            nodes.clear();
+            nextSearchStep = {};
+        }
     };
 
     struct ValueStorage {

@@ -39,7 +39,6 @@ public:
     struct Job {
         bool done;
         bool cancelled;
-        time_point time;
         std::function<void()> do_;
     };
 
@@ -51,11 +50,11 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    std::shared_ptr<Scheduler::Job> add(time_point time, std::function<void()> job_func) {
-        auto scheduled_time = std::max(time, now); /* This should prevent running an auto rescheduling job forever
-                                                      before the Scheduler::run method ends. */
-        auto job = std::make_shared<Job>(Job {false, false, scheduled_time, std::move(job_func)});
-        timers.emplace(std::move(scheduled_time), job);
+    std::shared_ptr<Scheduler::Job> add(time_point t, std::function<void()> job_func) {
+        //std::cout << "Scheduler: adding " << (job_func ? "" : "empty") << " job in " << print_dt(t - clock::now()) << std::endl;
+        auto job = std::make_shared<Job>(Job {false, false, std::move(job_func)});
+        if (t != time_point::max())
+            timers.emplace(std::move(t), job);
         return job;
     }
 
@@ -67,12 +66,16 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    std::shared_ptr<Scheduler::Job> edit(const std::shared_ptr<Scheduler::Job>& job, time_point time) {
-        if (not job)
-            return {};
+    void edit(std::shared_ptr<Scheduler::Job>& job, time_point t) {
+        if (not job) {
+            std::cout << "editing an empty job" << std::endl;
+            return;
+        }
         job->cancelled = true;
-        return add(time, std::move(job->do_));
+        job = add(t, std::move(job->do_));
     }
+
+
 
     /**
      * Runs the jobs to do up to now.
@@ -88,12 +91,13 @@ public:
              * loops before this method ends. It is garanteed by the fact that a
              * job will at least be scheduled for "now" and not before.
              */
-            if (not (timer->first < now))
+            if (timer->first > now)
                 break;
 
             auto& job = timer->second;
             if (not job->cancelled and job->do_) {
                 job->do_();
+                //job->do_ = {};
                 job->done = true;
             }
             timers.erase(timer);
@@ -102,6 +106,8 @@ public:
     }
 
     inline time_point getNextJobTime() const {
+        //if (not timers.empty())
+        //    std::cout << "Next job in " << print_dt(timers.begin()->first - clock::now()) << std::endl;
         return not timers.empty() ? timers.begin()->first : time_point::max();
     }
 

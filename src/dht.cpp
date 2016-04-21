@@ -85,12 +85,6 @@ to_hex(const uint8_t *buf, size_t buflen)
     return s.str();
 }
 
-template <class DT>
-static double
-print_dt(DT d) {
-    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
-}
-
 namespace dht {
 
 using namespace std::placeholders;
@@ -491,7 +485,7 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         auto& s = srp.second;
         if (s->insertNode(node, now)) {
             inserted = true;
-            s->nextSearchStep = scheduler.edit(s->nextSearchStep, s->getNextStepTime(types, now));
+            scheduler.edit(s->nextSearchStep, s->getNextStepTime(types, now));
         }
     }
     return inserted;
@@ -549,7 +543,7 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             mybucket_grow_time = now;
         else
             mybucket6_grow_time = now;
-        nextNodesConfirmation = scheduler.edit(nextNodesConfirmation, now);
+        //scheduler.edit(nextNodesConfirmation, now);
     }
 
     /* First, try to get rid of a known-bad node. */
@@ -745,6 +739,9 @@ Dht::expireSearches()
 Dht::SearchNode*
 Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update)
 {
+    if (sr->done)
+        return nullptr;
+
     const auto& now = scheduler.time();
     const time_point up = update ? sr->getLastGetTime() : time_point::min();
     SearchNode* n = nullptr;
@@ -768,16 +765,17 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         n->node->id.toString().c_str(),
         print_addr(n->node->ss, n->node->sslen).c_str());
 
+    std::weak_ptr<Search> ws = sr;
     auto onDone =
-        [=](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable {
-            if (sr) {
+        [this,ws](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable {
+            if (auto sr = ws.lock()) {
                 sr->insertNode(status->node, scheduler.time(), answer.ntoken);
                 onGetValuesDone(status, answer, sr);
             }
         };
     auto onExpired =
-        [=](std::shared_ptr<NetworkEngine::Request> status, bool over) mutable {
-            if (sr) {
+        [this,ws](std::shared_ptr<NetworkEngine::Request> status, bool over) mutable {
+            if (auto sr = ws.lock()) {
                 if (not over) {
                     auto srn = std::find_if(sr->nodes.begin(), sr->nodes.end(), [&status](SearchNode& sn) {
                         return status->node == sn.node;
@@ -789,7 +787,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                     }
                 }
                 if (searchSendGetValues(sr))
-                    sr->get_step_time = now;
+                    sr->get_step_time = scheduler.time();
                 searchStep(sr);
             }
         };
@@ -860,18 +858,20 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                     //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
                     network_engine.cancelRequest(n.listenStatus);
+
+                    std::weak_ptr<Search> ws = sr;
                     n.listenStatus = network_engine.sendListen(n.node, sr->id, n.token,
-                        [=](std::shared_ptr<NetworkEngine::Request> status,
+                        [this,ws](std::shared_ptr<NetworkEngine::Request> status,
                                 NetworkEngine::RequestAnswer&& answer) mutable
                         { /* on done */
-                            if (sr) {
+                            if (auto sr = ws.lock()) {
                                 onListenDone(status, answer, sr);
                                 searchStep(sr);
                             }
                         },
-                        [=](std::shared_ptr<NetworkEngine::Request>, bool) mutable
+                        [this,ws](std::shared_ptr<NetworkEngine::Request>, bool) mutable
                         { /* on expired */
-                            if (sr) {
+                            if (auto sr = ws.lock()) {
                                 searchStep(sr);
                             }
                         }
@@ -904,17 +904,18 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         print_addr(n.node->ss, n.node->sslen).c_str(), vid);
                     //std::cout << "Sending announce_value to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
+                    std::weak_ptr<Search> ws = sr;
                     n.acked[vid] = network_engine.sendAnnounceValue(n.node, sr->id, *a.value, a.created, n.token,
-                        [=](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable
+                        [this,ws](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable
                         { /* on done */
-                            if (sr) {
+                            if (auto sr = ws.lock()) {
                                 onAnnounceDone(status, answer, sr);
                                 searchStep(sr);
                             }
                         },
-                        [=](std::shared_ptr<NetworkEngine::Request>, bool) mutable
+                        [this,ws](std::shared_ptr<NetworkEngine::Request>, bool) mutable
                         { /* on expired */
-                            if (sr) { searchStep(sr); }
+                            if (auto sr = ws.lock()) { searchStep(sr); }
                         }
                     );
                 }
@@ -972,7 +973,8 @@ Dht::searchStep(std::shared_ptr<Search> sr)
     }
 
     /* periodic searchStep scheduling. */
-    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
+    if (not sr->done)
+        scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
 }
 
 
@@ -1073,9 +1075,11 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
-        if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get)) {
+        bool pending = sn.getStatus and sn.getStatus->pending(now);
+        if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
             // not isSynced
-            ut = std::min(ut, get_step_time + SEARCH_GET_STEP);
+            if (not pending)
+                ut = std::min(ut, get_step_time + SEARCH_GET_STEP);
             if (not sn.candidate)
                 d++;
         } else {
@@ -1086,7 +1090,7 @@ Dht::Search::getUpdateTime(time_point now) const
         if (not sn.candidate and ++i == TARGET_NODES)
             break;
     }
-    if ((not callbacks.empty() or not announce.empty()) and d == 0) {
+    if (not callbacks.empty() and d == 0) {
         // If all synced/updated but some callbacks remain, step now to clear them
         return now;
     }
@@ -1178,7 +1182,7 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
 
     auto ut = getUpdateTime(now);
     if (ut != time_point::max()) {
-        //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " update time in " << print_dt(ut - now) << " s" << std::endl;
+        std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " update time in " << print_dt(ut - now) << " s" << std::endl;
         next_step = std::min(next_step, ut);
     }
 
@@ -1186,13 +1190,13 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
     {
         auto at = getAnnounceTime(types, now);
         if (at != time_point::max()) {
-            //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " announce time in " << print_dt(at - now) << " s" << std::endl;
+            std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " announce time in " << print_dt(at - now) << " s" << std::endl;
             next_step = std::min(next_step, at);
         }
 
         auto lt = getListenTime(now);
         if (lt != time_point::max()) {
-            //std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " listen time in " << print_dt(lt - now) << " s" << std::endl;
+            std::cout << id.toString() << " IPv" << (af==AF_INET?"4":"6") << " listen time in " << print_dt(lt - now) << " s" << std::endl;
             next_step = std::min(next_step, lt);
         }
     }
@@ -1284,9 +1288,8 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         if (search_id == 0)
             search_id++;
     }
-    if (sr->nextSearchStep)
-        sr->nextSearchStep->cancelled = true;
-    sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
+    if (not sr->nextSearchStep)
+        sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
 
     if (callback)
         sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback});
@@ -1342,7 +1345,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             a_sr->callback = callback;
         }
     }
-    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
+    scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
     //TODO
     //if (tm < search_time) {
     //    DHT_LOG.ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(),l
@@ -1369,7 +1372,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     sr->done = false;
     auto token = ++sr->listener_token;
     sr->listeners.emplace(token, LocalListener{f, cb});
-    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
+    scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
     return token;
 }
 
@@ -1826,7 +1829,7 @@ void
 Dht::connectivityChanged()
 {
     const auto& now = scheduler.time();
-    nextNodesConfirmation = scheduler.edit(nextNodesConfirmation, now);
+    scheduler.edit(nextNodesConfirmation, now);
     mybucket_grow_time = now;
     mybucket6_grow_time = now;
     reported_addr.clear();
@@ -1844,7 +1847,7 @@ void
 Dht::rotateSecrets()
 {
     const auto& now = scheduler.time();
-    uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
+    uniform_duration_distribution<> time_dist(std::chrono::seconds(45), std::chrono::minutes(1));
     auto rotate_secrets_time = now + time_dist(rd);
 
     oldsecret = secret;
@@ -2151,8 +2154,9 @@ Dht::Dht(int s, int s6, Config config)
 
     search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
 
-    uniform_duration_distribution<> time_dis {std::chrono::seconds(0), std::chrono::seconds(3)};
+    uniform_duration_distribution<> time_dis {std::chrono::seconds(3), std::chrono::seconds(5)};
     auto confirm_nodes_time = scheduler.time() + time_dis(rd);
+    DHT_LOG.DEBUG("Scheduling %s", myid.toString().c_str());
     nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
 
     // Fill old secret
@@ -2374,9 +2378,13 @@ Dht::confirmNodes()
     bool soon = false;
     const auto& now = scheduler.time();
 
-    if (searches4.empty() and searches6.empty() and getStatus() != Status::Disconnected) {
-        DHT_LOG.DEBUG("[confirm nodes] initial 'get' for my id (%s).", myid.toString().c_str());
-        get(myid, GetCallbackSimple{});
+    if (searches4.empty() and getStatus(AF_INET) != Status::Disconnected) {
+        DHT_LOG.DEBUG("[confirm nodes] initial IPv4 'get' for my id (%s).", myid.toString().c_str());
+        search(myid, AF_INET);
+    }
+    if (searches6.empty() and getStatus(AF_INET6) != Status::Disconnected) {
+        DHT_LOG.DEBUG("[confirm nodes] initial IPv6 'get' for my id (%s).", myid.toString().c_str());
+        search(myid, AF_INET6);
     }
 
     soon |= bucketMaintenance(buckets);
@@ -2613,8 +2621,8 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
         return;
     }
 
-    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get'", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
-    const auto& now = scheduler.time();
+    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get' from %s", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', status->node->id.toString().c_str());
+
     if (not a.ntoken.empty()) {
         if (!a.values.empty()) {
             DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
@@ -2652,11 +2660,14 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
         blacklistNode(&status->node->id, (sockaddr*)&status->node->ss, status->node->sslen);
     }
 
-    if (searchSendGetValues(sr)) /* always keep a 'get' request in progress if possible. */
-        sr->get_step_time = now;
+    if (not sr->done) {
+        const auto& now = scheduler.time();
+        if (searchSendGetValues(sr)) /* always keep a 'get' request in progress if possible. */
+            sr->get_step_time = now;
 
-    // Force to recompute the next step time
-    sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, now);
+        // Force to recompute the next step time
+        scheduler.edit(sr->nextSearchStep, now);
+    }
 }
 
 NetworkEngine::RequestAnswer
@@ -2690,9 +2701,11 @@ Dht::onListenDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine
             onGetValuesDone(status, answer, sr);
         }
 
-        if (searchSendGetValues(sr))
-            sr->get_step_time = now;
-        sr->nextSearchStep = scheduler.edit(sr->nextSearchStep, now);
+        if (not sr->done) {
+            if (searchSendGetValues(sr))
+                sr->get_step_time = now;
+            scheduler.edit(sr->nextSearchStep, now);
+        }
     } else
         DHT_LOG.DEBUG("Unknown search or announce!");
 }
