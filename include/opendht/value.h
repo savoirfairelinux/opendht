@@ -432,35 +432,34 @@ struct Value
 
 using ValuesExport = std::pair<InfoHash, Blob>;
 
-/*!
+enum class Field
+{
+    None,
+    Id,
+    ValueType,
+    Data,
+    OwnerPk,
+    RecipientHash,
+    UserType,
+    Signature,
+    EncryptedData
+};
+
+/**
  * @struct  FilterDescription
  * @brief   Describes a filter.
  * @details
- * This is a description of a filter to be joined into a query. This is meant
- * to narrow the set of values received to a set of values corresponding to the
- * description.
+ * This is meant to narrow data to a set of specified fields. This is equivalent
+ * to a SQL "SELECT" statement.
  */
-struct FilterDescription
+struct FieldSelectorDescription
 {
-    enum class Field
-    {
-        None,
-        Id,
-        ValueType,
-        Data,
-        OwnerPk,
-        RecipientHash,
-        UserType,
-        Signature,
-        EncryptedData
-    };
-
-    FilterDescription() {}
-    FilterDescription(Field f) : field(f) {}
+    FieldSelectorDescription() {}
+    FieldSelectorDescription(Field f) : field(f) {}
 
     Field getField() { return field; }
 
-    bool operator==(FilterDescription& fd) { return field == fd.field; }
+    bool operator==(FieldSelectorDescription& fd) { return field == fd.field; }
 
     void msgpack_unpack(msgpack::object msg) {
         if (auto t = findMapValue(msg, "t"))
@@ -469,24 +468,13 @@ struct FilterDescription
             throw msgpack::type_error();
     }
 
-protected:
-    Field field {Field::None};
-};
-
-/**
- * This is meant to narrow data to a set of specified fields. This is equivalent
- * to a SQL "SELECT" statement.
- */
-struct FieldSelectorDescription : public FilterDescription
-{
-    FieldSelectorDescription() {}
-    FieldSelectorDescription(Field f) : FilterDescription(f) {}
-
     template <typename Packer>
     void msgpack_pack(Packer& p) {
         p.pack_map(1);
         p.pack(std::string("t")); p.pack(field);
     }
+private:
+    Field field {Field::None};
 };
 
 /*!
@@ -496,10 +484,10 @@ struct FieldSelectorDescription : public FilterDescription
  * This filter description is meant to narrow data to a set of values for which
  * the specified field corresponds. This is equivalent to a SQL "WHERE" statement.
  */
-struct ValueFilterDescription : public FilterDescription
+struct ValueFilterDescription
 {
     ValueFilterDescription() {}
-    ValueFilterDescription(Field f, uint64_t target) : FilterDescription(f), value(target) {}
+    ValueFilterDescription(Field f, uint64_t target) : field(f), value_(target) {}
 
     bool operator==(ValueFilterDescription& vfd) {
         return field == vfd.field and value == vfd.value;
@@ -508,9 +496,9 @@ struct ValueFilterDescription : public FilterDescription
     Value::Filter getLocalValueFilter() const {
         switch (field) {
             case Field::Id:
-                return Value::IdFilter(value);
+                return Value::IdFilter(value_);
             case Field::ValueType:
-                return Value::TypeFilter(value);
+                return Value::TypeFilter(value_);
             default:
                 return Value::AllFilter();
         }
@@ -521,19 +509,23 @@ struct ValueFilterDescription : public FilterDescription
     {
         p.pack_map(2);
         p.pack(std::string("t")); p.pack(field);
-        p.pack(std::string("v")); if (value_str.empty()) p.pack(value);
+        p.pack(std::string("v")); if (value_str.empty()) p.pack(value_);
                                   else                   p.pack(value_str);
     }
 
     void msgpack_unpack(msgpack::object msg) {
-        FilterDescription::msgpack_unpack(msg);
+        if (auto t = findMapValue(msg, "t"))
+            field = (Field)t->as<unsigned>();
+        else
+            throw msgpack::type_error();
+
         auto v = findMapValue(msg, "v");
         if (not v)
             throw msgpack::type_error();
         else if (v->type == msgpack::type::STR)
             value_str = v->as<std::string>();
         else
-            value = v->as<decltype(value)>();
+            value_ = v->as<decltype(value_)>();
     }
 
 private:
