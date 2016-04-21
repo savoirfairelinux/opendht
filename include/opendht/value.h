@@ -478,18 +478,18 @@ private:
 };
 
 /*!
- * @class   ValueFilterDescription
+ * @class   FilterDescription
  * @brief   Describes a value filter.
  * @details
  * This filter description is meant to narrow data to a set of values for which
  * the specified field corresponds. This is equivalent to a SQL "WHERE" statement.
  */
-struct ValueFilterDescription
+struct FilterDescription
 {
-    ValueFilterDescription() {}
-    ValueFilterDescription(Field f, uint64_t target) : field(f), value_(target) {}
+    FilterDescription() {}
+    FilterDescription(Field f, uint64_t target) : field(f), value_(target) {}
 
-    bool operator==(ValueFilterDescription& vfd) {
+    bool operator==(FilterDescription& vfd) {
         return field == vfd.field and value == vfd.value;
     }
 
@@ -580,7 +580,7 @@ struct Query
 
     Value::Filter getValueFilter() const {
         std::vector<Value::Filter> fset(valueFilters_.size());
-        std::transform(valueFilters_.begin(), valueFilters_.end(), fset.begin(), [](const ValueFilterDescription& f){
+        std::transform(valueFilters_.begin(), valueFilters_.end(), fset.begin(), [](const FilterDescription& f){
             return f.getLocalValueFilter();
         });
         return Value::Filter::chain(std::move(fset));
@@ -612,7 +612,7 @@ struct Query
     }
 
 private:
-    std::vector<ValueFilterDescription> valueFilters_;
+    std::vector<FilterDescription> valueFilters_;
     std::vector<FieldSelectorDescription> fieldFilters_;
 };
 
