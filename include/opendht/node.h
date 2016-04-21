@@ -35,7 +35,7 @@ struct NodeExport {
 };
 
 struct Node {
-	friend class NetworkEngine;
+    friend class NetworkEngine;
 
     InfoHash id {};
     sockaddr_storage ss;
@@ -78,10 +78,10 @@ struct Node {
       Answer should be true if the message was an aswer to a request we made*/
     void received(time_point now, bool answer);
 
-	/**
-	 * Resets the state of the node so it's not expired anymore.
-	 */
-	void reset() { pinged = 0; }
+    /**
+     * Resets the state of the node so it's not expired anymore.
+     */
+    void reset() { pinged = 0; }
 
     friend std::ostream& operator<< (std::ostream& s, const Node& h);
 

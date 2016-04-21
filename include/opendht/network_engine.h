@@ -446,7 +446,7 @@ private:
 
     bool rateLimit();
 
-	void pinged(Node&);
+    void pinged(Node&);
 
     void requestStep(std::shared_ptr<Request> req) {
         if (req->completed or req->cancelled)
@@ -464,7 +464,7 @@ private:
         send((char*)req->msg.data(), req->msg.size(),
                 (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
                 (sockaddr*)&req->node->ss, req->node->sslen);
-		pinged(*req->node);
+        pinged(*req->node);
         ++req->attempt_count;
         req->last_try = now;
         std::weak_ptr<Request> wreq = req;
