@@ -18,7 +18,7 @@ else ()
 endif ()
 
 if (NOT DEFINED CMAKE_INSTALL_BINDIR)
-	set(CMAKE_INSTALL_BINDIR bin)
+    set(CMAKE_INSTALL_BINDIR bin)
 endif ()
 
 install (TARGETS dhtnode dhtscanner dhtchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

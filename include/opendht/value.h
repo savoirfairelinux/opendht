@@ -194,10 +194,10 @@ struct Value
     };
 
     template <typename Derived, typename Base=SerializableBase>
-	class Serializable : public Base
-	{
-	public:
-		using Base::Base;
+    class Serializable : public Base
+    {
+    public:
+        using Base::Base;
 
         virtual const ValueType& getType() const {
             return Derived::TYPE;
