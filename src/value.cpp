@@ -156,6 +156,48 @@ Value::msgpack_unpack_body(const msgpack::object& o)
     }
 }
 
+bool
+FilterDescription::operator==(const FilterDescription& vfd) const
+{
+    if (field != vfd.field)
+        return false;
+    switch (field) {
+        case Field::Id:
+        case Field::ValueType:
+            return intValue == vfd.intValue;
+        case Field::OwnerPk:
+        case Field::RecipientHash:
+            return hashValue == vfd.hashValue;
+        case Field::UserType:
+        case Field::Signature:
+            return blobValue == vfd.blobValue;
+        case Field::None:
+            return true;
+        default:
+            return false;
+    }
+}
+
+Value::Filter
+FilterDescription::getLocalValueFilter() const
+{
+    switch (field) {
+        case Field::Id:
+            return Value::IdFilter(intValue);
+        case Field::ValueType:
+            return Value::TypeFilter(intValue);
+        case Field::OwnerPk:
+            return Value::ownerFilter(hashValue);
+        case Field::RecipientHash:
+            return Value::recipientFilter(hashValue);
+        case Field::UserType: {
+            return Value::userTypeFilter(std::string {blobValue.begin(), blobValue.end()});
+        }
+        default:
+            return Value::AllFilter();
+    }
+}
+
 template <typename T>
 bool satisfied(std::vector<T> fds, std::vector<T> qfds)
 {
@@ -170,7 +212,7 @@ bool satisfied(std::vector<T> fds, std::vector<T> qfds)
 bool
 Query::isSatisfiedBy(Query& q) const
 {
-    return satisfied(valueFilters_, q.valueFilters_) and satisfied(fieldFilters_, q.fieldFilters_);
+    return satisfied(filters_, q.filters_) and satisfied(fieldSelectors_, q.fieldSelectors_);
 }
 
 }

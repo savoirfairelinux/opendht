@@ -183,6 +183,23 @@ struct Value
         };
     }
 
+    static Filter ownerFilter(const crypto::PublicKey& pk) {
+        return ownerFilter(pk.getId());
+    }
+
+    static Filter ownerFilter(const InfoHash& pkh) {
+        return [pkh](const Value& v) {
+            return v.owner.getId() == pkh;
+        };
+    }
+
+    static Filter userTypeFilter(const std::string& ut)
+    {
+        return [ut](const Value& v) {
+            return v.user_type.compare(ut);
+        };
+    }
+
     class SerializableBase
     {
     public:
@@ -459,7 +476,7 @@ struct FieldSelectorDescription
 
     Field getField() { return field; }
 
-    bool operator==(FieldSelectorDescription& fd) { return field == fd.field; }
+    bool operator==(const FieldSelectorDescription& fd) const { return field == fd.field; }
 
     void msgpack_unpack(msgpack::object msg) {
         if (auto t = findMapValue(msg, "t"))
@@ -487,33 +504,42 @@ private:
 struct FilterDescription
 {
     FilterDescription() {}
-    FilterDescription(Field f, uint64_t target) : field(f), value_(target) {}
+    FilterDescription(Field f, uint64_t int_value) : field(f), intValue(int_value) {}
+    FilterDescription(Field f, InfoHash hash_value) : field(f), hashValue(hash_value) {}
+    FilterDescription(Field f, Blob blob_value) : field(f), blobValue(blob_value) {}
 
-    bool operator==(FilterDescription& vfd) {
-        return field == vfd.field and value == vfd.value;
-    }
-
-    Value::Filter getLocalValueFilter() const {
-        switch (field) {
-            case Field::Id:
-                return Value::IdFilter(value_);
-            case Field::ValueType:
-                return Value::TypeFilter(value_);
-            default:
-                return Value::AllFilter();
-        }
-    }
+    bool operator==(const FilterDescription& vfd) const;
 
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {
         p.pack_map(2);
         p.pack(std::string("t")); p.pack(field);
-        p.pack(std::string("v")); if (value_str.empty()) p.pack(value_);
-                                  else                   p.pack(value_str);
+
+        p.pack(std::string("v"));
+        if (value_str.empty())
+            switch (field) {
+                case Field::Id:
+                case Field::ValueType:
+                    p.pack(intValue);
+                case Field::OwnerPk:
+                case Field::RecipientHash:
+                    p.pack(hashValue);
+                case Field::UserType:
+                case Field::Signature:
+                    p.pack_bin(blobValue.size());
+                    p.pack_bin_body((const char*)blobValue.data(), blobValue.size());
+                default:
+                    throw msgpack::type_error();
+            }
+        else
+            p.pack(value_str);
     }
 
     void msgpack_unpack(msgpack::object msg) {
+        hashValue = {};
+        blobValue.clear();
+
         if (auto t = findMapValue(msg, "t"))
             field = (Field)t->as<unsigned>();
         else
@@ -525,11 +551,29 @@ struct FilterDescription
         else if (v->type == msgpack::type::STR)
             value_str = v->as<std::string>();
         else
-            value_ = v->as<decltype(value_)>();
+            switch (field) {
+                case Field::Id:
+                case Field::ValueType:
+                    intValue = v->as<decltype(intValue)>();
+                case Field::OwnerPk:
+                case Field::RecipientHash:
+                    hashValue = v->as<decltype(hashValue)>();
+                case Field::UserType:
+                case Field::Signature:
+                    blobValue = unpackBlob(*v);
+                default:
+                    throw msgpack::type_error();
+            }
     }
 
+    Value::Filter getLocalValueFilter() const;
+
 private:
-    uint64_t value {0};
+    Field field {Field::None};
+    // three possible value types
+    uint64_t intValue {};
+    InfoHash hashValue {};
+    Blob blobValue {};
     std::string value_str {};
 };
 
@@ -544,51 +588,46 @@ private:
 struct Query
 {
     Query& setValueId(Value::Id id) {
-        valueFilters_.emplace_back(FilterDescription::Field::Id, id);
+        filters_.emplace_back(Field::Id, id);
         return *this;
     }
 
     Query& setValueType(ValueType::Id type) {
-        valueFilters_.emplace_back(FilterDescription::Field::ValueType, type);
+        filters_.emplace_back(Field::ValueType, type);
         return *this;
     }
 
-    Query& setOwnerPk() {
-        // TODO
+    Query& setOwnerPk(InfoHash owner_pk_hash) {
+        filters_.emplace_back(Field::OwnerPk, owner_pk_hash);
         return *this;
     }
 
-    Query& setRecipientHash() {
-        // TODO
+    Query& setRecipientHash(InfoHash recipient) {
+        filters_.emplace_back(Field::RecipientHash, recipient);
         return *this;
     }
 
-    Query& setUserType() {
-        // TODO
+    Query& setUserType(std::string user_type) {
+        filters_.emplace_back(Field::UserType, Blob {user_type.begin(), user_type.end()});
         return *this;
     }
 
-    Query& setSignature() {
-        // TODO
+    Query& requireField(Field field) {
+        fieldSelectors_.emplace_back(field);
         return *this;
     }
 
-    Query& requireField(FilterDescription::Field field) {
-        fieldFilters_.emplace_back(field);
-        return *this;
-    }
-
-    Value::Filter getValueFilter() const {
-        std::vector<Value::Filter> fset(valueFilters_.size());
-        std::transform(valueFilters_.begin(), valueFilters_.end(), fset.begin(), [](const FilterDescription& f){
+    Value::Filter getFilter() const {
+        std::vector<Value::Filter> fset(filters_.size());
+        std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FilterDescription& f){
             return f.getLocalValueFilter();
         });
         return Value::Filter::chain(std::move(fset));
     }
 
-    std::set<FilterDescription::Field> getFieldFilter() {
-        std::set<FilterDescription::Field> fields {};
-        for (auto f : fieldFilters_) {
+    std::set<Field> getFieldSelector() {
+        std::set<Field> fields {};
+        for (auto f : fieldSelectors_) {
             fields.insert(f.getField());
         }
         return fields;
@@ -602,18 +641,18 @@ struct Query
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {
-        p.pack(valueFilters_);
-        p.pack(fieldFilters_);
+        p.pack(filters_);
+        p.pack(fieldSelectors_);
     }
 
     void msgpack_unpack(msgpack::object msg) {
-        valueFilters_ = msg.as<decltype(valueFilters_)>();
-        fieldFilters_ = msg.as<decltype(fieldFilters_)>();
+        filters_ = msg.as<decltype(filters_)>();
+        fieldSelectors_ = msg.as<decltype(fieldSelectors_)>();
     }
 
 private:
-    std::vector<FilterDescription> valueFilters_;
-    std::vector<FieldSelectorDescription> fieldFilters_;
+    std::vector<FilterDescription> filters_;
+    std::vector<FieldSelectorDescription> fieldSelectors_;
 };
 
 template <typename T,
