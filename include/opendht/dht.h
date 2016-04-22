@@ -723,7 +723,7 @@ private:
         Storage() {}
         Storage(InfoHash id, time_point now) : id(id), maintenance_time(now+MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {}
 
-#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ == 9 && __GNUC_PATCHLEVEL__ < 2
+#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9
         // GCC-bug: remove me when support of GCC < 4.9.2 is abandoned
         Storage(Storage&& o) noexcept
 			: id(std::move(o.id))
