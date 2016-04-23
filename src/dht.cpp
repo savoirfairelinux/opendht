@@ -805,7 +805,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 void
 Dht::searchStep(std::shared_ptr<Search> sr)
 {
-    if (not sr) return;
+    if (not sr or sr->expired) return;
 
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] step", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
@@ -2534,6 +2534,8 @@ Dht::onError(std::shared_ptr<NetworkEngine::Request> status, DhtProtocolExceptio
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
                 if (n.node != status->node) continue;
+                n.getStatus = {};
+                n.last_get_reply = time_point::min();
                 cleared++;
                 if (searchSendGetValues(sr))
                     sr->get_step_time = scheduler.time();
@@ -2694,7 +2696,6 @@ void
 Dht::onListenDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
     DHT_LOG.DEBUG("[search %s] Got reply to listen.", sr->id.toString().c_str());
-    const auto& now = scheduler.time();
     if (sr) {
         if (not answer.values.empty()) { /* got new values from listen request */
             DHT_LOG.DEBUG("[listen %s] Got new values.", sr->id.toString().c_str());
@@ -2702,9 +2703,10 @@ Dht::onListenDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine
         }
 
         if (not sr->done) {
+            const auto& now = scheduler.time();
             if (searchSendGetValues(sr))
                 sr->get_step_time = now;
-            scheduler.edit(sr->nextSearchStep, now);
+            scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
         }
     } else
         DHT_LOG.DEBUG("Unknown search or announce!");

@@ -228,7 +228,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         } catch (const std::overflow_error& e) {
             DHT_LOG.ERROR("Can't send value: buffer not large enough !");
         } catch (DhtProtocolException& e) {
-            sendError(from, fromlen, msg.tid, e.getCode(), e.getMsg().c_str());
+            sendError(from, fromlen, msg.tid, e.getCode(), e.getMsg().c_str(), true);
         }
     }
 }
