@@ -137,6 +137,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         if (reqp == requests.end())
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg.id};
         auto req = reqp->second;
+        if (req->cancelled)
+            return;
 
         auto node = onNewNode(msg.id, from, fromlen, 2);
         onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
@@ -158,15 +160,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
         case MessageType::Reply:
-             if (not reqp->second->persistent or reqp->second->cancelled)
+            // erase before calling callback to make sure iterator is still valid
+            if (not req->persistent)
                 requests.erase(reqp);
             req->reply_time = scheduler.time();
             req->completed = true;
             req->on_done(req, std::move(msg));
-            if (not req->persistent) {
-                req->on_done = {};
-                req->on_expired = {};
-            }
+            if (not req->persistent)
+                req->clear();
             break;
         default:
             break;

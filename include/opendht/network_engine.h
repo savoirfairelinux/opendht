@@ -217,6 +217,13 @@ public:
                and now - last_try <= Node::MAX_RESPONSE_TIME;
         }
 
+        void cancel() {
+            if (not completed) {
+                cancelled = true;
+                clear();
+            }
+        }
+
         Request() {}
 
     private:
@@ -227,11 +234,17 @@ public:
                 std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired, bool persistent = false) :
             node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), persistent(persistent) { }
 
+        void clear() {
+            on_done = {};
+            on_expired = {};
+            msg.clear();
+        }
+
         std::function<void(std::shared_ptr<Request> req_status, ParsedMessage&&)> on_done {};
         std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired {};
 
         const uint16_t tid {0};                   /* the request id. */
-        const Blob msg {};                              /* the serialized message. */
+        Blob msg {};                              /* the serialized message. */
         const bool persistent {false};            /* the request is not erased upon completion. */
     };
 
@@ -241,9 +254,7 @@ public:
      */
     void cancelRequest(std::shared_ptr<Request>& req) {
         if (req) {
-            req->cancelled = true;
-            req->on_done = {};
-            req->on_expired = {};
+            req->cancel();
             requests.erase(req->tid);
         }
     }
@@ -356,10 +367,8 @@ public:
     };
 
     void clear() {
-        for (auto& req : requests) {
-            req.second->on_expired = {};
-            req.second->on_done = {};
-        }
+        for (auto& req : requests)
+            req.second->cancel();
         requests.clear();
     }
 

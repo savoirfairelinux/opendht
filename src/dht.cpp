@@ -2524,17 +2524,15 @@ Dht::pingNode(const sockaddr *sa, socklen_t salen)
 }
 
 void
-Dht::onError(std::shared_ptr<NetworkEngine::Request> status, DhtProtocolException e) {
+Dht::onError(std::shared_ptr<NetworkEngine::Request> req, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
-        //TODO
-        //auto esr = searches.find(status);
-        //if (esr == searches.end()) return;
+        network_engine.cancelRequest(req);
         unsigned cleared = 0;
-        for (auto& srp : status->node->ss.ss_family == AF_INET ? searches4 : searches6) {
+        for (auto& srp : req->node->ss.ss_family == AF_INET ? searches4 : searches6) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
-                if (n.node != status->node) continue;
-                n.getStatus = {};
+                if (n.node != req->node) continue;
+                network_engine.cancelRequest(n.getStatus);
                 n.last_get_reply = time_point::min();
                 cleared++;
                 if (searchSendGetValues(sr))
@@ -2543,7 +2541,7 @@ Dht::onError(std::shared_ptr<NetworkEngine::Request> status, DhtProtocolExceptio
             }
         }
         DHT_LOG.WARN("[node %s %s] token flush (%d searches affected)",
-                status->node->id.toString().c_str(), print_addr((sockaddr*)&status->node->ss, status->node->sslen).c_str(), cleared);
+                req->node->id.toString().c_str(), print_addr((sockaddr*)&req->node->ss, req->node->sslen).c_str(), cleared);
     }
 }
 
