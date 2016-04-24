@@ -272,7 +272,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const sockaddr *sa, 
 }
 
 std::shared_ptr<NetworkEngine::Request>
-NetworkEngine::sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired) {
+NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -288,7 +288,7 @@ NetworkEngine::sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, 
     pk.pack(std::string("v")); pk.pack(my_v);
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), std::make_shared<Node>(InfoHash {}, sa, salen), std::move(b),
+    std::shared_ptr<Request> req(new Request {tid.getTid(), node, std::move(b),
         [=](std::shared_ptr<Request> req_status, ParsedMessage&&) {
             DHT_LOG.DEBUG("Got pong from %s", print_addr(req_status->node->ss, req_status->node->sslen).c_str());
             if (on_done) {

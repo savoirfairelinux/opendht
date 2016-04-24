@@ -396,11 +396,11 @@ public:
      *  Requests  *
      **************/
     std::shared_ptr<Request>
-        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestExpiredCb on_expired) {
-            return sendPing((sockaddr*)&n->ss, n->sslen, on_done, on_expired);
-        }
+        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestExpiredCb on_expired);
     std::shared_ptr<Request>
-        sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired);
+        sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired) {
+            return sendPing(std::make_shared<Node>(zeroes, sa, salen), on_done, on_expired);
+        }
     std::shared_ptr<Request>
         sendFindNode(std::shared_ptr<Node> n,
                 const InfoHash& target,
