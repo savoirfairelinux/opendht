@@ -35,6 +35,7 @@ list (APPEND opendht_SOURCES
     src/node.cpp
     src/value.cpp
     src/dht.cpp
+    src/routing_table.cpp
     src/network_engine.cpp
     src/securedht.cpp
     src/dhtrunner.cpp
@@ -55,6 +56,7 @@ list (APPEND opendht_HEADERS
     include/opendht/node.h
     include/opendht/value.h
     include/opendht/dht.h
+    include/opendht/routing_table.h
     include/opendht/network_engine.h
     include/opendht/scheduler.h
     include/opendht/securedht.h
