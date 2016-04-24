@@ -625,20 +625,13 @@ private:
      * Foreign nodes asking for updates about an InfoHash.
      */
     struct Listener {
-        InfoHash id {};
-        sockaddr_storage ss;
-        socklen_t sslen {};
         size_t rid {};
         time_point time {};
 
-        /*constexpr*/ Listener() : ss() {}
-        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t rid, time_point t) : id(id), ss(), sslen(fromlen), rid(rid), time(t) {
-            memcpy(&ss, from, fromlen);
-        }
-        void refresh(const sockaddr *from, socklen_t fromlen, size_t rid, time_point t) {
-            memcpy(&ss, from, fromlen);
-            sslen = fromlen;
-            this->rid = rid;
+        constexpr Listener(size_t rid, time_point t) : rid(rid), time(t) {}
+
+        void refresh(size_t tid, time_point t) {
+            rid = tid;
             time = t;
         }
     };
@@ -646,7 +639,7 @@ private:
     struct Storage {
         InfoHash id;
         time_point maintenance_time {};
-        std::vector<Listener> listeners {};
+        std::map<std::shared_ptr<Node>, Listener> listeners {};
         std::map<size_t, LocalListener> local_listeners {};
         size_t listener_token {1};
 
@@ -794,7 +787,7 @@ private:
         });
     }
 
-    void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, size_t tid);
+    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid);
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);

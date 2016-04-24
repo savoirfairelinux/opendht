@@ -55,13 +55,13 @@ NetworkEngine::pinged(Node& n)
 }
 
 void
-NetworkEngine::tellListener(const sockaddr *sa, socklen_t salen, uint16_t rid, InfoHash hash, want_t want,
+NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash hash, want_t want,
         Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
         std::vector<std::shared_ptr<Value>> values)
 {
-    auto nnodes = bufferNodes(sa->sa_family, hash, want, nodes, nodes6);
+    auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(sa, salen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
+        sendNodesValues((const sockaddr*)&node->ss, node->sslen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
                 values, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.ERROR("Can't send value: buffer not large enough !");

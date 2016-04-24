@@ -385,7 +385,7 @@ public:
      * @param nodes6  The ipv6 closest nodes.
      * @param values  The values to send.
      */
-    void tellListener(const sockaddr* sa, socklen_t salen, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
+    void tellListener(std::shared_ptr<Node> n, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
             std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
             std::vector<std::shared_ptr<Value>> values);
 
