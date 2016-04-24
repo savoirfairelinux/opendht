@@ -477,10 +477,9 @@ private:
             return;
 
         auto now = scheduler.time();
-        if (req->expired(now)) {
+        if (req->node->isExpired(now) or req->expired(now)) {
             req->on_expired(req, true);
-            req->on_expired = {};
-            req->on_done = {};
+            req->clear();
             requests.erase(req->tid);
             return;
         } else if (req->attempt_count == 1) {
