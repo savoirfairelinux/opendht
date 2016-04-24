@@ -1659,6 +1659,7 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
     const auto& now = scheduler.time();
     {
         std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
+        DHT_LOG.DEBUG("Storage changed. Sending update to %lu local listeners.", st.local_listeners.size());
         for (const auto& l : st.local_listeners) {
             std::vector<std::shared_ptr<Value>> vals;
             if (not l.second.filter or l.second.filter(*v.data))
@@ -1672,12 +1673,12 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
     }
 
     for (const auto& l : st.listeners) {
-        DHT_LOG.WARN("Storage changed. Sending update to %s %s.",
-                l.id.toString().c_str(), print_addr((sockaddr*)&l.ss, l.sslen).c_str());
+        DHT_LOG.DEBUG("Storage changed. Sending update to %s %s.",
+                l.first->id.toString().c_str(), print_addr((sockaddr*)&l.first->ss, l.first->sslen).c_str());
         std::vector<std::shared_ptr<Value>> vals;
         vals.push_back(v.data);
-        Blob ntoken = makeToken((const sockaddr*)&l.ss, false);
-        network_engine.tellListener((const sockaddr*)&l.ss, l.sslen, l.rid, st.id, WANT4 | WANT6, ntoken,
+        Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
+        network_engine.tellListener(l.first, l.second.rid, st.id, WANT4 | WANT6, ntoken,
                 buckets.findClosestNodes(st.id, now, TARGET_NODES), buckets6.findClosestNodes(st.id, now, TARGET_NODES),
                 vals);
     }
@@ -1742,7 +1743,7 @@ Dht::Storage::clear()
 }
 
 void
-Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, size_t rid)
+Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t rid)
 {
     const auto& now = scheduler.time();
     auto st = findStorage(id);
@@ -1752,22 +1753,21 @@ Dht::storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr
         store.emplace_back(id, now);
         st = std::prev(store.end());
     }
-    sa_family_t af = from->sa_family;
-    auto l = std::find_if(st->listeners.begin(), st->listeners.end(), [&](const Listener& l){
-        return l.ss.ss_family == af && l.id == node;
-    });
+    auto l = st->listeners.find(node);
     if (l == st->listeners.end()) {
-        auto stvalues = st->getValues();
-        std::vector<std::shared_ptr<Value>> values(stvalues.size());
-        std::transform(stvalues.begin(), stvalues.end(), values.begin(), [=](ValueStorage& vs) { return vs.data; });
+        const auto& stvalues = st->getValues();
+        if (not stvalues.empty()) {
+            std::vector<std::shared_ptr<Value>> values(stvalues.size());
+            std::transform(stvalues.begin(), stvalues.end(), values.begin(), [=](const ValueStorage& vs) { return vs.data; });
 
-        network_engine.tellListener(from, fromlen, rid, id, WANT4 | WANT6, makeToken(from, false),
-                buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
-                values);
-        st->listeners.emplace_back(node, from, fromlen, rid, now);
+            network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->ss, false),
+                    buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
+                    values);
+        }
+        st->listeners.emplace(node, Listener {rid, now});
     }
     else
-        l->refresh(from, fromlen, rid, now);
+        l->second.refresh(rid, now);
 }
 
 void
@@ -1776,19 +1776,14 @@ Dht::expireStorage()
     const auto& now = scheduler.time();
     auto i = store.begin();
     while (i != store.end()) {
-        // put elements to remove at the end with std::partition,
-        // and then remove them with std::vector::erase.
-        i->listeners.erase(
-            std::partition(i->listeners.begin(), i->listeners.end(),
-                [&](const Listener& l)
-                {
-                    bool expired = l.time + Node::NODE_EXPIRE_TIME < now;
-                    if (expired)
-                        DHT_LOG.DEBUG("Discarding expired listener %s", l.id.toString().c_str());
-                    // return false if the element should be removed
-                    return !expired;
-                }),
-            i->listeners.end());
+        for (auto l = i->listeners.cbegin(); l != i->listeners.cend();){
+            bool expired = l->second.time + Node::NODE_EXPIRE_TIME < now;
+            if (expired) {
+                DHT_LOG.DEBUG("Discarding expired listener %s", l->first->id.toString().c_str());
+                i->listeners.erase(l++);
+            } else
+                ++l;
+        }
 
         auto stats = i->expire(types, now);
         total_store_size += stats.first;
@@ -2090,9 +2085,9 @@ Dht::getStorageLog() const
     for (const auto& st : store) {
         out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.valueCount() << " values (" << st.totalSize() << " bytes)" << std::endl;
         for (const auto& l : st.listeners) {
-            out << "   " << "Listener " << l.id << " " << print_addr((sockaddr*)&l.ss, l.sslen);
-            auto since = duration_cast<seconds>(now - l.time);
-            auto expires = duration_cast<seconds>(l.time + Node::NODE_EXPIRE_TIME - now);
+            out << "   " << "Listener " << l.first->id << " " << print_addr((sockaddr*)&l.first->ss, l.first->sslen);
+            auto since = duration_cast<seconds>(now - l.second.time);
+            auto expires = duration_cast<seconds>(l.second.time + Node::NODE_EXPIRE_TIME - now);
             out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
         }
     }
@@ -2686,7 +2681,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
             hash.toString().c_str(), to_hex(token.data(), token.size()).c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
-    storageAddListener(hash, node->id, (sockaddr*)&node->ss, node->sslen, rid);
+    storageAddListener(hash, node, rid);
     return {};
 }
 
