@@ -1470,7 +1470,7 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     };
 
     /* Try to answer this search locally. */
-    cb(getLocal(id, filter));
+    cb(getLocal(id, filter.chain(q.getFilter())));
 
     Dht::search(id, AF_INET, cb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
         //DHT_LOG.WARN("DHT done IPv4");
