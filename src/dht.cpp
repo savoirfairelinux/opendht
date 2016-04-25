@@ -857,14 +857,15 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         }*//* else {
             std::cout << "Adding real node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
         }*/
-        if (nodes.size()-num_bad_nodes > SEARCH_NODES) {
-            removeExpiredNode(now);
+        while (nodes.size()-num_bad_nodes > SEARCH_NODES) {
+            if (removeExpiredNode(now))
+                num_bad_nodes--;
 
-            auto farthest_not_expired_node = std::find_if(nodes.rbegin(), nodes.rend(),
-                [=](const SearchNode& n) { return n.node->isGood(now) or n.candidate; }
+            auto farthest_not_bad_node = std::find_if(nodes.rbegin(), nodes.rend(),
+                [&](const SearchNode& n) { return not n.isBad(now); }
             );
-            if (farthest_not_expired_node != nodes.rend()) {
-                nodes.erase(std::prev(farthest_not_expired_node.base()));
+            if (farthest_not_bad_node != nodes.rend()) {
+                nodes.erase(std::prev(farthest_not_bad_node.base()));
             } // else, all nodes are expired.
         }
         expired = false;
@@ -1160,7 +1161,7 @@ Dht::Search::isSynced(time_point now) const
 unsigned Dht::Search::getNumberOfBadNodes(time_point now) {
     return std::count_if(nodes.begin(), nodes.end(),
             [=](const SearchNode& sn) {
-                return sn.candidate or sn.node->isExpired(now);
+                return sn.isBad(now);
             });
 }
 
@@ -1350,6 +1351,7 @@ Dht::bootstrapSearch(Dht::Search& sr)
     }
     if (sr.nodes.size() < SEARCH_NODES)
         sr.insertBucket(*list.findBucket(myid), now);
+    sr.refill_time = now;
 }
 
 unsigned

@@ -560,6 +560,9 @@ private:
                 listenStatus.request_time + Node::MAX_RESPONSE_TIME
             );
         }
+        bool isBad(const time_point& now) const {
+            return !node || node->isExpired(now) || candidate;
+        }
 
         std::shared_ptr<Node> node {};
 
