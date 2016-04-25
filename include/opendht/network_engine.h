@@ -563,7 +563,7 @@ private:
             socklen_t salen,
             TransId tid,
             uint16_t code,
-            const char *message,
+            const std::string& message,
             bool include_id=false);
 
     RequestAnswer deserializeNodesValues(ParsedMessage& msg);
