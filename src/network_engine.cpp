@@ -708,7 +708,7 @@ NetworkEngine::sendError(const sockaddr* sa,
         socklen_t salen,
         TransId tid,
         uint16_t code,
-        const char *message,
+        const std::string& message,
         bool include_id) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -716,8 +716,7 @@ NetworkEngine::sendError(const sockaddr* sa,
 
     pk.pack(std::string("e")); pk.pack_array(2);
       pk.pack(code);
-      pk.pack_str(strlen(message));
-      pk.pack_str_body(message, strlen(message));
+      pk.pack(message);
 
     if (include_id) {
         pk.pack(std::string("r")); pk.pack_map(1);
