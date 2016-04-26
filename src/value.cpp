@@ -156,6 +156,50 @@ Value::msgpack_unpack_body(const msgpack::object& o)
     }
 }
 
+void
+Value::msgpack_unpack_fields(const Query& query, const msgpack::object& o, unsigned offset)
+{
+    owner = {};
+    recipient = {};
+    cypher.clear();
+    signature.clear();
+    data.clear();
+    type = 0;
+
+    unsigned j = 0;
+    for (const auto& field : query.getFieldSelector()) {
+        auto& field_value = o.via.array.ptr[offset+(j++)];
+        switch (field) {
+            case Value::Field::Id:
+                id = field_value.as<decltype(id)>();
+                break;
+            case Value::Field::ValueType:
+                type = field_value.as<decltype(type)>();
+                break;
+            case Value::Field::Data:
+                data = unpackBlob(field_value);
+                break;
+            case Value::Field::OwnerPk:
+                owner = field_value.as<decltype(owner)>();
+                break;
+            case Value::Field::RecipientHash:
+                recipient = field_value.as<decltype(recipient)>();
+                break;
+            case Value::Field::UserType:
+                user_type = field_value.as<decltype(user_type)>();
+                break;
+            case Value::Field::Signature:
+                signature = unpackBlob(field_value);
+                break;
+            case Value::Field::EncryptedData:
+                cypher = unpackBlob(field_value);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
 bool
 FilterDescription::operator==(const FilterDescription& vfd) const
 {
