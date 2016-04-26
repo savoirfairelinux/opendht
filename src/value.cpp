@@ -162,16 +162,16 @@ FilterDescription::operator==(const FilterDescription& vfd) const
     if (field != vfd.field)
         return false;
     switch (field) {
-        case Field::Id:
-        case Field::ValueType:
+        case Value::Field::Id:
+        case Value::Field::ValueType:
             return intValue == vfd.intValue;
-        case Field::OwnerPk:
-        case Field::RecipientHash:
+        case Value::Field::OwnerPk:
+        case Value::Field::RecipientHash:
             return hashValue == vfd.hashValue;
-        case Field::UserType:
-        case Field::Signature:
+        case Value::Field::UserType:
+        case Value::Field::Signature:
             return blobValue == vfd.blobValue;
-        case Field::None:
+        case Value::Field::None:
             return true;
         default:
             return false;
@@ -179,20 +179,19 @@ FilterDescription::operator==(const FilterDescription& vfd) const
 }
 
 Value::Filter
-FilterDescription::getLocalValueFilter() const
+FilterDescription::getLocalFilter() const
 {
     switch (field) {
-        case Field::Id:
+        case Value::Field::Id:
             return Value::IdFilter(intValue);
-        case Field::ValueType:
+        case Value::Field::ValueType:
             return Value::TypeFilter(intValue);
-        case Field::OwnerPk:
+        case Value::Field::OwnerPk:
             return Value::ownerFilter(hashValue);
-        case Field::RecipientHash:
+        case Value::Field::RecipientHash:
             return Value::recipientFilter(hashValue);
-        case Field::UserType: {
+        case Value::Field::UserType:
             return Value::userTypeFilter(std::string {blobValue.begin(), blobValue.end()});
-        }
         default:
             return Value::AllFilter();
     }
