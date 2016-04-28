@@ -197,6 +197,28 @@ FilterDescription::getLocalFilter() const
     }
 }
 
+void
+Query::msgpack_unpack(const msgpack::object& o)
+{
+	filters_.clear();
+	fieldSelectors_.clear();
+
+	if (o.type != msgpack::type::MAP)
+		throw msgpack::type_error();
+
+	auto rfilters = findMapValue(o, "filters"); /* unpacking filters */
+	if (rfilters)
+        filters_ = rfilters->as<decltype(filters_)>();
+	else
+		throw msgpack::type_error();
+
+	auto rfield_selector = findMapValue(o, "fselect"); /* unpacking field selectors */
+	if (rfield_selector)
+        fieldSelectors_ = rfield_selector->as<decltype(fieldSelectors_)>();
+	else
+		throw msgpack::type_error();
+}
+
 template <typename T>
 bool satisfied(std::vector<T> fds, std::vector<T> qfds)
 {
