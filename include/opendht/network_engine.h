@@ -433,6 +433,7 @@ private:
             const Blob& nodes,
             const Blob& nodes6,
             const std::vector<std::shared_ptr<Value>>& st,
+            const Query& query,
             const Blob& token);
     Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::shared_ptr<Node>>& nodes);
 

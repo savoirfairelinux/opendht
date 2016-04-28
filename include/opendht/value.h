@@ -454,7 +454,7 @@ struct Value
 
     void msgpack_unpack(msgpack::object o);
     void msgpack_unpack_body(const msgpack::object& o);
-    void msgpack_unpack_fields(const Query& query, const msgpack::object& o, unsigned offset);
+    void msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack::object& o, unsigned offset);
 
     Id id {INVALID_ID};
 
@@ -678,7 +678,7 @@ struct Query
     template <typename Packer>
     void msgpack_pack(Packer& pk) const {
         pk.pack_map(2);
-        pk.pack(std::string("filters")); pk.pack(filters_); /* packing filters */
+        pk.pack(std::string("filters")); pk.pack(filters_);        /* packing filters */
         pk.pack(std::string("fselect")); pk.pack(fieldSelectors_); /* packing field selectors */
     }
 

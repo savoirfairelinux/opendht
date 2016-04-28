@@ -157,7 +157,7 @@ Value::msgpack_unpack_body(const msgpack::object& o)
 }
 
 void
-Value::msgpack_unpack_fields(const Query& query, const msgpack::object& o, unsigned offset)
+Value::msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack::object& o, unsigned offset)
 {
     owner = {};
     recipient = {};
@@ -167,7 +167,7 @@ Value::msgpack_unpack_fields(const Query& query, const msgpack::object& o, unsig
     type = 0;
 
     unsigned j = 0;
-    for (const auto& field : query.getFieldSelector()) {
+    for (const auto& field : fields) {
         auto& field_value = o.via.array.ptr[offset+(j++)];
         switch (field) {
             case Value::Field::Id:

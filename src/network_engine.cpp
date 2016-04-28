@@ -91,7 +91,7 @@ NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash h
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         sendNodesValues((const sockaddr*)&node->ss, node->sslen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
-                values, ntoken);
+                values, {}, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.ERR("Can't send value: buffer not large enough !");
     }
@@ -398,7 +398,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg.target, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, answer.ntoken);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, msg.query, answer.ntoken);
                 break;
             }
             case MessageType::GetValues: {
@@ -407,7 +407,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want, msg.query);
                 auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, msg.query, answer.ntoken);
                 break;
             }
             case MessageType::AnnounceValue: {
@@ -662,7 +662,7 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
 
 void
 NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid, const Blob& nodes, const Blob& nodes6,
-        const std::vector<std::shared_ptr<Value>>& st, const Blob& token) {
+        const std::vector<std::shared_ptr<Value>>& st, const Query& query, const Blob& token) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4);
@@ -684,33 +684,48 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
     if (not token.empty()) {
         pk.pack(std::string("token")); packToken(pk, token);
     }
-    if (not st.empty()) {
-        // We treat the storage as a circular list, and serve a randomly
-        // chosen slice.  In order to make sure we fit,
-        // we limit ourselves to 50 values.
-        std::uniform_int_distribution<> pos_dis(0, st.size()-1);
-        std::vector<Blob> subset {};
-        subset.reserve(std::min<size_t>(st.size(), 50));
-
+    if (not st.empty()) { /* pack complete values */
+        auto fields = query.getFieldSelector();
         size_t total_size = 0;
-        unsigned j0 = pos_dis(rd_device);
-        unsigned j = j0;
-        unsigned k = 0;
+        if (fields.empty()) {
+            // We treat the storage as a circular list, and serve a randomly
+            // chosen slice.  In order to make sure we fit,
+            // we limit ourselves to 50 values.
+            std::uniform_int_distribution<> pos_dis(0, st.size()-1);
+            std::vector<Blob> subset {};
+            subset.reserve(std::min<size_t>(st.size(), 50));
 
-        do {
-            subset.emplace_back(packMsg(st[j]));
-            total_size += subset.back().size();
-            ++k;
-            j = (j + 1) % st.size();
-        } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
+            unsigned j0 = pos_dis(rd_device);
+            unsigned j = j0;
+            unsigned k = 0;
 
-        pk.pack(std::string("values"));
-        pk.pack_array(subset.size());
-        for (const auto& b : subset)
-            buffer.write((const char*)b.data(), b.size());
+            do {
+                subset.emplace_back(packMsg(st[j]));
+                total_size += subset.back().size();
+                ++k;
+                j = (j + 1) % st.size();
+            } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
+
+            pk.pack(std::string("values"));
+            pk.pack_array(subset.size());
+            for (const auto& b : subset)
+                buffer.write((const char*)b.data(), b.size());
+        } else { /* pack fields */
+            auto size_before_fields = buffer.size();
+            pk.pack(std::string("fields"));
+            pk.pack_array(st.size()*fields.size());
+            for (const auto& v : st) {
+                v->msgpack_pack_fields(fields, pk);
+            }
+            /* this should work if msgpack is not allocating more memory than
+             * the required size. */
+            total_size = buffer.size() - size_before_fields;
+        }
         DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %lu bytes of values", nodes.size(), nodes6.size(), total_size);
     } else
         DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
+
+    DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
@@ -1024,6 +1039,17 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
             } catch (const std::exception& e) {
                 //DHT_LOG.WARN("Error reading value: %s", e.what());
             }
+    } else if (auto rfields = findMapValue(req, "fields")) {
+        if (rfields->type != msgpack::type::ARRAY)
+            throw msgpack::type_error();
+        for (size_t i = 0; i < rfields->via.array.size; ++i) {
+            try {
+                auto fields = query.getFieldSelector();
+                auto v = std::make_shared<Value>();
+                v->msgpack_unpack_fields(fields, *rfields, i*fields.size());
+                values.emplace_back(std::move(v));
+            } catch (const std::exception& e) { }
+        }
     }
 
     if (auto w = findMapValue(req, "w")) {
