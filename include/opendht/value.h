@@ -638,16 +638,13 @@ struct Query
     bool isSatisfiedBy(Query& q) const;
 
     template <typename Packer>
-    void msgpack_pack(Packer& p) const
-    {
-        p.pack(filters_);
-        p.pack(fieldSelectors_);
+    void msgpack_pack(Packer& pk) const {
+        pk.pack_map(2);
+        pk.pack(std::string("filters")); pk.pack(filters_); /* packing filters */
+        pk.pack(std::string("fselect")); pk.pack(fieldSelectors_); /* packing field selectors */
     }
 
-    void msgpack_unpack(msgpack::object msg) {
-        filters_ = msg.as<decltype(filters_)>();
-        fieldSelectors_ = msg.as<decltype(fieldSelectors_)>();
-    }
+    void msgpack_unpack(const msgpack::object& o);
 
 private:
     std::vector<FilterDescription> filters_;
