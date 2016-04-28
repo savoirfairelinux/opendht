@@ -30,7 +30,8 @@ using namespace dht;
 
 struct snode_compare {
     bool operator() (const std::shared_ptr<Node>& lhs, const std::shared_ptr<Node>& rhs) const{
-        return lhs->id < rhs->id;
+        return (lhs->id < rhs->id) ||
+            (lhs->id == rhs->id && lhs->getFamily() == AF_INET && rhs->getFamily() == AF_INET6);
     }
 };
 
