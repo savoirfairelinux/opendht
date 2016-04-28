@@ -176,23 +176,11 @@ Value::msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack
             case Value::Field::ValueType:
                 type = field_value.as<decltype(type)>();
                 break;
-            case Value::Field::Data:
-                data = unpackBlob(field_value);
-                break;
             case Value::Field::OwnerPk:
                 owner = field_value.as<decltype(owner)>();
                 break;
-            case Value::Field::RecipientHash:
-                recipient = field_value.as<decltype(recipient)>();
-                break;
             case Value::Field::UserType:
                 user_type = field_value.as<decltype(user_type)>();
-                break;
-            case Value::Field::Signature:
-                signature = unpackBlob(field_value);
-                break;
-            case Value::Field::EncryptedData:
-                cypher = unpackBlob(field_value);
                 break;
             default:
                 break;
@@ -210,10 +198,8 @@ FilterDescription::operator==(const FilterDescription& vfd) const
         case Value::Field::ValueType:
             return intValue == vfd.intValue;
         case Value::Field::OwnerPk:
-        case Value::Field::RecipientHash:
             return hashValue == vfd.hashValue;
         case Value::Field::UserType:
-        case Value::Field::Signature:
             return blobValue == vfd.blobValue;
         case Value::Field::None:
             return true;
@@ -232,8 +218,6 @@ FilterDescription::getLocalFilter() const
             return Value::TypeFilter(intValue);
         case Value::Field::OwnerPk:
             return Value::ownerFilter(hashValue);
-        case Value::Field::RecipientHash:
-            return Value::recipientFilter(hashValue);
         case Value::Field::UserType:
             return Value::userTypeFilter(std::string {blobValue.begin(), blobValue.end()});
         default:

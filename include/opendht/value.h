@@ -118,12 +118,8 @@ struct Value
         None,
         Id,
         ValueType,
-        Data,
         OwnerPk,
-        RecipientHash,
         UserType,
-        Signature,
-        EncryptedData
     };
 
     typedef uint64_t Id;
@@ -427,26 +423,12 @@ struct Value
                 case Value::Field::ValueType:
                     pk.pack(type);
                     break;
-                case Value::Field::Data:
-                    pk.pack_bin(data.size());
-                    pk.pack_bin_body((const char*)data.data(), data.size());
-                    break;
                 case Value::Field::OwnerPk:
                     owner->msgpack_pack(pk);
-                    break;
-                case Value::Field::RecipientHash:
-                    pk.pack(recipient);
                     break;
                 case Value::Field::UserType:
                     pk.pack(user_type);
                     break;
-                case Value::Field::Signature:
-                    pk.pack_bin(signature.size());
-                    pk.pack_bin_body((const char*)signature.data(), signature.size());
-                    break;
-                case Value::Field::EncryptedData:
-                    pk.pack_bin(cypher.size());
-                    pk.pack_bin_body((const char*)cypher.data(), cypher.size());
                 default:
                     break;
             }
@@ -560,10 +542,8 @@ struct FilterDescription
                 case Value::Field::ValueType:
                     p.pack(intValue);
                 case Value::Field::OwnerPk:
-                case Value::Field::RecipientHash:
                     p.pack(hashValue);
                 case Value::Field::UserType:
-                case Value::Field::Signature:
                     p.pack_bin(blobValue.size());
                     p.pack_bin_body((const char*)blobValue.data(), blobValue.size());
                 default:
@@ -593,10 +573,8 @@ struct FilterDescription
                 case Value::Field::ValueType:
                     intValue = v->as<decltype(intValue)>();
                 case Value::Field::OwnerPk:
-                case Value::Field::RecipientHash:
                     hashValue = v->as<decltype(hashValue)>();
                 case Value::Field::UserType:
-                case Value::Field::Signature:
                     blobValue = unpackBlob(*v);
                 default:
                     throw msgpack::type_error();
@@ -636,11 +614,6 @@ struct Query
 
     Query& setOwnerPk(InfoHash owner_pk_hash) {
         filters_.emplace_back(Value::Field::OwnerPk, owner_pk_hash);
-        return *this;
-    }
-
-    Query& setRecipientHash(InfoHash recipient) {
-        filters_.emplace_back(Value::Field::RecipientHash, recipient);
         return *this;
     }
 
