@@ -68,6 +68,9 @@ using duration = clock::duration;
 time_point from_time_t(std::time_t t);
 std::time_t to_time_t(time_point t);
 
+/**
+ * Converts std::chrono::duration to floating-point seconds.
+ */
 template <class DT>
 static double
 print_dt(DT d) {

@@ -113,15 +113,6 @@ disableLogging(dht::DhtRunner& dht)
 }
 
 /**
- * Converts std::chrono::duration to floating-point seconds.
- */
-/*template <class DT>
-static double
-print_dt(DT d) {
-    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
-}*/
-
-/**
  * Split "[host]:port" or "host:port" to pair<"host", "port">.
  */
 std::pair<std::string, std::string>
