@@ -132,7 +132,7 @@ struct Value
     public:
         static Filter chain(Filter&& f1, Filter&& f2) {
             return [f1,f2](const Value& v){
-                return f1(v) && f2(v);
+                return (f1 ? f1(v) : true) && (f2 ? f2(v) : true);
             };
         }
         static Filter chain(std::initializer_list<Filter> l) {
@@ -147,7 +147,7 @@ struct Value
         Filter chain(Filter&& f2) {
             Filter f1 = std::move(*this);
             return [f1,f2](const Value& v){
-                return f1(v) && f2(v);
+                return (f1 ? f1(v) : true) && (f2 ? f2(v) : true);
             };
         }
     };
