@@ -316,14 +316,16 @@ public:
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendGetValues(std::shared_ptr<Node> n,
-                const InfoHash& target,
+                const InfoHash& info_hash,
                 want_t want,
+                const Query& query,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendListen(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
                 const Blob& token,
+                const Query& query,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>
