@@ -579,16 +579,19 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
 
 std::shared_ptr<Request>
-NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, want_t want,
+NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
 
-    pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
+    pk.pack(std::string("a"));  pk.pack_map(2 +
+                                (not query.getFilter().empty() or not query.getFieldSelector().empty() ? 1:0) +
+                                (want>0?1:0));
       pk.pack(std::string("id")); pk.pack(myid);
       pk.pack(std::string("h"));  pk.pack(info_hash);
+      pk.pack(std::string("q")); pk.pack(query);
     if (want > 0) {
       pk.pack(std::string("w"));
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
@@ -788,16 +791,18 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 std::shared_ptr<Request>
-NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token,
+NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Query& query, const Blob& token,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5);
 
-    pk.pack(std::string("a")); pk.pack_map(3);
+    pk.pack(std::string("a")); pk.pack_map(3 +
+                               (not query.getFilter().empty() or not query.getFieldSelector().empty() ? 1:0));
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(infohash);
+      pk.pack(std::string("q")); pk.pack(query);
       pk.pack(std::string("token")); packToken(pk, token);
 
     pk.pack(std::string("q")); pk.pack(std::string("listen"));
