@@ -131,8 +131,10 @@ struct Value
         using std::function<bool(const Value&)>::function;
     public:
         static Filter chain(Filter&& f1, Filter&& f2) {
-            return [f1,f2](const Value& v){
-                return f1(v) && f2(v);
+            if (not f1) return f2;
+            if (not f2) return f1;
+            return [f1,f2](const Value& v) {
+                return f1(v) and f2(v);
             };
         }
         static Filter chain(std::initializer_list<Filter> l) {
@@ -145,10 +147,7 @@ struct Value
             };
         }
         Filter chain(Filter&& f2) {
-            Filter f1 = std::move(*this);
-            return [f1,f2](const Value& v){
-                return f1(v) && f2(v);
-            };
+            return chain(std::move(*this), std::move(f2));
         }
     };
 
