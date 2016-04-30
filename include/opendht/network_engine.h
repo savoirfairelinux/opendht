@@ -292,9 +292,9 @@ public:
      * @param nodes6  The ipv6 closest nodes.
      * @param values  The values to send.
      */
-    void tellListener(std::shared_ptr<Node> n, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
-            std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
-            std::vector<std::shared_ptr<Value>> values);
+    void tellListener(std::shared_ptr<Node> n, uint16_t rid, const InfoHash& hash, want_t want, const Blob& ntoken,
+            std::vector<std::shared_ptr<Node>>&& nodes, std::vector<std::shared_ptr<Node>>&& nodes6,
+            std::vector<std::shared_ptr<Value>>&& values, const Query& q);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
