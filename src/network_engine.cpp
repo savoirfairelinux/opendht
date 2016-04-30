@@ -84,14 +84,14 @@ NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
  : ntoken(std::move(msg.token)), values(std::move(msg.values)), nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 
 void
-NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash hash, want_t want,
-        Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
-        std::vector<std::shared_ptr<Value>> values)
+NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, const InfoHash& hash, want_t want,
+        const Blob& ntoken, std::vector<std::shared_ptr<Node>>&& nodes, std::vector<std::shared_ptr<Node>>&& nodes6,
+        std::vector<std::shared_ptr<Value>>&& values, const Query& query)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         sendNodesValues((const sockaddr*)&node->ss, node->sslen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
-                values, {}, ntoken);
+                values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.ERR("Can't send value: buffer not large enough !");
     }

@@ -1196,7 +1196,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     }
 
     if (callback)
-        sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback, .query=q});
+        sr->callbacks.push_back({.start=scheduler.time(), .query=q, .filter=filter, .get_cb=callback, .done_cb=done_callback});
     bootstrapSearch(*sr);
 
     if (sr->nextSearchStep)
@@ -1263,7 +1263,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
 }
 
 size_t
-Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f)
+Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, Query q)
 {
     const auto& now = scheduler.time();
     if (!isRunning(af))
@@ -1279,13 +1279,13 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     DHT_LOG.ERR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
     sr->done = false;
     auto token = ++sr->listener_token;
-    sr->listeners.emplace(token, LocalListener{f, cb});
+    sr->listeners.emplace(token, LocalListener{q, f, cb});
     scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
     return token;
 }
 
 size_t
-Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
+Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Query&& q)
 {
     scheduler.syncTime();
 
@@ -1321,7 +1321,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
     }
     if (st != store.end()) {
         if (not st->empty()) {
-            std::vector<std::shared_ptr<Value>> newvals = st->get(f);
+            std::vector<std::shared_ptr<Value>> newvals = st->get(f.chain(q.getFilter()));
             if (not newvals.empty()) {
                 if (!cb(newvals))
                     return 0;
@@ -1333,11 +1333,11 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
             }
         }
         tokenlocal = ++st->listener_token;
-        st->local_listeners.emplace(tokenlocal, LocalListener{f, gcb});
+        st->local_listeners.emplace(tokenlocal, LocalListener{q, f, gcb});
     }
 
-    auto token4 = Dht::listenTo(id, AF_INET, gcb, f);
-    auto token6 = Dht::listenTo(id, AF_INET6, gcb, f);
+    auto token4 = Dht::listenTo(id, AF_INET, gcb, f, q);
+    auto token6 = Dht::listenTo(id, AF_INET6, gcb, f, q);
 
     DHT_LOG.DEBUG("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
@@ -1592,6 +1592,7 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
         DHT_LOG.DEBUG("Storage changed. Sending update to %lu local listeners.", st.local_listeners.size());
         for (const auto& l : st.local_listeners) {
             std::vector<std::shared_ptr<Value>> vals;
+            auto filter = l.second.filter.chain(l.second.query.getFilter());
             if (not l.second.filter or l.second.filter(*v.data))
                 vals.push_back(v.data);
             if (not vals.empty())
@@ -1604,12 +1605,14 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
 
     for (const auto& l : st.listeners) {
         DHT_LOG.DEBUG("Storage changed. Sending update to %s.", l.first->toString().c_str());
-        if (l.filter and not l.filter(*v.data))
+        auto f = l.second.query.getFilter();
+        if (f and not f(*v.data))
             continue;
-        std::vector<std::shared_ptr<Value>> vals;
+        std::vector<std::shared_ptr<Value>> vals {};
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
-        network_engine.tellListener(l.first, l.second.rid, st.id, 0, ntoken, {}, {}, vals);
+        network_engine.tellListener(l.first, l.second.rid, st.id, 0, ntoken, {}, {},
+                std::move(vals), l.second.query);
     }
 }
 
@@ -1684,14 +1687,13 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
     }
     auto l = st->listeners.find(node);
     if (l == st->listeners.end()) {
-        auto filter = query.getFilter();
-        auto vals = st->get(filter);
+        auto vals = st->get(query.getFilter());
         if (not vals.empty()) {
             network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->ss, false),
                     buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
-                    std::move(vals));
+                    std::move(vals), query);
         }
-        st->listeners.emplace(node, Listener {rid, now, std::move(filter)});
+        st->listeners.emplace(node, Listener {rid, now, query});
     }
     else
         l->second.refresh(rid, now);

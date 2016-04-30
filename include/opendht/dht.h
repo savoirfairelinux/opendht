@@ -194,9 +194,9 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={});
-    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}) {
-        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f));
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={}, Query&& q = {});
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Query q = {}) {
+        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
 
     virtual bool cancelListen(const InfoHash&, size_t token);
@@ -289,10 +289,10 @@ private:
      */
     struct Get {
         time_point start;
+        Query query;
         Value::Filter filter;
         GetCallback get_cb;
         DoneCallback done_cb;
-        Query query;
     };
 
     /**
@@ -308,6 +308,7 @@ private:
      * A single "listen" operation data
      */
     struct LocalListener {
+        Query query;
         Value::Filter filter;
         GetCallback get_cb;
     };
@@ -332,9 +333,9 @@ private:
     struct Listener {
         size_t rid {};
         time_point time {};
-        Value::Filter filter {};
+        Query query {};
 
-        /*constexpr*/ Listener(size_t rid, time_point t, Value::Filter f) : rid(rid), time(t), filter(f) {}
+        /*constexpr*/ Listener(size_t rid, time_point t, Query q) : rid(rid), time(t), query(q) {}
 
         void refresh(size_t tid, time_point t) {
             rid = tid;
@@ -452,7 +453,7 @@ private:
      */
     std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
-    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
+    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), Query q = {});
 
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
