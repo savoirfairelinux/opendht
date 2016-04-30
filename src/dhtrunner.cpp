@@ -241,10 +241,6 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
     rcv_thread = std::thread([this,s4,s6]() {
         try {
             while (true) {
-                std::array<uint8_t, 1024 * 64> buf;
-                sockaddr_storage from;
-                socklen_t fromlen;
-
                 struct timeval tv {.tv_sec = 0, .tv_usec = 250000};
                 fd_set readfds;
 
@@ -266,7 +262,10 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
                     break;
 
                 if(rc > 0) {
-                    fromlen = sizeof(from);
+                    std::array<uint8_t, 1024 * 64> buf;
+                    sockaddr_storage from;
+                    socklen_t fromlen {sizeof(from)};
+
                     if(s4 >= 0 && FD_ISSET(s4, &readfds))
                         rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from, &fromlen);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
