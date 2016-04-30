@@ -15,6 +15,8 @@ set (includedir "\${prefix}/include")
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_DEBUG "Build with debug flags" OFF)
+option (OPENDHT_STATIC "Build static library" ON)
+option (OPENDHT_SHARED "Build shared library" ON)
 
 set (CMAKE_CXX_FLAGS "-pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor ${CMAKE_CXX_FLAGS}")
 set (CMAKE_CXX_FLAGS "-DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT ${CMAKE_CXX_FLAGS}")
@@ -74,25 +76,30 @@ else ()
 	set(CMAKE_BUILD_TYPE Release)
 endif ()
 
-add_library (opendht SHARED
-	${opendht_SOURCES}
-	${opendht_HEADERS}
-)
-set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
-#set_target_properties (opendht PROPERTIES SOVERSION 1 VERSION 1.0.0)
-
-add_library (opendht-static STATIC
-	${opendht_SOURCES}
-	${opendht_HEADERS}
-)
-set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
-
 if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
 	set(CMAKE_INSTALL_LIBDIR lib)
 endif ()
 
-target_link_libraries(opendht-static gnutls nettle)
-target_link_libraries(opendht gnutls nettle)
+if (OPENDHT_STATIC)
+	add_library (opendht-static STATIC
+		${opendht_SOURCES}
+		${opendht_HEADERS}
+	)
+	set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
+	target_link_libraries(opendht-static gnutls nettle)
+	install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif ()
+
+if (OPENDHT_SHARED)
+	add_library (opendht SHARED
+		${opendht_SOURCES}
+		${opendht_HEADERS}
+	)
+	set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
+	#set_target_properties (opendht PROPERTIES SOVERSION 1 VERSION 1.0.0)
+	target_link_libraries(opendht gnutls nettle)
+	install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif ()
 
 if (OPENDHT_TOOLS)
 	add_subdirectory(tools)
@@ -102,6 +109,5 @@ if (OPENDHT_PYTHON)
 	add_subdirectory(python)
 endif ()
 
-install (TARGETS opendht opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
