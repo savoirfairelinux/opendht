@@ -144,11 +144,6 @@ const Dht::TransPrefix Dht::TransPrefix::LISTEN  = {"lt"};
 const std::string Dht::my_v = "RNG1";
 
 static constexpr InfoHash zeroes {};
-static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{{
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF
-}}};
 
 constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
 constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
