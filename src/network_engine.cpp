@@ -398,7 +398,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg.target, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, msg.query, answer.ntoken);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
                 break;
             }
             case MessageType::GetValues: {
