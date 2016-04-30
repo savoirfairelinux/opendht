@@ -146,8 +146,17 @@ struct Value
                 return true;
             };
         }
+        static Filter chainOr(Filter&& f1, Filter&& f2) {
+            if (not f1 or not f2) return AllFilter();
+            return [f1,f2](const Value& v) {
+                return f1(v) or f2(v);
+            };
+        }
         Filter chain(Filter&& f2) {
             return chain(std::move(*this), std::move(f2));
+        }
+        Filter chainOr(Filter&& f2) {
+            return chainOr(std::move(*this), std::move(f2));
         }
     };
 
