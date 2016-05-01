@@ -19,15 +19,38 @@
 
 #pragma once
 
+#define WANT4 1
+#define WANT6 2
+
 #include <msgpack.hpp>
 
 #include <chrono>
 #include <random>
 #include <functional>
+#include <map>
 
 #include <cstdarg>
 
 namespace dht {
+
+static constexpr unsigned TARGET_NODES {8};
+
+using Address = std::pair<sockaddr_storage, socklen_t>;
+using want_t = int_fast8_t;
+
+std::string print_addr(const sockaddr* sa, socklen_t slen);
+std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+std::string printAddr(const Address& addr);
+
+template <typename Key, typename Item, typename Condition>
+void erase_if(std::map<Key, Item>& map, const Condition& condition)
+{
+    for (auto it = map.begin(); it != map.end(); ) {
+        if (condition(*it)) {
+            it = map.erase(it);
+        } else { ++it; }
+    }
+}
 
 class DhtException : public std::runtime_error {
     public:
@@ -44,6 +67,15 @@ using duration = clock::duration;
 
 time_point from_time_t(std::time_t t);
 std::time_t to_time_t(time_point t);
+
+/**
+ * Converts std::chrono::duration to floating-point seconds.
+ */
+template <class DT>
+static double
+print_dt(DT d) {
+    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+}
 
 static /*constexpr*/ const time_point TIME_INVALID = {time_point::min()};
 static /*constexpr*/ const time_point TIME_MAX {time_point::max()};
@@ -95,6 +127,12 @@ struct LogMethod {
     }
 private:
     std::function<void(char const*, va_list)> func;
+};
+
+struct Logger {
+    LogMethod DEBUG = NOLOG;
+    LogMethod WARN = NOLOG;
+    LogMethod ERROR = NOLOG;
 };
 
 // Serialization related definitions and utility functions

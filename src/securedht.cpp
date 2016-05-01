@@ -75,9 +75,9 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
             1
         }, [this](bool ok) {
             if (ok)
-                DHT_DEBUG("SecureDht: public key announced successfully");
+                DHT_LOG.DEBUG("SecureDht: public key announced successfully");
             else
-                DHT_ERROR("SecureDht: error while announcing public key!");
+                DHT_LOG.ERROR("SecureDht: error while announcing public key!");
         });
     }
 }
@@ -95,11 +95,11 @@ SecureDht::secureType(ValueType&& type)
     type.storePolicy = [this,type](InfoHash id, std::shared_ptr<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
         if (v->isSigned()) {
             if (!v->owner.checkSignature(v->getToSign(), v->signature)) {
-                DHT_WARN("Signature verification failed");
+                DHT_LOG.WARN("Signature verification failed");
                 return false;
             }
             else
-                DHT_WARN("Signature verification succeded");
+                DHT_LOG.WARN("Signature verification succeded");
         }
         return type.storePolicy(id, v, nid, a, al);
     };
@@ -107,18 +107,18 @@ SecureDht::secureType(ValueType&& type)
         if (!o->isSigned())
             return type.editPolicy(id, o, n, nid, a, al);
         if (o->owner != n->owner) {
-            DHT_WARN("Edition forbidden: owner changed.");
+            DHT_LOG.WARN("Edition forbidden: owner changed.");
             return false;
         }
         if (!o->owner.checkSignature(n->getToSign(), n->signature)) {
-            DHT_WARN("Edition forbidden: signature verification failed.");
+            DHT_LOG.WARN("Edition forbidden: signature verification failed.");
             return false;
         }
         if (o->seq == n->seq) {
             // If the data is exactly the same,
             // it can be reannounced, possibly by someone else.
             if (o->getToSign() != n->getToSign()) {
-                DHT_WARN("Edition forbidden: sequence number must be increasing.");
+                DHT_LOG.WARN("Edition forbidden: sequence number must be increasing.");
                 return false;
             }
         }
@@ -152,7 +152,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
     }
     InfoHash h = crt->getPublicKey().getId();
     if (node == h) {
-        DHT_DEBUG("Registering public key for %s", h.toString().c_str());
+        DHT_LOG.DEBUG("Registering public key for %s", h.toString().c_str());
         auto it = nodesCertificates_.find(h);
         if (it == nodesCertificates_.end())
             std::tie(it, std::ignore) = nodesCertificates_.emplace(h, std::move(crt));
@@ -160,7 +160,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
             it->second = std::move(crt);
         return it->second;
     } else {
-        DHT_DEBUG("Certificate %s for node %s does not match node id !", h.toString().c_str(), node.toString().c_str());
+        DHT_LOG.DEBUG("Certificate %s for node %s does not match node id !", h.toString().c_str(), node.toString().c_str());
         return nullptr;
     }
 }
@@ -177,7 +177,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 {
     std::shared_ptr<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
-        DHT_DEBUG("Using public key from cache for %s", node.toString().c_str());
+        DHT_LOG.DEBUG("Using public key from cache for %s", node.toString().c_str());
         if (cb)
             cb(b);
         return;
@@ -185,7 +185,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
     if (localQueryMethod_) {
         auto res = localQueryMethod_(node);
         if (not res.empty()) {
-            DHT_DEBUG("Registering public key from local store for %s", node.toString().c_str());
+            DHT_LOG.DEBUG("Registering public key from local store for %s", node.toString().c_str());
             nodesCertificates_.emplace(node, res.front());
             if (cb)
                 cb(res.front());
@@ -200,7 +200,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
         for (const auto& v : vals) {
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
-                DHT_DEBUG("Found public key for %s", node.toString().c_str());
+                DHT_LOG.DEBUG("Found public key for %s", node.toString().c_str());
                 if (cb)
                     cb(cert);
                 return false;
@@ -232,7 +232,7 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
                     }
                     // Ignore values belonging to other people
                 } catch (const std::exception& e) {
-                    DHT_WARN("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
+                    DHT_LOG.WARN("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
                 }
             }
             // Check signed values
@@ -242,7 +242,7 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
                         tmpvals.push_back(v);
                 }
                 else
-                    DHT_WARN("Signature verification failed for %s", v->toString().c_str());
+                    DHT_LOG.WARN("Signature verification failed for %s", v->toString().c_str());
             }
             // Forward normal values
             else {
@@ -279,19 +279,19 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
     // Check if we are already announcing a value
     auto p = getPut(hash, val->id);
     if (p && val->seq <= p->seq) {
-        DHT_DEBUG("Found previous value being announced.");
+        DHT_LOG.DEBUG("Found previous value being announced.");
         val->seq = p->seq + 1;
     }
 
     // Check if data already exists on the dht
     get(hash,
         [val,this] (const std::vector<std::shared_ptr<Value>>& vals) {
-            DHT_DEBUG("Found online previous value being announced.");
+            DHT_LOG.DEBUG("Found online previous value being announced.");
             for (const auto& v : vals) {
                 if (!v->isSigned())
-                    DHT_ERROR("Existing non-signed value seems to exists at this location.");
+                    DHT_LOG.ERROR("Existing non-signed value seems to exists at this location.");
                 else if (v->owner.getId() != getId())
-                    DHT_ERROR("Existing signed value belonging to someone else seems to exists at this location.");
+                    DHT_LOG.ERROR("Existing signed value belonging to someone else seems to exists at this location.");
                 else if (val->seq <= v->seq)
                     val->seq = v->seq + 1;
             }
@@ -314,11 +314,11 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
                 callback(false, {});
             return;
         }
-        DHT_WARN("Encrypting data for PK: %s", crt->getPublicKey().getId().toString().c_str());
+        DHT_LOG.WARN("Encrypting data for PK: %s", crt->getPublicKey().getId().toString().c_str());
         try {
             put(hash, encrypt(*val, crt->getPublicKey()), callback);
         } catch (const std::exception& e) {
-            DHT_ERROR("Error putting encrypted data: %s", e.what());
+            DHT_LOG.ERROR("Error putting encrypted data: %s", e.what());
             if (callback)
                 callback(false, {});
         }

@@ -408,7 +408,7 @@ DhtRunner::putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSim
 void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallback cb)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);    
+    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
         dht.putEncrypted(hash, to, value, cb);
     });

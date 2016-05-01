@@ -1,34 +1,32 @@
 /*
-Copyright (C) 2009-2014 Juliusz Chroboczek
-Copyright (C) 2014-2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2016 Savoir-faire Linux Inc.
+ *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *              Simon Désaulniers <sim.desaulniers@gmail.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
+ */
 
-Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>,
-            Juliusz Chroboczek <jch@pps.univ–paris–diderot.fr>
-            Simon Désaulniers <sim.desaulniers@gmail.com>
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-*/
 
 #pragma once
 
 #include "infohash.h"
 #include "value.h"
+#include "utils.h"
+#include "network_engine.h"
+#include "scheduler.h"
+#include "routing_table.h"
 
 #include <string>
 #include <array>
@@ -41,72 +39,6 @@ THE SOFTWARE.
 #include <memory>
 
 namespace dht {
-
-using Address = std::pair<sockaddr_storage, socklen_t>;
-
-std::string print_addr(const sockaddr* sa, socklen_t slen);
-std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
-std::string printAddr(const Address& addr);
-
-struct NodeExport {
-    InfoHash id;
-    sockaddr_storage ss;
-    socklen_t sslen;
-};
-
-struct Node {
-    InfoHash id {};
-    sockaddr_storage ss;
-    socklen_t sslen {0};
-    time_point time {time_point::min()};            /* last time eared about */
-    time_point reply_time {time_point::min()};      /* time of last correct reply received */
-    time_point pinged_time {time_point::min()};     /* time of last message sent */
-    unsigned pinged {0};           /* how many requests we sent since last reply */
-
-    Node() : ss() {
-        std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
-    }
-    Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : id(id), ss(), sslen(salen) {
-        std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-        if ((unsigned)salen < sizeof(ss))
-            std::fill_n((uint8_t*)&ss+salen, sizeof(ss)-salen, 0);
-    }
-    InfoHash getId() const {
-        return id;
-    }
-    std::pair<const sockaddr*, socklen_t> getAddr() const {
-        return {(const sockaddr*)&ss, sslen};
-    }
-    std::string getAddrStr() const {
-        return print_addr(ss, sslen);
-    }
-    bool isExpired(time_point now) const;
-    bool isExpired() const { return isExpired(clock::now()); }
-    bool isGood(time_point now) const;
-    bool isMessagePending(time_point now) const;
-    NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
-    sa_family_t getFamily() const { return ss.ss_family; }
-
-    void update(const sockaddr* sa, socklen_t salen);
-
-    /** To be called when a message was sent to the node */
-    void requested(time_point now);
-
-    /** To be called when a message was received from the node.
-     Answer should be true if the message was an aswer to a request we made*/
-    void received(time_point now, bool answer);
-
-    friend std::ostream& operator<< (std::ostream& s, const Node& h);
-
-    static constexpr const std::chrono::minutes NODE_GOOD_TIME {120};
-
-    /* The time after which we consider a node to be expirable. */
-    static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
-
-    /* Time for a request to timeout */
-    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {3};
-};
 
 /**
  * Main Dht class.
@@ -182,16 +114,19 @@ public:
         };
     }
 
-    using want_t = int_fast8_t;
-
-    Dht() {}
+    Dht() : network_engine(DHT_LOG, scheduler) {}
 
     /**
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
     Dht(int s, int s6, Config config);
-    virtual ~Dht();
+    virtual ~Dht() {
+        for (auto& s : searches4)
+            s.second->clear();
+        for (auto& s : searches6)
+            s.second->clear();
+    }
 
     /**
      * Get the ID of the node.
@@ -347,19 +282,15 @@ public:
     std::vector<ValuesExport> exportValues() const;
     void importValues(const std::vector<ValuesExport>&);
 
-    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const;
+    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
+            unsigned *incoming_return) const;
     std::string getStorageLog() const;
     std::string getRoutingTablesLog(sa_family_t) const;
     std::string getSearchesLog(sa_family_t) const;
 
     void dumpTables() const;
     std::vector<unsigned> getNodeMessageStats(bool in = false) {
-        auto stats = in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
-                  : std::vector<unsigned>{out_stats.ping, out_stats.find, out_stats.get, out_stats.listen, out_stats.put};
-        if (in) { in_stats = {}; }
-        else { out_stats = {}; }
-
-        return stats;
+        return network_engine.getNodeMessageStats(in);
     }
 
     /**
@@ -383,13 +314,9 @@ public:
     std::vector<Address> getPublicAddress(sa_family_t family = 0);
 
 protected:
-    LogMethod DHT_DEBUG = NOLOG;
-    LogMethod DHT_WARN = NOLOG;
-    LogMethod DHT_ERROR = NOLOG;
+    Logger DHT_LOG;
 
 private:
-
-    static constexpr unsigned TARGET_NODES {8};
 
     /* When performing a search, we search for up to SEARCH_NODES closest nodes
        to the destination, and use the additional ones to backtrack if any of
@@ -420,17 +347,11 @@ private:
 
     static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
 
-    static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
-
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
 
-    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
-
     static constexpr size_t TOKEN_SIZE {64};
-
-    static const std::string my_v;
 
     struct NodeCache {
         std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
@@ -448,116 +369,63 @@ private:
         std::list<std::weak_ptr<Node>> cache_6;
     };
 
-    struct Bucket {
-        Bucket() : cached() {}
-        Bucket(sa_family_t af, const InfoHash& f = {}, time_point t = time_point::min())
-            : af(af), first(f), time(t), cached() {}
-        sa_family_t af {0};
-        InfoHash first {};
-        time_point time {time_point::min()};             /* time of last reply in this bucket */
-        std::list<std::shared_ptr<Node>> nodes {};
-        sockaddr_storage cached;  /* the address of a likely candidate */
-        socklen_t cachedlen {0};
-
-        /** Return a random node in a bucket. */
-        std::shared_ptr<Node> randomNode();
-    };
-
-    class RoutingTable : public std::list<Bucket> {
-    public:
-        using std::list<Bucket>::list;
-
-        InfoHash middle(const RoutingTable::const_iterator&) const;
-
-        std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, size_t count = TARGET_NODES) const;
-
-        RoutingTable::iterator findBucket(const InfoHash& id);
-        RoutingTable::const_iterator findBucket(const InfoHash& id) const;
-
-        /**
-         * Return true if the id is in the bucket's range.
-         */
-        inline bool contains(const RoutingTable::const_iterator& bucket, const InfoHash& id) const {
-            return InfoHash::cmp(bucket->first, id) <= 0
-                && (std::next(bucket) == end() || InfoHash::cmp(id, std::next(bucket)->first) < 0);
-        }
-
-        /**
-         * Return true if the table has no bucket ore one empty buket.
-         */
-        inline bool isEmpty() const {
-            return empty() || (size() == 1 && front().nodes.empty());
-        }
-
-        /**
-         * Return a random id in the bucket's range.
-         */
-        InfoHash randomId(const RoutingTable::const_iterator& bucket) const;
-
-        unsigned depth(const RoutingTable::const_iterator& bucket) const;
-
-        /**
-         * Split a bucket in two equal parts.
-         */
-        bool split(const RoutingTable::iterator& b);
-    };
-
     struct SearchNode {
         SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
-        struct RequestStatus {
-            time_point request_time {time_point::min()};    /* the time of the last unanswered request */
-            time_point reply_time {time_point::min()};      /* the time of the last confirmation */
-            RequestStatus() {};
-            RequestStatus(time_point q, time_point a = time_point::min()) : request_time(q), reply_time(a) {};
-            bool expired(time_point now) const {
-                return reply_time < request_time && now > request_time + Node::MAX_RESPONSE_TIME;
-            }
-            bool pending(time_point now) const {
-                return reply_time < request_time && now - request_time <= Node::MAX_RESPONSE_TIME;
-            }
-        };
-        typedef std::map<Value::Id, RequestStatus> AnnounceStatusMap;
+        using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<NetworkEngine::Request>>;
 
         /**
          * Can we use this node to listen/announce now ?
          */
         bool isSynced(time_point now) const {
+            /*if (not getStatus)
+                return false;*/
             return not node->isExpired(now) and
-                   getStatus.reply_time >= now - Node::NODE_EXPIRE_TIME;
+                   not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
         }
         bool canGet(time_point now, time_point update) const {
+            /*if (not getStatus)
+                return true;*/
             return not node->isExpired(now) and
-                   (now > getStatus.reply_time + Node::NODE_EXPIRE_TIME or update > getStatus.reply_time) and
-                   now > getStatus.request_time + Node::MAX_RESPONSE_TIME;
+                   (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
+                   and (not getStatus or not getStatus->pending(now));
+                   // and now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
         }
 
         bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
             auto ack = acked.find(vid);
-            if (ack == acked.end()) {
+            if (ack == acked.end() or not ack->second) {
                 return false;
             }
-            return ack->second.reply_time + type.expiration > now;
+            return ack->second->reply_time + type.expiration > now;
         }
         bool isListening(time_point now) const {
-            return listenStatus.reply_time + LISTEN_EXPIRE_TIME > now;
+            if (not listenStatus)
+                return false;
+
+            return listenStatus->reply_time + LISTEN_EXPIRE_TIME > now;
         }
 
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
-            if (ack == acked.end())
+            if (ack == acked.end() or not ack->second)
                 return time_point::min();
             return std::max(
-                ack->second.reply_time + type.expiration - REANNOUNCE_MARGIN,
-                ack->second.request_time + Node::MAX_RESPONSE_TIME
+                ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN,
+                ack->second->last_try + Node::MAX_RESPONSE_TIME
             );
         }
+
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
             return getAnnounceTime(acked.find(vid), type);
         }
+
         time_point getListenTime() const {
+            if (not listenStatus)
+                return time_point::min();
+
             return std::max(
-                listenStatus.reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
-                listenStatus.request_time + Node::MAX_RESPONSE_TIME
+                listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
+                listenStatus->last_try + Node::MAX_RESPONSE_TIME
             );
         }
         bool isBad(const time_point& now) const {
@@ -566,9 +434,10 @@ private:
 
         std::shared_ptr<Node> node {};
 
-        RequestStatus getStatus {};    /* get/sync status */
-        RequestStatus listenStatus {};
-        AnnounceStatusMap acked {};    /* announcement status for a given value id */
+        time_point last_get_reply {time_point::min()};                 /* last time received valid token */
+        std::shared_ptr<NetworkEngine::Request> getStatus {};          /* get/sync status */
+        std::shared_ptr<NetworkEngine::Request> listenStatus {};
+        AnnounceStatusMap acked {};                                    /* announcement status for a given value id */
 
         Blob token {};
 
@@ -577,10 +446,6 @@ private:
          *
          */
         bool candidate {false};
-
-        // Generic temporary flag.
-        // Must be reset to false after use by the algorithm.
-        bool pending {false};
     };
 
     /**
@@ -622,6 +487,7 @@ private:
         time_point refill_time {time_point::min()};
         time_point step_time {time_point::min()};           /* the time of the last search step */
         time_point get_step_time {time_point::min()};       /* the time of the last get step */
+        std::shared_ptr<Scheduler::Job> nextSearchStep {};
 
         bool expired {false};              /* no node, or all nodes expired */
         bool done {false};                 /* search is over, cached for later */
@@ -684,6 +550,14 @@ private:
         unsigned refill(const RoutingTable&, time_point now);
 
         std::vector<std::shared_ptr<Node>> getNodes() const;
+
+        void clear() {
+            announce.clear();
+            callbacks.clear();
+            listeners.clear();
+            nodes.clear();
+            nextSearchStep = {};
+        }
     };
 
     struct ValueStorage {
@@ -698,20 +572,13 @@ private:
      * Foreign nodes asking for updates about an InfoHash.
      */
     struct Listener {
-        InfoHash id {};
-        sockaddr_storage ss;
-        socklen_t sslen {};
-        uint16_t tid {};
+        size_t rid {};
         time_point time {};
 
-        /*constexpr*/ Listener() : ss() {}
-        Listener(const InfoHash& id, const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) : id(id), ss(), sslen(fromlen), tid(ttid), time(t) {
-            memcpy(&ss, from, fromlen);
-        }
-        void refresh(const sockaddr *from, socklen_t fromlen, uint16_t ttid, time_point t) {
-            memcpy(&ss, from, fromlen);
-            sslen = fromlen;
-            tid = ttid;
+        constexpr Listener(size_t rid, time_point t) : rid(rid), time(t) {}
+
+        void refresh(size_t tid, time_point t) {
+            rid = tid;
             time = t;
         }
     };
@@ -719,7 +586,7 @@ private:
     struct Storage {
         InfoHash id;
         time_point maintenance_time {};
-        std::vector<Listener> listeners {};
+        std::map<std::shared_ptr<Node>, Listener> listeners {};
         std::map<size_t, LocalListener> local_listeners {};
         size_t listener_token {1};
 
@@ -795,65 +662,9 @@ private:
         size_t total_size {};
     };
 
-    enum class MessageType {
-        Error = 0,
-        Reply,
-        Ping,
-        FindNode,
-        GetValues,
-        AnnounceValue,
-        Listen
-    };
-
-    struct TransPrefix : public  std::array<uint8_t, 2>  {
-        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
-        static const TransPrefix PING;
-        static const TransPrefix FIND_NODE;
-        static const TransPrefix GET_VALUES;
-        static const TransPrefix ANNOUNCE_VALUES;
-        static const TransPrefix LISTEN;
-    };
-
-    /* Transaction-ids are 4-bytes long, with the first two bytes identifying
-     * the kind of request, and the remaining two a sequence number in
-     * host order.
-     */
-    struct TransId final : public std::array<uint8_t, 4> {
-        TransId() {}
-        TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
-        TransId(const TransPrefix prefix, uint16_t seqno = 0) {
-            std::copy_n(prefix.begin(), prefix.size(), begin());
-            *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
-        }
-
-        TransId(const char* q, size_t l) : array<uint8_t, 4>() {
-            if (l > 4) {
-                length = 0;
-            } else {
-                std::copy_n(q, l, begin());
-                length = l;
-            }
-        }
-
-        bool matches(const TransPrefix prefix, uint16_t *seqno_return = nullptr) const {
-            if (std::equal(begin(), begin()+2, prefix.begin())) {
-                if (seqno_return)
-                    *seqno_return = *reinterpret_cast<const uint16_t*>(&(*this)[2]);
-                return true;
-            } else
-                return false;
-        }
-
-        unsigned length {4};
-    };
-
     // prevent copy
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
-
-    // socket descriptors
-    int dht_socket {-1};
-    int dht_socket6 {-1};
 
     InfoHash myid {};
 
@@ -881,7 +692,9 @@ private:
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    std::list<Search> searches {};
+    std::map<InfoHash, std::shared_ptr<Search>> searches4 {};
+    std::map<InfoHash, std::shared_ptr<Search>> searches6 {};
+    //std::map<std::shared_ptr<NetworkEngine::Request>, std::shared_ptr<Search>> searches {}; /* not used for now */
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
@@ -893,68 +706,14 @@ private:
     unsigned next_blacklisted = 0;
 
     // timing
-    time_point now;
+    Scheduler scheduler {};
+    std::shared_ptr<Scheduler::Job> nextNodesConfirmation {};
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
-    time_point expire_stuff_time {time_point::min()};
-    time_point search_time {time_point::max()};
-    time_point confirm_nodes_time {time_point::min()};
-    time_point rotate_secrets_time {time_point::min()};
-    std::queue<time_point> rate_limit_time {};
+
+    NetworkEngine network_engine;
 
     using ReportedAddr = std::pair<unsigned, Address>;
     std::vector<ReportedAddr> reported_addr;
-
-    // Networking & packet handling
-    int send(const char* buf, size_t len, int flags, const sockaddr*, socklen_t);
-    int sendPing(const sockaddr*, socklen_t, TransId tid);
-    int sendPong(const sockaddr*, socklen_t, TransId tid);
-
-    int sendFindNode (const sockaddr*, socklen_t, TransId tid, const InfoHash& target, want_t want, int confirm);
-    int sendGetValues(const sockaddr*, socklen_t, TransId tid, const InfoHash& target, want_t want, int confirm);
-
-    int sendNodesValues(const sockaddr*, socklen_t, TransId tid,
-                              const uint8_t *nodes, unsigned nodes_len,
-                              const uint8_t *nodes6, unsigned nodes6_len,
-                              const std::vector<ValueStorage>& st, const Blob& token);
-
-    int sendClosestNodes(const sockaddr*, socklen_t, TransId tid,
-                               const InfoHash& id, want_t want, const Blob& token={},
-                               const std::vector<ValueStorage>& st = {});
-
-
-    int sendListen(const sockaddr*, socklen_t, TransId,
-                            const InfoHash&, const Blob& token, int confirm);
-
-    int sendListenConfirmation(const sockaddr*, socklen_t, TransId);
-
-    int sendAnnounceValue(const sockaddr*, socklen_t, TransId, const InfoHash&,
-            const Value&, time_point created, const Blob& token,
-            int confirm);
-
-    int sendValueAnnounced(const sockaddr*, socklen_t, TransId, Value::Id);
-
-    int sendError(const sockaddr*, socklen_t, TransId tid, uint16_t code, const char *message, bool include_id=false);
-
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
-
-    struct ParsedMessage {
-        MessageType type;
-        InfoHash id;
-        InfoHash info_hash;
-        InfoHash target;
-        TransId tid;
-        Blob token;
-        Value::Id value_id;
-        time_point created { time_point::max() };
-        Blob nodes4;
-        Blob nodes6;
-        std::vector<std::shared_ptr<Value>> values;
-        want_t want;
-        uint16_t error_code;
-        std::string ua;
-        Address addr;
-        void msgpack_unpack(msgpack::object o);
-    };
 
     void rotateSecrets();
 
@@ -975,7 +734,7 @@ private:
         });
     }
 
-    void storageAddListener(const InfoHash& id, const InfoHash& node, const sockaddr *from, socklen_t fromlen, uint16_t tid);
+    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid);
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
@@ -985,6 +744,7 @@ private:
      * node is too far from the target, values are sent to the appropriate
      * nodes.
      */
+    void dataPersistence();
     size_t maintainStorage(InfoHash id, bool force=false, DoneCallback donecb=nullptr);
 
     // Buckets
@@ -1008,17 +768,13 @@ private:
     void expireBuckets(RoutingTable&);
     int sendCachedPing(Bucket& b);
     bool bucketMaintenance(RoutingTable&);
-    static unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
-    unsigned bufferClosestNodes(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Bucket& b) const;
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm, const sockaddr* addr=nullptr, socklen_t addr_length=0);
+    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);
-
-    void pinged(Node& n, Bucket *b = nullptr);
 
     void blacklistNode(const InfoHash* id, const sockaddr*, socklen_t);
     bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
@@ -1031,36 +787,48 @@ private:
      * specified infohash (id), using the specified IP version (IPv4 or IPv6).
      * The values can be filtered by an arbitrary provided filter.
      */
-    Search* search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
+    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
-    std::list<Search>::iterator newSearch();
+    std::shared_ptr<Search> newSearch(InfoHash id, sa_family_t af);
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
 
+    void confirmNodes();
+    void expire();
+
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
      */
-    SearchNode* searchSendGetValues(Search& sr, SearchNode *n = nullptr, bool update = true);
+    SearchNode* searchSendGetValues(std::shared_ptr<Search> sr, SearchNode *n = nullptr, bool update = true);
 
-    void searchStep(Search& sr);
+    void searchStep(std::shared_ptr<Search> sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
-    bool rateLimit();
     bool neighbourhoodMaintenance(RoutingTable&);
 
-    struct MessageStats {
-        unsigned ping {0};
-        unsigned find {0};
-        unsigned get {0};
-        unsigned put {0};
-        unsigned listen {0};
-    };
+    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
-    MessageStats in_stats {}, out_stats {};
-
+    void onError(std::shared_ptr<NetworkEngine::Request> node, DhtProtocolException e);
+    /* when our address is reported by a distant peer. */
+    void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
+    /* when we receive a ping request */
+    NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
+    /* when we receive a "find node" request */
+    NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
+    void onFindNodeDone(std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    /* when we receive a "get values" request */
+    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
+    void onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    /* when we receive a listen request */
+    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
+    void onListenDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    /* when we receive an announce request */
+    NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
+            InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
+    void onAnnounceDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
 };
 
 }

@@ -172,7 +172,6 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
             });
         }
         else if (op == "l") {
-            std::cout << id << std::endl;
             dht.listen(id, [](std::shared_ptr<Value> value) {
                 std::cout << "Listen: found value:" << std::endl;
                 std::cout << "\t" << *value << std::endl;
