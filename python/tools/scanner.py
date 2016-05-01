@@ -121,7 +121,7 @@ def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
         snodes = NodeSet()
         snodes.extend(nodes)
         all_nodes.extend(nodes)
-        depth = min(6, InfoHash.commonBits(snodes.first(), snodes.last())+4)
+        depth = min(8, InfoHash.commonBits(snodes.first(), snodes.last())+6)
         if cur_depth < depth:
             for b in range(cur_depth, depth):
                 new_h = InfoHash(cur_h.toString());
@@ -167,6 +167,9 @@ not_found = []
 infos = [ringx.text(1.2, -0.8, ""),
          ringx.text(1.2, -0.9, "")]
 
+def num_nodes(node_set):
+    return sorted([x for x in node_set.items()], key=lambda ip: ip[1][1])
+
 def generate_set():
     node_ipv4 = {}
     node_ipv6 = {}
@@ -177,13 +180,13 @@ def generate_set():
             if addr in node_ipv6:
                 node_ipv6[addr][1] += 1
             else:
-                node_ipv6[addr] = [n, 1]
+                node_ipv6[addr] = [n, 1, gi6.record_by_name_v6(addr)]
         else:
             if addr in node_ipv4:
                 node_ipv4[addr][1] += 1
             else:
-                node_ipv4[addr] = [n, 1]
-    return node_ipv4, node_ipv6
+                node_ipv4[addr] = [n, 1, gi.record_by_name(addr)]
+    return num_nodes(node_ipv4), num_nodes(node_ipv6)
 
 def update_plot():
     global done, m, collection, not_found, points
@@ -198,10 +201,10 @@ def update_plot():
     not_found.clear()
     ip4s, ip6s = generate_set()
     ares = []
-    for addr, n in ip4s.items():
-        ares.append((addr, n[0].getNode(), gi.record_by_name(addr)))
-    for addr, n in ip6s.items():
-        ares.append((addr, n[0].getNode(), gi6.record_by_name_v6(addr)))
+    for addr, n in ip4s:
+        ares.append((addr, n[0].getNode(), n[2]))
+    for addr, n in ip6s:
+        ares.append((addr, n[0].getNode(), n[2]))
     for r in ares:
         res = r[2]
         n = r[1]
@@ -262,12 +265,12 @@ while run:
         print(n)
     print('')
     print(len(node_ip4s), " different IPv4s :")
-    for ip in node_ip4s.items():
-        print(ip[0] + " : " + str(ip[1][1]) + " nodes")
+    for ip in node_ip4s:
+        print(ip[0], ":", str(ip[1][1]), "nodes",  ("(" + ip[1][2]['city'] + ")") if ip[1][2] and ip[1][2]['city'] else "")
     print('')
     print(len(node_ip6s), " different IPv6s :")
-    for ip in node_ip6s.items():
-        print(ip[0] + " : " + str(ip[1][1]) + " nodes")
+    for ip in node_ip6s:
+        print(ip[0], ":", str(ip[1][1]), "nodes",  ("(" + ip[1][2]['city'] + ")") if ip[1][2] and ip[1][2]['city'] else "")
 
     while run and done == 0:
         plt.pause(.5)
