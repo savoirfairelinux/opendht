@@ -84,9 +84,6 @@ cdef class InfoHash(_WithID):
         if op == 2:
             return self._infohash == other._infohash
         return NotImplemented
-    def __hash__(self):
-        cdef cpp.hash[cpp.InfoHash] hash_fn
-        return hash_fn.get(self._infohash)
     def getBit(InfoHash self, bit):
         return self._infohash.getBit(bit)
     def setBit(InfoHash self, bit, b):

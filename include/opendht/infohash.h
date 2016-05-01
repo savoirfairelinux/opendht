@@ -198,22 +198,3 @@ public:
 };
 
 }
-
-namespace std
-{
-    template<>
-    struct hash<dht::InfoHash>
-    {
-        typedef dht::InfoHash argument_type;
-        typedef std::size_t result_type;
-
-        result_type operator()(dht::InfoHash const& s) const
-        {
-            result_type r {};
-            std::hash<uint8_t> hash_fn;
-            for (size_t i = 0; i < HASH_LEN; i++)
-                r = r ^ (hash_fn(s[i]) << i*4);
-            return r;
-        }
-    };
-}
