@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # Copyright (c) 2015-2016 Savoir-faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
