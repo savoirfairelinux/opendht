@@ -1138,13 +1138,15 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         if (search_id == 0)
             search_id++;
     }
-    if (not sr->nextSearchStep)
-        sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
 
     if (callback)
         sr->callbacks.push_back({.start=scheduler.time(), .filter=filter, .get_cb=callback, .done_cb=done_callback});
-
     bootstrapSearch(*sr);
+
+    if (sr->nextSearchStep)
+        scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, scheduler.time()));
+    else
+        sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
     return sr;
 }
 
