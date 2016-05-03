@@ -583,7 +583,7 @@ private:
         size_t rid {};
         time_point time {};
 
-        constexpr Listener(size_t rid, time_point t) : rid(rid), time(t) {}
+        /*constexpr*/ Listener(size_t rid, time_point t) : rid(rid), time(t) {}
 
         void refresh(size_t tid, time_point t) {
             rid = tid;
