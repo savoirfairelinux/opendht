@@ -478,6 +478,7 @@ private:
 
         auto now = scheduler.time();
         if (req->node->isExpired(now) or req->expired(now)) {
+            req->completed = true;
             req->on_expired(req, true);
             req->clear();
             requests.erase(req->tid);

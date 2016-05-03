@@ -322,6 +322,11 @@ private:
        to the destination, and use the additional ones to backtrack if any of
        the target 8 turn out to be dead. */
     static constexpr unsigned SEARCH_NODES {14};
+
+    /* Concurrent requests during a search */
+    static constexpr unsigned SEARCH_REQUESTS {3};
+
+    /* Number of listening nodes */
     static constexpr unsigned LISTEN_NODES {3};
 
     /* The maximum number of values we store for a given hash. */
@@ -332,10 +337,6 @@ private:
 
     /* The maximum number of searches we keep data about. */
     static constexpr unsigned MAX_SEARCHES {128};
-
-    /* The time after which we can send get requests for
-       a search in case of no answers. */
-    static constexpr std::chrono::seconds SEARCH_GET_STEP {3};
 
     static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
 
@@ -486,7 +487,7 @@ private:
         uint16_t tid;
         time_point refill_time {time_point::min()};
         time_point step_time {time_point::min()};           /* the time of the last search step */
-        time_point get_step_time {time_point::min()};       /* the time of the last get step */
+        unsigned current_get_requests {0};                  /* number of concurrent sync requests */
         std::shared_ptr<Scheduler::Job> nextSearchStep {};
 
         bool expired {false};              /* no node, or all nodes expired */
@@ -508,6 +509,13 @@ private:
          */
         bool insertNode(std::shared_ptr<Node> n, time_point now, const Blob& token={});
         unsigned insertBucket(const Bucket&, time_point now);
+
+        SearchNode* getNode(std::shared_ptr<Node>& n) {
+            auto srn = std::find_if(nodes.begin(), nodes.end(), [&](SearchNode& sn) {
+                return n == sn.node;
+            });
+            return (srn == nodes.end()) ? nullptr : &(*srn);
+        }
 
         /**
          * Can we use this search to announce ?
