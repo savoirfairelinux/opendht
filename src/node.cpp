@@ -21,6 +21,8 @@
 
 #include "node.h"
 
+#include <sstream>
+
 namespace dht {
 
 constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
@@ -75,6 +77,14 @@ Node::received(time_point now, bool answer)
         pinged = 0;
         reply_time = now;
     }
+}
+
+std::string
+Node::toString() const
+{
+    std::stringstream ss;
+    ss << (*this);
+    return ss.str();
 }
 
 std::ostream& operator<< (std::ostream& s, const Node& h)
