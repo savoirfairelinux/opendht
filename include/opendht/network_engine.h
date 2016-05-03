@@ -210,11 +210,9 @@ public:
                 and not completed;
         }
 
-        bool pending(time_point now) const {
-            return not cancelled  
-               and not completed 
-               and reply_time < last_try
-               and now - last_try <= Node::MAX_RESPONSE_TIME;
+        bool pending(time_point /*now*/) const {
+            return not cancelled
+               and not completed;
         }
 
         void cancel() {
