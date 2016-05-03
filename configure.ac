@@ -26,7 +26,7 @@ AC_ARG_ENABLE([python], [AS_HELP_STRING([--disable-python], [Disble python bindi
 AS_IF([test "x$enable_python" != "xno"], [
        AM_PATH_PYTHON([3.3],, [:])
        AS_IF([test -n "$PYTHON"],[
-              AC_CHECK_PROGS([CYTHON], [cython])
+              AC_CHECK_PROGS([CYTHON], [cython3])
               AS_IF([test -z "$CYTHON"],[AC_MSG_WARN([Cython not found - continuing without python support])])
               AC_CHECK_PROGS([PIP], [pip3])
               AS_IF([test -z "$PIP"],[AC_MSG_WARN([pip not found - continuing without python uninstall support])])
