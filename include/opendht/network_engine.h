@@ -198,29 +198,17 @@ public:
         static const constexpr size_t MAX_ATTEMPT_COUNT {3};
 
         std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
-        bool cancelled {false};                    /* whether the request is canceled before done. */
-        bool completed {false};                    /* whether the request is completed. */
-        unsigned attempt_count {0};                /* number of attempt to process the request. */
-        time_point start {time_point::min()};      /* time when the request is created. */
-        time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
         time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
 
-        bool expired(time_point now) const {
-            return now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT
-                and not completed;
+        bool expired() const { return expired_; }
+        bool completed() const { return completed_; }
+        bool cancelled() const { return cancelled_; }
+        bool pending() const {
+            return not cancelled_  
+               and not completed_
+               and not expired_;
         }
-
-        bool pending(time_point /*now*/) const {
-            return not cancelled
-               and not completed;
-        }
-
-        void cancel() {
-            if (not completed) {
-                cancelled = true;
-                clear();
-            }
-        }
+        bool over() const { return not pending(); }
 
         Request() {}
 
@@ -232,11 +220,30 @@ public:
                 std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired, bool persistent = false) :
             node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), persistent(persistent) { }
 
+        bool isExpired(time_point now) const {
+            return now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT
+                and not completed_ and not cancelled_;
+        }
+
+        void cancel() {
+            if (not completed_ and not expired_) {
+                cancelled_ = true;
+                clear();
+            }
+        }
+
         void clear() {
             on_done = {};
             on_expired = {};
             msg.clear();
         }
+
+        bool cancelled_ {false};                    /* whether the request is canceled before done. */
+        bool completed_ {false};                    /* whether the request is completed. */
+        bool expired_ {false};
+        unsigned attempt_count {0};                /* number of attempt to process the request. */
+        time_point start {time_point::min()};      /* time when the request is created. */
+        time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
 
         std::function<void(std::shared_ptr<Request> req_status, ParsedMessage&&)> on_done {};
         std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired {};
@@ -471,12 +478,12 @@ private:
     void pinged(Node&);
 
     void requestStep(std::shared_ptr<Request> req) {
-        if (req->completed or req->cancelled)
+        if (req->over())
             return;
 
         auto now = scheduler.time();
-        if (req->node->isExpired(now) or req->expired(now)) {
-            req->completed = true;
+        if (req->node->isExpired(now) or req->isExpired(now)) {
+            req->expired_ = true;
             req->on_expired(req, true);
             req->clear();
             requests.erase(req->tid);

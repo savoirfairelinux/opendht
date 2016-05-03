@@ -324,7 +324,7 @@ private:
     static constexpr unsigned SEARCH_NODES {14};
 
     /* Concurrent requests during a search */
-    static constexpr unsigned SEARCH_REQUESTS {3};
+    static constexpr unsigned SEARCH_REQUESTS {4};
 
     /* Number of listening nodes */
     static constexpr unsigned LISTEN_NODES {3};
@@ -389,7 +389,7 @@ private:
                 return true;*/
             return not node->isExpired(now) and
                    (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-                   and (not getStatus or not getStatus->pending(now));
+                   and (not getStatus or not getStatus->pending());
                    // and now > getStatus->last_try + Node::MAX_RESPONSE_TIME;
         }
 
@@ -410,10 +410,7 @@ private:
         time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
             if (ack == acked.end() or not ack->second)
                 return time_point::min();
-            return std::max(
-                ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN,
-                ack->second->last_try + Node::MAX_RESPONSE_TIME
-            );
+            return ack->second->pending() ? time_point::max() : ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
         }
 
         time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
@@ -424,10 +421,7 @@ private:
             if (not listenStatus)
                 return time_point::min();
 
-            return std::max(
-                listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN,
-                listenStatus->last_try + Node::MAX_RESPONSE_TIME
-            );
+            return listenStatus->pending() ? time_point::max() : listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
         }
         bool isBad(const time_point& now) const {
             return !node || node->isExpired(now) || candidate;

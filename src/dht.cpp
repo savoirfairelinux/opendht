@@ -540,11 +540,13 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
             if (removeExpiredNode(now))
                 num_bad_nodes--;
 
-            auto farthest_not_bad_node = std::find_if(nodes.rbegin(), nodes.rend(),
-                [&](const SearchNode& n) { return not n.isBad(now) and not (n.getStatus and n.getStatus->pending(now)); }
+            auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
+                [&](const SearchNode& n) { return not n.isBad(now)/* and not (n.getStatus and n.getStatus->pending(now))*/; }
             );
-            if (farthest_not_bad_node != nodes.rend()) {
-                nodes.erase(std::prev(farthest_not_bad_node.base()));
+            if (to_remove != nodes.rend()) {
+                if (to_remove->getStatus and to_remove->getStatus->pending())
+                    current_get_requests--;
+                nodes.erase(std::prev(to_remove.base()));
             } // else, all nodes are expired.
         }
         expired = false;
@@ -588,7 +590,7 @@ Dht::expireSearches()
 Dht::SearchNode*
 Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update)
 {
-    if (sr->done)
+    if (sr->done or sr->current_get_requests >= SEARCH_REQUESTS)
         return nullptr;
 
     const auto& now = scheduler.time();
@@ -631,13 +633,11 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                 auto srn = sr->getNode(status->node);
                 if (srn and not srn->candidate) {
                     if (not over) {
-                            srn->candidate = true;
-                            sr->current_get_requests--;
-                            //DHT_LOG.DEBUG("[search %s] sn %s now candidate... %d",
-                            //        sr->id.toString().c_str(), srn->node->id.toString().c_str(), sr->current_get_requests);
-                    } else {
-                        sr->current_get_requests--;
+                        srn->candidate = true;
+                        //DHT_LOG.DEBUG("[search %s] sn %s now candidate... %d",
+                        //        sr->id.toString().c_str(), srn->node->id.toString().c_str(), sr->current_get_requests);
                     }
+                    sr->current_get_requests--;
                 }
                 scheduler.edit(sr->nextSearchStep, scheduler.time());
             }
@@ -709,20 +709,23 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         print_addr(n.node->ss, n.node->sslen).c_str());
                     //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    network_engine.cancelRequest(n.listenStatus);
+                    //network_engine.cancelRequest(n.listenStatus);
+                    auto ls = n.listenStatus;
 
                     std::weak_ptr<Search> ws = sr;
                     n.listenStatus = network_engine.sendListen(n.node, sr->id, n.token,
-                        [this,ws](std::shared_ptr<NetworkEngine::Request> status,
+                        [this,ws,ls](std::shared_ptr<NetworkEngine::Request> status,
                                 NetworkEngine::RequestAnswer&& answer) mutable
                         { /* on done */
+                            network_engine.cancelRequest(ls);
                             if (auto sr = ws.lock()) {
                                 onListenDone(status, answer, sr);
                                 searchStep(sr);
                             }
                         },
-                        [this,ws](std::shared_ptr<NetworkEngine::Request>, bool) mutable
+                        [this,ws,ls](std::shared_ptr<NetworkEngine::Request>, bool) mutable
                         { /* on expired */
+                            network_engine.cancelRequest(ls);
                             if (auto sr = ws.lock()) {
                                 searchStep(sr);
                             }
@@ -925,7 +928,7 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
             continue;
-        bool pending = sn.getStatus and sn.getStatus->pending(now);
+        bool pending = sn.getStatus and sn.getStatus->pending();
         if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
             // not isSynced
             if (not pending and current_get_requests < SEARCH_REQUESTS)
@@ -1815,7 +1818,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     const auto& now = scheduler.time();
     using namespace std::chrono;
     out << std::endl << "Search IPv" << (sr.af == AF_INET6 ? '6' : '4') << ' ' << sr.id << " G" << sr.callbacks.size();
-    out << " age " << duration_cast<seconds>(now - sr.step_time).count() << " s tid " << sr.tid;
+    out << " age " << duration_cast<seconds>(now - sr.step_time).count() << "s sync ops: " << sr.current_get_requests;
     if (sr.done)
         out << " [done]";
     bool synced = sr.isSynced(now);
@@ -1847,8 +1850,8 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         {
             bool pending {false}, expired {false};
             if (n.getStatus) {
-                pending = n.getStatus->pending(now);
-                expired = n.getStatus->expired(now);
+                pending = n.getStatus->pending();
+                expired = n.getStatus->expired();
             }
             out << " ["
                 << (pending ? 'f' : (expired ? 'x' : ' ')) << (n.isSynced(now) ? 's' : '-')
@@ -1858,13 +1861,13 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         {
             bool pending {false}, expired {false};
             if (n.listenStatus) {
-                pending = n.listenStatus->pending(now);
-                expired = n.listenStatus->expired(now);
+                pending = n.listenStatus->pending();
+                expired = n.listenStatus->expired();
             }
             if (not sr.listeners.empty() and n.listenStatus) {
-                if (n.listenStatus->last_try == time_point::min())
+                /*if (!n.listenStatus)
                     out << "     ";
-                else
+                else*/
                     out << "["
                         << (pending ? 'f' : (expired ? 'x' : ' '))
                         << (n.isListening(now) ? 'l' : '-') << "] ";
@@ -1886,9 +1889,9 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                         auto& astatus = ack->second;
                         if (astatus and astatus->reply_time + getType(a.value->type).expiration > now)
                             out << 'a';
-                        else if (astatus and astatus->pending(now))
+                        else if (astatus and astatus->pending())
                             out << 'f';
-                        else if (astatus and astatus->expired(now))
+                        else if (astatus and astatus->expired())
                             out << 'x';
                         else
                             out << ' ';

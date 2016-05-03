@@ -137,7 +137,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         if (reqp == requests.end())
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg.id};
         auto req = reqp->second;
-        if (req->cancelled)
+        if (req->cancelled())
             return;
 
         auto node = onNewNode(msg.id, from, fromlen, 2);
@@ -164,7 +164,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             if (not req->persistent)
                 requests.erase(reqp);
             req->reply_time = scheduler.time();
-            req->completed = true;
+            req->completed_ = true;
             req->on_done(req, std::move(msg));
             if (not req->persistent)
                 req->clear();
