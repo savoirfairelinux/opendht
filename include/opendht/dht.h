@@ -289,7 +289,7 @@ private:
      */
     struct Get {
         time_point start;
-        Query query;
+        std::shared_ptr<Query> query;
         Value::Filter filter;
         GetCallback get_cb;
         DoneCallback done_cb;
@@ -308,7 +308,7 @@ private:
      * A single "listen" operation data
      */
     struct LocalListener {
-        Query query;
+        std::shared_ptr<Query> query;
         Value::Filter filter;
         GetCallback get_cb;
     };
@@ -453,7 +453,7 @@ private:
      */
     std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
-    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), Query q = {});
+    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), const std::shared_ptr<Query>& q = {});
 
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
@@ -483,11 +483,14 @@ private:
     NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
     void onFindNodeDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
-    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr, const Query& q);
+    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want, const Query& q);
+    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr,
+            const std::shared_ptr<Query>& orig_query);
     /* when we receive a listen request */
-    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, const Query& query);
-    void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid,
+            const Query& query);
+    void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a,
+            std::shared_ptr<Search>& sr, const std::shared_ptr<Query>& orig_query);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);

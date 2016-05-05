@@ -85,8 +85,9 @@ NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 
 void
 NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, const InfoHash& hash, want_t want,
-        const Blob& ntoken, std::vector<std::shared_ptr<Node>>&& nodes, std::vector<std::shared_ptr<Node>>&& nodes6,
-        std::vector<std::shared_ptr<Value>>&& values, const Query& query)
+        const Blob& ntoken, std::vector<std::shared_ptr<Node>>&& nodes,
+        std::vector<std::shared_ptr<Node>>&& nodes6, std::vector<std::shared_ptr<Value>>&& values,
+        const Query& query)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
