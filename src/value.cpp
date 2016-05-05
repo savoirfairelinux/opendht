@@ -259,7 +259,7 @@ bool satisfied(std::vector<T> fds, std::vector<T> qfds)
 };
 
 bool
-Query::isSatisfiedBy(Query& q) const
+Query::isSatisfiedBy(const Query& q) const
 {
     return satisfied(filters_, q.filters_) and satisfied(fieldSelectors_, q.fieldSelectors_);
 }

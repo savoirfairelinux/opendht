@@ -587,7 +587,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
     pk.pack_map(5);
 
     pk.pack(std::string("a"));  pk.pack_map(2 +
-                                (not query.getFilter().empty() or not query.getFieldSelector().empty() ? 1:0) +
+                                (query.getFilter() or not query.getFieldSelector().empty() ? 1:0) +
                                 (want>0?1:0));
       pk.pack(std::string("id")); pk.pack(myid);
       pk.pack(std::string("h"));  pk.pack(info_hash);
@@ -799,7 +799,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     pk.pack_map(5);
 
     pk.pack(std::string("a")); pk.pack_map(3 +
-                               (not query.getFilter().empty() or not query.getFieldSelector().empty() ? 1:0));
+                               (query.getFilter() or not query.getFieldSelector().empty() ? 1:0));
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(infohash);
       pk.pack(std::string("q")); pk.pack(query);
