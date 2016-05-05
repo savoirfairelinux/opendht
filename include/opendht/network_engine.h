@@ -317,15 +317,15 @@ public:
     std::shared_ptr<Request>
         sendGetValues(std::shared_ptr<Node> n,
                 const InfoHash& info_hash,
-                want_t want,
                 const Query& query,
+                want_t want,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendListen(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
-                const Blob& token,
                 const Query& query,
+                const Blob& token,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>

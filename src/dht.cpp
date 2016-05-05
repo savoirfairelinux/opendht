@@ -166,6 +166,7 @@ struct Dht::SearchNode {
     SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
     using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
+    using SyncStatusMap = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
 
     /**
      * Can we use this node to listen/announce now ?
@@ -174,10 +175,11 @@ struct Dht::SearchNode {
         return not node->isExpired() and
                not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
     }
-    bool canGet(time_point now, time_point update) const {
+    bool canGet(time_point now, const std::shared_ptr<Query>& q, time_point update) const {
+        const auto& get_status = getStatus.find(q);
         return not node->isExpired() and
                (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-               and (not getStatus or not getStatus->pending());
+               and (get_status == getStatus.end() or not get_status->second or not get_status->second->pending());
     }
 
     bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
@@ -187,11 +189,27 @@ struct Dht::SearchNode {
         }
         return ack->second->reply_time + type.expiration > now;
     }
-    bool isListening(time_point now) const {
-        if (not listenStatus)
-            return false;
 
-        return listenStatus->reply_time + LISTEN_EXPIRE_TIME > now;
+    bool isListening(time_point now) const {
+        auto ls = listenStatus.begin();
+        for ( ; ls != listenStatus.end() ; ++ls) {
+            if (isListening(now)) {
+                break;
+            }
+        }
+        return ls != listenStatus.end();
+    }
+    bool isListening(time_point now, const std::shared_ptr<Query>& q) const {
+        const auto& ls = listenStatus.find(q);
+        if (ls == listenStatus.end())
+            return false;
+        else
+            return isListening(now, ls);
+    }
+    bool isListening(time_point now, SyncStatusMap::const_iterator listen_status) const {
+        if (listen_status == listenStatus.end())
+            return false;
+        return listen_status->second->reply_time + LISTEN_EXPIRE_TIME > now;
     }
 
     time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
@@ -205,21 +223,32 @@ struct Dht::SearchNode {
     }
 
     time_point getListenTime() const {
-        if (not listenStatus)
-            return time_point::min();
-
-        return listenStatus->pending() ? time_point::max() : listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
+        time_point t {time_point::max()};
+        for (auto ls = listenStatus.begin(); ls != listenStatus.end() ; ++ls) {
+            t = std::min(t, getListenTime(ls));
+        }
+        return t;
     }
+    time_point getListenTime(const std::shared_ptr<Query>& q) const {
+        return getListenTime(listenStatus.find(q));
+    }
+    time_point getListenTime(SyncStatusMap::const_iterator listen_status) const {
+        if (listen_status == listenStatus.end())
+            return time_point::min();
+        return listen_status->pending() ? time_point::max() :
+            listen_status->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
+    }
+
     bool isBad() const {
         return !node || node->isExpired() || candidate;
     }
 
     std::shared_ptr<Node> node {};
 
-    time_point last_get_reply {time_point::min()};                 /* last time received valid token */
-    std::shared_ptr<Request> getStatus {};          /* get/sync status */
-    std::shared_ptr<Request> listenStatus {};
-    AnnounceStatusMap acked {};                                    /* announcement status for a given value id */
+    time_point last_get_reply {time_point::min()}; /* last time received valid token */
+    SyncStatusMap getStatus {};                    /* get/sync status */
+    SyncStatusMap listenStatus {};                 /* listen status */
+    AnnounceStatusMap acked {};                    /* announcement status for a given value id */
 
     Blob token {};
 
@@ -672,49 +701,52 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 
     const auto& now = scheduler.time();
     const time_point up = update ? sr->getLastGetTime() : time_point::min();
-    SearchNode* n = nullptr;
-    if (pn) {
-        if (not pn->canGet(now, up))
-            return nullptr;
-        n = pn;
-    } else {
-        for (auto& sn : sr->nodes) {
-            if (sn.canGet(now, up)) {
-                n = &sn;
-                break;
+    for (const auto& cb : sr->callbacks) {
+        const auto& query = cb.query;
+        SearchNode* n = nullptr;
+        if (pn) {
+            if (not pn->canGet(now, query, up))
+                return nullptr;
+            n = pn;
+        } else {
+            for (auto& sn : sr->nodes) {
+                if (sn.canGet(now, query, up)) {
+                    n = &sn;
+                    break;
+                }
             }
+            if (not n)
+                return nullptr;
         }
-        if (not n)
-            return nullptr;
+
+        /*DHT_LOG.DEBUG("[search %s IPv%c] [node %s] sending 'get'",
+          sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+          n->node->toString().c_str());*/
+
+        std::weak_ptr<Search> ws = sr;
+        auto onDone =
+            [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
+                if (auto sr = ws.lock()) {
+                    sr->insertNode(status.node, scheduler.time(), answer.ntoken);
+                    onGetValuesDone(status, answer, sr, query);
+                }
+            };
+        auto onExpired =
+            [this,ws](const Request& status, bool over) mutable {
+                if (auto sr = ws.lock()) {
+                    if (auto srn = sr->getNode(status.node))
+                        srn->candidate = not over;
+                    scheduler.edit(sr->nextSearchStep, scheduler.time());
+                }
+            };
+        std::shared_ptr<Request> rstatus;
+        if (sr->callbacks.empty() and sr->listeners.empty())
+            rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
+        else
+            rstatus = network_engine.sendGetValues(n->node, sr->id, *query, -1, onDone, onExpired);
+        n->getStatus[query] = rstatus;
+        return n;
     }
-
-    /*DHT_LOG.DEBUG("[search %s IPv%c] [node %s] sending 'get'",
-        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-        n->node->toString().c_str());*/
-
-    std::weak_ptr<Search> ws = sr;
-    auto onDone =
-        [this,ws](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
-            if (auto sr = ws.lock()) {
-                sr->insertNode(status.node, scheduler.time(), answer.ntoken);
-                onGetValuesDone(status, answer, sr);
-            }
-        };
-    auto onExpired =
-        [this,ws](const Request& status, bool over) mutable {
-            if (auto sr = ws.lock()) {
-                if (auto srn = sr->getNode(status.node))
-                    srn->candidate = not over;
-                scheduler.edit(sr->nextSearchStep, scheduler.time());
-            }
-        };
-    std::shared_ptr<Request> rstatus;
-    if (sr->callbacks.empty() and sr->listeners.empty())
-        rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
-    else
-        rstatus = network_engine.sendGetValues(n->node, sr->id, -1, onDone, onExpired);
-    n->getStatus = rstatus;
-    return n;
 }
 
 /* When a search is in progress, we periodically call search_step to send
@@ -767,36 +799,37 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             for (auto& n : sr->nodes) {
                 if (not n.isSynced(now))
                     continue;
-                if (n.getListenTime() <= now) {
-                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'listen'",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        n.node->toString().c_str());
-                    //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
+                for (const auto& l : sr->listeners) {
+                    const auto& query = l.second.query;
+                    if (n.getListenTime(query) <= now) {
+                        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'listen'",
+                                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                                n.node->toString().c_str());
+                        //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
-                    //network_engine.cancelRequest(n.listenStatus);
-                    auto ls = n.listenStatus;
+                        const auto& r = n.listenStatus.find(query);
+                        auto last_req = r != n.listenStatus.end() ? r->second : {};
 
-                    std::weak_ptr<Search> ws = sr;
-                    n.listenStatus = network_engine.sendListen(n.node, sr->id, n.token,
-                        [this,ws,ls](const Request& status,
-                                NetworkEngine::RequestAnswer&& answer) mutable
-                        { /* on done */
-                            // cancel previous request
-                            network_engine.cancelRequest(ls);
-                            if (auto sr = ws.lock()) {
-                                onListenDone(status, answer, sr);
-                                searchStep(sr);
+                        std::weak_ptr<Search> ws = sr;
+                        n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token,
+                            [this,ws,last_req,query](const Request& status,
+                                    NetworkEngine::RequestAnswer&& answer) mutable
+                            { /* on done */
+                                network_engine.cancelRequest(last_req);
+                                if (auto sr = ws.lock()) {
+                                    onListenDone(status, answer, sr, query);
+                                    searchStep(sr);
+                                }
+                            },
+                            [this,ws,last_req](const Request&, bool over) mutable
+                            { /* on expired */
+                                if (over) {
+                                    network_engine.cancelRequest(last_req);
+                                    if (auto sr = ws.lock())
+                                        scheduler.edit(sr->nextSearchStep, scheduler.time());
                             }
-                        },
-                        [this,ws,ls](const Request&, bool over) mutable
-                        { /* on expired */
-                            if (over) {
-                                network_engine.cancelRequest(ls);
-                                if (auto sr = ws.lock())
-                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                            }
-                        }
-                    );
+                        );
+                    }
                 }
                 if (not n.candidate and ++i == LISTEN_NODES)
                     break;
@@ -950,10 +983,11 @@ Dht::Search::isDone(const Get& get, time_point now) const
     unsigned i = 0;
     const auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
+        const auto& gs = sn.getStatus.find(get.query);
         if (sn.isBad())
             continue;
-        if (sn.last_get_reply < limit)
-            return false;
+        if (not gs->second or gs->second->reply_time < limit)
+           return false;
         if (++i == TARGET_NODES)
             break;
     }
@@ -970,7 +1004,10 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired() or (sn.candidate and t >= TARGET_NODES))
             continue;
-        bool pending = sn.getStatus and sn.getStatus->pending();
+        bool pending = std::find_if(sn.getStatus.begin(), sn.getStatus.end(),
+            [](const SearchNode::SyncStatusMap::value_type& gs){
+                return gs.second and gs.second->pending();
+            }) != sn.getStatus.end();
         if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
             // not isSynced
             if (not pending and reqs < SEARCH_REQUESTS)
@@ -1018,7 +1055,12 @@ Dht::Search::isListening(time_point now) const
     for (const auto& n : nodes) {
         if (n.isBad())
             continue;
-        if (!n.isListening(now))
+        SearchNode::SyncStatusMap::const_iterator ls {};
+        for (ls = n.listenStatus.begin(); ls != n.listenStatus.end() ; ++ls) {
+            if (n.isListening(now, ls))
+                break;
+        }
+        if (ls == n.listenStatus.end())
             return false;
         if (++i == LISTEN_NODES)
             break;
@@ -1195,7 +1237,14 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
     }
 
     if (callback)
-        sr->callbacks.push_back({.start=scheduler.time(), .query=q, .filter=filter, .get_cb=callback, .done_cb=done_callback});
+        sr->callbacks.push_back({
+            .start=scheduler.time(),
+            .query=std::make_shared<Query>(q),
+            .filter=filter.chain(q.getFilter()),
+            .get_cb=callback,
+            .done_cb=done_callback
+        });
+
     bootstrapSearch(*sr);
 
     if (sr->nextSearchStep)
@@ -1262,7 +1311,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
 }
 
 size_t
-Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, Query q)
+Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, const std::shared_ptr<Query>& q)
 {
     const auto& now = scheduler.time();
     if (!isRunning(af))
@@ -1312,6 +1361,8 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Query&& q)
         return true;
     };
 
+    auto query = std::make_shared<Query>(q);
+    auto filter = f.chain(q.getFilter());
     auto st = findStorage(id);
     size_t tokenlocal = 0;
     if (st == store.end() && store.size() < MAX_HASHES) {
@@ -1320,7 +1371,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Query&& q)
     }
     if (st != store.end()) {
         if (not st->empty()) {
-            std::vector<std::shared_ptr<Value>> newvals = st->get(f.chain(q.getFilter()));
+            std::vector<std::shared_ptr<Value>> newvals = st->get(filter);
             if (not newvals.empty()) {
                 if (!cb(newvals))
                     return 0;
@@ -1332,11 +1383,11 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Query&& q)
             }
         }
         tokenlocal = ++st->listener_token;
-        st->local_listeners.emplace(tokenlocal, LocalListener{q, f, gcb});
+        st->local_listeners.emplace(tokenlocal, LocalListener{query, filter, gcb});
     }
 
-    auto token4 = Dht::listenTo(id, AF_INET, gcb, f, q);
-    auto token6 = Dht::listenTo(id, AF_INET6, gcb, f, q);
+    auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query);
+    auto token6 = Dht::listenTo(id, AF_INET6, gcb, filter, query);
 
     DHT_LOG.DEBUG("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
@@ -1369,9 +1420,11 @@ Dht::cancelListen(const InfoHash& id, size_t token)
             s->listeners.erase(af_token);
             if (s->listeners.empty()) {
                 for (auto& sn : s->nodes) {
-                    // also erase requests for all searchnodes.
-                    network_engine.cancelRequest(sn.listenStatus);
-                    sn.listenStatus.reset();
+                    /* also erase requests for all searchnodes. */
+                    for (auto& ls : sn.listenStatus) {
+                        network_engine.cancelRequest(ls.second);
+                    }
+                    sn.listenStatus.clear();
                 }
             }
         }
@@ -1591,7 +1644,6 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
         DHT_LOG.DEBUG("Storage changed. Sending update to %lu local listeners.", st.local_listeners.size());
         for (const auto& l : st.local_listeners) {
             std::vector<std::shared_ptr<Value>> vals;
-            auto filter = l.second.filter.chain(l.second.query.getFilter());
             if (not l.second.filter or l.second.filter(*v.data))
                 vals.push_back(v.data);
             if (not vals.empty())
@@ -2447,6 +2499,12 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;
                 n.token.clear();
+                //TODO: uncomment the following depending on what's said here:
+                //https://github.com/sim590/opendht/commit/f46043069d60040081bf18668d4714b19c3e2316#commitcomment-17565515
+                //for (auto gs = n.getStatus.begin() ; gs != n.getStatus.end() ; ) {
+                //    network_engine.cancelRequest(gs->second);
+                //    gs = n.getStatus.erase(gs);
+                //}
                 n.last_get_reply = time_point::min();
                 cleared++;
                 searchSendGetValues(sr);
@@ -2509,7 +2567,7 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query
 
 void
 Dht::onGetValuesDone(const Request& status,
-        NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr)
+        NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr, const std::shared_ptr<Query>& orig_query)
 {
     if (not sr) {
         DHT_LOG.WARN("[search unknown] got reply to 'get'. Ignoring.");
@@ -2524,7 +2582,7 @@ Dht::onGetValuesDone(const Request& status,
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                     a.values.size());
             for (auto& cb : sr->callbacks) {
-                if (!cb.get_cb) continue;
+                if (!cb.get_cb or (orig_query and cb.query and not cb.query->isSatisfiedBy(*orig_query))) continue;
                 std::vector<std::shared_ptr<Value>> tmp;
                 std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
                     [&](const std::shared_ptr<Value>& v) {
@@ -2536,7 +2594,8 @@ Dht::onGetValuesDone(const Request& status,
             }
             std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
             for (auto& l : sr->listeners) {
-                if (!l.second.get_cb) continue;
+                if (!l.second.get_cb or (orig_query and l.second.query and not l.second.query->isSatisfiedBy(*orig_query)))
+                    continue;
                 std::vector<std::shared_ptr<Value>> tmp;
                 std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
                     [&](const std::shared_ptr<Value>& v) {
@@ -2581,13 +2640,13 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 }
 
 void
-Dht::onListenDone(const Request& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
+Dht::onListenDone(const Request& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr, const std::shared_ptr<Query>& orig_query)
 {
     DHT_LOG.DEBUG("[search %s] Got reply to listen.", sr->id.toString().c_str());
     if (sr) {
         if (not answer.values.empty()) { /* got new values from listen request */
             DHT_LOG.DEBUG("[listen %s] Got new values.", sr->id.toString().c_str());
-            onGetValuesDone(status, answer, sr);
+            onGetValuesDone(status, answer, sr, orig_query);
         }
 
         if (not sr->done) {
