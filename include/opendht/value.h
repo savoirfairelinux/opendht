@@ -130,6 +130,14 @@ struct Value
     class Filter : public std::function<bool(const Value&)> {
         using std::function<bool(const Value&)>::function;
     public:
+        Filter chain(Filter&& f2) {
+            auto f1 = *this;
+            return chain(std::move(f1), std::move(f2));
+        }
+        Filter chainOr(Filter&& f2) {
+            auto f1 = *this;
+            return chainOr(std::move(f1), std::move(f2));
+        }
         static Filter chain(Filter&& f1, Filter&& f2) {
             if (not f1) return f2;
             if (not f2) return f1;
@@ -151,12 +159,6 @@ struct Value
             return [f1,f2](const Value& v) {
                 return f1(v) or f2(v);
             };
-        }
-        Filter chain(Filter&& f2) {
-            return chain(std::move(*this), std::move(f2));
-        }
-        Filter chainOr(Filter&& f2) {
-            return chainOr(std::move(*this), std::move(f2));
         }
     };
 
