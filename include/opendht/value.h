@@ -144,7 +144,7 @@ struct Value
             };
         }
         template <typename T>
-        static Filter chain(T&& set) {
+        static Filter chainAll(T&& set) {
             using namespace std::placeholders;
             return std::bind([](const Value& v, T& s) {
                 for (const auto& f : s)
@@ -154,7 +154,7 @@ struct Value
             }, _1, std::move(set));
         }
         static Filter chain(std::initializer_list<Filter> l) {
-            return chain(std::move(l));
+            return chainAll(std::move(l));
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return AllFilter();
@@ -632,7 +632,7 @@ struct Query
         std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FilterDescription& f){
             return f.getLocalFilter();
         });
-        return Value::Filter::chain(std::move(fset));
+        return Value::Filter::chainAll(std::move(fset));
     }
 
     std::set<Value::Field> getFieldSelector() const {
