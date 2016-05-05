@@ -498,16 +498,16 @@ struct FieldSelectorDescription
     bool operator==(const FieldSelectorDescription& fd) const { return field == fd.field; }
 
     void msgpack_unpack(msgpack::object msg) {
-        if (auto t = findMapValue(msg, "t"))
-            field = (Value::Field)t->as<unsigned>();
+        if (auto f = findMapValue(msg, "f"))
+            field = (Value::Field)f->as<unsigned>();
         else
             throw msgpack::type_error();
     }
 
     template <typename Packer>
-    void msgpack_pack(Packer& p) {
+    void msgpack_pack(Packer& p) const {
         p.pack_map(1);
-        p.pack(std::string("t")); p.pack(field);
+        p.pack(std::string("f")); p.pack(static_cast<uint8_t>(field));
     }
 private:
     Value::Field field {Value::Field::None};
@@ -527,13 +527,12 @@ struct FilterDescription
     FilterDescription(Value::Field f, InfoHash hash_value) : field(f), hashValue(hash_value) {}
     FilterDescription(Value::Field f, Blob blob_value) : field(f), blobValue(blob_value) {}
 
-    bool operator==(const FilterDescription& vfd) const;
+    bool operator==(const FilterDescription& fd) const;
 
     template <typename Packer>
-    void msgpack_pack(Packer& p) const
-    {
+    void msgpack_pack(Packer& p) const {
         p.pack_map(2);
-        p.pack(std::string("t")); p.pack(field);
+        p.pack(std::string("f")); p.pack(static_cast<uint8_t>(field));
 
         p.pack(std::string("v"));
         if (value_str.empty())
@@ -557,8 +556,8 @@ struct FilterDescription
         hashValue = {};
         blobValue.clear();
 
-        if (auto t = findMapValue(msg, "t"))
-            field = (Value::Field)t->as<unsigned>();
+        if (auto f = findMapValue(msg, "f"))
+            field = (Value::Field)f->as<unsigned>();
         else
             throw msgpack::type_error();
 
@@ -646,7 +645,7 @@ struct Query
     /**
      * Tell if the query is satisfied by another query.
      */
-    bool isSatisfiedBy(Query& q) const;
+    bool isSatisfiedBy(const Query& q) const;
 
     template <typename Packer>
     void msgpack_pack(Packer& pk) const {
