@@ -725,17 +725,23 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 
         std::weak_ptr<Search> ws = sr;
         auto onDone =
-            [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
+            [this,ws,query,n](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
                 if (auto sr = ws.lock()) {
+                    auto srn = sr->getNode(status.node);
+                    if (srn)
+                        srn->getStatus.erase(query);
                     sr->insertNode(status.node, scheduler.time(), answer.ntoken);
                     onGetValuesDone(status, answer, sr, query);
                 }
             };
         auto onExpired =
-            [this,ws](const Request& status, bool over) mutable {
+            [this,ws,query,n](const Request& status, bool over) mutable {
                 if (auto sr = ws.lock()) {
-                    if (auto srn = sr->getNode(status.node))
+                    if (auto srn = sr->getNode(status.node)) {
                         srn->candidate = not over;
+                        if (over)
+                            srn->getStatus.erase(query);
+                    }
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
                 }
             };
@@ -820,13 +826,17 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                     onListenDone(status, answer, sr, query);
                                     searchStep(sr);
                                 }
+                                if (auto sn = sr->getNode(status.node))
+                                    sn->getStatus.erase(query);
                             },
                             [this,ws,last_req](const Request&, bool over) mutable
                             { /* on expired */
-                                if (over) {
-                                    network_engine.cancelRequest(last_req);
-                                    if (auto sr = ws.lock())
-                                        scheduler.edit(sr->nextSearchStep, scheduler.time());
+                                network_engine.cancelRequest(last_req);
+                                if (auto sr = ws.lock())
+                                    searchStep(sr);
+                                    if (over)
+                                        if (auto sn = sr->getNode(status.node))
+                                            node->getStatus.erase(query);
                             }
                         );
                     }
@@ -2499,12 +2509,6 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;
                 n.token.clear();
-                //TODO: uncomment the following depending on what's said here:
-                //https://github.com/sim590/opendht/commit/f46043069d60040081bf18668d4714b19c3e2316#commitcomment-17565515
-                //for (auto gs = n.getStatus.begin() ; gs != n.getStatus.end() ; ) {
-                //    network_engine.cancelRequest(gs->second);
-                //    gs = n.getStatus.erase(gs);
-                //}
                 n.last_get_reply = time_point::min();
                 cleared++;
                 searchSendGetValues(sr);
