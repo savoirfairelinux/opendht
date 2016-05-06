@@ -264,4 +264,52 @@ Query::isSatisfiedBy(const Query& q) const
     return satisfied(filters_, q.filters_) and satisfied(fieldSelectors_, q.fieldSelectors_);
 }
 
+std::ostream& operator<<(std::ostream& s, const dht::Query& q)
+{
+    s << "Query[SELECT " << (q.fieldSelectors_.empty() ? "*" : "");
+    for (auto fs = q.fieldSelectors_.begin() ; fs != q.fieldSelectors_.end() ; ++fs) {
+        switch (fs->getField()) {
+            case Value::Field::Id:
+                s << "id";
+                break;
+            case Value::Field::ValueType:
+                s << "value_type";
+                break;
+            case Value::Field::UserType:
+                s << "user_type";
+                break;
+            case Value::Field::OwnerPk:
+                s << "owner_public_key";
+                break;
+            default:
+                break;
+        }
+        s << (std::next(fs) != q.fieldSelectors_.end() ? "," : "");
+    }
+
+    if (not q.filters_.empty()){
+        s << " WHERE ";
+        for (auto f = q.filters_.begin() ; f != q.filters_.end() ; ++f) {
+            switch (f->getField()) {
+                case Value::Field::Id:
+                    s << "id=" << f->getInt();
+                case Value::Field::ValueType:
+                    s << "value_type=" << f->getInt();
+                case Value::Field::OwnerPk:
+                    s << "owner_pk_hash=" << f->getHash().toString();
+                case Value::Field::UserType: {
+                    auto b = f->getBlob();
+                    s << "user_type=" << std::string {b.begin(), b.end()};
+                }
+                default:
+                    break;
+            }
+            s << (std::next(f) != q.filters_.end() ? "," : "");
+        }
+    }
+    s << "]";
+    return s;
 }
+
+}
+
