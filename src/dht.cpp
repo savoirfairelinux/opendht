@@ -182,6 +182,20 @@ struct Dht::SearchNode {
                and (get_status == getStatus.end() or not get_status->second or not get_status->second->pending());
     }
 
+    bool expired(const SyncStatusMap& status) const {
+        return std::find_if(status.begin(), status.end(),
+            [](const SearchNode::SyncStatusMap::value_type& r){
+                return r.second and not r.second->expired();
+            }) == status.end();
+    }
+
+    bool pending(const SyncStatusMap& status) const {
+        return std::find_if(status.begin(), status.end(),
+            [](const SearchNode::SyncStatusMap::value_type& r){
+                return r.second and r.second->pending();
+            }) != status.end();
+    }
+
     bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
         auto ack = acked.find(vid);
         if (ack == acked.end() or not ack->second) {
@@ -299,7 +313,7 @@ struct Dht::Search {
     unsigned currentGetRequests() const {
         unsigned count = 0;
         for (const auto& n : nodes)
-            if (not n.isBad() and n.getStatus and n.getStatus->pending())
+            if (not n.isBad() and n.pending(n.getStatus))
                 count++;
         return count;
     }
@@ -1967,6 +1981,18 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     }
     out << std::endl;
 
+    /*printing the queries*/
+    {
+        unsigned qcount = 0;
+        std::cout << "Queries:" << std::endl;
+        for (const auto& cb : sr.callbacks) {
+            out << ++qcount << ": " << *cb.query << std::endl;
+        }
+        for (const auto& l : sr.listeners) {
+            out << ++qcount << ": " << *l.second.query << std::endl;
+        }
+    }
+
     for (const auto& n : sr.announce) {
         bool announced = sr.isAnnounced(n.value->id, getType(n.value->type), now);
         out << "Announcement: " << *n.value << (announced ? " [announced]" : "") << std::endl;
@@ -1988,7 +2014,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 
         // Get status
         {
-            char g_i = (n.getStatus && n.getStatus->pending()) ? (n.candidate ? 'c' : 'f') : ' ';
+            char g_i = n.pending(n.getStatus) ? (n.candidate ? 'c' : 'f') : ' ';
             char s_i = n.isSynced(now) ? (n.last_get_reply > last_get ? 'u' : 's') : '-';
             out << " [" << s_i << g_i << "] ";
         }
@@ -1999,7 +2025,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                 out << "    ";
             else
                 out << "["
-                    << (n.isListening(now) ? 'l' : (n.listenStatus->pending() ? 'f' : ' ')) << "] ";
+                    << (n.isListening(now) ? 'l' : (n.pending(n.listenStatus) ? 'f' : ' ')) << "] ";
         }
 
         // Announce status
