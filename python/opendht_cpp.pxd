@@ -91,41 +91,37 @@ cdef extern from "opendht/value.h" namespace "dht":
         vector[uint8_t] data
         string user_type
 
-cdef extern from "opendht/dht.h" namespace "dht":
+cdef extern from "opendht/node.h" namespace "dht":
     cdef cppclass Node:
         Node() except +
         InfoHash getId() const
         string getAddrStr() const
         bool isExpired() const
+
+cdef extern from "opendht/callbacks.h" namespace "dht":
     ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
-    cdef cppclass Dht:
-        cppclass Config:
-            InfoHash node_id
-            bool is_bootstrap
-        cppclass ShutdownCallback:
-            ShutdownCallback() except +
-        cppclass GetCallback:
-            GetCallback() except +
-            #GetCallback(GetCallbackRaw cb, void *user_data) except +
-        cppclass DoneCallback:
-            DoneCallback() except +
-            #DoneCallback(DoneCallbackRaw, void *user_data) except +
-        Dht() except +
-        InfoHash getNodeId() const
-        @staticmethod
-        ShutdownCallback bindShutdownCb(ShutdownCallbackRaw cb, void *user_data)
-        @staticmethod
-        GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
-        @staticmethod
-        DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
 
-cdef extern from "opendht/dht.h" namespace "dht":
-    cdef cppclass SecureDht:
-        cppclass Config:
-            Dht.Config node_config
-            Identity id
+    cppclass ShutdownCallback:
+        ShutdownCallback() except +
+    cppclass GetCallback:
+        GetCallback() except +
+        #GetCallback(GetCallbackRaw cb, void *user_data) except +
+    cppclass DoneCallback:
+        DoneCallback() except +
+        #DoneCallback(DoneCallbackRaw, void *user_data) except +
+
+    cdef ShutdownCallback bindShutdownCb(ShutdownCallbackRaw cb, void *user_data)
+    cdef GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
+    cdef DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
+
+    cppclass Config:
+        InfoHash node_id
+        bool is_bootstrap
+    cppclass SecureDhtConfig:
+        Config node_config
+        Identity id
 
 cdef extern from "opendht/dhtrunner.h" namespace "dht":
     ctypedef future[size_t] ListenToken
@@ -133,7 +129,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
     cdef cppclass DhtRunner:
         DhtRunner() except +
         cppclass Config:
-            SecureDht.Config dht_config
+            SecureDhtConfig dht_config
             bool threaded
         InfoHash getId() const
         InfoHash getNodeId() const
@@ -141,18 +137,18 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void run(in_port_t, Config config)
         void run(const char*, const char*, const char*, Config config)
         void join()
-        void shutdown(Dht.ShutdownCallback)
+        void shutdown(ShutdownCallback)
         bool isRunning()
         string getStorageLog() const
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const
-        void get(InfoHash key, Dht.GetCallback get_cb, Dht.DoneCallback done_cb)
-        void put(InfoHash key, shared_ptr[Value] val, Dht.DoneCallback done_cb)
-        ListenToken listen(InfoHash key, Dht.GetCallback get_cb)
+        void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb)
+        void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb)
+        ListenToken listen(InfoHash key, GetCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)
         vector[unsigned] getNodeMessageStats(bool i)
 
-ctypedef DhtRunner.Config Config
+ctypedef DhtRunner.Config DhtRunnerConfig
 
 cdef extern from "opendht/log.h" namespace "dht::log":
     void enableLogging(DhtRunner& dht)

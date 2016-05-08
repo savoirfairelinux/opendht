@@ -27,6 +27,8 @@
 #include "network_engine.h"
 #include "scheduler.h"
 #include "routing_table.h"
+#include "node_cache.h"
+#include "callbacks.h"
 
 #include <string>
 #include <array>
@@ -50,69 +52,11 @@ namespace dht {
 class Dht {
 public:
 
-    enum class Status {
-        Disconnected, // 0 nodes
-        Connecting,   // 1+ nodes
-        Connected     // 1+ good nodes
-    };
-
-    struct Config {
-        InfoHash node_id;
-        bool is_bootstrap;
-    };
-
     // [[deprecated]]
     using NodeExport = dht::NodeExport;
 
-    typedef std::function<bool(const std::vector<std::shared_ptr<Value>>& values)> GetCallback;
-    typedef std::function<bool(std::shared_ptr<Value> value)> GetCallbackSimple;
-    typedef std::function<void()> ShutdownCallback;
-
-    typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
-
-    static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
-
-    static GetCallbackSimple
-    bindGetCb(GetCallbackRaw raw_cb, void* user_data) {
-        if (not raw_cb) return {};
-        return [=](const std::shared_ptr<Value>& value) {
-            return raw_cb(value, user_data);
-        };
-    }
-    static GetCallback
-    bindGetCb(GetCallbackSimple cb) {
-        if (not cb) return {};
-        return [=](const std::vector<std::shared_ptr<Value>>& values) {
-            for (const auto& v : values)
-                if (not cb(v))
-                    return false;
-            return true;
-        };
-    }
-
-    typedef std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)> DoneCallback;
-    typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
-    typedef void (*ShutdownCallbackRaw)(void *user_data);
-
-    typedef std::function<void(bool success)> DoneCallbackSimple;
-
-    static ShutdownCallback
-    bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data) {
-        return [=]() { shutdown_cb_raw(user_data); };
-    }
-    static DoneCallback
-    bindDoneCb(DoneCallbackSimple donecb) {
-        if (not donecb) return {};
-        using namespace std::placeholders;
-        return std::bind(donecb, _1);
-    }
-    static DoneCallback
-    bindDoneCb(DoneCallbackRaw raw_cb, void* user_data) {
-        if (not raw_cb) return {};
-        return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
-            raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
-        };
-    }
+    // [[deprecated]]
+    using Status = NodeStatus;
 
     Dht() : network_engine(DHT_LOG, scheduler) {}
 
@@ -136,9 +80,9 @@ public:
     /**
      * Get the current status of the node for the given family.
      */
-    Status getStatus(sa_family_t af) const;
+    NodeStatus getStatus(sa_family_t af) const;
 
-    Status getStatus() const {
+    NodeStatus getStatus() const {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
     }
 
@@ -278,7 +222,6 @@ public:
      */
     std::vector<NodeExport> exportNodes();
 
-    typedef std::pair<InfoHash, Blob> ValuesExport;
     std::vector<ValuesExport> exportValues() const;
     void importValues(const std::vector<ValuesExport>&);
 
@@ -353,22 +296,6 @@ private:
     static constexpr unsigned BLACKLISTED_MAX {10};
 
     static constexpr size_t TOKEN_SIZE {64};
-
-    struct NodeCache {
-        std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
-        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
-        void putNode(std::shared_ptr<Node> n);
-
-        /**
-         * Reset the connectivity state of every node,
-         * Giving them a new chance if they where expired.
-         * To use in case of connectivity change etc.
-         */
-        void clearBadNodes(sa_family_t family = 0);
-    private:
-        std::list<std::weak_ptr<Node>> cache_4;
-        std::list<std::weak_ptr<Node>> cache_6;
-    };
 
     struct SearchNode {
         SearchNode(std::shared_ptr<Node> node) : node(node) {}

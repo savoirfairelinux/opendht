@@ -45,11 +45,7 @@ public:
 
     typedef std::function<void(bool)> SignatureCheckCallback;
 
-    struct Config
-    {
-        Dht::Config node_config;
-        crypto::Identity id;
-    };
+    using Config = SecureDhtConfig;
 
     SecureDht() {}
 
@@ -131,7 +127,7 @@ public:
     const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
 
 
-    using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
+    
 
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.

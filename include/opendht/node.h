@@ -28,12 +28,6 @@
 
 namespace dht {
 
-struct NodeExport {
-    InfoHash id;
-    sockaddr_storage ss;
-    socklen_t sslen;
-};
-
 struct Node {
     friend class NetworkEngine;
 

@@ -137,7 +137,7 @@ struct Logger {
 
 // Serialization related definitions and utility functions
 
-typedef std::vector<uint8_t> Blob;
+using Blob = std::vector<uint8_t>;
 
 /**
  * Provides backward compatibility with msgpack 1.0
@@ -162,4 +162,4 @@ unpackMsg(Blob b) {
 
 msgpack::unpacked unpackMsg(Blob b);
 
-}
+} // namespace dht

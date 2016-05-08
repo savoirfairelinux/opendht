@@ -102,16 +102,16 @@ Dht::setLoggers(LogMethod&& error, LogMethod&& warn, LogMethod&& debug)
     DHT_LOG.ERROR = std::move(error);
 }
 
-Dht::Status
+NodeStatus
 Dht::getStatus(sa_family_t af) const
 {
     unsigned good = 0, dubious = 0, cached = 0, incoming = 0;
     int tot = getNodesStats(af, &good, &dubious, &cached, &incoming);
     if (tot < 1)
-        return Status::Disconnected;
+        return NodeStatus::Disconnected;
     else if (good < 1)
-        return Status::Connecting;
-    return Status::Connected;
+        return NodeStatus::Connecting;
+    return NodeStatus::Connected;
 }
 
 void
@@ -193,61 +193,6 @@ Dht::findNode(const InfoHash& id, sa_family_t af) const
     for (const auto& n : b->nodes)
         if (n->id == id) return n;
     return {};
-}
-
-std::shared_ptr<Node>
-Dht::NodeCache::getNode(const InfoHash& id, sa_family_t family) {
-    auto& list = family == AF_INET ? cache_4 : cache_6;
-    for (auto n = list.begin(); n != list.end();) {
-        if (auto ln = n->lock()) {
-            if (ln->id == id)
-                return ln;
-            ++n;
-        } else {
-            n = list.erase(n);
-        }
-    }
-    return nullptr;
-}
-
-std::shared_ptr<Node>
-Dht::NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
-    auto node = getNode(id, sa->sa_family);
-    if (not node) {
-        node = std::make_shared<Node>(id, sa, sa_len);
-        putNode(node);
-    } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
-        node->update(sa, sa_len);
-    }
-    if (confirm)
-        node->received(now, confirm >= 2);
-    return node;
-}
-
-void
-Dht::NodeCache::putNode(std::shared_ptr<Node> n) {
-    if (not n) return;
-    auto& list = n->ss.ss_family == AF_INET ? cache_4 : cache_6;
-    list.push_back(n);
-}
-
-void
-Dht::NodeCache::clearBadNodes(sa_family_t family)
-{
-    if (family == 0) {
-        clearBadNodes(AF_INET);
-        clearBadNodes(AF_INET6);
-    } else {
-        auto& list = family == AF_INET ? cache_4 : cache_6;
-        for (auto n = list.begin(); n != list.end();) {
-            if (auto ln = n->lock()) {
-                ln->reset();
-                ++n;
-            } else {
-                n = list.erase(n);
-            }
-        }
-    }
 }
 
 /* Every bucket caches the address of a likely node.  Ping it. */
@@ -2228,11 +2173,11 @@ Dht::confirmNodes()
     bool soon = false;
     const auto& now = scheduler.time();
 
-    if (searches4.empty() and getStatus(AF_INET) != Status::Disconnected) {
+    if (searches4.empty() and getStatus(AF_INET) != NodeStatus::Disconnected) {
         DHT_LOG.DEBUG("[confirm nodes] initial IPv4 'get' for my id (%s).", myid.toString().c_str());
         search(myid, AF_INET);
     }
-    if (searches6.empty() and getStatus(AF_INET6) != Status::Disconnected) {
+    if (searches6.empty() and getStatus(AF_INET6) != NodeStatus::Disconnected) {
         DHT_LOG.DEBUG("[confirm nodes] initial IPv6 'get' for my id (%s).", myid.toString().c_str());
         search(myid, AF_INET6);
     }
@@ -2259,7 +2204,7 @@ Dht::confirmNodes()
     nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
 }
 
-std::vector<Dht::ValuesExport>
+std::vector<ValuesExport>
 Dht::exportValues() const
 {
     std::vector<ValuesExport> e {};

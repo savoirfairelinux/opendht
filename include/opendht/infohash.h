@@ -204,4 +204,10 @@ static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{{
     0xFF, 0xFF, 0xFF, 0xFF
 }}};
 
+struct NodeExport {
+    InfoHash id;
+    sockaddr_storage ss;
+    socklen_t sslen;
+};
+
 }

@@ -431,6 +431,8 @@ struct Value
     Blob cypher {};
 };
 
+using ValuesExport = std::pair<InfoHash, Blob>;
+
 template <typename T,
           typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>
 Value::Filter

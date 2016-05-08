@@ -20,7 +20,10 @@
 
 #pragma once
 
-#include "securedht.h"
+//#include "securedht.h"
+#include "infohash.h"
+#include "value.h"
+#include "callbacks.h"
 
 #include <thread>
 #include <mutex>
@@ -33,6 +36,10 @@
 
 namespace dht {
 
+struct Node;
+class SecureDht;
+struct SecureDhtConfig;
+
 /**
  * Provides a thread-safe interface to run the (secure) DHT.
  * The class will open sockets on the provided port and will
@@ -42,28 +49,28 @@ namespace dht {
 class DhtRunner {
 
 public:
-    typedef std::function<void(Dht::Status, Dht::Status)> StatusCallback;
+    typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
 
     DhtRunner();
     virtual ~DhtRunner();
 
-    void get(InfoHash id, Dht::GetCallbackSimple cb, Dht::DoneCallback donecb={}, Value::Filter f = Value::AllFilter()) {
-        get(id, Dht::bindGetCb(cb), donecb, f);
+    void get(InfoHash id, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter f = Value::AllFilter()) {
+        get(id, bindGetCb(cb), donecb, f);
     }
 
-    void get(InfoHash id, Dht::GetCallbackSimple cb, Dht::DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
-        get(id, Dht::bindGetCb(cb), donecb, f);
+    void get(InfoHash id, GetCallbackSimple cb, DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
+        get(id, bindGetCb(cb), donecb, f);
     }
 
-    void get(InfoHash hash, Dht::GetCallback vcb, Dht::DoneCallback dcb, Value::Filter f={});
+    void get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f={});
 
-    void get(InfoHash id, Dht::GetCallback cb, Dht::DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
-        get(id, cb, Dht::bindDoneCb(donecb), f);
+    void get(InfoHash id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter()) {
+        get(id, cb, bindDoneCb(donecb), f);
     }
-    void get(const std::string& key, Dht::GetCallback vcb, Dht::DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter());
+    void get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter());
 
     template <class T>
-    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, Dht::DoneCallbackSimple dcb={})
+    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, DoneCallbackSimple dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
@@ -72,7 +79,7 @@ public:
         getFilterSet<T>());
     }
     template <class T>
-    void get(InfoHash hash, std::function<bool(T&&)> cb, Dht::DoneCallbackSimple dcb={})
+    void get(InfoHash hash, std::function<bool(T&&)> cb, DoneCallbackSimple dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
@@ -115,10 +122,10 @@ public:
         return p->get_future();
     }
 
-    std::future<size_t> listen(InfoHash key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
-    std::future<size_t> listen(const std::string& key, Dht::GetCallback vcb, Value::Filter f = Value::AllFilter());
-    std::future<size_t> listen(InfoHash key, Dht::GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
-        return listen(key, Dht::bindGetCb(cb), f);
+    std::future<size_t> listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter());
+    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter());
+    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
+        return listen(key, bindGetCb(cb), f);
     }
 
     template <class T>
@@ -149,40 +156,40 @@ public:
     void cancelListen(InfoHash h, size_t token);
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
-    void put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
-    void put(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
-        put(hash, value, Dht::bindDoneCb(cb));
+    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={});
+    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
+        put(hash, value, bindDoneCb(cb));
     }
 
-    void put(InfoHash hash, Value&& value, Dht::DoneCallback cb={});
-    void put(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
-        put(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
+    void put(InfoHash hash, Value&& value, DoneCallback cb={});
+    void put(InfoHash hash, Value&& value, DoneCallbackSimple cb) {
+        put(hash, std::forward<Value>(value), bindDoneCb(cb));
     }
-    void put(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb={});
+    void put(const std::string& key, Value&& value, DoneCallbackSimple cb={});
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
-        putSigned(hash, value, Dht::bindDoneCb(cb));
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={});
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
+        putSigned(hash, value, bindDoneCb(cb));
     }
 
-    void putSigned(InfoHash hash, Value&& value, Dht::DoneCallback cb={});
-    void putSigned(InfoHash hash, Value&& value, Dht::DoneCallbackSimple cb) {
-        putSigned(hash, std::forward<Value>(value), Dht::bindDoneCb(cb));
+    void putSigned(InfoHash hash, Value&& value, DoneCallback cb={});
+    void putSigned(InfoHash hash, Value&& value, DoneCallbackSimple cb) {
+        putSigned(hash, std::forward<Value>(value), bindDoneCb(cb));
     }
-    void putSigned(const std::string& key, Value&& value, Dht::DoneCallbackSimple cb={});
+    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb={});
 
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, Dht::DoneCallbackSimple cb) {
-        putEncrypted(hash, to, value, Dht::bindDoneCb(cb));
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb={});
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
+        putEncrypted(hash, to, value, bindDoneCb(cb));
     }
 
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, Dht::DoneCallbackSimple cb) {
-        putEncrypted(hash, to, std::forward<Value>(value), Dht::bindDoneCb(cb));
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb={});
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb) {
+        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb));
     }
-    void putEncrypted(const std::string& key, InfoHash to, Value&& value, Dht::DoneCallback cb={});
+    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
 
     void bootstrap(const char* host, const char* service);
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
@@ -195,31 +202,11 @@ public:
      */
     void connectivityChanged();
 
-    void dumpTables() const
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        dht_->dumpTables();
-    }
+    void dumpTables() const;
 
-    InfoHash getId() const {
-        if (!dht_)
-            return {};
-        return dht_->getId();
-    }
+    InfoHash getId() const;
 
-    InfoHash getNodeId() const {
-        if (!dht_)
-            return {};
-        return dht_->getNodeId();
-    }
-
-    /**
-     * @deprecated Use getNodeId()
-     */
-    //[[deprecated]]
-    InfoHash getRoutingId() const {
-        return getNodeId();
-    }
+    InfoHash getNodeId() const;
 
     /**
      * Returns the currently bound address.
@@ -237,107 +224,41 @@ public:
         return ntohs(((sockaddr_in*)&getBound(f).first)->sin_port);
     }
 
-    std::pair<size_t, size_t> getStoreSize() const {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        if (!dht_)
-            return {};
-        return dht_->getStoreSize();
-    }
+    std::pair<size_t, size_t> getStoreSize() const;
 
-    void setStorageLimit(size_t limit = Dht::DEFAULT_STORAGE_LIMIT) {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        if (!dht_)
-            throw std::runtime_error("dht is not running");
-        return dht_->setStorageLimit(limit);
-    }
+    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT);
 
-    std::vector<NodeExport> exportNodes() const {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        if (!dht_)
-            return {};
-        return dht_->exportNodes();
-    }
+    std::vector<NodeExport> exportNodes() const;
 
-    std::vector<Dht::ValuesExport> exportValues() const {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        if (!dht_)
-            return {};
-        return dht_->exportValues();
-    }
+    std::vector<ValuesExport> exportValues() const;
 
-    void setLoggers(LogMethod&& error = NOLOG, LogMethod&& warn = NOLOG, LogMethod&& debug = NOLOG) {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
-    }
+    void setLoggers(LogMethod&& error = NOLOG, LogMethod&& warn = NOLOG, LogMethod&& debug = NOLOG);
 
-    void registerType(const ValueType& type) {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        dht_->registerType(type);
-    }
+    void registerType(const ValueType& type);
 
-    void importValues(const std::vector<Dht::ValuesExport>& values) {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        dht_->importValues(values);
-    }
+    void importValues(const std::vector<ValuesExport>& values);
 
     bool isRunning() const {
         return running;
     }
 
-    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getNodesStats(af, good_return, dubious_return, cached_return, incoming_return);
-    }
+    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const;
 
-    std::vector<unsigned> getNodeMessageStats(bool in = false) const
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getNodeMessageStats(in);
-    }
-
-    std::string getStorageLog() const
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getStorageLog();
-    }
-    std::string getRoutingTablesLog(sa_family_t af) const
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getRoutingTablesLog(af);
-    }
-    std::string getSearchesLog(sa_family_t af = 0) const
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getSearchesLog(af);
-    }
-    std::vector<Address> getPublicAddress(sa_family_t af = 0)
-    {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return dht_->getPublicAddress(af);
-    }
-    std::vector<std::string> getPublicAddressStr(sa_family_t af = 0)
-    {
-        auto addrs = getPublicAddress(af);
-        std::vector<std::string> ret(addrs.size());
-        std::transform(addrs.begin(), addrs.end(), ret.begin(), dht::printAddr);
-        return ret;
-    }
+    std::vector<unsigned> getNodeMessageStats(bool in = false) const;
+    std::string getStorageLog() const;
+    std::string getRoutingTablesLog(sa_family_t af) const;
+    std::string getSearchesLog(sa_family_t af = 0) const;
+    std::vector<Address> getPublicAddress(sa_family_t af = 0);
+    std::vector<std::string> getPublicAddressStr(sa_family_t af = 0);
 
     // securedht methods
 
     void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>)>);
-    void registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        dht_->registerCertificate(cert);
-    }
-    void setLocalCertificateStore(SecureDht::CertificateStoreQuery&& query_method) {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        dht_->setLocalCertificateStore(std::move(query_method));
-    }
+    void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
+    void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
     struct Config {
-        SecureDht::Config dht_config;
+        SecureDhtConfig dht_config;
         bool threaded;
     };
 
@@ -393,7 +314,7 @@ public:
     /**
      * Gracefuly disconnect from network.
      */
-    void shutdown(Dht::ShutdownCallback cb);
+    void shutdown(ShutdownCallback cb);
 
     /**
      * Quit and wait for all threads to terminate.
@@ -404,16 +325,16 @@ public:
 
 private:
 
-    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::Config config);
+    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
     time_point loop_();
 
     static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const char* host, const char* service);
 
-    Dht::Status getStatus() const {
+    NodeStatus getStatus() const {
         return std::max(status4, status6);
     }
 
-    std::unique_ptr<SecureDht> dht_ {};
+    std::unique_ptr<SecureDht> dht_;
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
@@ -428,8 +349,8 @@ private:
 
     std::atomic<bool> running {false};
 
-    Dht::Status status4 {Dht::Status::Disconnected},
-                status6 {Dht::Status::Disconnected};
+    NodeStatus status4 {NodeStatus::Disconnected},
+               status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
     Address bound4 {};

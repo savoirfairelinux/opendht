@@ -32,7 +32,7 @@ extern "C" {
 
 namespace dht {
 
-Dht::Config& getConfig(SecureDht::Config& conf)
+Config& getConfig(SecureDht::Config& conf)
 {
     auto& c = conf.node_config;
     if (c.node_id == InfoHash()) {
@@ -214,7 +214,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 }
 
 
-Dht::GetCallback
+GetCallback
 SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 {
     return [=](const std::vector<std::shared_ptr<Value>>& values) {

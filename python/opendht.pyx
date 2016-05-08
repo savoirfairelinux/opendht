@@ -239,9 +239,9 @@ cdef class Identity(object):
             return c
 
 cdef class DhtConfig(object):
-    cdef cpp.Config _config
+    cdef cpp.DhtRunnerConfig _config
     def __init__(self):
-        self._config = cpp.Config()
+        self._config = cpp.DhtRunnerConfig()
         self._config.threaded = True;
     def setIdentity(self, Identity id):
         self._config.dht_config.id = id._id
@@ -276,7 +276,7 @@ cdef class DhtRunner(_WithID):
     def shutdown(self, shutdown_cb=None):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.shutdown(cpp.Dht.bindShutdownCb(shutdown_callback, <void*>cb_obj))
+        self.thisptr.shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
     def enableLogging(self):
         cpp.enableLogging(self.thisptr[0])
     def disableLogging(self):
@@ -308,7 +308,7 @@ cdef class DhtRunner(_WithID):
         if get_cb:
             cb_obj = {'get':get_cb, 'done':done_cb}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.get(key._infohash, cpp.Dht.bindGetCb(get_callback, <void*>cb_obj), cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
+            self.thisptr.get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj), cpp.bindDoneCb(done_callback, <void*>cb_obj))
         else:
             lock = threading.Condition()
             pending = 0
@@ -337,7 +337,7 @@ cdef class DhtRunner(_WithID):
         """
         cb_obj = {'done':done_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.put(key._infohash, val._value, cpp.Dht.bindDoneCb(done_callback, <void*>cb_obj))
+        self.thisptr.put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj))
     def listen(self, InfoHash key, get_cb):
         t = ListenToken()
         t._h = key._infohash
@@ -345,7 +345,7 @@ cdef class DhtRunner(_WithID):
         t._cb['cb'] = cb_obj
         # avoid the callback being destructed if the token is destroyed
         ref.Py_INCREF(cb_obj)
-        t._t = self.thisptr.listen(t._h, cpp.Dht.bindGetCb(get_callback, <void*>cb_obj)).share()
+        t._t = self.thisptr.listen(t._h, cpp.bindGetCb(get_callback, <void*>cb_obj)).share()
         return t
     def cancelListen(self, ListenToken token):
         self.thisptr.cancelListen(token._h, token._t)

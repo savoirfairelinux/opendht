@@ -189,7 +189,7 @@ parseArgs(int argc, char **argv) {
             break;
         case 'v':
             if (optarg)
-                params.logfile = {optarg};
+                params.logfile = optarg;
             params.log = true;
             break;
         case 'i':

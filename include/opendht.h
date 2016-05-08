@@ -19,13 +19,6 @@
 
 #pragma once
 
-#include "opendht/dht.h"
-#include "opendht/scheduler.h"
-#include "opendht/network_engine.h"
-#include "opendht/node.h"
-#include "opendht/value.h"
-#include "opendht/infohash.h"
-#include "opendht/securedht.h"
 #include "opendht/dhtrunner.h"
 #include "opendht/log.h"
 #include "opendht/default_types.h"
