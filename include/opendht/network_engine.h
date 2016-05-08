@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include "node_cache.h"
 #include "value.h"
 #include "infohash.h"
 #include "node.h"
@@ -157,8 +158,8 @@ class NetworkEngine final {
         Blob token;                                 /* security token */
         Value::Id value_id;                         /* the value id */
         time_point created { time_point::max() };   /* time when value was first created */
-        Blob nodes4;                                /* IPv4 nodes in response to a 'find' request */
-        Blob nodes6;                                /* IPv6 nodes in response to a 'find' request */
+        Blob nodes4_raw, nodes6_raw;                /* IPv4 nodes in response to a 'find' request */
+        std::vector<std::shared_ptr<Node>> nodes4, nodes6;
         std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
         want_t want;                                /* states if ipv4 or ipv6 request */
         uint16_t error_code;                        /* error code in case of error */
@@ -176,11 +177,14 @@ public:
      * and looking up the response from a node.
      */
     struct RequestAnswer {
-        Blob ntoken;
-        Value::Id vid;
-        std::vector<std::shared_ptr<Value>> values;
-        std::vector<std::shared_ptr<Node>> nodes;
-        std::vector<std::shared_ptr<Node>> nodes6;
+        Blob ntoken {};
+        Value::Id vid {};
+        std::vector<std::shared_ptr<Value>> values {};
+        std::vector<std::shared_ptr<Node>> nodes4 {};
+        std::vector<std::shared_ptr<Node>> nodes6 {};
+        RequestAnswer() {}
+        RequestAnswer(ParsedMessage&& msg)
+         : ntoken(std::move(msg.token)), values(std::move(msg.values)), nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
     };
 
 
@@ -264,6 +268,8 @@ public:
         }
     }
 
+    void connectivityChanged();
+
 private:
 
     /**
@@ -283,7 +289,7 @@ private:
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      * @param confirm (type: int) 1 if the node sent a message, 2 if it sent us a reply.
      */
-    std::function<std::shared_ptr<Node>(const InfoHash&, const sockaddr*, socklen_t, int)> onNewNode;
+    std::function<std::shared_ptr<Node>(const std::shared_ptr<Node>&, int)> onNewNode;
     /**
      * @brief when an addres is reported from a distant node.
      *
@@ -442,7 +448,11 @@ public:
      * @param fromlen  The length of the corresponding sockaddr structure.
      * @param now  The time to adjust the clock in the network engine.
      */
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
+    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen);
+
+    std::shared_ptr<Node> insertNode(const InfoHash& myid, const sockaddr* from, socklen_t fromlen) {
+        return cache.getNode(myid, from, fromlen, scheduler.time(), 0);
+    }
 
     std::vector<unsigned> getNodeMessageStats(bool in) {
         auto stats = in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
@@ -451,6 +461,21 @@ public:
         else { out_stats = {}; }
 
         return stats;
+    }
+
+    void blacklistNode(const std::shared_ptr<Node>& n) {
+        for (auto rit = requests.begin(); rit != requests.end();) {
+            if (rit->second->node == n) {
+                rit->second->cancel();
+                requests.erase(rit++);
+            } else {
+                ++rit;
+            }
+        }
+        //blacklistedNodes.emplace(n);
+        memcpy(&blacklist[next_blacklisted], &n->ss, n->sslen);
+        next_blacklisted = (next_blacklisted + 1) % BLACKLISTED_MAX;
+        //blacklistNode(&n->id, (const sockaddr*)&n->ss, n->sslen);
     }
 
 private:
@@ -464,6 +489,9 @@ private:
     static const constexpr size_t NODE6_INFO_BUF_LEN {38};
     /* TODO */
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
+    /* The maximum number of nodes that we snub.  There is probably little
+        reason to increase this value. */
+    static constexpr unsigned BLACKLISTED_MAX {10};
     /* TODO */
     static const std::string my_v;
 
@@ -473,7 +501,15 @@ private:
     const int dht_socket6 {-1};
     const Logger& DHT_LOG;
 
+    NodeCache cache {};
+    sockaddr_storage blacklist[BLACKLISTED_MAX] {};
+    unsigned next_blacklisted = 0;
+
     bool rateLimit();
+
+    static bool isMartian(const sockaddr* sa, socklen_t len);
+    //void blacklistNode(const InfoHash* id, const sockaddr*, socklen_t);
+    bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
 
     void pinged(Node&);
 
@@ -572,7 +608,7 @@ private:
             const std::string& message,
             bool include_id=false);
 
-    RequestAnswer deserializeNodesValues(ParsedMessage& msg);
+    void deserializeNodesValues(ParsedMessage& msg);
 
     std::queue<time_point> rate_limit_time {};
     static std::mt19937 rd_device;

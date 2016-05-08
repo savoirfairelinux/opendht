@@ -31,8 +31,7 @@ struct Bucket {
     InfoHash first {};
     time_point time {time_point::min()};             /* time of last reply in this bucket */
     std::list<std::shared_ptr<Node>> nodes {};
-    sockaddr_storage cached;  /* the address of a likely candidate */
-    socklen_t cachedlen {0};
+    std::shared_ptr<Node> cached;                    /* the address of a likely candidate */
 
     /** Return a random node in a bucket. */
     std::shared_ptr<Node> randomNode();

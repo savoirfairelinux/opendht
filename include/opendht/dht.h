@@ -27,7 +27,6 @@
 #include "network_engine.h"
 #include "scheduler.h"
 #include "routing_table.h"
-#include "node_cache.h"
 #include "callbacks.h"
 
 #include <string>
@@ -251,9 +250,6 @@ public:
         return {total_store_size, total_values};
     }
 
-    /* This must be provided by the user. */
-    static bool isBlacklisted(const sockaddr*, socklen_t) { return false; }
-
     std::vector<Address> getPublicAddress(sa_family_t family = 0);
 
 protected:
@@ -290,10 +286,6 @@ private:
     static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME {30};
 
     static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
-
-    /* The maximum number of nodes that we snub.  There is probably little
-        reason to increase this value. */
-    static constexpr unsigned BLACKLISTED_MAX {10};
 
     static constexpr size_t TOKEN_SIZE {64};
 
@@ -603,9 +595,6 @@ private:
     // registred types
     std::map<ValueType::Id, ValueType> types;
 
-    // cache of nodes not in the main routing table but used for searches
-    NodeCache cache;
-
     // are we a bootstrap node ?
     // note: Any running node can be used as a bootstrap node.
     //       Only nodes running only as bootstrap nodes should
@@ -623,16 +612,12 @@ private:
 
     std::map<InfoHash, std::shared_ptr<Search>> searches4 {};
     std::map<InfoHash, std::shared_ptr<Search>> searches6 {};
-    //std::map<std::shared_ptr<NetworkEngine::Request>, std::shared_ptr<Search>> searches {}; /* not used for now */
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
     // 0 is the invalid token.
     std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners {};
     size_t listener_token {1};
-
-    sockaddr_storage blacklist[BLACKLISTED_MAX] {};
-    unsigned next_blacklisted = 0;
 
     // timing
     Scheduler scheduler {};
@@ -700,14 +685,10 @@ private:
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    std::shared_ptr<Node> newNode(const InfoHash& id, const sockaddr*, socklen_t, int confirm);
+    std::shared_ptr<Node> newNode(const std::shared_ptr<Node>& node, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);
-
-    void blacklistNode(const InfoHash* id, const sockaddr*, socklen_t);
-    bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
-    static bool isMartian(const sockaddr*, socklen_t);
 
     // Searches
 

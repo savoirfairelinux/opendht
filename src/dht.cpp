@@ -70,10 +70,6 @@ set_nonblocking(int fd, int nonblocking)
 static std::mt19937 rd {dht::crypto::random_device{}()};
 static std::uniform_int_distribution<uint8_t> rand_byte;
 
-static const uint8_t v4prefix[16] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
-};
-
 static std::string
 to_hex(const uint8_t *buf, size_t buflen)
 {
@@ -138,40 +134,6 @@ Dht::shutdown(ShutdownCallback cb) {
 bool
 Dht::isRunning(sa_family_t af) const { return network_engine.isRunning(af); }
 
-bool
-Dht::isMartian(const sockaddr *sa, socklen_t len)
-{
-    // Check that sa_family can be accessed safely
-    if (!sa || len < sizeof(sockaddr_in))
-        return true;
-
-    switch(sa->sa_family) {
-    case AF_INET: {
-        sockaddr_in *sin = (sockaddr_in*)sa;
-        const uint8_t *address = (const uint8_t*)&sin->sin_addr;
-        return sin->sin_port == 0 ||
-            (address[0] == 0) ||
-            (address[0] == 127) ||
-            ((address[0] & 0xE0) == 0xE0);
-    }
-    case AF_INET6: {
-        if (len < sizeof(sockaddr_in6))
-            return true;
-        sockaddr_in6 *sin6 = (sockaddr_in6*)sa;
-        const uint8_t *address = (const uint8_t*)&sin6->sin6_addr;
-        return sin6->sin6_port == 0 ||
-            (address[0] == 0xFF) ||
-            (address[0] == 0xFE && (address[1] & 0xC0) == 0x80) ||
-            (memcmp(address, zeroes.data(), 15) == 0 &&
-             (address[15] == 0 || address[15] == 1)) ||
-            (memcmp(address, v4prefix, 12) == 0);
-    }
-
-    default:
-        return true;
-    }
-}
-
 /* Every bucket contains an unordered list of nodes. */
 std::shared_ptr<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af)
@@ -200,57 +162,13 @@ int
 Dht::sendCachedPing(Bucket& b)
 {
     /* We set family to 0 when there's no cached node. */
-    if (b.cached.ss_family == 0)
+    if (!b.cached)
         return 0;
 
     DHT_LOG.DEBUG("Sending ping to cached node.");
-    network_engine.sendPing((sockaddr*)&b.cached, b.cachedlen, nullptr, nullptr);
-    b.cached.ss_family = 0;
-    b.cachedlen = 0;
+    network_engine.sendPing(b.cached, nullptr, nullptr);
+    b.cached = {};
     return 0;
-}
-
-/* The internal blacklist is an LRU cache of nodes that have sent
-   incorrect messages. */
-void
-Dht::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
-{
-    DHT_LOG.WARN("Blacklisting broken node.");
-
-    if (id) {
-        auto n = findNode(*id, sa->sa_family);
-        /* Discard it from any searches in progress. */
-        auto black_list_in = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
-            for (auto& srp : srs) {
-                auto& sr = srp.second;
-                sr->nodes.erase(std::partition(sr->nodes.begin(), sr->nodes.end(), [&](SearchNode& sn) {
-                    return sn.node != n;
-                }), sr->nodes.end());
-            }
-        };
-        black_list_in(searches4);
-        black_list_in(searches6);
-    }
-    /* And make sure we don't hear from it again. */
-    memcpy(&blacklist[next_blacklisted], sa, salen);
-    next_blacklisted = (next_blacklisted + 1) % BLACKLISTED_MAX;
-}
-
-bool
-Dht::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
-{
-    if (salen > sizeof(sockaddr_storage))
-        return true;
-
-    if (isBlacklisted(sa, salen))
-        return true;
-
-    for (unsigned i = 0; i < BLACKLISTED_MAX; i++) {
-        if (memcmp(&blacklist[i], sa, salen) == 0)
-            return true;
-    }
-
-    return false;
 }
 
 std::vector<Address>
@@ -302,52 +220,40 @@ Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
 std::shared_ptr<Node>
-Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confirm)
+Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
 {
-    const auto& now = scheduler.time();
-    if (id == myid || isMartian(sa, salen) || isNodeBlacklisted(sa, salen))
-        return nullptr;
-
-    auto& list = sa->sa_family == AF_INET ? buckets : buckets6;
-    auto b = list.findBucket(id);
+    auto& list = node->getFamily() == AF_INET ? buckets : buckets6;
+    auto b = list.findBucket(node->id);
     if (b == list.end())
-        return nullptr;
-
-    bool mybucket = list.contains(b, myid);
+        return {};
 
     for (auto& n : b->nodes) {
-        if (n->id != id) continue;
-        /* Known node.  Update stuff. */
-
-        if (confirm || n->time + Node::NODE_EXPIRE_TIME < now) {
-            n->update(sa, salen);
-            if (confirm) {
-                n->received(now, confirm >= 2);
-                /* If this node existed in searches but was expired, give it another chance. */
-                trySearchInsert(n);
-            }
+        if (n == node) {
+            if (confirm)
+                trySearchInsert(node);
+            return n;
         }
-        return n;
     }
 
     /* New node. */
+    /* Try adding the node to searches */
+    trySearchInsert(node);
 
+    const auto& now = scheduler.time();
+    bool mybucket = list.contains(b, myid);
     if (mybucket) {
-        if (sa->sa_family == AF_INET)
+        if (node->getFamily() == AF_INET)
             mybucket_grow_time = now;
         else
             mybucket6_grow_time = now;
         //scheduler.edit(nextNodesConfirmation, now);
     }
 
-    /* First, try to get rid of a known-bad node. */
+    /* Try to get rid of an expired node. */
     for (auto& n : b->nodes) {
         if (not n->isExpired(now))
             continue;
-        n = cache.getNode(id, sa, salen, now, confirm);
-
-        /* Try adding the node to searches */
-        trySearchInsert(n);
+        n = node;
         return n;
     }
 
@@ -373,24 +279,18 @@ Dht::newNode(const InfoHash& id, const sockaddr *sa, socklen_t salen, int confir
             DHT_LOG.DEBUG("Splitting from depth %u", list.depth(b));
             sendCachedPing(*b);
             list.split(b);
-            return newNode(id, sa, salen, confirm);
+            return newNode(node, 0);
         }
 
         /* No space for this node.  Cache it away for later. */
-        if (confirm || b->cached.ss_family == 0) {
-            memcpy(&b->cached, sa, salen);
-            b->cachedlen = salen;
-        }
-        auto cn = cache.getNode(id, sa, salen, now, confirm);
-        trySearchInsert(cn);
-        return cn;
+        if (confirm or not b->cached)
+            b->cached = node;
+    } else {
+        /* Create a new node. */
+        b->nodes.emplace_front(node);
     }
 
-    /* Create a new node. */
-    auto cn = cache.getNode(id, sa, salen, now, confirm);
-    b->nodes.emplace_front(cn);
-    trySearchInsert(cn);
-    return cn;
+    return node;
 }
 
 /* Called periodically to purge known-bad nodes.  Note that we're very
@@ -435,6 +335,9 @@ Dht::Search::removeExpiredNode(time_point now)
 bool
 Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& token)
 {
+    if (expired and nodes.empty())
+        return false;
+
     if (node->ss.ss_family != af) {
         //DHT_LOG.DEBUG("Attempted to insert node in the wrong family.");
         return false;
@@ -577,6 +480,10 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             if (auto sr = ws.lock()) {
                 auto srn = sr->getNode(status->node);
                 if (srn and not srn->candidate) {
+                    DHT_LOG.DEBUG("[search %s IPv%c] [node %s %s] 'get' expired",
+                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                        srn->node->id.toString().c_str(),
+                        print_addr(srn->node->ss, srn->node->sslen).c_str());
                     if (not over) {
                         srn->candidate = true;
                         //DHT_LOG.DEBUG("[search %s] sn %s now candidate... %d",
@@ -1628,7 +1535,7 @@ Dht::connectivityChanged()
     mybucket_grow_time = now;
     mybucket6_grow_time = now;
     reported_addr.clear();
-    cache.clearBadNodes();
+    network_engine.connectivityChanged();
     auto stop_listen = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
         for (auto& sp : srs)
             for (auto& sn : sp.second->nodes)
@@ -1642,7 +1549,7 @@ void
 Dht::rotateSecrets()
 {
     const auto& now = scheduler.time();
-    uniform_duration_distribution<> time_dist(std::chrono::seconds(45), std::chrono::minutes(1));
+    uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
     auto rotate_secrets_time = now + time_dist(rd);
 
     oldsecret = secret;
@@ -1720,7 +1627,7 @@ Dht::getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_retu
                 dubious++;
             }
         }
-        if (b.cached.ss_family > 0)
+        if (b.cached)
             cached++;
     }
     if (good_return)
@@ -1740,7 +1647,7 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
     const auto& now = scheduler.time();
     using namespace std::chrono;
     out << b.first << " count " << b.nodes.size() << " age " << duration_cast<seconds>(now - b.time).count() << " sec";
-    if (b.cached.ss_family)
+    if (b.cached)
         out << " (cached)";
     out  << std::endl;
     for (auto& n : b.nodes) {
@@ -1923,7 +1830,7 @@ Dht::Dht(int s, int s6, Config config)
  : myid(config.node_id), is_bootstrap(config.is_bootstrap),
     network_engine(myid, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
-            std::bind(&Dht::newNode, this, _1, _2, _3, _4),
+            std::bind(&Dht::newNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
             std::bind(&Dht::onPing, this, _1),
             std::bind(&Dht::onFindNode, this, _1, _2, _3),
@@ -2122,26 +2029,18 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     if (buflen == 0)
         return;
 
-    if (isMartian(from, fromlen))
-        return;
-
-    if (isNodeBlacklisted(from, fromlen)) {
-        DHT_LOG.DEBUG("Received packet from blacklisted node.");
-        return;
-    }
-
     try {
         network_engine.processMessage(buf, buflen, from, fromlen);
     } catch (DhtProtocolException& e) {
         DHT_LOG.ERROR("Can't parse message from %s: %s", e.getNodeId().toString().c_str(), e.what());
-        auto code = e.getCode();
-        if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
+        //auto code = e.getCode();
+        //if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
             /* This is really annoying, as it means that we will
                time-out all our searches that go through this node.
                Kill it. */
-            const auto& id = e.getNodeId();
-            blacklistNode(&id, from, fromlen);
-        }
+            //const auto& id = e.getNodeId();
+            //blacklistNode(&id, from, fromlen);
+        ///}
     }
 }
 
@@ -2300,12 +2199,12 @@ Dht::exportNodes()
 }
 
 bool
-Dht::insertNode(const InfoHash& id, const sockaddr *sa, socklen_t salen)
+Dht::insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen)
 {
     if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
         return false;
     scheduler.syncTime();
-    auto n = newNode(id, sa, salen, 0);
+    auto n = network_engine.insertNode(id, sa, salen);
     return !!n;
 }
 
@@ -2358,52 +2257,42 @@ NetworkEngine::RequestAnswer
 Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
-    Blob ntoken = makeToken((sockaddr*)&node->ss, false);
-    std::vector<std::shared_ptr<Node>> nodes, nodes6;
-    if (want & WANT4) {
-        auto tmp = buckets.findClosestNodes(target, now, TARGET_NODES);
-        nodes.insert(nodes.begin(), tmp.begin(), tmp.end());
-    }
-    if (want & WANT6) {
-        auto tmp = buckets6.findClosestNodes(target, now, TARGET_NODES);
-        nodes6.insert(nodes6.begin(), tmp.begin(), tmp.end());
-    }
-    return NetworkEngine::RequestAnswer {ntoken, Value::INVALID_ID, {}, std::move(nodes), std::move(nodes6)};
+    NetworkEngine::RequestAnswer answer;
+    answer.ntoken = makeToken((sockaddr*)&node->ss, false);
+    if (want & WANT4)
+        answer.nodes4 = buckets.findClosestNodes(target, now, TARGET_NODES);
+    if (want & WANT6)
+        answer.nodes6 = buckets6.findClosestNodes(target, now, TARGET_NODES);
+    return answer;
 }
 
 NetworkEngine::RequestAnswer
 Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
 {
-    const auto& now = scheduler.time();
-    std::shared_ptr<NetworkEngine::RequestAnswer> answer {};
     if (hash == zeroes) {
         DHT_LOG.WARN("[node %s %s] Eek! Got get_values with no info_hash.",
                 node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
         throw DhtProtocolException {DhtProtocolException::NON_AUTHORITATIVE_INFORMATION, DhtProtocolException::GET_NO_INFOHASH};
-    } else {
-        auto st = findStorage(hash);
-        Blob ntoken = makeToken((sockaddr*)&node->ss, false);
-        answer = std::shared_ptr<NetworkEngine::RequestAnswer> {
-            new NetworkEngine::RequestAnswer {
-                ntoken, 0, {},
-                buckets.findClosestNodes(hash, now, TARGET_NODES),
-                buckets6.findClosestNodes(hash, now, TARGET_NODES)
-            }
-        };
-        if (st != store.end() && not st->empty()) {
-            auto values = st->getValues();
-            answer->values.resize(values.size());
-            std::transform(values.begin(), values.end(), answer->values.begin(), [](const ValueStorage& vs) {
-                return vs.data;
-            });
-            DHT_LOG.DEBUG("[node %s %s] sending %u values.",
-                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), answer->values.size());
-        } else {
-            DHT_LOG.DEBUG("[node %s %s] sending nodes.",
-                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
-        }
     }
-    return *answer;
+    const auto& now = scheduler.time();
+    NetworkEngine::RequestAnswer answer {};
+    auto st = findStorage(hash);
+    answer.ntoken = makeToken((sockaddr*)&node->ss, false);
+    answer.nodes4 = buckets.findClosestNodes(hash, now, TARGET_NODES);
+    answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
+    if (st != store.end() && not st->empty()) {
+        auto values = st->getValues();
+        answer.values.resize(values.size());
+        std::transform(values.begin(), values.end(), answer.values.begin(), [](const ValueStorage& vs) {
+            return vs.data;
+        });
+        DHT_LOG.DEBUG("[node %s %s] sending %u values.",
+                node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), answer.values.size());
+    } else {
+        DHT_LOG.DEBUG("[node %s %s] sending nodes.",
+                node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+    }
+    return answer;
 }
 
 void
@@ -2415,7 +2304,7 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
         return;
     }
 
-    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get' from %s", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', status->node->toString().c_str());
+    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get' from %s with %u nodes", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', status->node->toString().c_str(), a.nodes4.size());
 
     if (not a.ntoken.empty()) {
         if (!a.values.empty()) {
@@ -2451,15 +2340,14 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
     } else {
         DHT_LOG.WARN("[node %s %s] no token provided. Ignoring response content.",
                 status->node->id.toString().c_str(), print_addr(status->node->ss, status->node->sslen).c_str());
-        blacklistNode(&status->node->id, (sockaddr*)&status->node->ss, status->node->sslen);
+        network_engine.blacklistNode(status->node);
     }
 
     if (not sr->done) {
-        const auto& now = scheduler.time();
         searchSendGetValues(sr);
 
         // Force to recompute the next step time
-        scheduler.edit(sr->nextSearchStep, now);
+        scheduler.edit(sr->nextSearchStep, scheduler.time());
     }
 }
 

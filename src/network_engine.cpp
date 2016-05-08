@@ -44,6 +44,10 @@ const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES  = 
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN  = {"lt"};
 constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
 
+static const uint8_t v4prefix[16] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
+};
+
 /* Called whenever we send a request to a node, increases the ping count
    and, if that reaches 3, sends a ping to a new candidate. */
 void
@@ -83,6 +87,12 @@ NetworkEngine::isRunning(sa_family_t af) const
     }
 }
 
+void
+NetworkEngine::connectivityChanged()
+{
+    cache.clearBadNodes();
+}
+
 /* Rate control for requests we receive. */
 bool
 NetworkEngine::rateLimit()
@@ -98,8 +108,94 @@ NetworkEngine::rateLimit()
     return true;
 }
 
+bool
+NetworkEngine::isMartian(const sockaddr* sa, socklen_t len)
+{
+    // Check that sa_family can be accessed safely
+    if (!sa || len < sizeof(sockaddr_in))
+        return true;
+
+    switch(sa->sa_family) {
+    case AF_INET: {
+        sockaddr_in *sin = (sockaddr_in*)sa;
+        const uint8_t *address = (const uint8_t*)&sin->sin_addr;
+        return sin->sin_port == 0 ||
+            (address[0] == 0) ||
+            (address[0] == 127) ||
+            ((address[0] & 0xE0) == 0xE0);
+    }
+    case AF_INET6: {
+        if (len < sizeof(sockaddr_in6))
+            return true;
+        sockaddr_in6 *sin6 = (sockaddr_in6*)sa;
+        const uint8_t *address = (const uint8_t*)&sin6->sin6_addr;
+        return sin6->sin6_port == 0 ||
+            (address[0] == 0xFF) ||
+            (address[0] == 0xFE && (address[1] & 0xC0) == 0x80) ||
+            (memcmp(address, zeroes.data(), 15) == 0 &&
+             (address[15] == 0 || address[15] == 1)) ||
+            (memcmp(address, v4prefix, 12) == 0);
+    }
+
+    default:
+        return true;
+    }
+}
+
+/* The internal blacklist is an LRU cache of nodes that have sent
+   incorrect messages. */
+/*void
+NetworkEngine::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
+{
+    DHT_LOG.WARN("Blacklisting broken node.");
+
+    if (id) {
+        auto n = cache.getNode(*id, sa, salen, 0);//findNode();
+        for ()
+        // Discard it from any searches in progress.
+        auto black_list_in = [&](std::map<InfoHash, std::shared_ptr<Search>>& srs) {
+            for (auto& srp : srs) {
+                auto& sr = srp.second;
+                sr->nodes.erase(std::partition(sr->nodes.begin(), sr->nodes.end(), [&](SearchNode& sn) {
+                    return sn.node != n;
+                }), sr->nodes.end());
+            }
+        };
+        black_list_in(searches4);
+        black_list_in(searches6);
+    }
+    // And make sure we don't hear from it again.
+    
+}*/
+
+bool
+NetworkEngine::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
+{
+    if (salen > sizeof(sockaddr_storage))
+        return true;
+
+    /*if (isBlacklisted(sa, salen))
+        return true;*/
+
+    for (unsigned i = 0; i < BLACKLISTED_MAX; i++) {
+        if (memcmp(&blacklist[i], sa, salen) == 0)
+            return true;
+    }
+
+    return false;
+}
+
 void
-NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen) {
+NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
+{
+    if (isMartian(from, fromlen))
+        return;
+
+    if (isNodeBlacklisted(from, fromlen)) {
+        DHT_LOG.DEBUG("Received packet from blacklisted node.");
+        return;
+    }
+
     ParsedMessage msg;
     try {
         msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
@@ -125,10 +221,13 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         }
     }
 
+    const auto& now = scheduler.time();
+
     if (msg.tid.length != 4) {
         DHT_LOG.ERROR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
         DHT_LOG.ERROR.logPrintable(buf, buflen);
-        throw DhtProtocolException {DhtProtocolException::INVALID_TID_SIZE};
+        blacklistNode(cache.getNode(msg.id, from, fromlen, now, 1));
+        return;
     }
 
     uint16_t ttid = 0;
@@ -140,7 +239,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
         if (req->cancelled())
             return;
 
-        auto node = onNewNode(msg.id, from, fromlen, 2);
+        auto node = cache.getNode(msg.id, from, fromlen, now, 2);
+        onNewNode(node, 2);
         onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
         switch (msg.type) {
         case MessageType::Error: {
@@ -164,6 +264,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             if (not req->persistent)
                 requests.erase(reqp);
             req->reply_time = scheduler.time();
+
+            deserializeNodesValues(msg);
             req->completed_ = true;
             req->on_done(req, std::move(msg));
             if (not req->persistent)
@@ -173,7 +275,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             break;
         }
     } else {
-        auto node = onNewNode(msg.id, from, fromlen, 1);
+        auto node = cache.getNode(msg.id, from, fromlen, now, 1);
+        onNewNode(node, 1);
         try {
             switch (msg.type) {
             case MessageType::Ping:
@@ -187,7 +290,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg.target, msg.want);
-                auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes, answer.nodes6);
+                auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes4, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, answer.ntoken);
                 break;
             }
@@ -196,7 +299,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
-                auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes, answer.nodes6);
+                auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes4, answer.nodes6);
                 sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
                 break;
             }
@@ -353,7 +456,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
         [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
-                on_done(req_status, deserializeNodesValues(msg));
+                on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
         [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
@@ -396,7 +499,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
         [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
-                on_done(req_status, deserializeNodesValues(msg));
+                on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
         [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
@@ -410,15 +513,15 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
     return req;
 }
 
-NetworkEngine::RequestAnswer
+void
 NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
-    RequestAnswer req_a {msg.token, 0, std::move(msg.values), {}, {}};
-    if (msg.nodes4.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6.size() % NODE6_INFO_BUF_LEN != 0) {
+    if (msg.nodes4_raw.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6_raw.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     } else {
         // deserialize nodes
-        for (unsigned i = 0; i < msg.nodes4.size() / NODE4_INFO_BUF_LEN; i++) {
-            uint8_t *ni = msg.nodes4.data() + i * NODE4_INFO_BUF_LEN;
+        const auto& now = scheduler.time();
+        for (unsigned i = 0; i < msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i++) {
+            uint8_t *ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
             const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
             if (ni_id == myid)
                 continue;
@@ -427,11 +530,13 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
             sin.sin_family = AF_INET;
             memcpy(&sin.sin_addr, ni + ni_id.size(), 4);
             memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
-            if (auto n = onNewNode(ni_id, (sockaddr*)&sin, sizeof(sin), 0))
-                req_a.nodes.emplace_back(std::move(n));
+            if (isMartian((sockaddr*)&sin, sizeof(sin)) || isNodeBlacklisted((sockaddr*)&sin, sizeof(sin)))
+                continue;
+            msg.nodes4.emplace_back(cache.getNode(ni_id, (sockaddr*)&sin, sizeof(sin), now, 0));
+            onNewNode(msg.nodes4.back(), 0);
         }
-        for (unsigned i = 0; i < msg.nodes6.size() / NODE6_INFO_BUF_LEN; i++) {
-            uint8_t *ni = msg.nodes6.data() + i * NODE6_INFO_BUF_LEN;
+        for (unsigned i = 0; i < msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i++) {
+            uint8_t *ni = msg.nodes6_raw.data() + i * NODE6_INFO_BUF_LEN;
             const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
             if (ni_id == myid)
                 continue;
@@ -440,11 +545,12 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
             sin6.sin6_family = AF_INET6;
             memcpy(&sin6.sin6_addr, ni + HASH_LEN, 16);
             memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
-            if (auto n = onNewNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), 0))
-                req_a.nodes.emplace_back(std::move(n));
+            if (isMartian((sockaddr*)&sin6, sizeof(sin6)) || isNodeBlacklisted((sockaddr*)&sin6, sizeof(sin6)))
+                continue;
+            msg.nodes6.emplace_back(cache.getNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), now, 0));
+            onNewNode(msg.nodes6.back(), 0);
         }
     }
-    return req_a;
 }
 
 void
@@ -605,7 +711,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
         [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
-                on_done(req_status, deserializeNodesValues(msg));
+                on_done(req_status, {std::forward<ParsedMessage>(msg)});
         },
         [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
             if (on_expired)
@@ -786,10 +892,10 @@ NetworkEngine::ParsedMessage::msgpack_unpack(msgpack::object msg)
         value_id = vid->as<Value::Id>();
 
     if (auto rnodes4 = findMapValue(req, "n4"))
-        nodes4 = unpackBlob(*rnodes4);
+        nodes4_raw = unpackBlob(*rnodes4);
 
     if (auto rnodes6 = findMapValue(req, "n6"))
-        nodes6 = unpackBlob(*rnodes6);
+        nodes6_raw = unpackBlob(*rnodes6);
 
     if (auto sa = findMapValue(req, "sa")) {
         if (sa->type != msgpack::type::BIN)
