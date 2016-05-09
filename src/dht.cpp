@@ -249,8 +249,8 @@ struct Dht::SearchNode {
     time_point getListenTime(SyncStatusMap::const_iterator listen_status) const {
         if (listen_status == listenStatus.end())
             return time_point::min();
-        return listen_status->pending() ? time_point::max() :
-            listen_status->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
+        return listen_status->second->pending() ? time_point::max() :
+            listen_status->second->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
     }
 
     bool isBad() const {
@@ -828,7 +828,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
                         const auto& r = n.listenStatus.find(query);
-                        auto last_req = r != n.listenStatus.end() ? r->second : {};
+                        auto last_req = r != n.listenStatus.end() ? r->second : std::shared_ptr<Request> {};
 
                         std::weak_ptr<Search> ws = sr;
                         n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token,
@@ -843,7 +843,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                 if (auto sn = sr->getNode(status.node))
                                     sn->getStatus.erase(query);
                             },
-                            [this,ws,last_req](const Request&, bool over) mutable
+                            [this,ws,last_req,query](const Request&, bool over) mutable
                             { /* on expired */
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock())
@@ -1028,10 +1028,7 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired() or (sn.candidate and t >= TARGET_NODES))
             continue;
-        bool pending = std::find_if(sn.getStatus.begin(), sn.getStatus.end(),
-            [](const SearchNode::SyncStatusMap::value_type& gs){
-                return gs.second and gs.second->pending();
-            }) != sn.getStatus.end();
+        auto pending = sn.pending(sn.getStatus);
         if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
             // not isSynced
             if (not pending and reqs < SEARCH_REQUESTS)
