@@ -9,6 +9,8 @@ libopendht_la_LIBADD = ./argon2/libargon2.la
 
 libopendht_la_SOURCES = \
         dht.cpp \
+        node_cache.cpp \
+        callbacks.cpp \
         routing_table.cpp \
         network_engine.cpp \
         utils.cpp \
@@ -27,6 +29,8 @@ endif
 nobase_include_HEADERS = \
         ../include/opendht.h \
         ../include/opendht/dht.h \
+        ../include/opendht/callbacks.h \
+        ../include/opendht/node_cache.h \
         ../include/opendht/routing_table.h \        
         ../include/opendht/network_engine.h \
         ../include/opendht/scheduler.h \
