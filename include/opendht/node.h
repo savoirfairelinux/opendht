@@ -26,7 +26,11 @@
 
 #include <arpa/inet.h>
 
+#include <list>
+
 namespace dht {
+
+class Request;
 
 struct Node {
     friend class NetworkEngine;
@@ -36,7 +40,6 @@ struct Node {
     socklen_t sslen {0};
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
-    time_point pinged_time {time_point::min()};     /* time of last message sent */
 
     Node() : ss() {
         std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
@@ -56,26 +59,23 @@ struct Node {
     std::string getAddrStr() const {
         return print_addr(ss, sslen);
     }
-    bool isExpired(time_point now) const;
-    bool isExpired() const { return isExpired(clock::now()); }
+    bool isExpired() const { return expired_; }
     bool isGood(time_point now) const;
-    bool isMessagePending(time_point now) const;
+    bool isMessagePending() const;
     NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
     sa_family_t getFamily() const { return ss.ss_family; }
 
     void update(const sockaddr* sa, socklen_t salen);
 
-    /** To be called when a message was sent to the node */
-    void requested(time_point now);
+    void requested(std::shared_ptr<Request>& req);
+    void received(time_point now, std::shared_ptr<Request> req);
 
-    /** To be called when a message was received from the node.
-      Answer should be true if the message was an aswer to a request we made*/
-    void received(time_point now, bool answer);
+    void setExpired();
 
     /**
      * Resets the state of the node so it's not expired anymore.
      */
-    void reset() { pinged = 0; }
+    void reset() { expired_ = false; }
 
     std::string toString() const;
 
@@ -90,7 +90,16 @@ struct Node {
     static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {3};
 
 private:
-    unsigned pinged {0}; /* how many requests we sent since last reply */
+
+    std::list<std::weak_ptr<Request>> requests_ {};
+    bool expired_ {false};
+
+    void clearPendingQueue() {
+        requests_.remove_if([](std::weak_ptr<Request>& w) {
+            return w.expired();
+        });
+    }
+
 };
 
 }

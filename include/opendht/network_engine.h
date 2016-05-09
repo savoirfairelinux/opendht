@@ -28,6 +28,7 @@
 #include "scheduler.h"
 #include "utils.h"
 #include "rng.h"
+#include "request.h"
 
 #include <vector>
 #include <string>
@@ -73,6 +74,8 @@ private:
     const InfoHash failing_node_id;
 };
 
+struct ParsedMessage;
+
 /*!
  * @class   NetworkEngine
  * @brief   An abstraction of communication protocol on the network.
@@ -99,6 +102,7 @@ class NetworkEngine final {
         static const TransPrefix ANNOUNCE_VALUES;
         static const TransPrefix LISTEN;
     };
+public:
 
     /* Transaction-ids are 4-bytes long, with the first two bytes identifying
      * the kind of request, and the remaining two a sequence number in
@@ -139,36 +143,6 @@ class NetworkEngine final {
         unsigned length {4};
     };
 
-    enum class MessageType {
-        Error = 0,
-        Reply,
-        Ping,
-        FindNode,
-        GetValues,
-        AnnounceValue,
-        Listen
-    };
-
-    struct ParsedMessage {
-        MessageType type;
-        InfoHash id;                                /* the id of the sender */
-        InfoHash info_hash;                         /* hash for which values are requested */
-        InfoHash target;                            /* target id around which to find nodes */
-        TransId tid;                                /* transaction id */
-        Blob token;                                 /* security token */
-        Value::Id value_id;                         /* the value id */
-        time_point created { time_point::max() };   /* time when value was first created */
-        Blob nodes4_raw, nodes6_raw;                /* IPv4 nodes in response to a 'find' request */
-        std::vector<std::shared_ptr<Node>> nodes4, nodes6;
-        std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
-        want_t want;                                /* states if ipv4 or ipv6 request */
-        uint16_t error_code;                        /* error code in case of error */
-        std::string ua;
-        Address addr;                               /* reported address by the distant node */
-        void msgpack_unpack(msgpack::object o);
-    };
-
-public:
     /*!
      * @class   RequestAnswer
      * @brief   Answer for a request.
@@ -183,79 +157,9 @@ public:
         std::vector<std::shared_ptr<Node>> nodes4 {};
         std::vector<std::shared_ptr<Node>> nodes6 {};
         RequestAnswer() {}
-        RequestAnswer(ParsedMessage&& msg)
-         : ntoken(std::move(msg.token)), values(std::move(msg.values)), nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
+        RequestAnswer(ParsedMessage&& msg);
     };
 
-
-    /*!
-     * @class   Request
-     * @brief   An atomic request destined to a node.
-     * @details
-     * A request contains data used by the NetworkEngine to process a request
-     * desitned to specific node and std::function callbacks to execute when the
-     * request is done.
-     */
-    struct Request {
-        friend class dht::NetworkEngine;
-
-        static const constexpr size_t MAX_ATTEMPT_COUNT {3};
-
-        std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
-        time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
-
-        bool expired() const { return expired_; }
-        bool completed() const { return completed_; }
-        bool cancelled() const { return cancelled_; }
-        bool pending() const {
-            return not cancelled_  
-               and not completed_
-               and not expired_;
-        }
-        bool over() const { return not pending(); }
-
-        Request() {}
-
-    private:
-        Request(uint16_t tid,
-                std::shared_ptr<Node> node,
-                Blob &&msg,
-                std::function<void(std::shared_ptr<Request> req_status, ParsedMessage&&)> on_done,
-                std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired, bool persistent = false) :
-            node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), persistent(persistent) { }
-
-        bool isExpired(time_point now) const {
-            return now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT
-                and not completed_ and not cancelled_;
-        }
-
-        void cancel() {
-            if (not completed_ and not expired_) {
-                cancelled_ = true;
-                clear();
-            }
-        }
-
-        void clear() {
-            on_done = {};
-            on_expired = {};
-            msg.clear();
-        }
-
-        bool cancelled_ {false};                    /* whether the request is canceled before done. */
-        bool completed_ {false};                    /* whether the request is completed. */
-        bool expired_ {false};
-        unsigned attempt_count {0};                /* number of attempt to process the request. */
-        time_point start {time_point::min()};      /* time when the request is created. */
-        time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
-
-        std::function<void(std::shared_ptr<Request> req_status, ParsedMessage&&)> on_done {};
-        std::function<void(std::shared_ptr<Request> req_status, bool)> on_expired {};
-
-        const uint16_t tid {0};                   /* the request id. */
-        Blob msg {};                              /* the serialized message. */
-        const bool persistent {false};            /* the request is not erased upon completion. */
-    };
 
     /**
      * Cancel a request. Setting req->cancelled = true is not enough in the case
@@ -354,8 +258,8 @@ private:
             time_point)> onAnnounce {};
 
 public:
-    using RequestCb = std::function<void(std::shared_ptr<Request>, RequestAnswer&&)>;
-    using RequestExpiredCb = std::function<void(std::shared_ptr<Request>, bool)>;
+    using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
+    using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
     NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
     NetworkEngine(InfoHash& myid, int s, int s6, Logger& log, Scheduler& scheduler,
@@ -455,28 +359,13 @@ public:
     }
 
     std::vector<unsigned> getNodeMessageStats(bool in) {
-        auto stats = in ? std::vector<unsigned>{in_stats.ping,  in_stats.find,  in_stats.get,  in_stats.listen,  in_stats.put}
-        : std::vector<unsigned>{out_stats.ping, out_stats.find, out_stats.get, out_stats.listen, out_stats.put};
-        if (in) { in_stats = {}; }
-        else { out_stats = {}; }
-
+        auto& st = in ? in_stats : out_stats;
+        std::vector<unsigned> stats {st.ping,  st.find,  st.get,  st.listen,  st.put};
+        st = {};
         return stats;
     }
 
-    void blacklistNode(const std::shared_ptr<Node>& n) {
-        for (auto rit = requests.begin(); rit != requests.end();) {
-            if (rit->second->node == n) {
-                rit->second->cancel();
-                requests.erase(rit++);
-            } else {
-                ++rit;
-            }
-        }
-        //blacklistedNodes.emplace(n);
-        memcpy(&blacklist[next_blacklisted], &n->ss, n->sslen);
-        next_blacklisted = (next_blacklisted + 1) % BLACKLISTED_MAX;
-        //blacklistNode(&n->id, (const sockaddr*)&n->ss, n->sslen);
-    }
+    void blacklistNode(const std::shared_ptr<Node>& n);
 
 private:
     /***************
@@ -508,30 +397,24 @@ private:
     bool rateLimit();
 
     static bool isMartian(const sockaddr* sa, socklen_t len);
-    //void blacklistNode(const InfoHash* id, const sockaddr*, socklen_t);
     bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
 
-    void pinged(Node&);
-
     void requestStep(std::shared_ptr<Request> req) {
-        if (req->over())
+        if (not req->pending())
             return;
 
         auto now = scheduler.time();
-        if (req->node->isExpired(now) or req->isExpired(now)) {
-            req->expired_ = true;
-            req->on_expired(req, true);
-            req->clear();
+        if (req->isExpired(now)) {
+            req->node->setExpired();
             requests.erase(req->tid);
             return;
         } else if (req->attempt_count == 1) {
-            req->on_expired(req, false);
+            req->on_expired(*req, false);
         }
 
         send((char*)req->msg.data(), req->msg.size(),
                 (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
                 (sockaddr*)&req->node->ss, req->node->sslen);
-        pinged(*req->node);
         ++req->attempt_count;
         req->last_try = now;
         std::weak_ptr<Request> wreq = req;
@@ -552,6 +435,7 @@ private:
         if (!e.second) {
             DHT_LOG.ERROR("Request already existed !");
         }
+        request->node->requested(request);
         requestStep(request);
     }
 

@@ -70,17 +70,6 @@ set_nonblocking(int fd, int nonblocking)
 static std::mt19937 rd {dht::crypto::random_device{}()};
 static std::uniform_int_distribution<uint8_t> rand_byte;
 
-static std::string
-to_hex(const uint8_t *buf, size_t buflen)
-{
-    std::stringstream s;
-    s << std::hex;
-    for (size_t i = 0; i < buflen; i++)
-        s << std::setfill('0') << std::setw(2) << (unsigned)buf[i];
-    s << std::dec;
-    return s.str();
-}
-
 namespace dht {
 
 using namespace std::placeholders;
@@ -251,7 +240,7 @@ Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
 
     /* Try to get rid of an expired node. */
     for (auto& n : b->nodes) {
-        if (not n->isExpired(now))
+        if (not n->isExpired())
             continue;
         n = node;
         return n;
@@ -267,7 +256,7 @@ Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
                of bad nodes fast. */
             if (not n->isGood(now)) {
                 dubious = true;
-                if (n->pinged_time + Node::MAX_RESPONSE_TIME < now) {
+                if (not n->isMessagePending()) {
                     DHT_LOG.DEBUG("Sending ping to dubious node %s.", n->toString().c_str());
                     network_engine.sendPing(n, nullptr, nullptr);
                     break;
@@ -302,7 +291,7 @@ Dht::expireBuckets(RoutingTable& list)
     for (auto& b : list) {
         bool changed = false;
         b.nodes.remove_if([this,&changed](const std::shared_ptr<Node>& n) {
-            if (n->isExpired(scheduler.time())) {
+            if (n->isExpired()) {
                 changed = true;
                 return true;
             }
@@ -320,7 +309,7 @@ Dht::Search::removeExpiredNode(time_point now)
     while (e != nodes.cbegin()) {
         e = std::prev(e);
         const Node& n = *e->node;
-        if (n.isExpired(now) and n.time + Node::NODE_EXPIRE_TIME < now) {
+        if (n.isExpired() and n.time + Node::NODE_EXPIRE_TIME < now) {
             //std::cout << "Removing expired node " << n.id << " from IPv" << (af==AF_INET?'4':'6') << " search " << id << std::endl;
             nodes.erase(e);
             return true;
@@ -338,7 +327,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     if (expired and nodes.empty())
         return false;
 
-    if (node->ss.ss_family != af) {
+    if (node->getFamily() != af) {
         //DHT_LOG.DEBUG("Attempted to insert node in the wrong family.");
         return false;
     }
@@ -346,11 +335,11 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     const auto& nid = node->id;
 
     // Fast track for the case where the node is not relevant for this search
-    if (nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0 && node->isExpired(now))
+    if (nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0 && node->isExpired())
         return false;
 
     bool found = false;
-    unsigned num_bad_nodes = getNumberOfBadNodes(now);
+    unsigned num_bad_nodes = getNumberOfBadNodes();
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
         if (sn.node == node) {
             found = true;
@@ -362,7 +351,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     bool new_search_node = false;
     if (!found) {
         if (nodes.size()-num_bad_nodes >= SEARCH_NODES) {
-            if (node->isExpired(now))
+            if (node->isExpired())
                 return false;
             if (n == nodes.end())
                 return false;
@@ -389,7 +378,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
                 num_bad_nodes--;
 
             auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
-                [&](const SearchNode& n) { return not n.isBad(now)/* and not (n.getStatus and n.getStatus->pending(now))*/; }
+                [&](const SearchNode& n) { return not n.isBad()/* and not (n.getStatus and n.getStatus->pending(now))*/; }
             );
             if (to_remove != nodes.rend()) {
                 if (to_remove->getStatus and to_remove->getStatus->pending())
@@ -459,31 +448,29 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             return nullptr;
     }
 
-    DHT_LOG.DEBUG("[search %s IPv%c] [node %s %s] sending 'get'",
+    DHT_LOG.DEBUG("[search %s IPv%c] [node %s] sending 'get'",
         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-        n->node->id.toString().c_str(),
-        print_addr(n->node->ss, n->node->sslen).c_str());
+        n->node->toString().c_str());
 
     std::weak_ptr<Search> ws = sr;
     auto onDone =
-        [this,ws](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable {
+        [this,ws](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
             if (auto sr = ws.lock()) {
-                auto srn = sr->getNode(status->node);
+                auto srn = sr->getNode(status.node);
                 if (srn and not srn->candidate)
                     sr->current_get_requests--;
-                sr->insertNode(status->node, scheduler.time(), answer.ntoken);
+                sr->insertNode(status.node, scheduler.time(), answer.ntoken);
                 onGetValuesDone(status, answer, sr);
             }
         };
     auto onExpired =
-        [this,ws](std::shared_ptr<NetworkEngine::Request> status, bool over) mutable {
+        [this,ws](const Request& status, bool over) mutable {
             if (auto sr = ws.lock()) {
-                auto srn = sr->getNode(status->node);
+                auto srn = sr->getNode(status.node);
                 if (srn and not srn->candidate) {
-                    DHT_LOG.DEBUG("[search %s IPv%c] [node %s %s] 'get' expired",
+                    DHT_LOG.DEBUG("[search %s IPv%c] [node %s] 'get' expired",
                         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        srn->node->id.toString().c_str(),
-                        print_addr(srn->node->ss, srn->node->sslen).c_str());
+                        srn->node->toString().c_str());
                     if (not over) {
                         srn->candidate = true;
                         //DHT_LOG.DEBUG("[search %s] sn %s now candidate... %d",
@@ -495,7 +482,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             }
         };
     sr->current_get_requests++;
-    std::shared_ptr<NetworkEngine::Request> rstatus;
+    std::shared_ptr<Request> rstatus;
     if (sr->callbacks.empty() and sr->listeners.empty())
         rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
     else
@@ -519,7 +506,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
      * The accurate delay between two refills has not been strongly determined.
      * TODO: Emprical analysis over refill timeout.
      */
-    if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes(now) < SEARCH_NODES) {
+    if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES) {
         auto added = sr->refill(sr->af == AF_INET ? buckets : buckets6, now);
         if (added)
             sr->refill_time = now;
@@ -555,10 +542,9 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                 if (not n.isSynced(now) or (n.candidate and t >= LISTEN_NODES))
                     continue;
                 if (n.getListenTime() <= now) {
-                    DHT_LOG.WARN("[search %s IPv%c] [node %s %s] sending 'listen'",
+                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'listen'",
                         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        n.node->id.toString().c_str(),
-                        print_addr(n.node->ss, n.node->sslen).c_str());
+                        n.node->toString().c_str());
                     //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
                     //network_engine.cancelRequest(n.listenStatus);
@@ -566,7 +552,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
 
                     std::weak_ptr<Search> ws = sr;
                     n.listenStatus = network_engine.sendListen(n.node, sr->id, n.token,
-                        [this,ws,ls](std::shared_ptr<NetworkEngine::Request> status,
+                        [this,ws,ls](const Request& status,
                                 NetworkEngine::RequestAnswer&& answer) mutable
                         { /* on done */
                             network_engine.cancelRequest(ls);
@@ -575,7 +561,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                 searchStep(sr);
                             }
                         },
-                        [this,ws,ls](std::shared_ptr<NetworkEngine::Request>, bool) mutable
+                        [this,ws,ls](const Request&, bool) mutable
                         { /* on expired */
                             network_engine.cancelRequest(ls);
                             if (auto sr = ws.lock()) {
@@ -606,21 +592,20 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                     continue;
                 auto at = n.getAnnounceTime(vid, type);
                 if ( at <= now ) {
-                    DHT_LOG.WARN("[search %s IPv%c] [node %s %s] sending 'put' (vid: %d)",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', n.node->id.toString().c_str(),
-                        print_addr(n.node->ss, n.node->sslen).c_str(), vid);
+                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'put' (vid: %d)",
+                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', n.node->toString().c_str(), vid);
                     //std::cout << "Sending announce_value to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
 
                     std::weak_ptr<Search> ws = sr;
                     n.acked[vid] = network_engine.sendAnnounceValue(n.node, sr->id, *a.value, a.created, n.token,
-                        [this,ws](std::shared_ptr<NetworkEngine::Request> status, NetworkEngine::RequestAnswer&& answer) mutable
+                        [this,ws](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
                         { /* on done */
                             if (auto sr = ws.lock()) {
                                 onAnnounceDone(status, answer, sr);
                                 searchStep(sr);
                             }
                         },
-                        [this,ws](std::shared_ptr<NetworkEngine::Request>, bool) mutable
+                        [this,ws](const Request&, bool) mutable
                         { /* on expired */
                             if (auto sr = ws.lock()) { searchStep(sr); }
                         }
@@ -647,9 +632,10 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests.",
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i);
 
-        if (i == 0 && (size_t)std::count_if(sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& sn) {
-                    return sn.candidate or sn.node->isExpired(now);
-                }) == sr->nodes.size())
+        auto expiredn = (size_t)std::count_if(sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& sn) {
+                    return sn.candidate or sn.node->isExpired();
+                });
+        if (i == 0 && expiredn == sr->nodes.size())
         {
             DHT_LOG.ERROR("[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
             // no nodes or all expired nodes
@@ -718,7 +704,7 @@ Dht::Search::insertBucket(const Bucket& b, time_point now)
 {
     unsigned inserted = 0;
     for (auto& n : b.nodes) {
-        if (not n->isExpired(now) and insertNode(n, now))
+        if (not n->isExpired() and insertNode(n, now))
             inserted++;
     }
     return inserted;
@@ -729,7 +715,7 @@ Dht::Search::isSynced(time_point now) const
 {
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.node->isExpired(now) or n.candidate)
+        if (n.node->isExpired() or n.candidate)
             continue;
         if (not n.isSynced(now))
             return false;
@@ -739,10 +725,10 @@ Dht::Search::isSynced(time_point now) const
     return i > 0;
 }
 
-unsigned Dht::Search::getNumberOfBadNodes(time_point now) {
+unsigned Dht::Search::getNumberOfBadNodes() {
     return std::count_if(nodes.begin(), nodes.end(),
             [=](const SearchNode& sn) {
-                return sn.isBad(now);
+                return sn.isBad();
             });
 }
 
@@ -761,7 +747,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     unsigned i = 0;
     const auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired(now) or sn.candidate)
+        if (sn.node->isExpired() or sn.candidate)
             continue;
         if (sn.last_get_reply < limit)
             return false;
@@ -778,7 +764,7 @@ Dht::Search::getUpdateTime(time_point now) const
     const auto last_get = getLastGetTime();
     unsigned i = 0, t = 0, d = 0;
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired(now) or (sn.candidate and t >= TARGET_NODES))
+        if (sn.node->isExpired() or (sn.candidate and t >= TARGET_NODES))
             continue;
         bool pending = sn.getStatus and sn.getStatus->pending();
         if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
@@ -809,7 +795,7 @@ Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_point now) co
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.candidate or n.node->isExpired(now))
+        if (n.candidate or n.node->isExpired())
             continue;
         if (not n.isAnnounced(id, type, now))
             return false;
@@ -826,7 +812,7 @@ Dht::Search::isListening(time_point now) const
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.candidate or n.node->isExpired(now))
+        if (n.candidate or n.node->isExpired())
             continue;
         if (!n.isListening(now))
             return false;
@@ -940,7 +926,7 @@ Dht::Search::refill(const RoutingTable& r, time_point now) {
     if (r.isEmpty() or r.front().af != af)
         return 0;
     unsigned added = 0;
-    auto num_bad_nodes = getNumberOfBadNodes(now);
+    auto num_bad_nodes = getNumberOfBadNodes();
     auto b = r.findBucket(id);
     auto n = b;
     while (nodes.size()-num_bad_nodes < SEARCH_NODES && (std::next(n) != r.end() || b != r.begin())) {
@@ -1380,8 +1366,7 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
     }
 
     for (const auto& l : st.listeners) {
-        DHT_LOG.DEBUG("Storage changed. Sending update to %s %s.",
-                l.first->id.toString().c_str(), print_addr((sockaddr*)&l.first->ss, l.first->sslen).c_str());
+        DHT_LOG.DEBUG("Storage changed. Sending update to %s.", l.first->toString().c_str());
         std::vector<std::shared_ptr<Value>> vals;
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
@@ -1651,12 +1636,12 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
         out << " (cached)";
     out  << std::endl;
     for (auto& n : b.nodes) {
-        out << "    Node " << n->id << " " << print_addr((sockaddr*)&n->ss, n->sslen);
+        out << "    Node " << n->toString();
         if (n->time != n->reply_time)
             out << " age " << duration_cast<seconds>(now - n->time).count() << ", reply: " << duration_cast<seconds>(now - n->reply_time).count();
         else
             out << " age " << duration_cast<seconds>(now - n->time).count();
-        if (n->isExpired(now))
+        if (n->isExpired())
             out << " [expired]";
         else if (n->isGood(now))
             out << " [good]";
@@ -1695,9 +1680,9 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << ' ' << (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6) ? '*' : ' ');
         out << ' ' << (n.candidate ? 'c' : ' ');
         out << " ["
-            << (n.node->isMessagePending(now) ? 'f':' ');
+            << (n.node->isMessagePending() ? 'f':' ');
         out << ' ';
-        out << (n.node->isExpired(now) ? 'x' : ' ') << "]";
+        out << (n.node->isExpired() ? 'x' : ' ') << "]";
 
         {
             bool pending {false}, expired {false};
@@ -1791,8 +1776,9 @@ Dht::getStorageLog() const
     std::stringstream out;
     for (const auto& st : store) {
         out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.valueCount() << " values (" << st.totalSize() << " bytes)" << std::endl;
+        out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
         for (const auto& l : st.listeners) {
-            out << "   " << "Listener " << l.first->id << " " << print_addr((sockaddr*)&l.first->ss, l.first->sslen);
+            out << "   " << "Listener " << l.first->toString();
             auto since = duration_cast<seconds>(now - l.second.time);
             auto expires = duration_cast<seconds>(l.second.time + Node::NODE_EXPIRE_TIME - now);
             out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
@@ -2218,11 +2204,11 @@ Dht::pingNode(const sockaddr *sa, socklen_t salen)
 }
 
 void
-Dht::onError(std::shared_ptr<NetworkEngine::Request> req, DhtProtocolException e) {
+Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
         network_engine.cancelRequest(req);
         unsigned cleared = 0;
-        for (auto& srp : req->node->ss.ss_family == AF_INET ? searches4 : searches6) {
+        for (auto& srp : req->node->getFamily() == AF_INET ? searches4 : searches6) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;
@@ -2233,8 +2219,7 @@ Dht::onError(std::shared_ptr<NetworkEngine::Request> req, DhtProtocolException e
                 break;
             }
         }
-        DHT_LOG.WARN("[node %s %s] token flush (%d searches affected)",
-                req->node->id.toString().c_str(), print_addr((sockaddr*)&req->node->ss, req->node->sslen).c_str(), cleared);
+        DHT_LOG.WARN("[node %s] token flush (%d searches affected)", req->node->toString().c_str(), cleared);
     }
 }
 
@@ -2270,8 +2255,7 @@ NetworkEngine::RequestAnswer
 Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
 {
     if (hash == zeroes) {
-        DHT_LOG.WARN("[node %s %s] Eek! Got get_values with no info_hash.",
-                node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+        DHT_LOG.WARN("[node %s] Eek! Got get_values with no info_hash.", node->toString().c_str());
         throw DhtProtocolException {DhtProtocolException::NON_AUTHORITATIVE_INFORMATION, DhtProtocolException::GET_NO_INFOHASH};
     }
     const auto& now = scheduler.time();
@@ -2286,17 +2270,15 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t)
         std::transform(values.begin(), values.end(), answer.values.begin(), [](const ValueStorage& vs) {
             return vs.data;
         });
-        DHT_LOG.DEBUG("[node %s %s] sending %u values.",
-                node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(), answer.values.size());
+        DHT_LOG.DEBUG("[node %s] sending %u values.", node->toString().c_str(), answer.values.size());
     } else {
-        DHT_LOG.DEBUG("[node %s %s] sending nodes.",
-                node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+        DHT_LOG.DEBUG("[node %s] sending nodes.", node->toString().c_str());
     }
     return answer;
 }
 
 void
-Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
+Dht::onGetValuesDone(const Request& status,
         NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr)
 {
     if (not sr) {
@@ -2304,7 +2286,7 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
         return;
     }
 
-    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get' from %s with %u nodes", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', status->node->toString().c_str(), a.nodes4.size());
+    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get' from %s with %u nodes", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', status.node->toString().c_str(), a.nodes4.size());
 
     if (not a.ntoken.empty()) {
         if (!a.values.empty()) {
@@ -2338,9 +2320,8 @@ Dht::onGetValuesDone(std::shared_ptr<NetworkEngine::Request> status,
                 l.first(l.second);
         }
     } else {
-        DHT_LOG.WARN("[node %s %s] no token provided. Ignoring response content.",
-                status->node->id.toString().c_str(), print_addr(status->node->ss, status->node->sslen).c_str());
-        network_engine.blacklistNode(status->node);
+        DHT_LOG.WARN("[node %s] no token provided. Ignoring response content.", status.node->toString().c_str());
+        network_engine.blacklistNode(status.node);
     }
 
     if (not sr->done) {
@@ -2362,9 +2343,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
         };
     }
     if (!tokenMatch(token, (sockaddr*)&node->ss)) {
-        DHT_LOG.WARN("[node %s %s] incorrect token %s for 'listen'.",
-            node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
-            hash.toString().c_str(), to_hex(token.data(), token.size()).c_str());
+        DHT_LOG.WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
     storageAddListener(hash, node, rid);
@@ -2372,7 +2351,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 }
 
 void
-Dht::onListenDone(std::shared_ptr<NetworkEngine::Request>& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
+Dht::onListenDone(const Request& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
     DHT_LOG.DEBUG("[search %s] Got reply to listen.", sr->id.toString().c_str());
     if (sr) {
@@ -2402,20 +2381,16 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
         };
     }
     if (!tokenMatch(token, (sockaddr*)&node->ss)) {
-        DHT_LOG.WARN("[node %s %s] incorrect token %s for 'put'.",
-            node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str(),
-            hash.toString().c_str(), to_hex(token.data(), token.size()).c_str());
+        DHT_LOG.WARN("[node %s] incorrect token %s for 'put'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }
     {
         // We store a value only if we think we're part of the
         // SEARCH_NODES nodes around the target id.
-        auto closest_nodes = (
-                ((sockaddr*)&node->ss)->sa_family == AF_INET ? buckets : buckets6
-            ).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
+        auto closest_nodes = (node->getFamily() == AF_INET ? buckets : buckets6)
+                                .findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
         if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
-            DHT_LOG.WARN("[node %s %s] announce too far from the target id. Dropping value.",
-                    node->id.toString().c_str(), print_addr(node->ss, node->sslen).c_str());
+            DHT_LOG.WARN("[node %s] announce too far from the target. Dropping value.", node->toString().c_str());
             return {};
         }
     }
@@ -2460,7 +2435,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
 }
 
 void
-Dht::onAnnounceDone(std::shared_ptr<NetworkEngine::Request>&, NetworkEngine::RequestAnswer& answer,
+Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer,
         std::shared_ptr<Search>& sr)
 {
     const auto& now = scheduler.time();

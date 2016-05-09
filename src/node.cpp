@@ -20,6 +20,7 @@
 
 
 #include "node.h"
+#include "request.h"
 
 #include <sstream>
 
@@ -33,22 +34,21 @@ constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 bool
 Node::isGood(time_point now) const
 {
-    return
-        not isExpired(now) &&
+    return not expired_ &&
         reply_time >= now - NODE_GOOD_TIME &&
         time >= now - NODE_EXPIRE_TIME;
 }
 
 bool
-Node::isExpired(time_point now) const
+Node::isMessagePending() const
 {
-    return pinged >= 3 && reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME < now;
-}
-
-bool
-Node::isMessagePending(time_point now) const
-{
-    return reply_time < pinged_time && pinged_time + MAX_RESPONSE_TIME > now;
+    for (auto w : requests_) {
+        if (auto r = w.lock()) {
+            if (r->pending())
+                return true;
+        }
+    }
+    return false;
 }
 
 void
@@ -60,24 +60,41 @@ Node::update(const sockaddr* sa, socklen_t salen)
 
 /** To be called when a message was sent to the node */
 void
-Node::requested(time_point now)
+Node::requested(std::shared_ptr<Request>& req)
 {
-    pinged++;
-    if (reply_time > pinged_time || pinged_time + MAX_RESPONSE_TIME < now)
-        pinged_time = now;
+    requests_.emplace_back(req);
 }
 
 /** To be called when a message was received from the node.
- Answer should be true if the message was an aswer to a request we made*/
+ Req should be true if the message was an aswer to a request we made*/
 void
-Node::received(time_point now, bool answer)
+Node::received(time_point now, std::shared_ptr<Request> req)
 {
     time = now;
-    if (answer) {
-        pinged = 0;
+    if (req) {
         reply_time = now;
+        expired_ = false;
+        for (auto it = requests_.begin(); it != requests_.end();) {
+            auto r = it->lock();
+            if (not r or r == req)
+                it = requests_.erase(it);
+            else
+                ++it;
+        }
     }
 }
+
+void
+Node::setExpired()
+{
+    expired_ = true;
+    for (auto w : requests_) {
+        if (auto r = w.lock())
+            r->setExpired();
+    }
+    requests_.clear();
+}
+
 
 std::string
 Node::toString() const

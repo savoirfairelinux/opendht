@@ -48,15 +48,49 @@ static const uint8_t v4prefix[16] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
 };
 
+
+enum class MessageType {
+    Error = 0,
+    Reply,
+    Ping,
+    FindNode,
+    GetValues,
+    AnnounceValue,
+    Listen
+};
+
+struct ParsedMessage {
+    MessageType type;
+    InfoHash id;                                /* the id of the sender */
+    InfoHash info_hash;                         /* hash for which values are requested */
+    InfoHash target;                            /* target id around which to find nodes */
+    NetworkEngine::TransId tid;                                /* transaction id */
+    Blob token;                                 /* security token */
+    Value::Id value_id;                         /* the value id */
+    time_point created { time_point::max() };   /* time when value was first created */
+    Blob nodes4_raw, nodes6_raw;                /* IPv4 nodes in response to a 'find' request */
+    std::vector<std::shared_ptr<Node>> nodes4, nodes6;
+    std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
+    want_t want;                                /* states if ipv4 or ipv6 request */
+    uint16_t error_code;                        /* error code in case of error */
+    std::string ua;
+    Address addr;                               /* reported address by the distant node */
+    void msgpack_unpack(msgpack::object o);
+};
+
+NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
+ : ntoken(std::move(msg.token)), values(std::move(msg.values)), nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
+
+
 /* Called whenever we send a request to a node, increases the ping count
    and, if that reaches 3, sends a ping to a new candidate. */
-void
+/*void
 NetworkEngine::pinged(Node& n)
 {
     const auto& now = scheduler.time();
     if (not n.isExpired(now))
         n.requested(now);
-}
+}*/
 
 void
 NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash hash, want_t want,
@@ -98,13 +132,14 @@ bool
 NetworkEngine::rateLimit()
 {
     using namespace std::chrono;
-    while (not rate_limit_time.empty() and duration_cast<seconds>(scheduler.time() - rate_limit_time.front()) > seconds(1))
+    const auto& now = scheduler.time();
+    while (not rate_limit_time.empty() and duration_cast<seconds>(now - rate_limit_time.front()) > seconds(1))
         rate_limit_time.pop();
 
     if (rate_limit_time.size() >= MAX_REQUESTS_PER_SEC)
         return false;
 
-    rate_limit_time.emplace(scheduler.time());
+    rate_limit_time.emplace(now);
     return true;
 }
 
@@ -144,29 +179,20 @@ NetworkEngine::isMartian(const sockaddr* sa, socklen_t len)
 
 /* The internal blacklist is an LRU cache of nodes that have sent
    incorrect messages. */
-/*void
-NetworkEngine::blacklistNode(const InfoHash* id, const sockaddr *sa, socklen_t salen)
+void
+NetworkEngine::blacklistNode(const std::shared_ptr<Node>& n)
 {
-    DHT_LOG.WARN("Blacklisting broken node.");
-
-    if (id) {
-        auto n = cache.getNode(*id, sa, salen, 0);//findNode();
-        for ()
-        // Discard it from any searches in progress.
-        auto black_list_in = [&](std::map<InfoHash, std::shared_ptr<Search>>& srs) {
-            for (auto& srp : srs) {
-                auto& sr = srp.second;
-                sr->nodes.erase(std::partition(sr->nodes.begin(), sr->nodes.end(), [&](SearchNode& sn) {
-                    return sn.node != n;
-                }), sr->nodes.end());
-            }
-        };
-        black_list_in(searches4);
-        black_list_in(searches6);
+    for (auto rit = requests.begin(); rit != requests.end();) {
+        if (rit->second->node == n) {
+            rit->second->cancel();
+            requests.erase(rit++);
+        } else {
+            ++rit;
+        }
     }
-    // And make sure we don't hear from it again.
-    
-}*/
+    memcpy(&blacklist[next_blacklisted], &n->ss, n->sslen);
+    next_blacklisted = (next_blacklisted + 1) % BLACKLISTED_MAX;
+}
 
 bool
 NetworkEngine::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
@@ -186,7 +212,7 @@ NetworkEngine::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
 }
 
 void
-NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
+NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen)
 {
     if (isMartian(from, fromlen))
         return;
@@ -233,13 +259,25 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
     uint16_t ttid = 0;
     if (msg.type == MessageType::Error or msg.type == MessageType::Reply) {
         auto reqp = requests.find(msg.tid.getTid());
-        if (reqp == requests.end())
+        if (reqp == requests.end()) {
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg.id};
+        }
         auto req = reqp->second;
-        if (req->cancelled())
-            return;
 
-        auto node = cache.getNode(msg.id, from, fromlen, now, 2);
+        auto node = req->node;//cache.getNode(msg.id, from, fromlen, now, 2);
+        node->received(now, req);
+        if (node->id == zeroes) {
+            // reply to a message sent when we didn't know the node ID.
+            node = cache.getNode(msg.id, from, fromlen, now, 2);
+            req->node = node;
+        } else
+            node->update(from, fromlen);        
+
+        if (req->cancelled()) {
+            DHT_LOG.ERROR("Request is cancelled: %d", msg.tid);
+            return;
+        }
+
         onNewNode(node, 2);
         onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
         switch (msg.type) {
@@ -266,16 +304,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr 
             req->reply_time = scheduler.time();
 
             deserializeNodesValues(msg);
-            req->completed_ = true;
-            req->on_done(req, std::move(msg));
-            if (not req->persistent)
-                req->clear();
+            req->setDone(std::move(msg));
             break;
         default:
             break;
         }
     } else {
         auto node = cache.getNode(msg.id, from, fromlen, now, 1);
+        node->received(now, {});
         onNewNode(node, 1);
         try {
             switch (msg.type) {
@@ -374,7 +410,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const sockaddr *sa, 
     return sendto(s, buf, len, flags, sa, salen);
 }
 
-std::shared_ptr<NetworkEngine::Request>
+std::shared_ptr<Request>
 NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
@@ -392,13 +428,13 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), node, std::move(b),
-        [=](std::shared_ptr<Request> req_status, ParsedMessage&&) {
-            DHT_LOG.DEBUG("Got pong from %s", print_addr(req_status->node->ss, req_status->node->sslen).c_str());
+        [=](const Request& req_status, ParsedMessage&&) {
+            DHT_LOG.DEBUG("Got pong from %s", req_status.node->toString().c_str());
             if (on_done) {
                 on_done(req_status, {});
             }
         },
-        [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool) { /* on expired */
             if (on_expired) {
                 on_expired(req_status, {});
             }
@@ -427,7 +463,7 @@ NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-std::shared_ptr<NetworkEngine::Request>
+std::shared_ptr<Request>
 NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
@@ -454,12 +490,12 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
-        [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
-        [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool) { /* on expired */
             if (on_expired) {
                 on_expired(req_status, {});
             }
@@ -471,7 +507,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 }
 
 
-std::shared_ptr<NetworkEngine::Request>
+std::shared_ptr<Request>
 NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, want_t want,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
@@ -497,12 +533,12 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
-        [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
-        [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool) { /* on expired */
             if (on_expired) {
                 on_expired(req_status, {});
             }
@@ -687,7 +723,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
     return {std::move(bnodes4), std::move(bnodes6)};
 }
 
-std::shared_ptr<NetworkEngine::Request>
+std::shared_ptr<Request>
 NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
@@ -709,11 +745,11 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
-        [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
         },
-        [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool) { /* on expired */
             if (on_expired)
                 on_expired(req_status, {});
         },
@@ -742,7 +778,7 @@ NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, Trans
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-std::shared_ptr<NetworkEngine::Request>
+std::shared_ptr<Request>
 NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infohash, const Value& value, time_point created,
         const Blob& token, RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
@@ -768,7 +804,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
-        [=](std::shared_ptr<Request> req_status, ParsedMessage&& msg) { /* on done */
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.DEBUG("Unknown search or announce!");
             } else {
@@ -779,7 +815,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
                 }
             }
         },
-        [=](std::shared_ptr<Request> req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool) { /* on expired */
             if (on_expired) {
                 on_expired(req_status, {});
             }
@@ -852,7 +888,7 @@ findMapValue(msgpack::object& map, const std::string& key) {
 }
 
 void
-NetworkEngine::ParsedMessage::msgpack_unpack(msgpack::object msg)
+ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
     auto y = findMapValue(msg, "y");
     auto a = findMapValue(msg, "a");

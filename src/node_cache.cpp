@@ -100,8 +100,8 @@ NodeCache::NodeTree::get(const InfoHash& id, const sockaddr* sa, socklen_t sa_le
     } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
         node->update(sa, sa_len);
     }
-    if (confirm)
-        node->received(now, confirm >= 2);
+    /*if (confirm)
+        node->received(now, confirm >= 2);*/
     return node;
 }
 
