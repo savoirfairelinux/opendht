@@ -18,7 +18,7 @@ option (OPENDHT_DEBUG "Build with debug flags" OFF)
 option (OPENDHT_STATIC "Build static library" ON)
 option (OPENDHT_SHARED "Build shared library" ON)
 
-set (CMAKE_CXX_FLAGS "-pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor ${CMAKE_CXX_FLAGS}")
+set (CMAKE_CXX_FLAGS "-pthread -std=c++14 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor ${CMAKE_CXX_FLAGS}")
 set (CMAKE_CXX_FLAGS "-DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT ${CMAKE_CXX_FLAGS}")
 
 find_package (GnuTLS 3.1 REQUIRED)
