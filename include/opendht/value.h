@@ -497,18 +497,9 @@ struct FieldSelectorDescription
 
     bool operator==(const FieldSelectorDescription& fd) const { return field == fd.field; }
 
-    void msgpack_unpack(msgpack::object msg) {
-        if (auto f = findMapValue(msg, "f"))
-            field = (Value::Field)f->as<unsigned>();
-        else
-            throw msgpack::type_error();
-    }
-
     template <typename Packer>
-    void msgpack_pack(Packer& p) const {
-        p.pack_map(1);
-        p.pack(std::string("f")); p.pack(static_cast<uint8_t>(field));
-    }
+    void msgpack_pack(Packer& p) const { p.pack(static_cast<uint8_t>(field)); }
+    void msgpack_unpack(msgpack::object msg) { field = static_cast<Value::Field>(f->as<unsigned>()); }
 private:
     Value::Field field {Value::Field::None};
 };
@@ -656,8 +647,8 @@ struct Query
     template <typename Packer>
     void msgpack_pack(Packer& pk) const {
         pk.pack_map(2);
-        pk.pack(std::string("filters")); pk.pack(filters_);        /* packing filters */
-        pk.pack(std::string("fselect")); pk.pack(fieldSelectors_); /* packing field selectors */
+        pk.pack(std::string("s")); pk.pack(fieldSelectors_); /* packing field selectors */
+        pk.pack(std::string("w")); pk.pack(filters_);        /* packing filters */
     }
 
     void msgpack_unpack(const msgpack::object& o);
