@@ -1983,15 +1983,13 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     out << std::endl;
 
     /*printing the queries*/
-    {
-        unsigned qcount = 0;
-        std::cout << "Queries:" << std::endl;
-        for (const auto& cb : sr.callbacks) {
-            out << ++qcount << ": " << *cb.query << std::endl;
-        }
-        for (const auto& l : sr.listeners) {
-            out << ++qcount << ": " << *l.second.query << std::endl;
-        }
+    if (sr.callbacks.size() + sr.listeners.size() > 0)
+        out << "Queries:" << std::endl;
+    for (const auto& cb : sr.callbacks) {
+        out << *cb.query << std::endl;
+    }
+    for (const auto& l : sr.listeners) {
+        out << *l.second.query << std::endl;
     }
 
     for (const auto& n : sr.announce) {
