@@ -67,7 +67,7 @@ struct PublicKey
     PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };
 
     ~PublicKey();
-    operator bool() const { return pk; }
+    explicit operator bool() const { return pk; }
 
     PublicKey& operator=(PublicKey&& o) noexcept;
 
@@ -94,7 +94,13 @@ private:
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
     void encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t dst_size) const;
+
+	friend bool operator==(const PublicKey& lhs, const PublicKey& rhs);
+    friend bool operator!=(const PublicKey& lhs, const PublicKey& rhs);
 };
+
+inline bool operator==(const PublicKey& lhs, const PublicKey& rhs) { return lhs.pk == rhs.pk; }
+inline bool operator!=(const PublicKey& lhs, const PublicKey& rhs) { return !(lhs == rhs); }
 
 /**
  * A private key, including the corresponding public key.
@@ -114,7 +120,7 @@ struct PrivateKey
 
     PrivateKey(const Blob& import, const std::string& password = {});
     ~PrivateKey();
-    operator bool() const { return key; }
+    explicit operator bool() const { return key; }
     PublicKey getPublicKey() const;
     Blob serialize(const std::string& password = {}) const;
 
@@ -263,7 +269,7 @@ struct Certificate {
 
     void msgpack_unpack(msgpack::object o);
 
-    operator bool() const { return cert; }
+    explicit operator bool() const { return cert; }
     PublicKey getPublicKey() const;
 
     /** Same as getPublicKey().getId() */
