@@ -400,8 +400,11 @@ private:
     bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
 
     void requestStep(std::shared_ptr<Request> req) {
-        if (not req->pending())
+        if (not req->pending()) {
+            if (req->cancelled())
+                requests.erase(req->tid);
             return;
+        }
 
         auto now = scheduler.time();
         if (req->isExpired(now)) {

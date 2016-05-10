@@ -75,18 +75,19 @@ struct Request {
                 clear();
         }
     }
-private:
-    static const constexpr size_t MAX_ATTEMPT_COUNT {3};
-
-    bool isExpired(time_point now) const {
-        return pending() and now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT;
-    }
 
     void cancel() {
         if (pending()) {
             state_ = State::CANCELLED;
             clear();
         }
+    }
+
+private:
+    static const constexpr size_t MAX_ATTEMPT_COUNT {3};
+
+    bool isExpired(time_point now) const {
+        return pending() and now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT;
     }
 
     void clear() {

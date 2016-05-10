@@ -273,13 +273,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
         } else
             node->update(from, fromlen);        
 
-        if (req->cancelled()) {
-            DHT_LOG.ERROR("Request is cancelled: %d", msg.tid);
+        onNewNode(node, 2);
+        onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
+
+        if (req->cancelled() or req->expired() or (req->completed() and not req->persistent)) {
+            requests.erase(reqp);
             return;
         }
 
-        onNewNode(node, 2);
-        onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
         switch (msg.type) {
         case MessageType::Error: {
             if (msg.error_code == DhtProtocolException::UNAUTHORIZED
