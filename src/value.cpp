@@ -234,13 +234,13 @@ Query::msgpack_unpack(const msgpack::object& o)
 	if (o.type != msgpack::type::MAP)
 		throw msgpack::type_error();
 
-	auto rfilters = findMapValue(o, "filters"); /* unpacking filters */
+	auto rfilters = findMapValue(o, "w"); /* unpacking filters */
 	if (rfilters)
         filters_ = rfilters->as<decltype(filters_)>();
 	else
 		throw msgpack::type_error();
 
-	auto rfield_selector = findMapValue(o, "fselect"); /* unpacking field selectors */
+	auto rfield_selector = findMapValue(o, "s"); /* unpacking field selectors */
 	if (rfield_selector)
         fieldSelectors_ = rfield_selector->as<decltype(fieldSelectors_)>();
 	else
