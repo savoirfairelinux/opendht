@@ -184,14 +184,14 @@ struct Dht::SearchNode {
 
     bool expired(const SyncStatusMap& status) const {
         return std::find_if(status.begin(), status.end(),
-            [](const SearchNode::SyncStatusMap::value_type& r){
-                return r.second and not r.second->expired();
-            }) == status.end();
+            [](const SyncStatusMap::value_type& r){
+                return r.second and r.second->expired();
+            }) != status.end();
     }
 
     bool pending(const SyncStatusMap& status) const {
         return std::find_if(status.begin(), status.end(),
-            [](const SearchNode::SyncStatusMap::value_type& r){
+            [](const SyncStatusMap::value_type& r){
                 return r.second and r.second->pending();
             }) != status.end();
     }
@@ -207,7 +207,7 @@ struct Dht::SearchNode {
     bool isListening(time_point now) const {
         auto ls = listenStatus.begin();
         for ( ; ls != listenStatus.end() ; ++ls) {
-            if (isListening(now)) {
+            if (isListening(now, ls)) {
                 break;
             }
         }
@@ -846,16 +846,16 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                     searchStep(sr);
                                 }
                                 if (auto sn = sr->getNode(status.node))
-                                    sn->getStatus.erase(query);
+                                    node->listenStatus.erase(query);
                             },
                             [this,ws,last_req,query](const Request&, bool over) mutable
                             { /* on expired */
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock())
                                     searchStep(sr);
-                                    if (over)
-                                        if (auto sn = sr->getNode(status.node))
-                                            node->getStatus.erase(query);
+                                if (over)
+                                    if (auto sn = sr->getNode(status.node))
+                                        node->listenStatus.erase(query);
                             }
                         );
                     }
