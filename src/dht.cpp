@@ -1015,7 +1015,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
         const auto& gs = sn.getStatus.find(get.query);
         if (sn.isBad())
             continue;
-        if (not gs->second or gs->second->reply_time < limit)
+        if (gs != sn.getStatus.end() and (not gs->second or gs->second->reply_time < limit))
            return false;
         if (++i == TARGET_NODES)
             break;
