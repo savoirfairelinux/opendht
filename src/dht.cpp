@@ -175,8 +175,8 @@ struct Dht::SearchNode {
         return not node->isExpired() and
                not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
     }
-    bool canGet(time_point now, const std::shared_ptr<Query>& q, time_point update) const {
-        const auto& get_status = getStatus.find(q);
+    bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
+        const auto& get_status = q ? getStatus.find(q) : getStatus.end();
         return not node->isExpired() and
                (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
                and (get_status == getStatus.end() or not get_status->second or not get_status->second->pending());
@@ -714,16 +714,18 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 
     const auto& now = scheduler.time();
     const time_point up = update ? sr->getLastGetTime() : time_point::min();
-    for (const auto& cb : sr->callbacks) {
-        const auto& query = cb.query;
-        SearchNode* n = nullptr;
+
+    SearchNode* n = nullptr;
+    auto cb = sr->callbacks.begin();
+    do { /* for all queries to send */
+        auto query = cb != sr->callbacks.end() ? cb->query : std::make_shared<Query>();
         if (pn) {
-            if (not pn->canGet(now, query, up))
+            if (not pn->canGet(now, up, query))
                 return nullptr;
             n = pn;
         } else {
             for (auto& sn : sr->nodes) {
-                if (sn.canGet(now, query, up)) {
+                if (sn.canGet(now, up, query)) {
                     n = &sn;
                     break;
                 }
@@ -762,10 +764,13 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         if (sr->callbacks.empty() and sr->listeners.empty())
             rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
         else
-            rstatus = network_engine.sendGetValues(n->node, sr->id, *query, -1, onDone, onExpired);
+            rstatus = network_engine.sendGetValues(n->node, sr->id, query ? *query : Query {}, -1, onDone, onExpired);
         n->getStatus[query] = rstatus;
-        return n;
-    }
+
+        if (cb == sr->callbacks.end())
+            break; /* callback was empty, no queries, only findnode */
+    } while (++cb != sr->callbacks.end());
+    return n;
 }
 
 /* When a search is in progress, we periodically call search_step to send
