@@ -350,10 +350,10 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
 
     bool new_search_node = false;
     if (!found) {
-        if (nodes.size()-num_bad_nodes >= SEARCH_NODES) {
-            if (node->isExpired())
-                return false;
-            if (n == nodes.end())
+        // Be more restricitve if there are too many
+        // good or unknown nodes in this search,
+        if (nodes.size() - num_bad_nodes - current_get_requests >= SEARCH_NODES) {
+            if (node->isExpired() or n == nodes.end())
                 return false;
         }
 
@@ -363,26 +363,19 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
             current_get_requests = 0;
         }
 
-        //bool synced = isSynced(now);
         n = nodes.insert(n, SearchNode(node));
         node->time = now;
         new_search_node = true;
-        /*if (synced) {
-            n->candidate = true;
-            //std::cout << "Adding candidate node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
-        }*//* else {
-            std::cout << "Adding real node " << node->id << " to IPv" << (af==AF_INET?'4':'6') << " synced search " << id << std::endl;
-        }*/
-        while (nodes.size()-num_bad_nodes > SEARCH_NODES) {
+
+        // trim good nodes
+        while (nodes.size()-num_bad_nodes-current_get_requests > SEARCH_NODES) {
             if (removeExpiredNode(now))
                 num_bad_nodes--;
 
             auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
-                [&](const SearchNode& n) { return not n.isBad()/* and not (n.getStatus and n.getStatus->pending(now))*/; }
+                [&](const SearchNode& n) { return not (n.isBad() or (n.getStatus and n.getStatus->pending())); }
             );
             if (to_remove != nodes.rend()) {
-                if (to_remove->getStatus and to_remove->getStatus->pending())
-                    current_get_requests--;
                 nodes.erase(std::prev(to_remove.base()));
             } // else, all nodes are expired.
         }
@@ -629,8 +622,8 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                 i++;
         }
         while (sent and sr->current_get_requests < SEARCH_REQUESTS);
-        DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests.",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i);
+        DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
+            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->current_get_requests);
 
         auto expiredn = (size_t)std::count_if(sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& sn) {
                     return sn.candidate or sn.node->isExpired();
