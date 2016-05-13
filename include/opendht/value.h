@@ -598,6 +598,24 @@ private:
  */
 struct Query
 {
+    Query() {}
+
+    /**
+     * Initializes a query based on a SQL-ish formatted string. The abstract
+     * form of such a string is the following:
+     *
+     *  [SELECT <$field$> [WHERE <$field$=$value$>]]
+     *
+     *  where
+     *
+     *  - $field$ = *|id|value_type|owner_pk|user_type
+     *  - $value$ = $string$|$integer$
+     *  - $string$: a simple string WITHOUT SPACES.
+     *  - $integer$: a simple integer.
+     */
+    //TODO: handle spaces quoted strings containing spaces.
+    Query(std::string&& q_str);
+
     Query& setValueId(Value::Id id) {
         filters_.emplace_back(Value::Field::Id, id);
         return *this;
@@ -656,6 +674,8 @@ struct Query
     friend std::ostream& operator<<(std::ostream& s, const dht::Query& q);
 
 private:
+    static const std::string QUERY_PARSE_ERROR;
+
     std::vector<FilterDescription> filters_;
     std::vector<FieldSelectorDescription> fieldSelectors_;
 };
