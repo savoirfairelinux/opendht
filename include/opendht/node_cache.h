@@ -38,21 +38,15 @@ struct NodeCache {
     void clearBadNodes(sa_family_t family = 0);
 
 private:
-    struct NodeTree {
-        std::shared_ptr<Node> get(const InfoHash& id);
-        std::shared_ptr<Node> get(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
-
+    class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
+    public:
+        std::shared_ptr<Node> getNode(const InfoHash& id);
+        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
         void clearBadNodes();
-
-    private:
-        std::shared_ptr<Node> getLocal(const InfoHash& id);
-
-        std::vector<NodeTree> childs;
-        std::vector<std::weak_ptr<Node>> nodes;
     };
 
-    NodeTree cache_4;
-    NodeTree cache_6;
+    NodeMap cache_4;
+    NodeMap cache_6;
 };
 
 }

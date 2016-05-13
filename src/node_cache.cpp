@@ -23,12 +23,12 @@ namespace dht {
 
 std::shared_ptr<Node>
 NodeCache::getNode(const InfoHash& id, sa_family_t family) {
-    return (family == AF_INET ? cache_4 : cache_6).get(id);
+    return (family == AF_INET ? cache_4 : cache_6).getNode(id);
 }
 
 std::shared_ptr<Node>
 NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
-    return (sa->sa_family == AF_INET ? cache_4 : cache_6).get(id, sa, sa_len, now, confirm);
+    return (sa->sa_family == AF_INET ? cache_4 : cache_6).getNode(id, sa, sa_len, now, confirm);
 }
 
 void
@@ -43,82 +43,40 @@ NodeCache::clearBadNodes(sa_family_t family)
 }
 
 std::shared_ptr<Node>
-NodeCache::NodeTree::getLocal(const InfoHash& id)
+NodeCache::NodeMap::getNode(const InfoHash& id)
 {
-    for (auto it = nodes.begin(); it != nodes.end();) {
-        if (auto n = it->lock()) {
-            if (n->id == id) return n;
-            ++it;
-        } else {
-            it = nodes.erase(it);
-        }
-    }
+    auto wn = find(id);
+    if (wn == end())
+        return {};
+    if (auto n = wn->second.lock())
+        return n;
+    erase(wn);
     return {};
 }
 
 std::shared_ptr<Node>
-NodeCache::NodeTree::get(const InfoHash& id)
+NodeCache::NodeMap::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm)
 {
-    NodeTree* t = this;
-    for (auto b : id) {
-        if (t->childs.empty())
-            return t->getLocal(id);
-        else
-            t = &t->childs[b];
-    }
-    return {};
-}
-
-std::shared_ptr<Node>
-NodeCache::NodeTree::get(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm)
-{
-    // find the bucket
-    NodeTree* t = this;
-    size_t offset = 0;
-    while (not t->childs.empty() and offset < 4)
-        t = &t->childs[id[offset++]];
-
-    // find node in bucket
-    auto node = t->getLocal(id);
+    auto it = emplace(id, std::weak_ptr<Node>{});
+    auto node = it.first->second.lock();
     if (not node) {
         node = std::make_shared<Node>(id, sa, sa_len);
-
-        // insert node in bucket
-        if (t->nodes.size() >= 8 && offset < 4) {
-            offset++;
-            t->childs.resize(256);
-            for (auto& w : t->nodes) {
-                if (auto tn = w.lock()) {
-                    t->childs[tn->id[offset]].nodes.emplace_back(std::move(w));
-                }
-            }
-            t->nodes = {};
-            t->childs[id[offset]].nodes.emplace_back(node);
-        } else {
-            t->nodes.emplace_back(node);
-        }
+        it.first->second = node;
     } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
         node->update(sa, sa_len);
     }
-    /*if (confirm)
-        node->received(now, confirm >= 2);*/
     return node;
 }
 
 void
-NodeCache::NodeTree::clearBadNodes() {
-    if (childs.empty()) {
-        for (auto it = nodes.begin(); it != nodes.end();) {
-            if (auto n = it->lock()) {
-                n->reset();
-                ++it;
-            } else {
-                it = nodes.erase(it);
-            }
+NodeCache::NodeMap::clearBadNodes() {
+    for (auto it = cbegin(); it != cend();) {
+        if (auto n = it->second.lock()) {
+            n->reset();
+            ++it;
+        } else {
+            erase(it++);
         }
-    } else {
-        for (auto& c : childs)
-            c.clearBadNodes();
     }
 }
 
