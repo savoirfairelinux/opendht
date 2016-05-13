@@ -205,7 +205,7 @@ struct Value
     static Filter userTypeFilter(const std::string& ut)
     {
         return [ut](const Value& v) {
-            return v.user_type.compare(ut);
+            return v.user_type == ut;
         };
     }
 
