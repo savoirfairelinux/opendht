@@ -616,31 +616,71 @@ struct Query
     //TODO: handle spaces quoted strings containing spaces.
     Query(std::string&& q_str);
 
+    /**
+     * Adds restriction on Value::Id based on the id argument.
+     *
+     * @param id  the id.
+     *
+     * @return the resulting query.
+     */
     Query& setValueId(Value::Id id) {
         filters_.emplace_back(Value::Field::Id, id);
         return *this;
     }
 
+    /**
+     * Adds restriction on Value::Id based on the id argument.
+     *
+     * @param id  the id.
+     *
+     * @return the resulting query.
+     */
     Query& setValueType(ValueType::Id type) {
         filters_.emplace_back(Value::Field::ValueType, type);
         return *this;
     }
 
+    /**
+     * Adds restriction on Value::Id based on the id argument.
+     *
+     * @param id  the id.
+     *
+     * @return the resulting query.
+     */
     Query& setOwnerPk(InfoHash owner_pk_hash) {
         filters_.emplace_back(Value::Field::OwnerPk, owner_pk_hash);
         return *this;
     }
 
+    /**
+     * Adds restriction on Value::Id based on the id argument.
+     *
+     * @param id  the id.
+     *
+     * @return the resulting query.
+     */
     Query& setUserType(std::string user_type) {
         filters_.emplace_back(Value::Field::UserType, Blob {user_type.begin(), user_type.end()});
         return *this;
     }
 
+    /**
+     * Adds restriction on Value::Id based on the id argument.
+     *
+     * @param id  the id.
+     *
+     * @return the resulting query.
+     */
     Query& requireField(Value::Field field) {
         fieldSelectors_.emplace_back(field);
         return *this;
     }
 
+    /**
+     * Computes the Value::Filter based on the list of field value set.
+     *
+     * @return the resulting Value::Filter.
+     */
     Value::Filter getFilter() const {
         std::vector<Value::Filter> fset(filters_.size());
         std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FilterDescription& f){
@@ -649,6 +689,11 @@ struct Query
         return Value::Filter::chainAll(std::move(fset));
     }
 
+    /**
+     * Computes the set of selected fields based on previous require* calls.
+     *
+     * @return the set of fields.
+     */
     std::set<Value::Field> getFieldSelector() const {
         std::set<Value::Field> fields {};
         for (const auto& f : fieldSelectors_) {
