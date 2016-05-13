@@ -477,12 +477,13 @@ private:
             const Blob& nodes6,
             const std::vector<std::shared_ptr<Value>>& st,
             const Blob& token);
-    unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
+    Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::shared_ptr<Node>>& nodes);
+
     std::pair<Blob, Blob> bufferNodes(sa_family_t af,
             const InfoHash& id,
             want_t want,
-            const std::vector<std::shared_ptr<Node>>& nodes,
-            const std::vector<std::shared_ptr<Node>>& nodes6);
+            std::vector<std::shared_ptr<Node>>& nodes,
+            std::vector<std::shared_ptr<Node>>& nodes6);
     /* answer to a listen request */
     void sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid);
     /* answer to put request */

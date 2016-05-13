@@ -81,17 +81,6 @@ struct ParsedMessage {
 NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
  : ntoken(std::move(msg.token)), values(std::move(msg.values)), nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 
-
-/* Called whenever we send a request to a node, increases the ping count
-   and, if that reaches 3, sends a ping to a new candidate. */
-/*void
-NetworkEngine::pinged(Node& n)
-{
-    const auto& now = scheduler.time();
-    if (not n.isExpired(now))
-        n.requested(now);
-}*/
-
 void
 NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash hash, want_t want,
         Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
@@ -271,7 +260,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
             node = cache.getNode(msg.id, from, fromlen, now, 2);
             req->node = node;
         } else
-            node->update(from, fromlen);        
+            node->update(from, fromlen);
 
         onNewNode(node, 2);
         onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
@@ -650,76 +639,54 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-unsigned
-NetworkEngine::insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n)
+Blob
+NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::shared_ptr<Node>>& nodes)
 {
-    unsigned i, size;
-
-    if (n.ss.ss_family == AF_INET)
-        size = HASH_LEN + sizeof(in_addr) + sizeof(in_port_t); // 26
-    else if (n.ss.ss_family == AF_INET6)
-        size = HASH_LEN + sizeof(in6_addr) + sizeof(in_port_t); // 38
-    else
-        return numnodes;
-
-    for (i = 0; i < numnodes; i++) {
-        const InfoHash* nid = reinterpret_cast<const InfoHash*>(nodes + size * i);
-        if (InfoHash::cmp(n.id, *nid) == 0)
-            return numnodes;
-        if (id.xorCmp(n.id, *nid) < 0)
-            break;
+    std::sort(nodes.begin(), nodes.end(), [&](const std::shared_ptr<Node>& a, const std::shared_ptr<Node>& b){
+        return id.xorCmp(a->id, b->id) < 0;
+    });
+    size_t nnode = std::min<size_t>(TARGET_NODES, nodes.size());
+    Blob bnodes;
+    if (af == AF_INET) {
+        bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
+        const constexpr size_t size = HASH_LEN + sizeof(in_addr) + sizeof(in_port_t); // 26
+        for (size_t i=0; i<nnode; i++) {
+            const Node& n = *nodes[i];
+            sockaddr_in *sin = (sockaddr_in*)&n.ss;
+            auto dest = bnodes.data() + size * i;
+            memcpy(dest, n.id.data(), HASH_LEN);
+            memcpy(dest + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
+            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin->sin_port, 2);
+        }
+    } else if (af == AF_INET6) {
+        bnodes.resize(NODE6_INFO_BUF_LEN * nnode);
+        const constexpr size_t size = HASH_LEN + sizeof(in6_addr) + sizeof(in_port_t); // 38
+        for (size_t i=0; i<nnode; i++) {
+            const Node& n = *nodes[i];
+            sockaddr_in6 *sin6 = (sockaddr_in6*)&n.ss;
+            auto dest = bnodes.data() + size * i;
+            memcpy(dest, n.id.data(), HASH_LEN);
+            memcpy(dest + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
+            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, 2);
+        }
     }
-
-    if (i >= TARGET_NODES)
-        return numnodes;
-
-    if (numnodes < TARGET_NODES)
-        ++numnodes;
-
-    if (i < numnodes - 1)
-        memmove(nodes + size * (i + 1), nodes + size * i, size * (numnodes - i - 1));
-
-    if (n.ss.ss_family == AF_INET) {
-        sockaddr_in *sin = (sockaddr_in*)&n.ss;
-        memcpy(nodes + size * i, n.id.data(), HASH_LEN);
-        memcpy(nodes + size * i + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
-        memcpy(nodes + size * i + HASH_LEN + sizeof(in_addr), &sin->sin_port, 2);
-    }
-    else if (n.ss.ss_family == AF_INET6) {
-        sockaddr_in6 *sin6 = (sockaddr_in6*)&n.ss;
-        memcpy(nodes + size * i, n.id.data(), HASH_LEN);
-        memcpy(nodes + size * i + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
-        memcpy(nodes + size * i + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, 2);
-    }
-
-    return numnodes;
+    return bnodes;
 }
 
 std::pair<Blob, Blob>
 NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
-        const std::vector<std::shared_ptr<Node>>& nodes, const std::vector<std::shared_ptr<Node>>& nodes6)
+        std::vector<std::shared_ptr<Node>>& nodes4, std::vector<std::shared_ptr<Node>>& nodes6)
 {
     if (want < 0)
         want = af == AF_INET ? WANT4 : WANT6;
 
-    auto buff = [=](Blob& nodes, const InfoHash& id, const std::vector<std::shared_ptr<Node>>& closest_nodes) {
-        size_t numnodes = 0;
-        for (const auto& n : closest_nodes)
-            numnodes = insertClosestNode(nodes.data(), numnodes, id, *n);
-        return numnodes;
-    };
-
     Blob bnodes4;
-    if (want & WANT4) {
-        bnodes4.resize(NODE4_INFO_BUF_LEN * TARGET_NODES);
-        bnodes4.resize(NODE4_INFO_BUF_LEN * buff(bnodes4, id, nodes));
-    }
+    if (want & WANT4)
+        bnodes4 = bufferNodes(AF_INET, id, nodes4);
 
     Blob bnodes6;
-    if (want & WANT6) {
-        bnodes6.resize(NODE6_INFO_BUF_LEN * TARGET_NODES);
-        bnodes6.resize(NODE6_INFO_BUF_LEN * buff(bnodes6, id, nodes6));
-    }
+    if (want & WANT6)
+        bnodes6 = bufferNodes(AF_INET6, id, nodes6);
 
     return {std::move(bnodes4), std::move(bnodes6)};
 }
