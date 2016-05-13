@@ -499,7 +499,7 @@ struct FieldSelectorDescription
 
     template <typename Packer>
     void msgpack_pack(Packer& p) const { p.pack(static_cast<uint8_t>(field)); }
-    void msgpack_unpack(msgpack::object msg) { field = static_cast<Value::Field>(f->as<unsigned>()); }
+    void msgpack_unpack(msgpack::object msg) { field = static_cast<Value::Field>(msg.as<int>()); }
 private:
     Value::Field field {Value::Field::None};
 };
