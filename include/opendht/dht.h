@@ -137,15 +137,15 @@ public:
                         cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    void get(const InfoHash& key, GetCallback cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter());
-    void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
-        get(key, cb, bindDoneCb(donecb), f);
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={});
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}) {
+        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f));
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb=nullptr, Value::Filter f = Value::AllFilter()) {
-        get(key, bindGetCb(cb), donecb, f);
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}) {
+        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f));
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), f);
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}) {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f));
     }
 
     /**
@@ -203,9 +203,9 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    size_t listen(const InfoHash&, GetCallback, Value::Filter = Value::AllFilter());
-    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
-        return listen(key, bindGetCb(cb), f);
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={});
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}) {
+        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f));
     }
 
     bool cancelListen(const InfoHash&, size_t token);

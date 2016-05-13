@@ -85,12 +85,12 @@ public:
      * If the signature can't be checked, or if the data can't be decrypted, it is not returned.
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
-    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& = {});
-    void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb, Value::Filter&& f = {}) {
+    virtual void get(const InfoHash& id, GetCallback cb, DoneCallback donecb={}, Value::Filter&& = {}) override;
+    virtual void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f = {}) override {
         get(id, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f));
     }
 
-    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {});
+    virtual size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {}) override;
 
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.

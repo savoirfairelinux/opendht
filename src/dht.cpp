@@ -1063,7 +1063,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
 }
 
 size_t
-Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f)
+Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
 {
     scheduler.syncTime();
 
@@ -1200,7 +1200,7 @@ struct OpStatus {
 };
 
 void
-Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter filter)
+Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter&& filter)
 {
     scheduler.syncTime();
 
