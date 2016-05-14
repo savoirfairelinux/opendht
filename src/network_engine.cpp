@@ -20,6 +20,7 @@
 
 
 #include "network_engine.h"
+#include "request.h"
 
 #include <msgpack.hpp>
 
@@ -111,10 +112,75 @@ NetworkEngine::isRunning(sa_family_t af) const
 }
 
 void
+NetworkEngine::cancelRequest(std::shared_ptr<Request>& req)
+{
+    if (req) {
+        req->cancel();
+        requests.erase(req->tid);
+    }
+}
+
+void
+NetworkEngine::clear()
+{
+    for (auto& req : requests)
+        req.second->cancel();
+    requests.clear();
+}
+
+void
 NetworkEngine::connectivityChanged()
 {
     cache.clearBadNodes();
 }
+
+void
+NetworkEngine::requestStep(std::shared_ptr<Request> req)
+{
+    if (not req->pending()) {
+        if (req->cancelled())
+            requests.erase(req->tid);
+        return;
+    }
+
+    auto now = scheduler.time();
+    if (req->isExpired(now)) {
+        req->node->setExpired();
+        requests.erase(req->tid);
+        return;
+    } else if (req->attempt_count == 1) {
+        req->on_expired(*req, false);
+    }
+
+    send((char*)req->msg.data(), req->msg.size(),
+            (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            (sockaddr*)&req->node->ss, req->node->sslen);
+    ++req->attempt_count;
+    req->last_try = now;
+    std::weak_ptr<Request> wreq = req;
+    scheduler.add(req->last_try + Node::MAX_RESPONSE_TIME, [this,wreq]() {
+        if (auto req = wreq.lock()) {
+            requestStep(req);
+        }
+    });
+}
+
+/**
+ * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
+ * be made before the request expires.
+ */
+void
+NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
+{
+    request->start = scheduler.time();
+    auto e = requests.emplace(request->tid, request);
+    if (!e.second) {
+        DHT_LOG.ERROR("Request already existed !");
+    }
+    request->node->requested(request);
+    requestStep(request);
+}
+
 
 /* Rate control for requests we receive. */
 bool

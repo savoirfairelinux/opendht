@@ -28,7 +28,6 @@
 #include "scheduler.h"
 #include "utils.h"
 #include "rng.h"
-#include "request.h"
 
 #include <vector>
 #include <string>
@@ -165,12 +164,7 @@ public:
      * Cancel a request. Setting req->cancelled = true is not enough in the case
      * a request is "persistent".
      */
-    void cancelRequest(std::shared_ptr<Request>& req) {
-        if (req) {
-            req->cancel();
-            requests.erase(req->tid);
-        }
-    }
+    void cancelRequest(std::shared_ptr<Request>& req);
 
     void connectivityChanged();
 
@@ -281,11 +275,7 @@ public:
         clear();
     };
 
-    void clear() {
-        for (auto& req : requests)
-            req.second->cancel();
-        requests.clear();
-    }
+    void clear();
 
     /**
      * Sends values (with closest nodes) to a listenner.
@@ -399,48 +389,13 @@ private:
     static bool isMartian(const sockaddr* sa, socklen_t len);
     bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
 
-    void requestStep(std::shared_ptr<Request> req) {
-        if (not req->pending()) {
-            if (req->cancelled())
-                requests.erase(req->tid);
-            return;
-        }
-
-        auto now = scheduler.time();
-        if (req->isExpired(now)) {
-            req->node->setExpired();
-            requests.erase(req->tid);
-            return;
-        } else if (req->attempt_count == 1) {
-            req->on_expired(*req, false);
-        }
-
-        send((char*)req->msg.data(), req->msg.size(),
-                (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-                (sockaddr*)&req->node->ss, req->node->sslen);
-        ++req->attempt_count;
-        req->last_try = now;
-        std::weak_ptr<Request> wreq = req;
-        scheduler.add(req->last_try + Node::MAX_RESPONSE_TIME, [this,wreq]() {
-            if (auto req = wreq.lock()) {
-                requestStep(req);
-            }
-        });
-    }
+    void requestStep(std::shared_ptr<Request> req);
 
     /**
      * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
      * be made before the request expires.
      */
-    void sendRequest(std::shared_ptr<Request>& request) {
-        request->start = scheduler.time();
-        auto e = requests.emplace(request->tid, request);
-        if (!e.second) {
-            DHT_LOG.ERROR("Request already existed !");
-        }
-        request->node->requested(request);
-        requestStep(request);
-    }
+    void sendRequest(std::shared_ptr<Request>& request);
 
     /**
      * Generates a new request id, skipping the invalid id.
