@@ -574,11 +574,10 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     const auto& nid = node->id;
 
     // Fast track for the case where the node is not relevant for this search
-    if (node->isExpired() && nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
+    if (nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
         return false;
 
     bool found = false;
-    unsigned num_bad_nodes = getNumberOfBadNodes();
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
         if (sn.node == node) {
             found = true;
@@ -589,15 +588,13 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
 
     bool new_search_node = false;
     if (!found) {
-        // Be more restricitve if there are too many
-        // good or unknown nodes in this search,
-        if (nodes.size() - num_bad_nodes - current_get_requests >= SEARCH_NODES) {
-            if (node->isExpired() or n == nodes.end())
-                return false;
-        }
+        // Be more restricitve if there are
+        // too many nodes in this search,
+        if (nodes.size() >= SEARCH_NODES && n == nodes.end())
+            return false;
 
         // Reset search timer if the search is empty
-        if (nodes.empty()) {
+        else if (nodes.empty()) {
             step_time = TIME_INVALID;
             current_get_requests = 0;
         }
@@ -606,17 +603,14 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         node->time = now;
         new_search_node = true;
 
-        // trim good nodes
-        while (nodes.size()-num_bad_nodes-current_get_requests > SEARCH_NODES) {
-            if (removeExpiredNode(now))
-                num_bad_nodes--;
-
-            auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
-                [&](const SearchNode& n) { return not (n.isBad() or (n.getStatus and n.getStatus->pending())); }
-            );
-            if (to_remove != nodes.rend()) {
-                nodes.erase(std::prev(to_remove.base()));
-            } // else, all nodes are expired.
+        // trim nodes
+        while (nodes.size() > SEARCH_NODES) {
+            auto to_remove = std::prev(nodes.end());
+            if (to_remove->getStatus and to_remove->getStatus->pending()) {
+                to_remove->getStatus->cancel();
+                current_get_requests--;
+            }
+            nodes.erase(to_remove);
         }
         expired = false;
     }
@@ -850,47 +844,47 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         }
         if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
             sr->done = true;
-    }
-
-    if (sr->current_get_requests < SEARCH_REQUESTS) {
-        unsigned i = 0;
-        SearchNode* sent;
-        do {
-            sent = searchSendGetValues(sr);
-            if (sent and not sent->candidate)
-                i++;
-        }
-        while (sent and sr->current_get_requests < SEARCH_REQUESTS);
-        DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->current_get_requests);
-
-        auto expiredn = (size_t)std::count_if(sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& sn) {
-                    return sn.candidate or sn.node->isExpired();
-                });
-        if (i == 0 && expiredn == sr->nodes.size())
-        {
-            DHT_LOG.ERROR("[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
-            // no nodes or all expired nodes
-            sr->expired = true;
-            if (sr->announce.empty() && sr->listeners.empty()) {
-                // Listening or announcing requires keeping the cluster up to date.
-                sr->done = true;
+    } else {
+        if (sr->current_get_requests < SEARCH_REQUESTS) {
+            unsigned i = 0;
+            SearchNode* sent;
+            do {
+                sent = searchSendGetValues(sr);
+                if (sent and not sent->candidate)
+                    i++;
             }
+            while (sent and sr->current_get_requests < SEARCH_REQUESTS);
+            DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->current_get_requests);
+
+            auto expiredn = (size_t)std::count_if(sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& sn) {
+                        return sn.candidate or sn.node->isExpired();
+                    });
+            if (i == 0 && expiredn == sr->nodes.size())
             {
-                auto get_cbs = std::move(sr->callbacks);
-                for (const auto& g : get_cbs) {
-                    if (g.done_cb)
-                        g.done_cb(false, {});
+                DHT_LOG.ERROR("[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
+                // no nodes or all expired nodes
+                sr->expired = true;
+                if (sr->announce.empty() && sr->listeners.empty()) {
+                    // Listening or announcing requires keeping the cluster up to date.
+                    sr->done = true;
                 }
-            }
-            {
-                std::vector<DoneCallback> a_cbs;
-                a_cbs.reserve(sr->announce.size());
-                for (const auto& a : sr->announce)
-                    if (a.callback)
-                        a_cbs.emplace_back(std::move(a.callback));
-                for (const auto& a : a_cbs)
-                    a(false, {});
+                {
+                    auto get_cbs = std::move(sr->callbacks);
+                    for (const auto& g : get_cbs) {
+                        if (g.done_cb)
+                            g.done_cb(false, {});
+                    }
+                }
+                {
+                    std::vector<DoneCallback> a_cbs;
+                    a_cbs.reserve(sr->announce.size());
+                    for (const auto& a : sr->announce)
+                        if (a.callback)
+                            a_cbs.emplace_back(std::move(a.callback));
+                    for (const auto& a : a_cbs)
+                        a(false, {});
+                }
             }
         }
     }
