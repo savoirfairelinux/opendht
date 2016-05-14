@@ -1725,7 +1725,7 @@ Dht::expireStorage()
         total_store_size += stats.first;
         total_values += stats.second;
 
-        if (i->empty() && i->listeners.empty()) {
+        if (i->empty() && i->listeners.empty() && i->local_listeners.empty()) {
             DHT_LOG.DEBUG("Discarding expired value %s", i->id.toString().c_str());
             i = store.erase(i);
         }
