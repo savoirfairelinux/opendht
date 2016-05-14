@@ -141,10 +141,10 @@ public:
     virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}) {
         get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f));
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}) {
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}) {
         get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f));
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}) {
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}) {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f));
     }
 
@@ -208,7 +208,7 @@ public:
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f));
     }
 
-    bool cancelListen(const InfoHash&, size_t token);
+    virtual bool cancelListen(const InfoHash&, size_t token);
 
     /**
      * Inform the DHT of lower-layer connectivity changes.
