@@ -87,10 +87,7 @@ def gcb(v):
     return True
 
 r = DhtRunner()
-i = Identity()
-i.generate(bits = 1024)
-
-r.run(i, port=4112)
+r.run(port=4112)
 r.bootstrap("bootstrap.ring.cx", "4222")
 
 all_lines = []
