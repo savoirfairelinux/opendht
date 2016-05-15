@@ -28,6 +28,8 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 
 std::shared_ptr<Node>
 NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
+    if (id == zeroes)
+        return std::make_shared<Node>(id, sa, sa_len);
     return (sa->sa_family == AF_INET ? cache_4 : cache_6).getNode(id, sa, sa_len, now, confirm);
 }
 

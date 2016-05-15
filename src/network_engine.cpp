@@ -289,7 +289,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
         return;
     }
 
-    if (msg.id == myid) {
+    if (msg.id == myid || msg.id == zeroes) {
         DHT_LOG.DEBUG("Received message from self.");
         return;
     }
@@ -319,14 +319,22 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
         }
         auto req = reqp->second;
 
-        auto node = req->node;//cache.getNode(msg.id, from, fromlen, now, 2);
-        node->received(now, req);
-        if (node->id == zeroes) {
-            // reply to a message sent when we didn't know the node ID.
+        auto node = req->node;
+        if (node->id != msg.id) {
+            bool unknown_node = node->id == zeroes;
             node = cache.getNode(msg.id, from, fromlen, now, 2);
-            req->node = node;
+            if (unknown_node) {
+                // received reply to a message sent when we didn't know the node ID.
+                req->node = node;
+            } else {
+                // received reply from unexpected node
+                node->received(now, req);
+                onNewNode(node, 2);
+                return;
+            }
         } else
             node->update(from, fromlen);
+        node->received(now, req);
 
         onNewNode(node, 2);
         onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
