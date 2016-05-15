@@ -1,4 +1,4 @@
-AC_INIT(opendht, 0.5.2)
+AC_INIT(opendht, 0.6.0)
 AC_CONFIG_AUX_DIR(ac)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_HEADERS([config.h])
