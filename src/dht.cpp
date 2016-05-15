@@ -270,7 +270,7 @@ struct Dht::Search {
     unsigned currentGetRequests() const {
         unsigned count = 0;
         for (const auto& n : nodes)
-            if (n.getStatus and n.getStatus->pending())
+            if (not n.isBad() and n.getStatus and n.getStatus->pending())
                 count++;
         return count;
     }
@@ -886,6 +886,8 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             }
         }
     }
+
+    //dumpSearch(*sr, std::cout);
 
     /* periodic searchStep scheduling. */
     if (not sr->done)
