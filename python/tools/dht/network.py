@@ -273,13 +273,11 @@ class DhtNetwork(object):
     @staticmethod
     def run_node(ip4, ip6, p, bootstrap=[], is_bootstrap=False):
         DhtNetwork.log("run_node", ip4, ip6, p, bootstrap)
-        id = Identity()
-        #id.generate("dhtbench"+str(p), Identity(), 1024)
         n = DhtRunner()
-        n.run(id, ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
+        n.run(ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
         for b in bootstrap:
             n.bootstrap(b[0], b[1])
-        #plt.pause(0.02)
+        time.sleep(.01)
         return ((ip4, ip6, p), n, id)
 
     @staticmethod
@@ -387,11 +385,11 @@ class DhtNetwork(object):
         if n == l:
             return
         if n > l:
-            DhtNetwork.log("Launching", n-l, "nodes")
+            DhtNetwork.log("Launching", n-l, "nodes", self.ip4, self.ip6)
             for i in range(l, n):
                 self.launch_node()
         else:
-            DhtNetwork.log("Ending", l-n, "nodes")
+            DhtNetwork.log("Ending", l-n, "nodes", self.ip4, self.ip6)
             #random.shuffle(self.nodes)
             for i in range(n, l):
                 self.end_node()

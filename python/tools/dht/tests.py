@@ -636,7 +636,7 @@ class PerformanceTest(DhtFeatureTest):
         hax.set_ylim(0, 2)
 
         # let the network stabilise
-        plt.pause(60)
+        plt.pause(20)
 
         #start = time.time()
         times = []
@@ -649,7 +649,7 @@ class PerformanceTest(DhtFeatureTest):
             DhtNetwork.log("found", v)
             return True
 
-        def donecb(ok, nodes):
+        def donecb(ok, nodes, start):
             nonlocal bootstrap, lock, done, times
             t = time.time()-start
             with lock:
@@ -665,7 +665,10 @@ class PerformanceTest(DhtFeatureTest):
                 l = lines.pop()
                 l.remove()
                 del l
-            lines = plt.plot(times, color='blue')
+            if len(times) > 1:
+                n, bins, lines = hax.hist(times, 100, normed=1, histtype='stepfilled', color='g')
+                hax.set_ylim(min(n), max(n))
+                lines.extend(lax.plot(times, color='blue'))
             plt.draw()
 
         def run_get():
@@ -686,12 +689,12 @@ class PerformanceTest(DhtFeatureTest):
             DhtNetwork.log("Getting 50 random hashes succesively.")
             for i in range(50):
                 with lock:
-                    done += 1
-                    start = time.time()
-                    bootstrap.front().get(InfoHash.getRandom(), getcb, donecb)
+                    for _ in range(1):
+                        run_get()
                     while done > 0:
                         lock.wait()
                         update_plot()
+                        plt.pause(.1)
                 update_plot()
             print("Took", np.sum(times), "mean", np.mean(times), "std", np.std(times), "min", np.min(times), "max", np.max(times))
 
