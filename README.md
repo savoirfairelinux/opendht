@@ -88,8 +88,7 @@ for r in results:
 Licence
 -
 Copyright (C) 2014-2016 Savoir-faire Linux Inc.
-
-Licenced under the GNU General Public License version 3, though the core routing library (dht.cpp) is licenced under the MIT licence.
+Licenced under the GNU General Public License version 3 (see COPYING for the full licence).
 
 This project is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
 
@@ -100,3 +99,6 @@ Dependencies
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
 
+Donations
+-
+We gratefully accept Bitcoin donations to support OpenDHT development at: `bitcoin:3EykSd1An888efq4Bq3KaV3hJ3JQ4FPnwm`.
