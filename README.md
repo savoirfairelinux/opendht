@@ -85,19 +85,20 @@ for r in results:
     print(r)
 ```
 
-Licence
--
-Copyright (C) 2014-2016 Savoir-faire Linux Inc.
-Licenced under the GNU General Public License version 3 (see COPYING for the full licence).
-
-This project is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
-
 Dependencies
 -
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.1+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
+
+Licence
+-
+Copyright (C) 2014-2016 Savoir-faire Linux Inc.
+
+Licenced under the GNU General Public License version 3 (see COPYING for the full licence).
+
+This project is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
 
 Donations
 -
