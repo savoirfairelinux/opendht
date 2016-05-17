@@ -87,7 +87,7 @@ struct Node {
     static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
 
     /* Time for a request to timeout */
-    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {3};
+    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {1};
 
 private:
 
