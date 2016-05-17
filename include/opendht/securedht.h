@@ -89,11 +89,11 @@ public:
     virtual void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f = {}, Query&& q = {}) override {
         get(id, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}) override {
-        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Query&& q = {}) override {
+        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}) override {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Query&& q = {}) override {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
 
     virtual size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {}, Query&& q = {}) override;
