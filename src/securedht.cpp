@@ -94,7 +94,7 @@ SecureDht::secureType(ValueType&& type)
 {
     type.storePolicy = [this,type](InfoHash id, std::shared_ptr<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
         if (v->isSigned()) {
-            if (!v->owner.checkSignature(v->getToSign(), v->signature)) {
+            if (!v->owner or !v->owner->checkSignature(v->getToSign(), v->signature)) {
                 DHT_LOG.WARN("Signature verification failed");
                 return false;
             }
@@ -110,7 +110,7 @@ SecureDht::secureType(ValueType&& type)
             DHT_LOG.WARN("Edition forbidden: owner changed.");
             return false;
         }
-        if (!o->owner.checkSignature(n->getToSign(), n->signature)) {
+        if (!o->owner or !o->owner->checkSignature(n->getToSign(), n->signature)) {
             DHT_LOG.WARN("Edition forbidden: signature verification failed.");
             return false;
         }
@@ -152,7 +152,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
     }
     InfoHash h = crt->getPublicKey().getId();
     if (node == h) {
-        DHT_LOG.DEBUG("Registering public key for %s", h.toString().c_str());
+        DHT_LOG.DEBUG("Registering certificate for %s", h.toString().c_str());
         auto it = nodesCertificates_.find(h);
         if (it == nodesCertificates_.end())
             std::tie(it, std::ignore) = nodesCertificates_.emplace(h, std::move(crt));
@@ -177,7 +177,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 {
     std::shared_ptr<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
-        DHT_LOG.DEBUG("Using public key from cache for %s", node.toString().c_str());
+        DHT_LOG.DEBUG("Using certificate from cache for %s", node.toString().c_str());
         if (cb)
             cb(b);
         return;
@@ -185,7 +185,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
     if (localQueryMethod_) {
         auto res = localQueryMethod_(node);
         if (not res.empty()) {
-            DHT_LOG.DEBUG("Registering public key from local store for %s", node.toString().c_str());
+            DHT_LOG.DEBUG("Registering certificate from local store for %s", node.toString().c_str());
             nodesCertificates_.emplace(node, res.front());
             if (cb)
                 cb(res.front());
@@ -200,7 +200,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
         for (const auto& v : vals) {
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
-                DHT_LOG.DEBUG("Found public key for %s", node.toString().c_str());
+                DHT_LOG.DEBUG("Found certificate for %s", node.toString().c_str());
                 if (cb)
                     cb(cert);
                 return false;
@@ -237,7 +237,7 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
             }
             // Check signed values
             else if (v->isSigned()) {
-                if (v->owner.checkSignature(v->getToSign(), v->signature)) {
+                if (v->owner and v->owner->checkSignature(v->getToSign(), v->signature)) {
                     if (not filter  or filter(*v))
                         tmpvals.push_back(v);
                 }
@@ -290,7 +290,7 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
             for (const auto& v : vals) {
                 if (!v->isSigned())
                     DHT_LOG.ERROR("Existing non-signed value seems to exists at this location.");
-                else if (v->owner.getId() != getId())
+                else if (not v->owner or v->owner->getId() != getId())
                     DHT_LOG.ERROR("Existing signed value belonging to someone else seems to exists at this location.");
                 else if (val->seq <= v->seq)
                     val->seq = v->seq + 1;
@@ -330,7 +330,7 @@ SecureDht::sign(Value& v) const
 {
     if (v.isEncrypted())
         throw DhtException("Can't sign encrypted data.");
-    v.owner = key_->getPublicKey();
+    v.owner = std::make_shared<crypto::PublicKey>(key_->getPublicKey());
     v.signature = key_->sign(v.getToSign());
 }
 
@@ -360,7 +360,7 @@ SecureDht::decrypt(const Value& v)
 
     if (ret.recipient != getId())
         throw crypto::DecryptError("Recipient mismatch");
-    if (not ret.owner.checkSignature(ret.getToSign(), ret.signature))
+    if (not ret.owner or not ret.owner->checkSignature(ret.getToSign(), ret.signature))
         throw crypto::DecryptError("Signature mismatch");
 
     return ret;

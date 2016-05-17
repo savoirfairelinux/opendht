@@ -66,7 +66,8 @@ private:
 
 public:
     virtual void unpackValue(const Value& v) override {
-        from = v.owner.getId();
+        if (v.owner)
+            from = v.owner->getId();
         BaseClass::unpackValue(v);
     }
 

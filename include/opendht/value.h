@@ -255,7 +255,7 @@ struct Value
         return not cypher.empty();
     }
     bool isSigned() const {
-        return not signature.empty();
+        return owner and not signature.empty();
     }
 
     Value() {}
@@ -301,7 +301,7 @@ struct Value
     inline bool operator== (const Value& o) {
         return id == o.id &&
         (isEncrypted() ? cypher == o.cypher :
-        (owner == o.owner && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature));
+        ((owner == o.owner || *owner == *o.owner) && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature));
     }
 
     void setRecipient(const InfoHash& r) {
@@ -347,10 +347,11 @@ struct Value
     template <typename Packer>
     void msgpack_pack_to_sign(Packer& pk) const
     {
-        pk.pack_map((user_type.empty()?0:1) + (owner?(recipient == InfoHash() ? 4 : 5):2));
-        if (owner) { // isSigned
+        bool has_owner = owner && *owner;
+        pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient == InfoHash() ? 4 : 5):2));
+        if (has_owner) { // isSigned
             pk.pack(std::string("seq"));   pk.pack(seq);
-            pk.pack(std::string("owner")); owner.msgpack_pack(pk);
+            pk.pack(std::string("owner")); owner->msgpack_pack(pk);
             if (recipient != InfoHash()) {
                 pk.pack(std::string("to")); pk.pack(recipient);
             }
@@ -395,7 +396,7 @@ struct Value
     /**
      * Public key of the signer.
      */
-    crypto::PublicKey owner {};
+    std::shared_ptr<crypto::PublicKey> owner {};
 
     /**
      * Hash of the recipient (optional).
