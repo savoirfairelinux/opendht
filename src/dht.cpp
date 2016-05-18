@@ -2256,8 +2256,8 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
 
     try {
         network_engine.processMessage(buf, buflen, from, fromlen);
-    } catch (DhtProtocolException& e) {
-        DHT_LOG.ERROR("Can't parse message from %s: %s", e.getNodeId().toString().c_str(), e.what());
+    } catch (const std::exception& e) {
+        DHT_LOG.ERROR("Can't parse message from %s: %s", print_addr(from, fromlen).c_str(), e.what());
         //auto code = e.getCode();
         //if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
             /* This is really annoying, as it means that we will
