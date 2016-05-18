@@ -764,14 +764,14 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             };
         std::shared_ptr<Request> rstatus;
         if (sr->callbacks.empty() and sr->listeners.empty()) {
-            /*DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'find_node'",
+            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'find_node'",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    n->node->toString().c_str());*/
+                    n->node->toString().c_str());
             rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
         } else {
-            /*DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'get'",
+            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'get'",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    n->node->toString().c_str());*/
+                    n->node->toString().c_str());
             rstatus = network_engine.sendGetValues(n->node, sr->id, query ? *query : Query {}, -1, onDone, onExpired);
         }
         n->getStatus[query] = rstatus;
