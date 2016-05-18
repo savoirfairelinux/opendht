@@ -177,9 +177,15 @@ struct Dht::SearchNode {
     }
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
         const auto& get_status = q ? getStatus.find(q) : getStatus.end();
+        const auto& sq_status = std::find_if(getStatus.begin(), getStatus.end(),
+                [q](const SyncStatusMap::value_type& s) {
+                    return q and s.first and q->isSatisfiedBy(*s.first);
+                }
+        );
         return not node->isExpired() and
                (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-               and (get_status == getStatus.end() or not get_status->second or not get_status->second->pending());
+               and ((get_status == getStatus.end() or not get_status->second or not get_status->second->pending()) and
+                    (sq_status == getStatus.end() or not sq_status->second or not sq_status->second->pending()));
     }
 
     bool expired(const SyncStatusMap& status) const {
@@ -719,7 +725,9 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     SearchNode* n = nullptr;
     auto cb = sr->callbacks.begin();
     do { /* for all queries to send */
-        auto query = cb != sr->callbacks.end() ? cb->query : std::make_shared<Query>();
+
+        /* cases                                  v 'find_node      v 'get' */
+        auto query = cb != sr->callbacks.end() ? cb->second.query : std::make_shared<Query>();
         if (pn) {
             if (not pn->canGet(now, up, query))
                 return nullptr;
@@ -734,10 +742,6 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             if (not n)
                 return nullptr;
         }
-
-        /*DHT_LOG.DEBUG("[search %s IPv%c] [node %s] sending 'get'",
-          sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-          n->node->toString().c_str());*/
 
         std::weak_ptr<Search> ws = sr;
         auto onDone =
@@ -762,14 +766,21 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                 }
             };
         std::shared_ptr<Request> rstatus;
-        if (sr->callbacks.empty() and sr->listeners.empty())
+        if (sr->callbacks.empty() and sr->listeners.empty()) {
+            /*DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'find_node'",
+                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                    n->node->toString().c_str());*/
             rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
-        else
+        } else {
+            /*DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'get'",
+                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                    n->node->toString().c_str());*/
             rstatus = network_engine.sendGetValues(n->node, sr->id, query ? *query : Query {}, -1, onDone, onExpired);
+        }
         n->getStatus[query] = rstatus;
 
-        if (cb == sr->callbacks.end())
-            break; /* callback was empty, no queries, only findnode */
+        if (not sr->isSynced(now) or cb == sr->callbacks.end())
+            break; /* only trying to find nodes, only send the oldest query */
     } while (++cb != sr->callbacks.end());
     return n;
 }
