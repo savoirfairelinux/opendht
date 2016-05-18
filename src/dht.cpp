@@ -1580,7 +1580,7 @@ void
 Dht::storageChanged(Storage& st, ValueStorage& v)
 {
     const auto& now = scheduler.time();
-    {
+    if (not st.local_listeners.empty()) {
         std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
         DHT_LOG.DEBUG("Storage changed. Sending update to %lu local listeners.", st.local_listeners.size());
         for (const auto& l : st.local_listeners) {
