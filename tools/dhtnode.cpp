@@ -61,8 +61,8 @@ void print_help() {
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
               << "  b ip:port             Ping potential node at given IP address/port." << std::endl
-              << "  g [key]               Get values at [key]." << std::endl
-              << "  l [key]               Listen for value changes at [key]." << std::endl
+              << "  g [key] [query]       Get values at [key]." << std::endl
+              << "  l [key] [query]       Listen for value changes at [key]." << std::endl
               << "  p [key] [str]         Put string value at [key]." << std::endl
               << "  s [key] [str]         Put string value at [key], signed with our generated private key." << std::endl
               << "  e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with its public key (if found)." << std::endl
@@ -161,6 +161,10 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
 
         auto start = std::chrono::high_resolution_clock::now();
         if (op == "g") {
+            std::string rem;
+            std::getline(iss, rem);
+            dht::Query q(std::move(rem));
+            std::cout << q << std::endl;
             dht.get(id, [start](std::shared_ptr<Value> value) {
                 auto now = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: found value (after " << print_dt(now-start) << "s)" << std::endl;
@@ -169,14 +173,18 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
-            });
+            }, {}, std::move(q));
         }
         else if (op == "l") {
+            std::string rem;
+            std::getline(iss, rem);
+            dht::Query q {std::move(rem)};
+            std::cout << q << std::endl;
             dht.listen(id, [](std::shared_ptr<Value> value) {
                 std::cout << "Listen: found value:" << std::endl;
                 std::cout << "\t" << *value << std::endl;
                 return true;
-            });
+            }, {}, std::move(q));
         }
         else if (op == "p") {
             std::string v;
