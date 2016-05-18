@@ -139,7 +139,7 @@ cdef class Value(object):
     property owner:
         def __get__(self):
             h = InfoHash()
-            h._infohash = self._value.get().owner.getId()
+            h._infohash = self._value.get().owner.get().getId()
             return h
     property recipient:
         def __get__(self):
