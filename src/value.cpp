@@ -268,7 +268,7 @@ Query::Query(std::string&& q_str) {
             std::getline(eq_ss, value, '=');
             trim_str(value);
 
-            int v;
+            uint64_t v = 0;
             std::istringstream convert {value};
             convert >> v;
             if (field == "id")
@@ -353,13 +353,17 @@ std::ostream& operator<<(std::ostream& s, const dht::Query& q)
             switch (f->getField()) {
                 case Value::Field::Id:
                     s << "id=" << f->getInt();
+                    break;
                 case Value::Field::ValueType:
                     s << "value_type=" << f->getInt();
+                    break;
                 case Value::Field::OwnerPk:
                     s << "owner_pk_hash=" << f->getHash().toString();
+                    break;
                 case Value::Field::UserType: {
                     auto b = f->getBlob();
                     s << "user_type=" << std::string {b.begin(), b.end()};
+                    break;
                 }
                 default:
                     break;
