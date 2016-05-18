@@ -695,13 +695,11 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     auto onExpired =
         [this,ws](const Request& status, bool over) mutable {
             if (auto sr = ws.lock()) {
-                auto srn = sr->getNode(status.node);
-                if (srn and not srn->candidate) {
+                if (auto srn = sr->getNode(status.node)) {
                     /*DHT_LOG.DEBUG("[search %s IPv%c] [node %s] 'get' expired",
                         sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                         srn->node->toString().c_str());*/
-                    if (not over)
-                        srn->candidate = true;
+                    srn->candidate = not over;
                 }
                 scheduler.edit(sr->nextSearchStep, scheduler.time());
             }
