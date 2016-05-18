@@ -894,36 +894,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
 }
 
-
-std::shared_ptr<Dht::Search>
-Dht::newSearch(InfoHash id, sa_family_t af)
-{
-    auto& srs = af == AF_INET ? searches4 : searches6;
-    const auto& o = std::min_element(srs.begin(), srs.end(),
-        [](std::pair<const InfoHash, std::shared_ptr<Search>>& lsr, std::pair<const InfoHash, std::shared_ptr<Search>>& rsr) {
-            return lsr.second->done && rsr.second->step_time > lsr.second->step_time;
-        });
-    auto oldest = o != srs.end() ? o->second : nullptr;
-
-    /* The oldest slot is expired. */
-    if (oldest && oldest->announce.empty() && oldest->listeners.empty()
-            && oldest->step_time < scheduler.time() - SEARCH_EXPIRE_TIME)
-    {
-        DHT_LOG.WARN("Reusing expired search %s", oldest->id.toString().c_str());
-        return oldest;
-    }
-
-    /* Allocate a new slot. */
-    if (searches4.size() + searches6.size() < MAX_SEARCHES) {
-        auto sr = std::make_shared<Search>();
-        srs[id] = sr;
-        return sr;
-    }
-
-    /* Oh, well, never mind.  Reuse the oldest slot. */
-    return oldest;
-}
-
 /* Insert the contents of a bucket into a search structure. */
 unsigned
 Dht::Search::insertBucket(const Bucket& b, time_point now)
@@ -1190,9 +1160,20 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
         sr->done = false;
         sr->expired = false;
     } else {
-        sr = newSearch(id, af);
-        if (not sr)
-            return {};
+        if (searches4.size() + searches6.size() < MAX_SEARCHES) {
+            sr = std::make_shared<Search>();
+            srs.emplace(id, sr);
+        } else {
+            for (auto it = srs.begin(); it!=srs.end();) {
+                auto& s = *it->second;
+                if ((s.done or s.expired) and s.announce.empty() and s.listeners.empty()) {
+                    sr = it->second;
+                    break;
+                }
+            }
+            if (not sr)
+                throw DhtException("Can't create search");
+        }
         sr->af = af;
         sr->tid = search_id++;
         sr->step_time = TIME_INVALID;

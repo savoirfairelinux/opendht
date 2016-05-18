@@ -456,7 +456,6 @@ private:
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
-    std::shared_ptr<Search> newSearch(InfoHash id, sa_family_t af);
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
