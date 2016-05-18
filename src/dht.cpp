@@ -746,9 +746,6 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
         auto onDone =
             [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
                 if (auto sr = ws.lock()) {
-                    auto srn = sr->getNode(status.node);
-                    if (srn)
-                        srn->getStatus.erase(query);
                     sr->insertNode(status.node, scheduler.time(), answer.ntoken);
                     onGetValuesDone(status, answer, sr, query);
                 }
@@ -816,9 +813,11 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             // search is synced but some (newer) get operations are not complete
             // Call callbacks when done
             for (auto b = sr->callbacks.begin(); b != sr->callbacks.end();) {
-                if (sr->isDone(*b, now)) {
-                    if (b->done_cb)
-                        b->done_cb(true, sr->getNodes());
+                if (sr->isDone(b->second, now)) {
+                    if (b->second.done_cb)
+                        b->second.done_cb(true, sr->getNodes());
+                    for (auto& n : sr->nodes)
+                        n.getStatus.erase(b->second.query);
                     b = sr->callbacks.erase(b);
                 }
                 else
@@ -1030,7 +1029,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
         const auto& gs = sn.getStatus.find(get.query);
         if (sn.isBad())
             continue;
-        if (gs != sn.getStatus.end() and (not gs->second or gs->second->reply_time < limit))
+        if (gs == sn.getStatus.end() or not gs->second or gs->second->reply_time < limit)
            return false;
         if (++i == TARGET_NODES)
             break;
