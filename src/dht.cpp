@@ -731,10 +731,10 @@ Dht::searchStep(std::shared_ptr<Search> sr)
      * TODO: Emprical analysis over refill timeout.
      */
     if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES) {
-        auto added = sr->refill(sr->af == AF_INET ? buckets : buckets6, now);
-        if (added)
+        if (auto added = sr->refill(sr->af == AF_INET ? buckets : buckets6, now)) {
             sr->refill_time = now;
-        DHT_LOG.WARN("[search %s IPv%c] refilled with %u nodes", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', added);
+            DHT_LOG.DEBUG("[search %s IPv%c] refilled with %u nodes", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', added);
+        }
     }
 
     /* Check if the first TARGET_NODES (8) live nodes have replied. */
