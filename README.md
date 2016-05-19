@@ -70,17 +70,17 @@ int main()
 ```python
 import opendht as dht
 
-r = dht.DhtRunner()
-r.run()
+node = dht.DhtRunner()
+node.run()
 
 # Join the network through any running node,
 # here using a known bootstrap node.
-r.bootstrap("bootstrap.ring.cx", "4222")
-
-r.put(dht.InfoHash.get("unique_key"), dht.Value(b'some binary data'))
+node.bootstrap("bootstrap.ring.cx", "4222")
 
 # blocking call (provide callback arguments to make the call non-blocking)
-results = r.get(dht.InfoHash.get("unique_key"))
+node.put(dht.InfoHash.get("unique_key"), dht.Value(b'some binary data'))
+
+results = node.get(dht.InfoHash.get("unique_key"))
 for r in results:
     print(r)
 ```
