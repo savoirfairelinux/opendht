@@ -582,10 +582,11 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
     const auto& nid = node->id;
 
     // Fast track for the case where the node is not relevant for this search
-    if (nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
+    if (node->isExpired() && nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
         return false;
 
     bool found = false;
+    unsigned num_bad_nodes = getNumberOfBadNodes();
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
         if (sn.node == node) {
             found = true;
@@ -596,13 +597,15 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
 
     bool new_search_node = false;
     if (!found) {
-        // Be more restricitve if there are
-        // too many nodes in this search,
-        if (nodes.size() >= SEARCH_NODES && n == nodes.end())
-            return false;
+        // Be more restricitve if there are too many
+        // good or unknown nodes in this search,
+        if (nodes.size() - num_bad_nodes >= SEARCH_NODES) {
+            if (node->isExpired() or n == nodes.end())
+                return false;
+        }
 
         // Reset search timer if the search is empty
-        else if (nodes.empty()) {
+        if (nodes.empty()) {
             step_time = TIME_INVALID;
         }
 
@@ -610,13 +613,17 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         node->time = now;
         new_search_node = true;
 
-        // trim nodes
-        while (nodes.size() > SEARCH_NODES) {
-            auto to_remove = std::prev(nodes.end());
-            if (to_remove->getStatus and to_remove->getStatus->pending()) {
-                to_remove->getStatus->cancel();
-            }
-            nodes.erase(to_remove);
+        // trim good nodes
+        while (nodes.size() - num_bad_nodes > SEARCH_NODES) {
+            if (removeExpiredNode(now))
+                num_bad_nodes--;
+
+            auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
+                [&](const SearchNode& n) { return not n.isBad(); }
+            );
+            if (to_remove != nodes.rend()) {
+                nodes.erase(std::prev(to_remove.base()));
+            } // else, all nodes are expired.
         }
         expired = false;
     }
@@ -2444,7 +2451,7 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;
-                network_engine.cancelRequest(n.getStatus);
+                n.token.clear();
                 n.last_get_reply = time_point::min();
                 cleared++;
                 searchSendGetValues(sr);
