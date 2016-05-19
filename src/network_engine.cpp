@@ -145,6 +145,7 @@ NetworkEngine::requestStep(std::shared_ptr<Request> req)
 
     auto now = scheduler.time();
     if (req->isExpired(now)) {
+        DHT_LOG.ERROR("[node %s] expired !", req->node->toString().c_str());
         req->node->setExpired();
         requests.erase(req->tid);
         return;
