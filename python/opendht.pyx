@@ -335,9 +335,26 @@ cdef class DhtRunner(_WithID):
         val -- the value to put on the DHT
         done_cb -- optional callback called when the operation is completed.
         """
-        cb_obj = {'done':done_cb}
-        ref.Py_INCREF(cb_obj)
-        self.thisptr.put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj))
+        if done_cb:
+            cb_obj = {'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj))
+        else:
+            lock = threading.Condition()
+            pending = 0
+            ok = False
+            def tmp_done(ok_ret, nodes):
+                nonlocal pending, ok, lock
+                with lock:
+                    ok = ok_ret
+                    pending -= 1
+                    lock.notify()
+            with lock:
+                pending += 1
+                self.put(key, val, done_cb=tmp_done)
+                while pending > 0:
+                    lock.wait()
+            return ok
     def listen(self, InfoHash key, get_cb):
         t = ListenToken()
         t._h = key._infohash
