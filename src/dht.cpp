@@ -886,6 +886,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                 for (const auto& a : sr->announce)
                     if (a.callback)
                         a_cbs.emplace_back(std::move(a.callback));
+                sr->announce.clear();
                 for (const auto& a : a_cbs)
                     a(false, {});
             }
