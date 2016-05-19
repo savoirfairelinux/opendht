@@ -456,7 +456,7 @@ private:
             const std::string& message,
             bool include_id=false);
 
-    void deserializeNodesValues(ParsedMessage& msg);
+    void deserializeNodes(ParsedMessage& msg);
 
     std::queue<time_point> rate_limit_time {};
     static std::mt19937 rd_device;

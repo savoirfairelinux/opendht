@@ -21,6 +21,7 @@
 
 #include "network_engine.h"
 #include "request.h"
+#include "default_types.h"
 
 #include <msgpack.hpp>
 
@@ -62,21 +63,21 @@ enum class MessageType {
 
 struct ParsedMessage {
     MessageType type;
-    InfoHash id;                                /* the id of the sender */
-    InfoHash info_hash;                         /* hash for which values are requested */
-    InfoHash target;                            /* target id around which to find nodes */
-    NetworkEngine::TransId tid;                                /* transaction id */
-    Blob token;                                 /* security token */
-    Value::Id value_id;                         /* the value id */
-    time_point created { time_point::max() };   /* time when value was first created */
-    Blob nodes4_raw, nodes6_raw;                /* IPv4 nodes in response to a 'find' request */
+    InfoHash id;                                       /* the id of the sender */
+    InfoHash info_hash;                                /* hash for which values are requested */
+    InfoHash target;                                   /* target id around which to find nodes */
+    NetworkEngine::TransId tid;                        /* transaction id */
+    Blob token;                                        /* security token */
+    Value::Id value_id;                                /* the value id */
+    time_point created { time_point::max() };          /* time when value was first created */
+    Blob nodes4_raw, nodes6_raw;                       /* IPv4 nodes in response to a 'find' request */
     std::vector<std::shared_ptr<Node>> nodes4, nodes6;
-    std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
-    Query query;                                /* query describing a filter to apply on values. */
-    want_t want;                                /* states if ipv4 or ipv6 request */
-    uint16_t error_code;                        /* error code in case of error */
+    std::vector<std::shared_ptr<Value>> values;        /* values for a 'get' request */
+    Query query;                                       /* query describing a filter to apply on values. */
+    want_t want;                                       /* states if ipv4 or ipv6 request */
+    uint16_t error_code;                               /* error code in case of error */
     std::string ua;
-    Address addr;                               /* reported address by the distant node */
+    Address addr;                                      /* reported address by the distant node */
     void msgpack_unpack(msgpack::object o);
 };
 
@@ -375,7 +376,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 requests.erase(reqp);
             req->reply_time = scheduler.time();
 
-            deserializeNodesValues(msg);
+            deserializeNodes(msg);
             req->setDone(std::move(msg));
             break;
         default:
@@ -625,7 +626,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
 }
 
 void
-NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
+NetworkEngine::deserializeNodes(ParsedMessage& msg) {
     if (msg.nodes4_raw.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6_raw.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     } else {
@@ -717,7 +718,9 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
         } else { /* pack fields */
             auto size_before_fields = buffer.size();
             pk.pack(std::string("fields"));
-            pk.pack_array(st.size()*fields.size());
+            pk.pack_map(2);
+            pk.pack(std::string("f")); pk.pack(fields);
+            pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
             for (const auto& v : st) {
                 v->msgpack_pack_fields(fields, pk);
             }
@@ -1045,16 +1048,22 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
             } catch (const std::exception& e) {
                 //DHT_LOG.WARN("Error reading value: %s", e.what());
             }
-    } else if (auto rfields = findMapValue(req, "fields")) {
-        if (rfields->type != msgpack::type::ARRAY)
+    } else if (auto raw_fields = findMapValue(req, "fields")) {
+        if (auto rfields = findMapValue(*raw_fields, "f")) {
+            auto fields = rfields->as<std::set<Value::Field>>();
+            if (auto rvalues = findMapValue(*raw_fields, "v")) {
+                if (rvalues->type != msgpack::type::ARRAY)
+                    throw msgpack::type_error();
+                for (size_t i = 0; i < rvalues->via.array.size; ++i) {
+                    try {
+                        auto v = std::make_shared<Value>();
+                        v->msgpack_unpack_fields(fields, *rvalues, i*fields.size());
+                        values.emplace_back(std::move(v));
+                    } catch (const std::exception& e) { }
+                }
+            }
+        } else {
             throw msgpack::type_error();
-        for (size_t i = 0; i < rfields->via.array.size; ++i) {
-            try {
-                auto fields = query.getFieldSelector();
-                auto v = std::make_shared<Value>();
-                v->msgpack_unpack_fields(fields, *rfields, i*fields.size());
-                values.emplace_back(std::move(v));
-            } catch (const std::exception& e) { }
         }
     }
 
