@@ -237,9 +237,10 @@ NetworkEngine::isMartian(const sockaddr* sa, socklen_t len)
 void
 NetworkEngine::blacklistNode(const std::shared_ptr<Node>& n)
 {
+    n->setExpired();
     for (auto rit = requests.begin(); rit != requests.end();) {
         if (rit->second->node == n) {
-            rit->second->cancel();
+            //rit->second->cancel();
             requests.erase(rit++);
         } else {
             ++rit;
