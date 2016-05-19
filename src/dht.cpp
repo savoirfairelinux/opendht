@@ -1251,7 +1251,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             a_sr->callback = callback;
         }
     }
-    scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
+    scheduler.edit(sr->nextSearchStep, scheduler.time());
     //TODO
     //if (tm < search_time) {
     //    DHT_LOG.ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(),l
