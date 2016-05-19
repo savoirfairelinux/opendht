@@ -1395,7 +1395,7 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, 
     auto done6 = std::make_shared<bool>(false);
     auto donecb = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
         // Callback as soon as the value is announced on one of the available networks
-        if (callback && !*done && (*ok || (*done4 && *done6))) {
+        if (callback && !*done && (*done4 && *done6)) {
             callback(*ok, nodes);
             *done = true;
         }
