@@ -21,6 +21,8 @@
 
 #include "value.h"
 
+MSGPACK_ADD_ENUM(dht::Value::Field);
+
 namespace dht {
 enum class ImStatus : uint8_t {
     NONE = 0,
@@ -175,7 +177,7 @@ public:
         pk.pack_bin_body((const char*)ice_data.data(), ice_data.size());
 #else
         // hack for backward compatibility with old opendht compiled with msgpack 1.0
-        // remove when enough people have moved to new versions 
+        // remove when enough people have moved to new versions
         pk.pack_array(ice_data.size());
         for (uint8_t b : ice_data)
             pk.pack(b);

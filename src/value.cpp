@@ -185,7 +185,7 @@ Value::msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack
                 user_type = field_value.as<decltype(user_type)>();
                 break;
             default:
-                break;
+                throw msgpack::type_error();
         }
     }
 }
