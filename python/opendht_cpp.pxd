@@ -85,6 +85,7 @@ cdef extern from "opendht/value.h" namespace "dht":
         Value(vector[uint8_t]) except +
         Value(const uint8_t* dat_ptr, size_t dat_len) except +
         string toString() const
+        size_t size() const
         uint64_t id
         shared_ptr[PublicKey] owner
         InfoHash recipient
