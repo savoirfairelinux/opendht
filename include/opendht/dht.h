@@ -266,7 +266,7 @@ private:
     static constexpr unsigned LISTEN_NODES {3};
 
     /* The maximum number of values we store for a given hash. */
-    static constexpr unsigned MAX_VALUES {2048};
+    static constexpr unsigned MAX_VALUES {1024};
 
     /* The maximum number of hashes we're willing to track. */
     static constexpr unsigned MAX_HASHES {16384};
