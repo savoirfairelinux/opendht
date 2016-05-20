@@ -321,7 +321,11 @@ bool satisfied(std::vector<T> fds, std::vector<T> qfds)
 bool
 Query::isSatisfiedBy(const Query& q) const
 {
-    return satisfied(filters_, q.filters_) and satisfied(fieldSelectors_, q.fieldSelectors_);
+    /* empty, means all values are selected. */
+    if (fieldSelectors_.empty() and not q.fieldSelectors_.empty())
+        return false;
+    else
+        return satisfied(filters_, q.filters_) and satisfied(fieldSelectors_, q.fieldSelectors_);
 }
 
 std::ostream& operator<<(std::ostream& s, const dht::Query& q)
