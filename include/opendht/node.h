@@ -24,8 +24,6 @@
 #include "utils.h"
 #include "infohash.h"
 
-#include <arpa/inet.h>
-
 #include <list>
 
 namespace dht {

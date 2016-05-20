@@ -26,18 +26,6 @@
 
 #include <msgpack.hpp>
 
-#ifndef _WIN32
-#include <netinet/in.h>
-#include <netdb.h>
-#ifdef __ANDROID__
-typedef uint16_t in_port_t;
-#endif
-#else
-#include <ws2tcpip.h>
-typedef uint16_t sa_family_t;
-typedef uint16_t in_port_t;
-#endif
-
 #include <string>
 #include <sstream>
 #include <bitset>
