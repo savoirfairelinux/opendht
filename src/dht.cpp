@@ -619,7 +619,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
                 num_bad_nodes--;
 
             auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
-                [&](const SearchNode& n) { return not n.isBad(); }
+                [](const SearchNode& n) { return not n.isBad(); }
             );
             if (to_remove != nodes.rend()) {
                 nodes.erase(std::prev(to_remove.base()));

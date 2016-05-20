@@ -18,11 +18,10 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
-
 #pragma once
 
+#include "infohash.h" // includes socket structures
 #include "utils.h"
-#include "infohash.h"
 
 #include <list>
 
@@ -33,21 +32,20 @@ class Request;
 struct Node {
     friend class NetworkEngine;
 
-    InfoHash id {};
-    sockaddr_storage ss;
+    InfoHash id;
+
     socklen_t sslen {0};
+    sockaddr_storage ss;
+
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
 
-    Node() : ss() {
-        std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
-    }
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : id(id), ss(), sslen(salen) {
-            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-            if ((unsigned)salen < sizeof(ss))
-                std::fill_n((uint8_t*)&ss+salen, sizeof(ss)-salen, 0);
-        }
+        : id(id), sslen(salen), ss() {
+        std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
+        if ((unsigned)salen < sizeof(ss))
+            std::fill_n((uint8_t*)&ss+salen, sizeof(ss)-salen, 0);
+    }
     InfoHash getId() const {
         return id;
     }
