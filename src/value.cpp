@@ -238,7 +238,7 @@ Query::Query(std::string&& q_str) {
     std::string token {};
     q_iss >> token;
 
-    if (token == "SELECT") {
+    if (token == "SELECT" or token == "select") {
         q_iss >> token;
         std::istringstream fields {token};
 
@@ -256,31 +256,38 @@ Query::Query(std::string&& q_str) {
     }
 
     q_iss >> token;
-    if (token == "WHERE") {
-        q_iss >> token;
+    if (token == "WHERE" or token == "where") {
+        std::getline(q_iss, token);
         std::istringstream restrictions {token};
         while (std::getline(restrictions, token, ',')) {
             trim_str(token);
             std::istringstream eq_ss {token};
-            std::string field, value;
-            std::getline(eq_ss, field, '=');
-            trim_str(field);
-            std::getline(eq_ss, value, '=');
-            trim_str(value);
+            std::string field_str, value_str;
+            std::getline(eq_ss, field_str, '=');
+            trim_str(field_str);
+            std::getline(eq_ss, value_str, '=');
+            trim_str(value_str);
 
-            uint64_t v = 0;
-            std::istringstream convert {value};
-            convert >> v;
-            if (field == "id")
-                setValueId(v);
-            else if (field == "value_type")
-                setValueType(v);
-            else if (field == "owner_pk")
-                setOwnerPk(InfoHash(value));
-            else if (field == "user_type")
-                setUserType(value);
-            else
-                throw std::invalid_argument(QUERY_PARSE_ERROR + " (WHERE) Wrong token: " + field);
+            if (not value_str.empty()) {
+                uint64_t v = 0;
+                std::string s {};
+                std::istringstream convert {value_str};
+                convert >> v;
+                if (value_str.size() > 1 and value_str[0] == '\"' and value_str[value_str.size()-1] == '\"')
+                    s = value_str.substr(1, value_str.size()-2);
+                else
+                    s = value_str;
+                if (field_str == "id")
+                    setValueId(v);
+                else if (field_str == "value_type")
+                    setValueType(v);
+                else if (field_str == "owner_pk")
+                    setOwnerPk(InfoHash(s));
+                else if (field_str == "user_type")
+                    setUserType(s);
+                else
+                    throw std::invalid_argument(QUERY_PARSE_ERROR + " (WHERE) wrong token near: " + field_str);
+            }
         }
     }
 }
