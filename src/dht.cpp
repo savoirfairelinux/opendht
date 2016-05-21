@@ -256,7 +256,7 @@ struct Dht::Search {
     /**
      * @returns true if the node was not present and added to the search
      */
-    bool insertNode(std::shared_ptr<Node> n, time_point now, const Blob& token={});
+    bool insertNode(const std::shared_ptr<Node>& n, time_point now, const Blob& token={});
     unsigned insertBucket(const Bucket&, time_point now);
 
     SearchNode* getNode(const std::shared_ptr<Node>& n) {
@@ -569,26 +569,27 @@ Dht::Search::removeExpiredNode(time_point now)
    target.  We just got a new candidate, insert it at the right spot or
    discard it. */
 bool
-Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& token)
+Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, const Blob& token)
 {
     if (expired and nodes.empty())
         return false;
 
-    if (node->getFamily() != af) {
+    auto& node = *snode;
+    const auto& nid = node.id;
+
+    if (node.getFamily() != af) {
         //DHT_LOG.DEBUG("Attempted to insert node in the wrong family.");
         return false;
     }
 
-    const auto& nid = node->id;
-
     // Fast track for the case where the node is not relevant for this search
-    if (node->isExpired() && nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
+    if (node.isExpired() && nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
         return false;
 
     bool found = false;
     unsigned num_bad_nodes = getNumberOfBadNodes();
     auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
-        if (sn.node == node) {
+        if (sn.node == snode) {
             found = true;
             return true;
         }
@@ -600,7 +601,7 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
         // Be more restricitve if there are too many
         // good or unknown nodes in this search,
         if (nodes.size() - num_bad_nodes >= SEARCH_NODES) {
-            if (node->isExpired() or n == nodes.end())
+            if (node.isExpired() or n == nodes.end())
                 return false;
         }
 
@@ -609,8 +610,8 @@ Dht::Search::insertNode(std::shared_ptr<Node> node, time_point now, const Blob& 
             step_time = TIME_INVALID;
         }
 
-        n = nodes.insert(n, SearchNode(node));
-        node->time = now;
+        n = nodes.insert(n, SearchNode(snode));
+        node.time = now;
         new_search_node = true;
 
         // trim good nodes
@@ -917,7 +918,7 @@ Dht::Search::isSynced(time_point now) const
 {
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.node->isExpired() or n.candidate)
+        if (n.isBad())
             continue;
         if (not n.isSynced(now))
             return false;
@@ -929,9 +930,8 @@ Dht::Search::isSynced(time_point now) const
 
 unsigned Dht::Search::getNumberOfBadNodes() {
     return std::count_if(nodes.begin(), nodes.end(),
-            [=](const SearchNode& sn) {
-                return sn.isBad();
-            });
+                [=](const SearchNode& sn) { return sn.isBad(); }
+           );
 }
 
 time_point
@@ -949,7 +949,7 @@ Dht::Search::isDone(const Get& get, time_point now) const
     unsigned i = 0;
     const auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
-        if (sn.node->isExpired() or sn.candidate)
+        if (sn.isBad())
             continue;
         if (sn.last_get_reply < limit)
             return false;
@@ -998,7 +998,7 @@ Dht::Search::isAnnounced(Value::Id id, const ValueType& type, time_point now) co
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.candidate or n.node->isExpired())
+        if (n.isBad())
             continue;
         if (not n.isAnnounced(id, type, now))
             return false;
@@ -1015,7 +1015,7 @@ Dht::Search::isListening(time_point now) const
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.candidate or n.node->isExpired())
+        if (n.isBad())
             continue;
         if (!n.isListening(now))
             return false;
@@ -2680,7 +2680,7 @@ Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer,
 {
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', answer.values.size());
+            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
 
     searchSendGetValues(sr);
 
