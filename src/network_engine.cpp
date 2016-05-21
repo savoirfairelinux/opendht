@@ -715,8 +715,9 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
             pk.pack_array(subset.size());
             for (const auto& b : subset)
                 buffer.write((const char*)b.data(), b.size());
+            DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %lu bytes of values",
+                    nodes.size(), nodes6.size(), total_size);
         } else { /* pack fields */
-            auto size_before_fields = buffer.size();
             pk.pack(std::string("fields"));
             pk.pack_map(2);
             pk.pack(std::string("f")); pk.pack(fields);
@@ -724,11 +725,9 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
             for (const auto& v : st) {
                 v->msgpack_pack_fields(fields, pk);
             }
-            /* this should work if msgpack is not allocating more memory than
-             * the required size. */
-            total_size = buffer.size() - size_before_fields;
+            DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
+                    nodes.size(), nodes6.size(), st.size(), fields.size());
         }
-        DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %lu bytes of values", nodes.size(), nodes6.size(), total_size);
     } else
         DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
 
