@@ -271,11 +271,13 @@ NetworkEngine::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
 void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen)
 {
-    if (isMartian(from, fromlen))
+    if (isMartian(from, fromlen)) {
+        DHT_LOG.WARN("Received packet from martian node %s", print_addr(from, fromlen).c_str());
         return;
+    }
 
     if (isNodeBlacklisted(from, fromlen)) {
-        DHT_LOG.DEBUG("Received packet from blacklisted node.");
+        DHT_LOG.WARN("Received packet from blacklisted node %s", print_addr(from, fromlen).c_str());
         return;
     }
 
@@ -332,6 +334,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 // received reply from unexpected node
                 node->received(now, req);
                 onNewNode(node, 2);
+                DHT_LOG.WARN("Message received from unexpected ndoe %s", node->toString().c_str());
                 return;
             }
         } else
@@ -342,6 +345,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
         onReportedAddr(msg.id, (sockaddr*)&msg.addr.first, msg.addr.second);
 
         if (req->cancelled() or req->expired() or (req->completed() and not req->persistent)) {
+            DHT_LOG.WARN("[node %s] response to expired, cancelled or completed request", node->toString().c_str());
             requests.erase(reqp);
             return;
         }
