@@ -504,9 +504,9 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
                 on_done(req_status, {});
             }
         },
-        [=](const Request& req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired) {
-                on_expired(req_status, {});
+                on_expired(req_status, done);
             }
         }
     });
@@ -565,9 +565,9 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
-        [=](const Request& req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired) {
-                on_expired(req_status, {});
+                on_expired(req_status, done);
             }
         }
     });
@@ -608,9 +608,9 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
             }
         },
-        [=](const Request& req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired) {
-                on_expired(req_status, {});
+                on_expired(req_status, done);
             }
         }
     });
@@ -797,9 +797,9 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
             if (on_done)
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
         },
-        [=](const Request& req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired)
-                on_expired(req_status, {});
+                on_expired(req_status, done);
         },
         true
     });
@@ -863,9 +863,9 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
                 }
             }
         },
-        [=](const Request& req_status, bool) { /* on expired */
+        [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired) {
-                on_expired(req_status, {});
+                on_expired(req_status, done);
             }
         }
     });
