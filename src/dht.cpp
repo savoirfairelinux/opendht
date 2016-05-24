@@ -295,7 +295,7 @@ struct Dht::Search {
     /**
      * @return The number of non-good search nodes.
      */
-    unsigned getNumberOfBadNodes();
+    unsigned getNumberOfBadNodes() const;
 
     /**
      * ret = 0 : no announce required.
@@ -703,12 +703,8 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     auto onExpired =
         [this,ws](const Request& status, bool over) mutable {
             if (auto sr = ws.lock()) {
-                if (auto srn = sr->getNode(status.node)) {
-                    /*DHT_LOG.DEBUG("[search %s IPv%c] [node %s] 'get' expired",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        srn->node->toString().c_str());*/
+                if (auto srn = sr->getNode(status.node))
                     srn->candidate = not over;
-                }
                 scheduler.edit(sr->nextSearchStep, scheduler.time());
             }
         };
@@ -933,7 +929,7 @@ Dht::Search::isSynced(time_point now) const
     return i > 0;
 }
 
-unsigned Dht::Search::getNumberOfBadNodes() {
+unsigned Dht::Search::getNumberOfBadNodes() const {
     return std::count_if(nodes.begin(), nodes.end(),
                 [=](const SearchNode& sn) { return sn.isBad(); }
            );
@@ -1890,15 +1886,17 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 {
     const auto& now = scheduler.time();
     using namespace std::chrono;
-    out << std::endl << "Search IPv" << (sr.af == AF_INET6 ? '6' : '4') << ' ' << sr.id << " G" << sr.callbacks.size();
-    out << " age " << duration_cast<seconds>(now - sr.step_time).count() << "s sync ops: " << sr.currentGetRequests();
+    out << std::endl << "Search IPv" << (sr.af == AF_INET6 ? '6' : '4') << ' ' << sr.id << " gets: " << sr.callbacks.size();
+    out << ", age: " << duration_cast<seconds>(now - sr.step_time).count() << " s";
     if (sr.done)
         out << " [done]";
+    if (sr.expired)
+        out << " [expired]";
     bool synced = sr.isSynced(now);
     out << (synced ? " [synced]" : " [not synced]");
     if (synced && sr.isListening(now)) {
         auto lt = sr.getListenTime(now);
-        out << " [listening, next in " << duration_cast<minutes>(lt-now).count() << " min]";
+        out << " [listening, next in " << duration_cast<seconds>(lt-now).count() << " s]";
     }
     out << std::endl;
 
@@ -1907,46 +1905,37 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << "Announcement: " << *n.value << (announced ? " [announced]" : "") << std::endl;
     }
 
-    out << " Common bits    InfoHash                          Conn. Get   Put IP" << std::endl;
+    out << " Common bits    InfoHash                       Conn. Get   Ops  IP" << std::endl;
     unsigned i = 0;
     auto last_get = sr.getLastGetTime();
     for (const auto& n : sr.nodes) {
         i++;
         out << std::setfill (' ') << std::setw(3) << InfoHash::commonBits(sr.id, n.node->id) << ' ' << n.node->id;
-        out << ' ' << (findNode(n.node->id, AF_INET) || findNode(n.node->id, AF_INET6) ? '*' : ' ');
-        out << ' ' << (n.candidate ? 'c' : ' ');
-        out << " ["
-            << (n.node->isMessagePending() ? 'f':' ');
-        out << ' ';
+        out << ' ' << (findNode(n.node->id, sr.af) ? '*' : ' ');
+        out << " [";
+        if (auto pendingCount = n.node->getPendingMessageCount())
+            out << pendingCount;
+        else
+            out << ' ';
         out << (n.node->isExpired() ? 'x' : ' ') << "]";
 
+        // Get status
         {
-            bool pending {false}, expired {false};
-            if (n.getStatus) {
-                pending = n.getStatus->pending();
-                expired = n.getStatus->expired();
-            }
-            out << " ["
-                << (pending ? 'f' : (expired ? 'x' : ' ')) << (n.isSynced(now) ? 's' : '-')
-                << ((n.last_get_reply > last_get) ? 'u' : '-') << "] ";
+            char g_i = (n.getStatus && n.getStatus->pending()) ? (n.candidate ? 'c' : 'f') : ' ';
+            char s_i = n.isSynced(now) ? (n.last_get_reply > last_get ? 'u' : 's') : '-';
+            out << " [" << s_i << g_i << "] ";
         }
 
-        {
-            bool pending {false}, expired {false};
-            if (n.listenStatus) {
-                pending = n.listenStatus->pending();
-                expired = n.listenStatus->expired();
-            }
-            if (not sr.listeners.empty() and n.listenStatus) {
-                /*if (!n.listenStatus)
-                    out << "     ";
-                else*/
-                    out << "["
-                        << (pending ? 'f' : (expired ? 'x' : ' '))
-                        << (n.isListening(now) ? 'l' : '-') << "] ";
-            }
+        // Listen status
+        if (not sr.listeners.empty()) {
+            if (not n.listenStatus)
+                out << "    ";
+            else
+                out << "["
+                    << (n.isListening(now) ? 'l' : (n.listenStatus->pending() ? 'f' : ' ')) << "] ";
         }
 
+        // Announce status
         if (not sr.announce.empty()) {
             if (n.acked.empty()) {
                 out << "   ";
@@ -1956,18 +1945,13 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                 out << "[";
                 for (const auto& a : sr.announce) {
                     auto ack = n.acked.find(a.value->id);
-                    if (ack == n.acked.end()) {
+                    if (ack == n.acked.end() or not ack->second) {
                         out << ' ';
                     } else {
-                        auto& astatus = ack->second;
-                        if (astatus and astatus->reply_time + getType(a.value->type).expiration > now)
+                        if (ack->second->reply_time + getType(a.value->type).expiration > now)
                             out << 'a';
-                        else if (astatus and astatus->pending())
+                        else if (ack->second->pending())
                             out << 'f';
-                        else if (astatus and astatus->expired())
-                            out << 'x';
-                        else
-                            out << ' ';
                     }
                 }
                 out << "] ";
@@ -2012,7 +1996,8 @@ Dht::getStorageLog() const
     std::stringstream out;
     for (const auto& st : store) {
         out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.valueCount() << " values (" << st.totalSize() << " bytes)" << std::endl;
-        out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
+        if (not st.local_listeners.empty())
+            out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
         for (const auto& l : st.listeners) {
             out << "   " << "Listener " << l.first->toString();
             auto since = duration_cast<seconds>(now - l.second.time);
