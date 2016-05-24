@@ -40,7 +40,7 @@ Node::isGood(time_point now) const
 }
 
 bool
-Node::isMessagePending() const
+Node::isPendingMessage() const
 {
     for (auto w : requests_) {
         if (auto r = w.lock()) {
@@ -49,6 +49,19 @@ Node::isMessagePending() const
         }
     }
     return false;
+}
+
+size_t
+Node::getPendingMessageCount() const
+{
+    size_t count {0};
+    for (auto w : requests_) {
+        if (auto r = w.lock()) {
+            if (r->pending())
+                count++;
+        }
+    }
+    return count;
 }
 
 void

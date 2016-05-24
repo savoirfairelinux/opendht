@@ -57,7 +57,9 @@ struct Node {
     }
     bool isExpired() const { return expired_; }
     bool isGood(time_point now) const;
-    bool isMessagePending() const;
+    bool isPendingMessage() const;
+    size_t getPendingMessageCount() const;
+
     NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
     sa_family_t getFamily() const { return ss.ss_family; }
 

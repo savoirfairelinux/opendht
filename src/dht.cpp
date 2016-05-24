@@ -503,7 +503,7 @@ Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
                of bad nodes fast. */
             if (not n->isGood(now)) {
                 dubious = true;
-                if (not n->isMessagePending()) {
+                if (not n->isPendingMessage()) {
                     DHT_LOG.DEBUG("Sending ping to dubious node %s.", n->toString().c_str());
                     network_engine.sendPing(n, nullptr, nullptr);
                     break;
