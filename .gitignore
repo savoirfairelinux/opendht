@@ -3,6 +3,7 @@
 *.lo
 *.o
 *.obj
+*.VC.VC.opendb
 
 # Compiled Dynamic libraries
 *.so
