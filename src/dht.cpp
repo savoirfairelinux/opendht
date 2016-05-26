@@ -851,25 +851,26 @@ Dht::searchStep(std::shared_ptr<Search> sr)
 
                         std::weak_ptr<Search> ws = sr;
                         n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token,
-                            [this,ws,last_req,query](const Request& status,
+                            [this,ws,last_req,query](const Request& req,
                                     NetworkEngine::RequestAnswer&& answer) mutable
                             { /* on done */
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock()) {
-                                    onListenDone(status, answer, sr, query);
+                                    onListenDone(req, answer, sr, query);
                                     searchStep(sr);
+                                    if (auto sn = sr->getNode(req.node))
+                                        sn->listenStatus.erase(query);
                                 }
-                                if (auto sn = sr->getNode(status.node))
-                                    node->listenStatus.erase(query);
                             },
-                            [this,ws,last_req,query](const Request&, bool over) mutable
+                            [this,ws,last_req,query](const Request& req, bool over) mutable
                             { /* on expired */
                                 network_engine.cancelRequest(last_req);
-                                if (auto sr = ws.lock())
+                                if (auto sr = ws.lock()) {
                                     searchStep(sr);
-                                if (over)
-                                    if (auto sn = sr->getNode(status.node))
-                                        node->listenStatus.erase(query);
+                                    if (over)
+                                        if (auto sn = sr->getNode(req.node))
+                                            sn->listenStatus.erase(query);
+                                }
                             }
                         );
                     }
@@ -2030,7 +2031,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 
         // Listen status
         if (not sr.listeners.empty()) {
-            if (not n.listenStatus)
+            if (n.listenStatus.empty())
                 out << "    ";
             else
                 out << "["
