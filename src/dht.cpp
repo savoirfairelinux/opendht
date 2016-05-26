@@ -1761,7 +1761,7 @@ Dht::Storage::clear()
 }
 
 void
-Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t rid, const Query& query)
+Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t rid, Query&& query)
 {
     const auto& now = scheduler.time();
     auto st = findStorage(id);
@@ -1779,7 +1779,7 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
                     buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
-        st->listeners.emplace(node, Listener {rid, now, query});
+        st->listeners.emplace(node, Listener {rid, now, std::forward<Query>(query)});
     }
     else
         l->second.refresh(rid, now);
@@ -2662,7 +2662,7 @@ Dht::onGetValuesDone(const Request& status,
 }
 
 NetworkEngine::RequestAnswer
-Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, const Query& query)
+Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, Query&& query)
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("Listen with no info_hash.");
@@ -2675,7 +2675,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
         DHT_LOG.WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
-    storageAddListener(hash, node, rid, query);
+    storageAddListener(hash, node, rid, std::forward<Query>(query));
     return {};
 }
 

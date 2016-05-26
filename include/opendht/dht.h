@@ -335,7 +335,7 @@ private:
         time_point time {};
         Query query {};
 
-        /*constexpr*/ Listener(size_t rid, time_point t, Query q) : rid(rid), time(t), query(q) {}
+        /*constexpr*/ Listener(size_t rid, time_point t, Query&& q) : rid(rid), time(t), query(q) {}
 
         void refresh(size_t tid, time_point t) {
             rid = tid;
@@ -402,7 +402,7 @@ private:
     decltype(Dht::store)::iterator findStorage(const InfoHash& id);
     decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const;
 
-    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, const Query& q = {});
+    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
@@ -488,7 +488,7 @@ private:
             const std::shared_ptr<Query>& orig_query);
     /* when we receive a listen request */
     NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid,
-            const Query& query);
+            Query&& query);
     void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a,
             std::shared_ptr<Search>& sr, const std::shared_ptr<Query>& orig_query);
     /* when we receive an announce request */
