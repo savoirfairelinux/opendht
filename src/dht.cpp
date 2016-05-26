@@ -1367,8 +1367,13 @@ Dht::cancelListen(const InfoHash& id, size_t token)
             if (af_token == 0)
                 continue;
             s->listeners.erase(af_token);
-            for (auto& sn : s->nodes) // also erase requests for all searchnodes.
-                network_engine.cancelRequest(sn.listenStatus);
+            if (s->listeners.empty()) {
+                for (auto& sn : s->nodes) {
+                    // also erase requests for all searchnodes.
+                    network_engine.cancelRequest(sn.listenStatus);
+                    sn.listenStatus.reset();
+                }
+            }
         }
     };
     searches_cancel_listen(searches4);
