@@ -1586,7 +1586,6 @@ Dht::findStorage(const InfoHash& id) const
 void
 Dht::storageChanged(Storage& st, ValueStorage& v)
 {
-    const auto& now = scheduler.time();
     if (not st.local_listeners.empty()) {
         std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
         DHT_LOG.DEBUG("Storage changed. Sending update to %lu local listeners.", st.local_listeners.size());
@@ -1607,9 +1606,7 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
         std::vector<std::shared_ptr<Value>> vals;
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
-        network_engine.tellListener(l.first, l.second.rid, st.id, WANT4 | WANT6, ntoken,
-                buckets.findClosestNodes(st.id, now, TARGET_NODES), buckets6.findClosestNodes(st.id, now, TARGET_NODES),
-                vals);
+        network_engine.tellListener(l.first, l.second.rid, st.id, 0, ntoken, {}, {}, vals);
     }
 }
 
