@@ -24,6 +24,12 @@
 
 #include <msgpack.hpp>
 
+#ifndef _WIN32
+#include <sys/socket.h>
+#else
+#include <winsock2.h>
+#endif
+
 #include <chrono>
 #include <random>
 #include <functional>
