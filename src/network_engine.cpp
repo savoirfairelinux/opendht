@@ -92,7 +92,7 @@ NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash h
         sendNodesValues((const sockaddr*)&node->ss, node->sslen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
                 values, ntoken);
     } catch (const std::overflow_error& e) {
-        DHT_LOG.ERROR("Can't send value: buffer not large enough !");
+        DHT_LOG.ERR("Can't send value: buffer not large enough !");
     }
 }
 
@@ -145,7 +145,7 @@ NetworkEngine::requestStep(std::shared_ptr<Request> req)
 
     auto now = scheduler.time();
     if (req->isExpired(now)) {
-        DHT_LOG.ERROR("[node %s] expired !", req->node->toString().c_str());
+        DHT_LOG.ERR("[node %s] expired !", req->node->toString().c_str());
         req->node->setExpired();
         requests.erase(req->tid);
         return;
@@ -176,7 +176,7 @@ NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
     request->start = scheduler.time();
     auto e = requests.emplace(request->tid, request);
     if (!e.second) {
-        DHT_LOG.ERROR("Request already existed !");
+        DHT_LOG.ERR("Request already existed !");
     }
     request->node->requested(request);
     requestStep(request);
@@ -309,8 +309,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
     const auto& now = scheduler.time();
 
     if (msg.tid.length != 4) {
-        DHT_LOG.ERROR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
-        DHT_LOG.ERROR.logPrintable(buf, buflen);
+        DHT_LOG.ERR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
+        DHT_LOG.ERR.logPrintable(buf, buflen);
         blacklistNode(cache.getNode(msg.id, from, fromlen, now, 1));
         return;
     }
@@ -436,7 +436,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 break;
             }
         } catch (const std::overflow_error& e) {
-            DHT_LOG.ERROR("Can't send value: buffer not large enough !");
+            DHT_LOG.ERR("Can't send value: buffer not large enough !");
         } catch (DhtProtocolException& e) {
             sendError(from, fromlen, msg.tid, e.getCode(), e.getMsg().c_str(), true);
         }

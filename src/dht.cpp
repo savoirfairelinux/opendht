@@ -331,7 +331,7 @@ Dht::setLoggers(LogMethod&& error, LogMethod&& warn, LogMethod&& debug)
 {
     DHT_LOG.DEBUG = std::move(debug);
     DHT_LOG.WARN = std::move(warn);
-    DHT_LOG.ERROR = std::move(error);
+    DHT_LOG.ERR = std::move(error);
 }
 
 NodeStatus
@@ -1109,7 +1109,7 @@ Dht::bootstrapSearch(Dht::Search& sr)
         return;
     auto b = list.findBucket(sr.id);
     if (b == list.end()) {
-        DHT_LOG.ERROR("No bucket");
+        DHT_LOG.ERR("No bucket");
         return;
     }
 
@@ -1152,7 +1152,7 @@ std::shared_ptr<Dht::Search>
 Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallback done_callback, Value::Filter filter)
 {
     if (!isRunning(af)) {
-        DHT_LOG.ERROR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+        DHT_LOG.ERR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         if (done_callback)
             done_callback(false, {});
         return {};
@@ -1255,7 +1255,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
     scheduler.edit(sr->nextSearchStep, scheduler.time());
     //TODO
     //if (tm < search_time) {
-    //    DHT_LOG.ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(),l
+    //    DHT_LOG.ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(),l
     //            (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
     //    search_time = tm;
     //}
@@ -1267,7 +1267,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     const auto& now = scheduler.time();
     if (!isRunning(af))
         return 0;
-       // DHT_LOG.ERROR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
+       // DHT_LOG.ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
 
     //DHT_LOG.WARN("listenTo %s", id.toString().c_str());
     auto& srs = af == AF_INET ? searches4 : searches6;
@@ -1275,7 +1275,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     std::shared_ptr<Search> sr = (srp == srs.end()) ? search(id, af, nullptr, nullptr) : srp->second;
     if (!sr)
         throw DhtException("Can't create search");
-    DHT_LOG.ERROR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+    DHT_LOG.ERR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
     sr->done = false;
     auto token = ++sr->listener_token;
     sr->listeners.emplace(token, LocalListener{f, cb});
@@ -2250,7 +2250,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
     try {
         network_engine.processMessage(buf, buflen, from, fromlen);
     } catch (const std::exception& e) {
-        DHT_LOG.ERROR("Can't parse message from %s: %s", print_addr(from, fromlen).c_str(), e.what());
+        DHT_LOG.ERR("Can't parse message from %s: %s", print_addr(from, fromlen).c_str(), e.what());
         //auto code = e.getCode();
         //if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
             /* This is really annoying, as it means that we will
@@ -2367,7 +2367,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     val_time = time_point{time_point::duration{valel.via.array.ptr[0].as<time_point::duration::rep>()}};
                     tmp_val.msgpack_unpack(valel.via.array.ptr[1]);
                 } catch (const std::exception&) {
-                    DHT_LOG.ERROR("Error reading value at %s", h.first.toString().c_str());
+                    DHT_LOG.ERR("Error reading value at %s", h.first.toString().c_str());
                     continue;
                 }
                 if (val_time + getType(tmp_val.type).expiration < scheduler.time()) {
@@ -2377,7 +2377,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                 storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
             }
         } catch (const std::exception&) {
-            DHT_LOG.ERROR("Error reading values at %s", h.first.toString().c_str());
+            DHT_LOG.ERR("Error reading values at %s", h.first.toString().c_str());
             continue;
         }
     }

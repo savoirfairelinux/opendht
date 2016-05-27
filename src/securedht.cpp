@@ -77,7 +77,7 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
             if (ok)
                 DHT_LOG.DEBUG("SecureDht: public key announced successfully");
             else
-                DHT_LOG.ERROR("SecureDht: error while announcing public key!");
+                DHT_LOG.ERR("SecureDht: error while announcing public key!");
         });
     }
 }
@@ -323,9 +323,9 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
             DHT_LOG.DEBUG("Found online previous value being announced.");
             for (const auto& v : vals) {
                 if (!v->isSigned())
-                    DHT_LOG.ERROR("Existing non-signed value seems to exists at this location.");
+                    DHT_LOG.ERR("Existing non-signed value seems to exists at this location.");
                 else if (not v->owner or v->owner->getId() != getId())
-                    DHT_LOG.ERROR("Existing signed value belonging to someone else seems to exists at this location.");
+                    DHT_LOG.ERR("Existing signed value belonging to someone else seems to exists at this location.");
                 else if (val->seq <= v->seq)
                     val->seq = v->seq + 1;
             }
@@ -352,7 +352,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
         try {
             put(hash, encrypt(*val, *pk), callback);
         } catch (const std::exception& e) {
-            DHT_LOG.ERROR("Error putting encrypted data: %s", e.what());
+            DHT_LOG.ERR("Error putting encrypted data: %s", e.what());
             if (callback)
                 callback(false, {});
         }

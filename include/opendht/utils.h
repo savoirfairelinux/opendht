@@ -132,7 +132,7 @@ private:
 struct Logger {
     LogMethod DEBUG = NOLOG;
     LogMethod WARN = NOLOG;
-    LogMethod ERROR = NOLOG;
+    LogMethod ERR = NOLOG;
 };
 
 // Serialization related definitions and utility functions
