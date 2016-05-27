@@ -24,7 +24,7 @@ IF %ERRORLEVEL% EQU 128 (
 
 SET CURRDIR=%~dp1
 
-REM cd ..\..
+cd ..\..
 FOR %%I IN %DEPENDENCIES% DO (
     ECHO !PASSDEPENDENCIES! | FINDSTR /C:"%%I" >NUL 2>&1 || (
         CALL :cloneOrUpdateRepo "%%I" )
@@ -71,11 +71,11 @@ IF EXIST "%REPONAME%" (
 REM Add current repo to list of already passed dependencies
 SET PASSDEPENDENCIES=%PASSDEPENDENCIES% %REPONAME%
 REM Check if the repo itself has required dependencies
-IF EXIST "%REPONAME%\SMP\project_get_dependencies.bat" (
+IF EXIST "%REPONAME%\SMP\get-deps.bat" (
     ECHO %REPONAME%: Found additional dependencies...
     ECHO.
     cd %REPONAME%\SMP
-    project_get_dependencies.bat "!PASSDEPENDENCIES!" || GOTO exitOnError
+    get-deps.bat "!PASSDEPENDENCIES!" || GOTO exitOnError
     cd ..\..
 )
 ECHO.
@@ -122,10 +122,5 @@ IF EXIST "msgpack-c" (
     git reset --hard --quiet
     cd ..\
 )
-
-cd opendht
-set PATH=%PATH%;%ProgramFiles(x86)%\MSBuild\14.0\Bin\
-REM msbuild opendht.sln /nologo /p:Configuration=Debug /p:Platform=x86 /verbosity:minimal
-msbuild opendht.sln /nologo /p:Configuration=Release /p:Platform=x64 /verbosity:normal
 
 EXIT /B 0
