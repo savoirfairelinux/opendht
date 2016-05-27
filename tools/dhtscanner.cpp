@@ -63,7 +63,7 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
         done--;
         std::cout << done.load() << " operations left, " << all_nodes->size() << " nodes found." << std::endl;
         cv.notify_one();
-    });
+    }, {}, {});
 }
 
 int
