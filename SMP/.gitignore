@@ -18,6 +18,7 @@ Release/
 IUpnpErrFile.txt
 IUpnpInfoFile.txt
 pingme.txt
+*.filters
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
