@@ -96,6 +96,7 @@ REM  If launched by executing the .bat then pause on completion
 ECHO %CMDCMDLINE% | FINDSTR /L %COMSPEC% >NUL 2>&1
 IF %ERRORLEVEL% == 0 IF "%~1"=="" PAUSE
 
+cd ..\..
 IF EXIST "msgpack-c" (
     ECHO msgpack-c: Existing folder found. Checking for updates...
     cd msgpack-c
