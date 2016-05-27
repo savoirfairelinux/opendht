@@ -455,19 +455,19 @@ Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
 
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
-std::shared_ptr<Node>
-Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
+void
+Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
 {
     auto& list = node->getFamily() == AF_INET ? buckets : buckets6;
     auto b = list.findBucket(node->id);
     if (b == list.end())
-        return {};
+        return;
 
     for (auto& n : b->nodes) {
         if (n == node) {
             if (confirm)
                 trySearchInsert(node);
-            return n;
+            return;
         }
     }
 
@@ -490,7 +490,7 @@ Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
         if (not n->isExpired())
             continue;
         n = node;
-        return n;
+        return;
     }
 
     if (b->nodes.size() >= TARGET_NODES) {
@@ -515,7 +515,8 @@ Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
             DHT_LOG.DEBUG("Splitting from depth %u", list.depth(b));
             sendCachedPing(*b);
             list.split(b);
-            return newNode(node, 0);
+            onNewNode(node, 0);
+            return;
         }
 
         /* No space for this node.  Cache it away for later. */
@@ -525,8 +526,6 @@ Dht::newNode(const std::shared_ptr<Node>& node, int confirm)
         /* Create a new node. */
         b->nodes.emplace_front(node);
     }
-
-    return node;
 }
 
 /* Called periodically to purge known-bad nodes.  Note that we're very
@@ -882,7 +881,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         g.done_cb(false, {});
                 }
             }
-            {
+            if (not sr->nodes.empty()) {
                 std::vector<DoneCallback> a_cbs;
                 a_cbs.reserve(sr->announce.size());
                 for (const auto& a : sr->announce)
@@ -2049,7 +2048,7 @@ Dht::Dht(int s, int s6, Config config)
  : myid(config.node_id), is_bootstrap(config.is_bootstrap), store(),
     network_engine(myid, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
-            std::bind(&Dht::newNode, this, _1, _2),
+            std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
             std::bind(&Dht::onPing, this, _1),
             std::bind(&Dht::onFindNode, this, _1, _2, _3),

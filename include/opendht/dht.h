@@ -440,7 +440,7 @@ private:
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    std::shared_ptr<Node> newNode(const std::shared_ptr<Node>& node, int confirm);
+    void onNewNode(const std::shared_ptr<Node>& node, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);

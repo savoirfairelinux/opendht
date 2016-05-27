@@ -187,7 +187,7 @@ private:
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      * @param confirm (type: int) 1 if the node sent a message, 2 if it sent us a reply.
      */
-    std::function<std::shared_ptr<Node>(const std::shared_ptr<Node>&, int)> onNewNode;
+    std::function<void(const std::shared_ptr<Node>&, int)> onNewNode;
     /**
      * @brief when an addres is reported from a distant node.
      *
