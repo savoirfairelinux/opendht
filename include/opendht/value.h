@@ -619,7 +619,7 @@ struct Query
      *  - $string$: a simple string WITHOUT SPACES.
      *  - $integer$: a simple integer.
      */
-    Query(std::string&& q_str);
+    Query(const std::string& q_str);
 
     /**
      * Adds restriction on Value::Id based on the id argument.
