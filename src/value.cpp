@@ -227,7 +227,7 @@ FilterDescription::getLocalFilter() const
     }
 }
 
-Query::Query(std::string&& q_str) {
+Query::Query(const std::string& q_str) {
     auto trim_str = [](std::string& str) {
         auto first = std::min(str.size(), str.find_first_not_of(" "));
         auto last = std::min(str.size(), str.find_last_not_of(" "));
