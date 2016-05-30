@@ -40,6 +40,10 @@ THE SOFTWARE.
 #include <algorithm>
 #include <memory>
 
+#ifdef _WIN32
+#include <iso646.h>
+#endif
+
 namespace dht {
 
 using Address = std::pair<sockaddr_storage, socklen_t>;
@@ -213,7 +217,7 @@ public:
     /**
      * Enable or disable logging of DHT internal messages
      */
-    void setLoggers(LogMethod&& error = NOLOG, LogMethod&& warn = NOLOG, LogMethod&& debug = NOLOG);
+	void setLoggers(LogMethod&& error = (LogMethod&&)NOLOG, LogMethod&& warn = (LogMethod&&)NOLOG, LogMethod&& debug = (LogMethod&&)NOLOG);
 
     virtual void registerType(const ValueType& type) {
         types[type.id] = type;
