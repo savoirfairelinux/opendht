@@ -71,11 +71,11 @@ IF EXIST "%REPONAME%" (
 REM Add current repo to list of already passed dependencies
 SET PASSDEPENDENCIES=%PASSDEPENDENCIES% %REPONAME%
 REM Check if the repo itself has required dependencies
-IF EXIST "%REPONAME%\SMP\get-deps.bat" (
+IF EXIST "%REPONAME%\SMP\project_get_dependencies.bat" (
     ECHO %REPONAME%: Found additional dependencies...
     ECHO.
     cd %REPONAME%\SMP
-    get-deps.bat "!PASSDEPENDENCIES!" || GOTO exitOnError
+    project_get_dependencies.bat "!PASSDEPENDENCIES!" || GOTO exitOnError
     cd ..\..
 )
 ECHO.
