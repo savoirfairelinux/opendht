@@ -1538,12 +1538,17 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
         }
     };
     auto cb = [=](const std::vector<std::shared_ptr<Value>>& values) {
+        auto selection = q.getFieldSelector();
         if (status->done)
             return false;
         std::vector<std::shared_ptr<Value>> newvals {};
         for (const auto& v : values) {
             auto it = std::find_if(vals->cbegin(), vals->cend(), [&](const std::shared_ptr<Value>& sv) {
-                return sv == v || *sv == *v;
+                return sv == v or *sv == *v or
+                    (selection.find(Value::Field::Id) != selection.end() ? sv->id == v->id : false) or
+                    (selection.find(Value::Field::UserType) != selection.end() ? sv->user_type == v->user_type : false) or
+                    (selection.find(Value::Field::ValueType) != selection.end() ? sv->type == v->type : false) or
+                    (selection.find(Value::Field::OwnerPk) != selection.end() ? sv->owner == v->owner : false);
             });
             if (it == vals->cend()) {
                 if (!filter || filter(*v))
