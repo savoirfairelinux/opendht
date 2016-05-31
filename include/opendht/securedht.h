@@ -123,9 +123,6 @@ public:
 
     const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
 
-
-    
-
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.
      * The search key used is the public key ID, so there may be multiple certificates retured, signed with

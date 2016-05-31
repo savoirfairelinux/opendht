@@ -1,12 +1,10 @@
 #include "callbacks.h"
 
 namespace dht {
-
-
 GetCallbackSimple
 bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 {
-    if (not raw_cb) return {};
+    if (not raw_cb) return{};
     return [=](const std::shared_ptr<Value>& value) {
         return raw_cb(value, user_data);
     };
@@ -15,7 +13,7 @@ bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 GetCallback
 bindGetCb(GetCallbackSimple cb)
 {
-    if (not cb) return {};
+    if (not cb) return{};
     return [=](const std::vector<std::shared_ptr<Value>>& values) {
         for (const auto& v : values)
             if (not cb(v))
@@ -33,7 +31,7 @@ bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data)
 DoneCallback
 bindDoneCb(DoneCallbackSimple donecb)
 {
-    if (not donecb) return {};
+    if (not donecb) return{};
     using namespace std::placeholders;
     return std::bind(donecb, _1);
 }
@@ -41,10 +39,9 @@ bindDoneCb(DoneCallbackSimple donecb)
 DoneCallback
 bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
 {
-    if (not raw_cb) return {};
+    if (not raw_cb) return{};
     return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
         raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
     };
 }
-
 }

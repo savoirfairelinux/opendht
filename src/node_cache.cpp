@@ -20,7 +20,6 @@
 #include "node_cache.h"
 
 namespace dht {
-
 std::shared_ptr<Node>
 NodeCache::getNode(const InfoHash& id, sa_family_t family) {
     return (family == AF_INET ? cache_4 : cache_6).get(id);
@@ -37,7 +36,8 @@ NodeCache::clearBadNodes(sa_family_t family)
     if (family == 0) {
         clearBadNodes(AF_INET);
         clearBadNodes(AF_INET6);
-    } else {
+    }
+    else {
         (family == AF_INET ? cache_4 : cache_6).clearBadNodes();
     }
 }
@@ -49,11 +49,12 @@ NodeCache::NodeTree::getLocal(const InfoHash& id)
         if (auto n = it->lock()) {
             if (n->id == id) return n;
             ++it;
-        } else {
+        }
+        else {
             it = nodes.erase(it);
         }
     }
-    return {};
+    return{};
 }
 
 std::shared_ptr<Node>
@@ -66,7 +67,7 @@ NodeCache::NodeTree::get(const InfoHash& id)
         else
             t = &t->childs[b];
     }
-    return {};
+    return{};
 }
 
 std::shared_ptr<Node>
@@ -94,10 +95,12 @@ NodeCache::NodeTree::get(const InfoHash& id, const sockaddr* sa, socklen_t sa_le
             }
             t->nodes = {};
             t->childs[id[offset]].nodes.emplace_back(node);
-        } else {
+        }
+        else {
             t->nodes.emplace_back(node);
         }
-    } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
+    }
+    else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
         node->update(sa, sa_len);
     }
     /*if (confirm)
@@ -112,14 +115,15 @@ NodeCache::NodeTree::clearBadNodes() {
             if (auto n = it->lock()) {
                 n->reset();
                 ++it;
-            } else {
+            }
+            else {
                 it = nodes.erase(it);
             }
         }
-    } else {
+    }
+    else {
         for (auto& c : childs)
             c.clearBadNodes();
     }
 }
-
 }

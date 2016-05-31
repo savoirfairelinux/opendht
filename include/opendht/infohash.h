@@ -31,20 +31,21 @@
 
 #ifdef _WIN32
 #include <iso646.h>
+#include <ws2def.h>
+#include <WS2tcpip.h>
 #endif
 
 // bytes
 #define HASH_LEN 20u
 
 namespace dht {
-
 /**
  * Represents an InfoHash.
  * An InfoHash is a byte array of HASH_LEN bytes.
  * InfoHashes identify nodes and values in the Dht.
  */
 class InfoHash final : public std::array<uint8_t, HASH_LEN> {
-public:
+    public:
     constexpr InfoHash() : std::array<uint8_t, HASH_LEN>() {}
     constexpr InfoHash(const std::array<uint8_t, HASH_LEN>& h) : std::array<uint8_t, HASH_LEN>(h) {}
     InfoHash(const uint8_t* h, size_t h_len) : std::array<uint8_t, HASH_LEN>() {
@@ -71,13 +72,13 @@ public:
      */
     inline unsigned lowbit() const {
         int i, j;
-        for(i = HASH_LEN-1; i >= 0; i--)
-            if((*this)[i] != 0)
+        for (i = HASH_LEN - 1; i >= 0; i--)
+            if ((*this)[i] != 0)
                 break;
-        if(i < 0)
+        if (i < 0)
             return -1;
-        for(j = 7; j >= 0; j--)
-            if(((*this)[i] & (0x80 >> j)) != 0)
+        for (j = 7; j >= 0; j--)
+            if (((*this)[i] & (0x80 >> j)) != 0)
                 break;
         return 8 * i + j;
     }
@@ -92,22 +93,22 @@ public:
 
     /** Find how many bits two ids have in common. */
     static inline unsigned
-    commonBits(const InfoHash& id1, const InfoHash& id2)
+        commonBits(const InfoHash& id1, const InfoHash& id2)
     {
         unsigned i, j;
         uint8_t x;
-        for(i = 0; i < HASH_LEN; i++) {
-            if(id1[i] != id2[i])
+        for (i = 0; i < HASH_LEN; i++) {
+            if (id1[i] != id2[i])
                 break;
         }
 
-        if(i == HASH_LEN)
-            return 8*HASH_LEN;
+        if (i == HASH_LEN)
+            return 8 * HASH_LEN;
 
         x = id1[i] ^ id2[i];
 
         j = 0;
-        while((x & 0x80) == 0) {
+        while ((x & 0x80) == 0) {
             x <<= 1;
             j++;
         }
@@ -117,15 +118,15 @@ public:
 
     /** Determine whether id1 or id2 is closer to this */
     int
-    xorCmp(const InfoHash& id1, const InfoHash& id2) const
+        xorCmp(const InfoHash& id1, const InfoHash& id2) const
     {
-        for(unsigned i = 0; i < HASH_LEN; i++) {
+        for (unsigned i = 0; i < HASH_LEN; i++) {
             uint8_t xor1, xor2;
-            if(id1[i] == id2[i])
+            if (id1[i] == id2[i])
                 continue;
             xor1 = id1[i] ^ (*this)[i];
             xor2 = id2[i] ^ (*this)[i];
-            if(xor1 < xor2)
+            if (xor1 < xor2)
                 return -1;
             else
                 return 1;
@@ -134,34 +135,34 @@ public:
     }
 
     bool
-    getBit(unsigned nbit) const
+        getBit(unsigned nbit) const
     {
-        auto& num = *(cbegin()+(nbit/8));
+        auto& num = *(cbegin() + (nbit / 8));
         unsigned bit = 7 - (nbit % 8);
         return (num >> bit) & 1;
     }
 
     void
-    setBit(unsigned nbit, bool b)
+        setBit(unsigned nbit, bool b)
     {
-        auto& num = (*this)[nbit/8];
+        auto& num = (*this)[nbit / 8];
         unsigned bit = 7 - (nbit % 8);
         num ^= (-b ^ num) & (1 << bit);
     }
 
     double
-    toFloat() const
+        toFloat() const
     {
         double v = 0.;
-        for (unsigned i = 0; i < std::min<size_t>(HASH_LEN, sizeof(unsigned)-1); i++)
-            v += *(cbegin()+i)/(double)(1<<(8*(i+1)));
+        for (unsigned i = 0; i < std::min<size_t>(HASH_LEN, sizeof(unsigned) - 1); i++)
+            v += *(cbegin() + i) / (double)(1 << (8 * (i + 1)));
         return v;
     }
 
     bool
-    operator<(const InfoHash& o) const {
-        for(unsigned i = 0; i < HASH_LEN; i++) {
-            if((*this)[i] != o[i])
+        operator<(const InfoHash& o) const {
+        for (unsigned i = 0; i < HASH_LEN; i++) {
+            if ((*this)[i] != o[i])
                 return (*this)[i] < o[i];
         }
         return false;
@@ -198,20 +199,18 @@ public:
             throw msgpack::type_error();
         std::copy_n(o.via.bin.ptr, HASH_LEN, data());
     }
-
 };
 
-static constexpr InfoHash zeroes {};
-static constexpr InfoHash ones = {std::array<uint8_t, HASH_LEN>{{
+static InfoHash zeroes{};
+static InfoHash ones = { std::array<uint8_t, HASH_LEN>{ {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF
-}}};
+}} };
 
 struct NodeExport {
     InfoHash id;
     sockaddr_storage ss;
     socklen_t sslen;
 };
-
 }

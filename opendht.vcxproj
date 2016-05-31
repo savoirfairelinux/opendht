@@ -83,8 +83,9 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>..\..\msvc\include;include;include\opendht;..\msgpack-c\include;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <DisableSpecificWarnings>4804;4800;4101;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -94,8 +95,9 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>..\..\msvc\include;include;include\opendht;..\msgpack-c\include;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <DisableSpecificWarnings>4804;4800;4101;4267;4244;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -107,8 +109,9 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>..\..\msvc\include;include;include\opendht;..\msgpack-c\include;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <DisableSpecificWarnings>4804;4800;4101;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -124,8 +127,9 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>..\..\msvc\include;include;include\opendht;..\msgpack-c\include;</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <DisableSpecificWarnings>4804;4800;4101;4267;4244;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS %(AdditionalOptions)</AdditionalOptions>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -133,23 +137,36 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\callbacks.cpp" />
     <ClCompile Include="src\crypto.cpp" />
     <ClCompile Include="src\default_types.cpp" />
     <ClCompile Include="src\dht.cpp" />
     <ClCompile Include="src\dhtrunner.cpp" />
     <ClCompile Include="src\infohash.cpp" />
+    <ClCompile Include="src\network_engine.cpp" />
+    <ClCompile Include="src\node.cpp" />
+    <ClCompile Include="src\node_cache.cpp" />
+    <ClCompile Include="src\routing_table.cpp" />
     <ClCompile Include="src\securedht.cpp" />
     <ClCompile Include="src\utils.cpp" />
     <ClCompile Include="src\value.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\opendht.h" />
+    <ClInclude Include="include\opendht\callbacks.h" />
     <ClInclude Include="include\opendht\crypto.h" />
     <ClInclude Include="include\opendht\default_types.h" />
     <ClInclude Include="include\opendht\dht.h" />
     <ClInclude Include="include\opendht\dhtrunner.h" />
     <ClInclude Include="include\opendht\infohash.h" />
+    <ClInclude Include="include\opendht\log.h" />
+    <ClInclude Include="include\opendht\network_engine.h" />
+    <ClInclude Include="include\opendht\node.h" />
+    <ClInclude Include="include\opendht\node_cache.h" />
+    <ClInclude Include="include\opendht\request.h" />
     <ClInclude Include="include\opendht\rng.h" />
+    <ClInclude Include="include\opendht\routing_table.h" />
+    <ClInclude Include="include\opendht\scheduler.h" />
     <ClInclude Include="include\opendht\securedht.h" />
     <ClInclude Include="include\opendht\utils.h" />
     <ClInclude Include="include\opendht\value.h" />

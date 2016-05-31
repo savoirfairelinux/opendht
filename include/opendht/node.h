@@ -18,43 +18,46 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
-
 #pragma once
 
 #include "utils.h"
 #include "infohash.h"
 
-#include <arpa/inet.h>
+#ifndef _WIN32
+# include <arpa/inet.h>
+#else
+# include <WS2tcpip.h>
+typedef uint16_t sa_family_t;
+#endif
 
 #include <list>
 
 namespace dht {
-
-class Request;
+struct Request;
 
 struct Node {
     friend class NetworkEngine;
 
-    InfoHash id {};
+    InfoHash id{};
     sockaddr_storage ss;
-    socklen_t sslen {0};
-    time_point time {time_point::min()};            /* last time eared about */
-    time_point reply_time {time_point::min()};      /* time of last correct reply received */
+    socklen_t sslen{ 0 };
+    time_point time{ time_point::min() };            /* last time eared about */
+    time_point reply_time{ time_point::min() };      /* time of last correct reply received */
 
     Node() : ss() {
         std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
     }
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
         : id(id), ss(), sslen(salen) {
-            std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-            if ((unsigned)salen < sizeof(ss))
-                std::fill_n((uint8_t*)&ss+salen, sizeof(ss)-salen, 0);
-        }
+        std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
+        if ((unsigned)salen < sizeof(ss))
+            std::fill_n((uint8_t*)&ss + salen, sizeof(ss) - salen, 0);
+    }
     InfoHash getId() const {
         return id;
     }
     std::pair<const sockaddr*, socklen_t> getAddr() const {
-        return {(const sockaddr*)&ss, sslen};
+        return{ (const sockaddr*)&ss, sslen };
     }
     std::string getAddrStr() const {
         return print_addr(ss, sslen);
@@ -62,7 +65,7 @@ struct Node {
     bool isExpired() const { return expired_; }
     bool isGood(time_point now) const;
     bool isMessagePending() const;
-    NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
+    NodeExport exportNode() const { return NodeExport{ id, ss, sslen }; }
     sa_family_t getFamily() const { return ss.ss_family; }
 
     void update(const sockaddr* sa, socklen_t salen);
@@ -81,25 +84,23 @@ struct Node {
 
     friend std::ostream& operator<< (std::ostream& s, const Node& h);
 
-    static constexpr const std::chrono::minutes NODE_GOOD_TIME {120};
+    static constexpr const std::chrono::minutes NODE_GOOD_TIME{ 120 };
 
     /* The time after which we consider a node to be expirable. */
-    static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
+    static constexpr const std::chrono::minutes NODE_EXPIRE_TIME{ 10 };
 
     /* Time for a request to timeout */
-    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {3};
+    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME{ 3 };
 
-private:
+    private:
 
-    std::list<std::weak_ptr<Request>> requests_ {};
-    bool expired_ {false};
+    std::list<std::weak_ptr<Request>> requests_{};
+    bool expired_{ false };
 
     void clearPendingQueue() {
         requests_.remove_if([](std::weak_ptr<Request>& w) {
             return w.expired();
         });
     }
-
 };
-
 }

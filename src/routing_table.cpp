@@ -5,15 +5,19 @@
 
 namespace dht {
 
-static std::mt19937 rd {dht::crypto::random_device{}()};
+static std::mt19937 rd{ dht::crypto::random_device{}() };
+#ifdef _WIN32
+static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
 static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
 std::shared_ptr<Node>
 Bucket::randomNode()
 {
     if (nodes.empty())
         return nullptr;
-    std::uniform_int_distribution<unsigned> rand_node(0, nodes.size()-1);
+    std::uniform_int_distribution<unsigned> rand_node(0, nodes.size() - 1);
     unsigned nn = rand_node(rd);
     for (auto& n : nodes)
         if (not nn--) return n;
@@ -27,10 +31,10 @@ RoutingTable::randomId(const RoutingTable::const_iterator& it) const
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
     int bit = std::max(bit1, bit2) + 1;
 
-    if (bit >= 8*(int)HASH_LEN)
+    if (bit >= 8 * (int)HASH_LEN)
         return it->first;
 
-    int b = bit/8;
+    int b = bit / 8;
     InfoHash id_return;
     std::copy_n(it->first.begin(), b, id_return.begin());
     id_return[b] = it->first[b] & (0xFF00 >> (bit % 8));
@@ -44,7 +48,7 @@ InfoHash
 RoutingTable::middle(const RoutingTable::const_iterator& it) const
 {
     unsigned bit = depth(it);
-    if (bit >= 8*HASH_LEN)
+    if (bit >= 8 * HASH_LEN)
         throw std::out_of_range("End of table");
 
     InfoHash id = it->first;
@@ -57,13 +61,13 @@ RoutingTable::depth(const RoutingTable::const_iterator& it) const
 {
     int bit1 = it->first.lowbit();
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
-    return std::max(bit1, bit2)+1;
+    return std::max(bit1, bit2) + 1;
 }
 
 std::vector<std::shared_ptr<Node>>
 RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) const
 {
-    std::vector<std::shared_ptr<Node>> nodes {};
+    std::vector<std::shared_ptr<Node>> nodes{};
     auto bucket = findBucket(id);
 
     if (bucket == end()) { return nodes; }
@@ -74,9 +78,9 @@ RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) 
                 continue;
 
             auto here = std::find_if(nodes.begin(), nodes.end(),
-                [&id,&n](std::shared_ptr<Node> &node) {
-                    return id.xorCmp(n->id, node->id) < 0;
-                }
+                [&id, &n](std::shared_ptr<Node> &node) {
+                return id.xorCmp(n->id, node->id) < 0;
+            }
             );
             nodes.insert(here, n);
         }
@@ -137,15 +141,16 @@ RoutingTable::split(const RoutingTable::iterator& b)
     InfoHash new_id;
     try {
         new_id = middle(b);
-    } catch (const std::out_of_range& e) {
+    }
+    catch (const std::out_of_range& e) {
         return false;
     }
 
     // Insert new bucket
-    insert(std::next(b), Bucket {b->af, new_id, b->time});
+    insert(std::next(b), Bucket{ b->af, new_id, b->time });
 
     // Re-assign nodes
-    std::list<std::shared_ptr<Node>> nodes {};
+    std::list<std::shared_ptr<Node>> nodes{};
     nodes.splice(nodes.begin(), b->nodes);
     while (!nodes.empty()) {
         auto n = nodes.begin();

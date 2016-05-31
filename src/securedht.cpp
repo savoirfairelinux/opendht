@@ -297,7 +297,7 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
             }
             return true;
         },
-        [hash,val,this,callback] (bool /* ok */) {
+        [hash, val, this, callback](bool /* ok */) {
             sign(*val);
             put(hash, val, callback);
         },

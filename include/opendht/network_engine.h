@@ -18,7 +18,6 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
-
 #pragma once
 
 #include "node_cache.h"
@@ -39,20 +38,19 @@
 #include <queue>
 
 namespace dht {
-
 #ifndef MSG_CONFIRM
 #define MSG_CONFIRM 0
 #endif
 
 class DhtProtocolException : public DhtException {
-public:
-    // sent to another peer (http-like).
-    static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
-    static const constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
+    public:
+        // sent to another peer (http-like).
+    static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION{ 203 }; /* incomplete request packet. */
+    static const constexpr uint16_t UNAUTHORIZED{ 401 };                  /* wrong tokens. */
     // for internal use (custom).
-    static const constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
-    static const constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
-    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is wrong */
+    static const constexpr uint16_t INVALID_TID_SIZE{ 421 };              /* id was truncated. */
+    static const constexpr uint16_t UNKNOWN_TID{ 422 };                   /* unknown tid */
+    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN{ 423 };       /* node info length is wrong */
 
     static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
     static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
@@ -61,14 +59,14 @@ public:
     static const std::string PUT_WRONG_TOKEN;    /* got "put" request with wrong token */
     static const std::string PUT_INVALID_ID;     /* invalid id in "put" request */
 
-    DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
+    DhtProtocolException(uint16_t code, const std::string& msg = "", InfoHash failing_node_id = {})
         : DhtException(msg), msg(msg), code(code), failing_node_id(failing_node_id) {}
 
     std::string getMsg() const { return msg; }
     uint16_t getCode() const { return code; }
     const InfoHash getNodeId() const { return failing_node_id; }
 
-private:
+    private:
     std::string msg;
     uint16_t code;
     const InfoHash failing_node_id;
@@ -95,33 +93,34 @@ struct ParsedMessage;
  */
 class NetworkEngine final {
     struct TransPrefix : public  std::array<uint8_t, 2>  {
-        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
+        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({ {(uint8_t)str[0], (uint8_t)str[1]} }) {}
         static const TransPrefix PING;
         static const TransPrefix FIND_NODE;
         static const TransPrefix GET_VALUES;
         static const TransPrefix ANNOUNCE_VALUES;
         static const TransPrefix LISTEN;
     };
-public:
+    public:
 
-    /* Transaction-ids are 4-bytes long, with the first two bytes identifying
-     * the kind of request, and the remaining two a sequence number in
-     * host order.
-     */
+        /* Transaction-ids are 4-bytes long, with the first two bytes identifying
+         * the kind of request, and the remaining two a sequence number in
+         * host order.
+         */
     struct TransId final : public std::array<uint8_t, 4> {
-        static const constexpr uint16_t INVALID {0};
+        static const constexpr uint16_t INVALID{ 0 };
 
         TransId() {}
         TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
         TransId(const TransPrefix prefix, uint16_t seqno = 0) {
             std::copy_n(prefix.begin(), prefix.size(), begin());
-            *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
+            *reinterpret_cast<uint16_t*>(data() + prefix.size()) = seqno;
         }
 
         TransId(const char* q, size_t l) : array<uint8_t, 4>() {
             if (l > 4) {
                 length = 0;
-            } else {
+            }
+            else {
                 std::copy_n(q, l, begin());
                 length = l;
             }
@@ -132,15 +131,16 @@ public:
         }
 
         bool matches(const TransPrefix prefix, uint16_t* tid = nullptr) const {
-            if (std::equal(begin(), begin()+2, prefix.begin())) {
+            if (std::equal(begin(), begin() + 2, prefix.begin())) {
                 if (tid)
                     *tid = getTid();
                 return true;
-            } else
+            }
+            else
                 return false;
         }
 
-        unsigned length {4};
+        unsigned length{ 4 };
     };
 
     /*!
@@ -151,15 +151,14 @@ public:
      * and looking up the response from a node.
      */
     struct RequestAnswer {
-        Blob ntoken {};
-        Value::Id vid {};
-        std::vector<std::shared_ptr<Value>> values {};
-        std::vector<std::shared_ptr<Node>> nodes4 {};
-        std::vector<std::shared_ptr<Node>> nodes6 {};
+        Blob ntoken{};
+        Value::Id vid{};
+        std::vector<std::shared_ptr<Value>> values{};
+        std::vector<std::shared_ptr<Node>> nodes4{};
+        std::vector<std::shared_ptr<Node>> nodes6{};
         RequestAnswer() {}
         RequestAnswer(ParsedMessage&& msg);
     };
-
 
     /**
      * Cancel a request. Setting req->cancelled = true is not enough in the case
@@ -174,14 +173,14 @@ public:
 
     void connectivityChanged();
 
-private:
+    private:
 
-    /**
-     * @brief when we receive an error message.
-     *
-     * @param node (type: std::shared_ptr<Request>) the associated request for
-     *             which we got an error;
-     */
+        /**
+         * @brief when we receive an error message.
+         *
+         * @param node (type: std::shared_ptr<Request>) the associated request for
+         *             which we got an error;
+         */
     std::function<void(std::shared_ptr<Request>, DhtProtocolException)> onError;
     /**
      * @brief when a new node happens.
@@ -207,7 +206,7 @@ private:
      *
      * @param node (type: std::shared_ptr<Node>) the requesting node.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>)> onPing {};
+    std::function<RequestAnswer(std::shared_ptr<Node>)> onPing{};
     /**
      * @brief on find node request callback.
      *
@@ -217,65 +216,65 @@ private:
      *             or ipv6.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
-            want_t)> onFindNode {};
-    /**
-     * @brief on "get values" request callback.
-     *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
-     * @param want (type: want_t) states if nodes sent in the response are ipv4
-     *             or ipv6.
-     */
+        InfoHash&,
+        want_t)> onFindNode{};
+/**
+ * @brief on "get values" request callback.
+ *
+ * @param node (type: std::shared_ptr<Node>) the requesting node.
+ * @param vhash (type: InfoHash) hash of the value of interest.
+ * @param want (type: want_t) states if nodes sent in the response are ipv4
+ *             or ipv6.
+ */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
-            want_t)> onGetValues {};
-    /**
-     * @brief on listen request callback.
-     *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
-     * @param rid (type: uint16_t) request id.
-     */
+        InfoHash&,
+        want_t)> onGetValues{};
+/**
+ * @brief on listen request callback.
+ *
+ * @param node (type: std::shared_ptr<Node>) the requesting node.
+ * @param vhash (type: InfoHash) hash of the value of interest.
+ * @param token (type: Blob) security token.
+ * @param rid (type: uint16_t) request id.
+ */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
-            Blob&,
-            uint16_t)> onListen {};
-    /**
-     * @brief on announce request callback.
-     *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
-     * @param values (type: std::vector<std::shared_ptr<Value>>) values to store.
-     * @param created (type: time_point) time when the value was created.
-     */
+        InfoHash&,
+        Blob&,
+        uint16_t)> onListen{};
+/**
+ * @brief on announce request callback.
+ *
+ * @param node (type: std::shared_ptr<Node>) the requesting node.
+ * @param vhash (type: InfoHash) hash of the value of interest.
+ * @param token (type: Blob) security token.
+ * @param values (type: std::vector<std::shared_ptr<Value>>) values to store.
+ * @param created (type: time_point) time when the value was created.
+ */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
-            Blob&,
-            std::vector<std::shared_ptr<Value>>,
-            time_point)> onAnnounce {};
+        InfoHash&,
+        Blob&,
+        std::vector<std::shared_ptr<Value>>,
+        time_point)> onAnnounce{};
 
-public:
+    public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
     NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
     NetworkEngine(InfoHash& myid, int s, int s6, Logger& log, Scheduler& scheduler,
-            decltype(NetworkEngine::onError) onError,
-            decltype(NetworkEngine::onNewNode) onNewNode,
-            decltype(NetworkEngine::onReportedAddr) onReportedAddr,
-            decltype(NetworkEngine::onPing) onPing,
-            decltype(NetworkEngine::onFindNode) onFindNode,
-            decltype(NetworkEngine::onGetValues) onGetValues,
-            decltype(NetworkEngine::onListen) onListen,
-            decltype(NetworkEngine::onAnnounce) onAnnounce) :
+        decltype(NetworkEngine::onError) onError,
+        decltype(NetworkEngine::onNewNode) onNewNode,
+        decltype(NetworkEngine::onReportedAddr) onReportedAddr,
+        decltype(NetworkEngine::onPing) onPing,
+        decltype(NetworkEngine::onFindNode) onFindNode,
+        decltype(NetworkEngine::onGetValues) onGetValues,
+        decltype(NetworkEngine::onListen) onListen,
+        decltype(NetworkEngine::onAnnounce) onAnnounce) :
         onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
         onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(myid),
         dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
     {
-        transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
+        transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{ 1 }(rd_device);
     }
     virtual ~NetworkEngine() {
         clear();
@@ -301,11 +300,11 @@ public:
      * @param values  The values to send.
      */
     void tellListener(std::shared_ptr<Node> n, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
-            std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
-            std::vector<std::shared_ptr<Value>> values);
+        std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
+        std::vector<std::shared_ptr<Value>> values);
 
     bool isRunning(sa_family_t af) const;
-    inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
+    inline want_t want() const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
 
     /**************
      *  Requests  *
@@ -314,44 +313,44 @@ public:
         sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired) {
-            return sendPing(std::make_shared<Node>(zeroes, sa, salen), on_done, on_expired);
-        }
+        return sendPing(std::make_shared<Node>(zeroes, sa, salen), on_done, on_expired);
+    }
     std::shared_ptr<Request>
         sendFindNode(std::shared_ptr<Node> n,
-                const InfoHash& target,
-                want_t want,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
+            const InfoHash& target,
+            want_t want,
+            RequestCb on_done,
+            RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendGetValues(std::shared_ptr<Node> n,
-                const InfoHash& target,
-                want_t want,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
+            const InfoHash& target,
+            want_t want,
+            RequestCb on_done,
+            RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendListen(std::shared_ptr<Node> n,
-                const InfoHash& infohash,
-                const Blob& token,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
+            const InfoHash& infohash,
+            const Blob& token,
+            RequestCb on_done,
+            RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendAnnounceValue(std::shared_ptr<Node> n,
-                const InfoHash& infohash,
-                const Value& v,
-                time_point created,
-                const Blob& token,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
+            const InfoHash& infohash,
+            const Value& v,
+            time_point created,
+            const Blob& token,
+            RequestCb on_done,
+            RequestExpiredCb on_expired);
 
-    /**
-     * Parses a message and calls appropriate callbacks.
-     *
-     * @param buf  The buffer containing the binary message.
-     * @param buflen  The length of the buffer.
-     * @param from  The address info of the sender.
-     * @param fromlen  The length of the corresponding sockaddr structure.
-     * @param now  The time to adjust the clock in the network engine.
-     */
+/**
+ * Parses a message and calls appropriate callbacks.
+ *
+ * @param buf  The buffer containing the binary message.
+ * @param buflen  The length of the buffer.
+ * @param from  The address info of the sender.
+ * @param fromlen  The length of the corresponding sockaddr structure.
+ * @param now  The time to adjust the clock in the network engine.
+ */
     void processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen);
 
     std::shared_ptr<Node> insertNode(const InfoHash& myid, const sockaddr* from, socklen_t fromlen) {
@@ -360,38 +359,38 @@ public:
 
     std::vector<unsigned> getNodeMessageStats(bool in) {
         auto& st = in ? in_stats : out_stats;
-        std::vector<unsigned> stats {st.ping,  st.find,  st.get,  st.listen,  st.put};
+        std::vector<unsigned> stats{ st.ping,  st.find,  st.get,  st.listen,  st.put };
         st = {};
         return stats;
     }
 
     void blacklistNode(const std::shared_ptr<Node>& n);
 
-private:
-    /***************
-     *  Constants  *
-     ***************/
-    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
+    private:
+        /***************
+         *  Constants  *
+         ***************/
+    static constexpr long unsigned MAX_REQUESTS_PER_SEC{ 1600 };
     /* the length of a node info buffer in ipv4 format */
-    static const constexpr size_t NODE4_INFO_BUF_LEN {26};
+    static const constexpr size_t NODE4_INFO_BUF_LEN{ 26 };
     /* the length of a node info buffer in ipv6 format */
-    static const constexpr size_t NODE6_INFO_BUF_LEN {38};
+    static const constexpr size_t NODE6_INFO_BUF_LEN{ 38 };
     /* TODO */
-    static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
+    static constexpr std::chrono::seconds UDP_REPLY_TIME{ 15 };
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
-    static constexpr unsigned BLACKLISTED_MAX {10};
+    static constexpr unsigned BLACKLISTED_MAX{ 10 };
     /* TODO */
     static const std::string my_v;
 
     /* DHT info */
     const InfoHash& myid;
-    const int dht_socket {-1};
-    const int dht_socket6 {-1};
+    const int dht_socket{ -1 };
+    const int dht_socket6{ -1 };
     const Logger& DHT_LOG;
 
-    NodeCache cache {};
-    sockaddr_storage blacklist[BLACKLISTED_MAX] {};
+    NodeCache cache{};
+    sockaddr_storage blacklist[BLACKLISTED_MAX]{};
     unsigned next_blacklisted = 0;
 
     bool rateLimit();
@@ -411,17 +410,18 @@ private:
             req->node->setExpired();
             requests.erase(req->tid);
             return;
-        } else if (req->attempt_count == 1) {
+        }
+        else if (req->attempt_count == 1) {
             req->on_expired(*req, false);
         }
 
         send((char*)req->msg.data(), req->msg.size(),
-                (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-                (sockaddr*)&req->node->ss, req->node->sslen);
+            (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            (sockaddr*)&req->node->ss, req->node->sslen);
         ++req->attempt_count;
         req->last_try = now;
         std::weak_ptr<Request> wreq = req;
-        scheduler.add(req->last_try + Node::MAX_RESPONSE_TIME, [this,wreq]() {
+        scheduler.add(req->last_try + Node::MAX_RESPONSE_TIME, [this, wreq]() {
             if (auto req = wreq.lock()) {
                 requestStep(req);
             }
@@ -453,13 +453,12 @@ private:
     }
 
     struct MessageStats {
-        unsigned ping {0};
-        unsigned find {0};
-        unsigned get {0};
-        unsigned put {0};
-        unsigned listen {0};
+        unsigned ping{ 0 };
+        unsigned find{ 0 };
+        unsigned get{ 0 };
+        unsigned put{ 0 };
+        unsigned listen{ 0 };
     };
-
 
     // basic wrapper for socket sendto function
     int send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen);
@@ -471,41 +470,40 @@ private:
     void sendPong(const sockaddr* sa, socklen_t salen, TransId tid);
     /* answer to findnodes/getvalues request */
     void sendNodesValues(const sockaddr* sa,
-            socklen_t salen,
-            TransId tid,
-            const Blob& nodes,
-            const Blob& nodes6,
-            const std::vector<std::shared_ptr<Value>>& st,
-            const Blob& token);
+        socklen_t salen,
+        TransId tid,
+        const Blob& nodes,
+        const Blob& nodes6,
+        const std::vector<std::shared_ptr<Value>>& st,
+        const Blob& token);
     unsigned insertClosestNode(uint8_t *nodes, unsigned numnodes, const InfoHash& id, const Node& n);
     std::pair<Blob, Blob> bufferNodes(sa_family_t af,
-            const InfoHash& id,
-            want_t want,
-            const std::vector<std::shared_ptr<Node>>& nodes,
-            const std::vector<std::shared_ptr<Node>>& nodes6);
-    /* answer to a listen request */
+        const InfoHash& id,
+        want_t want,
+        const std::vector<std::shared_ptr<Node>>& nodes,
+        const std::vector<std::shared_ptr<Node>>& nodes6);
+/* answer to a listen request */
     void sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid);
     /* answer to put request */
     void sendValueAnnounced(const sockaddr* sa, socklen_t salen, TransId, Value::Id);
     /* answer in case of error */
     void sendError(const sockaddr* sa,
-            socklen_t salen,
-            TransId tid,
-            uint16_t code,
-            const std::string& message,
-            bool include_id=false);
+        socklen_t salen,
+        TransId tid,
+        uint16_t code,
+        const std::string& message,
+        bool include_id = false);
 
     void deserializeNodesValues(ParsedMessage& msg);
 
-    std::queue<time_point> rate_limit_time {};
+    std::queue<time_point> rate_limit_time{};
     static std::mt19937 rd_device;
 
     // requests handling
-    uint16_t transaction_id {1};
-    std::map<uint16_t, std::shared_ptr<Request>> requests {};
-    MessageStats in_stats {}, out_stats {};
+    uint16_t transaction_id{ 1 };
+    std::map<uint16_t, std::shared_ptr<Request>> requests{};
+    MessageStats in_stats{}, out_stats{};
 
     Scheduler& scheduler;
 };
-
 }

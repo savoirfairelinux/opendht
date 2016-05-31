@@ -25,7 +25,6 @@
 #include <memory>
 
 namespace dht {
-
 struct NodeCache {
     std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
     std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
@@ -37,14 +36,14 @@ struct NodeCache {
      */
     void clearBadNodes(sa_family_t family = 0);
 
-private:
+    private:
     struct NodeTree {
         std::shared_ptr<Node> get(const InfoHash& id);
         std::shared_ptr<Node> get(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
 
         void clearBadNodes();
 
-    private:
+        private:
         std::shared_ptr<Node> getLocal(const InfoHash& id);
 
         std::vector<NodeTree> childs;
@@ -54,5 +53,4 @@ private:
     NodeTree cache_4;
     NodeTree cache_6;
 };
-
 }
