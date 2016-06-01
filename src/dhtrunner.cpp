@@ -480,30 +480,30 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
 }
 
 void
-DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb)
+DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb, bool permanent)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     auto sv = std::make_shared<Value>(std::move(value));
     pending_ops.emplace([=](SecureDht& dht) {
-        dht.put(hash, sv, cb);
+        dht.put(hash, sv, cb, {}, permanent);
     });
     cv.notify_all();
 }
 
 void
-DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb)
+DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) {
-        dht.put(hash, value, cb);
+        dht.put(hash, value, cb, {}, permanent);
     });
     cv.notify_all();
 }
 
 void
-DhtRunner::put(const std::string& key, Value&& value, DoneCallbackSimple cb)
+DhtRunner::put(const std::string& key, Value&& value, DoneCallbackSimple cb, bool permanent)
 {
-    put(InfoHash::get(key), std::forward<Value>(value), cb);
+    put(InfoHash::get(key), std::forward<Value>(value), cb, permanent);
 }
 
 void

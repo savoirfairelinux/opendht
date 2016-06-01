@@ -830,8 +830,10 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                     a.callback(true, sr->getNodes());
                     a.callback = nullptr;
                 }
-                ait = sr->announce.erase(ait);
-                continue;
+                if (not a.permanent) {
+                    ait = sr->announce.erase(ait);
+                    continue;
+                }
             }
             if (in) storageStore(sr->id, a.value, a.created);
             unsigned i = 0;
@@ -1222,7 +1224,8 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback callback, DoneCallba
 }
 
 void
-Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created)
+Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback,
+        time_point created, bool permanent)
 {
     const auto& now = scheduler.time();
     if (!value) {
@@ -1244,7 +1247,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         return a.value->id == value->id;
     });
     if (a_sr == sr->announce.end()) {
-        sr->announce.emplace_back(Announce {value, std::min(now, created), callback});
+        sr->announce.emplace_back(Announce {permanent, value, std::min(now, created), callback});
         for (auto& n : sr->nodes)
             n.acked[value->id] = {};
     }
@@ -1399,7 +1402,7 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 }
 
 void
-Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, time_point created)
+Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, time_point created, bool permanent)
 {
     scheduler.syncTime();
 
@@ -1427,13 +1430,13 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, 
         *done4 = true;
         *ok |= ok4;
         donecb(nodes);
-    }, created);
+    }, created, permanent);
     announce(id, AF_INET6, val, [=](bool ok6, const std::vector<std::shared_ptr<Node>>& nodes) {
         DHT_LOG.DEBUG("Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
         donecb(nodes);
-    }, created);
+    }, created, permanent);
 }
 
 struct OpStatus {
@@ -2703,7 +2706,8 @@ Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer,
                     a.callback(true, sr->getNodes());
                     a.callback = nullptr;
                 }
-                return true;
+                if (not a.permanent)
+                    return true;
             }
             return false;
     }), sr->announce.end());

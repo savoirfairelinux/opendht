@@ -163,16 +163,35 @@ public:
      * reannounced on a regular basis.
      * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb=nullptr, time_point created=time_point::max());
-    void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
-        put(key, v, bindDoneCb(cb), created);
+    void put(const InfoHash& key,
+            std::shared_ptr<Value>,
+            DoneCallback cb=nullptr,
+            time_point created=time_point::max(),
+            bool permanent = false);
+    void put(const InfoHash& key,
+            const std::shared_ptr<Value>& v,
+            DoneCallbackSimple cb,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        put(key, v, bindDoneCb(cb), created, permanent);
     }
 
-    void put(const InfoHash& key, Value&& v, DoneCallback cb=nullptr, time_point created=time_point::max()) {
-        put(key, std::make_shared<Value>(std::move(v)), cb, created);
+    void put(const InfoHash& key,
+            Value&& v,
+            DoneCallback cb=nullptr,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        put(key, std::make_shared<Value>(std::move(v)), cb, created, permanent);
     }
-    void put(const InfoHash& key, Value&& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
-        put(key, std::forward<Value>(v), bindDoneCb(cb), created);
+    void put(const InfoHash& key,
+            Value&& v,
+            DoneCallbackSimple cb,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        put(key, std::forward<Value>(v), bindDoneCb(cb), created, permanent);
     }
 
     /**
@@ -302,6 +321,7 @@ private:
      * A single "put" operation data
      */
     struct Announce {
+        bool permanent;
         std::shared_ptr<Value> value;
         time_point created;
         DoneCallback callback;
@@ -453,7 +473,7 @@ private:
      * The values can be filtered by an arbitrary provided filter.
      */
     std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
-    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
+    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
 
     void bootstrapSearch(Search& sr);
