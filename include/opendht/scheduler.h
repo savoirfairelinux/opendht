@@ -37,8 +37,7 @@ namespace dht {
 class Scheduler {
 public:
     struct Job {
-        bool done;
-        bool cancelled;
+        Job(std::function<void()>&& f) : do_(std::forward<std::function<void()>>(f)) {}
         std::function<void()> do_;
     };
 
@@ -50,9 +49,8 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    std::shared_ptr<Scheduler::Job> add(time_point t, std::function<void()> job_func) {
-        //std::cout << "Scheduler: adding " << (job_func ? "" : "empty") << " job in " << print_dt(t - clock::now()) << std::endl;
-        auto job = std::make_shared<Job>(Job {false, false, std::move(job_func)});
+    std::shared_ptr<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
+        auto job = std::make_shared<Job>(std::forward<std::function<void()>>(job_func));
         if (t != time_point::max())
             timers.emplace(std::move(t), job);
         return job;
@@ -68,14 +66,11 @@ public:
      */
     void edit(std::shared_ptr<Scheduler::Job>& job, time_point t) {
         if (not job) {
-            std::cout << "editing an empty job" << std::endl;
+            std::cerr << "editing an empty job" << std::endl;
             return;
         }
-        job->cancelled = true;
         job = add(t, std::move(job->do_));
     }
-
-
 
     /**
      * Runs the jobs to do up to now.
@@ -94,12 +89,9 @@ public:
             if (timer->first > now)
                 break;
 
-            auto& job = timer->second;
-            if (not job->cancelled and job->do_) {
-                job->do_();
-                //job->do_ = {};
-                job->done = true;
-            }
+            const auto& job = *timer->second;
+            if (job.do_)
+                job.do_();
             timers.erase(timer);
         }
         return getNextJobTime();
@@ -108,7 +100,7 @@ public:
     inline time_point getNextJobTime() const {
         //if (not timers.empty())
         //    std::cout << "Next job in " << print_dt(timers.begin()->first - clock::now()) << std::endl;
-        return not timers.empty() ? timers.begin()->first : time_point::max();
+        return timers.empty() ? time_point::max() : timers.begin()->first;
     }
 
     /**

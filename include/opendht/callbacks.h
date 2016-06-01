@@ -27,6 +27,7 @@
 #include <functional>
 
 namespace dht {
+
 struct Node;
 
 enum class NodeStatus {
@@ -54,20 +55,22 @@ using ShutdownCallback = std::function<void()>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 
-typedef bool(*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
+typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 
-static constexpr size_t DEFAULT_STORAGE_LIMIT{ 1024 * 1024 * 64 };
+static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 
 GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
 GetCallback bindGetCb(GetCallbackSimple cb);
 
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
-typedef void(*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
-typedef void(*ShutdownCallbackRaw)(void *user_data);
+typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
+typedef void (*ShutdownCallbackRaw)(void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
 ShutdownCallback bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data);
 DoneCallback bindDoneCb(DoneCallbackSimple donecb);
 DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
+
+
 }

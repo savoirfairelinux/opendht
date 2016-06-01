@@ -24,6 +24,14 @@
 
 #include <msgpack.hpp>
 
+#ifndef _WIN32
+#include <sys/socket.h>
+#else
+#include <ws2def.h>
+#include <ws2tcpip.h>
+#include <cctype>
+#endif
+
 #include <chrono>
 #include <random>
 #include <functional>
@@ -31,14 +39,9 @@
 
 #include <cstdarg>
 
-#ifdef _WIN32
-#undef ERROR
-#include <ws2def.h>
-#include <WS2tcpip.h>
-#endif // _WIN32
-
 namespace dht {
-static constexpr unsigned TARGET_NODES{ 8 };
+
+static constexpr unsigned TARGET_NODES {8};
 
 using Address = std::pair<sockaddr_storage, socklen_t>;
 using want_t = int_fast8_t;
@@ -53,16 +56,16 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
     for (auto it = map.begin(); it != map.end(); ) {
         if (condition(*it)) {
             it = map.erase(it);
-        }
-        else { ++it; }
+        } else { ++it; }
     }
 }
 
 class DhtException : public std::runtime_error {
     public:
-    DhtException(const std::string &str = "") :
-        std::runtime_error("DhtException occured: " + str) {}
+        DhtException(const std::string &str = "") :
+            std::runtime_error("DhtException occured: " + str) {}
 };
+
 
 // Time related definitions and utility functions
 
@@ -82,21 +85,21 @@ print_dt(DT d) {
     return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
 }
 
-static /*constexpr*/ const time_point TIME_INVALID = { time_point::min() };
-static /*constexpr*/ const time_point TIME_MAX{ time_point::max() };
+static /*constexpr*/ const time_point TIME_INVALID = {time_point::min()};
+static /*constexpr*/ const time_point TIME_MAX {time_point::max()};
 
 template <typename Duration = duration>
 class uniform_duration_distribution : public std::uniform_int_distribution<typename Duration::rep> {
     using Base = std::uniform_int_distribution<typename Duration::rep>;
     using param_type = typename Base::param_type;
-    public:
+public:
     uniform_duration_distribution(Duration min, Duration max) : Base(min.count(), max.count()) {}
     template <class Generator>
     Duration operator()(Generator && g) {
         return Duration(Base::operator()(g));
     }
     template< class Generator >
-    Duration operator()(Generator && g, const param_type& params) {
+    Duration operator()( Generator && g, const param_type& params ) {
         return Duration(Base::operator()(g, params));
     }
 };
@@ -126,18 +129,18 @@ struct LogMethod {
 
     void logPrintable(const uint8_t *buf, size_t buflen) const {
         std::string buf_clean(buflen, '\0');
-        for (size_t i = 0; i < buflen; i++)
-            buf_clean[i] = isprint(buf[i]) ? buf[i] : '.';
+        for (size_t i=0; i<buflen; i++)
+            buf_clean[i] = std::isprint(buf[i]) ? buf[i] : '.';
         (*this)("%s", buf_clean.c_str());
     }
-    private:
+private:
     std::function<void(char const*, va_list)> func;
 };
 
 struct Logger {
     LogMethod DEBUG = NOLOG;
     LogMethod WARN = NOLOG;
-    LogMethod ERROR = NOLOG;
+    LogMethod ERR = NOLOG;
 };
 
 // Serialization related definitions and utility functions
@@ -155,7 +158,7 @@ packMsg(const Type& t) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack(t);
-    return{ buffer.data(), buffer.data() + buffer.size() };
+    return {buffer.data(), buffer.data()+buffer.size()};
 }
 
 template <typename Type>
@@ -166,4 +169,7 @@ unpackMsg(Blob b) {
 }
 
 msgpack::unpacked unpackMsg(Blob b);
+
+msgpack::object* findMapValue(msgpack::object& map, const std::string& key);
+
 } // namespace dht

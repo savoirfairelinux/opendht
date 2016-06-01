@@ -1,6 +1,8 @@
 #include "callbacks.h"
 
 namespace dht {
+
+
 GetCallbackSimple
 bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 {
@@ -44,4 +46,5 @@ bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
         raw_cb(success, (std::vector<std::shared_ptr<Node>>*)&nodes, user_data);
     };
 }
+
 }

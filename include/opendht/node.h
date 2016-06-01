@@ -20,8 +20,8 @@
 
 #pragma once
 
+#include "infohash.h" // includes socket structures
 #include "utils.h"
-#include "infohash.h"
 
 #ifndef _WIN32
 # include <arpa/inet.h>
@@ -38,17 +38,16 @@ struct Request;
 struct Node {
     friend class NetworkEngine;
 
-    InfoHash id{};
-    sockaddr_storage ss;
+    InfoHash id;
+
     socklen_t sslen{ 0 };
+    sockaddr_storage ss;
+
     time_point time{ time_point::min() };            /* last time eared about */
     time_point reply_time{ time_point::min() };      /* time of last correct reply received */
 
-    Node() : ss() {
-        std::fill_n((uint8_t*)&ss, sizeof(ss), 0);
-    }
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : id(id), ss(), sslen(salen) {
+        : id(id), sslen(salen), ss() {
         std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
         if ((unsigned)salen < sizeof(ss))
             std::fill_n((uint8_t*)&ss + salen, sizeof(ss) - salen, 0);
@@ -64,7 +63,9 @@ struct Node {
     }
     bool isExpired() const { return expired_; }
     bool isGood(time_point now) const;
-    bool isMessagePending() const;
+    bool isPendingMessage() const;
+    size_t getPendingMessageCount() const;
+
     NodeExport exportNode() const { return NodeExport{ id, ss, sslen }; }
     sa_family_t getFamily() const { return ss.ss_family; }
 
@@ -90,9 +91,9 @@ struct Node {
     static constexpr const std::chrono::minutes NODE_EXPIRE_TIME{ 10 };
 
     /* Time for a request to timeout */
-    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME{ 3 };
+    static constexpr const std::chrono::seconds MAX_RESPONSE_TIME{ 1 };
 
-    private:
+private:
 
     std::list<std::weak_ptr<Request>> requests_{};
     bool expired_{ false };

@@ -85,9 +85,18 @@ public:
      * If the signature can't be checked, or if the data can't be decrypted, it is not returned.
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
-    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& = {});
+    virtual void get(const InfoHash& id, GetCallback cb, DoneCallback donecb={}, Value::Filter&& = {}, Query&& q = {}) override;
+    virtual void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f = {}, Query&& q = {}) override {
+        get(id, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
+    }
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Query&& q = {}) override {
+        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Query>(q));
+    }
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Query&& q = {}) override {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
+    }
 
-    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {});
+    virtual size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {}, Query&& q = {}) override;
 
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
@@ -117,11 +126,16 @@ public:
     Value decrypt(const Value& v);
 
     void findCertificate(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb);
+    void findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::PublicKey>)> cb);
 
     const std::shared_ptr<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
     void registerCertificate(std::shared_ptr<crypto::Certificate>& cert);
 
     const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
+    const std::shared_ptr<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
+
+
+
 
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.
@@ -147,6 +161,7 @@ private:
 
     // our certificate cache
     std::map<InfoHash, std::shared_ptr<crypto::Certificate>> nodesCertificates_ {};
+    std::map<InfoHash, std::shared_ptr<crypto::PublicKey>> nodesPubKeys_ {};
 
     std::uniform_int_distribution<Value::Id> rand_id {};
 };

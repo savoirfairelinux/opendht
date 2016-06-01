@@ -18,6 +18,7 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
+
 #pragma once
 
 #include "infohash.h"
@@ -43,6 +44,7 @@
 #endif
 
 namespace dht {
+
 struct Request;
 
 /**
@@ -53,27 +55,22 @@ struct Request;
  * called regularly.
  */
 class Dht {
-    public:
+public:
 
-        // [[deprecated]]
+    // [[deprecated]]
     using NodeExport = dht::NodeExport;
 
     // [[deprecated]]
     using Status = NodeStatus;
 
-    Dht() : network_engine(DHT_LOG, scheduler) {}
+    Dht();
 
     /**
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
     Dht(int s, int s6, Config config);
-    virtual ~Dht() {
-        for (auto& s : searches4)
-            s.second->clear();
-        for (auto& s : searches6)
-            s.second->clear();
-    }
+    virtual ~Dht();
 
     /**
      * Get the ID of the node.
@@ -136,18 +133,24 @@ class Dht {
      * @param cb a function called when new values are found on the network.
      *           It should return false to stop the operation.
      * @param donecb a function called when the operation is complete.
-                        cb and donecb won't be called again afterward.
+                     cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
+     * @param q a query used to filter values on the remotes before they send a
+     *          response.
+     *          WARNING: When using a Query containing a SELECT clause, as of
+     *          now, the returned values are unusable since for a value you
+     *          cannot tell what field is valid. TODO: replace the Query by
+     *          "Where" struct.
      */
-    void get(const InfoHash& key, GetCallback cb, DoneCallback donecb = nullptr, Value::Filter f = Value::AllFilter());
-    void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
-        get(key, cb, bindDoneCb(donecb), f);
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Query&& q = {});
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Query&& q = {}) {
+        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb = nullptr, Value::Filter f = Value::AllFilter()) {
-        get(key, bindGetCb(cb), donecb, f);
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Query&& q = {}) {
+        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
-    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter f = Value::AllFilter()) {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), f);
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Query&& q = {}) {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
 
     /**
@@ -161,24 +164,20 @@ class Dht {
     std::shared_ptr<Value> getLocalById(const InfoHash& key, Value::Id vid) const;
 
     /**
-     * Announce a value on all available protocols (IPv4, IPv6), and
-     * automatically re-announce when it's about to expire.
+     * Announce a value on all available protocols (IPv4, IPv6).
+     *
      * The operation will start as soon as the node is connected to the network.
      * The done callback will be called once, when the first announce succeeds, or fails.
-     *
-     * A "put" operation will never end by itself because the value will need to be
-     * reannounced on a regular basis.
-     * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
-    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb = nullptr, time_point created = time_point::max());
-    void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb, time_point created = time_point::max()) {
+    void put(const InfoHash& key, std::shared_ptr<Value>, DoneCallback cb=nullptr, time_point created=time_point::max());
+    void put(const InfoHash& key, const std::shared_ptr<Value>& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
         put(key, v, bindDoneCb(cb), created);
     }
 
-    void put(const InfoHash& key, Value&& v, DoneCallback cb = nullptr, time_point created = time_point::max()) {
+    void put(const InfoHash& key, Value&& v, DoneCallback cb=nullptr, time_point created=time_point::max()) {
         put(key, std::make_shared<Value>(std::move(v)), cb, created);
     }
-    void put(const InfoHash& key, Value&& v, DoneCallbackSimple cb, time_point created = time_point::max()) {
+    void put(const InfoHash& key, Value&& v, DoneCallbackSimple cb, time_point created=time_point::max()) {
         put(key, std::forward<Value>(v), bindDoneCb(cb), created);
     }
 
@@ -205,12 +204,12 @@ class Dht {
      *
      * @return a token to cancel the listener later.
      */
-    size_t listen(const InfoHash&, GetCallback, Value::Filter = Value::AllFilter());
-    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
-        return listen(key, bindGetCb(cb), f);
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={}, Query&& q = {});
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Query q = {}) {
+        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Query>(q));
     }
 
-    bool cancelListen(const InfoHash&, size_t token);
+    virtual bool cancelListen(const InfoHash&, size_t token);
 
     /**
      * Inform the DHT of lower-layer connectivity changes.
@@ -229,7 +228,7 @@ class Dht {
     void importValues(const std::vector<ValuesExport>&);
 
     int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
-        unsigned *incoming_return) const;
+            unsigned *incoming_return) const;
     std::string getStorageLog() const;
     std::string getRoutingTablesLog(sa_family_t) const;
     std::string getSearchesLog(sa_family_t) const;
@@ -251,121 +250,56 @@ class Dht {
      * of stored values.
      */
     std::pair<size_t, size_t> getStoreSize() const {
-        return{ total_store_size, total_values };
+        return {total_store_size, total_values};
     }
 
     std::vector<Address> getPublicAddress(sa_family_t family = 0);
 
-    protected:
+protected:
     Logger DHT_LOG;
 
-    private:
+private:
 
-        /* When performing a search, we search for up to SEARCH_NODES closest nodes
-           to the destination, and use the additional ones to backtrack if any of
-           the target 8 turn out to be dead. */
-    static constexpr unsigned SEARCH_NODES{ 14 };
+    /* When performing a search, we search for up to SEARCH_NODES closest nodes
+       to the destination, and use the additional ones to backtrack if any of
+       the target 8 turn out to be dead. */
+    static constexpr unsigned SEARCH_NODES {14};
 
     /* Concurrent requests during a search */
-    static constexpr unsigned SEARCH_REQUESTS{ 4 };
+    static constexpr unsigned SEARCH_REQUESTS {4};
 
     /* Number of listening nodes */
-    static constexpr unsigned LISTEN_NODES{ 3 };
+    static constexpr unsigned LISTEN_NODES {4};
 
     /* The maximum number of values we store for a given hash. */
-    static constexpr unsigned MAX_VALUES{ 2048 };
+    static constexpr unsigned MAX_VALUES {1024};
 
     /* The maximum number of hashes we're willing to track. */
-    static constexpr unsigned MAX_HASHES{ 16384 };
+    static constexpr unsigned MAX_HASHES {16384};
 
     /* The maximum number of searches we keep data about. */
-    static constexpr unsigned MAX_SEARCHES{ 128 };
+    static constexpr unsigned MAX_SEARCHES {2048};
 
-    static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME{ 10 };
+    static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
 
     /* The time after which we consider a search to be expirable. */
-    static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME{ 62 };
+    static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
     /* Timeout for listen */
-    static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME{ 30 };
+    static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME {30};
 
-    static constexpr std::chrono::seconds REANNOUNCE_MARGIN{ 5 };
+    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
 
-    static constexpr size_t TOKEN_SIZE{ 64 };
+    static constexpr size_t TOKEN_SIZE {64};
 
-    struct SearchNode {
-        SearchNode(std::shared_ptr<Node> node) : node(node) {}
-
-        using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
-
-        /**
-         * Can we use this node to listen/announce now ?
-         */
-        bool isSynced(time_point now) const {
-            return not node->isExpired() and
-                not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
-        }
-        bool canGet(time_point now, time_point update) const {
-            return not node->isExpired() and
-                (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-                and (not getStatus or not getStatus->pending());
-        }
-
-        bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
-            auto ack = acked.find(vid);
-            if (ack == acked.end() or not ack->second) {
-                return false;
-            }
-            return ack->second->reply_time + type.expiration > now;
-        }
-        bool isListening(time_point now) const {
-            if (not listenStatus)
-                return false;
-
-            return listenStatus->reply_time + LISTEN_EXPIRE_TIME > now;
-        }
-
-        time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
-            if (ack == acked.end() or not ack->second)
-                return time_point::min();
-            return ack->second->pending() ? time_point::max() : ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
-        }
-
-        time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
-            return getAnnounceTime(acked.find(vid), type);
-        }
-
-        time_point getListenTime() const {
-            if (not listenStatus)
-                return time_point::min();
-
-            return listenStatus->pending() ? time_point::max() : listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
-        }
-        bool isBad() const {
-            return !node || node->isExpired() || candidate;
-        }
-
-        std::shared_ptr<Node> node{};
-
-        time_point last_get_reply{ time_point::min() };                 /* last time received valid token */
-        std::shared_ptr<Request> getStatus{};          /* get/sync status */
-        std::shared_ptr<Request> listenStatus{};
-        AnnounceStatusMap acked{};                                    /* announcement status for a given value id */
-
-        Blob token{};
-
-        /**
-         * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
-         *
-         */
-        bool candidate{ false };
-    };
+    struct SearchNode;
 
     /**
      * A single "get" operation data
      */
     struct Get {
         time_point start;
+        std::shared_ptr<Query> query;
         Value::Filter filter;
         GetCallback get_cb;
         DoneCallback done_cb;
@@ -384,105 +318,20 @@ class Dht {
      * A single "listen" operation data
      */
     struct LocalListener {
+        std::shared_ptr<Query> query;
         Value::Filter filter;
         GetCallback get_cb;
     };
 
     /**
-     * A search is a pointer to the nodes we think are responsible
+     * A search is a list of the nodes we think are responsible
      * for storing values for a given hash.
      */
-    struct Search {
-        InfoHash id{};
-        sa_family_t af;
-
-        uint16_t tid;
-        time_point refill_time{ time_point::min() };
-        time_point step_time{ time_point::min() };           /* the time of the last search step */
-        unsigned current_get_requests{ 0 };                  /* number of concurrent sync requests */
-        std::shared_ptr<Scheduler::Job> nextSearchStep{};
-
-        bool expired{ false };              /* no node, or all nodes expired */
-        bool done{ false };                 /* search is over, cached for later */
-        std::vector<SearchNode> nodes{};
-
-        /* pending puts */
-        std::vector<Announce> announce{};
-
-        /* pending gets */
-        std::vector<Get> callbacks{};
-
-        /* listeners */
-        std::map<size_t, LocalListener> listeners{};
-        size_t listener_token = 1;
-
-        /**
-         * @returns true if the node was not present and added to the search
-         */
-        bool insertNode(std::shared_ptr<Node> n, time_point now, const Blob& token = {});
-        unsigned insertBucket(const Bucket&, time_point now);
-
-        SearchNode* getNode(const std::shared_ptr<Node>& n) {
-            auto srn = std::find_if(nodes.begin(), nodes.end(), [&](SearchNode& sn) {
-                return n == sn.node;
-            });
-            return (srn == nodes.end()) ? nullptr : &(*srn);
-        }
-
-        /**
-         * Can we use this search to announce ?
-         */
-        bool isSynced(time_point now) const;
-
-        time_point getLastGetTime() const;
-
-        /**
-         * Is this get operation done ?
-         */
-        bool isDone(const Get& get, time_point now) const;
-
-        time_point getUpdateTime(time_point now) const;
-
-        bool isAnnounced(Value::Id id, const ValueType& type, time_point now) const;
-        bool isListening(time_point now) const;
-
-        /**
-         * @return The number of non-good search nodes.
-         */
-        unsigned getNumberOfBadNodes();
-
-        /**
-         * ret = 0 : no announce required.
-         * ret > 0 : (re-)announce required at time ret.
-         */
-        time_point getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
-
-        /**
-         * ret = 0 : no listen required.
-         * ret > 0 : (re-)announce required at time ret.
-         */
-        time_point getListenTime(time_point now) const;
-
-        time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
-
-        bool removeExpiredNode(time_point now);
-
-        unsigned refill(const RoutingTable&, time_point now);
-
-        std::vector<std::shared_ptr<Node>> getNodes() const;
-
-        void clear() {
-            announce.clear();
-            callbacks.clear();
-            listeners.clear();
-            nodes.clear();
-            nextSearchStep = {};
-        }
-    };
+    struct Search;
 
     struct ValueStorage {
-        std::shared_ptr<Value> data{};
-        time_point time{};
+        std::shared_ptr<Value> data {};
+        time_point time {};
 
         ValueStorage() {}
         ValueStorage(const std::shared_ptr<Value>& v, time_point t) : data(v), time(t) {}
@@ -492,10 +341,11 @@ class Dht {
      * Foreign nodes asking for updates about an InfoHash.
      */
     struct Listener {
-        size_t rid{};
-        time_point time{};
+        size_t rid {};
+        time_point time {};
+        Query query {};
 
-        /*constexpr*/ Listener(size_t rid, time_point t) : rid(rid), time(t) {}
+        /*constexpr*/ Listener(size_t rid, time_point t, Query&& q) : rid(rid), time(t), query(q) {}
 
         void refresh(size_t tid, time_point t) {
             rid = tid;
@@ -503,93 +353,16 @@ class Dht {
         }
     };
 
-    struct Storage {
-        InfoHash id;
-        time_point maintenance_time{};
-        std::map<std::shared_ptr<Node>, Listener> listeners{};
-        std::map<size_t, LocalListener> local_listeners{};
-        size_t listener_token{ 1 };
-
-        Storage() {}
-        Storage(InfoHash id, time_point now) : id(id), maintenance_time(now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {}
-
-#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9 || defined(_WIN32)
-        // GCC-bug: remove me when support of GCC < 4.9.2 is abandoned
-        Storage(Storage&& o) noexcept
-            : id(std::move(o.id))
-            , maintenance_time(std::move(o.maintenance_time))
-            , listeners(std::move(o.listeners))
-            , local_listeners(std::move(o.local_listeners))
-            , listener_token(std::move(o.listener_token))
-            , values(std::move(o.values))
-            , total_size(std::move(o.total_size)) {}
-#else
-        Storage(Storage&& o) noexcept = default;
-#endif
-
-        Storage& operator=(Storage&& o) = default;
-
-        bool empty() const {
-            return values.empty();
-        }
-
-        void clear();
-
-        size_t valueCount() const {
-            return values.size();
-        }
-
-        size_t totalSize() const {
-            return total_size;
-        }
-
-        const std::vector<ValueStorage>& getValues() const { return values; }
-
-        std::shared_ptr<Value> getById(Value::Id vid) const {
-            for (auto& v : values)
-                if (v.data->id == vid) return v.data;
-            return{};
-        }
-
-        std::vector<std::shared_ptr<Value>> get(Value::Filter f = {}) const {
-            std::vector<std::shared_ptr<Value>> newvals{};
-            if (not f) newvals.reserve(values.size());
-            for (auto& v : values) {
-                if (not f || f(*v.data))
-                    newvals.push_back(v.data);
-            }
-            return newvals;
-        }
-
-        /**
-         * Stores a new value in this storage, or replace a previous value
-         *
-         * @return <storage, change_size, change_value_num>
-         *      storage: set if a change happened
-         *      change_size: size difference
-         *      change_value_num: change of value number (0 or 1)
-         */
-        std::tuple<ValueStorage*, ssize_t, ssize_t>
-            store(const std::shared_ptr<Value>& value, time_point created, ssize_t size_left);
-
-        std::pair<ssize_t, ssize_t> expire(const std::map<ValueType::Id, ValueType>& types, time_point now);
-
-        private:
-        Storage(const Storage&) = delete;
-        Storage& operator=(const Storage&) = delete;
-
-        std::vector<ValueStorage> values{};
-        size_t total_size{};
-    };
+    struct Storage;
 
     // prevent copy
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
-    InfoHash myid{};
+    InfoHash myid {};
 
-    std::array<uint8_t, 8> secret{ {} };
-    std::array<uint8_t, 8> oldsecret{ {} };
+    std::array<uint8_t, 8> secret {{}};
+    std::array<uint8_t, 8> oldsecret {{}};
 
     // registred types
     std::map<ValueType::Id, ValueType> types;
@@ -598,30 +371,30 @@ class Dht {
     // note: Any running node can be used as a bootstrap node.
     //       Only nodes running only as bootstrap nodes should
     //       be put in bootstrap mode.
-    const bool is_bootstrap{ false };
+    const bool is_bootstrap {false};
 
     // the stuff
-    RoutingTable buckets{};
-    RoutingTable buckets6{};
+    RoutingTable buckets {};
+    RoutingTable buckets6 {};
 
-    std::vector<Storage> store{};
-    size_t total_values{ 0 };
-    size_t total_store_size{ 0 };
-    size_t max_store_size{ DEFAULT_STORAGE_LIMIT };
+    std::vector<Storage> store;
+    size_t total_values {0};
+    size_t total_store_size {0};
+    size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    std::map<InfoHash, std::shared_ptr<Search>> searches4{};
-    std::map<InfoHash, std::shared_ptr<Search>> searches6{};
-    uint16_t search_id{ 0 };
+    std::map<InfoHash, std::shared_ptr<Search>> searches4 {};
+    std::map<InfoHash, std::shared_ptr<Search>> searches6 {};
+    uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
     // 0 is the invalid token.
-    std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners{};
-    size_t listener_token{ 1 };
+    std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners {};
+    size_t listener_token {1};
 
     // timing
-    Scheduler scheduler{};
-    std::shared_ptr<Scheduler::Job> nextNodesConfirmation{};
-    time_point mybucket_grow_time{ time_point::min() }, mybucket6_grow_time{ time_point::min() };
+    Scheduler scheduler {};
+    std::shared_ptr<Scheduler::Job> nextNodesConfirmation {};
+    time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     NetworkEngine network_engine;
 
@@ -636,18 +409,10 @@ class Dht {
     void reportedAddr(const sockaddr *sa, socklen_t sa_len);
 
     // Storage
-    decltype(Dht::store)::iterator findStorage(const InfoHash& id) {
-        return std::find_if(store.begin(), store.end(), [&](const Storage& st) {
-            return st.id == id;
-        });
-    }
-    decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const {
-        return std::find_if(store.cbegin(), store.cend(), [&](const Storage& st) {
-            return st.id == id;
-        });
-    }
+    decltype(Dht::store)::iterator findStorage(const InfoHash& id);
+    decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const;
 
-    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid);
+    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
@@ -658,7 +423,7 @@ class Dht {
      * nodes.
      */
     void dataPersistence();
-    size_t maintainStorage(InfoHash id, bool force = false, DoneCallback donecb = nullptr);
+    size_t maintainStorage(InfoHash id, bool force=false, DoneCallback donecb=nullptr);
 
     // Buckets
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
@@ -684,7 +449,7 @@ class Dht {
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    std::shared_ptr<Node> newNode(const std::shared_ptr<Node>& node, int confirm);
+    void onNewNode(const std::shared_ptr<Node>& node, int confirm);
     std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
     const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const std::shared_ptr<Node>& node);
@@ -696,11 +461,10 @@ class Dht {
      * specified infohash (id), using the specified IP version (IPv4 or IPv6).
      * The values can be filtered by an arbitrary provided filter.
      */
-    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
-    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created = time_point::max());
-    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
+    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
+    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max());
+    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), const std::shared_ptr<Query>& q = {});
 
-    std::shared_ptr<Search> newSearch(InfoHash id, sa_family_t af);
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
@@ -722,21 +486,25 @@ class Dht {
 
     void onError(std::shared_ptr<Request> node, DhtProtocolException e);
     /* when our address is reported by a distant peer. */
-    void onReportedAddr(const InfoHash& id, sockaddr* sa, socklen_t salen);
+    void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
     /* when we receive a ping request */
     NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
     NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
     void onFindNodeDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
-    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want, const Query& q);
+    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr,
+            const std::shared_ptr<Query>& orig_query);
     /* when we receive a listen request */
-    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
-    void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid,
+            Query&& query);
+    void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a,
+            std::shared_ptr<Search>& sr, const std::shared_ptr<Query>& orig_query);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
-        InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
+            InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
     void onAnnounceDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
 };
+
 }

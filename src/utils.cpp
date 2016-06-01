@@ -85,4 +85,15 @@ unpackMsg(Blob b) {
     return msgpack::unpack((const char*)b.data(), b.size());
 }
 
+msgpack::object*
+findMapValue(msgpack::object& map, const std::string& key) {
+    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
+    for (unsigned i = 0; i < map.via.map.size; i++) {
+        auto& o = map.via.map.ptr[i];
+        if (o.key.type == msgpack::type::STR && o.key.as<std::string>() == key)
+            return &o.val;
+    }
+    return nullptr;
+}
+
 }

@@ -18,12 +18,14 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
+
 #include "node.h"
 #include "request.h"
 
 #include <sstream>
 
 namespace dht {
+
 constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
 constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
@@ -38,7 +40,7 @@ Node::isGood(time_point now) const
 }
 
 bool
-Node::isMessagePending() const
+Node::isPendingMessage() const
 {
     for (auto w : requests_) {
         if (auto r = w.lock()) {
@@ -47,6 +49,19 @@ Node::isMessagePending() const
         }
     }
     return false;
+}
+
+size_t
+Node::getPendingMessageCount() const
+{
+    size_t count {0};
+    for (auto w : requests_) {
+        if (auto r = w.lock()) {
+            if (r->pending())
+                count++;
+        }
+    }
+    return count;
 }
 
 void
@@ -93,6 +108,7 @@ Node::setExpired()
     requests_.clear();
 }
 
+
 std::string
 Node::toString() const
 {
@@ -106,4 +122,5 @@ std::ostream& operator<< (std::ostream& s, const Node& h)
     s << h.id << " " << print_addr(h.ss, h.sslen);
     return s;
 }
+
 }

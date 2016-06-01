@@ -19,6 +19,7 @@
  */
 
 namespace dht {
+
 class NetworkEngine;
 struct ParsedMessage;
 
@@ -32,8 +33,8 @@ struct ParsedMessage;
  */
 struct Request {
     friend class dht::NetworkEngine;
-    std::shared_ptr<Node> node{};             /* the node to whom the request is destined. */
-    time_point reply_time{ time_point::min() }; /* time when we received the response to the request. */
+    std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
+    time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
 
     enum class State
     {
@@ -52,11 +53,11 @@ struct Request {
 
     Request() {}
     Request(uint16_t tid,
-        std::shared_ptr<Node> node,
-        Blob&& msg,
-        std::function<void(const Request& req_status, ParsedMessage&&)> on_done,
-        std::function<void(const Request& req_status, bool)> on_expired,
-        bool persistent = false) :
+            std::shared_ptr<Node> node,
+            Blob&& msg,
+            std::function<void(const Request& req_status, ParsedMessage&&)> on_done,
+            std::function<void(const Request& req_status, bool)> on_expired,
+            bool persistent = false) :
         node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), persistent(persistent) { }
 
     void setExpired() {
@@ -82,8 +83,8 @@ struct Request {
         }
     }
 
-    private:
-    static const constexpr size_t MAX_ATTEMPT_COUNT{ 3 };
+private:
+    static const constexpr size_t MAX_ATTEMPT_COUNT {3};
 
     bool isExpired(time_point now) const {
         return pending() and now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT;
@@ -95,17 +96,18 @@ struct Request {
         msg.clear();
     }
 
-    State state_{ State::PENDING };
+    State state_ {State::PENDING};
 
-    unsigned attempt_count{ 0 };                /* number of attempt to process the request. */
-    time_point start{ time_point::min() };      /* time when the request is created. */
-    time_point last_try{ time_point::min() };   /* time of the last attempt to process the request. */
+    unsigned attempt_count {0};                /* number of attempt to process the request. */
+    time_point start {time_point::min()};      /* time when the request is created. */
+    time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
 
-    std::function<void(const Request& req_status, ParsedMessage&&)> on_done{};
-    std::function<void(const Request& req_status, bool)> on_expired{};
+    std::function<void(const Request& req_status, ParsedMessage&&)> on_done {};
+    std::function<void(const Request& req_status, bool)> on_expired {};
 
-    const uint16_t tid{ 0 };                   /* the request id. */
-    Blob msg{};                              /* the serialized message. */
-    const bool persistent{ false };            /* the request is not erased upon completion. */
+    const uint16_t tid {0};                   /* the request id. */
+    Blob msg {};                              /* the serialized message. */
+    const bool persistent {false};            /* the request is not erased upon completion. */
 };
+
 }

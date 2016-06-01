@@ -29,15 +29,16 @@ extern "C" {
 #include <cstdio>
 
 namespace dht {
+
 InfoHash::InfoHash(const std::string& hex) {
-    if (hex.size() < 2 * HASH_LEN) {
+    if (hex.size() < 2*HASH_LEN) {
         fill(0);
         return;
     }
     const auto p = (const char*)hex.data();
     for (size_t i = 0; i < HASH_LEN; i++) {
         unsigned res = 0;
-        sscanf_s(p + 2 * i, "%02x", &res);
+        sscanf(p + 2*i, "%02x", &res);
         (*this)[i] = res;
     }
 }
@@ -47,11 +48,11 @@ InfoHash::get(const uint8_t* data, size_t data_len)
 {
     InfoHash h;
     size_t s = h.size();
-    const gnutls_datum_t gnudata = { (uint8_t*)data, (unsigned)data_len };
-    const gnutls_digest_algorithm_t algo = (HASH_LEN == 64) ? GNUTLS_DIG_SHA512 : (
-        (HASH_LEN == 32) ? GNUTLS_DIG_SHA256 : (
-        (HASH_LEN == 20) ? GNUTLS_DIG_SHA1 :
-            GNUTLS_DIG_NULL));
+    const gnutls_datum_t gnudata = {(uint8_t*)data, (unsigned)data_len};
+    const gnutls_digest_algorithm_t algo =  (HASH_LEN == 64) ? GNUTLS_DIG_SHA512 : (
+                                            (HASH_LEN == 32) ? GNUTLS_DIG_SHA256 : (
+                                            (HASH_LEN == 20) ? GNUTLS_DIG_SHA1   :
+                                            GNUTLS_DIG_NULL ));
     static_assert(algo != GNUTLS_DIG_NULL, "Can't find hash function to use.");
     int rc = gnutls_fingerprint(algo, &gnudata, h.data(), &s);
     if (rc == 0 && s == HASH_LEN)
@@ -84,9 +85,10 @@ InfoHash::toString() const
 std::ostream& operator<< (std::ostream& s, const InfoHash& h)
 {
     s << std::hex;
-    for (unsigned i = 0; i < HASH_LEN; i++)
+    for (unsigned i=0; i<HASH_LEN; i++)
         s << std::setfill('0') << std::setw(2) << (unsigned)h[i];
     s << std::dec;
     return s;
 }
+
 }

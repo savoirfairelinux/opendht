@@ -35,6 +35,7 @@
 #include <chrono>
 
 namespace dht {
+
 struct Node;
 class SecureDht;
 struct SecureDhtConfig;
@@ -46,56 +47,56 @@ struct SecureDhtConfig;
  * thread that will update the DHT when appropriate.
  */
 class DhtRunner {
-    public:
+
+public:
     typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
 
     DhtRunner();
     virtual ~DhtRunner();
 
-    void get(InfoHash id, GetCallbackSimple cb, DoneCallback donecb = {}, Value::Filter f = Value::AllFilter()) {
-        get(id, bindGetCb(cb), donecb, f);
+    void get(InfoHash id, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter f = Value::AllFilter(), Query q = {}) {
+        get(id, bindGetCb(cb), donecb, f, q);
     }
 
-    void get(InfoHash id, GetCallbackSimple cb, DoneCallbackSimple donecb = {}, Value::Filter f = Value::AllFilter()) {
-        get(id, bindGetCb(cb), donecb, f);
+    void get(InfoHash id, GetCallbackSimple cb, DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter(), Query q = {}) {
+        get(id, bindGetCb(cb), donecb, f, q);
     }
 
-    void get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f = {});
+    void get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f={}, Query q = {});
 
-    void get(InfoHash id, GetCallback cb, DoneCallbackSimple donecb = {}, Value::Filter f = Value::AllFilter()) {
-        get(id, cb, bindDoneCb(donecb), f);
+    void get(InfoHash id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter(), Query q = {}) {
+        get(id, cb, bindDoneCb(donecb), f, q);
     }
-    void get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb = {}, Value::Filter f = Value::AllFilter());
+    void get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter(), Query q = {});
 
     template <class T>
-    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, DoneCallbackSimple dcb = {})
+    void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, DoneCallbackSimple dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
-            dcb,
-            getFilterSet<T>());
+        dcb,
+        getFilterSet<T>());
     }
     template <class T>
-    void get(InfoHash hash, std::function<bool(T&&)> cb, DoneCallbackSimple dcb = {})
+    void get(InfoHash hash, std::function<bool(T&&)> cb, DoneCallbackSimple dcb={})
     {
         get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
                         return false;
-                }
-                catch (const std::exception&) {
+                } catch (const std::exception&) {
                     continue;
                 }
             }
             return true;
         },
-            dcb,
-            getFilterSet<T>());
+        dcb,
+        getFilterSet<T>());
     }
 
-    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter()) {
+    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter(), Query q = {}) {
         auto p = std::make_shared<std::promise<std::vector<std::shared_ptr< dht::Value >>>>();
         auto values = std::make_shared<std::vector<std::shared_ptr< dht::Value >>>();
         get(key, [=](const std::vector<std::shared_ptr<dht::Value>>& vlist) {
@@ -104,7 +105,7 @@ class DhtRunner {
         }, [=](bool) {
             p->set_value(std::move(*values));
         },
-            f);
+        f, q);
         return p->get_future();
     }
 
@@ -121,10 +122,10 @@ class DhtRunner {
         return p->get_future();
     }
 
-    std::future<size_t> listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter());
-    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter());
-    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
-        return listen(key, bindGetCb(cb), f);
+    std::future<size_t> listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Query q = {});
+    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Query q = {});
+    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter(), Query q = {}) {
+        return listen(key, bindGetCb(cb), f, q);
     }
 
     template <class T>
@@ -133,63 +134,62 @@ class DhtRunner {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
-            getFilterSet<T>());
+        getFilterSet<T>());
     }
     template <typename T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter())
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter(), Query q = {})
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
                         return false;
-                }
-                catch (const std::exception&) {
+                } catch (const std::exception&) {
                     continue;
                 }
             }
             return true;
         },
-            getFilterSet<T>(f));
+        getFilterSet<T>(f), q);
     }
 
     void cancelListen(InfoHash h, size_t token);
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
-    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb = {});
+    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={});
     void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
         put(hash, value, bindDoneCb(cb));
     }
 
-    void put(InfoHash hash, Value&& value, DoneCallback cb = {});
+    void put(InfoHash hash, Value&& value, DoneCallback cb={});
     void put(InfoHash hash, Value&& value, DoneCallbackSimple cb) {
         put(hash, std::forward<Value>(value), bindDoneCb(cb));
     }
-    void put(const std::string& key, Value&& value, DoneCallbackSimple cb = {});
+    void put(const std::string& key, Value&& value, DoneCallbackSimple cb={});
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb = {});
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={});
     void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
         putSigned(hash, value, bindDoneCb(cb));
     }
 
-    void putSigned(InfoHash hash, Value&& value, DoneCallback cb = {});
+    void putSigned(InfoHash hash, Value&& value, DoneCallback cb={});
     void putSigned(InfoHash hash, Value&& value, DoneCallbackSimple cb) {
         putSigned(hash, std::forward<Value>(value), bindDoneCb(cb));
     }
-    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb = {});
+    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb={});
 
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb = {});
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb={});
     void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
         putEncrypted(hash, to, value, bindDoneCb(cb));
     }
 
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb = {});
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb={});
     void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb) {
         putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb));
     }
-    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb = {});
+    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
 
     void bootstrap(const char* host, const char* service);
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
@@ -232,7 +232,9 @@ class DhtRunner {
 
     std::vector<ValuesExport> exportValues() const;
 
-    void setLoggers(LogMethod&& error = (LogMethod&&)NOLOG, LogMethod&& warn = (LogMethod&&)NOLOG, LogMethod&& debug = (LogMethod&&)NOLOG);
+    void setLoggers(LogMethod&& error   = (LogMethod&&)NOLOG,
+                    LogMethod&& warn    = (LogMethod&&)NOLOG,
+                    LogMethod&& debug   = (LogMethod&&)NOLOG);
 
     void registerType(const ValueType& type);
 
@@ -275,8 +277,8 @@ class DhtRunner {
                     /*.node_id = */{},
                     /*.is_bootstrap = */is_bootstrap
                 },
-            /*.id = */identity
-        },
+                /*.id = */identity
+            },
             /*.threaded = */threaded
         });
     }
@@ -323,7 +325,7 @@ class DhtRunner {
      */
     void join();
 
-    private:
+private:
 
     void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
     time_point loop_();
@@ -335,25 +337,26 @@ class DhtRunner {
     }
 
     std::unique_ptr<SecureDht> dht_;
-    mutable std::mutex dht_mtx{};
-    std::thread dht_thread{};
-    std::condition_variable cv{};
+    mutable std::mutex dht_mtx {};
+    std::thread dht_thread {};
+    std::condition_variable cv {};
 
-    std::thread rcv_thread{};
-    std::mutex sock_mtx{};
-    std::vector<std::pair<Blob, std::pair<sockaddr_storage, socklen_t>>> rcv{};
+    std::thread rcv_thread {};
+    std::mutex sock_mtx {};
+    std::vector<std::pair<Blob, std::pair<sockaddr_storage, socklen_t>>> rcv {};
 
-    std::queue<std::function<void(SecureDht&)>> pending_ops_prio{};
-    std::queue<std::function<void(SecureDht&)>> pending_ops{};
-    std::mutex storage_mtx{};
+    std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
+    std::queue<std::function<void(SecureDht&)>> pending_ops {};
+    std::mutex storage_mtx {};
 
-    std::atomic<bool> running{ false };
+    std::atomic<bool> running {false};
 
-    NodeStatus status4{ NodeStatus::Disconnected },
-        status6{ NodeStatus::Disconnected };
-    StatusCallback statusCb{ nullptr };
+    NodeStatus status4 {NodeStatus::Disconnected},
+               status6 {NodeStatus::Disconnected};
+    StatusCallback statusCb {nullptr};
 
-    Address bound4{};
-    Address bound6{};
+    Address bound4 {};
+    Address bound6 {};
 };
+
 }
