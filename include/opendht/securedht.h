@@ -101,9 +101,9 @@ public:
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
      */
-    void putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback);
-    void putSigned(const InfoHash& hash, Value&& v, DoneCallback callback) {
-        putSigned(hash, std::make_shared<Value>(std::move(v)), callback);
+    void putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback, bool permanent = false);
+    void putSigned(const InfoHash& hash, Value&& v, DoneCallback callback, bool permanent = false) {
+        putSigned(hash, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
 
     /**
@@ -111,9 +111,9 @@ public:
      * and put it in the DHT.
      * The operation will be immediate if the recipient' public key is known (otherwise it will be retrived first).
      */
-    void putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback);
-    void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback) {
-        putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback);
+    void putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback, bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false) {
+        putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
 
     /**
