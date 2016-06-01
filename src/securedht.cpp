@@ -303,7 +303,7 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f)
 }
 
 void
-SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback)
+SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback, bool permanent)
 {
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
@@ -331,16 +331,16 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
             }
             return true;
         },
-        [hash,val,this,callback] (bool /* ok */) {
+        [hash,val,this,callback,permanent] (bool /* ok */) {
             sign(*val);
-            put(hash, val, callback);
+            put(hash, val, callback, {}, permanent);
         },
         Value::IdFilter(val->id)
     );
 }
 
 void
-SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback)
+SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback, bool permanent)
 {
     findPublicKey(to, [=](const std::shared_ptr<crypto::PublicKey> pk) {
         if(!pk || !*pk) {
@@ -350,7 +350,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
         }
         DHT_LOG.WARN("Encrypting data for PK: %s", pk->getId().toString().c_str());
         try {
-            put(hash, encrypt(*val, *pk), callback);
+            put(hash, encrypt(*val, *pk), callback, {}, permanent);
         } catch (const std::exception& e) {
             DHT_LOG.ERR("Error putting encrypted data: %s", e.what());
             if (callback)
