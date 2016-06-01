@@ -907,7 +907,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                         g.done_cb(false, {});
                 }
             }
-            if (not sr->nodes.empty()) {
+            {
                 std::vector<DoneCallback> a_cbs;
                 a_cbs.reserve(sr->announce.size());
                 for (const auto& a : sr->announce)
