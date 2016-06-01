@@ -752,8 +752,6 @@ void
 Dht::searchStep(std::shared_ptr<Search> sr)
 {
     if (not sr or sr->expired or sr->done) return;
-    if (sr->nodes.empty() and (sr->af == AF_INET ? buckets : buckets6).isEmpty())
-        return; // wait for connection
 
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] step (%d requests)", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', sr->currentGetRequests());
