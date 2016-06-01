@@ -78,7 +78,7 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
                 DHT_LOG.DEBUG("SecureDht: public key announced successfully");
             else
                 DHT_LOG.ERR("SecureDht: error while announcing public key!");
-        });
+        }, {}, true);
     }
 }
 
