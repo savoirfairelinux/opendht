@@ -8,4 +8,4 @@ add_custom_target(python ALL
     COMMAND python3 setup.py build
     DEPENDS opendht opendht_cpp.pxd opendht.pyx)
 
-install(CODE "execute_process(COMMAND python3 setup.py install WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})")
+install(CODE "execute_process(COMMAND python3 setup.py install --root=\$ENV{DESTDIR}/ WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})")
