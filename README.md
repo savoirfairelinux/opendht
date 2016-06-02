@@ -91,6 +91,7 @@ Dependencies
 - GnuTLS 3.1+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
+- Build tested with Microsoft Visual Studio 2015
 
 Licence
 -
