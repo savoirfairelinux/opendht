@@ -28,6 +28,7 @@
 typedef uint16_t in_port_t;
 #endif
 #else
+#include <iso646.h>
 #include <ws2tcpip.h>
 typedef uint16_t sa_family_t;
 typedef uint16_t in_port_t;
@@ -41,9 +42,6 @@ typedef uint16_t in_port_t;
 #include <stdexcept>
 #include <cstring>
 
-#ifdef _WIN32
-#include <iso646.h>
-#endif
 
 // bytes
 #define HASH_LEN 20u
