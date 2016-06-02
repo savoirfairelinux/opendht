@@ -580,9 +580,6 @@ Dht::Search::removeExpiredNode(time_point now)
 bool
 Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, const Blob& token)
 {
-    if (expired and nodes.empty())
-        return false;
-
     auto& node = *snode;
     const auto& nid = node.id;
 
@@ -912,10 +909,14 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             {
                 std::vector<DoneCallback> a_cbs;
                 a_cbs.reserve(sr->announce.size());
-                for (const auto& a : sr->announce)
-                    if (a.callback)
-                        a_cbs.emplace_back(std::move(a.callback));
-                sr->announce.clear();
+                for (auto ait = sr->announce.begin() ; ait != sr->announce.end(); ) {
+                    if (ait->callback)
+                        a_cbs.emplace_back(std::move(ait->callback));
+                    if (not ait->permanent)
+                        ait = sr->announce.erase(ait);
+                    else
+                        ait++;
+                }
                 for (const auto& a : a_cbs)
                     a(false, {});
             }
