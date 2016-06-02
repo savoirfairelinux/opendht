@@ -13,7 +13,7 @@ clean-local:
 	rm -rf $(builddir)/build $(builddir)/*.so $(PYTHON_INSTALL_RECORD)
 
 install-exec-local:
-	$(PYTHON) setup.py install --record $(PYTHON_INSTALL_RECORD)
+	$(PYTHON) setup.py install --root=$(DESTDIR) --record $(PYTHON_INSTALL_RECORD)
 	rm -rf $(builddir)/build
 
 if HAVE_PIP
