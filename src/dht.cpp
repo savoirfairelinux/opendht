@@ -172,6 +172,7 @@ private:
 
 
 struct Dht::SearchNode {
+    SearchNode() : node() {}
     SearchNode(std::shared_ptr<Node> node) : node(node) {}
 
     using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
@@ -585,31 +586,50 @@ Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, cons
     auto& node = *snode;
     const auto& nid = node.id;
 
-    if (node.getFamily() != af) {
-        //DHT_LOG.DEBUG("Attempted to insert node in the wrong family.");
-        return false;
-    }
-
-    // Fast track for the case where the node is not relevant for this search
-    if (node.isExpired() && nodes.size() >= SEARCH_NODES && id.xorCmp(nid, nodes.back().node->id) > 0)
+    if (node.getFamily() != af)
         return false;
 
     bool found = false;
-    auto n = std::find_if(nodes.begin(), nodes.end(), [&](const SearchNode& sn) {
-        if (sn.node == snode) {
+    auto n = nodes.end();
+    while (n != nodes.begin()) {
+        --n;
+        if (n->node == snode) {
             found = true;
-            return true;
+            break;
         }
-        return id.xorCmp(nid, sn.node->id) < 0;
-    });
+        if (id.xorCmp(nid, n->node->id) > 0) {
+            ++n;
+            break;
+        }
+    }
 
     bool new_search_node = false;
     if (!found) {
-        // Be more restricitve if there are too many
-        // good or unknown nodes in this search,
-        unsigned num_bad_nodes = getNumberOfBadNodes();
-        if (nodes.size() - num_bad_nodes >= SEARCH_NODES) {
-            if (node.isExpired() or n == nodes.end())
+        // find if and where to trim excessive nodes
+        auto t = nodes.cend();
+        size_t bad = 0;     // number of bad nodes (if search is not expired)
+        bool full {false};  // is the search full (has the maximum nodes)
+        if (expired) {
+            // if the search is expired, trim to SEARCH_NODES nodes
+            if (nodes.size() >= SEARCH_NODES) {
+                full = true;
+                t = nodes.begin() + SEARCH_NODES;
+            }
+        } else {
+            // otherwise, trim to SEARCH_NODES nodes, not counting bad nodes
+            bad = getNumberOfBadNodes();
+            full = nodes.size() - bad >=  SEARCH_NODES;
+            while (std::distance(nodes.cbegin(), t) - bad >  SEARCH_NODES) {
+                --t;
+                if (t->isBad())
+                    bad--;
+            }
+        }
+
+        if (full) {
+            if (t != nodes.cend())
+                nodes.resize(std::distance(nodes.cbegin(), t));
+            if (n >= t)
                 return false;
         }
 
@@ -617,24 +637,22 @@ Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, cons
         if (nodes.empty()) {
             step_time = TIME_INVALID;
         }
-
         n = nodes.insert(n, SearchNode(snode));
         node.time = now;
         new_search_node = true;
-
-        // trim good nodes
-        while (nodes.size() - num_bad_nodes > SEARCH_NODES) {
-            if (removeExpiredNode(now))
-                num_bad_nodes--;
-
-            auto to_remove = std::find_if(nodes.rbegin(), nodes.rend(),
-                [](const SearchNode& n) { return not n.isBad(); }
-            );
-            if (to_remove != nodes.rend()) {
-                nodes.erase(std::prev(to_remove.base()));
-            } // else, all nodes are expired.
+        if (node.isExpired()) {
+            if (not expired)
+                bad++;
+        } else if (expired) {
+            bad = nodes.size() - 1;
+            expired = false;
         }
-        expired = false;
+
+        while (nodes.size() - bad >  SEARCH_NODES) {
+            if (not expired and nodes.back().isBad())
+                bad--;
+            nodes.pop_back();
+        }
     }
     if (not token.empty()) {
         n->candidate = false;
@@ -642,6 +660,9 @@ Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, cons
         if (token.size() <= 64)
             n->token = token;
         expired = false;
+    }
+    if (new_search_node) {
+        removeExpiredNode(now);
     }
     return new_search_node;
 }
@@ -738,10 +759,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
     DHT_LOG.DEBUG("[search %s IPv%c] step (%d requests)", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', sr->currentGetRequests());
     sr->step_time = now;
 
-    /*
-     * The accurate delay between two refills has not been strongly determined.
-     * TODO: Emprical analysis over refill timeout.
-     */
     if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES) {
         if (auto added = sr->refill(sr->af == AF_INET ? buckets : buckets6, now)) {
             sr->refill_time = now;
