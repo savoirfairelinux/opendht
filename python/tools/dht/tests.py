@@ -208,23 +208,23 @@ class DhtFeatureTest(FeatureTest):
             FeatureTest.lock.notify()
 
     def _dhtPut(self, producer, _hash, *values):
-        for val in values:
-            with FeatureTest.lock:
-                vstr = val.__str__()[:100]
-                DhtNetwork.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
-                FeatureTest.done += 1
-                while FeatureTest.done > 0:
+        with FeatureTest.lock:
+            for val in values:
+                    vstr = val.__str__()[:100]
+                    DhtNetwork.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
+                    FeatureTest.done += 1
                     producer.put(_hash, val, DhtFeatureTest.putDoneCb)
-                    FeatureTest.lock.wait()
+            while FeatureTest.done > 0:
+                FeatureTest.lock.wait()
 
     def _dhtGet(self, consumer, _hash):
         DhtFeatureTest.foreignValues = []
         DhtFeatureTest.foreignNodes = []
         with FeatureTest.lock:
             FeatureTest.done += 1
+            DhtNetwork.log('[GET]:', _hash.toString())
+            consumer.get(_hash, DhtFeatureTest.getcb, DhtFeatureTest.getDoneCb)
             while FeatureTest.done > 0:
-                DhtNetwork.log('[GET]:', _hash.toString())
-                consumer.get(_hash, DhtFeatureTest.getcb, DhtFeatureTest.getDoneCb)
                 FeatureTest.lock.wait()
 
     def _gottaGetThemAllPokeNodes(self, consumer, hashes, nodes=None):
@@ -356,7 +356,7 @@ class PersistenceTest(DhtFeatureTest):
         bootstrap = self.bootstrap
         # Value representing an ICE packet. Each ICE packet is around 1KB.
         VALUE_SIZE = 1024
-        NUM_VALUES = self._num_values/wb.node_num if self._num_values else 50
+        NUM_VALUES = self._num_values/wb.node_num if self._num_values else 5
         nr_values = NUM_VALUES * wb.node_num
         nr_nodes = wb.node_num
         nr_nodes_cv = threading.Condition()
@@ -365,8 +365,11 @@ class PersistenceTest(DhtFeatureTest):
         hashes = [random_hash() for _ in range(wb.node_num)]
 
         # initial set of values
+        i = 0
         for h in hashes:
            self._dhtPut(bootstrap.front(), h, *[Value(v) for v in values])
+           print("at: ", i)
+           i += 1
 
         def normalBehavior(do, t, log=None):
             nonlocal nr_values
