@@ -295,13 +295,13 @@ cdef class DhtRunner(_WithID):
     def shutdown(self, shutdown_cb=None):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
-        self.thisptr.shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
+        self.thisptr.get().shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
     def enableLogging(self):
-        cpp.enableLogging(self.thisptr[0])
+        cpp.enableLogging(self.thisptr.get()[0])
     def disableLogging(self):
-        cpp.disableLogging(self.thisptr[0])
+        cpp.disableLogging(self.thisptr.get()[0])
     def enableFileLogging(self, str path):
-        cpp.enableFileLogging(self.thisptr[0], path)
+        cpp.enableFileLogging(self.thisptr.get()[0], path)
     def isRunning(self):
         return self.thisptr.get().isRunning()
     def getStorageLog(self):
@@ -329,7 +329,7 @@ cdef class DhtRunner(_WithID):
         if get_cb:
             cb_obj = {'get':get_cb, 'done':done_cb}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj), cpp.bindDoneCb(done_callback, <void*>cb_obj))
+            self.thisptr.get().get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj), cpp.bindDoneCb(done_callback, <void*>cb_obj))
         else:
             lock = threading.Condition()
             pending = 0
@@ -359,7 +359,7 @@ cdef class DhtRunner(_WithID):
         if done_cb:
             cb_obj = {'done':done_cb}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj))
+            self.thisptr.get().put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj))
         else:
             lock = threading.Condition()
             pending = 0
@@ -383,7 +383,7 @@ cdef class DhtRunner(_WithID):
         t._cb['cb'] = cb_obj
         # avoid the callback being destructed if the token is destroyed
         ref.Py_INCREF(cb_obj)
-        t._t = self.thisptr.listen(t._h, cpp.bindGetCb(get_callback, <void*>cb_obj)).share()
+        t._t = self.thisptr.get().listen(t._h, cpp.bindGetCb(get_callback, <void*>cb_obj)).share()
         return t
     def cancelListen(self, ListenToken token):
         self.thisptr.get().cancelListen(token._h, token._t)
@@ -428,7 +428,7 @@ cdef class Pht(object):
         self.thisptr.lookup(
                 cppk,
                 cpp.Pht.bindLookupCb(lookup_callback, <void*>cb_obj),
-                cpp.Dht.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
+                cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
         )
     def insert(self, key, IndexValue value, done_cb=None):
         """Add an index entry to the Index.
@@ -448,6 +448,6 @@ cdef class Pht(object):
         self.thisptr.insert(
                 cppk,
                 val,
-                cpp.Dht.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
+                cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
         )
 

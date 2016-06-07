@@ -47,4 +47,12 @@ bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
     };
 }
 
+DoneCallbackSimple
+bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
+    if (not raw_cb) return {};
+    return [=](bool success) {
+        raw_cb(success, user_data);
+    };
+}
+
 }

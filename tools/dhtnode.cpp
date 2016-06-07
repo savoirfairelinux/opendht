@@ -142,9 +142,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
         } else if (op == "log") {
             params.log = !params.log;
             if (params.log)
-                log::enableLogging(dht);
+                log::enableLogging(*dht);
             else
-                log::disableLogging(dht);
+                log::disableLogging(*dht);
             continue;
         }
 
@@ -191,7 +191,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
             });
         }
         else if (op == "l") {
-            dht.listen(id, [](std::shared_ptr<Value> value) {
+            dht->listen(id, [](std::shared_ptr<Value> value) {
                 std::cout << "Listen: found value:" << std::endl;
                 std::cout << "\t" << *value << std::endl;
                 return true;
@@ -321,9 +321,9 @@ main(int argc, char **argv)
 
         if (params.log) {
             if (not params.logfile.empty())
-                log::enableFileLogging(dht, params.logfile);
+                log::enableFileLogging(*dht, params.logfile);
             else
-                log::enableLogging(dht);
+                log::enableLogging(*dht);
         }
 
         if (not params.bootstrap.first.empty()) {
