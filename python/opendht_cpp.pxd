@@ -105,19 +105,21 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
     ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
+    ctypedef void (*DoneCallbackSimpleRaw)(bool done, void *user_data)
 
     cppclass ShutdownCallback:
         ShutdownCallback() except +
     cppclass GetCallback:
         GetCallback() except +
-        #GetCallback(GetCallbackRaw cb, void *user_data) except +
     cppclass DoneCallback:
         DoneCallback() except +
-        #DoneCallback(DoneCallbackRaw, void *user_data) except +
+    cppclass DoneCallbackSimple:
+        DoneCallbackSimple() except +
 
     cdef ShutdownCallback bindShutdownCb(ShutdownCallbackRaw cb, void *user_data)
     cdef GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
     cdef DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
+    cdef DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw cb, void *user_data)
 
     cppclass Config:
         InfoHash node_id
@@ -171,8 +173,8 @@ cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
         cppclass LookupCallback:
             LookupCallback() except +
         Pht(string, shared_ptr[DhtRunner]) except +
-        void lookup(IndexKey k, LookupCallback cb, Dht.DoneCallbackSimple doneCb);
-        void insert(IndexKey k, IndexValue v, Dht.DoneCallbackSimple cb)
+        void lookup(IndexKey k, LookupCallback cb, DoneCallbackSimple doneCb);
+        void insert(IndexKey k, IndexValue v, DoneCallbackSimple cb)
         @staticmethod
         LookupCallback bindLookupCb(LookupCallbackRaw cb, void *user_data)
 
