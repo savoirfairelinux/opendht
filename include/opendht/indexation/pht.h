@@ -169,11 +169,11 @@ public:
     /**
      * Lookup a key for a value.
      */
-    void lookup(Key k, LookupCallback cb = {}, Dht::DoneCallbackSimple doneCb = {}, bool exact_match = true);
+    void lookup(Key k, LookupCallback cb = {}, DoneCallbackSimple doneCb = {}, bool exact_match = true);
     /**
      * Adds an entry into the index.
      */
-    void insert(Key k, Value v, Dht::DoneCallbackSimple cb = {});
+    void insert(Key k, Value v, DoneCallbackSimple cb = {});
 
 private:
     class Cache {
@@ -314,7 +314,7 @@ private:
      */
     void lookupStep(Prefix k, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
             std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals, LookupCallback cb,
-            Dht::DoneCallbackSimple done_cb, std::shared_ptr<unsigned> max_common_prefix_len,
+            DoneCallbackSimple done_cb, std::shared_ptr<unsigned> max_common_prefix_len,
             int start = -1, bool all_values = false);
 
     /**

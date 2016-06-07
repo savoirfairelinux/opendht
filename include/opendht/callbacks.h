@@ -85,12 +85,13 @@ GetCallback bindGetCb(GetCallbackSimple cb);
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
 typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
 typedef void (*ShutdownCallbackRaw)(void *user_data);
+typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
 ShutdownCallback bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data);
 DoneCallback bindDoneCb(DoneCallbackSimple donecb);
 DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
-
+DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data);
 
 }

@@ -9,7 +9,7 @@ constexpr std::chrono::minutes Pht::Cache::NODE_EXPIRE_TIME;
 
 void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals,
-        LookupCallback cb, Dht::DoneCallbackSimple done_cb,
+        LookupCallback cb, DoneCallbackSimple done_cb,
         std::shared_ptr<unsigned> max_common_prefix_len, int start, bool all_values)
 {
     struct node_lookup_result {
@@ -135,7 +135,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
     }
 }
 
-void Pht::lookup(Key k, Pht::LookupCallback cb, Dht::DoneCallbackSimple done_cb, bool exact_match) {
+void Pht::lookup(Key k, Pht::LookupCallback cb, DoneCallbackSimple done_cb, bool exact_match) {
     auto values = std::make_shared<std::vector<std::shared_ptr<Value>>>();
     auto prefix = linearize(k);
     auto lo = std::make_shared<int>(0);
@@ -165,7 +165,7 @@ void Pht::updateCanary(Prefix p) {
     }
 }
 
-void Pht::insert(Key k, Value v, Dht::DoneCallbackSimple done_cb) {
+void Pht::insert(Key k, Value v, DoneCallbackSimple done_cb) {
     Prefix kp = linearize(k);
 
     auto lo = std::make_shared<int>(0);
