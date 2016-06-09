@@ -247,6 +247,7 @@ void Pht::updateCanary(Prefix p) {
     // TODO: change this... copy value
     dht::Value canary_value;
     canary_value.user_type = canary_;
+
     dht_->put(p.hash(), std::move(canary_value),
         [=](bool){
             static std::bernoulli_distribution d(0.5);
@@ -271,6 +272,7 @@ void Pht::insert(Key k, Value v, DoneCallbackSimple done_cb) {
     auto vals = std::make_shared<std::vector<std::shared_ptr<Value>>>();
     auto final_prefix = std::make_shared<Prefix>();
 
+
     lookupStep(kp, lo, hi, vals,
         [=](std::vector<std::shared_ptr<Value>>&, Prefix p) {
             *final_prefix = Prefix(p);
@@ -280,16 +282,26 @@ void Pht::insert(Key k, Value v, DoneCallbackSimple done_cb) {
                 if (done_cb)
                     done_cb(false);
             } else {
-                if (vals->size() >= MAX_NODE_ENTRY_COUNT)
-                    *final_prefix = kp.getPrefix(final_prefix->size_+1);
 
                 IndexEntry entry;
                 entry.value = v;
                 entry.prefix = kp.content_;
                 entry.name = name_;
 
-                updateCanary(*final_prefix);
-                dht_->put(final_prefix->hash(), std::move(entry), done_cb);
+                RealInsertCallback real_insert = [=]( std::shared_ptr<Prefix> p, IndexEntry entry ) {
+                    updateCanary(*p);
+                    checkPhtUpdate(*p, entry);
+                    dht_->put(p->hash(), std::move(entry), done_cb);
+                };
+
+                std::cerr << "Insert prefix" << p.toString() << std::endl;
+
+                if ( vals->size() <= MAX_NODE_ENTRY_COUNT )
+                    getRealPrefix( final_prefix, std::move(entry), real_insert);
+                else {
+                    *final_prefix = kp.getPrefix(final_prefix->size_+1);
+                    real_insert( final_prefix, std::move(entry) );
+                }
             }
         }, nullptr, cache_.lookup(kp), true
     );
