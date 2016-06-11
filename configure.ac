@@ -75,9 +75,9 @@ LT_LANG(C++)
 AX_CXX_COMPILE_STDCXX(11,[noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
-PKG_CHECK_MODULES([nettle], [nettle >= 2.4])
-PKG_CHECK_MODULES([GNUTLS], [gnutls >= 3.1])
-PKG_CHECK_MODULES([msgpack], [msgpack >= 1.2])
+PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
+PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.1])
+PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
