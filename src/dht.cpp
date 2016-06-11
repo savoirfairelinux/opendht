@@ -184,6 +184,11 @@ struct Dht::SearchNode {
         return not node->isExpired() and
                not token.empty() and last_get_reply >= now - Node::NODE_EXPIRE_TIME;
     }
+
+    /**
+     * Could a "get" request be sent to this node now ?
+     * update: time of the last "get" op for the search.
+     */
     bool canGet(time_point now, time_point update) const {
         return not node->isExpired() and
                (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
@@ -204,6 +209,9 @@ struct Dht::SearchNode {
         return listenStatus->reply_time + LISTEN_EXPIRE_TIME > now;
     }
 
+    /**
+     * Assumng the node is synced, should a "put" request be sent to this node now ?
+     */
     time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
         if (ack == acked.end() or not ack->second)
             return time_point::min();
@@ -214,12 +222,19 @@ struct Dht::SearchNode {
         return getAnnounceTime(acked.find(vid), type);
     }
 
+    /**
+     * Assumng the node is synced, should a "listen" request be sent to this node now ?
+     */
     time_point getListenTime() const {
         if (not listenStatus)
             return time_point::min();
 
         return listenStatus->pending() ? time_point::max() : listenStatus->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
     }
+
+    /**
+     * Is this node expired or candidate
+     */
     bool isBad() const {
         return !node || node->isExpired() || candidate;
     }
@@ -290,6 +305,10 @@ struct Dht::Search {
      */
     bool isSynced(time_point now) const;
 
+    /**
+     * Get the time of the last "get" operation performed on this search,
+     * or time_point::min() if no such operation have been performed.
+     */
     time_point getLastGetTime() const;
 
     /**
@@ -308,17 +327,23 @@ struct Dht::Search {
     unsigned getNumberOfBadNodes() const;
 
     /**
-     * ret = 0 : no announce required.
-     * ret > 0 : (re-)announce required at time ret.
+     * Returns the time of the next "announce" event for this search,
+     * or time_point::max() if no such event is planned.
+     * Only makes sense when the search is synced.
      */
     time_point getAnnounceTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
 
     /**
-     * ret = 0 : no listen required.
-     * ret > 0 : (re-)announce required at time ret.
+     * Returns the time of the next "listen" event for this search,
+     * or time_point::max() if no such event is planned.
+     * Only makes sense when the search is synced.
      */
     time_point getListenTime(time_point now) const;
 
+    /**
+     * Returns the time of the next event for this search,
+     * or time_point::max() if no such event is planned.
+     */
     time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
 
     bool removeExpiredNode(time_point now);
