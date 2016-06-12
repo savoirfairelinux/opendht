@@ -4,6 +4,7 @@ set (opendht_VERSION_MAJOR 0)
 set (opendht_VERSION_MINOR 6.1)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
+set (VERSION "${opendht_VERSION}")
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
@@ -120,7 +121,7 @@ if (OPENDHT_SHARED)
         ${opendht_HEADERS}
     )
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
-    #set_target_properties (opendht PROPERTIES SOVERSION 1 VERSION 1.0.0)
+    set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     if (OPENDHT_LTO)
         target_link_libraries(opendht -flto -fuse-linker-plugin)
     endif ()
