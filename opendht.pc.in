@@ -6,4 +6,6 @@ Name: OpenDHT
 Description: C++ Distributed Hash Table library
 Version: @VERSION@
 Libs: -L${libdir} -lopendht
+Libs.private: -lpthread
+Requires.private: gnutls >= 3.1
 Cflags: -I${includedir}
