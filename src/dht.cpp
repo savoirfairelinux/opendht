@@ -323,7 +323,7 @@ struct Dht::Search {
         callbacks.clear();
         listeners.clear();
         nodes.clear();
-        nextSearchStep = {};
+        nextSearchStep.reset();
     }
 };
 
@@ -431,10 +431,10 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
     auto family = node->getFamily();
     auto& srs = family == AF_INET ? searches4 : searches6;
     for (auto& srp : srs) {
-        auto& s = srp.second;
-        if (s->insertNode(node, now)) {
+        auto& s = *srp.second;
+        if (s.insertNode(node, now)) {
             inserted = true;
-            scheduler.edit(s->nextSearchStep, s->getNextStepTime(types, now));
+            scheduler.edit(s.nextSearchStep, s.getNextStepTime(types, now));
         }
     }
     return inserted;
@@ -670,10 +670,11 @@ Dht::expireSearches()
 {
     auto t = scheduler.time() - SEARCH_EXPIRE_TIME;
     auto expired = [&](std::pair<const InfoHash, std::shared_ptr<Search>>& srp) {
-        auto& sr = srp.second;
-        auto b = sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty() && sr->step_time < t;
+        auto& sr = *srp.second;
+        auto b = sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty() && sr.step_time < t;
         if (b) {
-            DHT_LOG.DEBUG("Removing search %s ", srp.first.toString().c_str());
+            DHT_LOG.DEBUG("Removing search %s", srp.first.toString().c_str());
+            sr.clear();
             return b;
         } else { return false; }
     };
