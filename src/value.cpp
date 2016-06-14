@@ -142,8 +142,9 @@ Value::msgpack_unpack_body(const msgpack::object& o)
                 seq = rseq->as<decltype(seq)>();
             else
                 throw msgpack::type_error();
-            owner = std::make_shared<crypto::PublicKey>();
-            owner->msgpack_unpack(*rowner);
+            crypto::PublicKey new_owner;
+            new_owner.msgpack_unpack(*rowner);
+            owner = std::make_shared<const crypto::PublicKey>(std::move(new_owner));
             if (auto rrecipient = findMapValue(*rbody, "to")) {
                 recipient = rrecipient->as<InfoHash>();
             }
