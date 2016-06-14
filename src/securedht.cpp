@@ -141,7 +141,7 @@ SecureDht::getCertificate(const InfoHash& node) const
         return it->second;
 }
 
-const std::shared_ptr<crypto::PublicKey>
+const std::shared_ptr<const crypto::PublicKey>
 SecureDht::getPublicKey(const InfoHash& node) const
 {
     if (node == getId())
@@ -226,7 +226,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 }
 
 void
-SecureDht::findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::PublicKey>)> cb)
+SecureDht::findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<const crypto::PublicKey>)> cb)
 {
     auto pk = getPublicKey(node);
     if (pk && *pk) {
@@ -342,7 +342,7 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
 void
 SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback, bool permanent)
 {
-    findPublicKey(to, [=](const std::shared_ptr<crypto::PublicKey> pk) {
+    findPublicKey(to, [=](const std::shared_ptr<const crypto::PublicKey> pk) {
         if(!pk || !*pk) {
             if (callback)
                 callback(false, {});
@@ -362,22 +362,13 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
 void
 SecureDht::sign(Value& v) const
 {
-    if (v.isEncrypted())
-        throw DhtException("Can't sign encrypted data.");
-    v.owner = std::make_shared<crypto::PublicKey>(key_->getPublicKey());
-    v.signature = key_->sign(v.getToSign());
+    v.sign(*key_);
 }
 
 Value
 SecureDht::encrypt(Value& v, const crypto::PublicKey& to) const
 {
-    if (v.isEncrypted())
-        throw DhtException("Data is already encrypted.");
-    v.setRecipient(to.getId());
-    sign(v);
-    Value nv {v.id};
-    nv.setCypher(to.encrypt(v.getToEncrypt()));
-    return nv;
+    return v.encrypt(*key_, to);
 }
 
 Value

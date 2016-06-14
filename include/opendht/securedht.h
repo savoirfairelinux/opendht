@@ -126,16 +126,13 @@ public:
     Value decrypt(const Value& v);
 
     void findCertificate(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb);
-    void findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::PublicKey>)> cb);
+    void findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<const crypto::PublicKey>)> cb);
 
     const std::shared_ptr<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
     void registerCertificate(std::shared_ptr<crypto::Certificate>& cert);
 
     const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
-    const std::shared_ptr<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
-
-
-    
+    const std::shared_ptr<const crypto::PublicKey> getPublicKey(const InfoHash& node) const;
 
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.
@@ -161,7 +158,7 @@ private:
 
     // our certificate cache
     std::map<InfoHash, std::shared_ptr<crypto::Certificate>> nodesCertificates_ {};
-    std::map<InfoHash, std::shared_ptr<crypto::PublicKey>> nodesPubKeys_ {};
+    std::map<InfoHash, std::shared_ptr<const crypto::PublicKey>> nodesPubKeys_ {};
 
     std::uniform_int_distribution<Value::Id> rand_id {};
 };
