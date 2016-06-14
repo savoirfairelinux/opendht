@@ -150,7 +150,7 @@ public:
      */
     static constexpr const size_t MAX_NODE_ENTRY_COUNT {16};
 
-    using Key = std::map<std::string, Prefix>;
+    using Key = std::map<std::string, Blob>;
 
     using LookupCallback = std::function<void(std::vector<std::shared_ptr<Value>>& values, Prefix p)>;
     typedef void (*LookupCallbackRaw)(std::vector<std::shared_ptr<Value>>* values, Prefix* p, void *user_data);
