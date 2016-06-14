@@ -161,7 +161,7 @@ dht::indexation::Pht::Key createPhtKey(std::map<std::string, std::string> pht_ke
     dht::indexation::Pht::Key pht_key;
     for (auto f : pht_key_str_map) {
         dht::Blob prefix {f.second.begin(), f.second.end()};
-        pht_key.emplace(f.first, prefix);
+        pht_key.emplace(f.first, std::move(prefix));
     }
     return pht_key;
 }
