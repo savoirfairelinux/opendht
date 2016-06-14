@@ -248,6 +248,43 @@ struct Value
         return owner and not signature.empty();
     }
 
+    /**
+     * Sign the value using the provided private key.
+     * Afterward, checkSignature() will return true and owner will
+     * be set to the corresponding public key.
+     */
+    void sign(const crypto::PrivateKey& key) {
+        if (isEncrypted())
+            throw DhtException("Can't sign encrypted data.");
+        owner = std::make_shared<crypto::PublicKey>(key.getPublicKey());
+        signature = key.sign(getToSign());
+    }
+
+    /**
+     * Check that the value is signed and that the signature matches.
+     * If true, the owner field will contain the signer public key.
+     */
+    bool checkSignature() const {
+        return isSigned() and owner->checkSignature(getToSign(), signature);
+    }
+
+    std::shared_ptr<const crypto::PublicKey> getOwner() const {
+        return std::static_pointer_cast<const crypto::PublicKey>(owner);
+    }
+
+    /**
+     *
+     */
+    Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to) {
+        if (isEncrypted())
+            throw DhtException("Data is already encrypted.");
+        setRecipient(to.getId());
+        sign(from);
+        Value nv {id};
+        nv.setCypher(to.encrypt(getToEncrypt()));
+        return nv;
+    }
+
     Value() {}
 
     Value (Id id) : id(id) {}
@@ -380,6 +417,12 @@ struct Value
 
     void msgpack_unpack(msgpack::object o);
     void msgpack_unpack_body(const msgpack::object& o);
+    Blob getPacked() const {
+        msgpack::sbuffer buffer;
+        msgpack::packer<msgpack::sbuffer> pk(&buffer);
+        pk.pack(*this);
+        return {buffer.data(), buffer.data()+buffer.size()};
+    }
 
     Id id {INVALID_ID};
 

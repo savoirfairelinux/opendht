@@ -362,22 +362,13 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
 void
 SecureDht::sign(Value& v) const
 {
-    if (v.isEncrypted())
-        throw DhtException("Can't sign encrypted data.");
-    v.owner = std::make_shared<crypto::PublicKey>(key_->getPublicKey());
-    v.signature = key_->sign(v.getToSign());
+    v.sign(*key_);
 }
 
 Value
 SecureDht::encrypt(Value& v, const crypto::PublicKey& to) const
 {
-    if (v.isEncrypted())
-        throw DhtException("Data is already encrypted.");
-    v.setRecipient(to.getId());
-    sign(v);
-    Value nv {v.id};
-    nv.setCypher(to.encrypt(v.getToEncrypt()));
-    return nv;
+    return v.encrypt(*key_, to);
 }
 
 Value
