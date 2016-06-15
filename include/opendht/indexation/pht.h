@@ -142,6 +142,9 @@ struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
 };
 
 class Pht {
+    static constexpr const char* INVALID_KEY = "Key does not match the PHT key spec.";
+
+    /* Prefixes the user_type for all dht values put on the DHT */
     static constexpr const char* INDEX_PREFIX = "index.pht.";
 
 public:
@@ -150,7 +153,11 @@ public:
      */
     static constexpr const size_t MAX_NODE_ENTRY_COUNT {16};
 
+    /* A key for a an index entry */
     using Key = std::map<std::string, Blob>;
+    /* Specifications of the keys. It defines the number, the length and the
+     * serialization order of fields. */
+    using KeySpec = std::map<std::string, size_t>;
 
     using LookupCallback = std::function<void(std::vector<std::shared_ptr<Value>>& values, Prefix p)>;
     typedef void (*LookupCallbackRaw)(std::vector<std::shared_ptr<Value>>* values, Prefix* p, void *user_data);
@@ -162,8 +169,12 @@ public:
         };
     }
 
-    Pht(std::string name, std::shared_ptr<DhtRunner> dht)
-        : name_(INDEX_PREFIX + name), canary_(name_ + ".canary"), dht_(dht) { }
+    Pht(std::string name, KeySpec k_spec, std::shared_ptr<DhtRunner> dht)
+        : name_(INDEX_PREFIX + name), canary_(name_ + ".canary"), keySpec_(k_spec), dht_(dht)
+    {
+        if (k_spec.size() != 1)
+            throw std::invalid_argument("PHT only supports unidimensional data.");
+    }
     virtual ~Pht () { }
 
     /**
@@ -296,19 +307,6 @@ private:
     };
 
     /**
-     * Linearizes the key into a unidimensional key. A pht only takes
-     * unidimensional key.
-     *
-     * @param Key  The initial key.
-     *
-     * @return return The linearized key.
-     */
-    static Prefix linearize(Key k) {
-        if (k.size() != 1) { throw std::invalid_argument("PHT only supports unidimensional data."); }
-        return k.begin()->second;
-    };
-
-    /**
      * Performs a step in the lookup operation. Each steps are performed
      * asynchronously.
      */
@@ -318,6 +316,31 @@ private:
             int start = -1, bool all_values = false);
 
     /**
+     * Linearizes the key into a unidimensional key. A pht only takes
+     * unidimensional key.
+     *
+     * @param Key  The initial key.
+     *
+     * @return the prefix of the linearized key.
+     */
+    virtual Prefix linearize(Key k) const {
+        if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
+        return Blob {k.begin()->second.begin(), k.begin()->second.begin() + keySpec_.begin()->second};
+    };
+
+    /**
+     * Tells if the key is valid according to the key spec.
+     */
+    bool validKey(const Key& k) const {
+        return k.size() == keySpec_.size() and
+            std::equal(k.begin(), k.end(), keySpec_.begin(),
+                [&](const Key::value_type& key, const KeySpec::value_type& key_spec) {
+                    return key.first == key_spec.first;
+                }
+            );
+    }
+
+    /**
      * Updates the canary token on the node responsible for the specified
      * Prefix.
      */
@@ -325,6 +348,7 @@ private:
 
     const std::string name_;
     const std::string canary_;
+    const KeySpec keySpec_;
     Cache cache_;
     std::shared_ptr<DhtRunner> dht_;
 };
