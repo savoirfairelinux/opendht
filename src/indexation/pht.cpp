@@ -67,26 +67,23 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                 IndexEntry entry;
                 entry.unpackValue(*value);
 
-                auto add_value = [&](bool better = true) {
-                    vals->emplace_back(std::make_shared<Value>(entry.value));
-                    if (better and max_common_prefix_len)
-                        *max_common_prefix_len = Prefix::commonBits(p, vals->front()->first);
-                };
-                if (max_common_prefix_len) {
+                if (max_common_prefix_len) { /* inexact match case */
+                    auto common_bits = Prefix::commonBits(p, entry.prefix);
                     if (vals->empty()) {
-                        add_value();
-                    } else {
-                        auto common_bits = Prefix::commonBits(vals->front()->first, p.getPrefix(mid));
-                        if (common_bits == *max_common_prefix_len)
-                            add_value(false);
-                        else if (common_bits > *max_common_prefix_len) {
+                        vals->emplace_back(std::make_shared<Value>(entry.value));
+                        *max_common_prefix_len = common_bits;
+                    }
+                    else {
+                        if (common_bits == *max_common_prefix_len) /* this is the max so far */
+                            vals->emplace_back(std::make_shared<Value>(entry.value));
+                        else if (common_bits > *max_common_prefix_len) { /* new max found! */
                             vals->clear();
-                            add_value();
+                            vals->emplace_back(std::make_shared<Value>(entry.value));
+                            *max_common_prefix_len = common_bits;
                         }
                     }
-                }
-                else if (all_values or entry.prefix == p.content_)
-                    add_value(false);
+                } else if (all_values or entry.prefix == p.content_) /* exact match case */
+                    vals->emplace_back(std::make_shared<Value>(entry.value));
             }
             return true;
         };
