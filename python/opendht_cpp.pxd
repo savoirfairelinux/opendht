@@ -167,12 +167,13 @@ cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
         Prefix(vector[uint8_t]) except +
         string toString() const
     ctypedef pair[InfoHash, uint64_t] IndexValue "dht::indexation::Value"
-    ctypedef map[string, Prefix] IndexKey "dht::indexation::Pht::Key"
+    ctypedef map[string, vector[uint8_t]] IndexKey "dht::indexation::Pht::Key"
+    ctypedef map[string, uint32_t] IndexKeySpec "dht::indexation::Pht::KeySpec"
     ctypedef void (*LookupCallbackRaw)(vector[shared_ptr[IndexValue]]* values, Prefix* p, void* user_data);
     cdef cppclass Pht:
         cppclass LookupCallback:
             LookupCallback() except +
-        Pht(string, shared_ptr[DhtRunner]) except +
+        Pht(string, IndexKeySpec, shared_ptr[DhtRunner]) except +
         void lookup(IndexKey k, LookupCallback cb, DoneCallbackSimple doneCb);
         void insert(IndexKey k, IndexValue v, DoneCallbackSimple cb)
         @staticmethod
