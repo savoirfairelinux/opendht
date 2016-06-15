@@ -73,7 +73,7 @@ void print_help() {
               << std::endl;
 }
 
-void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexation::Pht> indexes, dht_params& params)
+void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation::Pht> indexes, dht_params& params)
 {
     print_node_info(dht, params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
@@ -161,11 +161,23 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
         if (op == "il" or op == "ii") {
             // Pht syntax
             iss >> index >> keystr;
+            auto new_index = std::find_if(indexes.begin(), indexes.end(),
+                    [&](std::pair<const std::string, indexation::Pht>& i) {
+                        return i.first == index;
+                    }) == indexes.end();
             if (not index.size()) {
                 std::cout << "You must enter the index name." << std::endl;
                 continue;
-            } else {
-                indexes.emplace(index, dht::indexation::Pht {index, dht});
+            } else if (new_index) {
+                using namespace dht::indexation;
+                try {
+                    auto key = createPhtKey(parseStringMap(keystr));
+                    Pht::KeySpec ks;
+                    std::transform(key.begin(), key.end(), std::inserter(ks, ks.end()), [](Pht::Key::value_type& f) {
+                        return std::make_pair(f.first, f.second.size());
+                    });
+                    indexes.emplace(index, Pht {index, std::move(ks), dht});
+                } catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
             }
         }
         else {
@@ -250,25 +262,30 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
         else if (op == "il") {
             std::string exact_match;
             iss >> exact_match;
-            indexes.at(index).lookup(createPhtKey(parseStringMap(keystr)),
-                [=](std::vector<std::shared_ptr<indexation::Value>>& vals, indexation::Prefix p) {
-                    std::cout << "Pht::lookup: at prefix \"" << p.toString() << "\"" << ", hash is " << p.hash() << std::endl;
-                    for (auto v : vals) {
-                        std::cout << "Pht::lookup: found hash" << std::endl
-                                  << "\t" << v->first << "[vid: " << v->second << "]" << std::endl;
-                    }
-                    std::cout << "Pht::lookup: done." << std::endl;
-                },
-                [start](bool ok) {
-                    if (not ok) {
-                        std::cout << "Pht::lookup: dht Get failed." << std::endl;
-                    }
+            try {
+                auto key = createPhtKey(parseStringMap(keystr));
+                std::cout << "Pht::lookup(key=\"" << indexes.at(index).linearize(key).toString() << "\")" << std::endl;
+                indexes.at(index).lookup(key,
+                    [=](std::vector<std::shared_ptr<indexation::Value>>& vals, indexation::Prefix p) {
+                        if (vals.empty())
+                            return;
+                        std::cout << "Pht::lookup: found entries!" << std::endl
+                                  << "   prefix: \"" << p.toString() << "\"" << std::endl
+                                  << "   hash: " << p.hash() << std::endl;
+                        std::cout << "   entries:" << std::endl;
+                        for (auto v : vals)
+                             std::cout << "      " << v->first.toString() << "[vid: " << v->second << "]" << std::endl;
+                    },
+                    [start](bool ok) {
+                        auto end = std::chrono::high_resolution_clock::now();
+                        std::cout << "Pht::lookup: " << (ok ? "done." : "failed.")
+                                  << " took " << print_dt(end-start) << "s)" << std::endl;
 
-                    auto end = std::chrono::high_resolution_clock::now();
-                    std::cout << "Pht::lookup: took " << print_dt(end-start) << "s)" << std::endl;
-
-                }, exact_match.size() != 0 and exact_match == "false" ? false : true
-            );
+                    }, exact_match.size() != 0 and exact_match == "false" ? false : true
+                );
+            }
+            catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
+            catch (std::out_of_range& e) { }
         }
         else if (op == "ii") {
             iss >> idstr;
@@ -277,15 +294,22 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, dht::indexa
                 continue;
 
             indexation::Value v {h, 0};
-            indexes.at(index).insert(createPhtKey(parseStringMap(keystr)), v,
-                [=](bool success) {
-                    if (not success) {
-                        std::cout << "Pht::insert: failed." << std::endl;
-                        return;
+            try {
+                auto key = createPhtKey(parseStringMap(keystr));
+                std::cout << "Pht::insert(key=\"" << indexes.at(index).linearize(key).toString()
+                          << "\", " << h.toString() << ")" << std::endl;
+                indexes.at(index).insert(key, v,
+                    [=](bool success) {
+                        if (not success) {
+                            std::cout << "Pht::insert: failed." << std::endl;
+                            return;
+                        }
+                        std::cout << "Pht::insert: done." << std::endl;
                     }
-                    std::cout << "Pht::insert: done." << std::endl;
-                }
-            );
+                );
+            }
+            catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
+            catch (std::out_of_range& e) { }
         }
     }
 
@@ -299,7 +323,7 @@ main(int argc, char **argv)
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
 
     auto dht = std::make_shared<DhtRunner>();
-    std::map<std::string, dht::indexation::Pht> indexes;
+    std::map<std::string, indexation::Pht> indexes;
 
     try {
         auto params = parseArgs(argc, argv);
