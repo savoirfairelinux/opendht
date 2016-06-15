@@ -406,8 +406,11 @@ cdef class IndexValue(object):
 
 cdef class Pht(object):
     cdef cpp.Pht* thisptr
-    def __cinit__(self, bytes name, DhtRunner dht):
-        self.thisptr = new cpp.Pht(name, dht.thisptr)
+    def __cinit__(self, bytes name, key_spec, DhtRunner dht):
+        cdef cpp.IndexKeySpec cpp_key_spec
+        for kk, size in key_spec.items():
+            cpp_key_spec[bytes(kk, 'utf-8')] = size
+        self.thisptr = new cpp.Pht(name, cpp_key_spec, dht.thisptr)
     property MAX_NODE_ENTRY_COUNT:
         def __get__(self):
             return cpp.PHT_MAX_NODE_ENTRY_COUNT
@@ -424,7 +427,7 @@ cdef class Pht(object):
         ref.Py_INCREF(cb_obj)
         cdef cpp.IndexKey cppk
         for kk, v in key.items():
-            cppk[bytes(kk, 'utf-8')] = cpp.Prefix(bytes(v))
+            cppk[bytes(kk, 'utf-8')] = bytes(v)
         self.thisptr.lookup(
                 cppk,
                 cpp.Pht.bindLookupCb(lookup_callback, <void*>cb_obj),
@@ -441,7 +444,7 @@ cdef class Pht(object):
         ref.Py_INCREF(cb_obj)
         cdef cpp.IndexKey cppk
         for kk, v in key.items():
-            cppk[bytes(kk, 'utf-8')] = cpp.Prefix(bytes(v))
+            cppk[bytes(kk, 'utf-8')] = bytes(v)
         cdef cpp.IndexValue val
         val.first = (<InfoHash>value.getKey())._infohash
         val.second = value.getValueId()
