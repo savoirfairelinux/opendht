@@ -4,6 +4,107 @@
 namespace dht {
 namespace indexation {
 
+struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
+    static const ValueType TYPE;
+
+    virtual void unpackValue(const dht::Value& v) {
+        Serializable<IndexEntry>::unpackValue(v);
+        name = v.user_type;
+    }
+
+    virtual dht::Value packValue() const {
+        auto pack = Serializable<IndexEntry>::packValue();
+        pack.user_type = name;
+        return pack;
+    }
+
+    Blob prefix;
+    Value value;
+    std::string name;
+    MSGPACK_DEFINE_MAP(prefix, value);
+};
+
+void Pht::Cache::insert(const Prefix& p) {
+    size_t i = 0;
+    auto now = clock::now();
+
+    std::shared_ptr<Node> curr_node;
+
+    while ((leaves_.size() > 0 && leaves_.begin()->first + NODE_EXPIRE_TIME < now) || leaves_.size() > MAX_ELEMENT)
+        leaves_.erase(leaves_.begin());
+
+    if (not (curr_node = root_.lock())) {
+        /* Root does not exist, need to create one*/
+        curr_node = std::make_shared<Node>();
+        root_ = curr_node;
+    }
+
+    curr_node->last_reply = now;
+
+    /* Iterate through all bit of the Blob */
+    for ( i = 0; i < p.size_; i++ ) {
+
+        /* According to the bit define which node is the next one */
+        auto& next = ( p.isActiveBit(i) ) ? curr_node->right_child : curr_node->left_child;
+
+        /**
+         * If lock, node exists
+         * else create it
+         */
+        if (auto n = next.lock()) {
+            curr_node = std::move(n);
+        } else {
+            /* Create the next node if doesn't exist*/
+            auto tmp_curr_node = std::make_shared<Node>();
+            tmp_curr_node->parent = curr_node;
+            next = tmp_curr_node;
+            curr_node = std::move(tmp_curr_node);
+        }
+
+        curr_node->last_reply = now;
+    }
+
+    /* Insert the leaf (curr_node) into the multimap */
+    leaves_.emplace(std::move(now), std::move(curr_node) );
+}
+
+int Pht::Cache::lookup(const Prefix& p) {
+    int pos = 0;
+    auto now = clock::now(), last_node_time = now;
+
+    /* Before lookup remove the useless one [i.e. too old] */
+    while ( leaves_.size() > 0 &&  leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
+        leaves_.erase(leaves_.begin());
+    }
+
+    auto next = root_;
+    std::shared_ptr<Node> curr_node;
+
+    while ( auto n = next.lock() ) {
+        /* Safe since pos is equal to 0 until here */
+        if ( (unsigned) pos >= p.size_ ) break;
+
+        curr_node = n;
+        last_node_time = curr_node->last_reply;
+        curr_node->last_reply = now;
+
+        /* Get the Prefix bit by bit, starting from left */
+        next = ( p.isActiveBit(pos) ) ? curr_node->right_child : curr_node->left_child;
+
+        ++pos;
+    }
+
+    if ( pos > 0 ) {
+        auto to_erase = leaves_.find(last_node_time);
+        if ( to_erase != leaves_.end() )
+            leaves_.erase( to_erase );
+
+        leaves_.emplace( std::move(now), std::move(curr_node) );
+    }
+
+    return --pos;
+}
+
 const ValueType IndexEntry::TYPE = ValueType::USER_DATA;
 constexpr std::chrono::minutes Pht::Cache::NODE_EXPIRE_TIME;
 
