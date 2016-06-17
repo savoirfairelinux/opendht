@@ -279,7 +279,6 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
             iss >> exact_match;
             try {
                 auto key = createPhtKey(parseStringMap(keystr));
-                std::cout << "Pht::lookup(key=\"" << indexes.at(index).linearize(key).toString() << "\")" << std::endl;
                 indexes.at(index).lookup(key,
                     [=](std::vector<std::shared_ptr<indexation::Value>>& vals, indexation::Prefix p) {
                         if (vals.empty())
@@ -311,8 +310,6 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
             indexation::Value v {h, 0};
             try {
                 auto key = createPhtKey(parseStringMap(keystr));
-                std::cout << "Pht::insert(key=\"" << indexes.at(index).linearize(key).toString()
-                          << "\", " << h.toString() << ")" << std::endl;
                 indexes.at(index).insert(key, v,
                     [=](bool success) {
                         if (not success) {
