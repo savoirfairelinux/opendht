@@ -148,6 +148,15 @@ public:
             raw_cb((std::vector<std::shared_ptr<Value>>*) &values, (Prefix*) &p, user_data);
         };
     }
+    using LookupCallbackSimple = std::function<void(std::vector<std::shared_ptr<Value>>& values)>;
+    typedef void (*LookupCallbackSimpleRaw)(std::vector<std::shared_ptr<Value>>* values, void *user_data);
+    static LookupCallbackSimple
+    bindLookupCbSimple(LookupCallbackSimpleRaw raw_cb, void* user_data) {
+        if (not raw_cb) return {};
+        return [=](std::vector<std::shared_ptr<Value>>& values) {
+            raw_cb((std::vector<std::shared_ptr<Value>>*) &values, user_data);
+        };
+    }
 
     Pht(std::string name, KeySpec k_spec, std::shared_ptr<DhtRunner> dht)
         : name_(INDEX_PREFIX + name), canary_(name_ + ".canary"), keySpec_(k_spec), dht_(dht)
@@ -160,7 +169,11 @@ public:
     /**
      * Lookup a key for a value.
      */
-    void lookup(Key k, LookupCallback cb = {}, DoneCallbackSimple doneCb = {}, bool exact_match = true);
+    void lookup(Key k, LookupCallback cb = {}, DoneCallbackSimple done_cb = {}, bool exact_match = true);
+    void lookup(Key k, LookupCallbackSimple cb = {}, DoneCallbackSimple done_cb = {}, bool exact_match = true)
+    {
+        lookup(k, [=](std::vector<std::shared_ptr<Value>>& values, Prefix) { cb(values); }, done_cb, exact_match);
+    }
     /**
      * Adds an entry into the index.
      */
