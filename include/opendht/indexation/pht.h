@@ -246,7 +246,7 @@ private:
         return k.size() == keySpec_.size() and
             std::equal(k.begin(), k.end(), keySpec_.begin(),
                 [&](const Key::value_type& key, const KeySpec::value_type& key_spec) {
-                    return key.first == key_spec.first;
+                    return key.first == key_spec.first and key.second.size() <= key_spec.second;
                 }
             );
     }
