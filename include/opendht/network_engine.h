@@ -256,7 +256,7 @@ public:
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
     NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
-    NetworkEngine(InfoHash& myid, int s, int s6, Logger& log, Scheduler& scheduler,
+    NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -266,7 +266,7 @@ public:
             decltype(NetworkEngine::onListen) onListen,
             decltype(NetworkEngine::onAnnounce) onAnnounce) :
         onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(myid),
+        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(myid), network(net),
         dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
     {
         transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
@@ -376,6 +376,7 @@ private:
 
     /* DHT info */
     const InfoHash& myid;
+    const NetId network {0};
     const int dht_socket {-1};
     const int dht_socket6 {-1};
     const Logger& DHT_LOG;

@@ -23,6 +23,8 @@
 
 namespace dht {
 
+static constexpr unsigned TARGET_NODES {8};
+
 struct Bucket {
     Bucket() : cached() {}
     Bucket(sa_family_t af, const InfoHash& f = {}, time_point t = time_point::min())

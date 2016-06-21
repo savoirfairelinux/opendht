@@ -80,7 +80,7 @@ main(int argc, char **argv)
     auto crt_tmp = dht::crypto::generateIdentity("Scanner node", ca_tmp);
 
     DhtRunner dht;
-    dht.run(params.port, crt_tmp, true, [](dht::NodeStatus /* ipv4 */, dht::NodeStatus /* ipv6 */) {});
+    dht.run(params.port, crt_tmp, true, params.network);
 
     if (not params.bootstrap.first.empty())
         dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());

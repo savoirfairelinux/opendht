@@ -268,12 +268,13 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, bool is_bootstrap = false) {
+    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0) {
         run(port, {
             /*.dht_config = */{
                 /*.node_config = */{
                     /*.node_id = */{},
-                    /*.is_bootstrap = */is_bootstrap
+                    /*.network = */network,
+                    /*.is_bootstrap = */false
                 },
                 /*.id = */identity
             },

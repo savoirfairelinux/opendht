@@ -30,22 +30,43 @@ namespace dht {
 
 struct Node;
 
+/**
+ * Current status of a DHT node.
+ */
 enum class NodeStatus {
     Disconnected, // 0 nodes
     Connecting,   // 1+ nodes
     Connected     // 1+ good nodes
 };
 
+/**
+ * Dht configuration.
+ */
 struct Config {
+    /** DHT node ID */
     InfoHash node_id;
+
+    /** 
+     * DHT network ID. A node will only talk with other nodes having
+     * the same network ID.
+     * Network ID 0 (default) represents the main public network.
+     */
+    NetId network;
+
+    /** For testing purposes only, enables bootstrap mode */
     bool is_bootstrap;
 };
 
+/**
+ * SecureDht configuration.
+ */
 struct SecureDhtConfig
 {
     Config node_config;
     crypto::Identity id;
 };
+
+static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 
 using ValuesExport = std::pair<InfoHash, Blob>;
 
@@ -56,8 +77,6 @@ using ShutdownCallback = std::function<void()>;
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 
 typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
-
-static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 
 GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
 GetCallback bindGetCb(GetCallbackSimple cb);

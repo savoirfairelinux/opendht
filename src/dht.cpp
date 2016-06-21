@@ -2102,7 +2102,7 @@ Dht::Dht() : store(), network_engine(DHT_LOG, scheduler) {}
 
 Dht::Dht(int s, int s6, Config config)
  : myid(config.node_id), is_bootstrap(config.is_bootstrap), store(),
-    network_engine(myid, s, s6, DHT_LOG, scheduler,
+    network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2, _3),

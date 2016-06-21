@@ -40,9 +40,8 @@
 
 namespace dht {
 
-static constexpr unsigned TARGET_NODES {8};
-
 using Address = std::pair<sockaddr_storage, socklen_t>;
+using NetId = uint32_t;
 using want_t = int_fast8_t;
 
 std::string print_addr(const sockaddr* sa, socklen_t slen);
