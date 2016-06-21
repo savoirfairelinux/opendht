@@ -49,6 +49,7 @@ static const uint8_t v4prefix[16] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
 };
 
+constexpr unsigned SEND_NODES {8};
 
 enum class MessageType {
     Error = 0,
@@ -63,6 +64,7 @@ enum class MessageType {
 struct ParsedMessage {
     MessageType type;
     InfoHash id;                                /* the id of the sender */
+    NetId network {0};                          /* network id */
     InfoHash info_hash;                         /* hash for which values are requested */
     InfoHash target;                            /* target id around which to find nodes */
     NetworkEngine::TransId tid;                                /* transaction id */
@@ -293,6 +295,11 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
         return;
     }
 
+    if (msg.network != network) {
+        DHT_LOG.DEBUG("Received message from other network %u.", msg.network);
+        return;
+    }
+
     if (msg.id == myid || msg.id == zeroes) {
         DHT_LOG.DEBUG("Received message from self.");
         return;
@@ -451,9 +458,10 @@ packToken(msgpack::packer<msgpack::sbuffer>& pk, Blob token)
 }
 
 void
-insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const sockaddr *sa, socklen_t)
+insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const sockaddr *sa, socklen_t sa_len)
 {
-    size_t addr_len = (sa->sa_family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr);
+    size_t addr_len = std::min<size_t>(sa_len,
+                     (sa->sa_family == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr));
     void* addr_ptr = (sa->sa_family == AF_INET) ? (void*)&((sockaddr_in*)sa)->sin_addr
                                                 : (void*)&((sockaddr_in6*)sa)->sin6_addr;
     pk.pack("sa");
@@ -485,7 +493,7 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
+    pk.pack_map(5+(network?1:0));
 
     pk.pack(std::string("a")); pk.pack_map(1);
      pk.pack(std::string("id")); pk.pack(myid);
@@ -495,6 +503,9 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
                               pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), node, std::move(b),
@@ -519,7 +530,7 @@ void
 NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
+    pk.pack_map(4+(network?1:0));
 
     pk.pack(std::string("r")); pk.pack_map(2);
       pk.pack(std::string("id")); pk.pack(myid);
@@ -529,6 +540,9 @@ NetworkEngine::sendPong(const sockaddr* sa, socklen_t salen, TransId tid) {
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -539,7 +553,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
     auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
+    pk.pack_map(5+(network?1:0));
 
     pk.pack(std::string("a")); pk.pack_map(2 + (want>0?1:0));
       pk.pack(std::string("id"));     pk.pack(myid);
@@ -556,7 +570,9 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
-
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
@@ -583,7 +599,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
+    pk.pack_map(5+(network?1:0));
 
     pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
       pk.pack(std::string("id")); pk.pack(myid);
@@ -600,6 +616,9 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
@@ -664,7 +683,7 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
         const std::vector<std::shared_ptr<Value>>& st, const Blob& token) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
+    pk.pack_map(4+(network?1:0));
 
     pk.pack(std::string("r"));
     pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
@@ -715,6 +734,9 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -725,7 +747,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::
     std::sort(nodes.begin(), nodes.end(), [&](const std::shared_ptr<Node>& a, const std::shared_ptr<Node>& b){
         return id.xorCmp(a->id, b->id) < 0;
     });
-    size_t nnode = std::min<size_t>(TARGET_NODES, nodes.size());
+    size_t nnode = std::min<size_t>(SEND_NODES, nodes.size());
     Blob bnodes;
     if (af == AF_INET) {
         bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
@@ -777,7 +799,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
+    pk.pack_map(5+(network?1:0));
 
     pk.pack(std::string("a")); pk.pack_map(3);
       pk.pack(std::string("id"));    pk.pack(myid);
@@ -789,7 +811,9 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
-
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
@@ -812,7 +836,7 @@ void
 NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
+    pk.pack_map(4+(network?1:0));
 
     pk.pack(std::string("r")); pk.pack_map(2);
       pk.pack(std::string("id")); pk.pack(myid);
@@ -822,6 +846,9 @@ NetworkEngine::sendListenConfirmation(const sockaddr* sa, socklen_t salen, Trans
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -832,7 +859,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5);
+    pk.pack_map(5+(network?1:0));
 
     pk.pack(std::string("a")); pk.pack_map((created < scheduler.time() ? 5 : 4));
       pk.pack(std::string("id"));     pk.pack(myid);
@@ -849,6 +876,9 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("q"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
@@ -878,7 +908,7 @@ void
 NetworkEngine::sendValueAnnounced(const sockaddr* sa, socklen_t salen, TransId tid, Value::Id vid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4);
+    pk.pack_map(4+(network?1:0));
 
     pk.pack(std::string("r")); pk.pack_map(3);
       pk.pack(std::string("id"));  pk.pack(myid);
@@ -889,6 +919,9 @@ NetworkEngine::sendValueAnnounced(const sockaddr* sa, socklen_t salen, TransId t
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -917,6 +950,9 @@ NetworkEngine::sendError(const sockaddr* sa,
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(std::string("y")); pk.pack(std::string("e"));
     pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
 
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
@@ -959,6 +995,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
             throw msgpack::type_error();
         error_code = e->via.array.ptr[0].as<uint16_t>();
     }
+
+    if (auto netid = findMapValue(msg, "n"))
+        network = netid->as<NetId>();
 
     if (auto rid = findMapValue(req, "id"))
         id = {*rid};

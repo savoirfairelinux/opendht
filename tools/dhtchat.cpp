@@ -53,7 +53,7 @@ main(int argc, char **argv)
         throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
 
     DhtRunner dht;
-    dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true);
+    dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
 
     if (not params.bootstrap.first.empty())
         dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());

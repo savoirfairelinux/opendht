@@ -142,6 +142,7 @@ struct dht_params {
     bool log {false};
     std::string logfile {};
     in_port_t port {0};
+    dht::NetId network {0};
     bool is_bootstrap_node {false};
     bool generate_identity {false};
     bool daemonize {false};
@@ -151,6 +152,7 @@ struct dht_params {
 static const constexpr struct option long_options[] = {
    {"help",       no_argument,       nullptr, 'h'},
    {"port",       required_argument, nullptr, 'p'},
+   {"net",        required_argument, nullptr, 'n'},
    {"bootstrap",  optional_argument, nullptr, 'b'},
    {"identity",   no_argument      , nullptr, 'i'},
    {"verbose",    optional_argument, nullptr, 'v'},
@@ -171,6 +173,9 @@ parseArgs(int argc, char **argv) {
                 else
                     std::cerr << "Invalid port: " << port_arg << std::endl;
             }
+            break;
+        case 'n':
+            params.network = strtoul(optarg, nullptr, 0);
             break;
         case 'b':
             if (optarg) {

@@ -256,7 +256,7 @@ main(int argc, char **argv)
             crt = dht::crypto::generateIdentity("DHT Node", ca_tmp);
         }
 
-        dht.run(params.port, crt, true, params.is_bootstrap_node);
+        dht.run(params.port, crt, true, params.network);
 
         if (params.log) {
             if (not params.logfile.empty())
