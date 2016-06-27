@@ -99,7 +99,7 @@ SecureDht::secureType(ValueType&& type)
                 return false;
             }
             else
-                DHT_LOG.WARN("Signature verification succeded");
+                DHT_LOG.WARN("Signature verification succeeded");
         }
         return type.storePolicy(id, v, nid, a, al);
     };

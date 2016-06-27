@@ -61,7 +61,7 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
 class DhtException : public std::runtime_error {
     public:
         DhtException(const std::string &str = "") :
-            std::runtime_error("DhtException occured: " + str) {}
+            std::runtime_error("DhtException occurred: " + str) {}
 };
 
 
