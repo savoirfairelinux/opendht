@@ -52,8 +52,12 @@ struct Prefix {
      * @param pos : Pos of the needed bit
      * @return : true if the bit is at 1
      *           false otherwise
+     * @throw out_of_range Throw out of range if the bit at 'pos' does not exist
      */
     bool isActiveBit(size_t pos) const {
+        if ( pos >= size_ )
+            throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
+
         return ((this->content_[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
     }
 
