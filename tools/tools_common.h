@@ -164,14 +164,14 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, ":hidv:p:n:b:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidv::p:n:b::", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
                 if (port_arg >= 0 && port_arg < 0x10000)
                     params.port = port_arg;
                 else
-                    std::cout << "Invalid port: " << port_arg << std::endl;
+                    std::cerr << "Invalid port: " << port_arg << std::endl;
             }
             break;
         case 'n':
@@ -185,8 +185,7 @@ parseArgs(int argc, char **argv) {
                     ss << DHT_DEFAULT_PORT;
                     params.bootstrap.second = ss.str();
                 }
-            }
-            else
+            } else
                 params.is_bootstrap_node = true;
             break;
         case 'h':
@@ -203,19 +202,9 @@ parseArgs(int argc, char **argv) {
         case 'd':
             params.daemonize = true;
             break;
-        case ':':
-            switch (optopt) {
-            case 'b':
-                params.is_bootstrap_node = true;
-                break;
-            case 'v':
-                params.log = true;
-                break;
-            default:
-                std::cout << "option requires an argument -- '" << optopt << '\'' << std::endl;
-                break;
-            }
-            break;
+        case '?':
+            std::cerr << "unrecognized option -- '" << static_cast<char>(optopt) << '\'' << std::endl;
+            exit(EXIT_FAILURE);
         default:
             break;
         }
