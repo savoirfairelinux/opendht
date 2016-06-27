@@ -311,12 +311,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
             try {
                 auto key = createPhtKey(parseStringMap(keystr));
                 indexes.at(index).insert(key, v,
-                    [=](bool success) {
-                        if (not success) {
-                            std::cout << "Pht::insert: failed." << std::endl;
-                            return;
-                        }
-                        std::cout << "Pht::insert: done." << std::endl;
+                    [=](bool ok) {
+                        std::cout << "Pht::insert: " << (ok ? "done." : "failed.") << std::endl;
                     }
                 );
             }

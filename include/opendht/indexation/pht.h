@@ -65,12 +65,7 @@ struct Prefix {
      * @return The prefix of this sibling.
      */
     Prefix getSibling() const {
-        Prefix copy = *this;
-        if (size_) {
-            size_t last_bit =  (8 - size_) % 8;
-            copy.content_.back() ^= (1 << last_bit);
-        }
-        return copy;
+        return swapBit(size_ - 1);
     }
 
     InfoHash hash() const {
@@ -113,6 +108,27 @@ struct Prefix {
         }
 
         return 8 * i + j;
+    }
+
+    /**
+     * This method swap the bit a the position 'bit' and return the new prefix
+     *
+     * @param bit Position of the bit to swap
+     *
+     * @return The prefix with the bit at position 'bit' swapped
+     *
+     * @throw out_of_range Throw out of range if bit does not exist
+     */
+    Prefix swapBit(size_t bit) const {
+        if ( bit >= size_ )
+            throw std::out_of_range("bit larger than prefix size.");
+
+        Prefix copy = *this;
+
+        size_t offset_bit = (8 - bit) % 8;
+        copy.content_[bit / 8] ^= (1 << offset_bit);
+
+        return copy;
     }
 
     size_t size_ {0};
@@ -174,6 +190,7 @@ public:
     {
         lookup(k, [=](std::vector<std::shared_ptr<Value>>& values, Prefix) { cb(values); }, done_cb, exact_match);
     }
+
     /**
      * Adds an entry into the index.
      */
@@ -236,7 +253,16 @@ private:
      */
     virtual Prefix linearize(Key k) const {
         if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
-        return Blob {k.begin()->second.begin(), k.begin()->second.begin() + keySpec_.begin()->second};
+
+        Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
+
+        auto bit_loc = p.size_ + 1;
+        for ( auto i = p.content_.size(); i <= keySpec_.begin()->second; i++ ) {
+            p.content_.push_back(0);
+            p.size_ += 8;
+        }
+
+        return p.swapBit(bit_loc);
     };
 
     /**
