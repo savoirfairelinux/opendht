@@ -1,0 +1,83 @@
+.TH DHTNODE 1 2016-06-27
+
+.SH NAME
+.B dhtnode
+- a simple OpenDHT command line node runner.
+
+.SH SYNOPSYS
+.B dhtnode [-h]
+
+.B dhtnode [-v [\fIlogfile\fP]] [-i] [-d] [-n \fInetwork_id\fP] [-p \fIlocal_port\fP] [-b [\fIbootstrap_host\fP[:\fIport\fP]]]
+
+.SH DESCRIPTION
+
+This program runs a simple OpenDHT node in an interactive way. If you rather
+want to run the node in daemon mode, option \fB'-d'\fP is provided. When running
+in the interractive shell, you benefit from the readline capabilites for writing
+your commands such as command history. Here are the available commands in the
+interractive shell:
+
+.EE
+    h, help    Print this help message.
+    q, quit    Quit the program.
+    log        Start/stop printing DHT logs.
+
+    Node information:
+    ll         Print basic information and stats about the current node.
+    ls         Print basic information about current searches.
+    ld         Print basic information about currenty stored values on this node.
+    lr         Print the full current routing table of this node
+
+    Operations on the DHT:
+    b ip:port             Ping potential node at given IP address/port.
+    g [key]               Get values at [key].
+    l [key]               Listen for value changes at [key].
+    p [key] [str]         Put string value at [key].
+    s [key] [str]         Put string value at [key], signed with our generated
+                          private key.
+    e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with
+                          its public key (if found).
+
+.SH OPTIONS
+
+.TP
+\fB-h\fP
+Prints some help.
+
+.TP
+\fB-v\fP \fIlogfile\fP
+Enable the verbose mode. Optionaly provide a log file.
+
+.TP
+\fB-i\fP
+Generate cryptographic identity for the node.
+
+.TP
+\fB-d\fP
+Run the program in daemon mode (will fork in the background).
+
+.TP
+\fB-n\fP \fInetwork_id\fP
+Specify the network id. This let you connect to distinct networks and prevents
+the merge of two diffrent networks (available since OpenDHT v0.6.1).
+
+.TP
+\fB-p\fP \fIlocal_port\fP
+Use port \fIlocal_port\fP for the program to bind to.
+
+.TP
+\fB-b\fP \fIbootstrap_host\fP[:\fIport\fP]
+The program needs to be given a node to connect to the network. You use this
+option to provide the ip address of that node.
+
+.SH AUTHORS
+.TP
+Program written by
+.IP \(bu
+.\}
+Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+.TP
+Man page written by
+.IP \(bu
+.\}
+Simon Désaulniers <sim.desaulniers@gmail.com>
