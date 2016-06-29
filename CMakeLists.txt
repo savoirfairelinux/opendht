@@ -132,6 +132,7 @@ endif ()
 if (OPENDHT_TOOLS)
     add_subdirectory(tools)
 endif ()
+add_subdirectory(doc)
 
 if (OPENDHT_PYTHON)
     add_subdirectory(python)

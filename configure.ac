@@ -17,7 +17,7 @@ dnl Check for Doxygen
 AC_ARG_ENABLE([doc], AS_HELP_STRING([--enable-doc], [Enable documentation generation (doxygen)]))
 AS_IF([test "x$enable_doc" = "xyes"], [
        AC_CHECK_PROGS([DOXYGEN], [doxygen])
-       AS_IF([test -z "$DOXYGEN"], [AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])])       
+       AS_IF([test -z "$DOXYGEN"], [AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])])
 ])
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
@@ -88,7 +88,7 @@ AM_COND_IF([ENABLE_TOOLS], [
   ])
 ])
 
-AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])])
+AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
 
 dnl Configure setup.py if we build the python module
 AM_COND_IF([USE_CYTHON], [
