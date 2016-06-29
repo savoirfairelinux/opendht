@@ -50,7 +50,7 @@ void print_help() {
     std::cout << "OpenDht command line interface (CLI)" << std::endl;
     std::cout << "Possible commands:" << std::endl
               << "  h, help    Print this help message." << std::endl
-              << "  q, quit    Quit the program." << std::endl
+              << "  x, quit    Quit the program." << std::endl
               << "  log        Start/stop printing DHT logs." << std::endl;
 
     std::cout << std::endl << "Node information:" << std::endl
@@ -61,8 +61,9 @@ void print_help() {
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
               << "  b ip:port             Ping potential node at given IP address/port." << std::endl
-              << "  g [key]               Get values at [key]." << std::endl
-              << "  l [key]               Listen for value changes at [key]." << std::endl
+              << "  g [key] [where]       Get values at [key]. [where] is the 'where' part of an SQL-ish string." << std::endl
+              << "  q [key] [query]       Query field values at [key]. [query] is an SQL-ish string." << std::endl
+              << "  l [key] [where]       Listen for value changes at [key]. [where] is the 'where' part of an SQL-ish string." << std::endl
               << "  p [key] [str]         Put string value at [key]." << std::endl
               << "  s [key] [str]         Put string value at [key], signed with our generated private key." << std::endl
               << "  e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with its public key (if found)." << std::endl
@@ -88,7 +89,7 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
         std::string op, idstr, value;
         iss >> op >> idstr;
 
-        if (op == "x" || op == "q" || op == "exit" || op == "quit") {
+        if (op == "x" || op == "exit" || op == "quit") {
             break;
         } else if (op == "h" || op == "help") {
             print_help();
@@ -147,7 +148,7 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
             continue;
 
         dht::InfoHash id {idstr};
-        static const std::set<std::string> VALID_OPS {"g", "l", "p", "s", "e", "a"};
+        static const std::set<std::string> VALID_OPS {"g", "q", "l", "p", "s", "e", "a"};
         if (VALID_OPS.find(op) == VALID_OPS.cend()) {
             std::cout << "Unknown command: " << op << std::endl;
             std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
@@ -161,6 +162,11 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
 
         auto start = std::chrono::high_resolution_clock::now();
         if (op == "g") {
+            std::string rem;
+            std::getline(iss, rem);
+            dht::Where w {std::move(rem)};
+            dht::Query q {{}, w};
+            std::cout << q << std::endl;
             dht.get(id, [start](std::shared_ptr<Value> value) {
                 auto now = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: found value (after " << print_dt(now-start) << "s)" << std::endl;
@@ -169,14 +175,36 @@ void cmd_loop(DhtRunner& dht, dht_params& params)
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
-            });
+            }, {}, std::move(w));
+        }
+        else if (op == "q") {
+            std::string rem;
+            std::getline(iss, rem);
+            dht::Query q {std::move(rem)};
+            std::cout << q << std::endl;
+            dht.query(id, [start](const std::vector<std::shared_ptr<FieldValueIndex>>& field_value_indexes) {
+                auto now = std::chrono::high_resolution_clock::now();
+                for (auto& index : field_value_indexes) {
+                    std::cout << "Query: found field value index (after " << print_dt(now-start) << "s)" << std::endl;
+                    std::cout << "\t" << *index << std::endl;
+                }
+                return true;
+            }, [start](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                std::cout << "Query: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+            }, std::move(q));
         }
         else if (op == "l") {
+            std::string rem;
+            std::getline(iss, rem);
+            dht::Where w {std::move(rem)};
+            dht::Query q {{}, w};
+            std::cout << q << std::endl;
             dht.listen(id, [](std::shared_ptr<Value> value) {
                 std::cout << "Listen: found value:" << std::endl;
                 std::cout << "\t" << *value << std::endl;
                 return true;
-            });
+            }, {}, std::move(w));
         }
         else if (op == "p") {
             std::string v;
