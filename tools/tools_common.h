@@ -153,7 +153,7 @@ static const constexpr struct option long_options[] = {
    {"port",       required_argument, nullptr, 'p'},
    {"bootstrap",  optional_argument, nullptr, 'b'},
    {"identity",   no_argument      , nullptr, 'i'},
-   {"verbose",    no_argument      , nullptr, 'v'},
+   {"verbose",    optional_argument, nullptr, 'v'},
    {"daemonize",  no_argument      , nullptr, 'd'},
    {nullptr,      0,                 nullptr,  0}
 };
