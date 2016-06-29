@@ -10,9 +10,7 @@ if USE_CYTHON
 SUBDIRS += python
 endif
 
-if HAVE_DOXYGEN
 SUBDIRS += doc
-endif
 
 ACLOCAL_AMFLAGS = -I m4
 
