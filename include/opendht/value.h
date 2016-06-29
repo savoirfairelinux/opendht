@@ -35,10 +35,12 @@
 #include <functional>
 #include <memory>
 #include <chrono>
+#include <set>
 
 namespace dht {
 
 struct Value;
+struct Query;
 
 /**
  * A storage policy is applied once to every incoming value storage requests.
@@ -114,6 +116,14 @@ struct ValueType {
  */
 struct Value
 {
+    enum class Field {
+        None = 0,
+        Id,
+        ValueType,
+        OwnerPk,
+        UserType,
+    };
+
     typedef uint64_t Id;
     static const Id INVALID_ID {0};
 
@@ -135,14 +145,18 @@ struct Value
                 return f1(v) and f2(v);
             };
         }
-        static Filter chain(std::initializer_list<Filter> l) {
-            const std::vector<Filter> list(l.begin(), l.end());
-            return [list](const Value& v){
-                for (const auto& f : list)
+        template <typename T>
+        static Filter chainAll(T&& set) {
+            using namespace std::placeholders;
+            return std::bind([](const Value& v, T& s) {
+                for (const auto& f : s)
                     if (f and not f(v))
                         return false;
                 return true;
-            };
+            }, _1, std::move(set));
+        }
+        static Filter chain(std::initializer_list<Filter> l) {
+            return chainAll(std::move(l));
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return AllFilter();
@@ -162,6 +176,11 @@ struct Value
             return v.type == tid;
         };
     }
+    static Filter TypeFilter(const ValueType::Id& tid) {
+        return [tid](const Value& v) {
+            return v.type == tid;
+        };
+    }
 
     static Filter IdFilter(const Id id) {
         return [id](const Value& v) {
@@ -172,6 +191,23 @@ struct Value
     static Filter recipientFilter(const InfoHash& r) {
         return [r](const Value& v) {
             return v.recipient == r;
+        };
+    }
+
+    static Filter ownerFilter(const crypto::PublicKey& pk) {
+        return ownerFilter(pk.getId());
+    }
+
+    static Filter ownerFilter(const InfoHash& pkh) {
+        return [pkh](const Value& v) {
+            return v.owner and v.owner->getId() == pkh;
+        };
+    }
+
+    static Filter userTypeFilter(const std::string& ut)
+    {
+        return [ut](const Value& v) {
+            return v.user_type == ut;
         };
     }
 
@@ -415,6 +451,31 @@ struct Value
         pk.pack(std::string("dat")); msgpack_pack_to_encrypt(pk);
     }
 
+    template <typename Packer>
+    void msgpack_pack_fields(const std::set<Value::Field>& fields, Packer& pk) const
+    {
+        for (const auto& field : fields)
+            switch (field) {
+                case Value::Field::Id:
+                    pk.pack(id);
+                    break;
+                case Value::Field::ValueType:
+                    pk.pack(type);
+                    break;
+                case Value::Field::OwnerPk:
+                    if (owner)
+                        owner->msgpack_pack(pk);
+                    else
+                        InfoHash().msgpack_pack(pk);
+                    break;
+                case Value::Field::UserType:
+                    pk.pack(user_type);
+                    break;
+                default:
+                    break;
+            }
+    }
+
     void msgpack_unpack(msgpack::object o);
     void msgpack_unpack_body(const msgpack::object& o);
     Blob getPacked() const {
@@ -423,6 +484,8 @@ struct Value
         pk.pack(*this);
         return {buffer.data(), buffer.data()+buffer.size()};
     }
+
+    void msgpack_unpack_fields(const std::set<Value::Field>& fields, const msgpack::object& o, unsigned offset);
 
     Id id {INVALID_ID};
 
@@ -466,6 +529,338 @@ struct Value
 };
 
 using ValuesExport = std::pair<InfoHash, Blob>;
+
+/**
+ * @class   FieldValue
+ * @brief   Describes a value filter.
+ * @details
+ * This structure holds the value for a specified field. It's type can either be
+ * uint64_t, InfoHash or Blob.
+ */
+struct FieldValue
+{
+    FieldValue() {}
+    FieldValue(Value::Field f, uint64_t int_value) : field(f), intValue(int_value) {}
+    FieldValue(Value::Field f, InfoHash hash_value) : field(f), hashValue(hash_value) {}
+    FieldValue(Value::Field f, Blob blob_value) : field(f), blobValue(blob_value) {}
+
+    bool operator==(const FieldValue& fd) const;
+
+    // accessors
+    Value::Field getField() const { return field; }
+    uint64_t getInt() const { return intValue; }
+    InfoHash getHash() const { return hashValue; }
+    Blob getBlob() const { return blobValue; }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const {
+        p.pack_map(2);
+        p.pack(std::string("f")); p.pack(static_cast<uint8_t>(field));
+
+        p.pack(std::string("v"));
+        switch (field) {
+            case Value::Field::Id:
+            case Value::Field::ValueType:
+                p.pack(intValue);
+                break;
+            case Value::Field::OwnerPk:
+                p.pack(hashValue);
+                break;
+            case Value::Field::UserType:
+                p.pack_bin(blobValue.size());
+                p.pack_bin_body((const char*)blobValue.data(), blobValue.size());
+                break;
+            default:
+                throw msgpack::type_error();
+        }
+    }
+
+    void msgpack_unpack(msgpack::object msg) {
+        hashValue = {};
+        blobValue.clear();
+
+        if (auto f = findMapValue(msg, "f"))
+            field = (Value::Field)f->as<unsigned>();
+        else
+            throw msgpack::type_error();
+
+        auto v = findMapValue(msg, "v");
+        if (not v)
+            throw msgpack::type_error();
+        else
+            switch (field) {
+                case Value::Field::Id:
+                case Value::Field::ValueType:
+                    intValue = v->as<decltype(intValue)>();
+                    break;
+                case Value::Field::OwnerPk:
+                    hashValue = v->as<decltype(hashValue)>();
+                    break;
+                case Value::Field::UserType:
+                    blobValue = unpackBlob(*v);
+                    break;
+                default:
+                    throw msgpack::type_error();
+            }
+    }
+
+    Value::Filter getLocalFilter() const;
+
+private:
+    Value::Field field {Value::Field::None};
+    // three possible value types
+    uint64_t intValue {};
+    InfoHash hashValue {};
+    Blob blobValue {};
+};
+
+
+/**
+ * @struct  FieldSelectorDescription
+ * @brief   Describes a selection.
+ * @details
+ * This is meant to narrow data to a set of specified fields. This structure is
+ * used to construct a Select structure.
+ */
+struct FieldSelectorDescription
+{
+    FieldSelectorDescription() {}
+    FieldSelectorDescription(Value::Field f) : field(f) {}
+
+    Value::Field getField() const { return field; }
+
+    bool operator==(const FieldSelectorDescription& fd) const { return field == fd.field; }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const { p.pack(static_cast<uint8_t>(field)); }
+    void msgpack_unpack(msgpack::object msg) { field = static_cast<Value::Field>(msg.as<int>()); }
+private:
+    Value::Field field {Value::Field::None};
+};
+
+/**
+ * @class   Select
+ * @brief   Serializable Value field selection.
+ * @details
+ * This is a container for a list of FieldSelectorDescription instances. It
+ * describes a complete SELECT query for dht::Value.
+ */
+struct Select
+{
+    Select() { }
+    Select(const std::string& q_str);
+
+    bool isSatisfiedBy(const Select& os) const;
+
+    /**
+     * Selects a field of type Value::Field.
+     *
+     * @param field  the field to require.
+     *
+     * @return the resulting Select instance.
+     */
+    Select& field(Value::Field field) {
+        fieldSelection_.emplace_back(field);
+        return *this;
+    }
+
+    /**
+     * Computes the set of selected fields based on previous require* calls.
+     *
+     * @return the set of fields.
+     */
+    std::set<Value::Field> getSelection() const {
+        std::set<Value::Field> fields {};
+        for (const auto& f : fieldSelection_) {
+            fields.insert(f.getField());
+        }
+        return fields;
+    }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const { pk.pack(fieldSelection_); }
+    void msgpack_unpack(const msgpack::object& o) {
+        fieldSelection_.clear();
+        fieldSelection_ = o.as<decltype(fieldSelection_)>();
+    }
+
+    friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
+private:
+    std::vector<FieldSelectorDescription> fieldSelection_ {};
+};
+
+/**
+ * @class   Where
+ * @brief   Serializable dht::Value filter.
+ * @details
+ * This is container for a list of FieldValue instances. It describes a
+ * complete WHERE query for dht::Value.
+ */
+struct Where
+{
+    Where() { }
+    Where(const std::string& q_str);
+
+    bool isSatisfiedBy(const Where& where) const;
+
+    /**
+     * Adds restriction on Value::Id based on the id argument.
+     *
+     * @param id  the id.
+     *
+     * @return the resulting Where instance.
+     */
+    Where& id(Value::Id id) {
+        filters_.emplace_back(Value::Field::Id, id);
+        return *this;
+    }
+
+    /**
+     * Adds restriction on Value::ValueType based on the type argument.
+     *
+     * @param type  the value type.
+     *
+     * @return the resulting Where instance.
+     */
+    Where& valueType(ValueType::Id type) {
+        filters_.emplace_back(Value::Field::ValueType, type);
+        return *this;
+    }
+
+    /**
+     * Adds restriction on Value::OwnerPk based on the owner_pk_hash argument.
+     *
+     * @param owner_pk_hash  the owner public key fingerprint.
+     *
+     * @return the resulting Where instance.
+     */
+    Where& owner(InfoHash owner_pk_hash) {
+        filters_.emplace_back(Value::Field::OwnerPk, owner_pk_hash);
+        return *this;
+    }
+
+    /**
+     * Adds restriction on Value::UserType based on the user_type argument.
+     *
+     * @param user_type  the user type.
+     *
+     * @return the resulting Where instance.
+     */
+    Where& userType(std::string user_type) {
+        filters_.emplace_back(Value::Field::UserType, Blob {user_type.begin(), user_type.end()});
+        return *this;
+    }
+
+    /**
+     * Computes the Value::Filter based on the list of field value set.
+     *
+     * @return the resulting Value::Filter.
+     */
+    Value::Filter getFilter() const {
+        std::vector<Value::Filter> fset(filters_.size());
+        std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FieldValue& f) {
+            return f.getLocalFilter();
+        });
+        return Value::Filter::chainAll(std::move(fset));
+    }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const { pk.pack(filters_); }
+    void msgpack_unpack(const msgpack::object& o) {
+        filters_.clear();
+        filters_ = o.as<decltype(filters_)>();
+    }
+
+    friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
+
+private:
+    std::vector<FieldValue> filters_;
+};
+
+/**
+ * @class   Query
+ * @brief   Describes a query destined to another peer.
+ * @details
+ * This class describes the list of filters on field values and the field
+ * itselves to include in the peer response to a GET operation. See
+ * FieldValue.
+ */
+struct Query
+{
+    static const std::string QUERY_PARSE_ERROR;
+
+    Query(Select s = {}, Where w = {}) : select(s), where(w) { };
+
+    /**
+     * Initializes a query based on a SQL-ish formatted string. The abstract
+     * form of such a string is the following:
+     *
+     *  [SELECT <$field$> [WHERE <$field$=$value$>]]
+     *
+     *  where
+     *
+     *  - $field$ = *|id|value_type|owner_pk|user_type
+     *  - $value$ = $string$|$integer$
+     *  - $string$: a simple string WITHOUT SPACES.
+     *  - $integer$: a simple integer.
+     */
+    Query(std::string q_str) {
+        auto pos_W = q_str.find("WHERE");
+        auto pos_w = q_str.find("where");
+        auto pos = std::min(pos_W != std::string::npos ? pos_W : q_str.size(),
+                            pos_w != std::string::npos ? pos_w : q_str.size());
+        select = q_str.substr(0, pos);
+        where = q_str.substr(pos, q_str.size()-pos);
+    }
+
+    /**
+     * Tell if the query is satisfied by another query.
+     */
+    bool isSatisfiedBy(const Query& q) const;
+
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const {
+        pk.pack_map(2);
+        pk.pack(std::string("s")); pk.pack(select); /* packing field selectors */
+        pk.pack(std::string("w")); pk.pack(where);  /* packing filters */
+    }
+
+    void msgpack_unpack(const msgpack::object& o);
+
+    friend std::ostream& operator<<(std::ostream& s, const dht::Query& q) {
+        s << "Query[" << q.select << " " << q.where << "]";
+    }
+
+    Select select {};
+    Where where {};
+};
+
+/*!
+ * @class   FieldValueIndex
+ * @brief   An index for field values.
+ * @details
+ * This structures is meant to manipulate a subset of fields normally contained
+ * in Value.
+ */
+struct FieldValueIndex {
+    FieldValueIndex() {}
+    FieldValueIndex(const Value& v, Select s = {});
+    /**
+     * Tells if all the fields of this are contained in the other
+     * FieldValueIndex with the same value.
+     *
+     * @param other  The other FieldValueIndex instance.
+     */
+    bool containedIn(const FieldValueIndex& other) const;
+
+    friend std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi);
+
+    void msgpack_unpack_fields(const std::set<Value::Field>& fields,
+            const msgpack::object& o,
+            unsigned offset);
+
+    std::map<Value::Field, FieldValue> index {};
+};
 
 template <typename T,
           typename std::enable_if<std::is_base_of<Value::SerializableBase, T>::value, T>::type* = nullptr>

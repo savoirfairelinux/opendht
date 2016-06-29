@@ -957,20 +957,6 @@ NetworkEngine::sendError(const sockaddr* sa,
     send(buffer.data(), buffer.size(), 0, sa, salen);
 }
 
-msgpack::object*
-findMapValue(msgpack::object& map, const std::string& key) {
-    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
-    for (unsigned i = 0; i < map.via.map.size; i++) {
-        auto& o = map.via.map.ptr[i];
-        if(o.key.type != msgpack::type::STR)
-            continue;
-        if (o.key.as<std::string>() == key) {
-            return &o.val;
-        }
-    }
-    return nullptr;
-}
-
 void
 ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
