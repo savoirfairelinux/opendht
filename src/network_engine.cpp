@@ -21,6 +21,7 @@
 
 #include "network_engine.h"
 #include "request.h"
+#include "default_types.h"
 
 #include <msgpack.hpp>
 
@@ -63,36 +64,40 @@ enum class MessageType {
 
 struct ParsedMessage {
     MessageType type;
-    InfoHash id;                                /* the id of the sender */
-    NetId network {0};                          /* network id */
-    InfoHash info_hash;                         /* hash for which values are requested */
-    InfoHash target;                            /* target id around which to find nodes */
-    NetworkEngine::TransId tid;                                /* transaction id */
-    Blob token;                                 /* security token */
-    Value::Id value_id;                         /* the value id */
-    time_point created { time_point::max() };   /* time when value was first created */
-    Blob nodes4_raw, nodes6_raw;                /* IPv4 nodes in response to a 'find' request */
+    InfoHash id;                                              /* the id of the sender */
+    NetId network {0};                                 /* network id */
+    InfoHash info_hash;                                       /* hash for which values are requested */
+    InfoHash target;                                          /* target id around which to find nodes */
+    NetworkEngine::TransId tid;                               /* transaction id */
+    Blob token;                                               /* security token */
+    Value::Id value_id;                                       /* the value id */
+    time_point created { time_point::max() };                 /* time when value was first created */
+    Blob nodes4_raw, nodes6_raw;                              /* IPv4 nodes in response to a 'find' request */
     std::vector<std::shared_ptr<Node>> nodes4, nodes6;
-    std::vector<std::shared_ptr<Value>> values; /* values for a 'get' request */
-    want_t want;                                /* states if ipv4 or ipv6 request */
-    uint16_t error_code;                        /* error code in case of error */
+    std::vector<std::shared_ptr<Value>> values;               /* values for a 'get' request */
+    std::vector<std::shared_ptr<FieldValueIndex>> fields; /* index for fields values */
+    Query query;                                              /* query describing a filter to apply on values. */
+    want_t want;                                              /* states if ipv4 or ipv6 request */
+    uint16_t error_code;                                      /* error code in case of error */
     std::string ua;
-    Address addr;                               /* reported address by the distant node */
+    Address addr;                                             /* reported address by the distant node */
     void msgpack_unpack(msgpack::object o);
 };
 
 NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
- : ntoken(std::move(msg.token)), values(std::move(msg.values)), nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
+ : ntoken(std::move(msg.token)), values(std::move(msg.values)), fields(std::move(msg.fields)),
+    nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 
 void
-NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, InfoHash hash, want_t want,
-        Blob ntoken, std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
-        std::vector<std::shared_ptr<Value>> values)
+NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, const InfoHash& hash, want_t want,
+        const Blob& ntoken, std::vector<std::shared_ptr<Node>>&& nodes,
+        std::vector<std::shared_ptr<Node>>&& nodes6, std::vector<std::shared_ptr<Value>>&& values,
+        const Query& query)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         sendNodesValues((const sockaddr*)&node->ss, node->sslen, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
-                values, ntoken);
+                values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.ERR("Can't send value: buffer not large enough !");
     }
@@ -380,7 +385,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 requests.erase(reqp);
             req->reply_time = scheduler.time();
 
-            deserializeNodesValues(msg);
+            deserializeNodes(msg);
             req->setDone(std::move(msg));
             break;
         default:
@@ -404,16 +409,16 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg.target, msg.want);
                 auto nnodes = bufferNodes(from->sa_family, msg.target, msg.want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, answer.ntoken);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
                 break;
             }
             case MessageType::GetValues: {
                 DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.get;
-                RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want);
+                RequestAnswer answer = onGetValues(node, msg.info_hash, msg.want, msg.query);
                 auto nnodes = bufferNodes(from->sa_family, msg.info_hash, msg.want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, answer.ntoken);
+                sendNodesValues(from, fromlen, msg.tid, nnodes.first, nnodes.second, answer.values, msg.query, answer.ntoken);
                 break;
             }
             case MessageType::AnnounceValue: {
@@ -435,7 +440,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
                 DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
                         msg.id.toString().c_str(), print_addr(from, fromlen).c_str(), msg.info_hash.toString().c_str());
                 ++in_stats.listen;
-                RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid.getTid());
+                RequestAnswer answer = onListen(node, msg.info_hash, msg.token, msg.tid.getTid(), std::move(msg.query));
                 sendListenConfirmation(from, fromlen, msg.tid);
                 break;
             }
@@ -594,16 +599,19 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
 
 std::shared_ptr<Request>
-NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, want_t want,
+NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a"));  pk.pack_map(2 + (want>0?1:0));
+    pk.pack(std::string("a"));  pk.pack_map(2 +
+                                (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0) +
+                                (want>0?1:0));
       pk.pack(std::string("id")); pk.pack(myid);
       pk.pack(std::string("h"));  pk.pack(info_hash);
+      pk.pack(std::string("q")); pk.pack(query);
     if (want > 0) {
       pk.pack(std::string("w"));
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
@@ -639,7 +647,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
 }
 
 void
-NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
+NetworkEngine::deserializeNodes(ParsedMessage& msg) {
     if (msg.nodes4_raw.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6_raw.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     } else {
@@ -680,7 +688,7 @@ NetworkEngine::deserializeNodesValues(ParsedMessage& msg) {
 
 void
 NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid, const Blob& nodes, const Blob& nodes6,
-        const std::vector<std::shared_ptr<Value>>& st, const Blob& token) {
+        const std::vector<std::shared_ptr<Value>>& st, const Query& query, const Blob& token) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
@@ -702,33 +710,49 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
     if (not token.empty()) {
         pk.pack(std::string("token")); packToken(pk, token);
     }
-    if (not st.empty()) {
-        // We treat the storage as a circular list, and serve a randomly
-        // chosen slice.  In order to make sure we fit,
-        // we limit ourselves to 50 values.
-        std::uniform_int_distribution<> pos_dis(0, st.size()-1);
-        std::vector<Blob> subset {};
-        subset.reserve(std::min<size_t>(st.size(), 50));
-
+    if (not st.empty()) { /* pack complete values */
+        auto fields = query.select.getSelection();
         size_t total_size = 0;
-        unsigned j0 = pos_dis(rd_device);
-        unsigned j = j0;
-        unsigned k = 0;
+        if (fields.empty()) {
+            // We treat the storage as a circular list, and serve a randomly
+            // chosen slice.  In order to make sure we fit,
+            // we limit ourselves to 50 values.
+            std::uniform_int_distribution<> pos_dis(0, st.size()-1);
+            std::vector<Blob> subset {};
+            subset.reserve(std::min<size_t>(st.size(), 50));
 
-        do {
-            subset.emplace_back(packMsg(st[j]));
-            total_size += subset.back().size();
-            ++k;
-            j = (j + 1) % st.size();
-        } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
+            unsigned j0 = pos_dis(rd_device);
+            unsigned j = j0;
+            unsigned k = 0;
 
-        pk.pack(std::string("values"));
-        pk.pack_array(subset.size());
-        for (const auto& b : subset)
-            buffer.write((const char*)b.data(), b.size());
-        DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %lu bytes of values", nodes.size(), nodes6.size(), total_size);
+            do {
+                subset.emplace_back(packMsg(st[j]));
+                total_size += subset.back().size();
+                ++k;
+                j = (j + 1) % st.size();
+            } while (j != j0 && k < 50 && total_size < MAX_VALUE_SIZE);
+
+            pk.pack(std::string("values"));
+            pk.pack_array(subset.size());
+            for (const auto& b : subset)
+                buffer.write((const char*)b.data(), b.size());
+            DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %lu bytes of values",
+                    nodes.size(), nodes6.size(), total_size);
+        } else { /* pack fields */
+            pk.pack(std::string("fields"));
+            pk.pack_map(2);
+            pk.pack(std::string("f")); pk.pack(fields);
+            pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
+            for (const auto& v : st) {
+                v->msgpack_pack_fields(fields, pk);
+            }
+            DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
+                    nodes.size(), nodes6.size(), st.size(), fields.size());
+        }
     } else
         DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
+
+    DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
@@ -794,16 +818,18 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 std::shared_ptr<Request>
-NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Blob& token,
+NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Query& query, const Blob& token,
         RequestCb on_done, RequestExpiredCb on_expired) {
     auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(3);
+    pk.pack(std::string("a")); pk.pack_map(3 +
+                               (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0));
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(infohash);
+      pk.pack(std::string("q")); pk.pack(query);
       pk.pack(std::string("token")); packToken(pk, token);
 
     pk.pack(std::string("q")); pk.pack(std::string("listen"));
@@ -961,17 +987,36 @@ void
 ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
     auto y = findMapValue(msg, "y");
-    auto a = findMapValue(msg, "a");
     auto r = findMapValue(msg, "r");
     auto e = findMapValue(msg, "e");
 
-    std::string query;
-    if (auto q = findMapValue(msg, "q")) {
-        if (q->type != msgpack::type::STR)
+    std::string q;
+    if (auto rq = findMapValue(msg, "q")) {
+        if (rq->type != msgpack::type::STR)
             throw msgpack::type_error();
-        query = q->as<std::string>();
+        q = rq->as<std::string>();
     }
 
+    if (e)
+        type = MessageType::Error;
+    else if (r)
+        type = MessageType::Reply;
+    else if (y and y->as<std::string>() != "q")
+        throw msgpack::type_error();
+    else if (q == "ping")
+        type = MessageType::Ping;
+    else if (q == "find")
+        type = MessageType::FindNode;
+    else if (q == "get")
+        type = MessageType::GetValues;
+    else if (q == "listen")
+        type = MessageType::Listen;
+    else if (q == "put")
+        type = MessageType::AnnounceValue;
+    else
+        throw msgpack::type_error();
+
+    auto a = findMapValue(msg, "a");
     if (!a && !r && !e)
         throw msgpack::type_error();
     auto& req = a ? *a : (r ? *r : *e);
@@ -993,6 +1038,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
 
     if (auto rtarget = findMapValue(req, "target"))
         target = {*rtarget};
+
+    if (auto rquery = findMapValue(req, "q"))
+        query.msgpack_unpack(*rquery);
 
     if (auto otoken = findMapValue(req, "token"))
         token = unpackBlob(*otoken);
@@ -1040,6 +1088,23 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
             } catch (const std::exception& e) {
                 //DHT_LOG.WARN("Error reading value: %s", e.what());
             }
+    } else if (auto raw_fields = findMapValue(req, "fields")) {
+        if (auto rfields = findMapValue(*raw_fields, "f")) {
+            auto fields_ = rfields->as<std::set<Value::Field>>();
+            if (auto rvalues = findMapValue(*raw_fields, "v")) {
+                if (rvalues->type != msgpack::type::ARRAY)
+                    throw msgpack::type_error();
+                for (size_t i = 0; i < rvalues->via.array.size; ++i) {
+                    try {
+                        auto v = std::make_shared<FieldValueIndex>();
+                        v->msgpack_unpack_fields(fields_, *rvalues, i*fields.size());
+                        fields.emplace_back(std::move(v));
+                    } catch (const std::exception& e) { }
+                }
+            }
+        } else {
+            throw msgpack::type_error();
+        }
     }
 
     if (auto w = findMapValue(req, "w")) {
@@ -1066,24 +1131,6 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
     if (auto rv = findMapValue(msg, "v"))
         ua = rv->as<std::string>();
 
-    if (e)
-        type = MessageType::Error;
-    else if (r)
-        type = MessageType::Reply;
-    else if (y and y->as<std::string>() != "q")
-        throw msgpack::type_error();
-    else if (query == "ping")
-        type = MessageType::Ping;
-    else if (query == "find")
-        type = MessageType::FindNode;
-    else if (query == "get")
-        type = MessageType::GetValues;
-    else if (query == "listen")
-        type = MessageType::Listen;
-    else if (query == "put")
-        type = MessageType::AnnounceValue;
-    else
-        throw msgpack::type_error();
 }
 
 }

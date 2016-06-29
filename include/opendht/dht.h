@@ -133,18 +133,32 @@ public:
      * @param cb a function called when new values are found on the network.
      *           It should return false to stop the operation.
      * @param donecb a function called when the operation is complete.
-                        cb and donecb won't be called again afterward.
+                     cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={});
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}) {
-        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {});
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) {
+        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}) {
-        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) {
+        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}) {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f));
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) {
+        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
+    }
+    /**
+     * Similar to Dht::get, but sends a Query to filter data remotely.
+     * @param key the key for which to query data for.
+     * @param cb a function called when new values are found on the network.
+     *           It should return false to stop the operation.
+     * @param donecb a function called when the operation is complete.
+                     cb and donecb won't be called again afterward.
+     * @param q a query used to filter values on the remotes before they send a
+     *          response.
+     */
+    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallback done_cb = {}, Query&& q = {});
+    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) {
+        query(key, cb, bindDoneCb(done_cb), std::forward<Query>(q));
     }
 
     /**
@@ -158,14 +172,10 @@ public:
     std::shared_ptr<Value> getLocalById(const InfoHash& key, Value::Id vid) const;
 
     /**
-     * Announce a value on all available protocols (IPv4, IPv6), and
-     * automatically re-announce when it's about to expire.
+     * Announce a value on all available protocols (IPv4, IPv6).
+     *
      * The operation will start as soon as the node is connected to the network.
      * The done callback will be called once, when the first announce succeeds, or fails.
-     *
-     * A "put" operation will never end by itself because the value will need to be
-     * reannounced on a regular basis.
-     * User can call #cancelPut(InfoHash, Value::Id) to cancel a put operation.
      */
     void put(const InfoHash& key,
             std::shared_ptr<Value>,
@@ -221,9 +231,9 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={});
-    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}) {
-        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f));
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={}, Where&& w = {});
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
+        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
     virtual bool cancelListen(const InfoHash&, size_t token);
@@ -317,6 +327,8 @@ private:
     struct Get {
         time_point start;
         Value::Filter filter;
+        std::shared_ptr<Query> query;
+        QueryCallback query_cb;
         GetCallback get_cb;
         DoneCallback done_cb;
     };
@@ -335,6 +347,7 @@ private:
      * A single "listen" operation data
      */
     struct LocalListener {
+        std::shared_ptr<Query> query;
         Value::Filter filter;
         GetCallback get_cb;
     };
@@ -359,8 +372,9 @@ private:
     struct Listener {
         size_t rid {};
         time_point time {};
+        Query query {};
 
-        /*constexpr*/ Listener(size_t rid, time_point t) : rid(rid), time(t) {}
+        /*constexpr*/ Listener(size_t rid, time_point t, Query&& q) : rid(rid), time(t), query(q) {}
 
         void refresh(size_t tid, time_point t) {
             rid = tid;
@@ -427,7 +441,7 @@ private:
     decltype(Dht::store)::iterator findStorage(const InfoHash& id);
     decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const;
 
-    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid);
+    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(Storage& st, ValueStorage&);
@@ -472,13 +486,13 @@ private:
     // Searches
 
     /**
-     * Low-level method that will perform a search on the DHT for the
-     * specified infohash (id), using the specified IP version (IPv4 or IPv6).
-     * The values can be filtered by an arbitrary provided filter.
+     * Low-level method that will perform a search on the DHT for the specified
+     * infohash (id), using the specified IP version (IPv4 or IPv6).
      */
-    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = nullptr, DoneCallback = nullptr, Value::Filter = Value::AllFilter());
+    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, QueryCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
+
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
-    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter());
+    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), const std::shared_ptr<Query>& q = {});
 
     void bootstrapSearch(Search& sr);
     Search *findSearch(unsigned short tid, sa_family_t af);
@@ -508,11 +522,14 @@ private:
     NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
     void onFindNodeDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
-    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want);
-    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t want, const Query& q);
+    void onGetValuesDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr,
+            const std::shared_ptr<Query>& orig_query);
     /* when we receive a listen request */
-    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid);
-    void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid,
+            Query&& query);
+    void onListenDone(const Request& status, NetworkEngine::RequestAnswer& a,
+            std::shared_ptr<Search>& sr, const std::shared_ptr<Query>& orig_query);
     /* when we receive an announce request */
     NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> v, time_point created);
