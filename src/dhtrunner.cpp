@@ -444,6 +444,7 @@ DhtRunner::get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb, 
     get(InfoHash::get(key), vcb, dcb, f);
 }
 
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
 std::future<size_t>
 DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f)
 {
@@ -455,8 +456,39 @@ DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f)
     cv.notify_all();
     return ret_token->get_future();
 }
+#else
+size_t
+DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f)
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    std::mutex lmtx;
+    std::condition_variable ldone;
+    bool ready;
+    size_t ret_token;
+    pending_ops.emplace([&](SecureDht& dht) mutable {
+        ret_token = dht.listen(hash, vcb, std::move(f));
+        {
+            std::unique_lock<std::mutex> llck(lmtx);
+            cv.wait(llck, [&]{ return ready; });
+            cv.notify_one();
+        }
+    });
+    cv.notify_all();
 
+    {
+        std::unique_lock<std::mutex> llck(lmtx);
+        ready = true;
+        cv.wait(llck);
+    }
+    return ret_token;
+}
+#endif
+
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
 std::future<size_t>
+#else
+size_t
+#endif
 DhtRunner::listen(const std::string& key, GetCallback vcb, Value::Filter f)
 {
     return listen(InfoHash::get(key), vcb, f);
@@ -472,6 +504,7 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
     cv.notify_all();
 }
 
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
 void
 DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
 {
@@ -482,6 +515,7 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
     });
     cv.notify_all();
 }
+#endif
 
 void
 DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb, bool permanent)

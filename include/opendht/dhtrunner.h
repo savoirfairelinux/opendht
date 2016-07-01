@@ -96,6 +96,7 @@ public:
         getFilterSet<T>());
     }
 
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
     std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter()) {
         auto p = std::make_shared<std::promise<std::vector<std::shared_ptr< dht::Value >>>>();
         auto values = std::make_shared<std::vector<std::shared_ptr< dht::Value >>>();
@@ -124,12 +125,29 @@ public:
 
     std::future<size_t> listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter());
     std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter());
-    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
+
+    void cancelListen(InfoHash h, std::shared_future<size_t> token);
+#else
+    size_t listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter());
+    size_t listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter());
+#endif
+
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
+    std::future<size_t>
+#else
+    size_t
+#endif
+        listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter()) {
         return listen(key, bindGetCb(cb), f);
     }
 
     template <class T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
+    std::future<size_t>
+#else
+    size_t
+#endif
+    listen(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
@@ -137,7 +155,12 @@ public:
         getFilterSet<T>());
     }
     template <typename T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter())
+#if defined(_GLIBCXX_HAS_GTHREADS) && defined(_GLIBCXX_USE_C99_STDINT_TR1) && (ATOMIC_INT_LOCK_FREE > 1)
+    std::future<size_t>
+#else
+    size_t
+#endif
+    listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter())
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
@@ -154,7 +177,6 @@ public:
     }
 
     void cancelListen(InfoHash h, size_t token);
-    void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
     void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
     void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
