@@ -70,6 +70,7 @@ static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 
 using ValuesExport = std::pair<InfoHash, Blob>;
 
+using QueryCallback = std::function<bool(const std::vector<std::shared_ptr<FieldValueIndex>>& fields)>;
 using GetCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>;
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;

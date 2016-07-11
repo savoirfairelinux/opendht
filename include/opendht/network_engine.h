@@ -153,6 +153,7 @@ public:
         Blob ntoken {};
         Value::Id vid {};
         std::vector<std::shared_ptr<Value>> values {};
+        std::vector<std::shared_ptr<FieldValueIndex>> fields {};
         std::vector<std::shared_ptr<Node>> nodes4 {};
         std::vector<std::shared_ptr<Node>> nodes6 {};
         RequestAnswer() {}
@@ -223,7 +224,8 @@ private:
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
             InfoHash&,
-            want_t)> onGetValues {};
+            want_t,
+            Query)> onGetValues {};
     /**
      * @brief on listen request callback.
      *
@@ -235,7 +237,8 @@ private:
     std::function<RequestAnswer(std::shared_ptr<Node>,
             InfoHash&,
             Blob&,
-            uint16_t)> onListen {};
+            uint16_t,
+            Query)> onListen {};
     /**
      * @brief on announce request callback.
      *
@@ -290,9 +293,9 @@ public:
      * @param nodes6  The ipv6 closest nodes.
      * @param values  The values to send.
      */
-    void tellListener(std::shared_ptr<Node> n, uint16_t rid, InfoHash hash, want_t want, Blob ntoken,
-            std::vector<std::shared_ptr<Node>> nodes, std::vector<std::shared_ptr<Node>> nodes6,
-            std::vector<std::shared_ptr<Value>> values);
+    void tellListener(std::shared_ptr<Node> n, uint16_t rid, const InfoHash& hash, want_t want, const Blob& ntoken,
+            std::vector<std::shared_ptr<Node>>&& nodes, std::vector<std::shared_ptr<Node>>&& nodes6,
+            std::vector<std::shared_ptr<Value>>&& values, const Query& q);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
@@ -314,13 +317,15 @@ public:
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendGetValues(std::shared_ptr<Node> n,
-                const InfoHash& target,
+                const InfoHash& info_hash,
+                const Query& query,
                 want_t want,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
     std::shared_ptr<Request>
         sendListen(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
+                const Query& query,
                 const Blob& token,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
@@ -432,6 +437,7 @@ private:
             const Blob& nodes,
             const Blob& nodes6,
             const std::vector<std::shared_ptr<Value>>& st,
+            const Query& query,
             const Blob& token);
     Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::shared_ptr<Node>>& nodes);
 
@@ -452,7 +458,7 @@ private:
             const std::string& message,
             bool include_id=false);
 
-    void deserializeNodesValues(ParsedMessage& msg);
+    void deserializeNodes(ParsedMessage& msg);
 
     std::queue<time_point> rate_limit_time {};
     static std::mt19937 rd_device;
