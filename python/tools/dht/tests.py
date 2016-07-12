@@ -10,6 +10,7 @@ import string
 import time
 import subprocess
 import re
+import collections
 
 from matplotlib.ticker import FuncFormatter
 import math
@@ -276,17 +277,18 @@ class PhtTest(FeatureTest):
         """
         bootstrap = self._bootstrap
         bootstrap.resize(2)
-
         dht = bootstrap.get(1)
-        pht = Pht(b'foo_index', dht)
+
+        NUM_DIG  = max(math.log(self._num_keys, 2)/4, 5) # at least 5 digit keys.
+        keyspec = collections.OrderedDict([('foo', NUM_DIG)])
+        pht = Pht(b'foo_index', keyspec, dht)
 
         DhtNetwork.log('PHT has',
                        pht.MAX_NODE_ENTRY_COUNT,
                        'node'+ ('s' if pht.MAX_NODE_ENTRY_COUNT > 1 else ''),
                        'per leaf bucket.')
-        NUM_DIG  = max(math.log(self._num_keys, 2)/4, 5) # at least 5 digit keys.
         keys = [{
-            'foo' :
+            [_ for _ in keyspec.keys()][0] :
             ''.join(random.SystemRandom().choice(string.hexdigits)
                 for _ in range(NUM_DIG)).encode()
             } for n in range(self._num_keys)]
