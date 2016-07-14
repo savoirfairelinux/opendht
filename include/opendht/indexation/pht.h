@@ -261,10 +261,8 @@ private:
         Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
 
         auto bit_loc = p.size_ + 1;
-        for ( auto i = p.content_.size(); i <= keySpec_.begin()->second; i++ ) {
+        for ( auto i = p.content_.size(); i <= keySpec_.begin()->second; i++ )
             p.content_.push_back(0);
-            p.size_ += 8;
-        }
 
         return p.swapBit(bit_loc);
     };
