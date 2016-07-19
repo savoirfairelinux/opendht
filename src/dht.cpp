@@ -1681,8 +1681,8 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
         return newvals;
     };
     std::vector<std::shared_ptr<FieldValueIndex>> local_fields(values.size());
-    std::transform(values.begin(), values.end(), local_fields.begin(), [](const std::shared_ptr<Value>& v) {
-        return std::make_shared<FieldValueIndex>(*v);
+    std::transform(values.begin(), values.end(), local_fields.begin(), [&q](const std::shared_ptr<Value>& v) {
+        return std::make_shared<FieldValueIndex>(*v, q.select);
     });
     auto qcb = std::bind(callbackWrapper<FieldValueIndex, QueryCallback>, cb, done_cb, _1, add_fields, op);
 
