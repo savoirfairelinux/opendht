@@ -45,7 +45,7 @@ interactive shell:
 Prints some help.
 
 .TP
-\fB-v\fP\fIlogfile\fP
+\fB-v\fP[\fIlogfile\fP]
 Enable the verbose mode. Optionally provide a log file.
 
 .TP
@@ -66,9 +66,11 @@ the merge of two different networks (available since OpenDHT v0.6.1).
 Use port \fIlocal_port\fP for the program to bind to.
 
 .TP
-\fB-b\fP\fIbootstrap_host\fP[:\fIport\fP]
+\fB-b\fP[\fIbootstrap_host\fP[:\fIport\fP]]
 The program needs to be given a node to connect to the network. You use this
-option to provide the ip address of that node.
+option to provide the ip address of that node. If no argument is provided, the
+node runs in \fBbootstrap mode\fP, i.e. it will especially serve as entry point
+in the network.
 
 .SH AUTHORS
 .TP
