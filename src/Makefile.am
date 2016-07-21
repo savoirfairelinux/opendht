@@ -3,7 +3,8 @@ SUBDIRS = argon2
 lib_LTLIBRARIES = libopendht.la
 
 AM_CPPFLAGS = -I../include/opendht
-libopendht_la_LDFLAGS = @LDFLAGS@ @GnuTLS_LIBS@ @Nettle_LIBS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
+libopendht_la_CXXFLAGS = @CXXFLAGS@
+libopendht_la_LDFLAGS = @LDFLAGS@ @GNUTLS_LIBS@ @nettle_LIBS@ -version-info 6:0:2
 libopendht_la_LIBADD = ./argon2/libargon2.la
 
 libopendht_la_SOURCES = \

@@ -10,8 +10,12 @@ void Pht::Cache::insert(const Prefix& p) {
 
     std::shared_ptr<Node> curr_node;
 
-    while ((leaves_.size() > 0 and leaves_.begin()->first + NODE_EXPIRE_TIME < now) or leaves_.size() > MAX_ELEMENT)
+    while ((leaves_.size() > 0
+        and leaves_.begin()->first + NODE_EXPIRE_TIME < now)
+        or  leaves_.size() > MAX_ELEMENT) {
+
         leaves_.erase(leaves_.begin());
+    }
 
     if (not (curr_node = root_.lock()) ) {
         /* Root does not exist, need to create one*/
@@ -25,7 +29,8 @@ void Pht::Cache::insert(const Prefix& p) {
     for ( i = 0; i < p.size_; i++ ) {
 
         /* According to the bit define which node is the next one */
-        auto& next = ( p.isActiveBit(i) ) ? curr_node->right_child : curr_node->left_child;
+        auto& next = ( p.isContentBitActive(i) ) ? curr_node->right_child : curr_node->left_child;
+
         /**
          * If lock, node exists
          * else create it
@@ -52,7 +57,9 @@ int Pht::Cache::lookup(const Prefix& p) {
     auto now = clock::now(), last_node_time = now;
 
     /* Before lookup remove the useless one [i.e. too old] */
-    while ( leaves_.size() > 0 and  leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
+    while ( leaves_.size() > 0 
+        and leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
+
         leaves_.erase(leaves_.begin());
     }
 
@@ -69,7 +76,7 @@ int Pht::Cache::lookup(const Prefix& p) {
         curr_node->last_reply = now;
 
         /* Get the Prefix bit by bit, starting from left */
-        next = ( p.isActiveBit(pos) ) ? curr_node->right_child : curr_node->left_child;
+        next = ( p.isContentBitActive(pos) ) ? curr_node->right_child : curr_node->left_child;
     }
 
     if ( pos >= 0 ) {
@@ -110,7 +117,6 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         }
         else if (is_leaf or *lo > *hi) {
             // leaf node
-            Prefix to_insert = p.getPrefix(mid);
 
             if (cb) {
                 if (vals->size() == 0 and max_common_prefix_len and mid > 0) {
@@ -120,7 +126,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                     lookupStep(p_, lo, hi, vals, cb, done_cb, max_common_prefix_len, -1, all_values);
                 }
 
-                cb(*vals, to_insert);
+                cb(*vals, p.getPrefix(mid));
             }
 
             if (done_cb)
@@ -151,6 +157,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
 
                 if (max_common_prefix_len) { /* inexact match case */
                     auto common_bits = Prefix::commonBits(p, entry.prefix);
+
                     if (vals->empty()) {
                         vals->emplace_back(std::make_shared<IndexEntry>(entry));
                         *max_common_prefix_len = common_bits;
@@ -167,6 +174,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                 } else if (all_values or entry.prefix == p.content_) /* exact match case */
                     vals->emplace_back(std::make_shared<IndexEntry>(entry));
             }
+
             return true;
         };
 
@@ -278,7 +286,7 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
                     updateCanary(*p);
                     checkPhtUpdate(*p, entry, time_p);
                     cache_.insert(*p);
-                    dht_->put(p->hash(), std::move(entry), done_cb, time_p);
+                    dht_->put(p->hash(), std::move(entry), done_cb /*, time_p */);
                 };
 
                 if ( not check_split or final_prefix->size_ == kp.size_ ) {
@@ -294,19 +302,49 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
     );
 }
 
-Prefix Pht::linearize(Key k) const {
+Prefix linearize(Key k) const {
     if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
+    std::vector<Prefix> all_prefix;
+    auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
+        [](const std::pair<string, size_t>& a, const std::pair<string, size_t>& b) {
+            return a.second < b.second;
+        });
 
-    Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
+    for ( auto i = 0; i < k.size; i++ ) {
+        Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
+        p.addPaddingContent(max);
+        p.updateFlags();
 
-    auto bit_loc = p.size_ + 1;
-    for ( auto i = p.content_.size(); i < keySpec_.begin()->second + 1; i++ )
-        p.content_.push_back(0);
+        all_prefix.push_back(p);
+    }
 
-    return p.swapBit(bit_loc);
+    return zcurve(all_prefix);
+/*
+        virtual Prefix linearize(Key k) const {
+        if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
+
+        std::vector<Prefix> all_prefix;
+        auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
+            [&](const std::pair<std::string, size_t>& a, const std::pair<std::string, size_t>& b) {
+                return a.second < b.second;
+            })->second + 1;
+
+        for ( auto const& it : k ) {
+            Prefix p = Blob {it.second.begin(), it.second.end()};
+            p.addPaddingContent(max);
+            p.updateFlags();
+            all_prefix.push_back(p);
+
+        auto bit_loc = p.size_ + 1;
+        for ( auto i = p.content_.size(); i < keySpec_.begin()->second + 1; i++ )
+            p.content_.push_back(0);
+
+        return zcurve(all_prefix);
+    };*/
 };
 
 void Pht::getRealPrefix(std::shared_ptr<Prefix> p, IndexEntry entry, RealInsertCallback end_cb ) {
+
     if ( p->size_ == 0 ) {
         end_cb(p, std::move(entry));
         return;
