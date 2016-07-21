@@ -4,7 +4,7 @@ lib_LTLIBRARIES = libopendht.la
 
 AM_CPPFLAGS = -I../include/opendht
 libopendht_la_CXXFLAGS = @CXXFLAGS@
-libopendht_la_LDFLAGS = @LDFLAGS@ @GNUTLS_LIBS@ @nettle_LIBS@
+libopendht_la_LDFLAGS = @LDFLAGS@ @GNUTLS_LIBS@ @nettle_LIBS@ -version-info 6:0:2
 libopendht_la_LIBADD = ./argon2/libargon2.la
 
 libopendht_la_SOURCES = \
@@ -32,7 +32,7 @@ nobase_include_HEADERS = \
         ../include/opendht/dht.h \
         ../include/opendht/callbacks.h \
         ../include/opendht/node_cache.h \
-        ../include/opendht/routing_table.h \        
+        ../include/opendht/routing_table.h \
         ../include/opendht/network_engine.h \
         ../include/opendht/scheduler.h \
         ../include/opendht/utils.h \
