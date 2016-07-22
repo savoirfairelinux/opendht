@@ -388,7 +388,7 @@ private:
     RoutingTable buckets {};
     RoutingTable buckets6 {};
 
-    std::vector<Storage> store;
+    std::vector<std::unique_ptr<Storage>> store;
     size_t total_values {0};
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
