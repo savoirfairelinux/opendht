@@ -444,7 +444,7 @@ Dht::shutdown(ShutdownCallback cb) {
     };
 
     for (const auto& str : store) {
-        *remaining += maintainStorage(str.id, true, str_donecb);
+        *remaining += maintainStorage(str->id, true, str_donecb);
     }
     DHT_LOG.WARN("Shuting down node: %u ops remaining.", *remaining);
     if (!*remaining && cb) { cb(); }
@@ -1462,12 +1462,12 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where
     auto st = findStorage(id);
     size_t tokenlocal = 0;
     if (st == store.end() && store.size() < MAX_HASHES) {
-        store.emplace_back(id, scheduler.time());
+        store.emplace_back(new Storage(id, scheduler.time()));
         st = std::prev(store.end());
     }
     if (st != store.end()) {
-        if (not st->empty()) {
-            std::vector<std::shared_ptr<Value>> newvals = st->get(filter);
+        if (not (*st)->empty()) {
+            std::vector<std::shared_ptr<Value>> newvals = (*st)->get(filter);
             if (not newvals.empty()) {
                 if (!cb(newvals))
                     return 0;
@@ -1478,8 +1478,8 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where
                 }
             }
         }
-        tokenlocal = ++st->listener_token;
-        st->local_listeners.emplace(tokenlocal, LocalListener{query, filter, gcb});
+        tokenlocal = ++(*st)->listener_token;
+        (*st)->local_listeners.emplace(tokenlocal, LocalListener{query, filter, gcb});
     }
 
     auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query);
@@ -1504,7 +1504,7 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     auto st = findStorage(id);
     auto tokenlocal = std::get<0>(it->second);
     if (st != store.end() && tokenlocal)
-        st->local_listeners.erase(tokenlocal);
+        (*st)->local_listeners.erase(tokenlocal);
 
     auto searches_cancel_listen = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
         for (auto& sp : srs) {
@@ -1708,7 +1708,7 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
 {
     auto s = findStorage(id);
     if (s == store.end()) return {};
-    return s->get(f);
+    return (*s)->get(f);
 }
 
 std::shared_ptr<Value>
@@ -1716,7 +1716,7 @@ Dht::getLocalById(const InfoHash& id, Value::Id vid) const
 {
     auto s = findStorage(id);
     if (s != store.end())
-        return s->getById(vid);
+        return (*s)->getById(vid);
     return {};
 }
 
@@ -1789,15 +1789,15 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 decltype(Dht::store)::iterator
 Dht::findStorage(const InfoHash& id)
 {
-    return std::find_if(store.begin(), store.end(), [&](const Storage& st) {
-        return st.id == id;
+    return std::find_if(store.begin(), store.end(), [&](const std::unique_ptr<Storage>& st) {
+        return st->id == id;
     });
 }
 decltype(Dht::store)::const_iterator
 Dht::findStorage(const InfoHash& id) const
 {
-    return std::find_if(store.cbegin(), store.cend(), [&](const Storage& st) {
-        return st.id == id;
+    return std::find_if(store.cbegin(), store.cend(), [&](const std::unique_ptr<Storage>& st) {
+        return st->id == id;
     });
 }
 
@@ -1841,15 +1841,15 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return false;
-        store.emplace_back(id, now);
+        store.emplace_back(new Storage(id, now));
         st = std::prev(store.end());
     }
 
-    auto store = st->store(value, created, max_store_size - total_store_size);
+    auto store = (*st)->store(value, created, max_store_size - total_store_size);
     if (std::get<0>(store)) {
         total_store_size += std::get<1>(store);
         total_values += std::get<2>(store);
-        storageChanged(*st, *std::get<0>(store));
+        storageChanged(*(*st), *std::get<0>(store));
     }
     return std::get<0>(store);
 }
@@ -1898,18 +1898,18 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return;
-        store.emplace_back(id, now);
+        store.emplace_back(new Storage(id, now));
         st = std::prev(store.end());
     }
-    auto l = st->listeners.find(node);
-    if (l == st->listeners.end()) {
-        auto vals = st->get(query.where.getFilter());
+    auto l = (*st)->listeners.find(node);
+    if (l == (*st)->listeners.end()) {
+        auto vals = (*st)->get(query.where.getFilter());
         if (not vals.empty()) {
             network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->ss, false),
                     buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
-        st->listeners.emplace(node, Listener {rid, now, std::forward<Query>(query)});
+        (*st)->listeners.emplace(node, Listener {rid, now, std::forward<Query>(query)});
     }
     else
         l->second.refresh(rid, now);
@@ -1921,21 +1921,21 @@ Dht::expireStorage()
     const auto& now = scheduler.time();
     auto i = store.begin();
     while (i != store.end()) {
-        for (auto l = i->listeners.cbegin(); l != i->listeners.cend();){
+        for (auto l = (*i)->listeners.cbegin(); l != (*i)->listeners.cend();){
             bool expired = l->second.time + Node::NODE_EXPIRE_TIME < now;
             if (expired) {
                 DHT_LOG.DEBUG("Discarding expired listener %s", l->first->id.toString().c_str());
-                i->listeners.erase(l++);
+                (*i)->listeners.erase(l++);
             } else
                 ++l;
         }
 
-        auto stats = i->expire(types, now);
+        auto stats = (*i)->expire(types, now);
         total_store_size += stats.first;
         total_values += stats.second;
 
-        if (i->empty() && i->listeners.empty() && i->local_listeners.empty()) {
-            DHT_LOG.DEBUG("Discarding expired value %s", i->id.toString().c_str());
+        if ((*i)->empty() && (*i)->listeners.empty() && (*i)->local_listeners.empty()) {
+            DHT_LOG.DEBUG("Discarding expired value %s", (*i)->id.toString().c_str());
             i = store.erase(i);
         }
         else
@@ -2226,10 +2226,10 @@ Dht::getStorageLog() const
     using namespace std::chrono;
     std::stringstream out;
     for (const auto& st : store) {
-        out << "Storage " << st.id << " " << st.listeners.size() << " list., " << st.valueCount() << " values (" << st.totalSize() << " bytes)" << std::endl;
-        if (not st.local_listeners.empty())
-            out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
-        for (const auto& l : st.listeners) {
+        out << "Storage " << (*st).id << " " << (*st).listeners.size() << " list., " << (*st).valueCount() << " values (" << (*st).totalSize() << " bytes)" << std::endl;
+        if (not (*st).local_listeners.empty())
+            out << "   " << (*st).local_listeners.size() << " local listeners" << std::endl;
+        for (const auto& l : (*st).listeners) {
             out << "   " << "Listener " << l.first->toString();
             auto since = duration_cast<seconds>(now - l.second.time);
             auto expires = duration_cast<seconds>(l.second.time + Node::NODE_EXPIRE_TIME - now);
@@ -2412,11 +2412,11 @@ Dht::dataPersistence() {
     const auto& now = scheduler.time();
     auto storage_maintenance_time = time_point::max();
     for (auto &str : store) {
-        if (now > str.maintenance_time) {
-            maintainStorage(str.id);
-            str.maintenance_time = now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
+        if (now > str->maintenance_time) {
+            maintainStorage(str->id);
+            str->maintenance_time = now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
         }
-        storage_maintenance_time = std::min(storage_maintenance_time, str.maintenance_time);
+        storage_maintenance_time = std::min(storage_maintenance_time, str->maintenance_time);
     }
     scheduler.add(storage_maintenance_time, std::bind(&Dht::dataPersistence, this));
 }
@@ -2433,7 +2433,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     auto nodes = buckets.findClosestNodes(id, now);
     if (!nodes.empty()) {
         if (force || id.xorCmp(nodes.back()->id, myid) < 0) {
-            for (auto &value : local_storage->getValues()) {
+            for (auto &value : (*local_storage)->getValues()) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
@@ -2449,7 +2449,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     auto nodes6 = buckets6.findClosestNodes(id, now);
     if (!nodes6.empty()) {
         if (force || id.xorCmp(nodes6.back()->id, myid) < 0) {
-            for (auto &value : local_storage->getValues()) {
+            for (auto &value : (*local_storage)->getValues()) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.time + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
                     // gotta put that value there
@@ -2464,7 +2464,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
 
     if (not want4 and not want6) {
         DHT_LOG.DEBUG("Discarding storage values %s", id.toString().c_str());
-        local_storage->clear();
+        (*local_storage)->clear();
     }
 
     return announce_per_af;
@@ -2557,12 +2557,12 @@ Dht::exportValues() const
     e.reserve(store.size());
     for (const auto& h : store) {
         ValuesExport ve;
-        ve.first = h.id;
+        ve.first = h->id;
 
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
-        pk.pack_array(h.getValues().size());
-        for (const auto& v : h.getValues()) {
+        pk.pack_array(h->getValues().size());
+        for (const auto& v : h->getValues()) {
             pk.pack_array(2);
             pk.pack(v.time.time_since_epoch().count());
             v.data->msgpack_pack(pk);
@@ -2725,8 +2725,8 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query
     answer.ntoken = makeToken((sockaddr*)&node->ss, false);
     answer.nodes4 = buckets.findClosestNodes(hash, now, TARGET_NODES);
     answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
-    if (st != store.end() && not st->empty()) {
-        answer.values = st->get(query.where.getFilter());
+    if (st != store.end() && not (*st)->empty()) {
+        answer.values = (*st)->get(query.where.getFilter());
         DHT_LOG.DEBUG("[node %s] sending %u values.", node->toString().c_str(), answer.values.size());
     } else {
         DHT_LOG.DEBUG("[node %s] sending nodes.", node->toString().c_str());
