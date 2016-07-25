@@ -1,9 +1,20 @@
-AC_INIT(opendht, 0.6.1)
+dnl define macros
+m4_define([opendht_major_version], 0)
+m4_define([opendht_minor_version], 6)
+m4_define([opendht_patch_version], 1)
+m4_define([opendht_version],
+		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
+
+AC_INIT(opendht, [opendht_version])
 AC_CONFIG_AUX_DIR(ac)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CANONICAL_HOST
+
+AC_SUBST(OPENDHT_MAJOR_VERSION, opendht_major_version)
+AC_SUBST(OPENDHT_MINOR_VERSION, opendht_minor_version)
+AC_SUBST(OPENDHT_PATCH_VERSION, opendht_patch_version)
 
 AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Build in debug mode, adds stricter warnings, disables optimization]))
 AS_IF([test "x$enable_debug" = "xyes"],
