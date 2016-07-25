@@ -124,7 +124,7 @@ struct Prefix {
      * @throw out_of_range Throw out of range if bit does not exist
      */
     Prefix swapBit(size_t bit) const {
-        if ( bit >= size_ )
+        if ( bit >= content_.size() * 8 )
             throw std::out_of_range("bit larger than prefix size.");
 
         Prefix copy = *this;
@@ -261,7 +261,7 @@ private:
         Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
 
         auto bit_loc = p.size_ + 1;
-        for ( auto i = p.content_.size(); i <= keySpec_.begin()->second; i++ )
+        for ( auto i = p.content_.size(); i < keySpec_.begin()->second + 1; i++ )
             p.content_.push_back(0);
 
         return p.swapBit(bit_loc);
