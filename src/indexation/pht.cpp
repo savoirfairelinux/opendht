@@ -57,7 +57,7 @@ int Pht::Cache::lookup(const Prefix& p) {
     auto now = clock::now(), last_node_time = now;
 
     /* Before lookup remove the useless one [i.e. too old] */
-    while ( leaves_.size() > 0 
+    while ( leaves_.size() > 0
         and leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
 
         leaves_.erase(leaves_.begin());
@@ -215,8 +215,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                             if (first_res->done)
                                 on_done(true);
                         }
-                    }, pht_filter);
-
+                }, pht_filter);
     } else {
         on_done(true);
     }
@@ -286,7 +285,7 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
                     updateCanary(*p);
                     checkPhtUpdate(*p, entry, time_p);
                     cache_.insert(*p);
-                    dht_->put(p->hash(), std::move(entry), done_cb /*, time_p */);
+                    dht_->put(p->hash(), std::move(entry), done_cb , time_p);
                 };
 
                 if ( not check_split or final_prefix->size_ == kp.size_ ) {
@@ -302,46 +301,63 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
     );
 }
 
-Prefix linearize(Key k) const {
-    if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
-    std::vector<Prefix> all_prefix;
-    auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
-        [](const std::pair<string, size_t>& a, const std::pair<string, size_t>& b) {
-            return a.second < b.second;
-        });
+Prefix Pht::zcurve(const std::vector<Prefix>& all_prefix) const {
+    Prefix p;
 
-    for ( auto i = 0; i < k.size; i++ ) {
-        Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
+    if ( all_prefix.size() == 1 )
+        return all_prefix[0];
+
+    for ( size_t j = 0, bit = 0; j < all_prefix[0].content_.size(); j++) {
+
+        uint8_t mask = 0x80;
+        for ( int i = 0; i < 8; ) {
+
+            uint8_t flags = 0;
+            uint8_t content = 0;
+
+            for ( int k = 0 ; k < 8; k++, bit++ ) {
+
+                auto diff = k - i;
+
+                auto x = all_prefix[bit].content_[j] & mask;
+                auto y = all_prefix[bit].flags_[j] & mask;
+
+                content |= ( diff >= 0 ) ? x >> diff : x << std::abs(diff);
+                flags   |= ( diff >= 0 ) ? y >> diff : y << std::abs(diff);
+
+                if ( bit == all_prefix.size() - 1 ) { bit = -1; ++i; mask >>= 1; }
+            }
+
+            p.content_.push_back(content);
+            p.flags_.push_back(flags);
+            p.size_ += 8;
+        }
+    }
+
+    return p;
+}
+
+Prefix Pht::linearize(Key k) const {
+    if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
+
+    std::vector<Prefix> all_prefix;
+    all_prefix.reserve(k.size());
+
+    auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
+        [](const std::pair<std::string, size_t>& a, const std::pair<std::string, size_t>& b) {
+            return a.second < b.second;
+        })->second + 1;
+
+    for ( auto const& it : k ) {
+        Prefix p = Blob {it.second.begin(), it.second.end()};
         p.addPaddingContent(max);
         p.updateFlags();
 
-        all_prefix.push_back(p);
+        all_prefix.emplace_back(std::move(p));
     }
 
     return zcurve(all_prefix);
-/*
-        virtual Prefix linearize(Key k) const {
-        if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
-
-        std::vector<Prefix> all_prefix;
-        auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
-            [&](const std::pair<std::string, size_t>& a, const std::pair<std::string, size_t>& b) {
-                return a.second < b.second;
-            })->second + 1;
-
-        for ( auto const& it : k ) {
-            Prefix p = Blob {it.second.begin(), it.second.end()};
-            p.addPaddingContent(max);
-            p.updateFlags();
-            all_prefix.push_back(p);
-
-        auto bit_loc = p.size_ + 1;
-        for ( auto i = p.content_.size(); i < keySpec_.begin()->second + 1; i++ )
-            p.content_.push_back(0);
-
-        return zcurve(all_prefix);
-    };*/
-};
+}
 
 void Pht::getRealPrefix(std::shared_ptr<Prefix> p, IndexEntry entry, RealInsertCallback end_cb ) {
 
@@ -428,9 +444,12 @@ void Pht::split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<Index
 
     auto loc = foundSplitLocation(full, vals);
     auto prefix_to_insert = std::make_shared<Prefix>(full.getPrefix(loc));
+    std::cerr << " Split loc " << loc << " full" << full.toString() << " size " << full.size_ << std::endl;
 
-    for(;loc != insert.size_ - 1; loc--)
+    for(;loc != insert.size_ - 1; loc--) {
+        std::cerr << "loc " << full.getPrefix(loc).toString() << std::endl;
         updateCanary(full.getPrefix(loc));
+    }
 
     end_cb(prefix_to_insert, entry);
 }

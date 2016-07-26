@@ -147,6 +147,7 @@ struct Prefix {
     Prefix swapBit(size_t bit) const {
         if ( bit >= content_.size() * 8 )
             throw std::out_of_range("bit larger than prefix size.");
+    }
 
     void swapFlagBit(size_t bit) {
         swapBit(flags_, bit);
@@ -177,7 +178,9 @@ struct Prefix {
 
     Blob flags_ {};
     Blob content_ {};
+
 private:
+
     std::string blobToString(const Blob &bl) const {
         std::stringstream ss;
 
@@ -392,32 +395,7 @@ private:
             std::shared_ptr<unsigned> max_common_prefix_len,
             int start = -1, bool all_values = false);
 
-    Prefix zcurve(const std::vector<Prefix>& all_prefix) const {
-        Prefix p;
-        if ( all_prefix.size() == 1 ) return all_prefix[0];
-
-        for ( size_t j = 0, bit = 0; j < all_prefix[0].content_.size(); j++) {
-            uint8_t mask = 0x80;
-            for ( int i = 0; i < 8; ) {
-                uint8_t content = 0;
-                uint8_t flags = 0;
-                for ( int k = 0 ; k < 8; k++, bit++ ) {
-                    auto diff = k - i;
-                    auto x = all_prefix[bit].content_[j] & mask;
-                    auto y = all_prefix[bit].flags_[j] & mask;
-                    content |= ( diff >= 0 ) ? x >> diff : x << std::abs(diff);
-                    flags   |= ( diff >= 0 ) ? y >> diff : y << std::abs(diff);
-
-                    if ( bit == all_prefix.size() - 1 ) { bit = -1; ++i; mask >>= 1; }
-                }
-                p.content_.push_back(content);
-                p.flags_.push_back(flags);
-                p.size_ += 8;
-            }
-        }
-
-        return p;
-    }
+    Prefix zcurve(const std::vector<Prefix>& all_prefix) const;
 
     /**
      * Linearizes the key into a unidimensional key. A pht only takes
@@ -459,7 +437,7 @@ private:
     size_t foundSplitLocation(Prefix compared, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals) {
         for ( size_t i = 0; i < compared.content_.size() * 8 - 1; i++ )
             for ( auto const& v : *vals)
-                if ( Prefix(v->prefix).isActiveBit(i) != compared.isActiveBit(i) )
+                if ( Prefix(v->prefix).isContentBitActive(i) != compared.isContentBitActive(i) )
                     return i + 1;
 
         return compared.content_.size() * 8 - 1;
