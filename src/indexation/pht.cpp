@@ -10,15 +10,15 @@ void Pht::Cache::insert(const Prefix& p) {
 
     std::shared_ptr<Node> curr_node;
 
-    while ((leaves_.size() > 0 && leaves_.begin()->first + NODE_EXPIRE_TIME < now) || leaves_.size() > MAX_ELEMENT)
+    while ((leaves_.size() > 0 and leaves_.begin()->first + NODE_EXPIRE_TIME < now) or leaves_.size() > MAX_ELEMENT)
         leaves_.erase(leaves_.begin());
-    
+
     if (not (curr_node = root_.lock()) ) {
         /* Root does not exist, need to create one*/
         curr_node = std::make_shared<Node>();
         root_ = curr_node;
     }
- 
+
     curr_node->last_reply = now;
 
     /* Iterate through all bit of the Blob */
@@ -26,7 +26,6 @@ void Pht::Cache::insert(const Prefix& p) {
 
         /* According to the bit define which node is the next one */
         auto& next = ( p.isActiveBit(i) ) ? curr_node->right_child : curr_node->left_child;
-
         /**
          * If lock, node exists
          * else create it
@@ -53,7 +52,7 @@ int Pht::Cache::lookup(const Prefix& p) {
     auto now = clock::now(), last_node_time = now;
 
     /* Before lookup remove the useless one [i.e. too old] */
-    while ( leaves_.size() > 0 &&  leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
+    while ( leaves_.size() > 0 and  leaves_.begin()->first + NODE_EXPIRE_TIME < now ) {
         leaves_.erase(leaves_.begin());
     }
 
@@ -62,9 +61,8 @@ int Pht::Cache::lookup(const Prefix& p) {
 
     while ( auto n = next.lock() ) {
         ++pos;
-
         /* Safe since pos is equal to 0 until here */
-        if ( (unsigned) pos >= p.size_ ) break;
+        if ( (unsigned) pos >= p.content_.size() * 8) break;
 
         curr_node = n;
         last_node_time = curr_node->last_reply;
@@ -91,7 +89,8 @@ constexpr std::chrono::minutes Pht::Cache::NODE_EXPIRE_TIME;
 void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals,
         LookupCallbackWrapper cb, DoneCallbackSimple done_cb,
-        std::shared_ptr<unsigned> max_common_prefix_len, int start, bool all_values)
+        std::shared_ptr<unsigned> max_common_prefix_len,
+        int start, bool all_values)
 {
     struct node_lookup_result {
         bool done {false};
@@ -112,7 +111,6 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         else if (is_leaf or *lo > *hi) {
             // leaf node
             Prefix to_insert = p.getPrefix(mid);
-            cache_.insert(to_insert);
 
             if (cb) {
                 if (vals->size() == 0 and max_common_prefix_len and mid > 0) {
@@ -137,6 +135,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                 done_cb(false);
         }
     };
+
     if (*lo <= *hi) {
         auto pht_filter = [&](const dht::Value& v) {
             return v.user_type.compare(0, name_.size(), name_) == 0;
@@ -187,13 +186,13 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                             lookupStep(p, lo, hi, vals, cb, done_cb, max_common_prefix_len, -1, all_values);
                         } else {
                             first_res->done = true;
-                            if (second_res->done or mid >= p.size_ )
+                            if (second_res->done or mid >= p.size_ - 1)
                                 on_done(true);
                         }
                     }
                 }, pht_filter);
 
-        if (mid < p.size_)
+        if (mid < p.size_ - 1)
            dht_->get(p.getPrefix(mid+1).hash(),
                     std::bind(on_get, std::placeholders::_1, second_res),
                     [=](bool ok) {
@@ -223,7 +222,7 @@ void Pht::lookup(Key k, Pht::LookupCallback cb, DoneCallbackSimple done_cb, bool
     auto hi = std::make_shared<int>(prefix.size_);
     std::shared_ptr<unsigned> max_common_prefix_len = not exact_match ? std::make_shared<unsigned>(0) : nullptr;
 
-    lookupStep(prefix, lo, hi, values, 
+    lookupStep(prefix, lo, hi, values,
         [=](std::vector<std::shared_ptr<IndexEntry>>& entries, Prefix p) {
             std::vector<std::shared_ptr<Value>> vals(entries.size());
 
@@ -240,12 +239,12 @@ void Pht::updateCanary(Prefix p) {
     // TODO: change this... copy value
     dht::Value canary_value;
     canary_value.user_type = canary_;
-    
+
     dht_->put(p.hash(), std::move(canary_value),
         [=](bool){
             static std::bernoulli_distribution d(0.5);
             crypto::random_device rd;
-            if (p.size_ && d(rd))
+            if (p.size_ and d(rd))
                 updateCanary(p.getPrefix(-1));
         }
     );
@@ -256,7 +255,6 @@ void Pht::updateCanary(Prefix p) {
         dht_->put(p.getSibling().hash(), std::move(canary_second_value));
     }
 }
-
 
 void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
                  bool check_split, DoneCallbackSimple done_cb) {
@@ -400,4 +398,5 @@ void Pht::split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<Index
 }
 
 } /* indexation  */
+
 } /* dht */
