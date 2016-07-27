@@ -690,8 +690,6 @@ Dht::expireSearches()
     erase_if(searches6, expired);
 }
 
-// END HERE !!!!! 
-
 Dht::SearchNode*
 Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update)
 {
@@ -1245,6 +1243,7 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             callback(false, {});
         return;
     }
+
     auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
     auto sr = srp == srs.end() ? search(id, af, nullptr, nullptr) : srp->second;
