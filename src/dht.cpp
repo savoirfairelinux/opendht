@@ -1470,8 +1470,6 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         return;
     }
 
-    storageStore(id, value, created);
-
     auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
     auto sr = srp == srs.end() ? search(id, af) : srp->second;

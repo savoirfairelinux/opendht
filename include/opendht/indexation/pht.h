@@ -40,7 +40,7 @@ struct Prefix {
     }
 
     Prefix getPrefix(ssize_t len) const {
-        if ((size_t)std::abs(len) > size_)
+        if ((size_t)std::abs(len) >= content_.size() * 8)
             throw std::out_of_range("len larger than prefix size.");
         if (len < 0)
             len += size_;
@@ -55,7 +55,7 @@ struct Prefix {
      * @throw out_of_range Throw out of range if the bit at 'pos' does not exist
      */
     bool isActiveBit(size_t pos) const {
-        if ( pos >= size_ )
+        if ( pos >= content_.size() * 8 )
             throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
 
         return ((this->content_[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
@@ -69,7 +69,9 @@ struct Prefix {
      * @return The prefix of this sibling.
      */
     Prefix getSibling() const {
-        return swapBit(size_ - 1);
+        if ( not size_ )
+            return Prefix(*this);
+        return swapBit(size_);
     }
 
     InfoHash hash() const {
@@ -90,6 +92,13 @@ struct Prefix {
         return ss.str();
     }
 
+    /**
+     * This method count total of bit in common between 2 prefix
+     *
+     * @param p1 first prefix to compared
+     * @param p2 second prefix to compared
+     * @return Lenght of the larger common prefix between both
+     */
     static inline unsigned commonBits(const Prefix& p1, const Prefix& p2) {
         unsigned i, j;
         uint8_t x;
@@ -118,13 +127,11 @@ struct Prefix {
      * This method swap the bit a the position 'bit' and return the new prefix
      *
      * @param bit Position of the bit to swap
-     *
      * @return The prefix with the bit at position 'bit' swapped
-     *
      * @throw out_of_range Throw out of range if bit does not exist
      */
     Prefix swapBit(size_t bit) const {
-        if ( bit >= content_.size() * 8 )
+        if ( bit > content_.size() * 8 )
             throw std::out_of_range("bit larger than prefix size.");
 
         Prefix copy = *this;
@@ -172,7 +179,7 @@ public:
     /* This is the maximum number of entries per node. This parameter is
      * critical and influences the traffic a lot during a lookup operation.
      */
-    static constexpr const size_t MAX_NODE_ENTRY_COUNT {2}; // FIX : 16
+    static constexpr const size_t MAX_NODE_ENTRY_COUNT {16};
 
     /* A key for a an index entry */
     using Key = std::map<std::string, Blob>;
@@ -217,7 +224,11 @@ public:
     }
 
     /**
-     * Adds an entry into the index.
+     * Wrapper function which call the private one.
+     *
+     * @param k : Key to insert [i.e map of string, blob]
+     * @param v : Value to insert
+     * @param done_cb : Callbakc which going to be call when all the insert is done
      */
     void insert(Key k, Value v, DoneCallbackSimple done_cb = {}) {
         Prefix p = linearize(k);
@@ -234,6 +245,19 @@ public:
     }
 
 private:
+
+    /**
+     * Insert function which really insert onto the pht
+     *
+     * @param kp          : Prefix to insert (linearize the the key)
+     * @param entry       : Entry created from the value
+     * @param lo          : Lowest point to start in the prefix
+     * @param hi          : Highest point to end in the prefix
+     * @param time_p      : Timepoint to use for the insertion into the dht (must be < now)
+     * @param check_split : If this flag is true then the algoritm will not use the merge algorithm
+     * @param done_cb     : Callback to call when the insert is done
+     */
+
     void insert( Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
                  bool check_split, DoneCallbackSimple done_cb = {});
 
@@ -249,6 +273,7 @@ private:
          * Lookup into the tree to return the maximum prefix length in the cache tree
          *
          * @param p : Prefix that we are looking for
+         *
          * @return  : The size of the longest prefix known in the cache between 0 and p.size_
          */
 
@@ -282,10 +307,21 @@ private:
     /**
      * Performs a step in the lookup operation. Each steps are performed
      * asynchronously.
+     *
+     * @param k          : Prefix on which the lookup is performed
+     * @param lo         : lowest bound on the prefix (where to start)
+     * @param hi         : highest bound on the prefix (where to stop)
+     * @param vals       : Shared ptr to a vector of IndexEntry (going to contains all values found)
+     * @param cb         : Callback to use at the end of the lookupStep (call on the value of vals)
+     * @param done_cb    : Callback at the end of the lookupStep
+     * @param max_common_prefix_len: used in the inexacte lookup match case, indicate the longest common prefix found
+     * @param start      : If start is set then lo and hi will be ignore for the first step, if the step fail lo and hi will be used
+     * @param all_values : If all value is true then all value met during the lookupstep will be in the vector vals
      */
     void lookupStep(Prefix k, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
-            std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals, LookupCallbackWrapper cb,
-            DoneCallbackSimple done_cb, std::shared_ptr<unsigned> max_common_prefix_len,
+            std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals,
+            LookupCallbackWrapper cb, DoneCallbackSimple done_cb,
+            std::shared_ptr<unsigned> max_common_prefix_len,
             int start = -1, bool all_values = false);
 
     /**
@@ -299,47 +335,8 @@ private:
     virtual Prefix linearize(Key k) const;
 
     /**
-     * Check if there is a new canary on the next bit of the prefix p,
-     * If there is a new one then it will re-put the data there.
-     *
-     * @param p      Prefix that need to be kept update
-     * @paran entry  The entry to put back
-     */
-    void checkPhtUpdate(Key k, Prefix p, IndexEntry entry) {
-
-        Prefix full = entry.prefix;
-        if ( p.size_ >= full.size_ ) return;
-
-        auto next_prefix = full.getPrefix( p.size_ + 1 ); 
-
-        dht_->listen(next_prefix.hash(),
-            [=](const std::shared_ptr<dht::Value> &value) {
-                if (value->user_type == canary_) {
-                    // updateCanary(next_prefix);
-                    // checkPhtUpdate(next_prefix, entry);
-                    // std::cerr << " LISTEN PUT HERE " << next_prefix.toString() << std::endl;
-                    // dht_->put(next_prefix.hash(), std::move(entry));
-                    // checkPhtUpdate(next_prefix, entry);
-                    // dht_->put(next_prefix.hash(), entry);
-                    // std::cerr << "New canary found ! " << next_prefix.toString() << std::endl;
-
-                    insert(k, entry.value, nullptr);
-
-                    /* Cancel listen since we found where we need to update*/
-                    return false;
-                }
-
-                return true;
-            },
-            [=](const dht::Value& v) {
-                /* Filter value v thats start with the same name as ours */
-                return v.user_type.compare(0, name_.size(), name_) == 0;
-            }
-        );
-    }
-
-    /**
-     * Looking where to put the data cause if there i free space on the node above then this node will became the real leave.
+     * Looking where to put the data cause if there is free space on the node
+     * above then this node will became the real leave.
      *
      * @param p       Share_ptr on the Prefix to check
      * @param entry   The entry to put at the prefix p
@@ -357,13 +354,20 @@ private:
      */
     void checkPhtUpdate(Prefix p, IndexEntry entry, time_point time_p);
 
+    /**
+     * Search for the split location by comparing 'compared' to all values in vals.
+     *
+     * @param compared : Value which going to be compared
+     * @param vals     : The vector of values to compare with comapred
+     * @return position compared diverge from all others
+     */
     size_t foundSplitLocation(Prefix compared, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals) {
-        for ( size_t i = 0; i < compared.content_.size() * 8; i++ )
+        for ( size_t i = 0; i < compared.content_.size() * 8 - 1; i++ )
             for ( auto const& v : *vals)
                 if ( Prefix(v->prefix).isActiveBit(i) != compared.isActiveBit(i) )
-                    return i;
+                    return i + 1;
 
-        return compared.size_ - 1;
+        return compared.content_.size() * 8 - 1;
     }
 
     /**
