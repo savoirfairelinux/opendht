@@ -29,7 +29,7 @@ extern "C" {
 using namespace dht;
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-v[logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b[bootstrap_host[:port]]]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
     std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
     std::cout << "Report bugs to: http://opendht.net" << std::endl;
 }
@@ -40,8 +40,6 @@ void print_id_req() {
 
 void print_node_info(const DhtRunner& dht, const dht_params& params) {
     std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  dht.getBoundPort() << std::endl;
-    if (params.is_bootstrap_node)
-        std::cout << "Running in bootstrap mode (discouraged)." << std::endl;
     if (params.generate_identity)
         std::cout << "Public key ID " << dht.getId() << std::endl;
 }
