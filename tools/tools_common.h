@@ -143,57 +143,55 @@ struct dht_params {
     std::string logfile {};
     in_port_t port {0};
     dht::NetId network {0};
-    bool is_bootstrap_node {false};
     bool generate_identity {false};
     bool daemonize {false};
     std::pair<std::string, std::string> bootstrap {};
 };
 
 static const constexpr struct option long_options[] = {
-   {"help",       no_argument,       nullptr, 'h'},
+   {"help",       no_argument      , nullptr, 'h'},
    {"port",       required_argument, nullptr, 'p'},
    {"net",        required_argument, nullptr, 'n'},
-   {"bootstrap",  optional_argument, nullptr, 'b'},
+   {"bootstrap",  required_argument, nullptr, 'b'},
    {"identity",   no_argument      , nullptr, 'i'},
-   {"verbose",    optional_argument, nullptr, 'v'},
+   {"verbose",    no_argument      , nullptr, 'v'},
    {"daemonize",  no_argument      , nullptr, 'd'},
-   {nullptr,      0,                 nullptr,  0}
+   {"logfile",    required_argument, nullptr, 'l'},
+   {nullptr,      0                , nullptr,  0}
 };
 
 dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "hidv::p:n:b::", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidvp:n:b:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
                 if (port_arg >= 0 && port_arg < 0x10000)
                     params.port = port_arg;
                 else
-                    std::cerr << "Invalid port: " << port_arg << std::endl;
+                    std::cout << "Invalid port: " << port_arg << std::endl;
             }
             break;
         case 'n':
             params.network = strtoul(optarg, nullptr, 0);
             break;
         case 'b':
-            if (optarg) {
-                params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
-                if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
-                    std::stringstream ss;
-                    ss << DHT_DEFAULT_PORT;
-                    params.bootstrap.second = ss.str();
-                }
-            } else
-                params.is_bootstrap_node = true;
+            params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
+            if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
+                std::stringstream ss;
+                ss << DHT_DEFAULT_PORT;
+                params.bootstrap.second = ss.str();
+            }
             break;
         case 'h':
             params.help = true;
             break;
+        case 'l':
+            params.logfile = optarg;
+            break;
         case 'v':
-            if (optarg)
-                params.logfile = optarg;
             params.log = true;
             break;
         case 'i':
@@ -202,9 +200,6 @@ parseArgs(int argc, char **argv) {
         case 'd':
             params.daemonize = true;
             break;
-        case '?':
-            std::cerr << "unrecognized option -- '" << static_cast<char>(optopt) << '\'' << std::endl;
-            exit(EXIT_FAILURE);
         default:
             break;
         }
