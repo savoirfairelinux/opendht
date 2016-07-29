@@ -328,6 +328,7 @@ private:
         time_point start;
         Value::Filter filter;
         std::shared_ptr<Query> query;
+        std::set<std::shared_ptr<Query>> pagination_queries;
         QueryCallback query_cb;
         GetCallback get_cb;
         DoneCallback done_cb;
@@ -508,6 +509,20 @@ private:
 
     void confirmNodes();
     void expire();
+
+    void searchNodeGetDone(const Request& status,
+            NetworkEngine::RequestAnswer&& answer,
+            std::weak_ptr<Search> ws,
+            std::shared_ptr<Query> query);
+    void searchNodeGetExpired(const Request& status, bool over, std::weak_ptr<Search> ws, std::shared_ptr<Query> query);
+    /**
+     * This method recovers sends individual request for values per id.
+     *
+     * @param ws     A weak pointer to the Search.
+     * @param query  The initial query passed through the API.
+     * @param n      The node to which send the requests.
+     */
+    void paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, SearchNode* n);
 
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
