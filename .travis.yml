@@ -7,9 +7,11 @@ language: cpp
 
 before_install:
 - docker pull aberaud/opendht-deps
+- docker pull aberaud/opendht-deps-llvm
 
 script:
-- docker build .
+- docker build -f docker/DockerfileTravis .
+- docker build -f docker/DockerfileTravisLlvm .
 
 notifications:
   email:
