@@ -1,44 +1,16 @@
-sudo: false
+sudo: required
 
 services:
   - docker
 
 language: cpp
 
-compiler:
-  - gcc
-  - clang
-
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-    - gcc-6
-    - g++-6
-    - libgnutls28-dev
-    - cmake
-
 before_install:
-  - if [ $TRAVIS_OS_NAME == linux ] && [ $CXX == g++ ]; then export CXX=/usr/bin/g++-6 && export CC=/usr/bin/gcc-6; fi
-  - if [ $TRAVIS_OS_NAME == linux ]; then git clone https://github.com/msgpack/msgpack-c.git; fi
-  - if [ $TRAVIS_OS_NAME == linux ]; then cd msgpack-c && git checkout cpp-1.2.0 && mkdir build && mkdir -p $HOME/usr && cd build; fi
-  - if [ $TRAVIS_OS_NAME == linux ]; then cmake -DCMAKE_INSTALL_PREFIX=$HOME/usr -DMSGPACK_CXX11=ON -DMSGPACK_BUILD_EXAMPLES=OFF .. && make -j && make install && cd ../.. && pwd; fi
-  - if [ $TRAVIS_OS_NAME == osx ]; then brew update && brew install llvm36 && brew install msgpack && brew install gnutls && brew link --force llvm36; fi
-
-before_script:
-  - if [ $TRAVIS_OS_NAME == linux ]; then travis_retry ./autogen.sh && ./configure --prefix=$HOME/usr; fi
-  - if [ $TRAVIS_OS_NAME == osx ]; then travis_retry ./autogen.sh && ./configure; fi
+- docker pull aberaud/opendht-deps
 
 script:
-  - make -j
+- docker build .
 
 notifications:
   email:
       - adrien.beraud@savoirfairelinux.com
-
-env:
-  - LANG="en_US.UTF-8"
-
-os:
-  - osx
