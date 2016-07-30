@@ -170,10 +170,9 @@ private:
     size_t total_size {};
 };
 
-
 struct Dht::SearchNode {
     SearchNode() : node() {}
-    SearchNode(std::shared_ptr<Node> node) : node(node) {}
+    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
 
     using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
 
@@ -1488,6 +1487,7 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     auto status = std::make_shared<OpStatus>();
     auto status4 = std::make_shared<OpStatus>();
     auto status6 = std::make_shared<OpStatus>();
+
     auto vals = std::make_shared<std::vector<std::shared_ptr<Value>>>();
     auto all_nodes = std::make_shared<std::vector<std::shared_ptr<Node>>>();
 
