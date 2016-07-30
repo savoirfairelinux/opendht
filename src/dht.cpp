@@ -170,10 +170,9 @@ private:
     size_t total_size {};
 };
 
-
 struct Dht::SearchNode {
     SearchNode() : node() {}
-    SearchNode(std::shared_ptr<Node> node) : node(node) {}
+    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
 
     using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
     using SyncStatusMap = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
