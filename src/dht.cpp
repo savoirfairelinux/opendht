@@ -1670,6 +1670,10 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
 {
     const auto& now = scheduler.time();
     created = std::min(created, now);
+
+    if (created + getType(value->id).expiration < now)
+        return false;
+
     auto st = findStorage(id);
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
