@@ -362,10 +362,14 @@ public:
 
     void blacklistNode(const std::shared_ptr<Node>& n);
 
+    std::vector<std::shared_ptr<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f);
+
 private:
     /***************
      *  Constants  *
      ***************/
+    /* Total number of node needed from cache */
+    static constexpr unsigned MAX_CACHE_NODE {14};
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
     static const constexpr size_t NODE4_INFO_BUF_LEN {26};
@@ -378,6 +382,7 @@ private:
     static constexpr unsigned BLACKLISTED_MAX {10};
     /* TODO */
     static const std::string my_v;
+
 
     /* DHT info */
     const InfoHash& myid;

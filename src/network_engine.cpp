@@ -275,6 +275,11 @@ NetworkEngine::isNodeBlacklisted(const sockaddr *sa, socklen_t salen) const
     return false;
 }
 
+std::vector<std::shared_ptr<Node>>
+NetworkEngine::getCachedNodes(const InfoHash& id, sa_family_t sa_f) {
+    return cache.getCachedNodes(id, sa_f, MAX_CACHE_NODE);
+}
+
 void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen)
 {

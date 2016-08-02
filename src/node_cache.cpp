@@ -33,6 +33,40 @@ NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, tim
     return (sa->sa_family == AF_INET ? cache_4 : cache_6).getNode(id, sa, sa_len, now, confirm);
 }
 
+std::vector<std::shared_ptr<Node>>
+NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t total) {
+    auto c = (sa_f == AF_INET ? cache_4 : cache_6);
+    auto it_p = c.lower_bound(id),
+         it_n = it_p;
+
+    std::vector<std::shared_ptr<Node>> nodes;
+    nodes.reserve(std::min(c.size(), total));
+    decltype(c)::iterator it;
+
+    if (it_p != c.begin()) /* Create 2 separate iterator if we could */
+        --it_p;
+
+    while ( nodes.size() != total
+         or (it_n == c.end() and it_p == c.end()) ) {
+
+        /* If one of the iterator is at the end, then take the other one 
+           If they are both in middle of somewhere comapre both and take
+           the closest to the id. */
+        if (it_p == c.end())       it = it_n++;
+        else if (it_n == c.end())  it = it_p--;
+        else                       it = id.xorCmp(it_p->first, it_n->first) < 0 ? it_p-- : it_n++;
+
+        if (it == c.begin())
+            it_p = c.end();
+
+        if (auto n = it->second.lock())
+            if ( not n->isExpired() )
+                nodes.emplace_back(std::move(n));
+    }
+
+    return nodes;
+}
+
 void
 NodeCache::clearBadNodes(sa_family_t family)
 {
