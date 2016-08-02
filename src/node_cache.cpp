@@ -27,7 +27,7 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 }
 
 std::shared_ptr<Node>
-NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
+NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, bool confirm) {
     if (id == zeroes)
         return std::make_shared<Node>(id, sa, sa_len);
     return (sa->sa_family == AF_INET ? cache_4 : cache_6).getNode(id, sa, sa_len, now, confirm);
@@ -57,7 +57,7 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
 }
 
 std::shared_ptr<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm)
+NodeCache::NodeMap::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, bool confirm)
 {
     auto it = emplace(id, std::weak_ptr<Node>{});
     auto node = it.first->second.lock();

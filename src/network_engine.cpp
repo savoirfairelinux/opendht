@@ -323,7 +323,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
     if (msg.tid.length != 4) {
         DHT_LOG.ERR("Broken node truncates transaction ids (len: %d): ", msg.tid.length);
         DHT_LOG.ERR.logPrintable(buf, buflen);
-        blacklistNode(cache.getNode(msg.id, from, fromlen, now, 1));
+        blacklistNode(cache.getNode(msg.id, from, fromlen, now, true));
         return;
     }
 
@@ -338,7 +338,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
         auto node = req->node;
         if (node->id != msg.id) {
             bool unknown_node = node->id == zeroes;
-            node = cache.getNode(msg.id, from, fromlen, now, 2);
+            node = cache.getNode(msg.id, from, fromlen, now, true);
             if (unknown_node) {
                 // received reply to a message sent when we didn't know the node ID.
                 req->node = node;
@@ -392,7 +392,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const sockaddr*
             break;
         }
     } else {
-        auto node = cache.getNode(msg.id, from, fromlen, now, 1);
+        auto node = cache.getNode(msg.id, from, fromlen, now, true);
         node->received(now, {});
         onNewNode(node, 1);
         try {
@@ -665,7 +665,7 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg) {
             memcpy(&sin.sin_port, ni + ni_id.size() + 4, 2);
             if (isMartian((sockaddr*)&sin, sizeof(sin)) || isNodeBlacklisted((sockaddr*)&sin, sizeof(sin)))
                 continue;
-            msg.nodes4.emplace_back(cache.getNode(ni_id, (sockaddr*)&sin, sizeof(sin), now, 0));
+            msg.nodes4.emplace_back(cache.getNode(ni_id, (sockaddr*)&sin, sizeof(sin), now, false));
             onNewNode(msg.nodes4.back(), 0);
         }
         for (unsigned i = 0; i < msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i++) {
@@ -680,7 +680,7 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg) {
             memcpy(&sin6.sin6_port, ni + HASH_LEN + 16, 2);
             if (isMartian((sockaddr*)&sin6, sizeof(sin6)) || isNodeBlacklisted((sockaddr*)&sin6, sizeof(sin6)))
                 continue;
-            msg.nodes6.emplace_back(cache.getNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), now, 0));
+            msg.nodes6.emplace_back(cache.getNode(ni_id, (sockaddr*)&sin6, sizeof(sin6), now, false));
             onNewNode(msg.nodes6.back(), 0);
         }
     }
