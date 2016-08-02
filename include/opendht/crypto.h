@@ -331,7 +331,7 @@ Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {},
 /**
  * SHA512
  */
-Blob hash(const Blob& data);
+Blob hash(const Blob& data, size_t hash_len = 512/8);
 
 /**
  * Generates an encryption key from a text password,
@@ -340,7 +340,7 @@ Blob hash(const Blob& data);
  * that can be transmitted in clear, and will be generated if
  * not provided (32 bytes).
  */
-Blob stretchKey(const std::string& password, Blob& salt);
+Blob stretchKey(const std::string& password, Blob& salt, size_t key_length = 512/8);
 
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).

@@ -83,6 +83,18 @@ namespace crypto {
 static constexpr std::array<size_t, 3> AES_LENGTHS {{128/8, 192/8, 256/8}};
 static constexpr size_t PASSWORD_SALT_LENGTH {16};
 
+constexpr gnutls_digest_algorithm_t gnutlsHashAlgo(size_t min_res) {
+    return (min_res > 256/8) ? GNUTLS_DIG_SHA512 : (
+           (min_res > 128/8) ? GNUTLS_DIG_SHA256 : (
+                               GNUTLS_DIG_SHA1));
+}
+
+constexpr size_t gnutlsHashSize(int algo) {
+    return (algo == GNUTLS_DIG_SHA512) ? 512/8 : (
+           (algo == GNUTLS_DIG_SHA256) ? 256/8 : (
+           (algo == GNUTLS_DIG_SHA1)   ? 160/8 : 0 ));
+}
+
 size_t aesKeySize(size_t max)
 {
     size_t aes_key_len = 0;
@@ -108,7 +120,7 @@ bool aesKeySizeGood(size_t key_size)
 Blob aesEncrypt(const Blob& data, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
-        throw DecryptError("Wrong key size");
+        throw DecryptError("Wrong key size: " + std::to_string(key.size()));
 
     Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
     {
@@ -181,7 +193,7 @@ Blob aesDecrypt(const Blob& data, const std::string& password)
     return aesDecrypt(encrypted, key);
 }
 
-Blob stretchKey(const std::string& password, Blob& salt)
+Blob stretchKey(const std::string& password, Blob& salt, size_t key_length)
 {
     if (salt.empty()) {
         salt.resize(PASSWORD_SALT_LENGTH);
@@ -193,18 +205,19 @@ Blob stretchKey(const std::string& password, Blob& salt)
     auto ret = argon2i_hash_raw(16, 64*1024, 1, password.data(), password.size(), salt.data(), salt.size(), res.data(), res.size());
     if (ret != ARGON2_OK)
         throw CryptoException("Can't compute argon2i !");
-    return hash(res);
+    return hash(res, key_length);
 }
 
-Blob hash(const Blob& data)
+Blob hash(const Blob& data, size_t hash_len)
 {
+    auto algo = gnutlsHashAlgo(hash_len);    
+    size_t res_size = gnutlsHashSize(algo);
     Blob res;
-    size_t res_size = 64;
     res.resize(res_size);
     const gnutls_datum_t gdat {(uint8_t*)data.data(), (unsigned)data.size()};
-    if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gdat, res.data(), &res_size))
+    if (gnutls_fingerprint(algo, &gdat, res.data(), &res_size))
         throw CryptoException("Can't compute hash !");
-    res.resize(res_size);
+    res.resize(std::min(hash_len, res_size));
     return res;
 }
 
