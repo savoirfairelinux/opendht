@@ -1793,26 +1793,32 @@ Dht::findStorage(const InfoHash& id) const
 void
 Dht::storageChanged(Storage& st, ValueStorage& v)
 {
+    DHT_LOG.DEBUG("[Storage %s] changed.", st.id.toString().c_str());
     if (not st.local_listeners.empty()) {
+        DHT_LOG.DEBUG("[Storage %s] %lu local listeners.", st.id.toString().c_str(), st.local_listeners.size());
         std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
-        DHT_LOG.DEBUG("Storage changed. Sending update to %lu local listeners.", st.local_listeners.size());
         for (const auto& l : st.local_listeners) {
             std::vector<std::shared_ptr<Value>> vals;
             if (not l.second.filter or l.second.filter(*v.data))
                 vals.push_back(v.data);
-            if (not vals.empty())
+            if (not vals.empty()) {
+                DHT_LOG.DEBUG("[Storage %s] Sending update local listener with token %lu.",
+                        st.id.toString().c_str(),
+                        l.first);
                 cbs.emplace_back(l.second.get_cb, std::move(vals));
+            }
         }
         // listeners are copied: they may be deleted by the callback
         for (auto& cb : cbs)
             cb.first(cb.second);
     }
 
+    DHT_LOG.DEBUG("[Storage %s] %lu remote listeners.", st.id.toString().c_str(), st.listeners.size());
     for (const auto& l : st.listeners) {
-        DHT_LOG.DEBUG("Storage changed. Sending update to %s.", l.first->toString().c_str());
         auto f = l.second.query.where.getFilter();
         if (f and not f(*v.data))
             continue;
+        DHT_LOG.DEBUG("[Storage %s] Sending update to %s.", st.id.toString().c_str(), l.first->toString().c_str());
         std::vector<std::shared_ptr<Value>> vals {};
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
