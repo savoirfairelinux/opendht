@@ -28,7 +28,8 @@ namespace dht {
 
 struct NodeCache {
     std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
-    std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
+    std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, bool confirmed);
+    std::vector<std::shared_ptr<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t total);
 
     /**
      * Reset the connectivity state of every node,
@@ -41,7 +42,7 @@ private:
     class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
     public:
         std::shared_ptr<Node> getNode(const InfoHash& id);
-        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirmed);
+        std::shared_ptr<Node> getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, bool confirmed);
         void clearBadNodes();
     };
 

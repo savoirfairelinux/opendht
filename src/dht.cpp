@@ -1238,24 +1238,14 @@ void
 Dht::bootstrapSearch(Dht::Search& sr)
 {
     const auto& now = scheduler.time();
-    auto& list = (sr.af == AF_INET) ? buckets : buckets6;
-    if (list.empty() || (list.size() == 1 && list.front().nodes.empty()))
-        return;
-    auto b = list.findBucket(sr.id);
-    if (b == list.end()) {
-        DHT_LOG.ERR("No bucket");
+    const auto& list = network_engine.getCachedNodes(sr.id, sr.af);
+    if ( list.empty() ) {
+        DHT_LOG.ERR("No node found from cache");
         return;
     }
 
-    sr.insertBucket(*b, now);
-    if (sr.nodes.size() < SEARCH_NODES) {
-        if (std::next(b) != list.end())
-            sr.insertBucket(*std::next(b), now);
-        if (b != list.begin())
-            sr.insertBucket(*std::prev(b), now);
-    }
-    if (sr.nodes.size() < SEARCH_NODES)
-        sr.insertBucket(*list.findBucket(myid), now);
+    for ( auto& i : list)
+        sr.insertNode(i, now);
     sr.refill_time = now;
 }
 
