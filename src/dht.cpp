@@ -903,8 +903,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                 if (auto sr = ws.lock()) {
                                     onListenDone(req, answer, sr, query);
                                     searchStep(sr);
-                                    if (auto sn = sr->getNode(req.node))
-                                        sn->listenStatus.erase(query);
                                 }
                             },
                             [this,ws,last_req,query](const Request& req, bool over) mutable
@@ -1502,16 +1500,19 @@ Dht::cancelListen(const InfoHash& id, size_t token)
             auto af_token = s->af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
             if (af_token == 0)
                 continue;
-            s->listeners.erase(af_token);
-            if (s->listeners.empty()) {
-                for (auto& sn : s->nodes) {
-                    /* also erase requests for all searchnodes. */
-                    for (auto& ls : sn.listenStatus) {
+            std::shared_ptr<Query> query;
+            const auto& ll = s->listeners.find(af_token);
+            if (ll != s->listeners.cend())
+                query = ll->second.query;
+            for (auto& sn : s->nodes) {
+                if (s->listeners.empty()) { /* also erase requests for all searchnodes. */
+                    for (auto& ls : sn.listenStatus)
                         network_engine.cancelRequest(ls.second);
-                    }
                     sn.listenStatus.clear();
-                }
+                } else if (query)
+                    sn.listenStatus.erase(query);
             }
+            s->listeners.erase(af_token);
         }
     };
     searches_cancel_listen(searches4);
