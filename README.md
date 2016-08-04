@@ -1,5 +1,4 @@
-OpenDHT
-===
+# OpenDHT
 A lightweight C++11 Distributed Hash Table implementation originally based on https://github.com/jech/dht by Juliusz Chroboczek.
 
  * Light and fast C++11 Kademlia DHT library.
@@ -9,8 +8,7 @@ A lightweight C++11 Distributed Hash Table implementation originally based on ht
  * IPv4 and IPv6 support.
  * Python binding.
 
-Documentation
--
+## Documentation
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
 #### How-to build and install
@@ -22,8 +20,7 @@ Build instructions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the
 g++ main.cpp -std=c++11 -lopendht -lgnutls
 ```
 
-Examples
--
+## Examples
 ### C++ example
 The `tools` directory includes simple example programs :
 * `dhtnode`, a command line tool, mostly used for debuging, allowing to perform operations supported by the library (get, put etc.) with text values.
@@ -85,16 +82,18 @@ for r in results:
     print(r)
 ```
 
-Dependencies
--
+## Dependencies
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.1+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, OS X).
 - Build tested with Microsoft Visual Studio 2015
 
-Licence
--
+## Contact
+
+Joins us on FreeNode at `#opendht`.
+
+## Licence
 Copyright (C) 2014-2016 Savoir-faire Linux Inc.
 
 OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
@@ -105,6 +104,5 @@ See COPYING or https://www.gnu.org/licenses/gpl-3.0.en.html for the full GPLv3 l
 
 This project is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
 
-Donations
--
+## Donations
 We gratefully accept Bitcoin donations to support OpenDHT development at: `bitcoin:3EykSd1An888efq4Bq3KaV3hJ3JQ4FPnwm`.
