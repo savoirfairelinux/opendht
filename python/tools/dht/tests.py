@@ -18,6 +18,8 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
+from networkx.drawing.nx_agraph import graphviz_layout
+
 
 from opendht import *
 from dht.network import DhtNetwork, DhtNetworkSubProcess
@@ -246,16 +248,23 @@ class PhtTest(FeatureTest):
         if len(prefixes) == 0:
             return
 
-        edges = set([])
+        edges = list([])
         for prefix in prefixes:
             for i in range(-1, len(prefix)-1):
                 u = prefix[:i+1]
-                edges.add( ("" if i == -1 else u, u+"0") )
-                edges.add( ("" if i == -1 else u, u+"1") )
+                x = ("." if i == -1 else u, u+"0")
+                y = ("." if i == -1 else u, u+"1")
+                if x not in edges:
+                    edges.append(x)
+                if y not in edges:
+                    edges.append(y)
 
         # TODO: use a binary tree position layout...
-        G = nx.Graph(list(edges))
-        nx.draw(G, with_labels=True, node_color='white')
+        #   UPDATE : In a better way [change lib]
+        G = nx.Graph(sorted(edges, key=lambda x: len(x[0])))
+        plt.title("PHT: Tree")
+        pos=graphviz_layout(G,prog='dot')
+        nx.draw(G, pos, with_labels=True, node_color='white')
         plt.show()
 
     def run(self):
@@ -302,6 +311,8 @@ class PhtTest(FeatureTest):
                 if self._timer:
                     DhtNetwork.log('This insert step took : ', time_taken, 'second')
                 FeatureTest.lock.wait()
+
+        time.sleep(1)
 
         # Recover entries now that the trie is complete.
         for key in keys:
