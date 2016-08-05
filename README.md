@@ -91,7 +91,7 @@ for r in results:
 
 ## Contact
 
-Joins us on FreeNode at `#opendht`.
+IRC: join us on Freenode at `#opendht`.
 
 ## Licence
 Copyright (C) 2014-2016 Savoir-faire Linux Inc.
