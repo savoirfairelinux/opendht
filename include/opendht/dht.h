@@ -292,8 +292,8 @@ private:
        the target 8 turn out to be dead. */
     static constexpr unsigned SEARCH_NODES {14};
 
-    /* Concurrent requests during a search */
-    static constexpr unsigned SEARCH_REQUESTS {4};
+    /* Concurrent search nodes requested count */
+    static constexpr unsigned MAX_REQUESTED_SEARCH_NODES {4};
 
     /* Number of listening nodes */
     static constexpr unsigned LISTEN_NODES {4};
