@@ -171,11 +171,20 @@ private:
 };
 
 struct Dht::SearchNode {
-    SearchNode() : node() {}
-    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
-
     using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
     using SyncStatusMap = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
+
+    std::shared_ptr<Node> node {};                 /* the node info */
+    SyncStatusMap getStatus {};                    /* get/sync status */
+    SyncStatusMap listenStatus {};                 /* listen status */
+    AnnounceStatusMap acked {};                    /* announcement status for a given value id */
+    Blob token {};                                 /* last token the node sent to us after a get request */
+    time_point last_get_reply {time_point::min()}; /* last time received valid token */
+    bool candidate {false};                        /* A search node is candidate if the search is/was synced and this
+                                                      node is a new candidate for inclusion. */
+
+    SearchNode() : node() {}
+    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
 
     /**
      * Can we use this node to listen/announce now ?
@@ -186,20 +195,29 @@ struct Dht::SearchNode {
     }
 
     /**
-     * Could a "get" request be sent to this node now ?
-     * update: time of the last "get" op for the search.
+     * Could a particular "get" request be sent to this node now ?
+     *
+     * @param now     The time reference to now.
+     * @param update  Time of the last "get" op for the search.
+     * @param q       The query defining the "get" operation we're referring to.
+     *
+     * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        const auto& get_status = q ? getStatus.find(q) : getStatus.end();
-        const auto& sq_status = std::find_if(getStatus.begin(), getStatus.end(),
-                [q](const SyncStatusMap::value_type& s) {
-                    return q and s.first and q->isSatisfiedBy(*s.first);
+        /* find request status for the given query */
+        const auto& get_status = q ? getStatus.find(q) : getStatus.cend();
+        /* find request status for a query satisfying the initial query */
+        const auto& sq_status = not q ? getStatus.cend() :
+            std::find_if(getStatus.cbegin(), getStatus.cend(),
+                [&q](const SyncStatusMap::value_type& s) {
+                    return s.first and q->isSatisfiedBy(*s.first);
                 }
         );
-        return not node->isExpired() and
-               (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-               and ((get_status == getStatus.end() or not get_status->second or not get_status->second->pending()) and
-                    (sq_status == getStatus.end() or not sq_status->second or not sq_status->second->pending()));
+        return not node->isExpired() and (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
+               and ((get_status == getStatus.cend() or not get_status->second)
+                   and (sq_status == getStatus.cend() or not sq_status->second or not sq_status->second->pending()));
+    }
+
     /**
      * Tell if the node has finished responding to a given 'get' request.
      *
@@ -313,21 +331,6 @@ struct Dht::SearchNode {
     bool isBad() const {
         return !node || node->isExpired() || candidate;
     }
-
-    std::shared_ptr<Node> node {};
-
-    time_point last_get_reply {time_point::min()}; /* last time received valid token */
-    SyncStatusMap getStatus {};                    /* get/sync status */
-    SyncStatusMap listenStatus {};                 /* listen status */
-    AnnounceStatusMap acked {};                    /* announcement status for a given value id */
-
-    Blob token {};
-
-    /**
-     * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
-     *
-     */
-    bool candidate {false};
 };
 
 struct Dht::Search {
