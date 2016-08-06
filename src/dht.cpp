@@ -339,7 +339,7 @@ struct Dht::Search {
     }
 
     /* number of concurrent sync requests */
-    unsigned currentGetRequests() const {
+    unsigned currentlySolicitedNodeCount() const {
         unsigned count = 0;
         for (const auto& n : nodes)
             if (not n.isBad() and n.pending(n.getStatus))
@@ -766,7 +766,7 @@ Dht::expireSearches()
 Dht::SearchNode*
 Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update)
 {
-    if (sr->done or sr->currentGetRequests() >= SEARCH_REQUESTS)
+    if (sr->done or sr->currentlySolicitedNodeCount() >= MAX_REQUESTED_SEARCH_NODES)
         return nullptr;
 
     const auto& now = scheduler.time();
@@ -841,7 +841,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
 
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] step (%d requests)",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', sr->currentGetRequests());
+            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', sr->currentlySolicitedNodeCount());
     sr->step_time = now;
 
     if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES) {
@@ -973,7 +973,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             sr->done = true;
     }
 
-    if (sr->currentGetRequests() < SEARCH_REQUESTS) {
+    if (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES) {
         unsigned i = 0;
         SearchNode* sent;
         do {
@@ -981,9 +981,9 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             if (sent and not sent->candidate)
                 i++;
         }
-        while (sent and sr->currentGetRequests() < SEARCH_REQUESTS);
+        while (sent and sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES);
         /*DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->currentGetRequests());*/
+            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->currentlySolicitedNodeCount());*/
 
         auto expiredn = (size_t)std::count_if(sr->nodes.begin(), sr->nodes.end(), [&](const SearchNode& sn) {
                     return sn.candidate or sn.node->isExpired();
@@ -1093,29 +1093,27 @@ Dht::Search::getUpdateTime(time_point now) const
     time_point ut = time_point::max();
     const auto last_get = getLastGetTime();
     unsigned i = 0, t = 0, d = 0;
-    const auto reqs = currentGetRequests();
+    const auto solicited_nodes = currentlySolicitedNodeCount();
     for (const auto& sn : nodes) {
         if (sn.node->isExpired() or (sn.candidate and t >= TARGET_NODES))
             continue;
         auto pending = sn.pending(sn.getStatus);
         if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
             // not isSynced
-            if (not pending and reqs < SEARCH_REQUESTS)
+            if (not pending and solicited_nodes < MAX_REQUESTED_SEARCH_NODES)
                 ut = std::min(ut, now);
             if (not sn.candidate)
                 d++;
-        } else {
+        } else
             ut = std::min(ut, sn.last_get_reply + Node::NODE_EXPIRE_TIME);
-        }
 
         t++;
         if (not sn.candidate and ++i == TARGET_NODES)
             break;
     }
-    if (not callbacks.empty() and d == 0) {
+    if (not callbacks.empty() and d == 0)
         // If all synced/updated but some callbacks remain, step now to clear them
         return now;
-    }
     return ut;
 }
 
