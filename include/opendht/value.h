@@ -457,10 +457,10 @@ struct Value
         for (const auto& field : fields)
             switch (field) {
                 case Value::Field::Id:
-                    pk.pack(id);
+                    pk.pack(static_cast<uint64_t>(id));
                     break;
                 case Value::Field::ValueType:
-                    pk.pack(type);
+                    pk.pack(static_cast<uint64_t>(type));
                     break;
                 case Value::Field::OwnerPk:
                     if (owner)

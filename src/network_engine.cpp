@@ -748,9 +748,8 @@ NetworkEngine::sendNodesValues(const sockaddr* sa, socklen_t salen, TransId tid,
             pk.pack_map(2);
             pk.pack(std::string("f")); pk.pack(fields);
             pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
-            for (const auto& v : st) {
+            for (const auto& v : st)
                 v->msgpack_pack_fields(fields, pk);
-            }
             DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
                     nodes.size(), nodes6.size(), st.size(), fields.size());
         }
@@ -1102,7 +1101,7 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
                 for (size_t i = 0; i < rvalues->via.array.size; ++i) {
                     try {
                         auto v = std::make_shared<FieldValueIndex>();
-                        v->msgpack_unpack_fields(fields_, *rvalues, i*fields.size());
+                        v->msgpack_unpack_fields(fields_, *rvalues, i*fields_.size());
                         fields.emplace_back(std::move(v));
                     } catch (const std::exception& e) { }
                 }
