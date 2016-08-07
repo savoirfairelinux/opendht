@@ -91,7 +91,7 @@ for r in results:
 
 ## Contact
 
-IRC: join us on Freenode at `#opendht`.
+IRC: join us on Freenode at [`#opendht`](https://webchat.freenode.net/?channels=%23opendht).
 
 ## Licence
 Copyright (C) 2014-2016 Savoir-faire Linux Inc.
