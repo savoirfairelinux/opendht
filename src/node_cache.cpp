@@ -34,19 +34,19 @@ NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, tim
 }
 
 std::vector<std::shared_ptr<Node>>
-NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t total) {
+NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
     const auto& c = (sa_f == AF_INET ? cache_4 : cache_6);
     auto it_p = c.lower_bound(id),
          it_n = it_p;
 
     std::vector<std::shared_ptr<Node>> nodes;
-    nodes.reserve(std::min(c.size(), total));
+    nodes.reserve(std::min(c.size(), count));
     NodeMap::const_iterator it;
 
     if (it_p != c.begin()) /* Create 2 separate iterator if we could */
         --it_p;
 
-    while (nodes.size() < total and (it_n != c.end() or it_p != c.end())) {
+    while (nodes.size() < count and (it_n != c.end() or it_p != c.end())) {
         /* If one of the iterator is at the end, then take the other one
            If they are both in middle of somewhere comapre both and take
            the closest to the id. */
