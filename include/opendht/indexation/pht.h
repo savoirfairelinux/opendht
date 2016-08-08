@@ -258,8 +258,8 @@ private:
      * @param done_cb     : Callback to call when the insert is done
      */
 
-    void insert( Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
-                 bool check_split, DoneCallbackSimple done_cb = {});
+    void insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
+                bool check_split, DoneCallbackSimple done_cb = {});
 
     class Cache {
     public:
@@ -301,7 +301,7 @@ private:
     };
 
     /* Callback used for insert value by using the pht */
-    using RealInsertCallback = std::function<void(std::shared_ptr<Prefix> p, IndexEntry entry )>;
+    using RealInsertCallback = std::function<void(std::shared_ptr<Prefix> p, IndexEntry entry)>;
     using LookupCallbackWrapper = std::function<void(std::vector<std::shared_ptr<IndexEntry>>& values, Prefix p)>;
 
     /**
@@ -378,7 +378,7 @@ private:
      * @param entry  : Entry to put on the pht
      * @param end_cb : Callback to apply to the insert prefi (here does the insert)
      */
-    void split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals, IndexEntry entry, RealInsertCallback end_cb );
+    void split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals, IndexEntry entry, RealInsertCallback end_cb);
 
     /**
      * Tells if the key is valid according to the key spec.
