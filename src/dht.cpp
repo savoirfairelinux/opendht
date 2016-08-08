@@ -841,7 +841,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                     continue;
                 }
             }
-            if (in) storageStore(sr->id, a.value, a.created);
+
             unsigned i = 0;
             for (auto& n : sr->nodes) {
                 if (not n.isSynced(now))
@@ -1243,6 +1243,8 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
             callback(false, {});
         return;
     }
+
+    storageStore(id, value, created);
 
     auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
