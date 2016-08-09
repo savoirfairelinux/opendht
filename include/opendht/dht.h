@@ -494,7 +494,15 @@ private:
     void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
     size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), const std::shared_ptr<Query>& q = {});
 
-    void bootstrapSearch(Search& sr);
+    /**
+     * Refill the search with good nodes if possible.
+     *
+     * @param sr  The search to refill.
+     *
+     * @return the number inserted nodes.
+     */
+    unsigned refill(Search& sr);
+
     Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
 

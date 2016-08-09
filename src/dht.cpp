@@ -360,7 +360,6 @@ struct Dht::Search {
      * @returns true if the node was not present and added to the search
      */
     bool insertNode(const std::shared_ptr<Node>& n, time_point now, const Blob& token={});
-    unsigned insertBucket(const Bucket&, time_point now);
 
     SearchNode* getNode(const std::shared_ptr<Node>& n) {
         auto srn = std::find_if(nodes.begin(), nodes.end(), [&](SearchNode& sn) {
@@ -425,8 +424,6 @@ struct Dht::Search {
     time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
 
     bool removeExpiredNode(time_point now);
-
-    unsigned refill(const RoutingTable&, time_point now);
 
     std::vector<std::shared_ptr<Node>> getNodes() const;
 
@@ -875,13 +872,8 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', sr->currentlySolicitedNodeCount());
     sr->step_time = now;
 
-    if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES) {
-        if (auto added = sr->refill(sr->af == AF_INET ? buckets : buckets6, now)) {
-            sr->refill_time = now;
-            DHT_LOG.DEBUG("[search %s IPv%c] refilled with %u nodes",
-                    sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', added);
-        }
-    }
+    if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES)
+        refill(*sr);
 
     /* Check if the first TARGET_NODES (8) live nodes have replied. */
     if (sr->isSynced(now)) {
@@ -1057,18 +1049,6 @@ Dht::searchStep(std::shared_ptr<Search> sr)
     /* periodic searchStep scheduling. */
     if (not sr->done)
         scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
-}
-
-/* Insert the contents of a bucket into a search structure. */
-unsigned
-Dht::Search::insertBucket(const Bucket& b, time_point now)
-{
-    unsigned inserted = 0;
-    for (auto& n : b.nodes) {
-        if (not n->isExpired() and insertNode(n, now))
-            inserted++;
-    }
-    return inserted;
 }
 
 bool
@@ -1259,42 +1239,29 @@ Dht::Search::getNextStepTime(const std::map<ValueType::Id, ValueType>& types, ti
     return next_step;
 }
 
-void
-Dht::bootstrapSearch(Dht::Search& sr)
-{
-    const auto& now = scheduler.time();
-    const auto& list = network_engine.getCachedNodes(sr.id, sr.af);
-    if ( list.empty() ) {
-        DHT_LOG.ERR("No node found from cache");
-        return;
-    }
+unsigned Dht::refill(Dht::Search& sr) {
+    auto now = scheduler.time();
+    /* we search for up to SEARCH_NODES good nodes. */
+    auto cached_nodes = network_engine.getCachedNodes(sr.id, sr.af, SEARCH_NODES);
 
-    for ( auto& i : list)
-        sr.insertNode(i, now);
-    sr.refill_time = now;
-}
-
-unsigned
-Dht::Search::refill(const RoutingTable& r, time_point now) {
-    if (r.isEmpty() or r.front().af != af)
+    if (cached_nodes.empty()) {
+        DHT_LOG.ERR("[search %s IPv%c] no nodes from cache while refilling search",
+                sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6');
         return 0;
-    unsigned added = 0;
-    auto num_bad_nodes = getNumberOfBadNodes();
-    auto b = r.findBucket(id);
-    auto n = b;
-    while (nodes.size()-num_bad_nodes < SEARCH_NODES && (std::next(n) != r.end() || b != r.begin())) {
-        if (std::next(n) != r.end()) {
-            added += insertBucket(*std::next(n), now);
-            n = std::next(n);
-        }
-        if (b != r.begin()) {
-            added += insertBucket(*std::prev(b), now);
-            b = std::prev(b);
-        }
     }
 
-    return added;
+    unsigned inserted = 0;
+    for (auto& i : cached_nodes) {
+        /* try to insert the nodes. Search::insertNode will know how many to insert. */
+        if (sr.insertNode(i, now))
+            ++inserted;
+    }
+    DHT_LOG.DEBUG("[search %s IPv%c] refilled search with %u nodes from node cache",
+            sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', inserted);
+    sr.refill_time = now;
+    return inserted;
 }
+
 
 /* Start a search. */
 std::shared_ptr<Dht::Search>
@@ -1353,7 +1320,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         ));
     }
 
-    bootstrapSearch(*sr);
+    refill(*sr);
     if (sr->nextSearchStep)
         scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, scheduler.time()));
     else
