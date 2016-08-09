@@ -120,7 +120,7 @@ bool aesKeySizeGood(size_t key_size)
 Blob aesEncrypt(const Blob& data, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
-        throw DecryptError("Wrong key size: " + std::to_string(key.size()));
+        throw DecryptError("Wrong key size");
 
     Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
     {
