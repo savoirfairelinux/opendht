@@ -219,6 +219,21 @@ struct Dht::SearchNode {
     }
 
     /**
+     * Tells if pagination is pending for a given 'get' request.
+     *
+     * @param get  The 'get' request data structure.
+     *
+     * @return true if pagination is pending, else false.
+     */
+    bool paginationPending(const Get& get) const {
+        return std::find_if(get.pagination_queries.cbegin(), get.pagination_queries.cend(),
+            [this](const std::shared_ptr<Query>& query) {
+                const auto& req = getStatus.find(query);
+                return req != getStatus.cend() and req->second and req->second->pending();
+            }) != get.pagination_queries.cend();
+    }
+
+    /**
      * Tell if the node has finished responding to a given 'get' request.
      *
      * A 'get' request can be divided in multiple requests called "pagination
@@ -230,8 +245,12 @@ struct Dht::SearchNode {
      * @return true if it has finished, else false.
      */
     bool isDone(const Get& get) const {
-        const auto& gs = get.query ? getStatus.find(get.query) : getStatus.cend();
-        return gs != getStatus.end() and gs->second and not gs->second->pending();
+        if (not get.pagination_queries.empty())
+            return not paginationPending(get);
+        else {
+            const auto& gs = get.query ? getStatus.find(get.query) : getStatus.cend();
+            return gs != getStatus.end() and gs->second and not gs->second->pending();
+        }
     }
 
     /**
@@ -791,6 +810,104 @@ Dht::expireSearches()
     erase_if(searches6, expired);
 }
 
+void
+Dht::searchNodeGetDone(const Request& status,
+        NetworkEngine::RequestAnswer&& answer,
+        std::weak_ptr<Search> ws,
+        std::shared_ptr<Query> query)
+{
+    if (auto sr = ws.lock()) {
+        sr->insertNode(status.node, scheduler.time(), answer.ntoken);
+        onGetValuesDone(status, answer, sr, query);
+    }
+}
+
+void
+Dht::searchNodeGetExpired(const Request& status,
+        bool over,
+        std::weak_ptr<Search> ws,
+        std::shared_ptr<Query> query)
+{
+    if (auto sr = ws.lock()) {
+        if (auto srn = sr->getNode(status.node)) {
+            srn->getStatus[query]->setExpired();
+            srn->candidate = not over;
+            if (over)
+                srn->getStatus.erase(query);
+        }
+        scheduler.edit(sr->nextSearchStep, scheduler.time());
+    }
+}
+
+void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, SearchNode* n) {
+    if (auto sr = ws.lock()) {
+        auto find_cb = [query](std::shared_ptr<Search> sr) {
+            return std::find_if(sr->callbacks.begin(), sr->callbacks.end(),
+                [&query](const std::pair<time_point, Get>& g) {
+                    return g.second.query == query;
+                }
+            );
+        };
+        auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
+        auto onSelectDone =
+            [this,ws,query,find_cb](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
+            {
+                if (auto sr = ws.lock()) {
+                    auto cb = find_cb(sr);
+                    if (cb == sr->callbacks.end())
+                        return;
+                    if (auto sn = sr->getNode(status.node)) {
+                        if (answer.fields.empty()) {
+                            searchNodeGetDone(status, std::move(answer), ws, query);
+                            return;
+                        } else {
+                            for (const auto& fvi : answer.fields) {
+                                try {
+                                    auto vid = fvi->index.at(Value::Field::Id).getInt();
+                                    if (vid == Value::INVALID_ID) continue;
+                                    auto query_for_vid = std::make_shared<Query>(Select {}, Where {}.id(vid));
+                                    cb->second.pagination_queries.insert(query_for_vid);
+                                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+                                            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                                            sn->node->toString().c_str(), query_for_vid->toString().c_str());
+                                    sn->getStatus[query_for_vid] = network_engine.sendGetValues(status.node,
+                                            sr->id,
+                                            *query_for_vid,
+                                            -1,
+                                            std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
+                                            std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query_for_vid)
+                                            );
+                                } catch (std::out_of_range&) {
+                                    DHT_LOG.ERR("[search %s IPv%c] [node %s] received non-id field in response to "\
+                                            "'SELECT id' request...",
+                                            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                                            sn->node->toString().c_str());
+                                }
+                            }
+                        }
+
+                    }
+                }
+            };
+        auto cb = find_cb(sr);
+        if (cb != sr->callbacks.end()) {
+            /* add pagination query key for tracking ongoing requests. */
+            cb->second.pagination_queries.insert(select_q);
+
+            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                    n->node->toString().c_str(), select_q->toString().c_str());
+            n->getStatus[select_q] = network_engine.sendGetValues(n->node,
+                    sr->id,
+                    *select_q,
+                    -1,
+                    onSelectDone,
+                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, select_q)
+            );
+        }
+    }
+}
+
 Dht::SearchNode*
 Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update)
 {
@@ -800,6 +917,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     const auto& now = scheduler.time();
     const time_point up = update ? sr->getLastGetTime() : time_point::min();
 
+    std::weak_ptr<Search> ws = sr;
     SearchNode* n = nullptr;
     auto cb = sr->callbacks.begin();
     do { /* for all queries to send */
@@ -821,38 +939,34 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                 return nullptr;
         }
 
-        std::weak_ptr<Search> ws = sr;
-        auto onDone =
-            [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable {
-                if (auto sr = ws.lock()) {
-                    sr->insertNode(status.node, scheduler.time(), answer.ntoken);
-                    onGetValuesDone(status, answer, sr, query);
-                }
-            };
-        auto onExpired =
-            [this,ws,query](const Request& status, bool over) mutable {
-                if (auto sr = ws.lock()) {
-                    if (auto srn = sr->getNode(status.node)) {
-                        srn->candidate = not over;
-                        if (over)
-                            srn->getStatus.erase(query);
-                    }
-                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                }
-            };
-        std::shared_ptr<Request> rstatus;
         if (sr->callbacks.empty() and sr->listeners.empty()) {
             DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'find_node'",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                     n->node->toString().c_str());
-            rstatus = network_engine.sendFindNode(n->node, sr->id, -1, onDone, onExpired);
+            n->getStatus[query] = network_engine.sendFindNode(n->node,
+                    sr->id,
+                    -1,
+                    std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
+                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
         } else {
-            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'get'",
-                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    n->node->toString().c_str());
-            rstatus = network_engine.sendGetValues(n->node, sr->id, query ? *query : Query {}, -1, onDone, onExpired);
+            if (query and not query->select.getSelection().empty()) {
+                /* The request contains a select. No need to paginate... */
+                DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'get'",
+                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                        n->node->toString().c_str());
+                n->getStatus[query] = network_engine.sendGetValues(n->node,
+                        sr->id,
+                        *query,
+                        -1,
+                        std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
+                        std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
+            } else {
+                if (n->paginationPending(cb->second))
+                    n = nullptr;
+                else
+                    paginate(ws, query, n);
+            }
         }
-        n->getStatus[query] = rstatus;
 
         if (not sr->isSynced(now) or cb == sr->callbacks.end())
             break; /* only trying to find nodes, only send the oldest query */
@@ -1314,7 +1428,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         auto now = scheduler.time();
         sr->callbacks.insert(std::make_pair<time_point, Get>(
             std::move(now),
-            Get { scheduler.time(), f, std::make_shared<Query>(q),
+            Get { scheduler.time(), f, std::make_shared<Query>(q), {},
                 qcb ? qcb : QueryCallback {}, gcb ? gcb : GetCallback {}, dcb
             }
         ));
@@ -2714,7 +2828,10 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("[node %s] Eek! Got get_values with no info_hash.", node->toString().c_str());
-        throw DhtProtocolException {DhtProtocolException::NON_AUTHORITATIVE_INFORMATION, DhtProtocolException::GET_NO_INFOHASH};
+        throw DhtProtocolException {
+            DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
+            DhtProtocolException::GET_NO_INFOHASH
+        };
     }
     const auto& now = scheduler.time();
     NetworkEngine::RequestAnswer answer {};
@@ -2731,9 +2848,10 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query
     return answer;
 }
 
-void
-Dht::onGetValuesDone(const Request& status,
-        NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr, const std::shared_ptr<Query>& orig_query)
+void Dht::onGetValuesDone(const Request& status,
+        NetworkEngine::RequestAnswer& a,
+        std::shared_ptr<Search>& sr,
+        const std::shared_ptr<Query>& orig_query)
 {
     if (not sr) {
         DHT_LOG.WARN("[search unknown] got reply to 'get'. Ignoring.");
@@ -2748,12 +2866,13 @@ Dht::onGetValuesDone(const Request& status,
             DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                     a.values.size());
-            for (auto& getp : sr->callbacks) {
+            for (auto& getp : sr->callbacks) { /* call all callbacks for this search */
                 auto& get = getp.second;
                 if (not (get.get_cb or get.query_cb) or
                         (orig_query and get.query and not get.query->isSatisfiedBy(*orig_query)))
                     continue;
-                if (get.query_cb) {
+
+                if (get.query_cb) { /* in case of a request with query */
                     if (not a.fields.empty()) {
                         get.query_cb(a.fields);
                     } else if (not a.values.empty()) {
@@ -2764,7 +2883,7 @@ Dht::onGetValuesDone(const Request& status,
                         });
                         get.query_cb(fields);
                     }
-                } else if (get.get_cb) {
+                } else if (get.get_cb) { /* in case of a vanilla get request */
                     std::vector<std::shared_ptr<Value>> tmp;
                     std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
                         [&](const std::shared_ptr<Value>& v) {
@@ -2775,6 +2894,8 @@ Dht::onGetValuesDone(const Request& status,
                         get.get_cb(tmp);
                 }
             }
+
+            /* callbacks for local search listeners */
             std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
             for (auto& l : sr->listeners) {
                 if (!l.second.get_cb or (orig_query and l.second.query and not l.second.query->isSatisfiedBy(*orig_query)))
@@ -2823,7 +2944,10 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
 }
 
 void
-Dht::onListenDone(const Request& status, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr, const std::shared_ptr<Query>& orig_query)
+Dht::onListenDone(const Request& status,
+        NetworkEngine::RequestAnswer& answer,
+        std::shared_ptr<Search>& sr,
+        const std::shared_ptr<Query>& orig_query)
 {
     DHT_LOG.DEBUG("[search %s] Got reply to listen.", sr->id.toString().c_str());
     if (sr) {
@@ -2842,7 +2966,10 @@ Dht::onListenDone(const Request& status, NetworkEngine::RequestAnswer& answer, s
 }
 
 NetworkEngine::RequestAnswer
-Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::vector<std::shared_ptr<Value>> values,
+Dht::onAnnounce(std::shared_ptr<Node> node,
+        InfoHash& hash,
+        Blob& token,
+        std::vector<std::shared_ptr<Value>> values,
         time_point created)
 {
     if (hash == zeroes) {
@@ -2907,8 +3034,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, std::ve
 }
 
 void
-Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer,
-        std::shared_ptr<Search>& sr)
+Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",

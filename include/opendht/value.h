@@ -827,6 +827,12 @@ struct Query
 
     void msgpack_unpack(const msgpack::object& o);
 
+    std::string toString() {
+        std::stringstream ss;
+        ss << *this;
+        return ss.str();
+    }
+
     friend std::ostream& operator<<(std::ostream& s, const dht::Query& q) {
         return s << "Query[" << q.select << " " << q.where << "]";
     }
