@@ -171,11 +171,20 @@ private:
 };
 
 struct Dht::SearchNode {
-    SearchNode() : node() {}
-    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
-
     using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
     using SyncStatusMap = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
+
+    std::shared_ptr<Node> node {};                 /* the node info */
+    SyncStatusMap getStatus {};                    /* get/sync status */
+    SyncStatusMap listenStatus {};                 /* listen status */
+    AnnounceStatusMap acked {};                    /* announcement status for a given value id */
+    Blob token {};                                 /* last token the node sent to us after a get request */
+    time_point last_get_reply {time_point::min()}; /* last time received valid token */
+    bool candidate {false};                        /* A search node is candidate if the search is/was synced and this
+                                                      node is a new candidate for inclusion. */
+
+    SearchNode() : node() {}
+    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
 
     /**
      * Can we use this node to listen/announce now ?
@@ -186,22 +195,52 @@ struct Dht::SearchNode {
     }
 
     /**
-     * Could a "get" request be sent to this node now ?
-     * update: time of the last "get" op for the search.
+     * Could a particular "get" request be sent to this node now ?
+     *
+     * @param now     The time reference to now.
+     * @param update  Time of the last "get" op for the search.
+     * @param q       The query defining the "get" operation we're referring to.
+     *
+     * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        const auto& get_status = q ? getStatus.find(q) : getStatus.end();
-        const auto& sq_status = std::find_if(getStatus.begin(), getStatus.end(),
-                [q](const SyncStatusMap::value_type& s) {
-                    return q and s.first and q->isSatisfiedBy(*s.first);
+        /* find request status for the given query */
+        const auto& get_status = q ? getStatus.find(q) : getStatus.cend();
+        /* find request status for a query satisfying the initial query */
+        const auto& sq_status = not q ? getStatus.cend() :
+            std::find_if(getStatus.cbegin(), getStatus.cend(),
+                [&q](const SyncStatusMap::value_type& s) {
+                    return s.first and q->isSatisfiedBy(*s.first);
                 }
         );
-        return not node->isExpired() and
-               (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-               and ((get_status == getStatus.end() or not get_status->second or not get_status->second->pending()) and
-                    (sq_status == getStatus.end() or not sq_status->second or not sq_status->second->pending()));
+        return not node->isExpired() and (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
+               and ((get_status == getStatus.cend() or not get_status->second)
+                   and (sq_status == getStatus.cend() or not sq_status->second or not sq_status->second->pending()));
     }
 
+    /**
+     * Tell if the node has finished responding to a given 'get' request.
+     *
+     * A 'get' request can be divided in multiple requests called "pagination
+     * requests". If this is the case, we have to check if they're all finished.
+     * Otherwise, we only check for the single request.
+     *
+     * @param get  The 'get' request data structure;
+     *
+     * @return true if it has finished, else false.
+     */
+    bool isDone(const Get& get) const {
+        const auto& gs = get.query ? getStatus.find(get.query) : getStatus.cend();
+        return gs != getStatus.end() and gs->second and not gs->second->pending();
+    }
+
+    /**
+     * Tells if a request in the status map is expired.
+     *
+     * @param status  A SyncStatusMap reference.
+     *
+     * @return true if there exists an expired request, else false.
+     */
     bool expired(const SyncStatusMap& status) const {
         return std::find_if(status.begin(), status.end(),
             [](const SyncStatusMap::value_type& r){
@@ -209,6 +248,13 @@ struct Dht::SearchNode {
             }) != status.end();
     }
 
+    /**
+     * Tells if a request in the status map is pending.
+     *
+     * @param status  A SyncStatusMap reference.
+     *
+     * @return true if there exists an expired request, else false.
+     */
     bool pending(const SyncStatusMap& status) const {
         return std::find_if(status.begin(), status.end(),
             [](const SyncStatusMap::value_type& r){
@@ -285,21 +331,6 @@ struct Dht::SearchNode {
     bool isBad() const {
         return !node || node->isExpired() || candidate;
     }
-
-    std::shared_ptr<Node> node {};
-
-    time_point last_get_reply {time_point::min()}; /* last time received valid token */
-    SyncStatusMap getStatus {};                    /* get/sync status */
-    SyncStatusMap listenStatus {};                 /* listen status */
-    AnnounceStatusMap acked {};                    /* announcement status for a given value id */
-
-    Blob token {};
-
-    /**
-     * A search node is candidate if the search is/was synced and this node is a new candidate for inclusion
-     *
-     */
-    bool candidate {false};
 };
 
 struct Dht::Search {
@@ -361,7 +392,7 @@ struct Dht::Search {
     /**
      * Is this get operation done ?
      */
-    bool isDone(const Get& get, time_point now) const;
+    bool isDone(const Get& get) const;
 
     time_point getUpdateTime(time_point now) const;
 
@@ -858,7 +889,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             // search is synced but some (newer) get operations are not complete
             // Call callbacks when done
             for (auto b = sr->callbacks.begin(); b != sr->callbacks.end();) {
-                if (sr->isDone(b->second, now)) {
+                if (sr->isDone(b->second)) {
                     if (b->second.done_cb)
                         b->second.done_cb(true, sr->getNodes());
                     for (auto& n : sr->nodes)
@@ -1071,16 +1102,14 @@ Dht::Search::getLastGetTime() const
 }
 
 bool
-Dht::Search::isDone(const Get& get, time_point now) const
+Dht::Search::isDone(const Get& get) const
 {
     unsigned i = 0;
-    const auto limit = std::max(get.start, now - Node::NODE_EXPIRE_TIME);
     for (const auto& sn : nodes) {
-        const auto& gs = sn.getStatus.find(get.query);
         if (sn.isBad())
             continue;
-        if (gs == sn.getStatus.end() or not gs->second or gs->second->reply_time < limit)
-           return false;
+        if (not sn.isDone(get))
+            return false;
         if (++i == TARGET_NODES)
             break;
     }
