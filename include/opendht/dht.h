@@ -452,11 +452,30 @@ private:
     void confirmNodes();
     void expire();
 
+    /**
+     * Generic function to execute when a 'get' request has completed.
+     *
+     * @param status  The request passed by the network engine.
+     * @param answer  The answer from the network engine.
+     * @param ws      A weak pointer to the search concerned by the request.
+     * @param query   The query sent to the node.
+     */
     void searchNodeGetDone(const Request& status,
             NetworkEngine::RequestAnswer&& answer,
             std::weak_ptr<Search> ws,
             std::shared_ptr<Query> query);
+
+    /**
+     * Generic function to execute when a 'get' request expires.
+     *
+     * @param status  The request passed by the network engine.
+     * @param over    Whether we're done to try sending the request to the node
+     *                or not. This lets us mark a node as candidate.
+     * @param ws      A weak pointer to the search concerned by the request.
+     * @param query   The query sent to the node.
+     */
     void searchNodeGetExpired(const Request& status, bool over, std::weak_ptr<Search> ws, std::shared_ptr<Query> query);
+
     /**
      * This method recovers sends individual request for values per id.
      *
@@ -471,6 +490,21 @@ private:
      */
     SearchNode* searchSendGetValues(std::shared_ptr<Search> sr, SearchNode *n = nullptr, bool update = true);
 
+    /**
+     * Forwards an 'announce' request for a list of nodes to the network engine.
+     *
+     * @param sr  The search for which we want to announce a value.
+     * @param announce  The 'announce' structure.
+     */
+    void searchSendAnnounceValue(const std::shared_ptr<Search>& sr);
+
+    /**
+     * Main process of a Search's operations. This function will demand the
+     * network engine to send requests packets for all pending operations
+     * ('get', 'put' and 'listen').
+     *
+     * @param sr  The search to execute its operations.
+     */
     void searchStep(std::shared_ptr<Search> sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
