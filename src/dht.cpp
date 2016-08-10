@@ -173,14 +173,17 @@ private:
 struct Dht::SearchNode {
     using AnnounceStatus = std::map<Value::Id, std::shared_ptr<Request>>;
     using SyncStatus = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
-    using PaginationQueries = std::map<std::shared_ptr<Query>, std::vector<std::shared_ptr<Query>>>;
 
     std::shared_ptr<Node> node {};                 /* the node info */
 
-    PaginationQueries pagination_queries {};
-    SyncStatus getStatus {};                       /* get/sync status */
-    SyncStatus listenStatus {};                    /* listen status */
-    AnnounceStatus acked {};                       /* announcement status for a given value id */
+    /* queries sent for finding out values hosted by the node */
+    std::shared_ptr<Query> probe_query {};
+    /* queries substituting formal 'get' requests */
+    std::map<std::shared_ptr<Query>, std::vector<std::shared_ptr<Query>>> pagination_queries {};
+
+    SyncStatus getStatus {};    /* get/sync status */
+    SyncStatus listenStatus {}; /* listen status */
+    AnnounceStatus acked {};    /* announcement status for a given value id */
 
     Blob token {};                                 /* last token the node sent to us after a get request */
     time_point last_get_reply {time_point::min()}; /* last time received valid token */
@@ -308,9 +311,8 @@ struct Dht::SearchNode {
 
     bool isAnnounced(Value::Id vid, const ValueType& type, time_point now) const {
         auto ack = acked.find(vid);
-        if (ack == acked.end() or not ack->second) {
+        if (ack == acked.end() or not ack->second)
             return false;
-        }
         return ack->second->reply_time + type.expiration > now;
     }
 
@@ -339,14 +341,13 @@ struct Dht::SearchNode {
     /**
      * Assumng the node is synced, should a "put" request be sent to this node now ?
      */
-    time_point getAnnounceTime(AnnounceStatus::const_iterator ack, const ValueType& type) const {
-        if (ack == acked.end() or not ack->second)
-            return time_point::min();
-        return ack->second->pending() ? time_point::max() : ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
-    }
-
     time_point getAnnounceTime(Value::Id vid, const ValueType& type) const {
-        return getAnnounceTime(acked.find(vid), type);
+        const auto& ack = acked.find(vid);
+        const auto& gs = probe_query ? getStatus.find(probe_query) : getStatus.cend();
+        if ((ack == acked.cend() or not ack->second) and (gs == getStatus.cend()
+                                                          or not gs->second or not gs->second->pending()))
+            return time_point::min();
+        return gs->second->pending() ? time_point::max() : gs->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
     }
 
     /**
@@ -468,6 +469,32 @@ struct Dht::Search {
     time_point getNextStepTime(const std::map<ValueType::Id, ValueType>& types, time_point now) const;
 
     bool removeExpiredNode(time_point now);
+
+    /**
+     * If the value was just successfully announced, call the callback and erase it if not permanent.
+     *
+     * @param vid  The id of the announced value.
+     * @param types  The sequence of existing types.
+     * @param now  The time reference to now.
+     */
+    void announced(Value::Id vid, const std::map<ValueType::Id, ValueType>& types, time_point now) {
+        announce.erase(std::remove_if(announce.begin(), announce.end(),
+            [this,&vid,&now,&types](Announce& a) {
+                if (!a.value || a.value->id != vid)
+                    return false;
+                const auto& type_it = types.find(a.value->type);
+                const ValueType& type = (type_it == types.end()) ? ValueType::USER_DATA : type_it->second;
+                if (isAnnounced(vid, type, now)) {
+                    if (a.callback) {
+                        a.callback(true, getNodes());
+                        a.callback = nullptr;
+                    }
+                    if (not a.permanent)
+                        return true;
+                }
+                return false;
+        }), announce.end());
+    }
 
     std::vector<std::shared_ptr<Node>> getNodes() const;
 
@@ -990,6 +1017,117 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     return n;
 }
 
+void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
+    if (sr->announce.empty())
+        return;
+    unsigned i = 0;
+    auto probe_query = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
+    std::weak_ptr<Search> ws = sr;
+    const auto& now = scheduler.time();
+    for (auto& n : sr->nodes) {
+        auto something_to_announce = std::find_if(sr->announce.cbegin(), sr->announce.cend(),
+            [this,&now,&sr,&n](const Announce& a) {
+                return n.isSynced(now) and n.getAnnounceTime(a.value->id, getType(a.value->type)) <= now;
+            }) != sr->announce.cend();
+        if (not something_to_announce)
+            continue;
+
+        auto onDone = [this,ws](const Request& status, NetworkEngine::RequestAnswer&& answer)
+        { /* when put done */
+            if (auto sr = ws.lock()) {
+                onAnnounceDone(status, answer, sr);
+                searchStep(sr);
+            }
+        };
+        auto onExpired = [this,ws](const Request&, bool over)
+        { /* when put expired */
+            if (over)
+                if (auto sr = ws.lock())
+                    scheduler.edit(sr->nextSearchStep, scheduler.time());
+        };
+        auto onSelectDone =
+            [this,ws,onDone,onExpired](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
+            { /* on probing done */
+                const auto& now = scheduler.time();
+                if (auto sr = ws.lock()) {
+                    if (auto sn = sr->getNode(status.node)) {
+                        for (auto ait = sr->announce.begin(); ait != sr->announce.end();) {
+                            auto& a = *ait;
+                            if (not (sn->isSynced(now) and sn->getAnnounceTime(a.value->id, getType(a.value->type)) <= now))
+                                continue;
+                            if (!a.value) continue;
+
+                            auto hasValue {false};
+                            uint16_t seq_no;
+                            try {
+                                const auto& f = std::find_if(answer.fields.cbegin(), answer.fields.cend(),
+                                        [&a](const std::shared_ptr<FieldValueIndex>& i){
+                                            return i->index.at(Value::Field::Id).getInt() == a.value->id;
+                                        });
+                                if (f != answer.fields.cend() and *f) {
+                                    hasValue = true;
+                                    seq_no = static_cast<uint16_t>((*f)->index.at(Value::Field::SeqNum).getInt());
+                                }
+                            } catch (std::out_of_range&) { }
+
+                            /* only put the value if the node doesn't already have it */
+                            if (not hasValue or seq_no < a.value->seq) {
+                                DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'put' (vid: %d)",
+                                        sr->id.toString().c_str(),
+                                        sr->af == AF_INET ? '4' : '6',
+                                        sn->node->toString().c_str(),
+                                        a.value->id);
+                                sn->acked[a.value->id] = network_engine.sendAnnounceValue(sn->node,
+                                                                sr->id,
+                                                                *a.value,
+                                                                a.created,
+                                                                sn->token,
+                                                                onDone,
+                                                                onExpired);
+                            } else {
+                                DHT_LOG.WARN("[search %s IPv%c] [node %s] already has value (vid: %d). Aborting.",
+                                        sr->id.toString().c_str(),
+                                        sr->af == AF_INET ? '4' : '6',
+                                        sn->node->toString().c_str(),
+                                        a.value->id);
+                                /* TODO: kind of a hack. Other solution? */
+                                auto ack_req = std::make_shared<Request>();
+                                ack_req->reply_time = now;
+                                sn->acked[a.value->id] = std::move(ack_req);
+                                if (sr->isAnnounced(a.value->id, getType(a.value->type), now)){
+                                    if (a.callback) {
+                                        a.callback(true, sr->getNodes());
+                                        a.callback = nullptr;
+                                    }
+                                    if (not a.permanent) {
+                                        ait = sr->announce.erase(ait);
+                                        continue;
+                                    }
+                                }
+                            }
+                            ++ait;
+                        }
+                    }
+
+                    if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
+                        sr->done = true;
+                }
+            };
+        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                n.node->toString().c_str(), probe_query->toString().c_str());
+        n.probe_query = probe_query;
+        n.getStatus[probe_query] = network_engine.sendGetValues(n.node,
+                sr->id,
+                *probe_query,
+                -1,
+                onSelectDone,
+                std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, probe_query));
+        if (not n.candidate and ++i == TARGET_NODES)
+            break;
+    }
+}
+
 /* When a search is in progress, we periodically call search_step to send
    further requests. */
 void
@@ -1077,53 +1215,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         }
 
         // Announce requests
-        for (auto ait = sr->announce.begin(); ait != sr->announce.end();) {
-            auto& a = *ait;
-            if (!a.value) continue;
-            auto vid = a.value->id;
-            const auto& type = getType(a.value->type);
-            if (sr->isAnnounced(vid, type, now)) {
-                if (a.callback) {
-                    a.callback(true, sr->getNodes());
-                    a.callback = nullptr;
-                }
-                if (not a.permanent) {
-                    ait = sr->announce.erase(ait);
-                    continue;
-                }
-            }
-
-            unsigned i = 0;
-            for (auto& n : sr->nodes) {
-                if (not n.isSynced(now))
-                    continue;
-                if (n.getAnnounceTime(vid, type) <= now) {
-                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'put' (vid: %d)",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', n.node->toString().c_str(), vid);
-                    std::weak_ptr<Search> ws = sr;
-                    n.acked[vid] = network_engine.sendAnnounceValue(n.node, sr->id, *a.value, a.created, n.token,
-                        [this,ws](const Request& status, NetworkEngine::RequestAnswer&& answer)
-                        { /* on done */
-                            if (auto sr = ws.lock()) {
-                                onAnnounceDone(status, answer, sr);
-                                searchStep(sr);
-                            }
-                        },
-                        [this,ws](const Request&, bool over)
-                        { /* on expired */
-                            if (over)
-                                if (auto sr = ws.lock())
-                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                        }
-                    );
-                }
-                if (not n.candidate and ++i == TARGET_NODES)
-                    break;
-            }
-            ++ait;
-        }
-        if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
-            sr->done = true;
+        searchSendAnnounceValue(sr);
     }
 
     if (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES) {
@@ -1460,8 +1552,12 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
 }
 
 void
-Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback,
-        time_point created, bool permanent)
+Dht::announce(const InfoHash& id,
+        sa_family_t af,
+        std::shared_ptr<Value> value,
+        DoneCallback callback,
+        time_point created,
+        bool permanent)
 {
     const auto& now = scheduler.time();
     if (!value) {
@@ -1487,14 +1583,18 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
     });
     if (a_sr == sr->announce.end()) {
         sr->announce.emplace_back(Announce {permanent, value, std::min(now, created), callback});
-        for (auto& n : sr->nodes)
+        for (auto& n : sr->nodes) {
+            n.probe_query.reset();
             n.acked[value->id].reset();
+        }
     }
     else {
         if (a_sr->value != value) {
             a_sr->value = value;
-            for (auto& n : sr->nodes)
+            for (auto& n : sr->nodes) {
                 n.acked[value->id].reset();
+                n.probe_query.reset();
+            }
         }
         if (sr->isAnnounced(value->id, getType(value->type), now)) {
             if (a_sr->callback)
@@ -1511,12 +1611,6 @@ Dht::announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, 
         }
     }
     scheduler.edit(sr->nextSearchStep, scheduler.time());
-    //TODO
-    //if (tm < search_time) {
-    //    DHT_LOG.ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(),l
-    //            (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
-    //    search_time = tm;
-    //}
 }
 
 size_t
@@ -3062,25 +3156,8 @@ Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer, std::s
     const auto& now = scheduler.time();
     DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
-
     searchSendGetValues(sr);
-
-    // If the value was just successfully announced, call the callback
-    sr->announce.erase(std::remove_if(sr->announce.begin(), sr->announce.end(),
-        [&](Announce& a) {
-            if (!a.value || a.value->id != answer.vid)
-                return false;
-            auto type = getType(a.value->type);
-            if (sr->isAnnounced(answer.vid, type, now)) {
-                if (a.callback) {
-                    a.callback(true, sr->getNodes());
-                    a.callback = nullptr;
-                }
-                if (not a.permanent)
-                    return true;
-            }
-            return false;
-    }), sr->announce.end());
+    sr->announced(answer.vid, types, now);
 }
 
 }

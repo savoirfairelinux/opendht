@@ -167,6 +167,7 @@ FieldValue::operator==(const FieldValue& vfd) const
     switch (field) {
         case Value::Field::Id:
         case Value::Field::ValueType:
+        case Value::Field::SeqNum:
             return intValue == vfd.intValue;
         case Value::Field::OwnerPk:
             return hashValue == vfd.hashValue;
@@ -188,9 +189,11 @@ FieldValue::getLocalFilter() const
         case Value::Field::ValueType:
             return Value::TypeFilter(intValue);
         case Value::Field::OwnerPk:
-            return Value::ownerFilter(hashValue);
+            return Value::OwnerFilter(hashValue);
+        case Value::Field::SeqNum:
+            return Value::SeqNumFilter(intValue);
         case Value::Field::UserType:
-            return Value::userTypeFilter(std::string {blobValue.begin(), blobValue.end()});
+            return Value::UserTypeFilter(std::string {blobValue.begin(), blobValue.end()});
         default:
             return Value::AllFilter();
     }
@@ -206,7 +209,7 @@ FieldValueIndex::FieldValueIndex(const Value& v, Select s)
         });
     } else {
         index.clear();
-        for (size_t f = 1 ; f < 5 ; ++f)
+        for (size_t f = 1 ; f < 6 ; ++f)
             index[static_cast<Value::Field>(f)] = {};
     }
     for (const auto& fvp : index) {
@@ -220,6 +223,9 @@ FieldValueIndex::FieldValueIndex(const Value& v, Select s)
                 break;
             case Value::Field::OwnerPk:
                 index[f] = {f, v.owner ? v.owner->getId() : InfoHash() };
+                break;
+            case Value::Field::SeqNum:
+                index[f] = {f, v.seq};
                 break;
             case Value::Field::UserType:
                 index[f] = {f, Blob {v.user_type.begin(), v.user_type.end()}};
@@ -254,6 +260,9 @@ std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi) {
             case Value::Field::OwnerPk:
                 os << "Owner:" << v->second.getHash().toString();
                 break;
+            case Value::Field::SeqNum:
+                os << "Seq:" << v->second.getInt();
+                break;
             case Value::Field::UserType: {
                 auto ut = v->second.getBlob();
                 os << "UserType:" << std::string(ut.begin(), ut.end());
@@ -278,6 +287,7 @@ FieldValueIndex::msgpack_unpack_fields(const std::set<Value::Field>& fields, con
         switch (field) {
             case Value::Field::Id:
             case Value::Field::ValueType:
+            case Value::Field::SeqNum:
                 index[field] = FieldValue(field, field_value.as<uint64_t>());
                 break;
             case Value::Field::OwnerPk:
@@ -315,6 +325,8 @@ Select::Select(const std::string& q_str) {
                 field(Value::Field::ValueType);
             else if (token == "owner_pk")
                 field(Value::Field::OwnerPk);
+            if (token == "seq")
+                field(Value::Field::SeqNum);
             else if (token == "user_type")
                 field(Value::Field::UserType);
         }
@@ -342,7 +354,10 @@ Where::Where(const std::string& q_str) {
                 std::string s {};
                 std::istringstream convert {value_str};
                 convert >> v;
-                if (convert.failbit and value_str.size() > 1 and value_str[0] == '\"' and value_str[value_str.size()-1] == '\"')
+                if (convert.failbit
+                        and value_str.size() > 1
+                        and value_str[0] == '\"'
+                        and value_str[value_str.size()-1] == '\"')
                     s = value_str.substr(1, value_str.size()-2);
                 else
                     s = value_str;
@@ -352,6 +367,8 @@ Where::Where(const std::string& q_str) {
                     valueType(v);
                 else if (field_str == "owner_pk")
                     owner(InfoHash(s));
+                else if (field_str == "seq")
+                    seq(v);
                 else if (field_str == "user_type")
                     userType(s);
                 else
@@ -423,6 +440,9 @@ std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
             case Value::Field::OwnerPk:
                 s << "owner_public_key";
                 break;
+            case Value::Field::SeqNum:
+                s << "seq";
+                break;
             default:
                 break;
         }
@@ -444,6 +464,9 @@ std::ostream& operator<<(std::ostream& s, const dht::Where& where) {
                     break;
                 case Value::Field::OwnerPk:
                     s << "owner_pk_hash=" << f->getHash().toString();
+                    break;
+                case Value::Field::SeqNum:
+                    s << "seq=" << f->getInt();
                     break;
                 case Value::Field::UserType: {
                     auto b = f->getBlob();

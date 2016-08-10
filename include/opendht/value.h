@@ -121,6 +121,7 @@ struct Value
         Id,
         ValueType,
         OwnerPk,
+        SeqNum,
         UserType,
     };
 
@@ -166,6 +167,8 @@ struct Value
         }
     };
 
+    /* Sneaky functions disguised in classes */
+
     static const Filter AllFilter() {
         return [](const Value&){return true;};
     }
@@ -188,24 +191,29 @@ struct Value
         };
     }
 
-    static Filter recipientFilter(const InfoHash& r) {
+    static Filter RecipientFilter(const InfoHash& r) {
         return [r](const Value& v) {
             return v.recipient == r;
         };
     }
 
-    static Filter ownerFilter(const crypto::PublicKey& pk) {
-        return ownerFilter(pk.getId());
+    static Filter OwnerFilter(const crypto::PublicKey& pk) {
+        return OwnerFilter(pk.getId());
     }
 
-    static Filter ownerFilter(const InfoHash& pkh) {
+    static Filter OwnerFilter(const InfoHash& pkh) {
         return [pkh](const Value& v) {
             return v.owner and v.owner->getId() == pkh;
         };
     }
 
-    static Filter userTypeFilter(const std::string& ut)
-    {
+    static Filter SeqNumFilter(uint16_t seq_no) {
+        return [seq_no](const Value& v) {
+            return v.seq == seq_no;
+        };
+    }
+
+    static Filter UserTypeFilter(const std::string& ut) {
         return [ut](const Value& v) {
             return v.user_type == ut;
         };
@@ -467,6 +475,9 @@ struct Value
                         owner->msgpack_pack(pk);
                     else
                         InfoHash().msgpack_pack(pk);
+                    break;
+                case Value::Field::SeqNum:
+                    pk.pack(static_cast<uint64_t>(seq));
                     break;
                 case Value::Field::UserType:
                     pk.pack(user_type);
@@ -736,6 +747,18 @@ struct Where
      */
     Where& owner(InfoHash owner_pk_hash) {
         filters_.emplace_back(Value::Field::OwnerPk, owner_pk_hash);
+        return *this;
+    }
+
+    /**
+     * Adds restriction on Value::OwnerPk based on the owner_pk_hash argument.
+     *
+     * @param owner_pk_hash  the owner public key fingerprint.
+     *
+     * @return the resulting Where instance.
+     */
+    Where& seq(uint16_t seq_no) {
+        filters_.emplace_back(Value::Field::SeqNum, seq_no);
         return *this;
     }
 
