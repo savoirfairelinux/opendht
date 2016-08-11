@@ -171,13 +171,17 @@ private:
 };
 
 struct Dht::SearchNode {
-    using AnnounceStatusMap = std::map<Value::Id, std::shared_ptr<Request>>;
-    using SyncStatusMap = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
+    using AnnounceStatus = std::map<Value::Id, std::shared_ptr<Request>>;
+    using SyncStatus = std::map<std::shared_ptr<Query>, std::shared_ptr<Request>>;
+    using PaginationQueries = std::map<std::shared_ptr<Query>, std::vector<std::shared_ptr<Query>>>;
 
     std::shared_ptr<Node> node {};                 /* the node info */
-    SyncStatusMap getStatus {};                    /* get/sync status */
-    SyncStatusMap listenStatus {};                 /* listen status */
-    AnnounceStatusMap acked {};                    /* announcement status for a given value id */
+
+    PaginationQueries pagination_queries {};
+    SyncStatus getStatus {};                       /* get/sync status */
+    SyncStatus listenStatus {};                    /* listen status */
+    AnnounceStatus acked {};                       /* announcement status for a given value id */
+
     Blob token {};                                 /* last token the node sent to us after a get request */
     time_point last_get_reply {time_point::min()}; /* last time received valid token */
     bool candidate {false};                        /* A search node is candidate if the search is/was synced and this
@@ -209,7 +213,7 @@ struct Dht::SearchNode {
         /* find request status for a query satisfying the initial query */
         const auto& sq_status = not q ? getStatus.cend() :
             std::find_if(getStatus.cbegin(), getStatus.cend(),
-                [&q](const SyncStatusMap::value_type& s) {
+                [&q](const SyncStatus::value_type& s) {
                     return s.first and q->isSatisfiedBy(*s.first);
                 }
         );
@@ -221,16 +225,20 @@ struct Dht::SearchNode {
     /**
      * Tells if pagination is pending for a given 'get' request.
      *
-     * @param get  The 'get' request data structure.
+     * @param q  The query as an id for a given 'get' request.
      *
      * @return true if pagination is pending, else false.
      */
-    bool paginationPending(const Get& get) const {
-        return std::find_if(get.pagination_queries.cbegin(), get.pagination_queries.cend(),
+    bool paginationPending(const std::shared_ptr<Query>& q) const {
+        const auto& p = pagination_queries.find(q);
+        if (p == pagination_queries.cend() or p->second.empty())
+            return false;
+
+        return std::find_if(p->second.cbegin(), p->second.cend(),
             [this](const std::shared_ptr<Query>& query) {
                 const auto& req = getStatus.find(query);
                 return req != getStatus.cend() and req->second and req->second->pending();
-            }) != get.pagination_queries.cend();
+            }) != p->second.cend();
     }
 
     /**
@@ -245,8 +253,8 @@ struct Dht::SearchNode {
      * @return true if it has finished, else false.
      */
     bool isDone(const Get& get) const {
-        if (not get.pagination_queries.empty())
-            return not paginationPending(get);
+        if (not pagination_queries.empty())
+            return not paginationPending(get.query);
         else {
             const auto& gs = get.query ? getStatus.find(get.query) : getStatus.cend();
             return gs != getStatus.end() and gs->second and not gs->second->pending();
@@ -256,13 +264,13 @@ struct Dht::SearchNode {
     /**
      * Tells if a request in the status map is expired.
      *
-     * @param status  A SyncStatusMap reference.
+     * @param status  A SyncStatus reference.
      *
      * @return true if there exists an expired request, else false.
      */
-    bool expired(const SyncStatusMap& status) const {
+    bool expired(const SyncStatus& status) const {
         return std::find_if(status.begin(), status.end(),
-            [](const SyncStatusMap::value_type& r){
+            [](const SyncStatus::value_type& r){
                 return r.second and r.second->expired();
             }) != status.end();
     }
@@ -270,13 +278,13 @@ struct Dht::SearchNode {
     /**
      * Tells if a request in the status map is pending.
      *
-     * @param status  A SyncStatusMap reference.
+     * @param status  A SyncStatus reference.
      *
      * @return true if there exists an expired request, else false.
      */
-    bool pending(const SyncStatusMap& status) const {
+    bool pending(const SyncStatus& status) const {
         return std::find_if(status.begin(), status.end(),
-            [](const SyncStatusMap::value_type& r){
+            [](const SyncStatus::value_type& r){
                 return r.second and r.second->pending();
             }) != status.end();
     }
@@ -305,7 +313,7 @@ struct Dht::SearchNode {
         else
             return isListening(now, ls);
     }
-    bool isListening(time_point now, SyncStatusMap::const_iterator listen_status) const {
+    bool isListening(time_point now, SyncStatus::const_iterator listen_status) const {
         if (listen_status == listenStatus.end())
             return false;
         return listen_status->second->reply_time + LISTEN_EXPIRE_TIME > now;
@@ -314,7 +322,7 @@ struct Dht::SearchNode {
     /**
      * Assumng the node is synced, should a "put" request be sent to this node now ?
      */
-    time_point getAnnounceTime(AnnounceStatusMap::const_iterator ack, const ValueType& type) const {
+    time_point getAnnounceTime(AnnounceStatus::const_iterator ack, const ValueType& type) const {
         if (ack == acked.end() or not ack->second)
             return time_point::min();
         return ack->second->pending() ? time_point::max() : ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
@@ -337,7 +345,7 @@ struct Dht::SearchNode {
     time_point getListenTime(const std::shared_ptr<Query>& q) const {
         return getListenTime(listenStatus.find(q));
     }
-    time_point getListenTime(SyncStatusMap::const_iterator listen_status) const {
+    time_point getListenTime(SyncStatus::const_iterator listen_status) const {
         if (listen_status == listenStatus.end())
             return time_point::min();
         return listen_status->second->pending() ? time_point::max() :
@@ -866,7 +874,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
                                     auto vid = fvi->index.at(Value::Field::Id).getInt();
                                     if (vid == Value::INVALID_ID) continue;
                                     auto query_for_vid = std::make_shared<Query>(Select {}, Where {}.id(vid));
-                                    cb->second.pagination_queries.insert(query_for_vid);
+                                    sn->pagination_queries[query].push_back(query_for_vid);
                                     DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
                                             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str(), query_for_vid->toString().c_str());
@@ -892,7 +900,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
         auto cb = find_cb(sr);
         if (cb != sr->callbacks.end()) {
             /* add pagination query key for tracking ongoing requests. */
-            cb->second.pagination_queries.insert(select_q);
+            n->pagination_queries[query].push_back(select_q);
 
             DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
@@ -961,7 +969,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                         std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
                         std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
             } else {
-                if (n->paginationPending(cb->second))
+                if (n->paginationPending(query))
                     n = nullptr;
                 else
                     paginate(ws, query, n);
@@ -1266,7 +1274,7 @@ Dht::Search::isListening(time_point now) const
     for (const auto& n : nodes) {
         if (n.isBad())
             continue;
-        SearchNode::SyncStatusMap::const_iterator ls {};
+        SearchNode::SyncStatus::const_iterator ls {};
         for (ls = n.listenStatus.begin(); ls != n.listenStatus.end() ; ++ls) {
             if (n.isListening(now, ls))
                 break;
