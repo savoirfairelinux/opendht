@@ -29,7 +29,7 @@ enum class ImStatus : uint8_t {
     READ
 };
 }
-MSGPACK_ADD_ENUM(dht::ImStatus);
+MSGPACK_ADD_ENUM(dht::ImStatus)
 
 namespace dht {
 
@@ -55,7 +55,7 @@ public:
 
     std::string service;
     Blob data;
-    MSGPACK_DEFINE(service, data);
+    MSGPACK_DEFINE(service, data)
 };
 
 template <typename T>
@@ -126,7 +126,7 @@ public:
     long date {0};
     ImStatus status {ImStatus::NONE};
 
-    MSGPACK_DEFINE_MAP(id, msg, date, status);
+    MSGPACK_DEFINE_MAP(id, msg, date, status)
 };
 
 class TrustRequest : public EncryptedValue<TrustRequest>
@@ -147,7 +147,7 @@ public:
 
     std::string service;
     Blob payload;
-    MSGPACK_DEFINE(service, payload);
+    MSGPACK_DEFINE(service, payload)
 };
 
 class IceCandidates : public EncryptedValue<IceCandidates>
