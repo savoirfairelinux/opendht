@@ -1701,7 +1701,7 @@ void doneCallbackWrapper(DoneCallback dcb, const std::vector<std::shared_ptr<Nod
         if (dcb)
             dcb(ok, op->nodes);
     }
-};
+}
 
 template <typename T, typename Cb>
 bool callbackWrapper(Cb get_cb,
@@ -1719,7 +1719,7 @@ bool callbackWrapper(Cb get_cb,
     }
     doneCallbackWrapper(done_cb, {}, op);
     return !op->status.ok;
-};
+}
 
 void
 Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter&& filter, Where&& where)

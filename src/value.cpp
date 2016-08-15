@@ -389,7 +389,7 @@ bool subset(std::vector<T> fds, std::vector<T> qfds)
             return false;
     }
     return true;
-};
+}
 
 bool Select::isSatisfiedBy(const Select& os) const {
     /* empty, means all values are selected. */

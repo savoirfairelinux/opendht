@@ -273,7 +273,7 @@ PrivateKey::PrivateKey(PrivateKey&& o) noexcept : key(o.key), x509_key(o.x509_ke
 #endif
     o.key = nullptr;
     o.x509_key = nullptr;
-};
+}
 
 PrivateKey::~PrivateKey()
 {
