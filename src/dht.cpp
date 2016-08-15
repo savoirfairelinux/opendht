@@ -201,6 +201,16 @@ struct Dht::SearchNode {
     /**
      * Could a particular "get" request be sent to this node now ?
      *
+     * A 'get' request can be sent when all of the following requirements are
+     * met:
+     *
+     *  - The node is not expired;
+     *  - If we have heard from the node, we must have heard from him in the last
+     *    NODE_EXPIRE_TIME minutes;
+     *  - The request must not already have been sent;
+     *  - No other request satisfying the request must be pending;
+     *  - The pagination process for this particular 'get' must not have begun;
+     *
      * @param now     The time reference to now.
      * @param update  Time of the last "get" op for the search.
      * @param q       The query defining the "get" operation we're referring to.
@@ -208,38 +218,38 @@ struct Dht::SearchNode {
      * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        /* find request status for the given query */
-        const auto& get_status = q ? getStatus.find(q) : getStatus.cend();
-        /* find request status for a query satisfying the initial query */
-        const auto& sq_status = not q ? getStatus.cend() :
-            std::find_if(getStatus.cbegin(), getStatus.cend(),
-                [&q](const SyncStatus::value_type& s) {
-                    return s.first and q->isSatisfiedBy(*s.first);
-                }
+        /* Find request status for the given query */
+        const auto& get_status = getStatus.find(q);
+        /* Find request status for a query satisfying the initial query */
+        const auto& sq_status = std::find_if(getStatus.cbegin(), getStatus.cend(),
+            [&q](const SyncStatus::value_type& s) {
+                return s.first and q and s.first->isSatisfiedBy(*q);
+            }
         );
         return not node->isExpired() and (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-               and ((get_status == getStatus.cend() or not get_status->second)
-                   and (sq_status == getStatus.cend() or not sq_status->second or not sq_status->second->pending()));
+            and not hasStartedPagination(q)
+            and (get_status == getStatus.cend() or not get_status->second)
+            and (sq_status == getStatus.cend() or not sq_status->second or not sq_status->second->pending());
     }
 
     /**
-     * Tells if pagination is pending for a given 'get' request.
+     * Tells if we have started sending a 'get' request in paginated form.
      *
      * @param q  The query as an id for a given 'get' request.
      *
-     * @return true if pagination is pending, else false.
+     * @return true if pagination process has started, else false.
      */
-    bool paginationPending(const std::shared_ptr<Query>& q) const {
-        const auto& p = pagination_queries.find(q);
-        if (p == pagination_queries.cend() or p->second.empty())
+    bool hasStartedPagination(const std::shared_ptr<Query>& q) const {
+        const auto& pqs = pagination_queries.find(q);
+        if (pqs == pagination_queries.cend() or pqs->second.empty())
             return false;
-
-        return std::find_if(p->second.cbegin(), p->second.cend(),
+        return std::find_if(pqs->second.cbegin(), pqs->second.cend(),
             [this](const std::shared_ptr<Query>& query) {
                 const auto& req = getStatus.find(query);
-                return req != getStatus.cend() and req->second and req->second->pending();
-            }) != p->second.cend();
-    }
+                return req != getStatus.cend() and req->second;
+            }) != pqs->second.cend();
+    };
+
 
     /**
      * Tell if the node has finished responding to a given 'get' request.
@@ -253,9 +263,16 @@ struct Dht::SearchNode {
      * @return true if it has finished, else false.
      */
     bool isDone(const Get& get) const {
-        if (not pagination_queries.empty())
-            return not paginationPending(get.query);
-        else {
+        if (hasStartedPagination(get.query)) {
+            const auto& pqs = pagination_queries.find(get.query);
+            auto paginationPending = std::find_if(pqs->second.cbegin(), pqs->second.cend(),
+                    [this](const std::shared_ptr<Query>& query) {
+                        const auto& req = getStatus.find(query);
+                        return req != getStatus.cend() and req->second and req->second->pending();
+                    }) != pqs->second.cend();
+            return not paginationPending;
+        }
+        else { /* no pagination yet */
             const auto& gs = get.query ? getStatus.find(get.query) : getStatus.cend();
             return gs != getStatus.end() and gs->second and not gs->second->pending();
         }
@@ -838,7 +855,6 @@ Dht::searchNodeGetExpired(const Request& status,
 {
     if (auto sr = ws.lock()) {
         if (auto srn = sr->getNode(status.node)) {
-            srn->getStatus[query]->setExpired();
             srn->candidate = not over;
             if (over)
                 srn->getStatus.erase(query);
@@ -849,21 +865,11 @@ Dht::searchNodeGetExpired(const Request& status,
 
 void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, SearchNode* n) {
     if (auto sr = ws.lock()) {
-        auto find_cb = [query](std::shared_ptr<Search> sr) {
-            return std::find_if(sr->callbacks.begin(), sr->callbacks.end(),
-                [&query](const std::pair<time_point, Get>& g) {
-                    return g.second.query == query;
-                }
-            );
-        };
         auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
         auto onSelectDone =
-            [this,ws,query,find_cb](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
+            [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
             {
                 if (auto sr = ws.lock()) {
-                    auto cb = find_cb(sr);
-                    if (cb == sr->callbacks.end())
-                        return;
                     if (auto sn = sr->getNode(status.node)) {
                         if (answer.fields.empty()) {
                             searchNodeGetDone(status, std::move(answer), ws, query);
@@ -897,22 +903,19 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
                     }
                 }
             };
-        auto cb = find_cb(sr);
-        if (cb != sr->callbacks.end()) {
-            /* add pagination query key for tracking ongoing requests. */
-            n->pagination_queries[query].push_back(select_q);
+        /* add pagination query key for tracking ongoing requests. */
+        n->pagination_queries[query].push_back(select_q);
 
-            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
-                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    n->node->toString().c_str(), select_q->toString().c_str());
-            n->getStatus[select_q] = network_engine.sendGetValues(n->node,
-                    sr->id,
-                    *select_q,
-                    -1,
-                    onSelectDone,
-                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, select_q)
-            );
-        }
+        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                n->node->toString().c_str(), select_q->toString().c_str());
+        n->getStatus[select_q] = network_engine.sendGetValues(n->node,
+                sr->id,
+                *select_q,
+                -1,
+                onSelectDone,
+                std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, select_q)
+                );
     }
 }
 
@@ -968,12 +971,8 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                         -1,
                         std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
                         std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
-            } else {
-                if (n->paginationPending(query))
-                    n = nullptr;
-                else
-                    paginate(ws, query, n);
-            }
+            } else
+                paginate(ws, query, n);
         }
 
         if (not sr->isSynced(now) or cb == sr->callbacks.end())
