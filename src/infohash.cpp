@@ -91,4 +91,17 @@ std::ostream& operator<< (std::ostream& s, const InfoHash& h)
     return s;
 }
 
+std::istream& operator>> (std::istream& s, InfoHash& h)
+{
+    std::array<char, HASH_LEN*2> dat;
+    s.exceptions(std::istream::eofbit | std::istream::failbit);
+    s.read(&(*dat.begin()), dat.size());
+    for (size_t i = 0; i < HASH_LEN; i++) {
+        unsigned res = 0;
+        sscanf(dat.data() + 2*i, "%02x", &res);
+        h[i] = res;
+    }
+    return s;
+}
+
 }

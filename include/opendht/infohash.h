@@ -197,6 +197,7 @@ public:
     static InfoHash getRandom();
 
     friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
+    friend std::istream& operator>> (std::istream& s, InfoHash& h);
 
     std::string toString() const;
 
