@@ -838,7 +838,6 @@ Dht::searchNodeGetExpired(const Request& status,
 {
     if (auto sr = ws.lock()) {
         if (auto srn = sr->getNode(status.node)) {
-            srn->getStatus[query]->setExpired();
             srn->candidate = not over;
             if (over)
                 srn->getStatus.erase(query);
@@ -849,21 +848,11 @@ Dht::searchNodeGetExpired(const Request& status,
 
 void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, SearchNode* n) {
     if (auto sr = ws.lock()) {
-        auto find_cb = [query](std::shared_ptr<Search> sr) {
-            return std::find_if(sr->callbacks.begin(), sr->callbacks.end(),
-                [&query](const std::pair<time_point, Get>& g) {
-                    return g.second.query == query;
-                }
-            );
-        };
         auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
         auto onSelectDone =
-            [this,ws,query,find_cb](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
+            [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) mutable
             {
                 if (auto sr = ws.lock()) {
-                    auto cb = find_cb(sr);
-                    if (cb == sr->callbacks.end())
-                        return;
                     if (auto sn = sr->getNode(status.node)) {
                         if (answer.fields.empty()) {
                             searchNodeGetDone(status, std::move(answer), ws, query);
@@ -897,22 +886,19 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
                     }
                 }
             };
-        auto cb = find_cb(sr);
-        if (cb != sr->callbacks.end()) {
-            /* add pagination query key for tracking ongoing requests. */
-            n->pagination_queries[query].push_back(select_q);
+        /* add pagination query key for tracking ongoing requests. */
+        n->pagination_queries[query].push_back(select_q);
 
-            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
-                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    n->node->toString().c_str(), select_q->toString().c_str());
-            n->getStatus[select_q] = network_engine.sendGetValues(n->node,
-                    sr->id,
-                    *select_q,
-                    -1,
-                    onSelectDone,
-                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, select_q)
-            );
-        }
+        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
+                n->node->toString().c_str(), select_q->toString().c_str());
+        n->getStatus[select_q] = network_engine.sendGetValues(n->node,
+                sr->id,
+                *select_q,
+                -1,
+                onSelectDone,
+                std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, select_q)
+                );
     }
 }
 
