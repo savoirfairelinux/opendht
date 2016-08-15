@@ -201,6 +201,16 @@ struct Dht::SearchNode {
     /**
      * Could a particular "get" request be sent to this node now ?
      *
+     * A 'get' request can be sent when all of the following requirements are
+     * met:
+     *
+     *  - The node is not expired;
+     *  - If we have heard from the node, we must have heard from him in the last
+     *    NODE_EXPIRE_TIME minutes;
+     *  - The request must not already have been sent;
+     *  - No other request satisfying the request must be pending;
+     *  - The pagination process for this particular 'get' must not have begun;
+     *
      * @param now     The time reference to now.
      * @param update  Time of the last "get" op for the search.
      * @param q       The query defining the "get" operation we're referring to.
@@ -208,9 +218,9 @@ struct Dht::SearchNode {
      * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        /* FInd request status for the given query */
+        /* Find request status for the given query */
         const auto& get_status = getStatus.find(q);
-        /* find request status for a query satisfying the initial query */
+        /* Find request status for a query satisfying the initial query */
         const auto& sq_status = std::find_if(getStatus.cbegin(), getStatus.cend(),
             [&q](const SyncStatus::value_type& s) {
                 return s.first and q and s.first->isSatisfiedBy(*q);
