@@ -20,16 +20,10 @@ from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
+from libcpp.memory cimport shared_ptr
 
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
-
-cdef extern from "<memory>" namespace "std" nogil:
-    cdef cppclass shared_ptr[T]:
-        shared_ptr() except +
-        T* get()
-        T operator*()
-        void reset(T*)
 
 cdef extern from "<functional>" namespace "std" nogil:
     cdef cppclass hash[T]:
