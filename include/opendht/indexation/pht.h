@@ -40,7 +40,7 @@ struct Prefix {
     }
 
     Prefix getPrefix(ssize_t len) const {
-        if ((size_t)std::abs(len) > size_)
+        if ((size_t)std::abs(len) >= content_.size() * 8)
             throw std::out_of_range("len larger than prefix size.");
         if (len < 0)
             len += size_;
@@ -55,7 +55,7 @@ struct Prefix {
      * @throw out_of_range Throw out of range if the bit at 'pos' does not exist
      */
     bool isActiveBit(size_t pos) const {
-        if ( pos >= size_ )
+        if ( pos >= content_.size() * 8 )
             throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
 
         return ((this->content_[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
@@ -69,7 +69,9 @@ struct Prefix {
      * @return The prefix of this sibling.
      */
     Prefix getSibling() const {
-        return swapBit(size_ - 1);
+        if ( not size_ )
+            return Prefix(*this);
+        return swapBit(size_);
     }
 
     InfoHash hash() const {
@@ -90,6 +92,13 @@ struct Prefix {
         return ss.str();
     }
 
+    /**
+     * This method count total of bit in common between 2 prefix
+     *
+     * @param p1 first prefix to compared
+     * @param p2 second prefix to compared
+     * @return Lenght of the larger common prefix between both
+     */
     static inline unsigned commonBits(const Prefix& p1, const Prefix& p2) {
         unsigned i, j;
         uint8_t x;
@@ -118,17 +127,14 @@ struct Prefix {
      * This method swap the bit a the position 'bit' and return the new prefix
      *
      * @param bit Position of the bit to swap
-     *
      * @return The prefix with the bit at position 'bit' swapped
-     *
      * @throw out_of_range Throw out of range if bit does not exist
      */
     Prefix swapBit(size_t bit) const {
-        if ( bit >= content_.size() * 8 )
+        if ( bit > content_.size() * 8 )
             throw std::out_of_range("bit larger than prefix size.");
 
         Prefix copy = *this;
-
         size_t offset_bit = (8 - bit) % 8;
         copy.content_[bit / 8] ^= (1 << offset_bit);
 
@@ -137,9 +143,31 @@ struct Prefix {
 
     size_t size_ {0};
     Blob content_ {};
+
 };
 
 using Value = std::pair<InfoHash, dht::Value::Id>;
+
+struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
+    static const ValueType TYPE;
+
+    virtual void unpackValue(const dht::Value& v) {
+        Serializable<IndexEntry>::unpackValue(v);
+        name = v.user_type;
+    }
+
+    virtual dht::Value packValue() const {
+        auto pack = Serializable<IndexEntry>::packValue();
+        pack.user_type = name;
+        return pack;
+    }
+
+    Blob prefix;
+    Value value;
+    std::string name;
+    MSGPACK_DEFINE_MAP(prefix, value);
+};
+
 
 class Pht {
     static constexpr const char* INVALID_KEY = "Key does not match the PHT key spec.";
@@ -158,8 +186,8 @@ public:
     /* Specifications of the keys. It defines the number, the length and the
      * serialization order of fields. */
     using KeySpec = std::map<std::string, size_t>;
-
     using LookupCallback = std::function<void(std::vector<std::shared_ptr<Value>>& values, Prefix p)>;
+
     typedef void (*LookupCallbackRaw)(std::vector<std::shared_ptr<Value>>* values, Prefix* p, void *user_data);
     static LookupCallback
     bindLookupCb(LookupCallbackRaw raw_cb, void* user_data) {
@@ -196,11 +224,43 @@ public:
     }
 
     /**
-     * Adds an entry into the index.
+     * Wrapper function which call the private one.
+     *
+     * @param k : Key to insert [i.e map of string, blob]
+     * @param v : Value to insert
+     * @param done_cb : Callbakc which going to be call when all the insert is done
      */
-    void insert(Key k, Value v, DoneCallbackSimple cb = {});
+    void insert(Key k, Value v, DoneCallbackSimple done_cb = {}) {
+        Prefix p = linearize(k);
+
+        auto lo = std::make_shared<int>(0);
+        auto hi = std::make_shared<int>(p.size_);
+
+        IndexEntry entry;
+        entry.value = v;
+        entry.prefix = p.content_;
+        entry.name = name_;
+
+        Pht::insert(p, entry, lo, hi, clock::now(), true, done_cb);
+    }
 
 private:
+
+    /**
+     * Insert function which really insert onto the pht
+     *
+     * @param kp          : Prefix to insert (linearize the the key)
+     * @param entry       : Entry created from the value
+     * @param lo          : Lowest point to start in the prefix
+     * @param hi          : Highest point to end in the prefix
+     * @param time_p      : Timepoint to use for the insertion into the dht (must be < now)
+     * @param check_split : If this flag is true then the algoritm will not use the merge algorithm
+     * @param done_cb     : Callback to call when the insert is done
+     */
+
+    void insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
+                bool check_split, DoneCallbackSimple done_cb = {});
+
     class Cache {
     public:
         /**
@@ -213,13 +273,15 @@ private:
          * Lookup into the tree to return the maximum prefix length in the cache tree
          *
          * @param p : Prefix that we are looking for
+         *
          * @return  : The size of the longest prefix known in the cache between 0 and p.size_
          */
+
         int lookup(const Prefix& p);
 
     private:
         static constexpr const size_t MAX_ELEMENT {1024};
-        static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {5};
+        static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
 
         struct Node {
             time_point last_reply;           /* Made the assocation between leaves and leaves multimap */
@@ -238,13 +300,28 @@ private:
         std::multimap<time_point, std::shared_ptr<Node>> leaves_;
     };
 
+    /* Callback used for insert value by using the pht */
+    using RealInsertCallback = std::function<void(std::shared_ptr<Prefix> p, IndexEntry entry)>;
+    using LookupCallbackWrapper = std::function<void(std::vector<std::shared_ptr<IndexEntry>>& values, Prefix p)>;
+
     /**
      * Performs a step in the lookup operation. Each steps are performed
      * asynchronously.
+     *
+     * @param k          : Prefix on which the lookup is performed
+     * @param lo         : lowest bound on the prefix (where to start)
+     * @param hi         : highest bound on the prefix (where to stop)
+     * @param vals       : Shared ptr to a vector of IndexEntry (going to contains all values found)
+     * @param cb         : Callback to use at the end of the lookupStep (call on the value of vals)
+     * @param done_cb    : Callback at the end of the lookupStep
+     * @param max_common_prefix_len: used in the inexacte lookup match case, indicate the longest common prefix found
+     * @param start      : If start is set then lo and hi will be ignore for the first step, if the step fail lo and hi will be used
+     * @param all_values : If all value is true then all value met during the lookupstep will be in the vector vals
      */
     void lookupStep(Prefix k, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
-            std::shared_ptr<std::vector<std::shared_ptr<Value>>> vals, LookupCallback cb,
-            DoneCallbackSimple done_cb, std::shared_ptr<unsigned> max_common_prefix_len,
+            std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals,
+            LookupCallbackWrapper cb, DoneCallbackSimple done_cb,
+            std::shared_ptr<unsigned> max_common_prefix_len,
             int start = -1, bool all_values = false);
 
     /**
@@ -255,17 +332,53 @@ private:
      *
      * @return the prefix of the linearized key.
      */
-    virtual Prefix linearize(Key k) const {
-        if (not validKey(k)) { throw std::invalid_argument(INVALID_KEY); }
+    virtual Prefix linearize(Key k) const;
 
-        Prefix p = Blob {k.begin()->second.begin(), k.begin()->second.end()};
+    /**
+     * Looking where to put the data cause if there is free space on the node
+     * above then this node will became the real leave.
+     *
+     * @param p       Share_ptr on the Prefix to check
+     * @param entry   The entry to put at the prefix p
+     * @param end_cb  Callback to use at the end of counting
+     */
+    void getRealPrefix(std::shared_ptr<Prefix> p, IndexEntry entry, RealInsertCallback end_cb );
 
-        auto bit_loc = p.size_ + 1;
-        for ( auto i = p.content_.size(); i < keySpec_.begin()->second + 1; i++ )
-            p.content_.push_back(0);
+    /**
+     * Looking where to put the data cause if there is free space on the node
+     * above then this node will became the real leave.
+     *
+     * @param p       Share_ptr on the Prefix to check
+     * @param entry   The entry to put at the prefix p
+     * @param end_cb  Callback to use at the end of counting
+     */
+    void checkPhtUpdate(Prefix p, IndexEntry entry, time_point time_p);
 
-        return p.swapBit(bit_loc);
-    };
+    /**
+     * Search for the split location by comparing 'compared' to all values in vals.
+     *
+     * @param compared : Value which going to be compared
+     * @param vals     : The vector of values to compare with comapred
+     * @return position compared diverge from all others
+     */
+    size_t foundSplitLocation(Prefix compared, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals) {
+        for ( size_t i = 0; i < compared.content_.size() * 8 - 1; i++ )
+            for ( auto const& v : *vals)
+                if ( Prefix(v->prefix).isActiveBit(i) != compared.isActiveBit(i) )
+                    return i + 1;
+
+        return compared.content_.size() * 8 - 1;
+    }
+
+    /**
+     * Put canary from the split point until the last known canary and add the prefix at the good place
+     *
+     * @param insert : Prefix to insertm but also prefix which going to check where we need to split
+     * @param vals   : Vector of vals for the comparaison
+     * @param entry  : Entry to put on the pht
+     * @param end_cb : Callback to apply to the insert prefi (here does the insert)
+     */
+    void split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals, IndexEntry entry, RealInsertCallback end_cb);
 
     /**
      * Tells if the key is valid according to the key spec.

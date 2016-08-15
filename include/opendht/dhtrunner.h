@@ -156,16 +156,16 @@ public:
     void cancelListen(InfoHash h, size_t token);
     void cancelListen(InfoHash h, std::shared_future<size_t> token);
 
-    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
-    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
-        put(hash, value, bindDoneCb(cb), permanent);
+    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={}, time_point created=time_point::max(), bool permanent = false);
+    void put(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb, time_point created=time_point::max(), bool permanent = false) {
+        put(hash, value, bindDoneCb(cb), created, permanent);
     }
 
-    void put(InfoHash hash, Value&& value, DoneCallback cb={}, bool permanent = false);
-    void put(InfoHash hash, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
-        put(hash, std::forward<Value>(value), bindDoneCb(cb), permanent);
+    void put(InfoHash hash, Value&& value, DoneCallback cb={}, time_point created=time_point::max(), bool permanent = false);
+    void put(InfoHash hash, Value&& value, DoneCallbackSimple cb, time_point created=time_point::max(), bool permanent = false) {
+        put(hash, std::forward<Value>(value), bindDoneCb(cb), created, permanent);
     }
-    void put(const std::string& key, Value&& value, DoneCallbackSimple cb={}, bool permanent = false);
+    void put(const std::string& key, Value&& value, DoneCallbackSimple cb={}, time_point created=time_point::max(), bool permanent = false);
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
