@@ -31,6 +31,7 @@ from libcpp.map cimport map as map
 from libcpp cimport bool
 from libcpp.utility cimport pair
 from libcpp.string cimport string
+from libcpp.memory cimport shared_ptr
 
 from cython.parallel import parallel, prange
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
@@ -46,13 +47,13 @@ cdef inline void shutdown_callback(void* user_data) with gil:
         cbs['shutdown']()
     ref.Py_DECREF(cbs)
 
-cdef inline bool get_callback(cpp.shared_ptr[cpp.Value] value, void *user_data) with gil:
+cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with gil:
     cb = (<object>user_data)['get']
     pv = Value()
     pv._value = value
     return cb(pv)
 
-cdef inline void done_callback(bool done, cpp.vector[cpp.shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
+cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
     node_ids = []
     for n in deref(nodes):
         h = NodeEntry()
@@ -109,7 +110,7 @@ cdef class InfoHash(_WithID):
         return h
 
 cdef class Node(_WithID):
-    cdef cpp.shared_ptr[cpp.Node] _node
+    cdef shared_ptr[cpp.Node] _node
     def getId(self):
         h = InfoHash()
         h._infohash = self._node.get().getId()
@@ -120,7 +121,7 @@ cdef class Node(_WithID):
         return self._node.get().isExpired()
 
 cdef class NodeEntry(_WithID):
-    cdef cpp.pair[cpp.InfoHash, cpp.shared_ptr[cpp.Node]] _v
+    cdef cpp.pair[cpp.InfoHash, shared_ptr[cpp.Node]] _v
     def getId(self):
         h = InfoHash()
         h._infohash = self._v.first
@@ -131,7 +132,7 @@ cdef class NodeEntry(_WithID):
         return n
 
 cdef class Value(object):
-    cdef cpp.shared_ptr[cpp.Value] _value
+    cdef shared_ptr[cpp.Value] _value
     def __init__(self, bytes val=b''):
         self._value.reset(new cpp.Value(val, len(val)))
     def __str__(self):
@@ -163,8 +164,8 @@ cdef class Value(object):
             return self._value.get().size()
 
 cdef class NodeSetIter(object):
-    cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]]* _nodes
-    cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]].iterator _curIter
+    cdef map[cpp.InfoHash, shared_ptr[cpp.Node]]* _nodes
+    cdef map[cpp.InfoHash, shared_ptr[cpp.Node]].iterator _curIter
     def __init__(self, NodeSet s):
         self._nodes = &s._nodes
         self._curIter = self._nodes.begin()
@@ -177,7 +178,7 @@ cdef class NodeSetIter(object):
         return h
 
 cdef class NodeSet(object):
-    cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]] _nodes
+    cdef map[cpp.InfoHash, shared_ptr[cpp.Node]] _nodes
     def size(self):
         return self._nodes.size()
     def insert(self, NodeEntry l):
@@ -199,7 +200,7 @@ cdef class NodeSet(object):
         return h
     def __str__(self):
         s = ''
-        cdef map[cpp.InfoHash, cpp.shared_ptr[cpp.Node]].iterator it = self._nodes.begin()
+        cdef map[cpp.InfoHash, shared_ptr[cpp.Node]].iterator it = self._nodes.begin()
         while it != self._nodes.end():
             s += deref(it).first.toString().decode() + ' ' + deref(it).second.get().getAddrStr().decode() + '\n'
             inc(it)
@@ -215,7 +216,7 @@ cdef class PublicKey(_WithID):
         return h
 
 cdef class Certificate(_WithID):
-    cdef cpp.shared_ptr[cpp.Certificate] _cert
+    cdef shared_ptr[cpp.Certificate] _cert
     def getId(self):
         h = InfoHash()
         h._infohash = self._cert.get().getId()
