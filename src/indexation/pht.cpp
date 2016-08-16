@@ -4,6 +4,41 @@
 namespace dht {
 namespace indexation {
 
+/**
+ * Output the blob into string and readable way
+ *
+ * @param bl   : Blob to print
+ *
+ * @return string that represent the blob into a readable way
+ */
+static std::string blobToString(const Blob &bl) {
+    std::stringstream ss;
+    auto bn = bl.size() % 8;
+    auto n = bl.size() / 8;
+
+    for (size_t i = 0; i < bl.size(); i++)
+        ss << std::bitset<8>(bl[i]) << " ";
+    if (bn)
+        for (unsigned b=0; b < bn; b++)
+            ss << (char)((bl[n] & (1 << (7 - b))) ? '1':'0');
+
+    return ss.str();
+}
+
+std::string Prefix::toString() const {
+    std::stringstream ss;
+
+    ss << "Prefix : " << std::endl << "\tContent_ : ";
+    ss << blobToString(content_);
+    ss << std::endl;
+
+    ss << "\tFlags_ :   ";
+    ss << blobToString(flags_);
+    ss << std::endl;
+
+    return ss.str();
+}
+
 void Pht::Cache::insert(const Prefix& p) {
     size_t i = 0;
     auto now = clock::now();
@@ -106,6 +141,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
 
     /* start could be under 0 but after the compare it to 0 it always will be unsigned, so we can cast it*/
     auto mid = (start >= 0) ? (unsigned) start : (*lo + *hi)/2;
+
     auto first_res = std::make_shared<node_lookup_result>();
     auto second_res = std::make_shared<node_lookup_result>();
 
@@ -117,6 +153,8 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         }
         else if (is_leaf or *lo > *hi) {
             // leaf node
+            Prefix to_insert = p.getPrefix(mid);
+            cache_.insert(to_insert);
 
             if (cb) {
                 if (vals->size() == 0 and max_common_prefix_len and mid > 0) {
@@ -126,7 +164,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                     lookupStep(p_, lo, hi, vals, cb, done_cb, max_common_prefix_len, -1, all_values);
                 }
 
-                cb(*vals, p.getPrefix(mid));
+                cb(*vals, to_insert);
             }
 
             if (done_cb)
@@ -291,10 +329,12 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
                 if ( not check_split or final_prefix->size_ == kp.size_ ) {
                     real_insert(final_prefix, std::move(entry));
                 } else {
-                    if ( vals->size() < MAX_NODE_ENTRY_COUNT )
+                    if ( vals->size() < MAX_NODE_ENTRY_COUNT ) {
                         getRealPrefix(final_prefix, std::move(entry), real_insert);
-                    else
+                    }
+                    else {
                         split(*final_prefix, vals, entry, real_insert);
+                    }
                 }
             }
         }, nullptr, cache_.lookup(kp), true
@@ -307,27 +347,39 @@ Prefix Pht::zcurve(const std::vector<Prefix>& all_prefix) const {
     if ( all_prefix.size() == 1 )
         return all_prefix[0];
 
-    for ( size_t j = 0, bit = 0; j < all_prefix[0].content_.size(); j++) {
+    /* All prefix got the same size (thanks to padding) */
+    size_t prefix_size = all_prefix[0].content_.size();
+
+    /* Loop on all uint8_t of the input prefix */
+    for ( size_t j = 0, bit = 0; j < prefix_size; j++) {
 
         uint8_t mask = 0x80;
+        /* For each of the 8 bits of the input uint8_t */
         for ( int i = 0; i < 8; ) {
 
             uint8_t flags = 0;
             uint8_t content = 0;
 
-            for ( int k = 0 ; k < 8; k++, bit++ ) {
+            /* For each bit of the output uint8_t */
+            for ( int k = 0 ; k < 8; k++ ) {
 
                 auto diff = k - i;
 
-                auto x = all_prefix[bit].content_[j] & mask;
-                auto y = all_prefix[bit].flags_[j] & mask;
+                /*get the content 'c', and the flag 'f' of the input prefix */
+                auto c = all_prefix[bit].content_[j] & mask;
+                auto f = all_prefix[bit].flags_[j] & mask;
 
-                content |= ( diff >= 0 ) ? x >> diff : x << std::abs(diff);
-                flags   |= ( diff >= 0 ) ? y >> diff : y << std::abs(diff);
+                /* Move this bit at the right position according to the diff
+                   and merge it into content and flags in the same way */
+                content |= ( diff >= 0 ) ? c >> diff : c << std::abs(diff);
+                flags   |= ( diff >= 0 ) ? f >> diff : f << std::abs(diff);
 
-                if ( bit == all_prefix.size() - 1 ) { bit = -1; ++i; mask >>= 1; }
+                /* If we are on the last prefix of the vector get back to the first and
+                ,move the mask in order to get the n + 1nth bit */
+                if ( ++bit == all_prefix.size() ) { bit = 0; ++i; mask >>= 1; }
             }
 
+            /* Add the next flags + content to the output prefix */
             p.content_.push_back(content);
             p.flags_.push_back(flags);
             p.size_ += 8;
@@ -343,6 +395,7 @@ Prefix Pht::linearize(Key k) const {
     std::vector<Prefix> all_prefix;
     all_prefix.reserve(k.size());
 
+    /* Get the max size of the keyspec and take it for size limit (for padding) */
     auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
         [](const std::pair<std::string, size_t>& a, const std::pair<std::string, size_t>& b) {
             return a.second < b.second;
@@ -444,10 +497,8 @@ void Pht::split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<Index
 
     auto loc = foundSplitLocation(full, vals);
     auto prefix_to_insert = std::make_shared<Prefix>(full.getPrefix(loc));
-    std::cerr << " Split loc " << loc << " full" << full.toString() << " size " << full.size_ << std::endl;
 
     for(;loc != insert.size_ - 1; loc--) {
-        std::cerr << "loc " << full.getPrefix(loc).toString() << std::endl;
         updateCanary(full.getPrefix(loc));
     }
 

@@ -284,7 +284,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
                         if (vals.empty())
                             return;
                         std::cout << "Pht::lookup: found entries!" << std::endl
-                                  << "   prefix: \"" << p.toString() << "\"" << std::endl
+                                  << p.toString() << std::endl
                                   << "   hash: " << p.hash() << std::endl;
                         std::cout << "   entries:" << std::endl;
                         for (auto v : vals)
