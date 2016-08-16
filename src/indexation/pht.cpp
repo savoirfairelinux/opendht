@@ -106,6 +106,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
 
     /* start could be under 0 but after the compare it to 0 it always will be unsigned, so we can cast it*/
     auto mid = (start >= 0) ? (unsigned) start : (*lo + *hi)/2;
+
     auto first_res = std::make_shared<node_lookup_result>();
     auto second_res = std::make_shared<node_lookup_result>();
 
@@ -117,6 +118,8 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
         }
         else if (is_leaf or *lo > *hi) {
             // leaf node
+            Prefix to_insert = p.getPrefix(mid);
+            cache_.insert(to_insert);
 
             if (cb) {
                 if (vals->size() == 0 and max_common_prefix_len and mid > 0) {
@@ -126,7 +129,7 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
                     lookupStep(p_, lo, hi, vals, cb, done_cb, max_common_prefix_len, -1, all_values);
                 }
 
-                cb(*vals, p.getPrefix(mid));
+                cb(*vals, to_insert);
             }
 
             if (done_cb)
@@ -291,10 +294,12 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
                 if ( not check_split or final_prefix->size_ == kp.size_ ) {
                     real_insert(final_prefix, std::move(entry));
                 } else {
-                    if ( vals->size() < MAX_NODE_ENTRY_COUNT )
+                    if ( vals->size() < MAX_NODE_ENTRY_COUNT ) {
                         getRealPrefix(final_prefix, std::move(entry), real_insert);
-                    else
+                    }
+                    else {
                         split(*final_prefix, vals, entry, real_insert);
+                    }
                 }
             }
         }, nullptr, cache_.lookup(kp), true
@@ -444,10 +449,8 @@ void Pht::split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<Index
 
     auto loc = foundSplitLocation(full, vals);
     auto prefix_to_insert = std::make_shared<Prefix>(full.getPrefix(loc));
-    std::cerr << " Split loc " << loc << " full" << full.toString() << " size " << full.size_ << std::endl;
 
     for(;loc != insert.size_ - 1; loc--) {
-        std::cerr << "loc " << full.getPrefix(loc).toString() << std::endl;
         updateCanary(full.getPrefix(loc));
     }
 
