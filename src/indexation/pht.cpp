@@ -4,6 +4,41 @@
 namespace dht {
 namespace indexation {
 
+/**
+ * Output the blob into string and readable way
+ *
+ * @param bl   : Blob to print
+ *
+ * @return string that represent the blob into a readable way
+ */
+static std::string blobToString(const Blob &bl) {
+    std::stringstream ss;
+    auto bn = bl.size() % 8;
+    auto n = bl.size() / 8;
+
+    for (size_t i = 0; i < bl.size(); i++)
+        ss << std::bitset<8>(bl[i]) << " ";
+    if (bn)
+        for (unsigned b=0; b < bn; b++)
+            ss << (char)((bl[n] & (1 << (7 - b))) ? '1':'0');
+
+    return ss.str();
+}
+
+std::string Prefix::toString() const {
+    std::stringstream ss;
+
+    ss << "Prefix : " << std::endl << "\tContent_ : ";
+    ss << blobToString(content_);
+    ss << std::endl;
+
+    ss << "\tFlags_ :   ";
+    ss << blobToString(flags_);
+    ss << std::endl;
+
+    return ss.str();
+}
+
 void Pht::Cache::insert(const Prefix& p) {
     size_t i = 0;
     auto now = clock::now();
@@ -312,27 +347,39 @@ Prefix Pht::zcurve(const std::vector<Prefix>& all_prefix) const {
     if ( all_prefix.size() == 1 )
         return all_prefix[0];
 
-    for ( size_t j = 0, bit = 0; j < all_prefix[0].content_.size(); j++) {
+    /* All prefix got the same size (thanks to padding) */
+    size_t prefix_size = all_prefix[0].content_.size();
+
+    /* Loop on all uint8_t of the input prefix */
+    for ( size_t j = 0, bit = 0; j < prefix_size; j++) {
 
         uint8_t mask = 0x80;
+        /* For each of the 8 bits of the input uint8_t */
         for ( int i = 0; i < 8; ) {
 
             uint8_t flags = 0;
             uint8_t content = 0;
 
-            for ( int k = 0 ; k < 8; k++, bit++ ) {
+            /* For each bit of the output uint8_t */
+            for ( int k = 0 ; k < 8; k++ ) {
 
                 auto diff = k - i;
 
-                auto x = all_prefix[bit].content_[j] & mask;
-                auto y = all_prefix[bit].flags_[j] & mask;
+                /*get the content 'c', and the flag 'f' of the input prefix */
+                auto c = all_prefix[bit].content_[j] & mask;
+                auto f = all_prefix[bit].flags_[j] & mask;
 
-                content |= ( diff >= 0 ) ? x >> diff : x << std::abs(diff);
-                flags   |= ( diff >= 0 ) ? y >> diff : y << std::abs(diff);
+                /* Move this bit at the right position according to the diff
+                   and merge it into content and flags in the same way */
+                content |= ( diff >= 0 ) ? c >> diff : c << std::abs(diff);
+                flags   |= ( diff >= 0 ) ? f >> diff : f << std::abs(diff);
 
-                if ( bit == all_prefix.size() - 1 ) { bit = -1; ++i; mask >>= 1; }
+                /* If we are on the last prefix of the vector get back to the first and
+                ,move the mask in order to get the n + 1nth bit */
+                if ( ++bit == all_prefix.size() ) { bit = 0; ++i; mask >>= 1; }
             }
 
+            /* Add the next flags + content to the output prefix */
             p.content_.push_back(content);
             p.flags_.push_back(flags);
             p.size_ += 8;
@@ -348,6 +395,7 @@ Prefix Pht::linearize(Key k) const {
     std::vector<Prefix> all_prefix;
     all_prefix.reserve(k.size());
 
+    /* Get the max size of the keyspec and take it for size limit (for padding) */
     auto max = std::max_element(keySpec_.begin(), keySpec_.end(),
         [](const std::pair<std::string, size_t>& a, const std::pair<std::string, size_t>& b) {
             return a.second < b.second;
