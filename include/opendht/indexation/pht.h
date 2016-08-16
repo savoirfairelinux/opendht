@@ -35,8 +35,9 @@ struct Prefix {
         size_(std::min(first, p.content_.size()*8)),
         content_(Blob(p.content_.begin(), p.content_.begin()+size_/8))
     {
+
         auto rem = size_ % 8;
-        if ( not flags_.empty() ) {
+        if ( not p.flags_.empty() ) {
             flags_ = Blob(p.flags_.begin(), p.flags_.begin()+size_/8);
             if (rem)
                 flags_.push_back(p.flags_[size_/8] & (0xFF << (8 - rem)));
@@ -46,25 +47,40 @@ struct Prefix {
             content_.push_back(p.content_[size_/8] & (0xFF << (8 - rem)));
     }
 
+    /**
+     * Get a sub prefix of the Prefix
+     *
+     * @param len lenght of the prefix to get, could be negative
+     *            if len is negativ then you will get the prefix
+     *            of size of the previous prefix minus len
+     *
+     * @return Sub-prefix of size len or if len is negative sub-prefix of size
+     *         of prefix minus len
+     *
+     * @throw out_of_range if len is larger than size of the content
+     */
     Prefix getPrefix(ssize_t len) const {
         if ((size_t)std::abs(len) >= content_.size() * 8)
             throw std::out_of_range("len larger than prefix size.");
         if (len < 0)
             len += size_;
+
         return Prefix(*this, len);
     }
 
     /**
-     * Method for getting the state of the bit at the position pos.
-     * @param pos : Pos of the needed bit
-     * @return : true if the bit is at 1
-     *           false otherwise
-     * @throw out_of_range Throw out of range if the bit at 'pos' does not exist
+     * Flags are considered as active if flag is empty or if the flag
+     * at pos 'pos' is active
+ee     *
+     * @see isActiveBit in private function
      */
     bool isFlagActive(size_t pos) const {
         return flags_.empty() or isActiveBit(flags_, pos);
     }
 
+    /**
+     * @see isActiveBit in private function
+     */
     bool isContentBitActive(size_t pos) const {
         return isActiveBit(content_, pos);
     }
@@ -77,29 +93,17 @@ struct Prefix {
      * @return The prefix of this sibling.
      */
     Prefix getSibling() const {
-        if ( not size_ )
-            return Prefix(*this);
-        return swapBit(size_);
+        Prefix copy = *this;
+        if ( size_ )
+            copy.swapContentBit(size_ - 1);
+
+        return copy;
     }
 
     InfoHash hash() const {
         Blob copy(content_);
         copy.push_back(size_);
         return InfoHash::get(copy);
-    }
-
-    std::string toString() const {
-        std::stringstream ss;
-
-        ss << "Prefix : " << std::endl << "\tContent_ : ";
-        ss << blobToString(content_);
-        ss << std::endl;
-
-        ss << "\tFlags_ :   ";
-        ss << blobToString(flags_);
-        ss << std::endl;
-
-        return ss.str();
     }
 
     /**
@@ -138,64 +142,63 @@ struct Prefix {
     }
 
     /**
-     * This method swap the bit a the position 'bit'
-     *
-     * @param bit Position of the bit to swap
-     * @return The prefix with the bit at position 'bit' swapped
-     * @throw out_of_range Throw out of range if bit does not exist
+     * @see doc of swap private function
      */
-    Prefix swapBit(size_t bit) const {
-        if ( bit >= content_.size() * 8 )
-            throw std::out_of_range("bit larger than prefix size.");
+    void swapContentBit(size_t bit) {
+        swapBit(content_, bit);
     }
 
+    /**
+     * @see doc of swap private function
+     */
     void swapFlagBit(size_t bit) {
         swapBit(flags_, bit);
     }
 
+    /**
+     * @see doc of addPadding private function
+     */
     void addPaddingContent(size_t size) {
         content_ = addPadding(content_, size);
     }
 
     void updateFlags() {
-        // Fill first known bit
+        /* Fill first known bit */
         auto csize = size_ - flags_.size() * 8;
         while(csize >= 8) {
             flags_.push_back(0xFF);
             csize -= 8;
         }
 
-        // if needed fill remaining bit
+        /* if needed fill remaining bit */
         if ( csize )
             flags_.push_back(0xFF << (8 - csize));
 
-        // Complet vector space missing
+        /* Complet vector space missing */
         for ( auto i = flags_.size(); i < content_.size(); i++ )
             flags_.push_back(0xFF);
     }
 
+    std::string toString() const;
+
     size_t size_ {0};
 
+    /* Will contain flags according to content_.
+       If flags_[i] == 0, then content_[i] is unknown
+       else if flags_[i] == 1, then content_[i] is known */
     Blob flags_ {};
     Blob content_ {};
 
 private:
 
-    std::string blobToString(const Blob &bl) const {
-        std::stringstream ss;
-
-        auto bn = size_ % 8;
-        auto n = size_ / 8;
-
-        for (size_t i = 0; i < bl.size(); i++)
-            ss << std::bitset<8>(bl[i]) << " ";
-        if (bn)
-            for (unsigned b=0; b < bn; b++)
-                ss << (char)((bl[n] & (1 << (7 - b))) ? '1':'0');
-
-        return ss.str();
-    }
-
+    /**
+     * Add a padding to the input blob
+     *
+     * @param toP  : Prefix where to add a padding
+     * @param size : Final size of the prefix with padding
+     *
+     * @return Copy of the input Blob but with a padding
+     */
     Blob addPadding(Blob toP, size_t size) {
         Blob copy = toP;
         for ( auto i = copy.size(); i < size; i++ )
@@ -205,13 +208,33 @@ private:
         return copy;
     }
 
+    /**
+     * Check if the bit a pos 'pos' is active, i.e. equal to 1
+     *
+     * @param b   : Blob to check
+     * @param pos : Position to check
+     *
+     * @return true if the bit is equal to 1, false otherwise
+     *
+     * @throw out_of_range if bit is superior to blob size * 8
+     */
     bool isActiveBit(const Blob &b, size_t pos) const {
-        if ( pos >= size_ )
+        if ( pos >= content_.size() * 8 )
             throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
 
         return ((b[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
     }
 
+    /**
+     * Swap bit at position bit [from 0 to 1 and vice-versa]
+     *
+     * @param b   : Blob to swap
+     * @param bit : Bit to swap on b
+     *
+     * @return the input prefix with the bit at pos 'bit' swapped
+     *
+     * @throw out_of_range if bit is superior to blob size * 8
+     */
     void swapBit(Blob &b, size_t bit) {
         if ( bit >= b.size() * 8 )
             throw std::out_of_range("bit larger than prefix size.");
@@ -257,6 +280,7 @@ public:
 
     /* A key for a an index entry */
     using Key = std::map<std::string, Blob>;
+
     /* Specifications of the keys. It defines the number, the length and the
      * serialization order of fields. */
     using KeySpec = std::map<std::string, size_t>;
@@ -395,6 +419,13 @@ private:
             std::shared_ptr<unsigned> max_common_prefix_len,
             int start = -1, bool all_values = false);
 
+    /**
+     * Apply the zcurve algorithm on the list of input prefix
+     *
+     * @param all_prefix : Vector of prefix to interleave
+     *
+     * @return The output prefix where all flags and content are interleaves
+     */
     Prefix zcurve(const std::vector<Prefix>& all_prefix) const;
 
     /**
