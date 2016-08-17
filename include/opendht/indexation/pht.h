@@ -28,37 +28,61 @@ namespace indexation {
  */
 struct Prefix {
     Prefix() {}
-    Prefix(InfoHash h) : size_(h.size() * 8), content_(h.begin(), h.end()) {}
-    Prefix(const Blob& d) : size_(d.size()*8), content_(d) {}
+    Prefix(InfoHash h) : size_(h.size() * 8), content_(h.begin(), h.end()) { }
+    Prefix(const Blob& d, const Blob& f={}) : size_(d.size()*8), flags_(f), content_(d) { }
+
     Prefix(const Prefix& p, size_t first) :
         size_(std::min(first, p.content_.size()*8)),
         content_(Blob(p.content_.begin(), p.content_.begin()+size_/8))
     {
+
         auto rem = size_ % 8;
+        if ( not p.flags_.empty() ) {
+            flags_ = Blob(p.flags_.begin(), p.flags_.begin()+size_/8);
+            if (rem)
+                flags_.push_back(p.flags_[size_/8] & (0xFF << (8 - rem)));
+        }
+
         if (rem)
             content_.push_back(p.content_[size_/8] & (0xFF << (8 - rem)));
     }
 
+    /**
+     * Get a sub prefix of the Prefix
+     *
+     * @param len lenght of the prefix to get, could be negative
+     *            if len is negativ then you will get the prefix
+     *            of size of the previous prefix minus len
+     *
+     * @return Sub-prefix of size len or if len is negative sub-prefix of size
+     *         of prefix minus len
+     *
+     * @throw out_of_range if len is larger than size of the content
+     */
     Prefix getPrefix(ssize_t len) const {
         if ((size_t)std::abs(len) >= content_.size() * 8)
             throw std::out_of_range("len larger than prefix size.");
         if (len < 0)
             len += size_;
+
         return Prefix(*this, len);
     }
 
     /**
-     * Method for getting the state of the bit at the position pos.
-     * @param pos : Pos of the needed bit
-     * @return : true if the bit is at 1
-     *           false otherwise
-     * @throw out_of_range Throw out of range if the bit at 'pos' does not exist
+     * Flags are considered as active if flag is empty or if the flag
+     * at pos 'pos' is active
+ee     *
+     * @see isActiveBit in private function
      */
-    bool isActiveBit(size_t pos) const {
-        if ( pos >= content_.size() * 8 )
-            throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
+    bool isFlagActive(size_t pos) const {
+        return flags_.empty() or isActiveBit(flags_, pos);
+    }
 
-        return ((this->content_[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
+    /**
+     * @see isActiveBit in private function
+     */
+    bool isContentBitActive(size_t pos) const {
+        return isActiveBit(content_, pos);
     }
 
     Prefix getFullSize() { return Prefix(*this, content_.size()*8); }
@@ -69,27 +93,17 @@ struct Prefix {
      * @return The prefix of this sibling.
      */
     Prefix getSibling() const {
-        if ( not size_ )
-            return Prefix(*this);
-        return swapBit(size_);
+        Prefix copy = *this;
+        if ( size_ )
+            copy.swapContentBit(size_ - 1);
+
+        return copy;
     }
 
     InfoHash hash() const {
         Blob copy(content_);
         copy.push_back(size_);
         return InfoHash::get(copy);
-    }
-
-    std::string toString() const {
-        std::stringstream ss;
-        auto bn = size_ % 8;
-        auto n = size_ / 8;
-        for (size_t i = 0; i<n; i++)
-            ss << std::bitset<8>(content_[i]);
-        if (bn)
-            for (unsigned b=0; b<bn; b++)
-                ss << (char)((content_[n] & (1 << (7 - b))) ? '1':'0');
-        return ss.str();
     }
 
     /**
@@ -105,8 +119,12 @@ struct Prefix {
         auto longest_prefix_size = std::min(p1.size_, p2.size_);
 
         for (i = 0; i < longest_prefix_size; i++) {
-            if (p1.content_.data()[i] != p2.content_.data()[i])
-                break;
+            if (p1.content_.data()[i] != p2.content_.data()[i]
+                or not p1.isFlagActive(i)
+                or not p2.isFlagActive(i) ) {
+
+                    break;
+            }
         }
 
         if (i == longest_prefix_size)
@@ -124,30 +142,109 @@ struct Prefix {
     }
 
     /**
-     * This method swap the bit a the position 'bit' and return the new prefix
-     *
-     * @param bit Position of the bit to swap
-     * @return The prefix with the bit at position 'bit' swapped
-     * @throw out_of_range Throw out of range if bit does not exist
+     * @see doc of swap private function
      */
-    Prefix swapBit(size_t bit) const {
-        if ( bit > content_.size() * 8 )
-            throw std::out_of_range("bit larger than prefix size.");
+    void swapContentBit(size_t bit) {
+        swapBit(content_, bit);
+    }
 
-        Prefix copy = *this;
-        size_t offset_bit = (8 - bit) % 8;
-        copy.content_[bit / 8] ^= (1 << offset_bit);
+    /**
+     * @see doc of swap private function
+     */
+    void swapFlagBit(size_t bit) {
+        swapBit(flags_, bit);
+    }
 
+    /**
+     * @see doc of addPadding private function
+     */
+    void addPaddingContent(size_t size) {
+        content_ = addPadding(content_, size);
+    }
+
+    void updateFlags() {
+        /* Fill first known bit */
+        auto csize = size_ - flags_.size() * 8;
+        while(csize >= 8) {
+            flags_.push_back(0xFF);
+            csize -= 8;
+        }
+
+        /* if needed fill remaining bit */
+        if ( csize )
+            flags_.push_back(0xFF << (8 - csize));
+
+        /* Complet vector space missing */
+        for ( auto i = flags_.size(); i < content_.size(); i++ )
+            flags_.push_back(0xFF);
+    }
+
+    std::string toString() const;
+
+    size_t size_ {0};
+
+    /* Will contain flags according to content_.
+       If flags_[i] == 0, then content_[i] is unknown
+       else if flags_[i] == 1, then content_[i] is known */
+    Blob flags_ {};
+    Blob content_ {};
+
+private:
+
+    /**
+     * Add a padding to the input blob
+     *
+     * @param toP  : Prefix where to add a padding
+     * @param size : Final size of the prefix with padding
+     *
+     * @return Copy of the input Blob but with a padding
+     */
+    Blob addPadding(Blob toP, size_t size) {
+        Blob copy = toP;
+        for ( auto i = copy.size(); i < size; i++ )
+            copy.push_back(0);
+
+        swapBit(copy, size_ + 1);
         return copy;
     }
 
-    size_t size_ {0};
-    Blob content_ {};
+    /**
+     * Check if the bit a pos 'pos' is active, i.e. equal to 1
+     *
+     * @param b   : Blob to check
+     * @param pos : Position to check
+     *
+     * @return true if the bit is equal to 1, false otherwise
+     *
+     * @throw out_of_range if bit is superior to blob size * 8
+     */
+    bool isActiveBit(const Blob &b, size_t pos) const {
+        if ( pos >= content_.size() * 8 )
+            throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
 
+        return ((b[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
+    }
+
+    /**
+     * Swap bit at position bit [from 0 to 1 and vice-versa]
+     *
+     * @param b   : Blob to swap
+     * @param bit : Bit to swap on b
+     *
+     * @return the input prefix with the bit at pos 'bit' swapped
+     *
+     * @throw out_of_range if bit is superior to blob size * 8
+     */
+    void swapBit(Blob &b, size_t bit) {
+        if ( bit >= b.size() * 8 )
+            throw std::out_of_range("bit larger than prefix size.");
+
+        size_t offset_bit = (8 - bit) % 8;
+        b[bit / 8] ^= (1 << offset_bit);
+    }
 };
 
 using Value = std::pair<InfoHash, dht::Value::Id>;
-
 struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
     static const ValueType TYPE;
 
@@ -168,7 +265,6 @@ struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
     MSGPACK_DEFINE_MAP(prefix, value);
 };
 
-
 class Pht {
     static constexpr const char* INVALID_KEY = "Key does not match the PHT key spec.";
 
@@ -176,6 +272,7 @@ class Pht {
     static constexpr const char* INDEX_PREFIX = "index.pht.";
 
 public:
+
     /* This is the maximum number of entries per node. This parameter is
      * critical and influences the traffic a lot during a lookup operation.
      */
@@ -183,6 +280,7 @@ public:
 
     /* A key for a an index entry */
     using Key = std::map<std::string, Blob>;
+
     /* Specifications of the keys. It defines the number, the length and the
      * serialization order of fields. */
     using KeySpec = std::map<std::string, size_t>;
@@ -207,11 +305,8 @@ public:
     }
 
     Pht(std::string name, KeySpec k_spec, std::shared_ptr<DhtRunner> dht)
-        : name_(INDEX_PREFIX + name), canary_(name_ + ".canary"), keySpec_(k_spec), dht_(dht)
-    {
-        if (k_spec.size() != 1)
-            throw std::invalid_argument("PHT only supports unidimensional data.");
-    }
+        : name_(INDEX_PREFIX + name), canary_(name_ + ".canary"), keySpec_(k_spec), dht_(dht) {}
+
     virtual ~Pht () { }
 
     /**
@@ -281,7 +376,7 @@ private:
 
     private:
         static constexpr const size_t MAX_ELEMENT {1024};
-        static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
+        static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {5};
 
         struct Node {
             time_point last_reply;           /* Made the assocation between leaves and leaves multimap */
@@ -325,6 +420,15 @@ private:
             int start = -1, bool all_values = false);
 
     /**
+     * Apply the zcurve algorithm on the list of input prefix
+     *
+     * @param all_prefix : Vector of prefix to interleave
+     *
+     * @return The output prefix where all flags and content are interleaves
+     */
+    Prefix zcurve(const std::vector<Prefix>& all_prefix) const;
+
+    /**
      * Linearizes the key into a unidimensional key. A pht only takes
      * unidimensional key.
      *
@@ -364,7 +468,7 @@ private:
     size_t foundSplitLocation(Prefix compared, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals) {
         for ( size_t i = 0; i < compared.content_.size() * 8 - 1; i++ )
             for ( auto const& v : *vals)
-                if ( Prefix(v->prefix).isActiveBit(i) != compared.isActiveBit(i) )
+                if ( Prefix(v->prefix).isContentBitActive(i) != compared.isContentBitActive(i) )
                     return i + 1;
 
         return compared.content_.size() * 8 - 1;
