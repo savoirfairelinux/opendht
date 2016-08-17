@@ -28,13 +28,13 @@ static std::string blobToString(const Blob &bl) {
 std::string Prefix::toString() const {
     std::stringstream ss;
 
-    ss << "Prefix : " << std::endl << "\tContent_ : ";
+    ss << "Prefix : " << std::endl << "\tContent_ : \"";
     ss << blobToString(content_);
-    ss << std::endl;
+    ss << "\"" << std::endl;
 
-    ss << "\tFlags_ :   ";
+    ss << "\tFlags_   : \"";
     ss << blobToString(flags_);
-    ss << std::endl;
+    ss << "\"" << std::endl;
 
     return ss.str();
 }
@@ -192,6 +192,14 @@ void Pht::lookupStep(Prefix p, std::shared_ptr<int> lo, std::shared_ptr<int> hi,
             else {
                 IndexEntry entry;
                 entry.unpackValue(*value);
+
+                auto it = std::find_if(vals->cbegin(), vals->cend(), [&](const std::shared_ptr<IndexEntry>& ie) {
+                    return ie->value == entry.value;
+                });
+
+                /* If we already got the value then get the next one */
+                if (it != vals->cend())
+                    return true;
 
                 if (max_common_prefix_len) { /* inexact match case */
                     auto common_bits = Prefix::commonBits(p, entry.prefix);
