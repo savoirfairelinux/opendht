@@ -70,6 +70,21 @@ def display_plot(yvals, xvals=None, yformatter=None, display_time=3, **kwargs):
         plt.plot(yvals, **kwargs)
     plt.pause(display_time)
 
+def display_traffic_plot(ifname):
+    """Displays the traffic plot for a given interface name.
+
+    @param ifname:  Interface name.
+    @type  ifname:  string
+    """
+    ydata = []
+    xdata = []
+    # warning: infinite loop
+    interval = 2
+    for rate in iftop_traffic_data(ifname, interval=interval):
+        ydata.append(rate)
+        xdata.append((xdata[-1] if len(xdata) > 0 else 0) + interval)
+        display_plot(ydata, xvals=xdata, yformatter=Kbit_format, color='blue')
+
 def iftop_traffic_data(ifname, interval=2, rate_type='send_receive'):
     """
     Generator (yields data) function collecting traffic data from iftop
@@ -210,10 +225,10 @@ class DhtFeatureTest(FeatureTest):
     def _dhtPut(self, producer, _hash, *values):
         with FeatureTest.lock:
             for val in values:
-                    vstr = val.__str__()[:100]
-                    DhtNetwork.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
-                    FeatureTest.done += 1
-                    producer.put(_hash, val, DhtFeatureTest.putDoneCb)
+                vstr = val.__str__()[:100]
+                DhtNetwork.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
+                FeatureTest.done += 1
+                producer.put(_hash, val, DhtFeatureTest.putDoneCb)
             while FeatureTest.done > 0:
                 FeatureTest.lock.wait()
 
@@ -367,9 +382,10 @@ class PersistenceTest(DhtFeatureTest):
         # initial set of values
         i = 0
         for h in hashes:
-           self._dhtPut(bootstrap.front(), h, *[Value(v) for v in values])
-           print("at: ", i)
-           i += 1
+            # TODO: bloque dans le put??
+            self._dhtPut(bootstrap.front(), h, *[Value(v) for v in values])
+            print("at: ", i)
+            i += 1
 
         def normalBehavior(do, t, log=None):
             nonlocal nr_values
@@ -410,14 +426,7 @@ class PersistenceTest(DhtFeatureTest):
            self._trigger_dp(trigger_nodes, h)
 
         if self._traffic_plot:
-            ydata = []
-            xdata = []
-            # warning: infinite loop
-            interval = 2
-            for rate in iftop_traffic_data("br"+wb.ifname, interval=interval):
-                ydata.append(rate)
-                xdata.append((xdata[-1] if len(xdata) > 0 else 0) + interval)
-                display_plot(ydata, xvals=xdata, yformatter=Kbit_format, color='blue')
+            display_traffic_plot('br'+wb.ifname)
         else:
             # blocks in matplotlib thread
             while True:
