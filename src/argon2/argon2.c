@@ -88,18 +88,12 @@ int argon2_hash(const uint32_t t_cost, const uint32_t m_cost,
     int result;
     uint8_t *out;
 
-    /* Detect and reject overflowing sizes */
-    /* TODO: This should probably be fixed in the function signature */
-    if (pwdlen > ARGON2_MAX_PWD_LENGTH) {
-        return ARGON2_PWD_TOO_LONG;
-    }
-
     if (hashlen > ARGON2_MAX_OUTLEN) {
         return ARGON2_OUTPUT_TOO_LONG;
     }
 
-    if (saltlen > ARGON2_MAX_SALT_LENGTH) {
-        return ARGON2_SALT_TOO_LONG;
+    if (hashlen < ARGON2_MIN_OUTLEN) {
+        return ARGON2_OUTPUT_TOO_SHORT;
     }
 
     out = malloc(hashlen);
@@ -212,13 +206,19 @@ int argon2_verify(const char *encoded, const void *pwd, const size_t pwdlen,
     int ret;
     int decode_result;
     uint32_t encoded_len;
+    size_t encoded_len_tmp;
 
     if(encoded == NULL) {
         return ARGON2_DECODING_FAIL;
     }
 
+    encoded_len_tmp = strlen(encoded);
     /* max values, to be updated in decode_string */
-    encoded_len = strlen(encoded);
+    if (UINT32_MAX < encoded_len_tmp) {
+        return ARGON2_DECODING_FAIL;
+    }
+
+    encoded_len = (uint32_t)encoded_len_tmp;
     ctx.adlen = encoded_len;
     ctx.saltlen = encoded_len;
     ctx.outlen = encoded_len;
@@ -226,6 +226,8 @@ int argon2_verify(const char *encoded, const void *pwd, const size_t pwdlen,
     ctx.free_cbk = NULL;
     ctx.secret = NULL;
     ctx.secretlen = 0;
+    ctx.pwdlen = 0;
+    ctx.pwd = NULL;
     ctx.ad = malloc(ctx.adlen);
     ctx.salt = malloc(ctx.saltlen);
     ctx.out = malloc(ctx.outlen);
@@ -392,5 +394,5 @@ size_t argon2_encodedlen(uint32_t t_cost, uint32_t m_cost, uint32_t parallelism,
                          uint32_t saltlen, uint32_t hashlen) {
     return strlen("$argon2x$v=$m=,t=,p=$$") + numlen(t_cost) + numlen(m_cost)
         + numlen(parallelism) + b64len(saltlen) + b64len(hashlen)
-        + numlen(ARGON2_VERSION_NUMBER);
+        + numlen(ARGON2_VERSION_NUMBER) + 1;
 }
