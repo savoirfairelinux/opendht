@@ -223,13 +223,13 @@ struct Dht::SearchNode {
         /* Find request status for a query satisfying the initial query */
         const auto& sq_status = std::find_if(getStatus.cbegin(), getStatus.cend(),
             [&q](const SyncStatus::value_type& s) {
-                return s.first and q and s.first->isSatisfiedBy(*q);
+                return s.first and q and q->isSatisfiedBy(*s.first) and s.second and s.second->pending();
             }
         );
         return not node->isExpired() and (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
             and not hasStartedPagination(q)
             and (get_status == getStatus.cend() or not get_status->second)
-            and (sq_status == getStatus.cend() or not sq_status->second or not sq_status->second->pending());
+            and sq_status == getStatus.cend();
     }
 
     /**
