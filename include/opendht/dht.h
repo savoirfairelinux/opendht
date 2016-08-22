@@ -364,6 +364,7 @@ private:
     // timing
     Scheduler scheduler {};
     std::shared_ptr<Scheduler::Job> nextNodesConfirmation {};
+    std::shared_ptr<Scheduler::Job> nextStorageMaintenance {};
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     NetworkEngine network_engine;

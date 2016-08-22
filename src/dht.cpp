@@ -2144,6 +2144,12 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
         total_values += std::get<2>(store);
         storageChanged(*(*st), *std::get<0>(store));
     }
+
+    if (not nextStorageMaintenance)
+        /* activate storage maintenance for the first time */
+        nextStorageMaintenance = scheduler.add(now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME,
+                                               std::bind(&Dht::dataPersistence, this));
+
     return std::get<0>(store);
 }
 
@@ -2706,12 +2712,18 @@ Dht::dataPersistence() {
     auto storage_maintenance_time = time_point::max();
     for (auto &str : store) {
         if (now > str->maintenance_time) {
+            DHT_LOG.WARN("[storage %s] maintenance (%u values, %u bytes)",
+                    str->id.toString().c_str(), str->valueCount(), str->totalSize());
             maintainStorage(str->id);
             str->maintenance_time = now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
         }
         storage_maintenance_time = std::min(storage_maintenance_time, str->maintenance_time);
     }
-    scheduler.add(storage_maintenance_time, std::bind(&Dht::dataPersistence, this));
+    DHT_LOG.WARN("[store] next maintenance in %u minutes",
+            std::chrono::duration_cast<std::chrono::minutes>(storage_maintenance_time-now));
+    nextStorageMaintenance = storage_maintenance_time != time_point::max() ?
+                                scheduler.add(storage_maintenance_time, std::bind(&Dht::dataPersistence, this)) :
+                                nullptr;
 }
 
 size_t
