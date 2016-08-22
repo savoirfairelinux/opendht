@@ -223,13 +223,13 @@ struct Dht::SearchNode {
         /* Find request status for a query satisfying the initial query */
         const auto& sq_status = std::find_if(getStatus.cbegin(), getStatus.cend(),
             [&q](const SyncStatus::value_type& s) {
-                return s.first and q and s.first->isSatisfiedBy(*q);
+                return s.first and q and q->isSatisfiedBy(*s.first) and s.second and s.second->pending();
             }
         );
         return not node->isExpired() and (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
             and not hasStartedPagination(q)
             and (get_status == getStatus.cend() or not get_status->second)
-            and (sq_status == getStatus.cend() or not sq_status->second or not sq_status->second->pending());
+            and sq_status == getStatus.cend();
     }
 
     /**
@@ -957,7 +957,15 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             n->getStatus[query] = network_engine.sendFindNode(n->node,
                     sr->id,
                     -1,
-                    std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
+                    [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) {
+                        if (auto sr = ws.lock()) {
+                            if (auto sn = sr->getNode(status.node)) {
+                                sn->getStatus.erase(query);
+                            }
+                        }
+                        searchNodeGetDone(status, std::forward<NetworkEngine::RequestAnswer>(answer), ws, query);
+                    },
+                    /* std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query), */
                     std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
         } else {
             if (query and not query->select.getSelection().empty()) {
