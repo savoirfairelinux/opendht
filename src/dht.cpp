@@ -1110,9 +1110,6 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                             ++ait;
                         }
                     }
-
-                    if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
-                        sr->done = true;
                 }
             };
         DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
@@ -1218,6 +1215,9 @@ Dht::searchStep(std::shared_ptr<Search> sr)
 
         // Announce requests
         searchSendAnnounceValue(sr);
+
+        if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
+            sr->done = true;
     }
 
     if (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES) {
