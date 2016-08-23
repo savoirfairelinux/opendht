@@ -456,6 +456,12 @@ class PersistenceTest(DhtFeatureTest):
         It uses Dht shutdown call from the API to gracefuly finish the nodes one
         after the other.
         """
+        wb = self._workbench
+        if self._traffic_plot:
+            traffic_plot_thread = threading.Thread(target=display_traffic_plot, args=tuple(['br'+wb.ifname]))
+            traffic_plot_thread.daemon = True
+            traffic_plot_thread.start()
+
         bootstrap = self.bootstrap
 
         ops_count = []
@@ -513,6 +519,10 @@ class PersistenceTest(DhtFeatureTest):
         else:
             DhtNetwork.log("[GET]: either couldn't fetch values or nodes hosting values...")
 
+        if traffic_plot_thread:
+            print("Traffic plot running for ever. Ctrl-c for stopping it.")
+            traffic_plot_thread.join()
+
     @reset_before_test
     def _replaceClusterTest(self):
         """
@@ -565,6 +575,7 @@ class PersistenceTest(DhtFeatureTest):
         hashes = []
 
         # Generating considerable amount of values of size 1KB.
+        # TODO: Utiliser fonction _initialSetOfValues.
         VALUE_SIZE = 1024
         NUM_VALUES = self._num_values if self._num_values else 50
         values = [Value(random_str_val(size=VALUE_SIZE).encode()) for _ in range(NUM_VALUES)]
