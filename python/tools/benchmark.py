@@ -161,7 +161,7 @@ if __name__ == '__main__':
             help='Launches data persistence benchmark test. '\
                  'Available args for "-t" are: delete, replace, mult_time. '\
                  'Available args for "-o" are : dump_str_log, keep_alive, trigger, traffic_plot, op_plot. '\
-                 'Use "-m" to specify the number of producers on the DHT.'\
+                 'Use "-m" to specify the number of producers on the DHT. '\
                  'Use "-e" to specify the number of values to put on the DHT.')
 
     args = parser.parse_args()

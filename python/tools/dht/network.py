@@ -231,7 +231,7 @@ class DhtNetworkSubProcess(NSPopen):
         self._sendRequest(DhtNetworkSubProcess.MESSAGE_STATS, answer_cb=cb)
         return stats
 
-    def sendNodePutRequest(self, _hash, value):
+    def sendClusterPutRequest(self, _hash, value):
         """
         Sends a put operation request.
 
@@ -243,7 +243,7 @@ class DhtNetworkSubProcess(NSPopen):
         self._sendRequest(b_space_join(DhtNetworkSubProcess.NODE_PUT_REQ, _hash,
             value))
 
-    def sendNodesRequest(self, request, ids=b''):
+    def sendClusterRequest(self, request, ids=b''):
         """
         Send request to a list of nodes or the whole cluster.
 
@@ -268,7 +268,7 @@ class DhtNetwork(object):
     def log(*to_print):
         BOLD   = "\033[1m"
         NORMAL = "\033[0m"
-        print('%s[DhtNetwork-%s]%s' % (BOLD, DhtNetwork.iface, NORMAL), ':' , *to_print, file=sys.stderr)
+        print('%s[DhtNetwork-%s]%s' % (BOLD, DhtNetwork.iface, NORMAL), *to_print, file=sys.stderr)
 
     @staticmethod
     def run_node(ip4, ip6, p, bootstrap=[], is_bootstrap=False):
