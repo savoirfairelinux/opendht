@@ -104,7 +104,7 @@ DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner:
                     std::lock_guard<std::mutex> lck(storage_mtx);
                     if (not pending_ops_prio.empty())
                         return true;
-                    if (not pending_ops.empty() and getStatus() >= NodeStatus::Connecting)
+                    if (not pending_ops.empty() and getStatus() != NodeStatus::Connecting)
                         return true;
                 }
                 return false;
@@ -293,7 +293,7 @@ DhtRunner::loop_()
         ops.front()(*dht_);
         ops.pop();
     }
-    if (getStatus() >= NodeStatus::Connecting) {
+    if (getStatus() != NodeStatus::Connecting) {
         {
             std::lock_guard<std::mutex> lck(storage_mtx);
             ops = std::move(pending_ops);
