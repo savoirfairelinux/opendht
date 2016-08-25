@@ -244,7 +244,7 @@ public:
     std::vector<ValuesExport> exportValues() const;
     void importValues(const std::vector<ValuesExport>&);
 
-    int getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
+    unsigned getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
             unsigned *incoming_return) const;
     std::string getStorageLog() const;
     std::string getRoutingTablesLog(sa_family_t) const;
@@ -412,6 +412,8 @@ private:
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     NetworkEngine network_engine;
+    unsigned pending_pings4 {0};
+    unsigned pending_pings6 {0};
 
     using ReportedAddr = std::pair<unsigned, Address>;
     std::vector<ReportedAddr> reported_addr;

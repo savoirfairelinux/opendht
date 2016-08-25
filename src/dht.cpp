@@ -373,12 +373,13 @@ NodeStatus
 Dht::getStatus(sa_family_t af) const
 {
     unsigned good = 0, dubious = 0, cached = 0, incoming = 0;
-    int tot = getNodesStats(af, &good, &dubious, &cached, &incoming);
-    if (tot < 1)
-        return NodeStatus::Disconnected;
-    else if (good < 1)
+    unsigned tot = getNodesStats(af, &good, &dubious, &cached, &incoming);
+    auto& ping = af == AF_INET ? pending_pings4 : pending_pings6;
+    if (good)
+        return NodeStatus::Connected;
+    if (ping or tot)
         return NodeStatus::Connecting;
-    return NodeStatus::Connected;
+    return NodeStatus::Disconnected;
 }
 
 void
@@ -1888,7 +1889,7 @@ Dht::tokenMatch(const Blob& token, const sockaddr *sa) const
     return false;
 }
 
-int
+unsigned
 Dht::getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
 {
     const auto& now = scheduler.time();
@@ -2349,11 +2350,11 @@ Dht::confirmNodes()
     bool soon = false;
     const auto& now = scheduler.time();
 
-    if (searches4.empty() and getStatus(AF_INET) != NodeStatus::Disconnected) {
+    if (searches4.empty() and getStatus(AF_INET) == NodeStatus::Connected) {
         DHT_LOG.DEBUG("[confirm nodes] initial IPv4 'get' for my id (%s).", myid.toString().c_str());
         search(myid, AF_INET);
     }
-    if (searches6.empty() and getStatus(AF_INET6) != NodeStatus::Disconnected) {
+    if (searches6.empty() and getStatus(AF_INET6) == NodeStatus::Connected) {
         DHT_LOG.DEBUG("[confirm nodes] initial IPv6 'get' for my id (%s).", myid.toString().c_str());
         search(myid, AF_INET6);
     }
@@ -2486,11 +2487,18 @@ Dht::insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen)
 }
 
 int
-Dht::pingNode(const sockaddr *sa, socklen_t salen)
+Dht::pingNode(const sockaddr* sa, socklen_t salen)
 {
     scheduler.syncTime();
     DHT_LOG.DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
-    network_engine.sendPing(sa, salen, nullptr, nullptr);
+    auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
+    count++;
+    network_engine.sendPing(sa, salen, [&](const Request&, NetworkEngine::RequestAnswer&&){
+        count--;
+    }, [&](const Request&, bool last){
+        if (last)
+            count--;
+    });
     return -1;
 }
 
