@@ -324,6 +324,8 @@ PrivateKey::sign(const Blob& data) const
 {
     if (!key)
         throw CryptoException("Can't sign data: no private key set !");
+    if (std::numeric_limits<unsigned>::max() < data.size())
+        throw CryptoException("Can't sign data: too large !");
     gnutls_datum_t sig;
     const gnutls_datum_t dat {(unsigned char*)data.data(), (unsigned)data.size()};
     if (gnutls_privkey_sign_data(key, GNUTLS_DIG_SHA512, 0, &dat, &sig) != GNUTLS_E_SUCCESS)
