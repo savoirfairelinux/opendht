@@ -461,6 +461,17 @@ struct Dht::Search {
     std::map<size_t, LocalListener> listeners {};
     size_t listener_token = 1;
 
+    ~Search() {
+        for (auto& get : callbacks) {
+            get.second.done_cb(false, {});
+            get.second.done_cb = {};
+        }
+        for (auto& put : announce) {
+            put.callback(false, {});
+            put.callback = {};
+        }
+    }
+
     /**
      * @returns true if the node was not present and added to the search
      */
