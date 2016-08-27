@@ -18,7 +18,6 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
-
 #pragma once
 
 #include "infohash.h"
@@ -33,10 +32,7 @@
 #include <array>
 #include <vector>
 #include <map>
-#include <list>
-#include <queue>
 #include <functional>
-#include <algorithm>
 #include <memory>
 
 #ifdef _WIN32
@@ -319,70 +315,14 @@ private:
 
     static constexpr size_t TOKEN_SIZE {64};
 
+    // internal structures
     struct SearchNode;
-
-    /**
-     * A single "get" operation data
-     */
-    struct Get {
-        time_point start;
-        Value::Filter filter;
-        std::shared_ptr<Query> query;
-        std::set<std::shared_ptr<Query>> pagination_queries;
-        QueryCallback query_cb;
-        GetCallback get_cb;
-        DoneCallback done_cb;
-    };
-
-    /**
-     * A single "put" operation data
-     */
-    struct Announce {
-        bool permanent;
-        std::shared_ptr<Value> value;
-        time_point created;
-        DoneCallback callback;
-    };
-
-    /**
-     * A single "listen" operation data
-     */
-    struct LocalListener {
-        std::shared_ptr<Query> query;
-        Value::Filter filter;
-        GetCallback get_cb;
-    };
-
-    /**
-     * A search is a list of the nodes we think are responsible
-     * for storing values for a given hash.
-     */
+    struct Get;
+    struct Announce;
+    struct LocalListener;
     struct Search;
-
-    struct ValueStorage {
-        std::shared_ptr<Value> data {};
-        time_point time {};
-
-        ValueStorage() {}
-        ValueStorage(const std::shared_ptr<Value>& v, time_point t) : data(v), time(t) {}
-    };
-
-    /**
-     * Foreign nodes asking for updates about an InfoHash.
-     */
-    struct Listener {
-        size_t rid {};
-        time_point time {};
-        Query query {};
-
-        /*constexpr*/ Listener(size_t rid, time_point t, Query&& q) : rid(rid), time(t), query(q) {}
-
-        void refresh(size_t tid, time_point t) {
-            rid = tid;
-            time = t;
-        }
-    };
-
+    struct ValueStorage;
+    struct Listener;
     struct Storage;
 
     // prevent copy

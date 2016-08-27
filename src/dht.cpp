@@ -91,6 +91,30 @@ constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
 
 // internal structures definition
 
+/**
+ * Foreign nodes asking for updates about an InfoHash.
+ */
+struct Dht::Listener {
+    size_t rid {};
+    time_point time {};
+    Query query {};
+
+    /*constexpr*/ Listener(size_t rid, time_point t, Query&& q) : rid(rid), time(t), query(q) {}
+
+    void refresh(size_t tid, time_point t) {
+        rid = tid;
+        time = t;
+    }
+};
+
+struct Dht::ValueStorage {
+    std::shared_ptr<Value> data {};
+    time_point time {};
+
+    ValueStorage() {}
+    ValueStorage(const std::shared_ptr<Value>& v, time_point t) : data(v), time(t) {}
+};
+
 struct Dht::Storage {
     InfoHash id;
     time_point maintenance_time {};
@@ -168,6 +192,39 @@ private:
 
     std::vector<ValueStorage> values {};
     size_t total_size {};
+};
+
+
+/**
+ * A single "get" operation data
+ */
+struct Dht::Get {
+    time_point start;
+    Value::Filter filter;
+    std::shared_ptr<Query> query;
+    std::set<std::shared_ptr<Query>> pagination_queries;
+    QueryCallback query_cb;
+    GetCallback get_cb;
+    DoneCallback done_cb;
+};
+
+/**
+ * A single "put" operation data
+ */
+struct Dht::Announce {
+    bool permanent;
+    std::shared_ptr<Value> value;
+    time_point created;
+    DoneCallback callback;
+};
+
+/**
+ * A single "listen" operation data
+ */
+struct Dht::LocalListener {
+    std::shared_ptr<Query> query;
+    Value::Filter filter;
+    GetCallback get_cb;
 };
 
 struct Dht::SearchNode {
@@ -377,6 +434,10 @@ struct Dht::SearchNode {
     }
 };
 
+/**
+ * A search is a list of the nodes we think are responsible
+ * for storing values for a given hash.
+ */
 struct Dht::Search {
     InfoHash id {};
     sa_family_t af;
