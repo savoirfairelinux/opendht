@@ -404,9 +404,10 @@ struct Dht::SearchNode {
         if ((ack == acked.cend() or not ack->second) and (gs == getStatus.cend()
                                                           or not gs->second or not gs->second->pending()))
             return time_point::min();
-        return (ack == acked.cend() or not ack->second or ack->second->pending()) ?
-                time_point::max() :
-                ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
+        return ((gs != getStatus.cend() and gs->second and gs->second->pending())
+                or ack == acked.cend() or not ack->second or ack->second->pending()) ?
+                    time_point::max() :
+                    ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
     }
 
     /**
