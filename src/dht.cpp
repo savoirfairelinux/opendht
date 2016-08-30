@@ -951,7 +951,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
                 return nullptr;
         }
 
-        if (sr->callbacks.empty() and sr->listeners.empty()) {
+        if (sr->callbacks.empty()) {
             DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'find_node'",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                     n->node->toString().c_str());
