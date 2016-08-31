@@ -66,7 +66,11 @@ class WorkBench():
 
     def create_virtual_net(self):
         if self.virtual_locs > 1:
-            cmd = ["python3", os.path.abspath(virtual_network_builder.__file__), "-i", self.ifname, "-n", str(self.clusters), '-l', str(self.loss), '-d', str(self.delay)]
+            cmd = ["python3", os.path.abspath(virtual_network_builder.__file__),
+                    "-i", self.ifname,
+                    "-n", str(self.clusters),
+                    '-l', str(self.loss),
+                    '-d', str(self.delay)]
             if not self.disable_ipv4:
                 cmd.append('-4')
             if not self.disable_ipv6:
@@ -90,10 +94,17 @@ class WorkBench():
                     cmd.extend(['-b', self.local_bootstrap.ip4])
                 if not self.disable_ipv6 and self.local_bootstrap.ip6:
                     cmd.extend(['-b6', self.local_bootstrap.ip6])
-            self.procs[i] = DhtNetworkSubProcess('node'+str(i), cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            while DhtNetworkSubProcess.NOTIFY_TOKEN not in self.procs[i].getline():
-                # waiting for process to spawn
-                time.sleep(0.5)
+            lock = threading.Condition()
+            def dcb(success):
+                nonlocal lock
+                if not success:
+                    DhtNetwork.Log.err("Failed to initialize network...")
+                with lock:
+                    lock.notify()
+            with lock:
+                self.procs[i] = DhtNetworkSubProcess('node'+str(i), cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                self.procs[i].sendPing(done_cb=dcb)
+                lock.wait()
         else:
             raise Exception('First create bootstrap.')
 
@@ -161,7 +172,7 @@ if __name__ == '__main__':
             help='Launches data persistence benchmark test. '\
                  'Available args for "-t" are: delete, replace, mult_time. '\
                  'Available args for "-o" are : dump_str_log, keep_alive, trigger, traffic_plot, op_plot. '\
-                 'Use "-m" to specify the number of producers on the DHT.'\
+                 'Use "-m" to specify the number of producers on the DHT. '\
                  'Use "-e" to specify the number of values to put on the DHT.')
 
     args = parser.parse_args()

@@ -3,6 +3,7 @@
 # Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
 
+import sys
 import os
 import threading
 import random
@@ -10,6 +11,7 @@ import string
 import time
 import subprocess
 import re
+import traceback
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -27,8 +29,22 @@ bit_format = None
 Kbit_format = FuncFormatter(lambda x, pos: '%1.1f' % (x*1024**-1) + 'Kb')
 Mbit_format = FuncFormatter(lambda x, pos: '%1.1f' % (x*1024**-2) + 'Mb')
 
+def random_str_val(size=1024):
+    """Creates a random string value of specified size.
+
+    @param size:  Size, in bytes, of the value.
+    @type  size:  int
+
+    @return:  Random string value
+    @rtype :  str
+    """
+    return ''.join(random.choice(string.hexdigits) for _ in range(size))
+
+
 def random_hash():
-    return InfoHash(''.join(random.SystemRandom().choice(string.hexdigits) for _ in range(40)).encode())
+    """Creates random InfoHash.
+    """
+    return InfoHash(random_str_val(size=40).encode())
 
 def reset_before_test(featureTestMethod):
     """
@@ -69,6 +85,21 @@ def display_plot(yvals, xvals=None, yformatter=None, display_time=3, **kwargs):
     else:
         plt.plot(yvals, **kwargs)
     plt.pause(display_time)
+
+def display_traffic_plot(ifname):
+    """Displays the traffic plot for a given interface name.
+
+    @param ifname:  Interface name.
+    @type  ifname:  string
+    """
+    ydata = []
+    xdata = []
+    # warning: infinite loop
+    interval = 2
+    for rate in iftop_traffic_data(ifname, interval=interval):
+        ydata.append(rate)
+        xdata.append((xdata[-1] if len(xdata) > 0 else 0) + interval)
+        display_plot(ydata, xvals=xdata, yformatter=Kbit_format, color='blue')
 
 def iftop_traffic_data(ifname, interval=2, rate_type='send_receive'):
     """
@@ -183,15 +214,15 @@ class DhtFeatureTest(FeatureTest):
     @staticmethod
     def getcb(value):
         vstr = value.__str__()[:100]
-        DhtNetwork.log('[GET]: %s' % vstr + ("..." if len(vstr) > 100 else ""))
+        DhtNetwork.Log.log('[GET]: %s' % vstr + ("..." if len(vstr) > 100 else ""))
         DhtFeatureTest.foreignValues.append(value)
         return True
 
     @staticmethod
     def putDoneCb(ok, nodes):
-        if not ok:
-            DhtNetwork.log("[PUT]: failed!")
         with FeatureTest.lock:
+            if not ok:
+                DhtNetwork.Log.log("[PUT]: failed!")
             FeatureTest.done -= 1
             FeatureTest.lock.notify()
 
@@ -199,7 +230,7 @@ class DhtFeatureTest(FeatureTest):
     def getDoneCb(ok, nodes):
         with FeatureTest.lock:
             if not ok:
-                DhtNetwork.log("[GET]: failed!")
+                DhtNetwork.Log.log("[GET]: failed!")
             else:
                 for node in nodes:
                     if not node.getNode().isExpired():
@@ -210,10 +241,10 @@ class DhtFeatureTest(FeatureTest):
     def _dhtPut(self, producer, _hash, *values):
         with FeatureTest.lock:
             for val in values:
-                    vstr = val.__str__()[:100]
-                    DhtNetwork.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
-                    FeatureTest.done += 1
-                    producer.put(_hash, val, DhtFeatureTest.putDoneCb)
+                vstr = val.__str__()[:100]
+                DhtNetwork.Log.log('[PUT]:', _hash.toString(), '->', vstr + ("..." if len(vstr) > 100 else ""))
+                FeatureTest.done += 1
+                producer.put(_hash, val, DhtFeatureTest.putDoneCb)
             while FeatureTest.done > 0:
                 FeatureTest.lock.wait()
 
@@ -222,7 +253,7 @@ class DhtFeatureTest(FeatureTest):
         DhtFeatureTest.foreignNodes = []
         with FeatureTest.lock:
             FeatureTest.done += 1
-            DhtNetwork.log('[GET]:', _hash.toString())
+            DhtNetwork.Log.log('[GET]:', _hash.toString())
             consumer.get(_hash, DhtFeatureTest.getcb, DhtFeatureTest.getDoneCb)
             while FeatureTest.done > 0:
                 FeatureTest.lock.wait()
@@ -294,7 +325,7 @@ class PersistenceTest(DhtFeatureTest):
             n.run(config=config)
             n.bootstrap(self.bootstrap.ip4,
                         str(self.bootstrap.port))
-            DhtNetwork.log('Node','['+_hash_str+']',
+            DhtNetwork.Log.log('Node','['+_hash_str+']',
                            'started around', _hash.toString().decode()
                            if n.isRunning() else
                            'failed to start...'
@@ -304,22 +335,22 @@ class PersistenceTest(DhtFeatureTest):
     def _result(self, local_values, new_nodes):
         bootstrap = self.bootstrap
         if not DhtFeatureTest.successfullTransfer(local_values, DhtFeatureTest.foreignValues):
-            DhtNetwork.log('[GET]: Only %s on %s values persisted.' %
+            DhtNetwork.Log.log('[GET]: Only %s on %s values persisted.' %
                     (len(DhtFeatureTest.foreignValues), len(local_values)))
         else:
-            DhtNetwork.log('[GET]: All values successfully persisted.')
+            DhtNetwork.Log.log('[GET]: All values successfully persisted.')
         if DhtFeatureTest.foreignValues:
             if new_nodes:
-                DhtNetwork.log('Values are newly found on:')
+                DhtNetwork.Log.log('Values are newly found on:')
                 for node in new_nodes:
-                    DhtNetwork.log(node)
+                    DhtNetwork.Log.log(node)
                 if self._dump_storage:
-                    DhtNetwork.log('Dumping all storage log from '\
+                    DhtNetwork.Log.log('Dumping all storage log from '\
                                   'hosting nodes.')
                     for proc in self._workbench.procs:
-                        proc.sendNodesRequest(DhtNetworkSubProcess.DUMP_STORAGE_REQ, DhtFeatureTest.foreignNodes)
+                        proc.sendClusterRequest(DhtNetworkSubProcess.DUMP_STORAGE_REQ, DhtFeatureTest.foreignNodes)
             else:
-                DhtNetwork.log("Values didn't reach new hosting nodes after shutdown.")
+                DhtNetwork.Log.log("Values didn't reach new hosting nodes after shutdown.")
 
     def run(self):
         try:
@@ -334,7 +365,8 @@ class PersistenceTest(DhtFeatureTest):
             else:
                 raise NameError("This test is not defined '" + self._test + "'")
         except Exception as e:
-            print(e)
+            traceback.print_tb(e.__traceback__)
+            print(type(e).__name__+':', e, file=sys.stderr)
         finally:
             if self._traffic_plot or self._op_plot:
                 plot_fname = "traffic-plot"
@@ -354,70 +386,89 @@ class PersistenceTest(DhtFeatureTest):
         trigger_nodes = []
         wb = self._workbench
         bootstrap = self.bootstrap
+
         # Value representing an ICE packet. Each ICE packet is around 1KB.
         VALUE_SIZE = 1024
-        NUM_VALUES = self._num_values/wb.node_num if self._num_values else 5
-        nr_values = NUM_VALUES * wb.node_num
-        nr_nodes = wb.node_num
-        nr_nodes_cv = threading.Condition()
+        num_values_per_hash = self._num_values/wb.node_num if self._num_values else 5
 
-        values = [b''.join(random.choice(string.hexdigits).encode() for _ in range(VALUE_SIZE)) for __ in range(NUM_VALUES)]
+        # nodes and values counters
+        total_nr_values = 0
+        nr_nodes = wb.node_num
+        op_cv = threading.Condition()
+
+        # values string in string format. Used for sending cluster request.
         hashes = [random_hash() for _ in range(wb.node_num)]
 
-        # initial set of values
-        i = 0
-        for h in hashes:
-           self._dhtPut(bootstrap.front(), h, *[Value(v) for v in values])
-           print("at: ", i)
-           i += 1
-
-        def normalBehavior(do, t, log=None):
-            nonlocal nr_values
+        def normalBehavior(do, t):
+            nonlocal total_nr_values, op_cv
             while True:
-                do()
-                time.sleep(random.choice(range(t)))
+                with op_cv:
+                    do()
+                time.sleep(random.uniform(0.0, float(t)))
 
         def putRequest():
-            nonlocal hashes, values, nr_values
-            nr_values += 1
-            DhtNetwork.log("Random value put on the DHT.", "(now "+ str(nr_values)+" values on the dht)")
-            random.choice(wb.procs).sendNodePutRequest(random.choice(hashes).toString(), random.choice(values))
-        puts = threading.Thread(target=normalBehavior, args=(putRequest, 30))
+            nonlocal hashes, VALUE_SIZE, total_nr_values
+            lock = threading.Condition()
+            def dcb(success):
+                nonlocal total_nr_values, lock
+                if success:
+                    total_nr_values += 1
+                    DhtNetwork.Log.log("INFO: "+ str(total_nr_values)+" values put on the dht since begining")
+                with lock:
+                    lock.notify()
+            with lock:
+                DhtNetwork.Log.warn("Random value put on the DHT...")
+                random.choice(wb.procs).sendClusterPutRequest(random.choice(hashes).toString(),
+                                                              random_str_val(size=VALUE_SIZE).encode(),
+                                                              done_cb=dcb)
+                lock.wait()
+
+        puts = threading.Thread(target=normalBehavior, args=(putRequest, 30.0/wb.node_num))
         puts.daemon = True
         puts.start()
+
         def newNodeRequest():
             nonlocal nr_nodes
-            with nr_nodes_cv:
+            lock = threading.Condition()
+            def dcb(success):
+                nonlocal nr_nodes, lock
                 nr_nodes += 1
-                DhtNetwork.log("Node joining the DHT.", "(now "+str(nr_nodes)+" nodes on the dht)")
-                nr_nodes_cv.notify()
-            random.choice(wb.procs).sendNodesRequest(DhtNetworkSubProcess.NEW_NODE_REQ)
-        connections = threading.Thread(target=normalBehavior, args=(newNodeRequest, 1*60))
+                DhtNetwork.Log.log("INFO: now "+str(nr_nodes)+" nodes on the dht")
+                with lock:
+                    lock.notify()
+            with lock:
+                DhtNetwork.Log.warn("Node joining...")
+                random.choice(wb.procs).sendClusterRequest(DhtNetworkSubProcess.NEW_NODE_REQ, done_cb=dcb)
+                lock.wait()
+
+        connections = threading.Thread(target=normalBehavior, args=(newNodeRequest, 1*50.0/wb.node_num))
         connections.daemon = True
         connections.start()
+
         def shutdownNodeRequest():
             nonlocal nr_nodes
-            with nr_nodes_cv:
-                nr_nodes -= 1
-                DhtNetwork.log("Node quitting the DHT.", "(now "+str(nr_nodes)+" nodes on the dht)")
-                nr_nodes_cv.notify()
-            random.choice(wb.procs).sendNodesRequest(DhtNetworkSubProcess.SHUTDOWN_NODE_REQ)
-        shutdowns = threading.Thread(target=normalBehavior, args=(shutdownNodeRequest, 1*60))
+            lock = threading.Condition()
+            def dcb(success):
+                nonlocal nr_nodes, lock
+                if success:
+                    nr_nodes -= 1
+                    DhtNetwork.Log.log("INFO: now "+str(nr_nodes)+" nodes on the dht")
+                else:
+                    DhtNetwork.Log.err("Oops.. No node to shutodwn.")
+
+                with lock:
+                    lock.notify()
+            with lock:
+                DhtNetwork.Log.warn("Node shutting down...")
+                random.choice(wb.procs).sendClusterRequest(DhtNetworkSubProcess.SHUTDOWN_NODE_REQ, done_cb=dcb)
+                lock.wait()
+
+        shutdowns = threading.Thread(target=normalBehavior, args=(shutdownNodeRequest, 1*60.0/wb.node_num))
         shutdowns.daemon = True
         shutdowns.start()
 
-        for h in hashes:
-           self._trigger_dp(trigger_nodes, h)
-
         if self._traffic_plot:
-            ydata = []
-            xdata = []
-            # warning: infinite loop
-            interval = 2
-            for rate in iftop_traffic_data("br"+wb.ifname, interval=interval):
-                ydata.append(rate)
-                xdata.append((xdata[-1] if len(xdata) > 0 else 0) + interval)
-                display_plot(ydata, xvals=xdata, yformatter=Kbit_format, color='blue')
+            display_traffic_plot('br'+wb.ifname)
         else:
             # blocks in matplotlib thread
             while True:
@@ -430,6 +481,12 @@ class PersistenceTest(DhtFeatureTest):
         It uses Dht shutdown call from the API to gracefuly finish the nodes one
         after the other.
         """
+        wb = self._workbench
+        if self._traffic_plot:
+            traffic_plot_thread = threading.Thread(target=display_traffic_plot, args=tuple(['br'+wb.ifname]))
+            traffic_plot_thread.daemon = True
+            traffic_plot_thread.start()
+
         bootstrap = self.bootstrap
 
         ops_count = []
@@ -447,36 +504,54 @@ class PersistenceTest(DhtFeatureTest):
         self._dhtGet(consumer, myhash)
         if not DhtFeatureTest.successfullTransfer(local_values, DhtFeatureTest.foreignValues):
             if DhtFeatureTest.foreignValues:
-                DhtNetwork.log('[GET]: Only ', len(DhtFeatureTest.foreignValues) ,' on ',
+                DhtNetwork.Log.log('[GET]: Only ', len(DhtFeatureTest.foreignValues) ,' on ',
                         len(local_values), ' values successfully put.')
             else:
-                DhtNetwork.log('[GET]: 0 values successfully put')
+                DhtNetwork.Log.log('[GET]: 0 values successfully put')
 
 
         if DhtFeatureTest.foreignValues and DhtFeatureTest.foreignNodes:
-            DhtNetwork.log('Values are found on :')
+            DhtNetwork.Log.log('Values are found on :')
             for node in DhtFeatureTest.foreignNodes:
-                DhtNetwork.log(node)
+                DhtNetwork.Log.log(node)
 
             for _ in range(max(1, int(self._workbench.node_num/32))):
-                DhtNetwork.log('Removing all nodes hosting target values...')
+                DhtNetwork.Log.log('Removing all nodes hosting target values...')
                 cluster_ops_count = 0
                 for proc in self._workbench.procs:
-                    DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
-                    proc.sendNodesRequest(
+                    DhtNetwork.Log.log('[REMOVE]: sending shutdown request to', proc)
+                    lock = threading.Condition()
+                    def dcb(success):
+                        nonlocal lock
+                        if not success:
+                            DhtNetwork.Log.err("Failed to shutdown.")
+                        with lock:
+                            lock.notify()
+
+                    with lock:
+                        proc.sendClusterRequest(
                             DhtNetworkSubProcess.SHUTDOWN_NODE_REQ,
-                            DhtFeatureTest.foreignNodes
-                    )
-                    DhtNetwork.log('sending message stats request')
-                    stats = proc.sendGetMessageStats()
-                    cluster_ops_count += sum(stats[1:])
-                    DhtNetwork.log("5 seconds wait...")
+                            DhtFeatureTest.foreignNodes,
+                            done_cb=dcb
+                        )
+                        lock.wait()
+                    DhtNetwork.Log.log('sending message stats request')
+                    def msg_dcb(stats):
+                        nonlocal cluster_ops_count, lock
+                        if stats:
+                            cluster_ops_count += sum(stats[1:])
+                        with lock:
+                            lock.notify()
+                    with lock:
+                        proc.sendGetMessageStats(done_cb=msg_dcb)
+                        lock.wait()
+                    DhtNetwork.Log.log("5 seconds wait...")
                     time.sleep(5)
                 ops_count.append(cluster_ops_count/self._workbench.node_num)
 
                 # checking if values were transfered to new nodes
                 foreignNodes_before_delete = DhtFeatureTest.foreignNodes
-                DhtNetwork.log('[GET]: trying to fetch persistent values')
+                DhtNetwork.Log.log('[GET]: trying to fetch persistent values')
                 self._dhtGet(consumer, myhash)
                 new_nodes = set(DhtFeatureTest.foreignNodes) - set(foreignNodes_before_delete)
 
@@ -485,7 +560,11 @@ class PersistenceTest(DhtFeatureTest):
             if self._op_plot:
                 display_plot(ops_count, color='blue')
         else:
-            DhtNetwork.log("[GET]: either couldn't fetch values or nodes hosting values...")
+            DhtNetwork.Log.log("[GET]: either couldn't fetch values or nodes hosting values...")
+
+        if traffic_plot_thread:
+            print("Traffic plot running for ever. Ctrl-c for stopping it.")
+            traffic_plot_thread.join()
 
     @reset_before_test
     def _replaceClusterTest(self):
@@ -507,16 +586,16 @@ class PersistenceTest(DhtFeatureTest):
         self._dhtGet(consumer, myhash)
         initial_nodes = DhtFeatureTest.foreignNodes
 
-        DhtNetwork.log('Replacing', clusters, 'random clusters successively...')
+        DhtNetwork.Log.log('Replacing', clusters, 'random clusters successively...')
         for n in range(clusters):
             i = random.randint(0, len(self._workbench.procs)-1)
             proc = self._workbench.procs[i]
-            DhtNetwork.log('Replacing', proc)
-            proc.sendNodesRequest(DhtNetworkSubProcess.SHUTDOWN_CLUSTER_REQ)
+            DhtNetwork.Log.log('Replacing', proc)
+            proc.sendClusterRequest(DhtNetworkSubProcess.SHUTDOWN_CLUSTER_REQ)
             self._workbench.stop_cluster(i)
             self._workbench.start_cluster(i)
 
-        DhtNetwork.log('[GET]: trying to fetch persistent values')
+        DhtNetwork.Log.log('[GET]: trying to fetch persistent values')
         self._dhtGet(consumer, myhash)
         new_nodes = set(DhtFeatureTest.foreignNodes) - set(initial_nodes)
 
@@ -539,9 +618,10 @@ class PersistenceTest(DhtFeatureTest):
         hashes = []
 
         # Generating considerable amount of values of size 1KB.
+        # TODO: Utiliser fonction _initialSetOfValues.
         VALUE_SIZE = 1024
         NUM_VALUES = self._num_values if self._num_values else 50
-        values = [Value(''.join(random.choice(string.hexdigits) for _ in range(VALUE_SIZE)).encode()) for _ in range(NUM_VALUES)]
+        values = [Value(random_str_val(size=VALUE_SIZE).encode()) for _ in range(NUM_VALUES)]
 
         bootstrap.resize(N_PRODUCERS+2)
         consumer = bootstrap.get(N_PRODUCERS+1)
@@ -555,21 +635,21 @@ class PersistenceTest(DhtFeatureTest):
             nodes = set([])
             self._gottaGetThemAllPokeNodes(consumer, hashes, nodes=nodes)
 
-            DhtNetwork.log("Values are found on:")
+            DhtNetwork.Log.log("Values are found on:")
             for n in nodes:
-                DhtNetwork.log(n)
+                DhtNetwork.Log.log(n)
 
-            DhtNetwork.log("Creating 8 nodes around all of these hashes...")
+            DhtNetwork.Log.log("Creating 8 nodes around all of these hashes...")
             for _hash in hashes:
                 self._trigger_dp(trigger_nodes, _hash, count=8)
 
-            DhtNetwork.log('Waiting', DP_TIMEOUT+1, 'minutes for normal storage maintenance.')
+            DhtNetwork.Log.log('Waiting', DP_TIMEOUT+1, 'minutes for normal storage maintenance.')
             time.sleep((DP_TIMEOUT+1)*60)
 
-            DhtNetwork.log('Deleting old nodes from previous search.')
+            DhtNetwork.Log.log('Deleting old nodes from previous search.')
             for proc in self._workbench.procs:
-                DhtNetwork.log('[REMOVE]: sending delete request to', proc)
-                proc.sendNodesRequest(
+                DhtNetwork.Log.log('[REMOVE]: sending delete request to', proc)
+                proc.sendClusterRequest(
                     DhtNetworkSubProcess.REMOVE_NODE_REQ,
                     nodes)
 
@@ -610,7 +690,8 @@ class PerformanceTest(DhtFeatureTest):
             else:
                 raise NameError("This test is not defined '" + self._test + "'")
         except Exception as e:
-            print(e)
+            traceback.print_tb(e.__traceback__)
+            print(type(e).__name__+':', e, file=sys.stderr)
         finally:
             self.bootstrap.resize(1)
 
@@ -649,7 +730,7 @@ class PerformanceTest(DhtFeatureTest):
 
         def getcb(v):
             nonlocal bootstrap
-            DhtNetwork.log("found", v)
+            DhtNetwork.Log.log("found", v)
             return True
 
         def donecb(ok, nodes, start):
@@ -657,7 +738,7 @@ class PerformanceTest(DhtFeatureTest):
             t = time.time()-start
             with lock:
                 if not ok:
-                    DhtNetwork.log("failed !")
+                    DhtNetwork.Log.log("failed !")
                 times.append(t)
                 done -= 1
                 lock.notify()
@@ -689,7 +770,7 @@ class PerformanceTest(DhtFeatureTest):
         for n in range(10):
             self._workbench.replace_cluster()
             plt.pause(2)
-            DhtNetwork.log("Getting 50 random hashes succesively.")
+            DhtNetwork.Log.log("Getting 50 random hashes succesively.")
             for i in range(50):
                 with lock:
                     for _ in range(1):
@@ -725,28 +806,28 @@ class PerformanceTest(DhtFeatureTest):
 
         for _ in range(max(1, int(self._workbench.node_num/32))):
             self._dhtGet(consumer, myhash)
-            DhtNetwork.log("Waiting 15 seconds...")
+            DhtNetwork.Log.log("Waiting 15 seconds...")
             time.sleep(15)
 
             self._dhtPut(producer, myhash, *local_values)
 
             #checking if values were transfered
             self._dhtGet(consumer, myhash)
-            DhtNetwork.log('Values are found on :')
+            DhtNetwork.Log.log('Values are found on :')
             for node in DhtFeatureTest.foreignNodes:
-                DhtNetwork.log(node)
+                DhtNetwork.Log.log(node)
 
             if not DhtFeatureTest.successfullTransfer(local_values, DhtFeatureTest.foreignValues):
                 if DhtFeatureTest.foreignValues:
-                    DhtNetwork.log('[GET]: Only ', len(DhtFeatureTest.foreignValues) ,' on ',
+                    DhtNetwork.Log.log('[GET]: Only ', len(DhtFeatureTest.foreignValues) ,' on ',
                             len(local_values), ' values successfully put.')
                 else:
-                    DhtNetwork.log('[GET]: 0 values successfully put')
+                    DhtNetwork.Log.log('[GET]: 0 values successfully put')
 
-            DhtNetwork.log('Removing all nodes hosting target values...')
+            DhtNetwork.Log.log('Removing all nodes hosting target values...')
             for proc in self._workbench.procs:
-                DhtNetwork.log('[REMOVE]: sending shutdown request to', proc)
-                proc.sendNodesRequest(
+                DhtNetwork.Log.log('[REMOVE]: sending shutdown request to', proc)
+                proc.sendClusterRequest(
                         DhtNetworkSubProcess.SHUTDOWN_NODE_REQ,
                         DhtFeatureTest.foreignNodes
                 )
