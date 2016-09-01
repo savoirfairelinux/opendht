@@ -1,4 +1,4 @@
-# OpenDHT
+# OpenDHT <img src="https://raw.githubusercontent.com/savoirfairelinux/opendht/master/resources/opendht_logo_512.png" width="48">
 A lightweight C++11 Distributed Hash Table implementation originally based on https://github.com/jech/dht by Juliusz Chroboczek.
 
  * Light and fast C++11 Kademlia DHT library.
