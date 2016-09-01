@@ -1,6 +1,6 @@
-<img src="https://raw.githubusercontent.com/savoirfairelinux/opendht/master/resources/opendht_logo_512.png" style="max-width:100%;" width="48" align="left">
-
-<h1 style="margin-top: -10px;">
+<img src="https://raw.githubusercontent.com/savoirfairelinux/opendht/master/resources/opendht_logo_512.png" width="100" align="right">
+<br>
+<h1 style="margin-top:10px">
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT 
 </h1>
 
