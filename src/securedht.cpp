@@ -73,7 +73,12 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
             CERTIFICATE_TYPE,
             *certificate_,
             1
-        }, {}, {}, true);
+        }, [this](bool ok) {
+            if (ok)
+                DHT_LOG.DEBUG("SecureDht: public key announced successfully");
+            else
+                DHT_LOG.ERR("SecureDht: error while announcing public key!");
+        }, {}, true);
     }
 }
 
