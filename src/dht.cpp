@@ -566,7 +566,7 @@ std::vector<Address>
 Dht::getPublicAddress(sa_family_t family)
 {
     std::sort(reported_addr.begin(), reported_addr.end(), [](const ReportedAddr& a, const ReportedAddr& b) {
-        return a.first < b.first;
+        return a.first > b.first;
     });
     std::vector<Address> ret;
     for (const auto& addr : reported_addr)
