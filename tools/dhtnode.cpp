@@ -40,8 +40,6 @@ void print_id_req() {
 
 void print_node_info(const std::shared_ptr<DhtRunner>& dht, const dht_params& params) {
     std::cout << "OpenDht node " << dht->getNodeId() << " running on port " <<  dht->getBoundPort() << std::endl;
-    if (params.is_bootstrap_node)
-        std::cout << "Running in bootstrap mode (discouraged)." << std::endl;
     if (params.generate_identity)
         std::cout << "Public key ID " << dht->getId() << std::endl;
 }
@@ -192,6 +190,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
         // Dht
         auto start = std::chrono::high_resolution_clock::now();
         if (op == "g") {
+            std::string rem;
+            std::getline(iss, rem);
             dht->get(id, [start](std::shared_ptr<Value> value) {
                 auto now = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: found value (after " << print_dt(now-start) << "s)" << std::endl;
@@ -205,7 +205,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
         else if (op == "q") {
             std::string rem;
             std::getline(iss, rem);
-            dht.query(id, [start](const std::vector<std::shared_ptr<FieldValueIndex>>& field_value_indexes) {
+            dht->query(id, [start](const std::vector<std::shared_ptr<FieldValueIndex>>& field_value_indexes) {
                 auto now = std::chrono::high_resolution_clock::now();
                 for (auto& index : field_value_indexes) {
                     std::cout << "Query: found field value index (after " << print_dt(now-start) << "s)" << std::endl;
@@ -218,6 +218,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
             }, dht::Query {std::move(rem)});
         }
         else if (op == "l") {
+            std::string rem;
+            std::getline(iss, rem);
             dht->listen(id, [](std::shared_ptr<Value> value) {
                 std::cout << "Listen: found value:" << std::endl;
                 std::cout << "\t" << *value << std::endl;
@@ -349,7 +351,7 @@ main(int argc, char **argv)
             crt = dht::crypto::generateIdentity("DHT Node", ca_tmp);
         }
 
-        dht.run(params.port, crt, true, params.network);
+        dht->run(params.port, crt, true, params.network);
 
         if (params.log) {
             if (not params.logfile.empty())
