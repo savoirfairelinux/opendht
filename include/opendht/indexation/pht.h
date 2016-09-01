@@ -262,7 +262,7 @@ struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
     Blob prefix;
     Value value;
     std::string name;
-    MSGPACK_DEFINE_MAP(prefix, value);
+    MSGPACK_DEFINE_MAP(prefix, value)
 };
 
 class Pht {
