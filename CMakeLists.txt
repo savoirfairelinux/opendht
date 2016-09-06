@@ -33,7 +33,7 @@ if (OPENDHT_LTO)
     endif ()
 endif ()
 
-find_package (GnuTLS 3.1 REQUIRED)
+find_package (GnuTLS 3.3 REQUIRED)
 find_package (Msgpack 1.2 REQUIRED)
 if (OPENDHT_TOOLS)
     find_package (Readline 6 REQUIRED)
