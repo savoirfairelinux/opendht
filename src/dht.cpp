@@ -2844,30 +2844,28 @@ Dht::exportNodes()
     return nodes;
 }
 
-bool
+void
 Dht::insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen)
 {
     if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
-        return false;
+        return;
     scheduler.syncTime();
-    auto n = network_engine.insertNode(id, sa, salen);
-    return !!n;
+    network_engine.insertNode(id, sa, salen);
 }
 
-int
+void
 Dht::pingNode(const sockaddr* sa, socklen_t salen)
 {
     scheduler.syncTime();
     DHT_LOG.DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
     auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, salen, [&](const Request&, NetworkEngine::RequestAnswer&&){
+    network_engine.sendPing(sa, salen, [&](const Request&, NetworkEngine::RequestAnswer&&) {
         count--;
     }, [&](const Request&, bool last){
         if (last)
             count--;
     });
-    return -1;
 }
 
 void

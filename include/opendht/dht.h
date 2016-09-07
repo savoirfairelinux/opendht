@@ -113,12 +113,12 @@ public:
      * The node is not pinged, so this should be
      * used to bootstrap efficiently from previously known nodes.
      */
-    bool insertNode(const InfoHash& id, const sockaddr*, socklen_t);
-    bool insertNode(const NodeExport& n) {
-        return insertNode(n.id, reinterpret_cast<const sockaddr*>(&n.ss), n.sslen);
+    void insertNode(const InfoHash& id, const sockaddr*, socklen_t);
+    void insertNode(const NodeExport& n) {
+        insertNode(n.id, reinterpret_cast<const sockaddr*>(&n.ss), n.sslen);
     }
 
-    int pingNode(const sockaddr*, socklen_t);
+    void pingNode(const sockaddr*, socklen_t);
 
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
 
