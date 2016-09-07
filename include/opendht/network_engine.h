@@ -350,7 +350,9 @@ public:
     void processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen);
 
     std::shared_ptr<Node> insertNode(const InfoHash& myid, const sockaddr* from, socklen_t fromlen) {
-        return cache.getNode(myid, from, fromlen, scheduler.time(), 0);
+        auto n = cache.getNode(myid, from, fromlen, scheduler.time(), 0);
+        onNewNode(n, 0);
+        return n;
     }
 
     std::vector<unsigned> getNodeMessageStats(bool in) {
