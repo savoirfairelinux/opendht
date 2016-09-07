@@ -50,12 +50,6 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
     if (s < 0 && s6 < 0)
         return;
 
-#if GNUTLS_VERSION_NUMBER < 0x030300
-    int rc = gnutls_global_init();
-    if (rc != GNUTLS_E_SUCCESS)
-        throw DhtException(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
-#endif
-
     for (const auto& type : DEFAULT_TYPES)
         registerType(type);
 
@@ -81,11 +75,7 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
 }
 
 SecureDht::~SecureDht()
-{
-#if GNUTLS_VERSION_NUMBER < 0x030300
-    gnutls_global_deinit();
-#endif
-}
+{}
 
 ValueType
 SecureDht::secureType(ValueType&& type)
