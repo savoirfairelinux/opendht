@@ -115,7 +115,7 @@ struct ValueType {
 struct Value
 {
     typedef uint64_t Id;
-    static const Id INVALID_ID {0};
+    static const constexpr Id INVALID_ID {0};
 
     class Filter : public std::function<bool(const Value&)> {
         using std::function<bool(const Value&)>::function;
@@ -135,14 +135,17 @@ struct Value
                 return f1(v) and f2(v);
             };
         }
-        static Filter chain(std::initializer_list<Filter> l) {
-            const std::vector<Filter> list(l.begin(), l.end());
-            return [list](const Value& v){
-                for (const auto& f : list)
+        static Filter chainAll(std::vector<Filter>&& set) {
+            if (set.empty()) return {};
+            return std::bind([](const Value& v, std::vector<Filter>& s) {
+                for (const auto& f : s)
                     if (f and not f(v))
                         return false;
                 return true;
-            };
+            }, std::placeholders::_1, std::move(set));
+        }
+        static Filter chain(std::initializer_list<Filter> l) {
+            return chainAll({l.begin(), l.end()});
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return AllFilter();
@@ -153,7 +156,7 @@ struct Value
     };
 
     static const Filter AllFilter() {
-        return [](const Value&){return true;};
+        return {};
     }
 
     static Filter TypeFilter(const ValueType& t) {
