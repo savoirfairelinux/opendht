@@ -1716,7 +1716,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where
     auto token = ++listener_token;
 
     auto gcb = [=](const std::vector<std::shared_ptr<Value>>& values) {
-        std::vector<std::shared_ptr<Value>> newvals {};
+        std::vector<std::shared_ptr<Value>> newvals;
         for (const auto& v : values) {
             auto it = vals->find(v->id);
             if (it == vals->cend() || !(*it->second == *v))
@@ -1904,7 +1904,7 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     auto op = std::make_shared<OpStatus<Value>>();
 
     auto f = filter.chain(q.where.getFilter());
-    auto add_values = [=](const std::vector<std::shared_ptr<Value>>& values) {
+    auto add_values = [op,f](const std::vector<std::shared_ptr<Value>>& values) {
         std::vector<std::shared_ptr<Value>> newvals {};
         for (const auto& v : values) {
             auto it = std::find_if(op->values.cbegin(), op->values.cend(), [&](const std::shared_ptr<Value>& sv) {
@@ -3074,20 +3074,17 @@ void Dht::onGetValuesDone(const Request& status,
                     if (not a.fields.empty()) {
                         get.query_cb(a.fields);
                     } else if (not a.values.empty()) {
-                        std::vector<std::shared_ptr<FieldValueIndex>> fields(a.values.size());
-                        std::transform(a.values.begin(), a.values.end(), fields.begin(),
-                            [&](const std::shared_ptr<Value>& v) {
-                                return std::make_shared<FieldValueIndex>(*v, orig_query ? orig_query->select : Select {});
-                        });
+                        std::vector<std::shared_ptr<FieldValueIndex>> fields;
+                        fields.reserve(a.values.size());
+                        for (const auto& v : a.values)
+                            fields.emplace_back(std::make_shared<FieldValueIndex>(*v, orig_query ? orig_query->select : Select {}));
                         get.query_cb(fields);
                     }
                 } else if (get.get_cb) { /* in case of a vanilla get request */
                     std::vector<std::shared_ptr<Value>> tmp;
-                    std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
-                        [&](const std::shared_ptr<Value>& v) {
-                            return not static_cast<bool>(get.filter) or get.filter(*v);
-                        }
-                    );
+                    for (const auto& v : a.values)
+                        if (not get.filter or get.filter(*v))
+                            tmp.emplace_back(v);
                     if (not tmp.empty())
                         get.get_cb(tmp);
                 }
@@ -3099,13 +3096,11 @@ void Dht::onGetValuesDone(const Request& status,
                 if (!l.second.get_cb or (orig_query and l.second.query and not l.second.query->isSatisfiedBy(*orig_query)))
                     continue;
                 std::vector<std::shared_ptr<Value>> tmp;
-                std::copy_if(a.values.begin(), a.values.end(), std::back_inserter(tmp),
-                    [&](const std::shared_ptr<Value>& v) {
-                        return not static_cast<bool>(l.second.filter) or l.second.filter(*v);
-                    }
-                );
+                for (const auto& v : a.values)
+                    if (not l.second.filter or l.second.filter(*v))
+                        tmp.emplace_back(v);
                 if (not tmp.empty())
-                    tmp_lists.emplace_back(l.second.get_cb, tmp);
+                    tmp_lists.emplace_back(l.second.get_cb, std::move(tmp));
             }
             for (auto& l : tmp_lists)
                 l.first(l.second);
