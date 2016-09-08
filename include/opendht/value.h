@@ -126,7 +126,7 @@ struct Value
     };
 
     typedef uint64_t Id;
-    static const Id INVALID_ID {0};
+    static const constexpr Id INVALID_ID {0};
 
     class Filter : public std::function<bool(const Value&)> {
         using std::function<bool(const Value&)>::function;
@@ -146,18 +146,17 @@ struct Value
                 return f1(v) and f2(v);
             };
         }
-        template <typename T>
-        static Filter chainAll(T&& set) {
-            using namespace std::placeholders;
-            return std::bind([](const Value& v, T& s) {
+        static Filter chainAll(std::vector<Filter>&& set) {
+            if (set.empty()) return {};
+            return std::bind([](const Value& v, std::vector<Filter>& s) {
                 for (const auto& f : s)
                     if (f and not f(v))
                         return false;
                 return true;
-            }, _1, std::move(set));
+            }, std::placeholders::_1, std::move(set));
         }
         static Filter chain(std::initializer_list<Filter> l) {
-            return chainAll(std::move(l));
+            return chainAll({l.begin(), l.end()});
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return AllFilter();
@@ -170,7 +169,7 @@ struct Value
     /* Sneaky functions disguised in classes */
 
     static const Filter AllFilter() {
-        return [](const Value&){return true;};
+        return {};
     }
 
     static Filter TypeFilter(const ValueType& t) {
@@ -780,10 +779,13 @@ struct Where
      * @return the resulting Value::Filter.
      */
     Value::Filter getFilter() const {
-        std::vector<Value::Filter> fset(filters_.size());
-        std::transform(filters_.begin(), filters_.end(), fset.begin(), [](const FieldValue& f) {
-            return f.getLocalFilter();
-        });
+        if (filters_.empty()) return {};
+        std::vector<Value::Filter> fset;
+        fset.reserve(filters_.size());
+        for (const auto& f : filters_) {
+            if (auto lf = f.getLocalFilter())
+                fset.emplace_back(std::move(lf));
+        }
         return Value::Filter::chainAll(std::move(fset));
     }
 
