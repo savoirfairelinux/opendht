@@ -70,7 +70,7 @@ public:
         return secureType(std::move(tmp_type));
     }
 
-    virtual void registerType(const ValueType& type) {
+    virtual void registerType(const ValueType& type) override {
         Dht::registerType(secureType(type));
     }
     virtual void registerType(ValueType&& type) {

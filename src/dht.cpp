@@ -1131,7 +1131,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                             const auto& type = getType(a.value->type);
                             if (sn->isSynced(now) and sn->getAnnounceTime(a.value->id, type) <= now) {
                                 auto hasValue {false};
-                                uint16_t seq_no;
+                                uint16_t seq_no = 0;
                                 try {
                                     const auto& f = std::find_if(answer.fields.cbegin(), answer.fields.cend(),
                                             [&a](const std::shared_ptr<FieldValueIndex>& i){
