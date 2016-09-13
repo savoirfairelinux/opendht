@@ -514,6 +514,41 @@ struct Dht::Search {
      */
     bool isDone(const Get& get) const;
 
+    /**
+     * Sets a consistent state of the search after a given 'get' operation as
+     * been completed.
+     *
+     * This will also make sure to call the associated 'done callback'.
+     *
+     * @param get  The 'get' operation which is now over.
+     */
+    void setDone(const Get& get) {
+        for (auto& n : nodes) {
+            auto pqs = n.pagination_queries.find(get.query);
+            if (pqs != n.pagination_queries.cend()) {
+                for (auto& pq : pqs->second)
+                    n.getStatus.erase(pq);
+            }
+            n.getStatus.erase(get.query);
+        }
+        if (get.done_cb)
+            get.done_cb(true, getNodes());
+    }
+
+    /**
+     * Set the search in a consistent state after the search is done. This is
+     * the opportunity we have to clear some entries in the SearchNodes status
+     * maps.
+     */
+    void setDone() {
+        for (auto& n : nodes) {
+            n.getStatus.clear();
+            n.listenStatus.clear();
+            n.acked.clear();
+        }
+        done = true;
+    }
+
     time_point getUpdateTime(time_point now) const;
 
     bool isAnnounced(Value::Id id, const ValueType& type, time_point now) const;
@@ -1234,10 +1269,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             // Call callbacks when done
             for (auto b = sr->callbacks.begin(); b != sr->callbacks.end();) {
                 if (sr->isDone(b->second)) {
-                    if (b->second.done_cb)
-                        b->second.done_cb(true, sr->getNodes());
-                    for (auto& n : sr->nodes)
-                        n.getStatus.erase(b->second.query);
+                    sr->setDone(b->second);
                     b = sr->callbacks.erase(b);
                 }
                 else
@@ -1248,7 +1280,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             sr->checkAnnounced(types, now);
 
             if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
-                sr->done = true;
+                sr->setDone();
         }
 
         // true if this node is part of the target nodes cluter.
@@ -1306,7 +1338,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         searchSendAnnounceValue(sr);
 
         if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
-            sr->done = true;
+            sr->setDone();
     }
 
     if (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES) {
@@ -1331,7 +1363,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
             sr->expired = true;
             if (sr->announce.empty() && sr->listeners.empty()) {
                 // Listening or announcing requires keeping the cluster up to date.
-                sr->done = true;
+                sr->setDone();
             }
             {
                 auto get_cbs = std::move(sr->callbacks);
