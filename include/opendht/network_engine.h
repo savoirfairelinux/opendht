@@ -195,7 +195,7 @@ private:
      * @param saddr (type: sockaddr*) sockaddr* pointer containing address ip information.
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      */
-    std::function<void(const InfoHash&, sockaddr*, socklen_t)> onReportedAddr;
+    std::function<void(const InfoHash&, const SockAddr&)> onReportedAddr;
     /**
      * @brief on ping request callback.
      *
@@ -342,10 +342,10 @@ public:
      * @param fromlen  The length of the corresponding sockaddr structure.
      * @param now  The time to adjust the clock in the network engine.
      */
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen);
+    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr& addr);
 
-    std::shared_ptr<Node> insertNode(const InfoHash& myid, const sockaddr* from, socklen_t fromlen) {
-        return cache.getNode(myid, from, fromlen, scheduler.time(), 0);
+    std::shared_ptr<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
+        return cache.getNode(myid, addr, scheduler.time(), 0);
     }
 
     std::vector<unsigned> getNodeMessageStats(bool in) {
@@ -374,21 +374,10 @@ private:
     /* TODO */
     static const std::string my_v;
 
-    /* DHT info */
-    const InfoHash& myid;
-    const NetId network {0};
-    const int dht_socket {-1};
-    const int dht_socket6 {-1};
-    const Logger& DHT_LOG;
+    bool rateLimit(const SockAddr& addr);
 
-    NodeCache cache {};
-    sockaddr_storage blacklist[BLACKLISTED_MAX] {};
-    unsigned next_blacklisted = 0;
-
-    bool rateLimit();
-
-    static bool isMartian(const sockaddr* sa, socklen_t len);
-    bool isNodeBlacklisted(const sockaddr*, socklen_t) const;
+    static bool isMartian(const SockAddr& addr);
+    bool isNodeBlacklisted(const SockAddr& addr) const;
 
     void requestStep(std::shared_ptr<Request> req);
 
@@ -418,16 +407,15 @@ private:
 
 
     // basic wrapper for socket sendto function
-    int send(const char *buf, size_t len, int flags, const sockaddr *sa, socklen_t salen);
+    int send(const char *buf, size_t len, int flags, const SockAddr& addr);
 
     /*************
      *  Answers  *
      *************/
     /* answer to a ping  request */
-    void sendPong(const sockaddr* sa, socklen_t salen, TransId tid);
+    void sendPong(const SockAddr& addr, TransId tid);
     /* answer to findnodes/getvalues request */
-    void sendNodesValues(const sockaddr* sa,
-            socklen_t salen,
+    void sendNodesValues(const SockAddr& addr,
             TransId tid,
             const Blob& nodes,
             const Blob& nodes6,
@@ -441,12 +429,11 @@ private:
             std::vector<std::shared_ptr<Node>>& nodes,
             std::vector<std::shared_ptr<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const sockaddr* sa, socklen_t salen, TransId tid);
+    void sendListenConfirmation(const SockAddr& addr, TransId tid);
     /* answer to put request */
-    void sendValueAnnounced(const sockaddr* sa, socklen_t salen, TransId, Value::Id);
+    void sendValueAnnounced(const SockAddr& addr, TransId, Value::Id);
     /* answer in case of error */
-    void sendError(const sockaddr* sa,
-            socklen_t salen,
+    void sendError(const SockAddr& addr,
             TransId tid,
             uint16_t code,
             const std::string& message,
@@ -454,6 +441,14 @@ private:
 
     void deserializeNodesValues(ParsedMessage& msg);
 
+    /* DHT info */
+    const InfoHash& myid;
+    const NetId network {0};
+    const int dht_socket {-1};
+    const int dht_socket6 {-1};
+    const Logger& DHT_LOG;
+
+    NodeCache cache {};
     std::queue<time_point> rate_limit_time {};
     static std::mt19937 rd_device;
 
@@ -461,6 +456,7 @@ private:
     uint16_t transaction_id {1};
     std::map<uint16_t, std::shared_ptr<Request>> requests {};
     MessageStats in_stats {}, out_stats {};
+    std::set<SockAddr> blacklist {};
 
     Scheduler& scheduler;
 };

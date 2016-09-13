@@ -40,13 +40,49 @@
 
 namespace dht {
 
-using Address = std::pair<sockaddr_storage, socklen_t>;
+std::string print_addr(const sockaddr* sa, socklen_t slen);
+std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+
+struct SockAddr : public std::pair<sockaddr_storage, socklen_t> {
+public:
+    using std::pair<sockaddr_storage, socklen_t>::pair;
+
+    SockAddr() : pair<sockaddr_storage, socklen_t>::pair({},0) {}
+    SockAddr(const SockAddr& o) : pair<sockaddr_storage, socklen_t>::pair({},o.second) {
+        std::copy_n((uint8_t*)&o.first, o.second, (uint8_t*)&first);
+    }
+    SockAddr(const sockaddr* sa, socklen_t len) : pair<sockaddr_storage, socklen_t>::pair({},len) {
+        if (len > sizeof(sockaddr_storage))
+            throw std::runtime_error("Socket address length is too large");
+        std::copy_n((uint8_t*)sa, len, (uint8_t*)&first);
+    }
+
+    bool operator<(const SockAddr& o) const {
+        if (second != o.second)
+            return second < o.second;
+        return std::memcmp((uint8_t*)&first, (uint8_t*)&o.first, second) < 0;
+    }
+
+    bool operator==(const SockAddr& o) const {
+        return second == o.second
+            && std::memcmp((uint8_t*)&first, (uint8_t*)&o.first, second) == 0;
+    }
+    SockAddr& operator=(const SockAddr& o) {
+        std::copy_n((const uint8_t*)&o.first, o.second, (uint8_t*)&first);
+        second = o.second;
+        return *this;
+    }
+
+    std::string toString() const {
+        return print_addr(first, second);
+    }
+    sa_family_t getFamily() const { return second > sizeof(sa_family_t) ? first.ss_family : AF_UNSPEC; }
+};
+
 using NetId = uint32_t;
 using want_t = int_fast8_t;
 
-std::string print_addr(const sockaddr* sa, socklen_t slen);
-std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
-std::string printAddr(const Address& addr);
+std::string printAddr(const SockAddr& addr);
 
 template <typename Key, typename Item, typename Condition>
 void erase_if(std::map<Key, Item>& map, const Condition& condition)

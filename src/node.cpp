@@ -65,10 +65,9 @@ Node::getPendingMessageCount() const
 }
 
 void
-Node::update(const sockaddr* sa, socklen_t salen)
+Node::update(const SockAddr& new_addr)
 {
-    std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-    sslen = salen;
+    addr = new_addr;
 }
 
 /** To be called when a message was sent to the node */
@@ -119,7 +118,7 @@ Node::toString() const
 
 std::ostream& operator<< (std::ostream& s, const Node& h)
 {
-    s << h.id << " " << print_addr(h.ss, h.sslen);
+    s << h.id << " " << h.addr.toString();
     return s;
 }
 

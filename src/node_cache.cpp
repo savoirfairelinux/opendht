@@ -27,10 +27,10 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 }
 
 std::shared_ptr<Node>
-NodeCache::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm) {
+NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, int confirm) {
     if (id == zeroes)
-        return std::make_shared<Node>(id, sa, sa_len);
-    return (sa->sa_family == AF_INET ? cache_4 : cache_6).getNode(id, sa, sa_len, now, confirm);
+        return std::make_shared<Node>(id, addr);
+    return (addr.getFamily() == AF_INET ? cache_4 : cache_6).getNode(id, addr, now, confirm);
 }
 
 void
@@ -57,15 +57,15 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
 }
 
 std::shared_ptr<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const sockaddr* sa, socklen_t sa_len, time_point now, int confirm)
+NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, int confirm)
 {
     auto it = emplace(id, std::weak_ptr<Node>{});
     auto node = it.first->second.lock();
     if (not node) {
-        node = std::make_shared<Node>(id, sa, sa_len);
+        node = std::make_shared<Node>(id, addr);
         it.first->second = node;
     } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
-        node->update(sa, sa_len);
+        node->update(addr);
     }
     return node;
 }

@@ -30,40 +30,34 @@ namespace dht {
 struct Request;
 
 struct Node {
-    friend class NetworkEngine;
-
     InfoHash id;
-
-    socklen_t sslen {0};
-    sockaddr_storage ss;
+    SockAddr addr;
 
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
 
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : id(id), sslen(salen), ss() {
-        std::copy_n((const uint8_t*)sa, salen, (uint8_t*)&ss);
-        if ((unsigned)salen < sizeof(ss))
-            std::fill_n((uint8_t*)&ss+salen, sizeof(ss)-salen, 0);
-    }
+        : id(id), addr(sa, salen) {}
+    Node(const InfoHash& id, const SockAddr& addr) : id(id), addr(addr) {}
+
     InfoHash getId() const {
         return id;
     }
     std::pair<const sockaddr*, socklen_t> getAddr() const {
-        return {(const sockaddr*)&ss, sslen};
+        return {(const sockaddr*)&addr.first, addr.second};
     }
     std::string getAddrStr() const {
-        return print_addr(ss, sslen);
+        return addr.toString();
     }
     bool isExpired() const { return expired_; }
     bool isGood(time_point now) const;
     bool isPendingMessage() const;
     size_t getPendingMessageCount() const;
 
-    NodeExport exportNode() const { return NodeExport {id, ss, sslen}; }
-    sa_family_t getFamily() const { return ss.ss_family; }
+    NodeExport exportNode() const { return NodeExport {id, addr.first, addr.second}; }
+    sa_family_t getFamily() const { return addr.getFamily(); }
 
-    void update(const sockaddr* sa, socklen_t salen);
+    void update(const SockAddr&);
 
     void requested(std::shared_ptr<Request>& req);
     void received(time_point now, std::shared_ptr<Request> req);
@@ -88,7 +82,6 @@ struct Node {
     static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {1};
 
 private:
-
     std::list<std::weak_ptr<Request>> requests_ {};
     bool expired_ {false};
 
@@ -97,7 +90,6 @@ private:
             return w.expired();
         });
     }
-
 };
 
 }

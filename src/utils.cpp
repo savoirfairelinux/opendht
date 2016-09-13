@@ -47,7 +47,7 @@ print_addr(const sockaddr_storage& ss, socklen_t sslen)
 }
 
 std::string
-printAddr(const Address& addr) {
+printAddr(const SockAddr& addr) {
     return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 

@@ -117,14 +117,20 @@ public:
      * The node is not pinged, so this should be
      * used to bootstrap efficiently from previously known nodes.
      */
-    bool insertNode(const InfoHash& id, const sockaddr*, socklen_t);
+    bool insertNode(const InfoHash& id, const SockAddr&);
+    bool insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen) {
+        return insertNode(id, SockAddr(sa, salen));
+    }
     bool insertNode(const NodeExport& n) {
-        return insertNode(n.id, reinterpret_cast<const sockaddr*>(&n.ss), n.sslen);
+        return insertNode(n.id, SockAddr(n.ss, n.sslen));
     }
 
     int pingNode(const sockaddr*, socklen_t);
 
-    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
+    time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr&);
+    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
+        return periodic(buf, buflen, SockAddr(from, fromlen));
+    }
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -270,7 +276,7 @@ public:
         return {total_store_size, total_values};
     }
 
-    std::vector<Address> getPublicAddress(sa_family_t family = 0);
+    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
 
 protected:
     Logger DHT_LOG;
@@ -415,7 +421,7 @@ private:
     unsigned pending_pings4 {0};
     unsigned pending_pings6 {0};
 
-    using ReportedAddr = std::pair<unsigned, Address>;
+    using ReportedAddr = std::pair<unsigned, SockAddr>;
     std::vector<ReportedAddr> reported_addr;
 
     void rotateSecrets();
@@ -423,7 +429,7 @@ private:
     Blob makeToken(const sockaddr *sa, bool old) const;
     bool tokenMatch(const Blob& token, const sockaddr *sa) const;
 
-    void reportedAddr(const sockaddr *sa, socklen_t sa_len);
+    void reportedAddr(const SockAddr&);
 
     // Storage
     decltype(Dht::store)::iterator findStorage(const InfoHash& id);
@@ -499,11 +505,11 @@ private:
 
     bool neighbourhoodMaintenance(RoutingTable&);
 
-    void processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen);
+    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr&);
 
     void onError(std::shared_ptr<Request> node, DhtProtocolException e);
     /* when our address is reported by a distant peer. */
-    void onReportedAddr(const InfoHash& id, sockaddr* sa , socklen_t salen);
+    void onReportedAddr(const InfoHash& id, const SockAddr&);
     /* when we receive a ping request */
     NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
