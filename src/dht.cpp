@@ -265,31 +265,31 @@ struct Dht::SearchNode {
      * met:
      *
      *  - The node is not expired;
-     *  - If we have heard from the node, we must have heard from him in the last
-     *    NODE_EXPIRE_TIME minutes;
-     *  - The request must not already have been sent;
-     *  - No other request satisfying the request must be pending;
      *  - The pagination process for this particular 'get' must not have begun;
+     *  - There hasn't been any response for a request, satisfying the initial
+     *    request, anytime following the initial request.
+     *  - No other request satisfying the request must be pending;
      *
      * @param now     The time reference to now.
-     * @param update  Time of the last "get" op for the search.
+     * @param update  The time of the last 'get' op satisfying this request.
      * @param q       The query defining the "get" operation we're referring to.
      *
      * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        /* Find request status for the given query */
-        const auto& get_status = getStatus.find(q);
-        /* Find request status for a query satisfying the initial query */
-        const auto& sq_status = std::find_if(getStatus.cbegin(), getStatus.cend(),
-            [&q](const SyncStatus::value_type& s) {
-                return s.first and q and q->isSatisfiedBy(*s.first) and s.second and s.second->pending();
+        if (node->isExpired() or not (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply))
+            return false;
+
+        auto completed_sq_status {false}, pending_sq_status {false};
+        for (const auto& s : getStatus) {
+            if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
+                if (s.second->pending() and not pending_sq_status)
+                    pending_sq_status = true;
+                if (s.second->reply_time > update and not completed_sq_status)
+                    completed_sq_status = true;
             }
-        );
-        return not node->isExpired() and (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply)
-            and not hasStartedPagination(q)
-            and (get_status == getStatus.cend() or not get_status->second)
-            and sq_status == getStatus.cend();
+        }
+        return not (hasStartedPagination(q) or completed_sq_status or pending_sq_status);
     }
 
     /**
@@ -331,8 +331,7 @@ struct Dht::SearchNode {
                         return req != getStatus.cend() and req->second and req->second->pending();
                     }) != pqs->second.cend();
             return not paginationPending;
-        }
-        else { /* no pagination yet */
+        } else { /* no pagination yet */
             const auto& gs = get.query ? getStatus.find(get.query) : getStatus.cend();
             return gs != getStatus.end() and gs->second and not gs->second->pending();
         }
