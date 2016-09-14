@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.8.6)
 project (opendht)
 set (opendht_VERSION_MAJOR 1)
-set (opendht_VERSION_MINOR 0.0)
+set (opendht_VERSION_MINOR 0.1)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -59,7 +59,7 @@ list (APPEND opendht_SOURCES
     src/argon2/thread.c
     src/argon2/encoding.c
     src/argon2/ref.c
-    src/indexation/pht.cpp    
+    src/indexation/pht.cpp
 )
 
 list (APPEND opendht_HEADERS
