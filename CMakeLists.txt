@@ -78,6 +78,7 @@ list (APPEND opendht_HEADERS
     include/opendht/node_cache.h
     include/opendht/network_engine.h
     include/opendht/scheduler.h
+    include/opendht/rate_limiter.h
     include/opendht/securedht.h
     include/opendht/log.h
     include/opendht.h

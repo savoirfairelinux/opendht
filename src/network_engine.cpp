@@ -191,18 +191,28 @@ NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
 
 /* Rate control for requests we receive. */
 bool
-NetworkEngine::rateLimit()
+NetworkEngine::rateLimit(const SockAddr& addr)
 {
-    using namespace std::chrono;
     const auto& now = scheduler.time();
-    while (not rate_limit_time.empty() and duration_cast<seconds>(now - rate_limit_time.front()) > seconds(1))
-        rate_limit_time.pop();
 
-    if (rate_limit_time.size() >= MAX_REQUESTS_PER_SEC)
+    // occasional IP limiter maintenance
+    std::bernoulli_distribution rand_trial(1./128.);
+    if (rand_trial(rd_device)) {
+        for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
+            if (it->second.maintain(now) == 0)
+                address_rate_limiter.erase(it++);
+            else
+                ++it;
+        }
+    }
+
+    // invoke per IP rate limiter
+    auto it = address_rate_limiter.emplace(addr, IpLimiter{});
+    if (not it.first->second.limit(now))
         return false;
 
-    rate_limit_time.emplace(now);
-    return true;
+    // invoke global limiter
+    return rate_limiter.limit(now);
 }
 
 bool
@@ -299,7 +309,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
 
     if (msg.type > MessageType::Reply) {
         /* Rate limit requests. */
-        if (!rateLimit()) {
+        if (!rateLimit(from)) {
             DHT_LOG.WARN("Dropping request due to rate limiting.");
             return;
         }
