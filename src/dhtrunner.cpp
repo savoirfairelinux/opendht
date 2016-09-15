@@ -252,7 +252,7 @@ DhtRunner::getSearchesLog(sa_family_t af) const
     std::lock_guard<std::mutex> lck(dht_mtx);
     return dht_->getSearchesLog(af);
 }
-std::vector<Address>
+std::vector<SockAddr>
 DhtRunner::getPublicAddress(sa_family_t af)
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
@@ -315,7 +315,7 @@ DhtRunner::loop_()
         for (const auto& pck : received) {
             auto& buf = pck.first;
             auto& from = pck.second;
-            wakeup = dht_->periodic(buf.data(), buf.size()-1, (sockaddr*)&from.first, from.second);
+            wakeup = dht_->periodic(buf.data(), buf.size()-1, from);
         }
         received.clear();
     } else {
@@ -400,19 +400,19 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
 
                 if(rc > 0) {
                     std::array<uint8_t, 1024 * 64> buf;
-                    sockaddr_storage from;
-                    socklen_t fromlen {sizeof(from)};
+                    SockAddr from;
+                    from.second = sizeof(from.first);
 
                     if(s4 >= 0 && FD_ISSET(s4, &readfds))
-                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from.first, &from.second);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from, &fromlen);
+                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from.first, &from.second);
                     else
                         break;
                     if (rc > 0) {
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
-                            rcv.emplace_back(Blob {buf.begin(), buf.begin()+rc+1}, std::make_pair(from, fromlen));
+                            rcv.emplace_back(Blob {buf.begin(), buf.begin()+rc+1}, from);
                         }
                         cv.notify_all();
                     }

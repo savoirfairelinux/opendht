@@ -36,6 +36,7 @@ nobase_include_HEADERS = \
         ../include/opendht/network_engine.h \
         ../include/opendht/scheduler.h \
         ../include/opendht/utils.h \
+        ../include/opendht/sockaddr.h \
         ../include/opendht/infohash.h \
         ../include/opendht/node.h \
         ../include/opendht/value.h \

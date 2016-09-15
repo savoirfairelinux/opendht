@@ -24,6 +24,7 @@
 #include "infohash.h"
 #include "value.h"
 #include "callbacks.h"
+#include "sockaddr.h"
 
 #include <thread>
 #include <mutex>
@@ -217,7 +218,7 @@ public:
      * Returns the currently bound address.
      * @param f: address family of the bound address to retreive.
      */
-    const Address& getBound(sa_family_t f = AF_INET) const {
+    const SockAddr& getBound(sa_family_t f = AF_INET) const {
         return (f == AF_INET) ? bound4 : bound6;
     }
 
@@ -253,7 +254,7 @@ public:
     std::string getStorageLog() const;
     std::string getRoutingTablesLog(sa_family_t af) const;
     std::string getSearchesLog(sa_family_t af = 0) const;
-    std::vector<Address> getPublicAddress(sa_family_t af = 0);
+    std::vector<SockAddr> getPublicAddress(sa_family_t af = 0);
     std::vector<std::string> getPublicAddressStr(sa_family_t af = 0);
 
     // securedht methods
@@ -347,7 +348,7 @@ private:
 
     std::thread rcv_thread {};
     std::mutex sock_mtx {};
-    std::vector<std::pair<Blob, std::pair<sockaddr_storage, socklen_t>>> rcv {};
+    std::vector<std::pair<Blob, SockAddr>> rcv {};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
@@ -359,8 +360,8 @@ private:
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
-    Address bound4 {};
-    Address bound6 {};
+    SockAddr bound4 {};
+    SockAddr bound6 {};
 };
 
 }
