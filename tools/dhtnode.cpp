@@ -71,13 +71,15 @@ void print_help() {
               << std::endl;
 }
 
-void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation::Pht> indexes, dht_params& params)
+void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
 {
     print_node_info(dht, params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
     // using the GNU History API
     using_history();
+
+    std::map<std::string, indexation::Pht> indexes;
 
     while (true)
     {
@@ -329,11 +331,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, std::map<std::string, indexation:
 int
 main(int argc, char **argv)
 {
-    if (int rc = gnutls_global_init())  // TODO: remove with GnuTLS >= 3.3
-        throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
-
     auto dht = std::make_shared<DhtRunner>();
-    std::map<std::string, indexation::Pht> indexes;
 
     try {
         auto params = parseArgs(argc, argv);
@@ -369,7 +367,7 @@ main(int argc, char **argv)
             while (true)
                 std::this_thread::sleep_for(std::chrono::seconds(30));
         } else {
-            cmd_loop(dht, indexes, params);
+            cmd_loop(dht, params);
         }
 
     } catch(const std::exception&e) {
@@ -392,7 +390,5 @@ main(int argc, char **argv)
     cv.wait(lk, [&](){ return done.load(); });
 
     dht->join();
-    gnutls_global_deinit();
-
     return 0;
 }

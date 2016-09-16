@@ -70,12 +70,6 @@ int
 main(int argc, char **argv)
 {
     auto params = parseArgs(argc, argv);
-
-    // TODO: remove with GnuTLS >= 3.3
-    int rc = gnutls_global_init();
-    if (rc != GNUTLS_E_SUCCESS)
-        throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
-
     auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
     auto crt_tmp = dht::crypto::generateIdentity("Scanner node", ca_tmp);
 
@@ -110,6 +104,5 @@ main(int argc, char **argv)
         std::cout << "Node " << *n << std::endl;
 
     dht.join();
-    gnutls_global_deinit();
     return 0;
 }

@@ -48,10 +48,6 @@ main(int argc, char **argv)
 {
     auto params = parseArgs(argc, argv);
 
-    // TODO: remove with GnuTLS >= 3.3
-    if (int rc = gnutls_global_init())
-        throw std::runtime_error(std::string("Error initializing GnuTLS: ")+gnutls_strerror(rc));
-
     DhtRunner dht;
     dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
 
@@ -129,6 +125,5 @@ main(int argc, char **argv)
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;
     dht.join();
-    gnutls_global_deinit();
     return 0;
 }
