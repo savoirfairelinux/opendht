@@ -353,7 +353,7 @@ private:
     RoutingTable buckets {};
     RoutingTable buckets6 {};
 
-    std::vector<std::unique_ptr<Storage>> store;
+    std::map<InfoHash, Storage> store;
     size_t total_values {0};
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
@@ -388,13 +388,10 @@ private:
     void reportedAddr(const SockAddr&);
 
     // Storage
-    decltype(Dht::store)::iterator findStorage(const InfoHash& id);
-    decltype(Dht::store)::const_iterator findStorage(const InfoHash& id) const;
-
     void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
-    void storageChanged(Storage& st, ValueStorage&);
+    void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
 
     /**
      * For a given storage, if values don't belong there anymore because this
