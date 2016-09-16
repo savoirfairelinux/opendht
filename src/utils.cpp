@@ -18,6 +18,7 @@
  */
 
 #include "utils.h"
+#include "sockaddr.h"
 #include "default_types.h"
 
 namespace dht {
@@ -47,7 +48,7 @@ print_addr(const sockaddr_storage& ss, socklen_t sslen)
 }
 
 std::string
-printAddr(const Address& addr) {
+printAddr(const SockAddr& addr) {
     return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 

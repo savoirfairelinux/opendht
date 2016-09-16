@@ -700,13 +700,13 @@ Dht::sendCachedPing(Bucket& b)
     return 0;
 }
 
-std::vector<Address>
+std::vector<SockAddr>
 Dht::getPublicAddress(sa_family_t family)
 {
     std::sort(reported_addr.begin(), reported_addr.end(), [](const ReportedAddr& a, const ReportedAddr& b) {
         return a.first > b.first;
     });
-    std::vector<Address> ret;
+    std::vector<SockAddr> ret;
     for (const auto& addr : reported_addr)
         if (!family || family == addr.second.first.ss_family)
             ret.emplace_back(addr.second);
@@ -733,15 +733,14 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
 }
 
 void
-Dht::reportedAddr(const sockaddr *sa, socklen_t sa_len)
+Dht::reportedAddr(const SockAddr& addr)
 {
-    auto it = std::find_if(reported_addr.begin(), reported_addr.end(), [=](const ReportedAddr& addr){
-        return (addr.second.second == sa_len) &&
-            std::equal((uint8_t*)&addr.second.first, (uint8_t*)&addr.second.first + addr.second.second, (uint8_t*)sa);
+    auto it = std::find_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& a){
+        return a.second == addr;
     });
     if (it == reported_addr.end()) {
         if (reported_addr.size() < 32)
-            reported_addr.emplace_back(1, std::make_pair(*((sockaddr_storage*)sa), sa_len));
+            reported_addr.emplace_back(1, addr);
     } else
         it->first++;
 }
@@ -2166,7 +2165,7 @@ Dht::storageChanged(Storage& st, ValueStorage& v)
         DHT_LOG.DEBUG("[Storage %s] Sending update to %s.", st.id.toString().c_str(), l.first->toString().c_str());
         std::vector<std::shared_ptr<Value>> vals {};
         vals.push_back(v.data);
-        Blob ntoken = makeToken((const sockaddr*)&l.first->ss, false);
+        Blob ntoken = makeToken((const sockaddr*)&l.first->addr.first, false);
         network_engine.tellListener(l.first, l.second.rid, st.id, 0, ntoken, {}, {},
                 std::move(vals), l.second.query);
     }
@@ -2255,7 +2254,7 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
     if (l == (*st)->listeners.end()) {
         auto vals = (*st)->get(query.where.getFilter());
         if (not vals.empty()) {
-            network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->ss, false),
+            network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->addr.first, false),
                     buckets.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
@@ -2538,8 +2537,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                 out << "] ";
             }
         }
-        out << print_addr(n.node->ss, n.node->sslen);
-        out << std::endl;
+        out << n.node->addr.toString() << std::endl;
     }
 }
 
@@ -2629,7 +2627,7 @@ Dht::Dht(int s, int s6, Config config)
     network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
-            std::bind(&Dht::onReportedAddr, this, _1, _2, _3),
+            std::bind(&Dht::onReportedAddr, this, _1, _2),
             std::bind(&Dht::onPing, this, _1),
             std::bind(&Dht::onFindNode, this, _1, _2, _3),
             std::bind(&Dht::onGetValues, this, _1, _2, _3, _4),
@@ -2827,15 +2825,15 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
 }
 
 void
-Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
+Dht::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
 {
     if (buflen == 0)
         return;
 
     try {
-        network_engine.processMessage(buf, buflen, from, fromlen);
+        network_engine.processMessage(buf, buflen, from);
     } catch (const std::exception& e) {
-        DHT_LOG.ERR("Can't parse message from %s: %s", print_addr(from, fromlen).c_str(), e.what());
+        DHT_LOG.ERR("Can't parse message from %s: %s", from.toString().c_str(), e.what());
         //auto code = e.getCode();
         //if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
             /* This is really annoying, as it means that we will
@@ -2848,10 +2846,10 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const sockaddr *from, soc
 }
 
 time_point
-Dht::periodic(const uint8_t *buf, size_t buflen, const sockaddr *from, socklen_t fromlen)
+Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
 {
     scheduler.syncTime();
-    processMessage(buf, buflen, from, fromlen);
+    processMessage(buf, buflen, from);
     return scheduler.run();
 }
 
@@ -3002,12 +3000,12 @@ Dht::exportNodes()
 }
 
 void
-Dht::insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen)
+Dht::insertNode(const InfoHash& id, const SockAddr& addr)
 {
-    if (sa->sa_family != AF_INET && sa->sa_family != AF_INET6)
+    if (addr.getFamily() != AF_INET && addr.getFamily() != AF_INET6)
         return;
     scheduler.syncTime();
-    network_engine.insertNode(id, sa, salen);
+    network_engine.insertNode(id, addr);
 }
 
 void
@@ -3046,12 +3044,12 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
 }
 
 void
-Dht::onReportedAddr(const InfoHash& id, sockaddr* addr , socklen_t addr_length)
+Dht::onReportedAddr(const InfoHash& id, const SockAddr& addr)
 {
-    const auto& b = (addr->sa_family == AF_INET ? buckets : buckets6).findBucket(id);
+    const auto& b = (addr.getFamily() == AF_INET ? buckets : buckets6).findBucket(id);
     b->time = scheduler.time();
-    if (addr and addr_length)
-        reportedAddr(addr, addr_length);
+    if (addr.second)
+        reportedAddr(addr);
 }
 
 NetworkEngine::RequestAnswer
@@ -3065,7 +3063,7 @@ Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
     NetworkEngine::RequestAnswer answer;
-    answer.ntoken = makeToken((sockaddr*)&node->ss, false);
+    answer.ntoken = makeToken((sockaddr*)&node->addr.first, false);
     if (want & WANT4)
         answer.nodes4 = buckets.findClosestNodes(target, now, TARGET_NODES);
     if (want & WANT6)
@@ -3086,7 +3084,7 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query
     const auto& now = scheduler.time();
     NetworkEngine::RequestAnswer answer {};
     auto st = findStorage(hash);
-    answer.ntoken = makeToken((sockaddr*)&node->ss, false);
+    answer.ntoken = makeToken((sockaddr*)&node->addr.first, false);
     answer.nodes4 = buckets.findClosestNodes(hash, now, TARGET_NODES);
     answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
     if (st != store.end() && not (*st)->empty()) {
@@ -3180,7 +3178,7 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
             DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, (sockaddr*)&node->ss)) {
+    if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
         DHT_LOG.WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
@@ -3224,7 +3222,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
             DhtProtocolException::PUT_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, (sockaddr*)&node->ss)) {
+    if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
         DHT_LOG.WARN("[node %s] incorrect token %s for 'put'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }
@@ -3254,7 +3252,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
                 DHT_LOG.WARN("[value %s %lu] nothing to do.", hash.toString().c_str(), lv->id);
             } else {
                 const auto& type = getType(lv->type);
-                if (type.editPolicy(hash, lv, vc, node->id, (sockaddr*)&node->ss, node->sslen)) {
+                if (type.editPolicy(hash, lv, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
                     DHT_LOG.DEBUG("[value %s %lu] editing %s.",
                             hash.toString().c_str(), lv->id, vc->toString().c_str());
                     storageStore(hash, vc, created);
@@ -3266,7 +3264,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         } else {
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
-            if (type.storePolicy(hash, vc, node->id, (sockaddr*)&node->ss, node->sslen)) {
+            if (type.storePolicy(hash, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
                 DHT_LOG.DEBUG("[value %s %lu] storing %s.", hash.toString().c_str(), vc->id, vc->toString().c_str());
                 storageStore(hash, vc, created);
             } else {

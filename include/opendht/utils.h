@@ -13,8 +13,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
+ *  along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -23,13 +22,6 @@
 #define WANT6 2
 
 #include <msgpack.hpp>
-
-#ifndef _WIN32
-#include <sys/socket.h>
-#else
-#include <ws2def.h>
-#include <ws2tcpip.h>
-#endif
 
 #include <chrono>
 #include <random>
@@ -40,13 +32,8 @@
 
 namespace dht {
 
-using Address = std::pair<sockaddr_storage, socklen_t>;
 using NetId = uint32_t;
 using want_t = int_fast8_t;
-
-std::string print_addr(const sockaddr* sa, socklen_t slen);
-std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
-std::string printAddr(const Address& addr);
 
 template <typename Key, typename Item, typename Condition>
 void erase_if(std::map<Key, Item>& map, const Condition& condition)
