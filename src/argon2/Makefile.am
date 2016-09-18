@@ -10,4 +10,14 @@ libargon2_la_SOURCES = \
         encoding.c \
         ref.c
 
-EXTRA_libargon2_la_SOURCES = opt.c
+noinst_HEADERS = \
+        argon2.h \
+        core.h \
+        blake2/blake2.h \
+        blake2/blake2-impl.h \
+        blake2/blamka-round-ref.h \
+        blake2/blamka-round-opt.h \
+        thread.h \
+        encoding.h \
+        opt.h \
+        ref.h

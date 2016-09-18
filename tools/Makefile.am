@@ -1,4 +1,5 @@
 bin_PROGRAMS = dhtnode dhtchat dhtscanner
+noinst_HEADERS = tools_common.h
 
 AM_CPPFLAGS = -I../include
 

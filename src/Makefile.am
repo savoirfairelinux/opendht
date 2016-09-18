@@ -47,3 +47,6 @@ nobase_include_HEADERS = \
         ../include/opendht/log.h \
         ../include/opendht/rng.h \
         ../include/opendht/indexation/pht.h
+
+nobase_noinst_HEADERS = \
+        ../include/opendht/request.h

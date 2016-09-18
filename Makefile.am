@@ -16,7 +16,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 DOC_FILES = \
 			README.md \
-			LICENSE
+			COPYING
 
 EXTRA_DIST = \
 			$(DOC_FILES)
