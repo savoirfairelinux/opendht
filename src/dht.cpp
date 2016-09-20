@@ -275,19 +275,25 @@ struct Dht::SearchNode {
      * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        if (node->isExpired() or not (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply))
+        if (node->isExpired())
             return false;
 
-        auto completed_sq_status {false}, pending_sq_status {false};
+        auto pending {false}, completed_sq_status {false}, pending_sq_status {false};
         for (const auto& s : getStatus) {
+            if (s.second and s.second->pending())
+                pending = true;
             if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
                 if (s.second->pending() and not pending_sq_status)
                     pending_sq_status = true;
-                if (s.second->reply_time > update and not completed_sq_status)
+                if (s.second->completed() and not (update > s.second->reply_time) and not completed_sq_status)
                     completed_sq_status = true;
+                if (completed_sq_status and pending_sq_status)
+                    break;
             }
         }
-        return not (hasStartedPagination(q) or completed_sq_status or pending_sq_status);
+
+        return (not pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
+                not (hasStartedPagination(q) or completed_sq_status or pending_sq_status);
     }
 
     /**
