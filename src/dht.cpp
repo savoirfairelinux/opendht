@@ -1213,7 +1213,6 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                             sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str(),
                                             a.value->id);
-                                    /* TODO: kind of a hack. Other solution? */
                                     auto ack_req = std::make_shared<Request>();
                                     ack_req->reply_time = now;
                                     sn->acked[a.value->id] = std::move(ack_req);
@@ -1302,8 +1301,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
 
                         std::weak_ptr<Search> ws = sr;
                         n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token,
-                            [this,ws,last_req,query](const Request& req,
-                                    NetworkEngine::RequestAnswer&& answer) mutable
+                            [this,ws,last_req,query](const Request& req, NetworkEngine::RequestAnswer&& answer) mutable
                             { /* on done */
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock()) {
@@ -3008,20 +3006,18 @@ Dht::pingNode(const sockaddr* sa, socklen_t salen)
 void
 Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
+        DHT_LOG.ERR("[node %s] token flush", req->node->toString().c_str());
         network_engine.cancelRequest(req);
-        unsigned cleared = 0;
         for (auto& srp : req->node->getFamily() == AF_INET ? searches4 : searches6) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;
                 n.token.clear();
                 n.last_get_reply = time_point::min();
-                cleared++;
                 searchSendGetValues(sr);
                 break;
             }
         }
-        DHT_LOG.WARN("[node %s] token flush (%d searches affected)", req->node->toString().c_str(), cleared);
     }
 }
 

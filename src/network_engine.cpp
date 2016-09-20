@@ -64,23 +64,23 @@ enum class MessageType {
 
 struct ParsedMessage {
     MessageType type;
-    InfoHash id;                                              /* the id of the sender */
-    NetId network {0};                                 /* network id */
-    InfoHash info_hash;                                       /* hash for which values are requested */
-    InfoHash target;                                          /* target id around which to find nodes */
-    NetworkEngine::TransId tid;                               /* transaction id */
-    Blob token;                                               /* security token */
-    Value::Id value_id;                                       /* the value id */
-    time_point created { time_point::max() };                 /* time when value was first created */
-    Blob nodes4_raw, nodes6_raw;                              /* IPv4 nodes in response to a 'find' request */
+    InfoHash id;                                          /* the id of the sender */
+    NetId network {0};                                    /* network id */
+    InfoHash info_hash;                                   /* hash for which values are requested */
+    InfoHash target;                                      /* target id around which to find nodes */
+    NetworkEngine::TransId tid;                           /* transaction id */
+    Blob token;                                           /* security token */
+    Value::Id value_id;                                   /* the value id */
+    time_point created { time_point::max() };             /* time when value was first created */
+    Blob nodes4_raw, nodes6_raw;                          /* IPv4 nodes in response to a 'find' request */
     std::vector<std::shared_ptr<Node>> nodes4, nodes6;
-    std::vector<std::shared_ptr<Value>> values;               /* values for a 'get' request */
+    std::vector<std::shared_ptr<Value>> values;           /* values for a 'get' request */
     std::vector<std::shared_ptr<FieldValueIndex>> fields; /* index for fields values */
-    Query query;                                              /* query describing a filter to apply on values. */
-    want_t want;                                              /* states if ipv4 or ipv6 request */
-    uint16_t error_code;                                      /* error code in case of error */
+    Query query;                                          /* query describing a filter to apply on values. */
+    want_t want;                                          /* states if ipv4 or ipv6 request */
+    uint16_t error_code;                                  /* error code in case of error */
     std::string ua;
-    SockAddr addr;                                            /* reported address by the distant node */
+    SockAddr addr;                                        /* reported address by the distant node */
     void msgpack_unpack(msgpack::object o);
 };
 
@@ -824,12 +824,14 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(3 +
-                               (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0));
+    auto has_query = query.where.getFilter() or not query.select.getSelection().empty();
+    pk.pack(std::string("a")); pk.pack_map(3 + has_query);
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(infohash);
-      pk.pack(std::string("q")); pk.pack(query);
       pk.pack(std::string("token")); packToken(pk, token);
+      if (has_query) {
+          pk.pack(std::string("q")); pk.pack(query);
+      }
 
     pk.pack(std::string("q")); pk.pack(std::string("listen"));
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
