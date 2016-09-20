@@ -145,7 +145,7 @@ struct Value
             }, std::placeholders::_1, std::move(set));
         }
         static Filter chain(std::initializer_list<Filter> l) {
-            return chainAll({l.begin(), l.end()});
+            return chainAll(std::vector<Filter>(l.begin(), l.end()));
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return AllFilter();
