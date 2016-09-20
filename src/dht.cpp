@@ -414,19 +414,11 @@ struct Dht::SearchNode {
     }
 
     /**
-     * Assumng the node is synced, should a "listen" request be sent to this node now ?
+     * Assumng the node is synced, should the "listen" request with Query q be
+     * sent to this node now ?
      */
-    time_point getListenTime() const {
-        time_point t {time_point::max()};
-        for (auto ls = listenStatus.begin(); ls != listenStatus.end() ; ++ls) {
-            t = std::min(t, getListenTime(ls));
-        }
-        return t;
-    }
     time_point getListenTime(const std::shared_ptr<Query>& q) const {
-        return getListenTime(listenStatus.find(q));
-    }
-    time_point getListenTime(SyncStatus::const_iterator listen_status) const {
+        auto listen_status = listenStatus.find(q);
         if (listen_status == listenStatus.end())
             return time_point::min();
         return listen_status->second->pending() ? time_point::max() :
@@ -1541,13 +1533,14 @@ Dht::Search::getListenTime(time_point now) const
 {
     if (listeners.empty())
         return time_point::max();
+
     time_point listen_time {time_point::max()};
     unsigned i = 0, t = 0;
     for (const auto& sn : nodes) {
         if (not sn.isSynced(now) or (sn.candidate and t >= LISTEN_NODES))
             continue;
-        auto lt = sn.getListenTime();
-        listen_time = std::min(listen_time, lt);
+        for (auto& l : listeners)
+            listen_time = std::min(listen_time, sn.getListenTime(l.second.query));
         t++;
         if (not sn.candidate and ++i == LISTEN_NODES)
             break;
