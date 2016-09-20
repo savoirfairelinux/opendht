@@ -13,16 +13,23 @@ set (exec_prefix "\${prefix}")
 set (libdir "\${exec_prefix}/lib")
 set (includedir "\${prefix}/include")
 
-option (OPENDHT_DEBUG "Build with debug flags" OFF)
 option (OPENDHT_STATIC "Build static library" ON)
 option (OPENDHT_SHARED "Build shared library" ON)
-option (OPENDHT_LTO "Build with LTO" OFF)
-
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
+option (OPENDHT_LTO "Build with LTO" OFF)
+
+find_package (GnuTLS 3.3 REQUIRED)
+find_package (Msgpack 1.2 REQUIRED)
+if (OPENDHT_TOOLS)
+    find_package (Readline 6 REQUIRED)
+endif ()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif ()
 if (OPENDHT_LTO)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
     if (CMAKE_COMPILER_IS_GNUCC)
@@ -31,12 +38,6 @@ if (OPENDHT_LTO)
         set (CMAKE_NM        "gcc-nm")
         set (CMAKE_RANLIB    "gcc-ranlib")
     endif ()
-endif ()
-
-find_package (GnuTLS 3.3 REQUIRED)
-find_package (Msgpack 1.2 REQUIRED)
-if (OPENDHT_TOOLS)
-    find_package (Readline 6 REQUIRED)
 endif ()
 
 list (APPEND opendht_SOURCES
@@ -95,12 +96,6 @@ include_directories (
     include/opendht/
     ${CMAKE_CURRENT_BINARY_DIR}/include/
 )
-
-if (OPENDHT_DEBUG)
-    set(CMAKE_BUILD_TYPE Debug)
-else ()
-    set(CMAKE_BUILD_TYPE Release)
-endif ()
 
 if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
     set(CMAKE_INSTALL_LIBDIR lib)
