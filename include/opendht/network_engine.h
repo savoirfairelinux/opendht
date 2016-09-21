@@ -28,6 +28,7 @@
 #include "scheduler.h"
 #include "utils.h"
 #include "rng.h"
+#include "rate_limiter.h"
 
 #include <vector>
 #include <string>
@@ -382,11 +383,12 @@ private:
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
-    /* TODO */
+
     static const std::string my_v;
+    static std::mt19937 rd_device;
 
 
-    bool rateLimit();
+    bool rateLimit(const SockAddr& addr);
 
     static bool isMartian(const SockAddr& addr);
     bool isNodeBlacklisted(const SockAddr& addr) const;
@@ -462,8 +464,40 @@ private:
     const Logger& DHT_LOG;
 
     NodeCache cache {};
-    std::queue<time_point> rate_limit_time {};
-    static std::mt19937 rd_device;
+
+    /**
+     * A comparator to classify IP addresses, only considering the
+     * first 64 bits in IPv6.
+     */
+    struct cmpSockAddr {
+        bool operator()(const SockAddr& a, const SockAddr& b) {
+            if (a.second != b.second)
+                return a.second < b.second;
+            socklen_t start, len;
+            switch(a.getFamily()) {
+                case AF_INET:
+                    start = offsetof(sockaddr_in, sin_addr);
+                    len = sizeof(in_addr);
+                    break;
+                case AF_INET6:
+                    start = offsetof(sockaddr_in6, sin6_addr);
+                    // don't consider more than 64 bits (IPv6)
+                    len = 8;
+                    break;
+                default:
+                    start = 0;
+                    len = a.second;
+                    break;
+            }
+
+            return std::memcmp((uint8_t*)&a.first+start, (uint8_t*)&b.first+start, len) < 0;
+        }
+    };
+    // global limiting should be triggered by at least 8 different IPs
+    using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
+    using IpLimiterMap = std::map<SockAddr, IpLimiter, cmpSockAddr>;
+    IpLimiterMap address_rate_limiter {};
+    RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
 
     // requests handling
     uint16_t transaction_id {1};
