@@ -116,13 +116,15 @@ struct ValueType {
  */
 struct Value
 {
-    enum class Field {
+    enum class Field : int {
         None = 0,
-        Id,
-        ValueType,
-        OwnerPk,
-        SeqNum,
-        UserType,
+        Id,        /* Value::id */
+        ValueType, /* Value::type */
+        OwnerPk,   /* Value::owner */
+        SeqNum,    /* Value::seq */
+        UserType,  /* Value::user_type */
+
+        COUNT      /* the total number of fields */
     };
 
     typedef uint64_t Id;
@@ -814,13 +816,13 @@ struct Query
 {
     static const std::string QUERY_PARSE_ERROR;
 
-    Query(Select s = {}, Where w = {}) : select(s), where(w) { };
+    Query(Select s = {}, Where w = {}, bool none = false) : select(s), where(w), none(none) { };
 
     /**
      * Initializes a query based on a SQL-ish formatted string. The abstract
      * form of such a string is the following:
      *
-     *  [SELECT <$field$> [WHERE <$field$=$value$>]]
+     *  [SELECT $field$ [WHERE $field$=$value$]]
      *
      *  where
      *
@@ -864,6 +866,7 @@ struct Query
 
     Select select {};
     Where where {};
+    bool none {false}; /* When true, any query satisfies this. */
 };
 
 /*!

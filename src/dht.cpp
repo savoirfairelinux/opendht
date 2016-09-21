@@ -1078,7 +1078,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     auto cb = sr->callbacks.begin();
     do { /* for all requests to send */
         SearchNode* n = nullptr;
-        auto query = not sr->callbacks.empty() ? cb->second.query : std::make_shared<Query>();
+        auto query = not sr->callbacks.empty() ? cb->second.query : std::make_shared<Query>(Select {}, Where {}, true);
         const time_point up = not sr->callbacks.empty() and update
                                 ? sr->getLastGetTime(query)
                                 : time_point::min();
@@ -1104,14 +1104,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             n->getStatus[query] = network_engine.sendFindNode(n->node,
                     sr->id,
                     -1,
-                    [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) {
-                        if (auto sr = ws.lock()) {
-                            if (auto sn = sr->getNode(status.node)) {
-                                sn->getStatus.erase(query);
-                            }
-                        }
-                        searchNodeGetDone(status, std::forward<NetworkEngine::RequestAnswer>(answer), ws, query);
-                    },
+                    std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
                     std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
 
         } else { /* 'get' request */
