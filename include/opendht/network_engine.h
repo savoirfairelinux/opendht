@@ -47,12 +47,12 @@ namespace dht {
 class DhtProtocolException : public DhtException {
 public:
     // sent to another peer (http-like).
-    static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
-    static const constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
+    static constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
+    static constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
     // for internal use (custom).
-    static const constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
-    static const constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
-    static const constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is wrong */
+    static constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
+    static constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
+    static constexpr uint16_t WRONG_NODE_INFO_BUF_LEN {423};       /* node info length is wrong */
 
     static const std::string GET_NO_INFOHASH;    /* received "get" request with no infohash */
     static const std::string LISTEN_NO_INFOHASH; /* got "listen" request without infohash */
@@ -109,7 +109,7 @@ public:
      * host order.
      */
     struct TransId final : public std::array<uint8_t, 4> {
-        static const constexpr uint16_t INVALID {0};
+        static constexpr uint16_t INVALID {0};
 
         TransId() {}
         TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
@@ -375,9 +375,9 @@ private:
      ***************/
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
-    static const constexpr size_t NODE4_INFO_BUF_LEN {26};
+    static constexpr size_t NODE4_INFO_BUF_LEN {26};
     /* the length of a node info buffer in ipv6 format */
-    static const constexpr size_t NODE6_INFO_BUF_LEN {38};
+    static constexpr size_t NODE6_INFO_BUF_LEN {38};
     /* TODO */
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
     /* The maximum number of nodes that we snub.  There is probably little
