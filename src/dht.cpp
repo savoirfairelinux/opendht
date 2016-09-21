@@ -1213,6 +1213,9 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                     /* step to clear announces */
                                     scheduler.edit(sr->nextSearchStep, now);
                                 }
+                            } else {
+                                /* Search is now unsynced. Let's call searchStep to sync again. */
+                                scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
                             }
                             ++ait;
                         }
