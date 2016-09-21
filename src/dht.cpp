@@ -408,9 +408,9 @@ struct Dht::SearchNode {
                                                           or not gs->second or not gs->second->pending()))
             return time_point::min();
         return ((gs != getStatus.cend() and gs->second and gs->second->pending())
-                or ack == acked.cend() or not ack->second or ack->second->pending()) ?
-                    time_point::max() :
-                    ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
+                or ack == acked.cend() or not ack->second or ack->second->pending())
+                ? time_point::max()
+                : ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
     }
 
     /**
@@ -3000,6 +3000,7 @@ void
 Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
         DHT_LOG.ERR("[node %s] token flush", req->node->toString().c_str());
+        req->node->authError();
         network_engine.cancelRequest(req);
         for (auto& srp : req->node->getFamily() == AF_INET ? searches4 : searches6) {
             auto& sr = srp.second;

@@ -377,6 +377,9 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
             break;
         }
         case MessageType::Reply:
+            if (msg.type == MessageType::AnnounceValue or msg.type == MessageType::Listen)
+                req->node->authSuccess();
+
             // erase before calling callback to make sure iterator is still valid
             if (not req->persistent)
                 requests.erase(reqp);
