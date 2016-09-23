@@ -2992,17 +2992,22 @@ Dht::insertNode(const InfoHash& id, const SockAddr& addr)
 }
 
 void
-Dht::pingNode(const sockaddr* sa, socklen_t salen)
+Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
 {
     scheduler.syncTime();
     DHT_LOG.DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
     auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, salen, [&](const Request&, NetworkEngine::RequestAnswer&&) {
+    network_engine.sendPing(sa, salen, [&count,cb](const Request&, NetworkEngine::RequestAnswer&&) {
         count--;
-    }, [&](const Request&, bool last){
-        if (last)
+        if (cb)
+            cb(true);
+    }, [&count,cb](const Request&, bool last){
+        if (last) {
             count--;
+            if (cb)
+                cb(false);
+        }
     });
 }
 

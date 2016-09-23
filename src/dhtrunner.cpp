@@ -597,18 +597,18 @@ DhtRunner::getAddrInfo(const char* host, const char* service)
 }
 
 void
-DhtRunner::bootstrap(const char* host, const char* service)
+DhtRunner::bootstrap(const char* host, const char* service, DoneCallbackSimple&& cb)
 {
-    bootstrap(getAddrInfo(host, service));
+    bootstrap(getAddrInfo(host, service), std::forward<DoneCallbackSimple>(cb));
 }
 
 void
-DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes)
+DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht& dht) {
+    pending_ops_prio.emplace([=,&cb](SecureDht& dht) {
         for (auto& node : nodes)
-            dht.pingNode((sockaddr*)&node.first, node.second);
+            dht.pingNode((sockaddr*)&node.first, node.second, std::move(cb));
     });
     cv.notify_all();
 }

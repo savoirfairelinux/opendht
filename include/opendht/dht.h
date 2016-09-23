@@ -121,7 +121,7 @@ public:
         insertNode(n.id, SockAddr(n.ss, n.sslen));
     }
 
-    void pingNode(const sockaddr*, socklen_t);
+    void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={});
 
     time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr&);
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
