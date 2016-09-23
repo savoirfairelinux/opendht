@@ -197,8 +197,8 @@ public:
     }
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
 
-    void bootstrap(const char* host, const char* service);
-    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
+    void bootstrap(const char* host, const char* service, DoneCallbackSimple&& cb={});
+    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb={});
     void bootstrap(const std::vector<NodeExport>& nodes);
 
     /**
