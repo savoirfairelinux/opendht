@@ -50,6 +50,18 @@ struct Node {
     std::string getAddrStr() const {
         return addr.toString();
     }
+
+    /**
+     * Makes notice about an additionnal authentication error with this node. Up
+     * to MAX_AUTH_ERRORS errors are accepted in order to let the node recover.
+     * Upon this limit, the node expires.
+     */
+    void authError() {
+        if (++auth_errors > MAX_AUTH_ERRORS)
+            setExpired();
+    }
+    void authSuccess() { auth_errors = 0; }
+
     bool isExpired() const { return expired_; }
     bool isGood(time_point now) const;
     bool isPendingMessage() const;
@@ -83,7 +95,11 @@ struct Node {
     static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {1};
 
 private:
+    /* Number of times we accept authentication errors from this node. */
+    static const constexpr unsigned MAX_AUTH_ERRORS {3};
+
     std::list<std::weak_ptr<Request>> requests_ {};
+    unsigned auth_errors {0};
     bool expired_ {false};
 
     void clearPendingQueue() {

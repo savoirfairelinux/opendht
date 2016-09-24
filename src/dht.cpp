@@ -275,19 +275,25 @@ struct Dht::SearchNode {
      * @return true if we can send get, else false.
      */
     bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
-        if (node->isExpired() or not (now > last_get_reply + Node::NODE_EXPIRE_TIME or update > last_get_reply))
+        if (node->isExpired())
             return false;
 
-        auto completed_sq_status {false}, pending_sq_status {false};
+        auto pending {false}, completed_sq_status {false}, pending_sq_status {false};
         for (const auto& s : getStatus) {
+            if (s.second and s.second->pending())
+                pending = true;
             if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
                 if (s.second->pending() and not pending_sq_status)
                     pending_sq_status = true;
-                if (s.second->reply_time > update and not completed_sq_status)
+                if (s.second->completed() and not (update > s.second->reply_time) and not completed_sq_status)
                     completed_sq_status = true;
+                if (completed_sq_status and pending_sq_status)
+                    break;
             }
         }
-        return not (hasStartedPagination(q) or completed_sq_status or pending_sq_status);
+
+        return (not pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
+                not (hasStartedPagination(q) or completed_sq_status or pending_sq_status);
     }
 
     /**
@@ -402,25 +408,17 @@ struct Dht::SearchNode {
                                                           or not gs->second or not gs->second->pending()))
             return time_point::min();
         return ((gs != getStatus.cend() and gs->second and gs->second->pending())
-                or ack == acked.cend() or not ack->second or ack->second->pending()) ?
-                    time_point::max() :
-                    ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
+                or ack == acked.cend() or not ack->second or ack->second->pending())
+                ? time_point::max()
+                : ack->second->reply_time + type.expiration - REANNOUNCE_MARGIN;
     }
 
     /**
-     * Assumng the node is synced, should a "listen" request be sent to this node now ?
+     * Assumng the node is synced, should the "listen" request with Query q be
+     * sent to this node now ?
      */
-    time_point getListenTime() const {
-        time_point t {time_point::max()};
-        for (auto ls = listenStatus.begin(); ls != listenStatus.end() ; ++ls) {
-            t = std::min(t, getListenTime(ls));
-        }
-        return t;
-    }
     time_point getListenTime(const std::shared_ptr<Query>& q) const {
-        return getListenTime(listenStatus.find(q));
-    }
-    time_point getListenTime(SyncStatus::const_iterator listen_status) const {
+        auto listen_status = listenStatus.find(q);
         if (listen_status == listenStatus.end())
             return time_point::min();
         return listen_status->second->pending() ? time_point::max() :
@@ -1080,7 +1078,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     auto cb = sr->callbacks.begin();
     do { /* for all requests to send */
         SearchNode* n = nullptr;
-        auto query = not sr->callbacks.empty() ? cb->second.query : std::make_shared<Query>();
+        auto query = not sr->callbacks.empty() ? cb->second.query : std::make_shared<Query>(Select {}, Where {}, true);
         const time_point up = not sr->callbacks.empty() and update
                                 ? sr->getLastGetTime(query)
                                 : time_point::min();
@@ -1106,14 +1104,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             n->getStatus[query] = network_engine.sendFindNode(n->node,
                     sr->id,
                     -1,
-                    [this,ws,query](const Request& status, NetworkEngine::RequestAnswer&& answer) {
-                        if (auto sr = ws.lock()) {
-                            if (auto sn = sr->getNode(status.node)) {
-                                sn->getStatus.erase(query);
-                            }
-                        }
-                        searchNodeGetDone(status, std::forward<NetworkEngine::RequestAnswer>(answer), ws, query);
-                    },
+                    std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
                     std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query));
 
         } else { /* 'get' request */
@@ -1215,7 +1206,6 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                             sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str(),
                                             a.value->id);
-                                    /* TODO: kind of a hack. Other solution? */
                                     auto ack_req = std::make_shared<Request>();
                                     ack_req->reply_time = now;
                                     sn->acked[a.value->id] = std::move(ack_req);
@@ -1223,6 +1213,9 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                     /* step to clear announces */
                                     scheduler.edit(sr->nextSearchStep, now);
                                 }
+                            } else {
+                                /* Search is now unsynced. Let's call searchStep to sync again. */
+                                scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
                             }
                             ++ait;
                         }
@@ -1304,8 +1297,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
 
                         std::weak_ptr<Search> ws = sr;
                         n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token,
-                            [this,ws,last_req,query](const Request& req,
-                                    NetworkEngine::RequestAnswer&& answer) mutable
+                            [this,ws,last_req,query](const Request& req, NetworkEngine::RequestAnswer&& answer) mutable
                             { /* on done */
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock()) {
@@ -1535,13 +1527,14 @@ Dht::Search::getListenTime(time_point now) const
 {
     if (listeners.empty())
         return time_point::max();
+
     time_point listen_time {time_point::max()};
     unsigned i = 0, t = 0;
     for (const auto& sn : nodes) {
         if (not sn.isSynced(now) or (sn.candidate and t >= LISTEN_NODES))
             continue;
-        auto lt = sn.getListenTime();
-        listen_time = std::min(listen_time, lt);
+        for (auto& l : listeners)
+            listen_time = std::min(listen_time, sn.getListenTime(l.second.query));
         t++;
         if (not sn.candidate and ++i == LISTEN_NODES)
             break;
@@ -3009,20 +3002,19 @@ Dht::pingNode(const sockaddr* sa, socklen_t salen)
 void
 Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
+        DHT_LOG.ERR("[node %s] token flush", req->node->toString().c_str());
+        req->node->authError();
         network_engine.cancelRequest(req);
-        unsigned cleared = 0;
         for (auto& srp : req->node->getFamily() == AF_INET ? searches4 : searches6) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;
                 n.token.clear();
                 n.last_get_reply = time_point::min();
-                cleared++;
                 searchSendGetValues(sr);
                 break;
             }
         }
-        DHT_LOG.WARN("[node %s] token flush (%d searches affected)", req->node->toString().c_str(), cleared);
     }
 }
 

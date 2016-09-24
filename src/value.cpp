@@ -209,7 +209,7 @@ FieldValueIndex::FieldValueIndex(const Value& v, Select s)
         });
     } else {
         index.clear();
-        for (size_t f = 1 ; f < 6 ; ++f)
+        for (size_t f = 1 ; f < static_cast<int>(Value::Field::COUNT) ; ++f)
             index[static_cast<Value::Field>(f)] = {};
     }
     for (const auto& fvp : index) {
@@ -421,7 +421,7 @@ bool Where::isSatisfiedBy(const Where& ow) const {
 }
 
 bool Query::isSatisfiedBy(const Query& q) const {
-    return where.isSatisfiedBy(q.where) and select.isSatisfiedBy(q.select);
+    return none or (where.isSatisfiedBy(q.where) and select.isSatisfiedBy(q.select));
 }
 
 std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
