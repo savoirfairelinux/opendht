@@ -68,6 +68,36 @@ public:
         return print_addr(first, second);
     }
     sa_family_t getFamily() const { return second > sizeof(sa_family_t) ? first.ss_family : AF_UNSPEC; }
+
+    /**
+     * A comparator to classify IP addresses, only considering the
+     * first 64 bits in IPv6.
+     */
+    struct ipCmp {
+        bool operator()(const SockAddr& a, const SockAddr& b) {
+            if (a.second != b.second)
+                return a.second < b.second;
+            socklen_t start, len;
+            switch(a.getFamily()) {
+                case AF_INET:
+                    start = offsetof(sockaddr_in, sin_addr);
+                    len = sizeof(in_addr);
+                    break;
+                case AF_INET6:
+                    start = offsetof(sockaddr_in6, sin6_addr);
+                    // don't consider more than 64 bits (IPv6)
+                    len = 8;
+                    break;
+                default:
+                    start = 0;
+                    len = a.second;
+                    break;
+            }
+
+            return std::memcmp((uint8_t*)&a.first+start, (uint8_t*)&b.first+start, len) < 0;
+        }
+    };
+
 };
 
 OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);

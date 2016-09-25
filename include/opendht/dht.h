@@ -357,6 +357,7 @@ private:
     struct LocalListener;
     struct Search;
     struct ValueStorage;
+    struct StorageBucket;
     struct Listener;
     struct Storage;
 
@@ -384,6 +385,7 @@ private:
     RoutingTable buckets6 {};
 
     std::map<InfoHash, Storage> store;
+    std::map<SockAddr, StorageBucket, SockAddr::ipCmp> store_quota;
     size_t total_values {0};
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
@@ -420,10 +422,11 @@ private:
 
     // Storage
     void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
-    bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
+    bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created, const SockAddr* sa = nullptr);
     void expireStorage();
     void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
     std::string printStorageLog(const decltype(store)::value_type&) const;
+    void printStorageQuota(std::ostream& out, const decltype(store_quota)::value_type& ip) const;
 
     /**
      * For a given storage, if values don't belong there anymore because this

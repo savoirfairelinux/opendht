@@ -595,7 +595,7 @@ private:
     };
     // global limiting should be triggered by at least 8 different IPs
     using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
-    using IpLimiterMap = std::map<SockAddr, IpLimiter, cmpSockAddr>;
+    using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
     IpLimiterMap address_rate_limiter {};
     RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
 
