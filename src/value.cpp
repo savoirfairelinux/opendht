@@ -65,7 +65,7 @@ const ValueType ValueType::USER_DATA = {0, "User Data"};
 bool
 ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
 {
-    return v->data.size() <= MAX_VALUE_SIZE;
+    return v->size() <= MAX_VALUE_SIZE;
 }
 
 msgpack::object*

@@ -93,7 +93,8 @@ struct ParsedMessage;
  * @param onListen       callback for "listen" request.
  * @param onAnnounce     callback for "announce" request.
  */
-class NetworkEngine final {
+class NetworkEngine final
+{
     struct TransPrefix : public  std::array<uint8_t, 2>  {
         TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
         static const TransPrefix PING;
@@ -259,7 +260,7 @@ public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
+    NetworkEngine(Logger& log, Scheduler& scheduler);
     NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
@@ -268,16 +269,9 @@ public:
             decltype(NetworkEngine::onFindNode) onFindNode,
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
-            decltype(NetworkEngine::onAnnounce) onAnnounce) :
-        onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-        onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(myid), network(net),
-        dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
-    {
-        transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
-    }
-    virtual ~NetworkEngine() {
-        clear();
-    };
+            decltype(NetworkEngine::onAnnounce) onAnnounce);
+
+    virtual ~NetworkEngine();
 
     void clear();
 
@@ -333,7 +327,7 @@ public:
     std::shared_ptr<Request>
         sendAnnounceValue(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
-                const Value& v,
+                const std::shared_ptr<Value>& v,
                 time_point created,
                 const Blob& token,
                 RequestCb on_done,
@@ -370,6 +364,9 @@ public:
     }
 
 private:
+
+    struct PartialMessage;
+
     /***************
      *  Constants  *
      ***************/
@@ -380,13 +377,22 @@ private:
     static const constexpr size_t NODE6_INFO_BUF_LEN {38};
     /* TODO */
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
+
+    /* Max. time to receive a full fragmented packet */
+    static constexpr std::chrono::seconds RX_MAX_PACKET_TIME {10};
+    /* Max. time between packet fragments */
+    static constexpr std::chrono::seconds RX_TIMEOUT {3};
     /* The maximum number of nodes that we snub.  There is probably little
         reason to increase this value. */
     static constexpr unsigned BLACKLISTED_MAX {10};
 
+    static constexpr size_t MTU {1280};
+    static constexpr size_t MAX_PACKET_VALUE_SIZE {8 * 1024};
+
     static const std::string my_v;
     static std::mt19937 rd_device;
 
+    void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
 
     bool rateLimit(const SockAddr& addr);
 
@@ -422,6 +428,10 @@ private:
 
     // basic wrapper for socket sendto function
     int send(const char *buf, size_t len, int flags, const SockAddr& addr);
+
+    void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
+    std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<std::shared_ptr<Value>>&);
+    void maintainRxBuffer(const TransId& tid);
 
     /*************
      *  Answers  *
@@ -502,6 +512,7 @@ private:
     // requests handling
     uint16_t transaction_id {1};
     std::map<uint16_t, std::shared_ptr<Request>> requests {};
+    std::map<TransId, PartialMessage> partial_messages;
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};
 

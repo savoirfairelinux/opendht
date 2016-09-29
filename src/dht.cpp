@@ -1195,7 +1195,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                             a.value->id);
                                     sn->acked[a.value->id] = network_engine.sendAnnounceValue(sn->node,
                                                                     sr->id,
-                                                                    *a.value,
+                                                                    a.value,
                                                                     a.created,
                                                                     sn->token,
                                                                     onDone,

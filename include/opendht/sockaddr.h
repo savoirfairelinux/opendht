@@ -50,7 +50,7 @@ public:
         return std::memcmp((uint8_t*)&first, (uint8_t*)&o.first, second) < 0;
     }
 
-    bool operator==(const SockAddr& o) const {
+    bool equals(const SockAddr& o) const {
         return second == o.second
             && std::memcmp((uint8_t*)&first, (uint8_t*)&o.first, second) == 0;
     }
@@ -65,6 +65,8 @@ public:
     }
     sa_family_t getFamily() const { return second > sizeof(sa_family_t) ? first.ss_family : AF_UNSPEC; }
 };
+
+bool operator==(const SockAddr& a, const SockAddr& b);
 
 std::string printAddr(const SockAddr& addr);
 
