@@ -143,7 +143,7 @@ struct Dht::Storage {
         return values.empty();
     }
 
-    void clear();
+    std::pair<ssize_t, ssize_t> clear();
 
     size_t valueCount() const {
         return values.size();
@@ -2205,11 +2205,14 @@ Dht::Storage::store(const std::shared_ptr<Value>& value, time_point created, ssi
     }
 }
 
-void
+std::pair<ssize_t, ssize_t>
 Dht::Storage::clear()
 {
+    size_t num_values = values.size();
+    size_t tot_size = total_size;
     values.clear();
     total_size = 0;
+    return std::make_pair(-tot_size, -num_values);
 }
 
 void
@@ -2793,7 +2796,9 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
 
     if (not want4 and not want6) {
         DHT_LOG.DEBUG("Discarding storage values %s", id.toString().c_str());
-        local_storage->second.clear();
+        auto diff = local_storage->second.clear();
+        total_store_size += diff.first;
+        total_values += diff.second;
     }
 
     return announce_per_af;
