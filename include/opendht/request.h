@@ -32,6 +32,8 @@ struct ParsedMessage;
  * request is done.
  */
 struct Request {
+    static constexpr size_t MAX_ATTEMPT_COUNT {3};
+
     friend class dht::NetworkEngine;
     std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
     time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
@@ -84,7 +86,6 @@ struct Request {
     }
 
 private:
-    static const constexpr size_t MAX_ATTEMPT_COUNT {3};
 
     bool isExpired(time_point now) const {
         return pending() and now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT;

@@ -197,8 +197,8 @@ public:
     }
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
 
-    void bootstrap(const char* host, const char* service);
-    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes);
+    void bootstrap(const std::string& host, const std::string& service, DoneCallbackSimple&& cb={});
+    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb={});
     void bootstrap(const std::vector<NodeExport>& nodes);
 
     /**
@@ -331,11 +331,20 @@ public:
     void join();
 
 private:
+    static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
+
+    /**
+     * Will try to resolve the list of hostnames `bootstrap_nodes` on seperate
+     * thread and then queue ping requests. This list should contain reliable
+     * nodes so that the DHT node can recover quickly from losing connection
+     * with the network.
+     */
+    void tryBootstrapCoutinuously();
 
     void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
     time_point loop_();
 
-    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const char* host, const char* service);
+    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const std::string& host, const std::string& service);
 
     NodeStatus getStatus() const {
         return std::max(status4, status6);
@@ -350,6 +359,11 @@ private:
     std::mutex sock_mtx {};
     std::vector<std::pair<Blob, SockAddr>> rcv {};
 
+    std::vector<std::pair<std::string,std::string>> bootstrap_nodes {}; /* bootstrap nodes given with info "host",
+                                                                           "service" */
+    std::mutex bootstrap_mtx {};
+    std::thread bootstrap_thread {};
+
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
@@ -359,6 +373,7 @@ private:
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
+
 
     SockAddr bound4 {};
     SockAddr bound6 {};

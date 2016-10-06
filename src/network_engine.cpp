@@ -131,7 +131,7 @@ void
 NetworkEngine::clear()
 {
     for (auto& req : requests)
-        req.second->cancel();
+        req.second->setExpired();
     requests.clear();
 }
 

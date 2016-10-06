@@ -128,7 +128,7 @@ struct Value
     };
 
     typedef uint64_t Id;
-    static const constexpr Id INVALID_ID {0};
+    static constexpr Id INVALID_ID {0};
 
     class Filter : public std::function<bool(const Value&)> {
         using std::function<bool(const Value&)>::function;
