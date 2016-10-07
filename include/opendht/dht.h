@@ -294,6 +294,16 @@ private:
        the target 8 turn out to be dead. */
     static constexpr unsigned SEARCH_NODES {14};
 
+    /* The number of bad nodes is limited in order to help determine
+     * presence of connectivity changes. See
+     * https://github.com/savoirfairelinux/opendht/issues/137 for details.
+     *
+     * According to the tables, 25 is a good average value for big networks. If
+     * the network is small, normal search expiration process will handle the
+     * situation.
+     * */
+    static constexpr unsigned SEARCH_MAX_BAD_NODES {25};
+
     /* Concurrent search nodes requested count */
     static constexpr unsigned MAX_REQUESTED_SEARCH_NODES {4};
 
