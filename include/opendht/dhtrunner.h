@@ -197,9 +197,30 @@ public:
     }
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
 
-    void bootstrap(const char* host, const char* service, DoneCallbackSimple&& cb={});
+    /**
+     * Insert known nodes to the routing table, without necessarly ping them.
+     * Usefull to restart a node and get things running fast without putting load on the network.
+     */
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb={});
+
+    /**
+     * Insert known nodes to the routing table, without necessarly ping them.
+     * Usefull to restart a node and get things running fast without putting load on the network.
+     */
     void bootstrap(const std::vector<NodeExport>& nodes);
+
+    /**
+     * Add host:service to bootstrap nodes, and ping this node.
+     * DNS resolution is performed asynchronously.
+     * When disconnected, all bootstrap nodes added with this method will be tried regularly until connection
+     * to the DHT network is established.
+     */
+    void bootstrap(const std::string& host, const std::string& service);
+
+    /**
+     * Clear the list of bootstrap added using bootstrap(const std::string&, const std::string&).
+     */
+    void clearBootstrap();
 
     /**
      * Inform the DHT of lower-layer connectivity changes.
@@ -331,11 +352,20 @@ public:
     void join();
 
 private:
+    static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
+
+    /**
+     * Will try to resolve the list of hostnames `bootstrap_nodes` on seperate
+     * thread and then queue ping requests. This list should contain reliable
+     * nodes so that the DHT node can recover quickly from losing connection
+     * with the network.
+     */
+    void tryBootstrapCoutinuously();
 
     void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
     time_point loop_();
 
-    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const char* host, const char* service);
+    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const std::string& host, const std::string& service);
 
     NodeStatus getStatus() const {
         return std::max(status4, status6);
@@ -349,6 +379,15 @@ private:
     std::thread rcv_thread {};
     std::mutex sock_mtx {};
     std::vector<std::pair<Blob, SockAddr>> rcv {};
+
+    /** true if currently actively boostraping */
+    std::atomic_bool bootstraping {false};
+    /* bootstrap nodes given as (host, service) pairs */
+    std::vector<std::pair<std::string,std::string>> bootstrap_nodes_all {};
+    std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
+    std::thread bootstrap_thread {};
+    /** protects bootstrap_nodes, bootstrap_thread */
+    std::mutex bootstrap_mtx {};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
