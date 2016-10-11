@@ -133,7 +133,9 @@ struct Value
     class Filter : public std::function<bool(const Value&)> {
     public:
         Filter() {}
-        template<typename Functor> Filter(Functor&& f) : std::function<bool(const Value&)>::function(std::forward<Functor>(f)) {}
+
+        template<typename Functor>
+        Filter(Functor f) : std::function<bool(const Value&)>::function(f) {}
 
         Filter chain(Filter&& f2) {
             auto f1 = *this;
