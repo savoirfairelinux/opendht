@@ -52,6 +52,10 @@ printAddr(const SockAddr& addr) {
     return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 
+bool operator==(const SockAddr& a, const SockAddr& b) {
+    return a.equals(b);
+}
+
 time_point from_time_t(std::time_t t) {
     return clock::now() + (std::chrono::system_clock::from_time_t(t) - std::chrono::system_clock::now());
 }
