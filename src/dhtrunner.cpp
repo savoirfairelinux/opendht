@@ -37,6 +37,8 @@
 
 namespace dht {
 
+constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
+
 DhtRunner::DhtRunner() : dht_()
 {
 #ifdef _WIN32
@@ -131,6 +133,9 @@ DhtRunner::join()
         dht_thread.join();
     if (rcv_thread.joinable())
         rcv_thread.join();
+    if (bootstrap_thread.joinable())
+        bootstrap_thread.join();
+
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops = decltype(pending_ops)();
@@ -327,6 +332,15 @@ DhtRunner::loop_()
     if (nstatus4 != status4 || nstatus6 != status6) {
         status4 = nstatus4;
         status6 = nstatus6;
+        if (status4 == NodeStatus::Disconnected and status6 == NodeStatus::Disconnected) {
+            // We have lost connection with the DHT.  Try to recover using bootstrap nodes.
+            std::unique_lock<std::mutex> lck(bootstrap_mtx);
+            bootstrap_nodes = bootstrap_nodes_all;
+            tryBootstrapCoutinuously();
+        } else {
+            std::unique_lock<std::mutex> lck(bootstrap_mtx);
+            bootstrap_nodes.clear();
+        }
         if (statusCb)
             statusCb(status4, status6);
     }
@@ -571,18 +585,71 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Done
     putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), cb);
 }
 
+void
+DhtRunner::tryBootstrapCoutinuously()
+{
+    if (bootstrap_thread.joinable()) {
+        if (bootstraping)
+            return; // already running
+        else
+            bootstrap_thread.join();
+    }
+    bootstraping = true;
+    bootstrap_thread = std::thread([this]() {
+        auto next = clock::now();
+        do {
+            decltype(bootstrap_nodes) nodes;
+            {
+                std::lock_guard<std::mutex> lck(bootstrap_mtx);
+                nodes = bootstrap_nodes;
+            }
+
+            next += BOOTSTRAP_PERIOD;
+            {
+                std::mutex mtx; // dummy mutex
+                std::unique_lock<std::mutex> blck(mtx);
+                std::atomic<unsigned> ping_count(0);
+                // Reverse: try last inserted bootstrap nodes first
+                for (auto it = nodes.rbegin(); it != nodes.rend(); it++) {
+                    ++ping_count;
+                    try {
+                        bootstrap(getAddrInfo(it->first, it->second), [&](bool) {
+                            --ping_count;
+                            cv.notify_all();
+                        });
+                    } catch (std::invalid_argument& e) {
+                        --ping_count;
+                        std::cerr << e.what() << std::endl;
+                    }
+                }
+                // wait at least until the next BOOTSTRAP_PERIOD
+                cv.wait_until(blck, next, [&]() { return not running; });
+                // wait for bootstrap requests to end.
+                cv.wait(blck, [&]() { return not running or ping_count == 0; });
+            }
+            // update state
+            {
+                std::lock_guard<std::mutex> lck(dht_mtx);
+                bootstraping = running and
+                               status4 == NodeStatus::Disconnected and
+                               status6 == NodeStatus::Disconnected;
+            }
+        } while (bootstraping);
+    });
+}
+
 std::vector<std::pair<sockaddr_storage, socklen_t>>
-DhtRunner::getAddrInfo(const char* host, const char* service)
+DhtRunner::getAddrInfo(const std::string& host, const std::string& service)
 {
     std::vector<std::pair<sockaddr_storage, socklen_t>> ips {};
-    if (not host or not service or strlen(host) == 0)
+    if (host.empty())
         return ips;
 
     addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = SOCK_DGRAM;
     addrinfo* info = nullptr;
-    int rc = getaddrinfo(host, service, &hints, &info);
+    int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &info);
     if(rc != 0)
         throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
 
@@ -597,18 +664,35 @@ DhtRunner::getAddrInfo(const char* host, const char* service)
 }
 
 void
-DhtRunner::bootstrap(const char* host, const char* service)
+DhtRunner::bootstrap(const std::string& host, const std::string& service)
 {
-    bootstrap(getAddrInfo(host, service));
+    std::lock_guard<std::mutex> lck(bootstrap_mtx);
+    bootstrap_nodes_all.emplace_back(host, service);
+    bootstrap_nodes.emplace_back(host, service);
+    tryBootstrapCoutinuously();
 }
 
 void
-DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes)
+DhtRunner::clearBootstrap()
+{
+    std::lock_guard<std::mutex> lck(bootstrap_mtx);
+    bootstrap_nodes_all.clear();
+}
+
+void
+DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht& dht) {
+    pending_ops_prio.emplace([=](SecureDht& dht) mutable {
+        auto rem = std::make_shared<std::pair<size_t, bool>>(nodes.size(), false);
         for (auto& node : nodes)
-            dht.pingNode((sockaddr*)&node.first, node.second);
+            dht.pingNode((sockaddr*)&node.first, node.second, [rem,cb](bool ok) {
+                auto& r = *rem;
+                r.first--;
+                r.second |= ok;
+                if (not r.first)
+                    cb(r.second);
+            });
     });
     cv.notify_all();
 }
