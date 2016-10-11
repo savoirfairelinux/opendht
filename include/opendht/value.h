@@ -131,8 +131,10 @@ struct Value
     static const constexpr Id INVALID_ID {0};
 
     class Filter : public std::function<bool(const Value&)> {
-        using std::function<bool(const Value&)>::function;
     public:
+        Filter() {}
+        template<typename Functor> Filter(Functor&& f) : std::function<bool(const Value&)>::function(std::forward<Functor>(f)) {}
+
         Filter chain(Filter&& f2) {
             auto f1 = *this;
             return chain(std::move(f1), std::move(f2));

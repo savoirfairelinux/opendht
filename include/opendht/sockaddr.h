@@ -32,8 +32,6 @@ std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
 
 struct SockAddr : public std::pair<sockaddr_storage, socklen_t> {
 public:
-    using std::pair<sockaddr_storage, socklen_t>::pair;
-
     SockAddr() : pair<sockaddr_storage, socklen_t>::pair({},0) {}
     SockAddr(const SockAddr& o) : pair<sockaddr_storage, socklen_t>::pair({},o.second) {
         std::copy_n((uint8_t*)&o.first, o.second, (uint8_t*)&first);
@@ -43,6 +41,7 @@ public:
             throw std::runtime_error("Socket address length is too large");
         std::copy_n((uint8_t*)sa, len, (uint8_t*)&first);
     }
+    SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
 
     bool operator<(const SockAddr& o) const {
         if (second != o.second)

@@ -480,7 +480,7 @@ private:
      * first 64 bits in IPv6.
      */
     struct cmpSockAddr {
-        bool operator()(const SockAddr& a, const SockAddr& b) {
+        bool operator()(const SockAddr& a, const SockAddr& b) const {
             if (a.second != b.second)
                 return a.second < b.second;
             socklen_t start, len;
