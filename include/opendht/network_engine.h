@@ -374,7 +374,7 @@ private:
     /* TODO */
     static const std::string my_v;
 
-    bool rateLimit(const SockAddr& addr);
+    bool rateLimit();
 
     static bool isMartian(const SockAddr& addr);
     bool isNodeBlacklisted(const SockAddr& addr) const;

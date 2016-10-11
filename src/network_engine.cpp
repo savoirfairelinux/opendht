@@ -295,7 +295,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
 
     if (msg.type > MessageType::Reply) {
         /* Rate limit requests. */
-        if (!rateLimit(from)) {
+        if (!rateLimit()) {
             DHT_LOG.WARN("Dropping request due to rate limiting.");
             return;
         }
