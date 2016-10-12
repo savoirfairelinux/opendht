@@ -684,15 +684,15 @@ DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& 
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
-        auto rem = std::make_shared<std::pair<size_t, bool>>(nodes.size(), false);
+        auto rem = cb ? std::make_shared<std::pair<size_t, bool>>(nodes.size(), false) : nullptr;
         for (auto& node : nodes)
-            dht.pingNode((sockaddr*)&node.first, node.second, [rem,cb](bool ok) {
+            dht.pingNode((sockaddr*)&node.first, node.second, cb ? [rem,cb](bool ok) {
                 auto& r = *rem;
                 r.first--;
                 r.second |= ok;
                 if (not r.first)
                     cb(r.second);
-            });
+            } : DoneCallbackSimple{});
     });
     cv.notify_all();
 }
