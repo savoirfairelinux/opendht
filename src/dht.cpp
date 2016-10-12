@@ -278,7 +278,9 @@ struct Dht::SearchNode {
         if (node->isExpired())
             return false;
 
-        auto pending {false}, completed_sq_status {false}, pending_sq_status {false};
+        bool pending {false},
+             completed_sq_status {false},
+             pending_sq_status {false};
         for (const auto& s : getStatus) {
             if (s.second and s.second->pending())
                 pending = true;
@@ -1235,7 +1237,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                             auto& a = *ait;
                             const auto& type = getType(a.value->type);
                             if (sn->isSynced(now) and sn->getAnnounceTime(a.value->id, type) <= now) {
-                                auto hasValue {false};
+                                bool hasValue {false};
                                 uint16_t seq_no = 0;
                                 try {
                                     const auto& f = std::find_if(answer.fields.cbegin(), answer.fields.cend(),
