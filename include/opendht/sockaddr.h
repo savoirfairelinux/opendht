@@ -21,8 +21,11 @@
 #ifndef _WIN32
 #include <sys/socket.h>
 #else
+#include <iso646.h>
 #include <ws2def.h>
 #include <ws2tcpip.h>
+typedef uint16_t sa_family_t;
+typedef uint16_t in_port_t;
 #endif
 
 namespace dht {
