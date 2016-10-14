@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "def.h"
+
 #include <msgpack.hpp>
 
 #ifndef _WIN32
@@ -53,7 +55,7 @@ namespace dht {
  * An InfoHash is a byte array of HASH_LEN bytes.
  * InfoHashes identify nodes and values in the Dht.
  */
-class InfoHash final : public std::array<uint8_t, HASH_LEN> {
+class OPENDHT_PUBLIC InfoHash final : public std::array<uint8_t, HASH_LEN> {
 public:
     constexpr InfoHash() : std::array<uint8_t, HASH_LEN>() {}
     constexpr InfoHash(const std::array<uint8_t, HASH_LEN>& h) : std::array<uint8_t, HASH_LEN>(h) {}
@@ -192,8 +194,8 @@ public:
 
     static InfoHash getRandom();
 
-    friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
-    friend std::istream& operator>> (std::istream& s, InfoHash& h);
+    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
+    OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, InfoHash& h);
 
     std::string toString() const;
 

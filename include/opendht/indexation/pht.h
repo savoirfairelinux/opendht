@@ -26,7 +26,7 @@ namespace indexation {
  * the node in question is a leaf, *the label is a prefix of all the keys
  * contained in the leaf*.
  */
-struct Prefix {
+struct OPENDHT_PUBLIC Prefix {
     Prefix() {}
     Prefix(InfoHash h) : size_(h.size() * 8), content_(h.begin(), h.end()) { }
     Prefix(const Blob& d, const Blob& f={}) : size_(d.size()*8), flags_(f), content_(d) { }
@@ -245,7 +245,7 @@ private:
 };
 
 using Value = std::pair<InfoHash, dht::Value::Id>;
-struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
+struct OPENDHT_PUBLIC IndexEntry : public dht::Value::Serializable<IndexEntry> {
     static const ValueType TYPE;
 
     virtual void unpackValue(const dht::Value& v) {
@@ -265,7 +265,7 @@ struct IndexEntry : public dht::Value::Serializable<IndexEntry> {
     MSGPACK_DEFINE_MAP(prefix, value)
 };
 
-class Pht {
+class OPENDHT_PUBLIC Pht {
     static constexpr const char* INVALID_KEY = "Key does not match the PHT key spec.";
 
     /* Prefixes the user_type for all dht values put on the DHT */

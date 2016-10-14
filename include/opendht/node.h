@@ -86,7 +86,7 @@ struct Node {
 
     std::string toString() const;
 
-    friend std::ostream& operator<< (std::ostream& s, const Node& h);
+    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Node& h);
 
     static constexpr const std::chrono::minutes NODE_GOOD_TIME {120};
 

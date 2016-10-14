@@ -38,7 +38,7 @@ extern "C" {
 namespace dht {
 namespace crypto {
 
-class CryptoException : public std::runtime_error {
+class OPENDHT_PUBLIC CryptoException : public std::runtime_error {
     public:
         CryptoException(const std::string& str) : std::runtime_error(str) {};
 };
@@ -46,7 +46,7 @@ class CryptoException : public std::runtime_error {
 /**
  * Exception thrown when a decryption error happened.
  */
-class DecryptError : public CryptoException {
+class OPENDHT_PUBLIC DecryptError : public CryptoException {
     public:
         DecryptError(const std::string& str = "") : CryptoException(str) {};
 };
@@ -59,7 +59,7 @@ using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certific
 /**
  * A public key.
  */
-struct PublicKey
+struct OPENDHT_PUBLIC PublicKey
 {
     PublicKey() {}
 
@@ -109,7 +109,7 @@ private:
 /**
  * A private key, including the corresponding public key.
  */
-struct PrivateKey
+struct OPENDHT_PUBLIC PrivateKey
 {
     PrivateKey();
     //PrivateKey(gnutls_privkey_t k) : key(k) {}
@@ -159,7 +159,7 @@ private:
     //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
-struct Certificate {
+struct OPENDHT_PUBLIC Certificate {
     Certificate() {}
 
     /**
@@ -324,8 +324,8 @@ private:
  *           If not set, the generated certificate will be a self-signed CA.
  * @param key_length stength of the generated private key (bits).
  */
-Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
-Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
 
 /**
@@ -336,7 +336,7 @@ Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {},
  * will use SHA256 for hash_length up to 32 bytes,
  * will use SHA512 for hash_length of 33 bytes and more.
  */
-Blob hash(const Blob& data, size_t hash_length = 512/8);
+OPENDHT_PUBLIC Blob hash(const Blob& data, size_t hash_length = 512/8);
 
 /**
  * Generates an encryption key from a text password,
@@ -345,19 +345,19 @@ Blob hash(const Blob& data, size_t hash_length = 512/8);
  * that can be transmitted in clear, and will be generated if
  * not provided (32 bytes).
  */
-Blob stretchKey(const std::string& password, Blob& salt, size_t key_length = 512/8);
+OPENDHT_PUBLIC Blob stretchKey(const std::string& password, Blob& salt, size_t key_length = 512/8);
 
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
  */
-Blob aesEncrypt(const Blob& data, const Blob& key);
-Blob aesEncrypt(const Blob& data, const std::string& password);
+OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const Blob& key);
+OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const std::string& password);
 
 /**
  * AES-GCM decryption.
  */
-Blob aesDecrypt(const Blob& data, const Blob& key);
-Blob aesDecrypt(const Blob& data, const std::string& password);
+OPENDHT_PUBLIC Blob aesDecrypt(const Blob& data, const Blob& key);
+OPENDHT_PUBLIC Blob aesDecrypt(const Blob& data, const std::string& password);
 
 }
 }

@@ -35,7 +35,7 @@ MSGPACK_ADD_ENUM(dht::ImStatus)
 
 namespace dht {
 
-class DhtMessage : public Value::Serializable<DhtMessage>
+class OPENDHT_PUBLIC DhtMessage : public Value::Serializable<DhtMessage>
 {
 public:
     static const ValueType TYPE;
@@ -61,7 +61,7 @@ public:
 };
 
 template <typename T>
-class SignedValue : public Value::Serializable<T>
+class OPENDHT_PUBLIC SignedValue : public Value::Serializable<T>
 {
 private:
     using BaseClass = Value::Serializable<T>;
@@ -81,7 +81,7 @@ public:
 };
 
 template <typename T>
-class EncryptedValue : public SignedValue<T>
+class OPENDHT_PUBLIC EncryptedValue : public SignedValue<T>
 {
 public:
     using BaseClass = SignedValue<T>;
@@ -105,7 +105,7 @@ public:
 
 
 
-class ImMessage : public SignedValue<ImMessage>
+class OPENDHT_PUBLIC ImMessage : public SignedValue<ImMessage>
 {
 private:
     using BaseClass = SignedValue<ImMessage>;
@@ -131,7 +131,7 @@ public:
     MSGPACK_DEFINE_MAP(id, msg, date, status)
 };
 
-class TrustRequest : public EncryptedValue<TrustRequest>
+class OPENDHT_PUBLIC TrustRequest : public EncryptedValue<TrustRequest>
 {
 private:
     using BaseClass = EncryptedValue<TrustRequest>;
@@ -152,7 +152,7 @@ public:
     MSGPACK_DEFINE(service, payload)
 };
 
-class IceCandidates : public EncryptedValue<IceCandidates>
+class OPENDHT_PUBLIC IceCandidates : public EncryptedValue<IceCandidates>
 {
 private:
     using BaseClass = EncryptedValue<IceCandidates>;
@@ -198,7 +198,7 @@ public:
 
 /* "Peer" announcement
  */
-class IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
+class OPENDHT_PUBLIC IpServiceAnnouncement : public Value::Serializable<IpServiceAnnouncement>
 {
 private:
     using BaseClass = Value::Serializable<IpServiceAnnouncement>;
@@ -273,8 +273,8 @@ private:
 };
 
 
-extern const std::array<std::reference_wrapper<const ValueType>, 5> DEFAULT_TYPES;
+OPENDHT_PUBLIC extern const std::array<std::reference_wrapper<const ValueType>, 5> DEFAULT_TYPES;
 
-extern const std::array<std::reference_wrapper<const ValueType>, 1> DEFAULT_INSECURE_TYPES;
+OPENDHT_PUBLIC extern const std::array<std::reference_wrapper<const ValueType>, 1> DEFAULT_INSECURE_TYPES;
 
 }

@@ -72,7 +72,7 @@ using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>
 
 static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 
-struct ValueType {
+struct OPENDHT_PUBLIC ValueType {
     typedef uint16_t Id;
 
     static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t);
@@ -114,7 +114,7 @@ struct ValueType {
  * Values are stored at a given InfoHash in the Dht, but also have a
  * unique ID to distinguish between values stored at the same location.
  */
-struct Value
+struct OPENDHT_PUBLIC Value
 {
     enum class Field : int {
         None = 0,
@@ -409,7 +409,7 @@ struct Value
     }
 
     /** print value for debugging */
-    friend std::ostream& operator<< (std::ostream& s, const Value& v);
+    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Value& v);
 
     std::string toString() const {
         std::stringstream ss;
@@ -553,7 +553,7 @@ using ValuesExport = std::pair<InfoHash, Blob>;
  * This structure holds the value for a specified field. It's type can either be
  * uint64_t, InfoHash or Blob.
  */
-struct FieldValue
+struct OPENDHT_PUBLIC FieldValue
 {
     FieldValue() {}
     FieldValue(Value::Field f, uint64_t int_value) : field(f), intValue(int_value) {}
@@ -638,7 +638,7 @@ private:
  * This is meant to narrow data to a set of specified fields. This structure is
  * used to construct a Select structure.
  */
-struct FieldSelectorDescription
+struct OPENDHT_PUBLIC FieldSelectorDescription
 {
     FieldSelectorDescription() {}
     FieldSelectorDescription(Value::Field f) : field(f) {}
@@ -661,7 +661,7 @@ private:
  * This is a container for a list of FieldSelectorDescription instances. It
  * describes a complete SELECT query for dht::Value.
  */
-struct Select
+struct OPENDHT_PUBLIC Select
 {
     Select() { }
     Select(const std::string& q_str);
@@ -700,7 +700,7 @@ struct Select
         fieldSelection_ = o.as<decltype(fieldSelection_)>();
     }
 
-    friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
+    OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
 private:
     std::vector<FieldSelectorDescription> fieldSelection_ {};
 };
@@ -712,7 +712,7 @@ private:
  * This is container for a list of FieldValue instances. It describes a
  * complete WHERE query for dht::Value.
  */
-struct Where
+struct OPENDHT_PUBLIC Where
 {
     Where() { }
     Where(const std::string& q_str);
@@ -802,7 +802,7 @@ struct Where
         filters_ = o.as<decltype(filters_)>();
     }
 
-    friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
+    OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
 
 private:
     std::vector<FieldValue> filters_;
@@ -816,7 +816,7 @@ private:
  * itselves to include in the peer response to a GET operation. See
  * FieldValue.
  */
-struct Query
+struct OPENDHT_PUBLIC Query
 {
     static const std::string QUERY_PARSE_ERROR;
 
@@ -864,7 +864,7 @@ struct Query
         return ss.str();
     }
 
-    friend std::ostream& operator<<(std::ostream& s, const dht::Query& q) {
+    OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Query& q) {
         return s << "Query[" << q.select << " " << q.where << "]";
     }
 
@@ -880,7 +880,7 @@ struct Query
  * This structures is meant to manipulate a subset of fields normally contained
  * in Value.
  */
-struct FieldValueIndex {
+struct OPENDHT_PUBLIC FieldValueIndex {
     FieldValueIndex() {}
     FieldValueIndex(const Value& v, Select s = {});
     /**
@@ -891,7 +891,7 @@ struct FieldValueIndex {
      */
     bool containedIn(const FieldValueIndex& other) const;
 
-    friend std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi);
+    OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi);
 
     void msgpack_unpack_fields(const std::set<Value::Field>& fields,
             const msgpack::object& o,

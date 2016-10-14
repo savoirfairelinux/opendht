@@ -18,8 +18,7 @@
 
 #pragma once
 
-#define WANT4 1
-#define WANT6 2
+#include "def.h"
 
 #include <msgpack.hpp>
 
@@ -29,6 +28,9 @@
 #include <map>
 
 #include <cstdarg>
+
+#define WANT4 1
+#define WANT6 2
 
 namespace dht {
 
@@ -45,7 +47,7 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
     }
 }
 
-class DhtException : public std::runtime_error {
+class OPENDHT_PUBLIC DhtException : public std::runtime_error {
     public:
         DhtException(const std::string &str = "") :
             std::runtime_error("DhtException occurred: " + str) {}
@@ -93,7 +95,7 @@ using Blob = std::vector<uint8_t>;
 /**
  * Provides backward compatibility with msgpack 1.0
  */
-Blob unpackBlob(msgpack::object& o);
+OPENDHT_PUBLIC Blob unpackBlob(msgpack::object& o);
 
 template <typename Type>
 Blob

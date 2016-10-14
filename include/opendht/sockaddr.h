@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "def.h"
+
 #ifndef _WIN32
 #include <sys/socket.h>
 #else
@@ -30,10 +32,10 @@ typedef uint16_t in_port_t;
 
 namespace dht {
 
-std::string print_addr(const sockaddr* sa, socklen_t slen);
-std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
+OPENDHT_PUBLIC std::string print_addr(const sockaddr* sa, socklen_t slen);
+OPENDHT_PUBLIC std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
 
-struct SockAddr : public std::pair<sockaddr_storage, socklen_t> {
+struct OPENDHT_PUBLIC SockAddr : public std::pair<sockaddr_storage, socklen_t> {
 public:
     SockAddr() : pair<sockaddr_storage, socklen_t>::pair({},0) {}
     SockAddr(const SockAddr& o) : pair<sockaddr_storage, socklen_t>::pair({},o.second) {
@@ -68,8 +70,8 @@ public:
     sa_family_t getFamily() const { return second > sizeof(sa_family_t) ? first.ss_family : AF_UNSPEC; }
 };
 
-bool operator==(const SockAddr& a, const SockAddr& b);
+OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);
 
-std::string printAddr(const SockAddr& addr);
+OPENDHT_PUBLIC std::string printAddr(const SockAddr& addr);
 
 }
