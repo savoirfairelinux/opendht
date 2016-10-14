@@ -3079,6 +3079,9 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
                 break;
             }
         }
+    } else if (e.getCode() == DhtProtocolException::NOT_FOUND) {
+        DHT_LOG.ERR("[node %s] returned error 404: storage not found", req->node->id.toString().c_str());
+        network_engine.cancelRequest(req);
     }
 }
 
@@ -3320,7 +3323,7 @@ NetworkEngine::RequestAnswer
 Dht::onRefresh(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid)
 {
     const auto& now = scheduler.time();
-    if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
+    if (not tokenMatch(token, (sockaddr*)&node->addr.first)) {
         DHT_LOG.WARN("[node %s] incorrect token %s for 'put'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }

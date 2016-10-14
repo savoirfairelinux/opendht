@@ -467,14 +467,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         switch (msg->type) {
         case MessageType::Error: {
-            if (msg->error_code == DhtProtocolException::UNAUTHORIZED
-                    && msg->id != zeroes
-                    && (msg->tid.matches(TransPrefix::ANNOUNCE_VALUES)
-                     || msg->tid.matches(TransPrefix::LISTEN)))
+            if (msg->id != zeroes
+                    and (msg->tid.matches(TransPrefix::ANNOUNCE_VALUES)
+                     or msg->tid.matches(TransPrefix::REFRESH)
+                     or msg->tid.matches(TransPrefix::LISTEN)))
             {
                 req->last_try = TIME_INVALID;
                 req->reply_time = TIME_INVALID;
-                onError(req, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
+                onError(req, DhtProtocolException {msg->error_code});
             } else {
                 DHT_LOG.WARN("[node %s %s] received unknown error message %u",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
