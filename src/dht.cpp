@@ -1278,7 +1278,15 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                                                     sn->token,
                                                                     onDone,
                                                                     onExpired);
-                                } else {
+                                } else if (hasValue and a.permanent) {
+                                    sn->acked[a.value->id] = network_engine.sendRefreshValue(sn->node,
+                                                                    sr->id,
+                                                                    a.value->id,
+                                                                    sn->token,
+                                                                    onDone,
+                                                                    onExpired);
+                                }
+                                else {
                                     DHT_LOG.WARN("[search %s IPv%c] [node %s] already has value (vid: %d). Aborting.",
                                             sr->id.toString().c_str(),
                                             sr->af == AF_INET ? '4' : '6',
