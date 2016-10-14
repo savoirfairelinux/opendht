@@ -1102,7 +1102,7 @@ NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(3);
+    pk.pack(std::string("a")); pk.pack_map(4);
       pk.pack(std::string("id"));  pk.pack(myid);
       pk.pack(std::string("h"));  pk.pack(infohash);
       pk.pack(std::string("vid")); pk.pack(vid);
