@@ -1279,6 +1279,11 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                                                     onDone,
                                                                     onExpired);
                                 } else if (hasValue and a.permanent) {
+                                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'refresh' (vid: %d)",
+                                            sr->id.toString().c_str(),
+                                            sr->af == AF_INET ? '4' : '6',
+                                            sn->node->toString().c_str(),
+                                            a.value->id);
                                     sn->acked[a.value->id] = network_engine.sendRefreshValue(sn->node,
                                                                     sr->id,
                                                                     a.value->id,
