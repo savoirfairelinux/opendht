@@ -1277,11 +1277,8 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
 
                                 /* only put the value if the node doesn't already have it */
                                 if (not hasValue or seq_no < a.value->seq) {
-                                    DHT_LOG_WARN("[search %s IPv%c] [node %s] sending 'put' (vid: %d)",
-                                            sr->id.toString().c_str(),
-                                            sr->af == AF_INET ? '4' : '6',
-                                            sn->node->toString().c_str(),
-                                            a.value->id);
+                                    DHT_LOG_WARN("[search %s] [node %s] sending 'put' (vid: %d)",
+                                            sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                                     sn->acked[a.value->id] = network_engine.sendAnnounceValue(sn->node,
                                                                     sr->id,
                                                                     a.value,
@@ -1289,12 +1286,18 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                                                     sn->token,
                                                                     onDone,
                                                                     onExpired);
+                                } else if (hasValue and a.permanent) {
+                                    DHT_LOG_WARN("[search %s] [node %s] sending 'refresh' (vid: %d)",
+                                            sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
+                                    sn->acked[a.value->id] = network_engine.sendRefreshValue(sn->node,
+                                                                    sr->id,
+                                                                    a.value->id,
+                                                                    sn->token,
+                                                                    onDone,
+                                                                    onExpired);
                                 } else {
-                                    DHT_LOG_WARN("[search %s IPv%c] [node %s] already has value (vid: %d). Aborting.",
-                                            sr->id.toString().c_str(),
-                                            sr->af == AF_INET ? '4' : '6',
-                                            sn->node->toString().c_str(),
-                                            a.value->id);
+                                    DHT_LOG.WARN("[search %s] [node %s] already has value (vid: %d). Aborting.",
+                                            sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                                     auto ack_req = std::make_shared<Request>();
                                     ack_req->reply_time = now;
                                     sn->acked[a.value->id] = std::move(ack_req);
