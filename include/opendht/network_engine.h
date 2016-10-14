@@ -49,6 +49,7 @@ public:
     // sent to another peer (http-like).
     static const constexpr uint16_t NON_AUTHORITATIVE_INFORMATION {203}; /* incomplete request packet. */
     static const constexpr uint16_t UNAUTHORIZED {401};                  /* wrong tokens. */
+    static const constexpr uint16_t NOT_FOUND {404};                     /* storage not found */
     // for internal use (custom).
     static const constexpr uint16_t INVALID_TID_SIZE {421};              /* id was truncated. */
     static const constexpr uint16_t UNKNOWN_TID {422};                   /* unknown tid */
@@ -59,6 +60,7 @@ public:
     static const std::string LISTEN_WRONG_TOKEN; /* wrong token in "listen" request */
     static const std::string PUT_NO_INFOHASH;    /* no infohash in "put" request */
     static const std::string PUT_WRONG_TOKEN;    /* got "put" request with wrong token */
+    static const std::string STORAGE_NOT_FOUND;  /* got access request for an unknown storage */
     static const std::string PUT_INVALID_ID;     /* invalid id in "put" request */
 
     DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
@@ -92,6 +94,7 @@ struct ParsedMessage;
  * @param onGetValues    callback for "get values" request.
  * @param onListen       callback for "listen" request.
  * @param onAnnounce     callback for "announce" request.
+ * @param onRefresh      callback for "refresh" request.
  */
 class NetworkEngine final
 {
@@ -101,6 +104,7 @@ class NetworkEngine final
         static const TransPrefix FIND_NODE;
         static const TransPrefix GET_VALUES;
         static const TransPrefix ANNOUNCE_VALUES;
+        static const TransPrefix REFRESH;
         static const TransPrefix LISTEN;
     };
 public:
@@ -214,7 +218,7 @@ private:
      *             or ipv6.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
+            const InfoHash&,
             want_t)> onFindNode {};
     /**
      * @brief on "get values" request callback.
@@ -225,9 +229,9 @@ private:
      *             or ipv6.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
+            const InfoHash&,
             want_t,
-            Query)> onGetValues {};
+            const Query&)> onGetValues {};
     /**
      * @brief on listen request callback.
      *
@@ -237,10 +241,10 @@ private:
      * @param rid (type: uint16_t) request id.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
-            Blob&,
+            const InfoHash&,
+            const Blob&,
             uint16_t,
-            Query)> onListen {};
+            const Query&)> onListen {};
     /**
      * @brief on announce request callback.
      *
@@ -251,10 +255,22 @@ private:
      * @param created (type: time_point) time when the value was created.
      */
     std::function<RequestAnswer(std::shared_ptr<Node>,
-            InfoHash&,
-            Blob&,
-            std::vector<std::shared_ptr<Value>>,
-            time_point)> onAnnounce {};
+            const InfoHash&,
+            const Blob&,
+            const std::vector<std::shared_ptr<Value>>&,
+            const time_point&)> onAnnounce {};
+    /**
+     * @brief on refresh request callback.
+     *
+     * @param node (type: std::shared_ptr<Node>) the requesting node.
+     * @param vhash (type: InfoHash) hash of the value of interest.
+     * @param token (type: Blob) security token.
+     * @param vid (type: Value::id) the value id.
+     */
+    std::function<RequestAnswer(std::shared_ptr<Node>,
+            const InfoHash&,
+            const Blob&,
+            const Value::Id&)> onRefresh {};
 
 public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
@@ -269,7 +285,8 @@ public:
             decltype(NetworkEngine::onFindNode) onFindNode,
             decltype(NetworkEngine::onGetValues) onGetValues,
             decltype(NetworkEngine::onListen) onListen,
-            decltype(NetworkEngine::onAnnounce) onAnnounce);
+            decltype(NetworkEngine::onAnnounce) onAnnounce,
+            decltype(NetworkEngine::onRefresh) onRefresh);
 
     virtual ~NetworkEngine();
 
@@ -332,6 +349,13 @@ public:
                 const Blob& token,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
+    std::shared_ptr<Request>
+        sendRefreshValue(std::shared_ptr<Node> n,
+                const InfoHash& infohash,
+                const Value::Id& vid,
+                const Blob& token,
+                RequestCb on_done,
+                RequestExpiredCb on_expired);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -375,7 +399,7 @@ private:
     static const constexpr size_t NODE4_INFO_BUF_LEN {26};
     /* the length of a node info buffer in ipv6 format */
     static const constexpr size_t NODE6_INFO_BUF_LEN {38};
-    /* TODO */
+    /* the maximum time we wait for an UDP reply */
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
 
     /* Max. time to receive a full fragmented packet */
@@ -423,6 +447,7 @@ private:
         unsigned get {0};
         unsigned put {0};
         unsigned listen {0};
+        unsigned refresh {0};
     };
 
 
