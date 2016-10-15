@@ -245,7 +245,12 @@ public:
      * This will cause the DHT to assume a public IP address change.
      * The DHT will recontact neighbor nodes, re-register for listen ops etc.
      */
-    void connectivityChanged();
+    void connectivityChanged(sa_family_t);
+    void connectivityChanged() {
+        reported_addr.clear();
+        connectivityChanged(AF_INET);
+        connectivityChanged(AF_INET6);
+    }
 
     /**
      * Get the list of good nodes for local storage saving purposes

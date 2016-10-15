@@ -1412,7 +1412,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
     {
         DHT_LOG.WARN("[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
         sr->expire();
-        connectivityChanged();
+        connectivityChanged(sr->af);
     }
 
     /* dumpSearch(*sr, std::cout); */
@@ -2321,21 +2321,20 @@ Dht::Storage::expire(const std::map<ValueType::Id, ValueType>& types, time_point
 }
 
 void
-Dht::connectivityChanged()
+Dht::connectivityChanged(sa_family_t af)
 {
     const auto& now = scheduler.time();
     scheduler.edit(nextNodesConfirmation, now);
-    mybucket_grow_time = now;
-    mybucket6_grow_time = now;
-    reported_addr.clear();
-    network_engine.connectivityChanged();
-    auto stop_listen = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
-        for (auto& sp : srs)
-            for (auto& sn : sp.second->nodes)
-                sn.listenStatus.clear();
-    };
-    stop_listen(searches4);
-    stop_listen(searches6);
+    auto& bucket_grow_time = (af == AF_INET) ? mybucket_grow_time : mybucket6_grow_time;
+    bucket_grow_time = now;
+    reported_addr.erase(std::remove_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& addr){
+        return addr.second.getFamily() == af;
+    }));
+    network_engine.connectivityChanged(af);
+    auto& searches = (af == AF_INET) ? searches4 : searches6;
+    for (auto& sp : searches)
+        for (auto& sn : sp.second->nodes)
+            sn.listenStatus.clear();
 }
 
 void
@@ -2701,8 +2700,8 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
 
     auto n = q->randomNode();
     if (n) {
-        DHT_LOG.DEBUG("[find %s IPv%c] sending find for neighborhood maintenance.",
-                id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
+        DHT_LOG.DEBUG("[node %s] sending [find %s] for neighborhood maintenance.",
+                n->toString().c_str(), id.toString().c_str());
         /* Since our node-id is the same in both DHTs, it's probably
            profitable to query both families. */
         network_engine.sendFindNode(n, id, network_engine.want(), nullptr, nullptr);

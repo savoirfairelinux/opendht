@@ -169,7 +169,7 @@ public:
      */
     void cancelRequest(std::shared_ptr<Request>& req);
 
-    void connectivityChanged();
+    void connectivityChanged(sa_family_t);
 
 private:
 

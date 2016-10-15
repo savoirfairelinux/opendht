@@ -88,7 +88,7 @@ struct ParsedMessage {
     Blob nodes4_raw, nodes6_raw;
     std::vector<std::shared_ptr<Node>> nodes4, nodes6;
     /* values to store or retreive request */
-    std::vector<std::shared_ptr<Value>> values;           
+    std::vector<std::shared_ptr<Value>> values;
     /* index for fields values */
     std::vector<std::shared_ptr<FieldValueIndex>> fields;
     /** When part of the message header: {index -> (total size, {})}
@@ -199,9 +199,9 @@ NetworkEngine::clear()
 }
 
 void
-NetworkEngine::connectivityChanged()
+NetworkEngine::connectivityChanged(sa_family_t af)
 {
-    cache.clearBadNodes();
+    cache.clearBadNodes(af);
 }
 
 void
