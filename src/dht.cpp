@@ -182,6 +182,20 @@ struct Dht::Storage {
     std::tuple<ValueStorage*, ssize_t, ssize_t>
     store(const std::shared_ptr<Value>& value, time_point created, ssize_t size_left);
 
+    /**
+     * Refreshes the time point of the value's lifetime begining.
+     *
+     * @param now  The reference to now;
+     * @param vid  The value id;
+     */
+    void refresh(const time_point& now, const Value::Id& vid) {
+        auto vs = std::find_if(values.begin(), values.end(), [&vid](const ValueStorage& vs) {
+            return vs.data->id == vid;
+        });
+        if (vs != values.end())
+            vs->time = now;
+    }
+
     std::pair<ssize_t, ssize_t> expire(const std::map<ValueType::Id, ValueType>& types, time_point now);
 
 private:
@@ -1264,7 +1278,20 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                                                     sn->token,
                                                                     onDone,
                                                                     onExpired);
-                                } else {
+                                } else if (hasValue and a.permanent) {
+                                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'refresh' (vid: %d)",
+                                            sr->id.toString().c_str(),
+                                            sr->af == AF_INET ? '4' : '6',
+                                            sn->node->toString().c_str(),
+                                            a.value->id);
+                                    sn->acked[a.value->id] = network_engine.sendRefreshValue(sn->node,
+                                                                    sr->id,
+                                                                    a.value->id,
+                                                                    sn->token,
+                                                                    onDone,
+                                                                    onExpired);
+                                }
+                                else {
                                     DHT_LOG.WARN("[search %s IPv%c] [node %s] already has value (vid: %d). Aborting.",
                                             sr->id.toString().c_str(),
                                             sr->af == AF_INET ? '4' : '6',
@@ -2639,7 +2666,8 @@ Dht::Dht(int s, int s6, Config config)
             std::bind(&Dht::onFindNode, this, _1, _2, _3),
             std::bind(&Dht::onGetValues, this, _1, _2, _3, _4),
             std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5),
-            std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5))
+            std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5),
+            std::bind(&Dht::onRefresh, this, _1, _2, _3, _4))
 {
     scheduler.syncTime();
     if (s < 0 && s6 < 0)
@@ -3055,6 +3083,9 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
                 break;
             }
         }
+    } else if (e.getCode() == DhtProtocolException::NOT_FOUND) {
+        DHT_LOG.ERR("[node %s] returned error 404: storage not found", req->node->id.toString().c_str());
+        network_engine.cancelRequest(req);
     }
 }
 
@@ -3074,7 +3105,7 @@ Dht::onPing(std::shared_ptr<Node>)
 }
 
 NetworkEngine::RequestAnswer
-Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& target, want_t want)
+Dht::onFindNode(std::shared_ptr<Node> node, const InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
     NetworkEngine::RequestAnswer answer;
@@ -3087,7 +3118,7 @@ Dht::onFindNode(std::shared_ptr<Node> node, InfoHash& target, want_t want)
 }
 
 NetworkEngine::RequestAnswer
-Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query& query)
+Dht::onGetValues(std::shared_ptr<Node> node, const InfoHash& hash, want_t, const Query& query)
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("[node %s] Eek! Got get_values with no info_hash.", node->toString().c_str());
@@ -3184,7 +3215,7 @@ void Dht::onGetValuesDone(const Request& status,
 }
 
 NetworkEngine::RequestAnswer
-Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, Query&& query)
+Dht::onListen(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& token, size_t rid, const Query& query)
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("Listen with no info_hash.");
@@ -3197,7 +3228,8 @@ Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t ri
         DHT_LOG.WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
-    storageAddListener(hash, node, rid, std::forward<Query>(query));
+    Query q = query;
+    storageAddListener(hash, node, rid, std::move(q));
     return {};
 }
 
@@ -3225,10 +3257,10 @@ Dht::onListenDone(const Request& status,
 
 NetworkEngine::RequestAnswer
 Dht::onAnnounce(std::shared_ptr<Node> node,
-        InfoHash& hash,
-        Blob& token,
-        std::vector<std::shared_ptr<Value>> values,
-        time_point created)
+        const InfoHash& hash,
+        const Blob& token,
+        const std::vector<std::shared_ptr<Value>>& values,
+        const time_point& created)
 {
     if (hash == zeroes) {
         DHT_LOG.WARN("Put with no info_hash.");
@@ -3287,6 +3319,28 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
                         hash.toString().c_str(), vc->id, vc->toString().c_str());
             }
         }
+    }
+    return {};
+}
+
+NetworkEngine::RequestAnswer
+Dht::onRefresh(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid)
+{
+    const auto& now = scheduler.time();
+    if (not tokenMatch(token, (sockaddr*)&node->addr.first)) {
+        DHT_LOG.WARN("[node %s] incorrect token %s for 'put'.", node->toString().c_str(), hash.toString().c_str());
+        throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
+    }
+
+    auto s = store.find(hash);
+    if (s != store.end()) {
+        DHT_LOG.DEBUG("[Storage %s] refreshed value (vid: %d).", hash.toString().c_str(), vid);
+        s->second.refresh(now, vid);
+    } else {
+        DHT_LOG.DEBUG("[node %s] got refresh value for unknown storage (id: %s).",
+                node->id.toString().c_str(),
+                hash.toString().c_str());
+        throw DhtProtocolException {DhtProtocolException::NOT_FOUND, DhtProtocolException::STORAGE_NOT_FOUND};
     }
     return {};
 }

@@ -33,6 +33,7 @@ const std::string DhtProtocolException::LISTEN_WRONG_TOKEN {"Listen with wrong t
 const std::string DhtProtocolException::PUT_NO_INFOHASH {"Put with no info_hash"};
 const std::string DhtProtocolException::PUT_WRONG_TOKEN {"Put with wrong token"};
 const std::string DhtProtocolException::PUT_INVALID_ID {"Put with invalid id"};
+const std::string DhtProtocolException::STORAGE_NOT_FOUND {"Access operation for unknown storage"};
 
 constexpr std::chrono::seconds NetworkEngine::UDP_REPLY_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
@@ -43,10 +44,11 @@ const constexpr uint16_t NetworkEngine::TransId::INVALID;
 std::mt19937 NetworkEngine::rd_device {dht::crypto::random_device{}()};
 
 const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::PING = {"pn"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::FIND_NODE  = {"fn"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::GET_VALUES  = {"gt"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES  = {"pt"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN  = {"lt"};
+const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::FIND_NODE = {"fn"};
+const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::GET_VALUES = {"gt"};
+const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES = {"pt"};
+const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::REFRESH = {"rf"};
+const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN = {"lt"};
 constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
 
 static const uint8_t v4prefix[16] = {
@@ -62,6 +64,7 @@ enum class MessageType {
     FindNode,
     GetValues,
     AnnounceValue,
+    Refresh,
     Listen,
     ValueData
 };
@@ -139,10 +142,11 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& l
         decltype(NetworkEngine::onFindNode) onFindNode,
         decltype(NetworkEngine::onGetValues) onGetValues,
         decltype(NetworkEngine::onListen) onListen,
-        decltype(NetworkEngine::onAnnounce) onAnnounce) :
+        decltype(NetworkEngine::onAnnounce) onAnnounce,
+        decltype(NetworkEngine::onRefresh) onRefresh) :
     onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-    onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), myid(myid), network(net),
-    dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+    onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
+    network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {
     transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
 }
@@ -460,14 +464,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         switch (msg->type) {
         case MessageType::Error: {
-            if (msg->error_code == DhtProtocolException::UNAUTHORIZED
-                    && msg->id != zeroes
-                    && (msg->tid.matches(TransPrefix::ANNOUNCE_VALUES)
-                     || msg->tid.matches(TransPrefix::LISTEN)))
+            if (msg->id != zeroes
+                    and (msg->tid.matches(TransPrefix::ANNOUNCE_VALUES)
+                     or msg->tid.matches(TransPrefix::REFRESH)
+                     or msg->tid.matches(TransPrefix::LISTEN)))
             {
                 req->last_try = TIME_INVALID;
                 req->reply_time = TIME_INVALID;
-                onError(req, DhtProtocolException {DhtProtocolException::UNAUTHORIZED});
+                onError(req, DhtProtocolException {msg->error_code});
             } else {
                 DHT_LOG.WARN("[node %s %s] received unknown error message %u",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
@@ -534,6 +538,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 }
                 break;
             }
+            case MessageType::Refresh:
+                DHT_LOG.DEBUG("[node %s %s] got 'refresh value' request for %s.",
+                    msg->id.toString().c_str(), from.toString().c_str(),
+                    msg->info_hash.toString().c_str());
+                onRefresh(node, msg->info_hash, msg->token, msg->value_id);
+                /* Same note as above in MessageType::AnnounceValue applies. */
+                sendValueAnnounced(from, msg->tid, msg->value_id);
+                break;
             case MessageType::Listen: {
                 DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->info_hash.toString().c_str());
@@ -1016,8 +1028,14 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
 }
 
 std::shared_ptr<Request>
-NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infohash, const std::shared_ptr<Value>& value, time_point created,
-        const Blob& token, RequestCb on_done, RequestExpiredCb on_expired) {
+NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
+        const InfoHash& infohash,
+        const std::shared_ptr<Value>& value,
+        time_point created,
+        const Blob& token,
+        RequestCb on_done,
+        RequestExpiredCb on_expired)
+{
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -1066,6 +1084,59 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n, const InfoHash& infoha
         sendValueParts(tid, v, n->addr);
     ++out_stats.put;
     return req;
+}
+
+std::shared_ptr<Request>
+NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
+                const InfoHash& infohash,
+                const Value::Id& vid,
+                const Blob& token,
+                RequestCb on_done,
+                RequestExpiredCb on_expired)
+{
+    auto tid = TransId {TransPrefix::REFRESH, getNewTid()};
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5+(network?1:0));
+
+    pk.pack(std::string("a")); pk.pack_map(4);
+      pk.pack(std::string("id"));  pk.pack(myid);
+      pk.pack(std::string("h"));  pk.pack(infohash);
+      pk.pack(std::string("vid")); pk.pack(vid);
+      pk.pack(std::string("token"));  pk.pack(token);
+
+    pk.pack(std::string("q")); pk.pack(std::string("refresh"));
+    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(std::string("y")); pk.pack(std::string("q"));
+    pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
+
+    Blob b {buffer.data(), buffer.data() + buffer.size()};
+    std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
+            if (msg.value_id == Value::INVALID_ID) {
+                DHT_LOG.DEBUG("Unknown search or announce!");
+            } else {
+                if (on_done) {
+                    RequestAnswer answer {};
+                    answer.vid = msg.value_id;
+                    on_done(req_status, std::move(answer));
+                }
+            }
+        },
+        [=](const Request& req_status, bool done) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, done);
+            }
+        }
+    });
+    sendRequest(req);
+    ++out_stats.refresh;
+    return req;
+
 }
 
 void
@@ -1162,6 +1233,8 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         type = MessageType::Listen;
     else if (q == "put")
         type = MessageType::AnnounceValue;
+    else if (q == "refresh")
+        type = MessageType::Refresh;
     else
         throw msgpack::type_error();
 
