@@ -399,7 +399,7 @@ private:
     static const constexpr size_t NODE4_INFO_BUF_LEN {26};
     /* the length of a node info buffer in ipv6 format */
     static const constexpr size_t NODE6_INFO_BUF_LEN {38};
-    /* the maximum time we wait for an UDP reply before telling the link layer */
+    /* after a UDP reply, the period during which we tell the link layer about it */
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
 
     /* Max. time to receive a full fragmented packet */
