@@ -205,34 +205,35 @@ NetworkEngine::connectivityChanged(sa_family_t af)
 }
 
 void
-NetworkEngine::requestStep(std::shared_ptr<Request> req)
+NetworkEngine::requestStep(std::shared_ptr<Request> sreq)
 {
-    if (not req->pending()) {
-        if (req->cancelled())
-            requests.erase(req->tid);
+    auto& req = *sreq;
+    if (not req.pending()) {
+        if (req.cancelled())
+            requests.erase(req.tid);
         return;
     }
 
     auto now = scheduler.time();
-    if (req->isExpired(now)) {
-        DHT_LOG.ERR("[node %s] expired !", req->node->toString().c_str());
-        req->node->setExpired();
-        requests.erase(req->tid);
+    auto& node = *req.node;
+    if (req.isExpired(now)) {
+        DHT_LOG.ERR("[node %s] expired !", node.toString().c_str());
+        node.setExpired();
+        requests.erase(req.tid);
         return;
-    } else if (req->attempt_count == 1) {
-        req->on_expired(*req, false);
+    } else if (req.attempt_count == 1) {
+        req.on_expired(req, false);
     }
 
-    send((char*)req->msg.data(), req->msg.size(),
-            (req->node->reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            req->node->addr);
-    ++req->attempt_count;
-    req->last_try = now;
-    std::weak_ptr<Request> wreq = req;
-    scheduler.add(req->last_try + Node::MAX_RESPONSE_TIME, [this,wreq]() {
-        if (auto req = wreq.lock()) {
+    send((char*)req.msg.data(), req.msg.size(),
+            (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            node.addr);
+    ++req.attempt_count;
+    req.last_try = now;
+    std::weak_ptr<Request> wreq = sreq;
+    scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
+        if (auto req = wreq.lock())
             requestStep(req);
-        }
     });
 }
 
@@ -269,13 +270,9 @@ NetworkEngine::rateLimit(const SockAddr& addr)
         }
     }
 
-    // invoke per IP rate limiter
     auto it = address_rate_limiter.emplace(addr, IpLimiter{});
-    if (not it.first->second.limit(now))
-        return false;
-
-    // invoke global limiter
-    return rate_limiter.limit(now);
+    // invoke per IP, then global rate limiter
+    return it.first->second.limit(now) and rate_limiter.limit(now);
 }
 
 bool
