@@ -14,8 +14,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
+ *  along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -442,7 +441,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 // received reply from unexpected node
                 node->received(now, req);
                 onNewNode(node, 2);
-                DHT_LOG.WARN("Message received from unexpected ndoe %s", node->toString().c_str());
+                DHT_LOG.WARN("[node %s] Message received from unexpected node.", node->toString().c_str());
                 return;
             }
         } else
@@ -502,8 +501,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 sendPong(from, msg->tid);
                 break;
             case MessageType::FindNode: {
-                DHT_LOG.DEBUG("[node %s %s] got 'find' request (%d).",
-                        msg->id.toString().c_str(), from.toString().c_str(), msg->want);
+                DHT_LOG.DEBUG("[node %s] got 'find' request (%d).", node->toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
@@ -511,8 +509,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::GetValues: {
-                DHT_LOG.DEBUG("[node %s %s] got 'get' request for %s.",
-                        msg->id.toString().c_str(), from.toString().c_str(), msg->info_hash.toString().c_str());
+                DHT_LOG.DEBUG("[node %s] got 'get' request for %s.", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
@@ -520,9 +517,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::AnnounceValue: {
-                DHT_LOG.DEBUG("[node %s %s] got 'put' request for %s.",
-                    msg->id.toString().c_str(), from.toString().c_str(),
-                    msg->info_hash.toString().c_str());
+                DHT_LOG.DEBUG("[node %s] got 'put' request for %s.", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
 
@@ -535,8 +530,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::Listen: {
-                DHT_LOG.DEBUG("[node %s %s] got 'listen' request for %s.",
-                        msg->id.toString().c_str(), from.toString().c_str(), msg->info_hash.toString().c_str());
+                DHT_LOG.DEBUG("[node %s] got 'listen' request for %s.", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->tid.getTid(), std::move(msg->query));
                 sendListenConfirmation(from, msg->tid);
@@ -613,7 +607,7 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), node, std::move(b),
         [=](const Request& req_status, ParsedMessage&&) {
-            DHT_LOG.DEBUG("Got pong from %s", req_status.node->toString().c_str());
+            DHT_LOG.DEBUG("[node %s] Got pong !", req_status.node->toString().c_str());
             if (on_done) {
                 on_done(req_status, {});
             }
@@ -877,11 +871,10 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
             pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
             for (const auto& v : st)
                 v->msgpack_pack_fields(fields, pk);
-            DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
-                    nodes.size(), nodes6.size(), st.size(), fields.size());
+            //DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
+            //        nodes.size(), nodes6.size(), st.size(), fields.size());
         }
-    } else
-        DHT_LOG.DEBUG("sending closest nodes (%d+%d nodes.)", nodes.size(), nodes6.size());
+    }
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());

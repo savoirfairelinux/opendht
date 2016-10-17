@@ -14,8 +14,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
+ *  along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 
@@ -769,7 +768,7 @@ Dht::sendCachedPing(Bucket& b)
     if (!b.cached)
         return 0;
 
-    DHT_LOG.DEBUG("Sending ping to cached node.");
+    DHT_LOG.DEBUG("[node %s] Sending ping to cached node.", b.cached->toString().c_str());
     network_engine.sendPing(b.cached, nullptr, nullptr);
     b.cached = {};
     return 0;
@@ -871,7 +870,7 @@ Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
             if (not n->isGood(now)) {
                 dubious = true;
                 if (not n->isPendingMessage()) {
-                    DHT_LOG.DEBUG("Sending ping to dubious node %s.", n->toString().c_str());
+                    DHT_LOG.DEBUG("[node %s] Sending ping to dubious node.", n->toString().c_str());
                     network_engine.sendPing(n, nullptr, nullptr);
                     break;
                 }
@@ -1162,9 +1161,8 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             if (not n)
                 return nullptr;
 
-            DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'find_node'",
-                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    n->node->toString().c_str());
+            DHT_LOG.WARN("[search %s] [node %s] sending 'find_node'",
+                    sr->id.toString().c_str(), n->node->toString().c_str());
             n->getStatus[query] = network_engine.sendFindNode(n->node,
                     sr->id,
                     -1,
@@ -1177,9 +1175,8 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 
             if (query and not query->select.getSelection().empty()) {
                 /* The request contains a select. No need to paginate... */
-                DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'get'",
-                        sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                        n->node->toString().c_str());
+                DHT_LOG.WARN("[search %s] [node %s] sending 'get'",
+                        sr->id.toString().c_str(), n->node->toString().c_str());
                 n->getStatus[query] = network_engine.sendGetValues(n->node,
                         sr->id,
                         *query,
@@ -1351,10 +1348,8 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                 for (const auto& l : sr->listeners) {
                     const auto& query = l.second.query;
                     if (n.getListenTime(query) <= now) {
-                        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'listen'",
-                                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                                n.node->toString().c_str());
-                        //std::cout << "Sending listen to " << n.node->id << " " << print_addr(n.node->ss, n.node->sslen) << std::endl;
+                        DHT_LOG.WARN("[search %s] [node %s] sending 'listen'",
+                                sr->id.toString().c_str(), n.node->toString().c_str());
 
                         const auto& r = n.listenStatus.find(query);
                         auto last_req = r != n.listenStatus.end() ? r->second : std::shared_ptr<Request> {};
@@ -2752,7 +2747,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                         want = WANT4 | WANT6;
                 }
 
-                DHT_LOG.DEBUG("[find %s IPv%c] sending for bucket maintenance.", id.toString().c_str(), q->af == AF_INET6 ? '6' : '4');
+                DHT_LOG.DEBUG("[node %s] sending find %s for bucket maintenance.", n->toString().c_str(), id.toString().c_str());
                 network_engine.sendFindNode(n, id, want, nullptr, nullptr);
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
@@ -3121,8 +3116,8 @@ void Dht::onGetValuesDone(const Request& status,
         return;
     }
 
-    DHT_LOG.DEBUG("[search %s IPv%c] got reply to 'get' from %s with %u nodes",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', status.node->toString().c_str(), a.nodes4.size());
+    DHT_LOG.DEBUG("[search %s] [node %s] got reply to 'get' with %u nodes",
+            sr->id.toString().c_str(), status.node->toString().c_str(), a.nodes4.size());
 
     if (not a.ntoken.empty()) {
         if (not a.values.empty() or not a.fields.empty()) {
@@ -3187,7 +3182,7 @@ NetworkEngine::RequestAnswer
 Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, Query&& query)
 {
     if (hash == zeroes) {
-        DHT_LOG.WARN("Listen with no info_hash.");
+        DHT_LOG.WARN("[node %s] Listen with no info_hash.", node->toString().c_str());
         throw DhtProtocolException {
             DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
             DhtProtocolException::LISTEN_NO_INFOHASH
@@ -3207,7 +3202,7 @@ Dht::onListenDone(const Request& status,
         std::shared_ptr<Search>& sr,
         const std::shared_ptr<Query>& orig_query)
 {
-    DHT_LOG.DEBUG("[search %s] Got reply to listen.", sr->id.toString().c_str());
+    DHT_LOG.DEBUG("[search %s] [node %s] Got reply to listen.", sr->id.toString().c_str(), status.node->toString().c_str());
     if (sr) {
         if (not answer.values.empty()) { /* got new values from listen request */
             DHT_LOG.DEBUG("[listen %s] Got new values.", sr->id.toString().c_str());
@@ -3292,11 +3287,11 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
 }
 
 void
-Dht::onAnnounceDone(const Request&, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
+Dht::onAnnounceDone(const Request& req, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
     const auto& now = scheduler.time();
-    DHT_LOG.DEBUG("[search %s IPv%c] got reply to put!",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
+    DHT_LOG.DEBUG("[search %s] [node %s] got reply to put!",
+            sr->id.toString().c_str(), req.node->toString().c_str());
     searchSendGetValues(sr);
     sr->checkAnnounced(types, now, answer.vid);
 }
