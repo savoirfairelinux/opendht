@@ -3287,7 +3287,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
 
     for (const auto& v : values) {
         if (v->id == Value::INVALID_ID) {
-            DHT_LOG_WARN("[value %s %s] incorrect value id", hash.toString().c_str(), v->id);
+            DHT_LOG_WARN("[value %s] incorrect value id", hash.toString().c_str());
             throw DhtProtocolException {
                 DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
                 DhtProtocolException::PUT_INVALID_ID
@@ -3297,27 +3297,27 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         std::shared_ptr<Value> vc = v;
         if (lv) {
             if (*lv == *vc) {
-                DHT_LOG_WARN("[value %s %lu] nothing to do.", hash.toString().c_str(), lv->id);
+                DHT_LOG_WARN("[store %s] nothing to do for %s.", hash.toString().c_str(), lv->toString().c_str());
             } else {
                 const auto& type = getType(lv->type);
                 if (type.editPolicy(hash, lv, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
-                    DHT_LOG_DEBUG("[value %s %lu] editing %s.",
-                            hash.toString().c_str(), lv->id, vc->toString().c_str());
+                    DHT_LOG_DEBUG("[store %s] editing %s.",
+                            hash.toString().c_str(), vc->toString().c_str());
                     storageStore(hash, vc, created);
                 } else {
-                    DHT_LOG_DEBUG("[value %s %lu] rejecting edition of %s because of storage policy.",
-                            hash.toString().c_str(), lv->id, vc->toString().c_str());
+                    DHT_LOG_DEBUG("[store %s] rejecting edition of %s because of storage policy.",
+                            hash.toString().c_str(), vc->toString().c_str());
                 }
             }
         } else {
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
             if (type.storePolicy(hash, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
-                DHT_LOG_DEBUG("[value %s %lu] storing %s.", hash.toString().c_str(), vc->id, vc->toString().c_str());
+                DHT_LOG_DEBUG("[store %s] storing %s.", hash.toString().c_str(), vc->toString().c_str());
                 storageStore(hash, vc, created);
             } else {
-                DHT_LOG_DEBUG("[value %s %lu] rejecting storage of %s.",
-                        hash.toString().c_str(), vc->id, vc->toString().c_str());
+                DHT_LOG_DEBUG("[store %s] rejecting storage of %s.",
+                        hash.toString().c_str(), vc->toString().c_str());
             }
         }
     }
