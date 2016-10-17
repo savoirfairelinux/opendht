@@ -364,7 +364,7 @@ private:
     const bool is_bootstrap {false};
 
     // the stuff
-    RoutingTable buckets {};
+    RoutingTable buckets4 {};
     RoutingTable buckets6 {};
 
     std::map<InfoHash, Storage> store;
@@ -416,12 +416,14 @@ private:
     size_t maintainStorage(InfoHash id, bool force=false, DoneCallback donecb=nullptr);
 
     // Buckets
+    RoutingTable& buckets(sa_family_t af) { return af == AF_INET ? buckets4 : buckets6; }
+    const RoutingTable& buckets(sa_family_t af) const { return af == AF_INET ? buckets4 : buckets6; }
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
         RoutingTable::iterator b;
         switch (af) {
         case AF_INET:
-            b = buckets.findBucket(id);
-            return b == buckets.end() ? nullptr : &(*b);
+            b = buckets4.findBucket(id);
+            return b == buckets4.end() ? nullptr : &(*b);
         case AF_INET6:
             b = buckets6.findBucket(id);
             return b == buckets6.end() ? nullptr : &(*b);
