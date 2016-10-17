@@ -80,7 +80,7 @@ struct Node {
     /**
      * Resets the state of the node so it's not expired anymore.
      */
-    void reset() { expired_ = false; }
+    void reset() { expired_ = false; reply_time = time_point::min(); }
 
     std::string toString() const;
 
