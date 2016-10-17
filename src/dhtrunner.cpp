@@ -625,7 +625,8 @@ DhtRunner::tryBootstrapCoutinuously()
                 // wait at least until the next BOOTSTRAP_PERIOD
                 cv.wait_until(blck, next, [&]() { return not running; });
                 // wait for bootstrap requests to end.
-                cv.wait(blck, [&]() { return not running or ping_count == 0; });
+                if (running)
+                    cv.wait(blck, [&]() { return not running or ping_count == 0; });
             }
             // update state
             {

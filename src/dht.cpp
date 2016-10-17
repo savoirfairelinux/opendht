@@ -852,12 +852,25 @@ Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
         //scheduler.edit(nextNodesConfirmation, now);
     }
 
-    /* Try to get rid of an expired node. */
-    for (auto& n : b->nodes) {
-        if (not n->isExpired())
-            continue;
-        n = node;
-        return;
+    unsigned expired_count = 0;
+    for (auto& n : b->nodes)
+        if (n->isExpired())
+            expired_count++;
+    if (/*confirm < 2 && */b->nodes.size() - expired_count == 0) {
+        // No good or dubious node in this bucket
+        // Try to confirm this one
+        DHT_LOG_DEBUG("[node %s] Sending find node to new node.", node->toString().c_str());
+        network_engine.sendFindNode(node, list.randomId(b), -1, nullptr, nullptr);
+        if (confirm >= 2)
+            scheduler.edit(nextNodesConfirmation, scheduler.time());
+    }
+    if (expired_count > 0)  {
+        // Try to get rid of an expired node.
+        for (auto& n : b->nodes)
+            if (n->isExpired()) {
+                n = node;
+                return;
+            }
     }
 
     if (b->nodes.size() >= TARGET_NODES) {
@@ -2748,8 +2761,11 @@ Dht::bucketMaintenance(RoutingTable& list)
                         want = WANT4 | WANT6;
                 }
 
-                DHT_LOG.DEBUG("[node %s] sending find %s for bucket maintenance.", n->toString().c_str(), id.toString().c_str());
-                network_engine.sendFindNode(n, id, want, nullptr, nullptr);
+                DHT_LOG_DEBUG("[node %s] sending find %s for bucket maintenance.", n->toString().c_str(), id.toString().c_str());
+                network_engine.sendFindNode(n, id, want, nullptr, [&](const Request&, bool ok){
+                    if (not ok)
+                        scheduler.edit(nextNodesConfirmation, scheduler.time());
+                });
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
                 return true;
