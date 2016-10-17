@@ -21,6 +21,7 @@
 #include "dht.h"
 #include "rng.h"
 #include "request.h"
+#include "log_enable.h"
 
 #include <msgpack.hpp>
 extern "C" {
@@ -691,9 +692,9 @@ struct Dht::Search {
 void
 Dht::setLoggers(LogMethod error, LogMethod warn, LogMethod debug)
 {
-    DHT_LOG.DEBUG = debug;
-    DHT_LOG.WARN = warn;
-    DHT_LOG.ERR = error;
+    DHT_LOG_DEBUG = debug;
+    DHT_LOG_WARN = warn;
+    DHT_LOG_ERR = error;
 }
 
 NodeStatus
@@ -719,7 +720,7 @@ Dht::shutdown(ShutdownCallback cb) {
     auto remaining = std::make_shared<int>(0);
     auto str_donecb = [=](bool, const std::vector<std::shared_ptr<Node>>&) {
         --*remaining;
-        DHT_LOG.WARN("Shuting down node: %u ops remaining.", *remaining);
+        DHT_LOG_WARN("Shuting down node: %u ops remaining.", *remaining);
         if (!*remaining && cb) { cb(); }
     };
 
@@ -728,7 +729,7 @@ Dht::shutdown(ShutdownCallback cb) {
     }
 
     if (!*remaining) {
-        DHT_LOG.WARN("Shuting down node: %u ops remaining.", *remaining);
+        DHT_LOG_WARN("Shuting down node: %u ops remaining.", *remaining);
         if (cb)
             cb();
     }
@@ -768,7 +769,7 @@ Dht::sendCachedPing(Bucket& b)
     if (!b.cached)
         return 0;
 
-    DHT_LOG.DEBUG("[node %s] Sending ping to cached node.", b.cached->toString().c_str());
+    DHT_LOG_DEBUG("[node %s] Sending ping to cached node.", b.cached->toString().c_str());
     network_engine.sendPing(b.cached, nullptr, nullptr);
     b.cached = {};
     return 0;
@@ -870,7 +871,7 @@ Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
             if (not n->isGood(now)) {
                 dubious = true;
                 if (not n->isPendingMessage()) {
-                    DHT_LOG.DEBUG("[node %s] Sending ping to dubious node.", n->toString().c_str());
+                    DHT_LOG_DEBUG("[node %s] Sending ping to dubious node.", n->toString().c_str());
                     network_engine.sendPing(n, nullptr, nullptr);
                     break;
                 }
@@ -878,7 +879,7 @@ Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
         }
 
         if ((mybucket || (is_bootstrap and list.depth(b) < 6)) && (!dubious || list.size() == 1)) {
-            DHT_LOG.DEBUG("Splitting from depth %u", list.depth(b));
+            DHT_LOG_DEBUG("Splitting from depth %u", list.depth(b));
             sendCachedPing(*b);
             list.split(b);
             onNewNode(node, 0);
@@ -1023,7 +1024,7 @@ Dht::expireSearches()
         auto& sr = *srp.second;
         auto b = sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty() && sr.step_time < t;
         if (b) {
-            DHT_LOG.DEBUG("Removing search %s", srp.first.toString().c_str());
+            DHT_LOG_DEBUG("Removing search %s", srp.first.toString().c_str());
             sr.clear();
             return b;
         } else { return false; }
@@ -1091,7 +1092,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
                                     if (vid == Value::INVALID_ID) continue;
                                     auto query_for_vid = std::make_shared<Query>(Select {}, Where {}.id(vid));
                                     sn->pagination_queries[query].push_back(query_for_vid);
-                                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+                                    DHT_LOG_WARN("[search %s IPv%c] [node %s] sending %s",
                                             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str(), query_for_vid->toString().c_str());
                                     sn->getStatus[query_for_vid] = network_engine.sendGetValues(status.node,
@@ -1102,7 +1103,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
                                             std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query_for_vid)
                                             );
                                 } catch (std::out_of_range&) {
-                                    DHT_LOG.ERR("[search %s IPv%c] [node %s] received non-id field in response to "\
+                                    DHT_LOG_ERR("[search %s IPv%c] [node %s] received non-id field in response to "\
                                             "'SELECT id' request...",
                                             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str());
@@ -1116,7 +1117,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
         /* add pagination query key for tracking ongoing requests. */
         n->pagination_queries[query].push_back(select_q);
 
-        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+        DHT_LOG_WARN("[search %s IPv%c] [node %s] sending %s",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                 n->node->toString().c_str(), select_q->toString().c_str());
         n->getStatus[select_q] = network_engine.sendGetValues(n->node,
@@ -1161,7 +1162,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
             if (not n)
                 return nullptr;
 
-            DHT_LOG.WARN("[search %s] [node %s] sending 'find_node'",
+            DHT_LOG_WARN("[search %s] [node %s] sending 'find_node'",
                     sr->id.toString().c_str(), n->node->toString().c_str());
             n->getStatus[query] = network_engine.sendFindNode(n->node,
                     sr->id,
@@ -1175,7 +1176,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
 
             if (query and not query->select.getSelection().empty()) {
                 /* The request contains a select. No need to paginate... */
-                DHT_LOG.WARN("[search %s] [node %s] sending 'get'",
+                DHT_LOG_WARN("[search %s] [node %s] sending 'get'",
                         sr->id.toString().c_str(), n->node->toString().c_str());
                 n->getStatus[query] = network_engine.sendGetValues(n->node,
                         sr->id,
@@ -1249,7 +1250,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
 
                                 /* only put the value if the node doesn't already have it */
                                 if (not hasValue or seq_no < a.value->seq) {
-                                    DHT_LOG.WARN("[search %s IPv%c] [node %s] sending 'put' (vid: %d)",
+                                    DHT_LOG_WARN("[search %s IPv%c] [node %s] sending 'put' (vid: %d)",
                                             sr->id.toString().c_str(),
                                             sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str(),
@@ -1262,7 +1263,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                                                     onDone,
                                                                     onExpired);
                                 } else {
-                                    DHT_LOG.WARN("[search %s IPv%c] [node %s] already has value (vid: %d). Aborting.",
+                                    DHT_LOG_WARN("[search %s IPv%c] [node %s] already has value (vid: %d). Aborting.",
                                             sr->id.toString().c_str(),
                                             sr->af == AF_INET ? '4' : '6',
                                             sn->node->toString().c_str(),
@@ -1283,7 +1284,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                     }
                 }
             };
-        DHT_LOG.WARN("[search %s IPv%c] [node %s] sending %s",
+        DHT_LOG_WARN("[search %s IPv%c] [node %s] sending %s",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                 n.node->toString().c_str(), probe_query->toString().c_str());
         n.probe_query = probe_query;
@@ -1306,8 +1307,9 @@ Dht::searchStep(std::shared_ptr<Search> sr)
     if (not sr or sr->expired or sr->done) return;
 
     const auto& now = scheduler.time();
-    DHT_LOG.DEBUG("[search %s IPv%c] step (%d requests)",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', sr->currentlySolicitedNodeCount());
+    if (auto req_count = sr->currentlySolicitedNodeCount())
+        DHT_LOG_DEBUG("[search %s IPv%c] step (%d requests)",
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', req_count);
     sr->step_time = now;
 
     if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES)
@@ -1335,10 +1337,10 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         }
 
         // true if this node is part of the target nodes cluter.
-        bool in = sr->id.xorCmp(myid, sr->nodes.back().node->id) < 0;
+        /*bool in = sr->id.xorCmp(myid, sr->nodes.back().node->id) < 0;
 
-        DHT_LOG.DEBUG("[search %s IPv%c] synced%s",
-                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', in ? ", in" : "");
+        DHT_LOG_DEBUG("[search %s IPv%c] synced%s",
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', in ? ", in" : "");*/
 
         if (not sr->listeners.empty()) {
             unsigned i = 0;
@@ -1348,7 +1350,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                 for (const auto& l : sr->listeners) {
                     const auto& query = l.second.query;
                     if (n.getListenTime(query) <= now) {
-                        DHT_LOG.WARN("[search %s] [node %s] sending 'listen'",
+                        DHT_LOG_WARN("[search %s] [node %s] sending 'listen'",
                                 sr->id.toString().c_str(), n.node->toString().c_str());
 
                         const auto& r = n.listenStatus.find(query);
@@ -1398,14 +1400,14 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                 i++;
         }
         while (sent and sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES);
-        /*DHT_LOG.DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
+        /*DHT_LOG_DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->currentlySolicitedNodeCount());*/
     }
 
     if (sr->getNumberOfConsecutiveBadNodes() >= std::min(sr->nodes.size(),
                                                              static_cast<size_t>(SEARCH_MAX_BAD_NODES)))
     {
-        DHT_LOG.WARN("[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
+        DHT_LOG_WARN("[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
         sr->expire();
         connectivityChanged(sr->af);
     }
@@ -1606,7 +1608,7 @@ unsigned Dht::refill(Dht::Search& sr) {
     auto cached_nodes = network_engine.getCachedNodes(sr.id, sr.af, SEARCH_NODES);
 
     if (cached_nodes.empty()) {
-        DHT_LOG.ERR("[search %s IPv%c] no nodes from cache while refilling search",
+        DHT_LOG_ERR("[search %s IPv%c] no nodes from cache while refilling search",
                 sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6');
         return 0;
     }
@@ -1617,7 +1619,7 @@ unsigned Dht::refill(Dht::Search& sr) {
         if (sr.insertNode(i, now))
             ++inserted;
     }
-    DHT_LOG.DEBUG("[search %s IPv%c] refilled search with %u nodes from node cache",
+    DHT_LOG_DEBUG("[search %s IPv%c] refilled search with %u nodes from node cache",
             sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', inserted);
     sr.refill_time = now;
     return inserted;
@@ -1629,7 +1631,7 @@ std::shared_ptr<Dht::Search>
 Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback qcb, DoneCallback dcb, Value::Filter f, Query q)
 {
     if (!isRunning(af)) {
-        DHT_LOG.ERR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+        DHT_LOG_ERR("[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         if (dcb)
             dcb(false, {});
         return {};
@@ -1666,7 +1668,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         sr->expired = false;
         sr->nodes.clear();
         sr->nodes.reserve(SEARCH_NODES+1);
-        DHT_LOG.WARN("[search %s IPv%c] new search", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+        DHT_LOG_WARN("[search %s IPv%c] new search", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         if (search_id == 0)
             search_id++;
     }
@@ -1758,15 +1760,15 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     const auto& now = scheduler.time();
     if (!isRunning(af))
         return 0;
-       // DHT_LOG.ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
+       // DHT_LOG_ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
 
-    //DHT_LOG.WARN("listenTo %s", id.toString().c_str());
+    //DHT_LOG_WARN("listenTo %s", id.toString().c_str());
     auto& srs = af == AF_INET ? searches4 : searches6;
     auto srp = srs.find(id);
     std::shared_ptr<Search> sr = (srp == srs.end()) ? search(id, af) : srp->second;
     if (!sr)
         throw DhtException("Can't create search");
-    DHT_LOG.ERR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+    DHT_LOG_ERR("[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
     sr->done = false;
     auto token = ++sr->listener_token;
     sr->listeners.emplace(token, LocalListener{q, f, cb});
@@ -1830,7 +1832,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where
     auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, filter, query);
 
-    DHT_LOG.DEBUG("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
+    DHT_LOG_DEBUG("Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
     return token;
 }
@@ -1842,10 +1844,10 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 
     auto it = listeners.find(token);
     if (it == listeners.end()) {
-        DHT_LOG.WARN("Listen token not found: %d", token);
+        DHT_LOG_WARN("Listen token not found: %d", token);
         return false;
     }
-    DHT_LOG.DEBUG("cancelListen %s with token %d", id.toString().c_str(), token);
+    DHT_LOG_DEBUG("cancelListen %s with token %d", id.toString().c_str(), token);
     auto st = store.find(id);
     auto tokenlocal = std::get<0>(it->second);
     if (st != store.end() && tokenlocal)
@@ -1890,7 +1892,7 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, 
         val->id = rand_id(rdev);
     }
 
-    DHT_LOG.DEBUG("put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
+    DHT_LOG_DEBUG("put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
     auto ok = std::make_shared<bool>(false);
     auto done = std::make_shared<bool>(false);
@@ -1904,13 +1906,13 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, 
         }
     };
     announce(id, AF_INET, val, [=](bool ok4, const std::vector<std::shared_ptr<Node>>& nodes) {
-        DHT_LOG.DEBUG("Announce done IPv4 %d", ok4);
+        DHT_LOG_DEBUG("Announce done IPv4 %d", ok4);
         *done4 = true;
         *ok |= ok4;
         donecb(nodes);
     }, created, permanent);
     announce(id, AF_INET6, val, [=](bool ok6, const std::vector<std::shared_ptr<Node>>& nodes) {
-        DHT_LOG.DEBUG("Announce done IPv6 %d", ok6);
+        DHT_LOG_DEBUG("Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
         donecb(nodes);
@@ -1989,13 +1991,13 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     gcb(getLocal(id, f));
 
     Dht::search(id, AF_INET, gcb, {}, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
-        //DHT_LOG.WARN("DHT done IPv4");
+        //DHT_LOG_WARN("DHT done IPv4");
         op->status4.done = true;
         op->status4.ok = ok;
         doneCallbackWrapper(donecb, nodes, op);
     }, f, q);
     Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
-        //DHT_LOG.WARN("DHT done IPv6");
+        //DHT_LOG_WARN("DHT done IPv6");
         op->status6.done = true;
         op->status6.ok = ok;
         doneCallbackWrapper(donecb, nodes, op);
@@ -2038,13 +2040,13 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
     qcb(local_fields);
 
     Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
-        //DHT_LOG.WARN("DHT done IPv4");
+        //DHT_LOG_WARN("DHT done IPv4");
         op->status4.done = true;
         op->status4.ok = ok;
         doneCallbackWrapper(done_cb, nodes, op);
     }, f, q);
     Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
-        //DHT_LOG.WARN("DHT done IPv6");
+        //DHT_LOG_WARN("DHT done IPv6");
         op->status6.done = true;
         op->status6.ok = ok;
         doneCallbackWrapper(done_cb, nodes, op);
@@ -2137,16 +2139,16 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 void
 Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
 {
-    DHT_LOG.DEBUG("[Storage %s] changed.", id.toString().c_str());
+    DHT_LOG_DEBUG("[Storage %s] changed.", id.toString().c_str());
     if (not st.local_listeners.empty()) {
-        DHT_LOG.DEBUG("[Storage %s] %lu local listeners.", id.toString().c_str(), st.local_listeners.size());
+        DHT_LOG_DEBUG("[Storage %s] %lu local listeners.", id.toString().c_str(), st.local_listeners.size());
         std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
         for (const auto& l : st.local_listeners) {
             std::vector<std::shared_ptr<Value>> vals;
             if (not l.second.filter or l.second.filter(*v.data))
                 vals.push_back(v.data);
             if (not vals.empty()) {
-                DHT_LOG.DEBUG("[Storage %s] Sending update local listener with token %lu.",
+                DHT_LOG_DEBUG("[Storage %s] Sending update local listener with token %lu.",
                         id.toString().c_str(),
                         l.first);
                 cbs.emplace_back(l.second.get_cb, std::move(vals));
@@ -2157,12 +2159,12 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
             cb.first(cb.second);
     }
 
-    DHT_LOG.DEBUG("[Storage %s] %lu remote listeners.", id.toString().c_str(), st.listeners.size());
+    DHT_LOG_DEBUG("[Storage %s] %lu remote listeners.", id.toString().c_str(), st.listeners.size());
     for (const auto& l : st.listeners) {
         auto f = l.second.query.where.getFilter();
         if (f and not f(*v.data))
             continue;
-        DHT_LOG.DEBUG("[Storage %s] Sending update to %s.", id.toString().c_str(), l.first->toString().c_str());
+        DHT_LOG_DEBUG("[Storage %s] Sending update to %s.", id.toString().c_str(), l.first->toString().c_str());
         std::vector<std::shared_ptr<Value>> vals {};
         vals.push_back(v.data);
         Blob ntoken = makeToken((const sockaddr*)&l.first->addr.first, false);
@@ -2213,14 +2215,14 @@ Dht::Storage::store(const std::shared_ptr<Value>& value, time_point created, ssi
         it->time = created;
         ssize_t size_diff = value->size() - it->data->size();
         if (size_diff <= size_left and it->data != value) {
-            //DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
+            //DHT_LOG_DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             it->data = value;
             total_size += size_diff;
             return std::make_tuple(&(*it), size_diff, 0);
         }
         return std::make_tuple(nullptr, 0, 0);
     } else {
-        //DHT_LOG.DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
+        //DHT_LOG_DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
         ssize_t size = value->size();
         if (size <= size_left and values.size() < MAX_VALUES) {
             total_size += size;
@@ -2274,7 +2276,7 @@ Dht::expireStorage()
         for (auto l = i->second.listeners.cbegin(); l != i->second.listeners.cend();){
             bool expired = l->second.time + Node::NODE_EXPIRE_TIME < now;
             if (expired) {
-                DHT_LOG.DEBUG("Discarding expired listener %s", l->first->id.toString().c_str());
+                DHT_LOG_DEBUG("Discarding expired listener %s", l->first->id.toString().c_str());
                 i->second.listeners.erase(l++);
             } else
                 ++l;
@@ -2285,7 +2287,7 @@ Dht::expireStorage()
         total_values += stats.second;
 
         if (i->second.empty() && i->second.listeners.empty() && i->second.local_listeners.empty()) {
-            DHT_LOG.DEBUG("Discarding expired value %s", i->first.toString().c_str());
+            DHT_LOG_DEBUG("Discarding expired value %s", i->first.toString().c_str());
             i = store.erase(i);
         }
         else
@@ -2302,7 +2304,7 @@ Dht::Storage::expire(const std::map<ValueType::Id, ValueType>& types, time_point
         const ValueType& type = (type_it == types.end()) ? ValueType::USER_DATA : type_it->second;
         bool expired = v.time + type.expiration < now;
         //if (expired)
-        //    DHT_LOG.DEBUG("Discarding expired value %s", v.data->toString().c_str());
+        //    DHT_LOG_DEBUG("Discarding expired value %s", v.data->toString().c_str());
         return !expired;
     });
     ssize_t del_num = std::distance(r, values.end());
@@ -2563,7 +2565,7 @@ Dht::dumpTables() const
 
     out << getStorageLog() << std::endl;
 
-    DHT_LOG.DEBUG("%s", out.str().c_str());
+    DHT_LOG_DEBUG("%s", out.str().c_str());
 }
 
 std::string
@@ -2655,7 +2657,7 @@ Dht::Dht(int s, int s6, Config config)
 
     uniform_duration_distribution<> time_dis {std::chrono::seconds(3), std::chrono::seconds(5)};
     auto confirm_nodes_time = scheduler.time() + time_dis(rd);
-    DHT_LOG.DEBUG("Scheduling %s", myid.toString().c_str());
+    DHT_LOG_DEBUG("Scheduling %s", myid.toString().c_str());
     nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
 
     // Fill old secret
@@ -2667,14 +2669,14 @@ Dht::Dht(int s, int s6, Config config)
 
     expire();
 
-    DHT_LOG.DEBUG("DHT initialised with node ID %s", myid.toString().c_str());
+    DHT_LOG_DEBUG("DHT initialised with node ID %s", myid.toString().c_str());
 }
 
 
 bool
 Dht::neighbourhoodMaintenance(RoutingTable& list)
 {
-    //DHT_LOG.DEBUG("neighbourhoodMaintenance");
+    //DHT_LOG_DEBUG("neighbourhoodMaintenance");
     auto b = list.findBucket(myid);
     if (b == list.end())
         return false;
@@ -2694,7 +2696,7 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
 
     auto n = q->randomNode();
     if (n) {
-        DHT_LOG.DEBUG("[node %s] sending [find %s] for neighborhood maintenance.",
+        DHT_LOG_DEBUG("[node %s] sending [find %s] for neighborhood maintenance.",
                 n->toString().c_str(), id.toString().c_str());
         /* Since our node-id is the same in both DHTs, it's probably
            profitable to query both families. */
@@ -2763,14 +2765,14 @@ Dht::dataPersistence() {
     auto storage_maintenance_time = time_point::max();
     for (auto &str : store) {
         if (now > str.second.maintenance_time) {
-            DHT_LOG.WARN("[storage %s] maintenance (%u values, %u bytes)",
+            DHT_LOG_WARN("[storage %s] maintenance (%u values, %u bytes)",
                     str.first.toString().c_str(), str.second.valueCount(), str.second.totalSize());
             maintainStorage(str.first);
             str.second.maintenance_time = now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
         }
         storage_maintenance_time = std::min(storage_maintenance_time, str.second.maintenance_time);
     }
-    DHT_LOG.WARN("[store] next maintenance in %u minutes",
+    DHT_LOG_WARN("[store] next maintenance in %u minutes",
             std::chrono::duration_cast<std::chrono::minutes>(storage_maintenance_time-now));
     nextStorageMaintenance = storage_maintenance_time != time_point::max() ?
                                 scheduler.add(storage_maintenance_time, std::bind(&Dht::dataPersistence, this)) :
@@ -2819,7 +2821,7 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
     else { want6 = false; }
 
     if (not want4 and not want6) {
-        DHT_LOG.DEBUG("Discarding storage values %s", id.toString().c_str());
+        DHT_LOG_DEBUG("Discarding storage values %s", id.toString().c_str());
         auto diff = local_storage->second.clear();
         total_store_size += diff.first;
         total_values += diff.second;
@@ -2837,7 +2839,7 @@ Dht::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
     try {
         network_engine.processMessage(buf, buflen, from);
     } catch (const std::exception& e) {
-        DHT_LOG.ERR("Can't parse message from %s: %s", from.toString().c_str(), e.what());
+        DHT_LOG_ERR("Can't parse message from %s: %s", from.toString().c_str(), e.what());
         //auto code = e.getCode();
         //if (code == DhtProtocolException::INVALID_TID_SIZE or code == DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
             /* This is really annoying, as it means that we will
@@ -2878,11 +2880,11 @@ Dht::confirmNodes()
     const auto& now = scheduler.time();
 
     if (searches4.empty() and getStatus(AF_INET) == NodeStatus::Connected) {
-        DHT_LOG.DEBUG("[confirm nodes] initial IPv4 'get' for my id (%s).", myid.toString().c_str());
+        DHT_LOG_DEBUG("[confirm nodes] initial IPv4 'get' for my id (%s).", myid.toString().c_str());
         search(myid, AF_INET);
     }
     if (searches6.empty() and getStatus(AF_INET6) == NodeStatus::Connected) {
-        DHT_LOG.DEBUG("[confirm nodes] initial IPv6 'get' for my id (%s).", myid.toString().c_str());
+        DHT_LOG_DEBUG("[confirm nodes] initial IPv6 'get' for my id (%s).", myid.toString().c_str());
         search(myid, AF_INET6);
     }
 
@@ -2955,17 +2957,17 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     val_time = time_point{time_point::duration{valel.via.array.ptr[0].as<time_point::duration::rep>()}};
                     tmp_val.msgpack_unpack(valel.via.array.ptr[1]);
                 } catch (const std::exception&) {
-                    DHT_LOG.ERR("Error reading value at %s", h.first.toString().c_str());
+                    DHT_LOG_ERR("Error reading value at %s", h.first.toString().c_str());
                     continue;
                 }
                 if (val_time + getType(tmp_val.type).expiration < scheduler.time()) {
-                    DHT_LOG.DEBUG("Discarding expired value at %s", h.first.toString().c_str());
+                    DHT_LOG_DEBUG("Discarding expired value at %s", h.first.toString().c_str());
                     continue;
                 }
                 storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
             }
         } catch (const std::exception&) {
-            DHT_LOG.ERR("Error reading values at %s", h.first.toString().c_str());
+            DHT_LOG_ERR("Error reading values at %s", h.first.toString().c_str());
             continue;
         }
     }
@@ -3017,7 +3019,7 @@ void
 Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
 {
     scheduler.syncTime();
-    DHT_LOG.DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
+    DHT_LOG_DEBUG("Sending ping to %s", print_addr(sa, salen).c_str());
     auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
     count++;
     network_engine.sendPing(sa, salen, [&count,cb](const Request&, NetworkEngine::RequestAnswer&&) {
@@ -3036,7 +3038,7 @@ Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
 void
 Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
     if (e.getCode() == DhtProtocolException::UNAUTHORIZED) {
-        DHT_LOG.ERR("[node %s] token flush", req->node->toString().c_str());
+        DHT_LOG_ERR("[node %s] token flush", req->node->toString().c_str());
         req->node->authError();
         network_engine.cancelRequest(req);
         for (auto& srp : req->node->getFamily() == AF_INET ? searches4 : searches6) {
@@ -3084,7 +3086,7 @@ NetworkEngine::RequestAnswer
 Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query& query)
 {
     if (hash == zeroes) {
-        DHT_LOG.WARN("[node %s] Eek! Got get_values with no info_hash.", node->toString().c_str());
+        DHT_LOG_WARN("[node %s] Eek! Got get_values with no info_hash.", node->toString().c_str());
         throw DhtProtocolException {
             DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
             DhtProtocolException::GET_NO_INFOHASH
@@ -3098,9 +3100,9 @@ Dht::onGetValues(std::shared_ptr<Node> node, InfoHash& hash, want_t, const Query
     answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
     if (st != store.end() && not st->second.empty()) {
         answer.values = st->second.get(query.where.getFilter());
-        DHT_LOG.DEBUG("[node %s] sending %u values.", node->toString().c_str(), answer.values.size());
+        DHT_LOG_DEBUG("[node %s] sending %u values.", node->toString().c_str(), answer.values.size());
     } else {
-        DHT_LOG.DEBUG("[node %s] sending nodes.", node->toString().c_str());
+        DHT_LOG_DEBUG("[node %s] sending nodes.", node->toString().c_str());
     }
     return answer;
 }
@@ -3111,16 +3113,16 @@ void Dht::onGetValuesDone(const Request& status,
         const std::shared_ptr<Query>& orig_query)
 {
     if (not sr) {
-        DHT_LOG.WARN("[search unknown] got reply to 'get'. Ignoring.");
+        DHT_LOG_WARN("[search unknown] got reply to 'get'. Ignoring.");
         return;
     }
 
-    DHT_LOG.DEBUG("[search %s] [node %s] got reply to 'get' with %u nodes",
+    DHT_LOG_DEBUG("[search %s] [node %s] got reply to 'get' with %u nodes",
             sr->id.toString().c_str(), status.node->toString().c_str(), a.nodes4.size());
 
     if (not a.ntoken.empty()) {
         if (not a.values.empty() or not a.fields.empty()) {
-            DHT_LOG.DEBUG("[search %s IPv%c] found %u values",
+            DHT_LOG_DEBUG("[search %s IPv%c] found %u values",
                     sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
                     a.values.size());
             for (auto& getp : sr->callbacks) { /* call all callbacks for this search */
@@ -3165,7 +3167,7 @@ void Dht::onGetValuesDone(const Request& status,
                 l.first(l.second);
         }
     } else {
-        DHT_LOG.WARN("[node %s] no token provided. Ignoring response content.", status.node->toString().c_str());
+        DHT_LOG_WARN("[node %s] no token provided. Ignoring response content.", status.node->toString().c_str());
         network_engine.blacklistNode(status.node);
     }
 
@@ -3181,14 +3183,14 @@ NetworkEngine::RequestAnswer
 Dht::onListen(std::shared_ptr<Node> node, InfoHash& hash, Blob& token, size_t rid, Query&& query)
 {
     if (hash == zeroes) {
-        DHT_LOG.WARN("[node %s] Listen with no info_hash.", node->toString().c_str());
+        DHT_LOG_WARN("[node %s] Listen with no info_hash.", node->toString().c_str());
         throw DhtProtocolException {
             DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
             DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
     if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
-        DHT_LOG.WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
+        DHT_LOG_WARN("[node %s] incorrect token %s for 'listen'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
     storageAddListener(hash, node, rid, std::forward<Query>(query));
@@ -3201,10 +3203,10 @@ Dht::onListenDone(const Request& status,
         std::shared_ptr<Search>& sr,
         const std::shared_ptr<Query>& orig_query)
 {
-    DHT_LOG.DEBUG("[search %s] [node %s] Got reply to listen.", sr->id.toString().c_str(), status.node->toString().c_str());
+    DHT_LOG_DEBUG("[search %s] [node %s] Got reply to listen.", sr->id.toString().c_str(), status.node->toString().c_str());
     if (sr) {
         if (not answer.values.empty()) { /* got new values from listen request */
-            DHT_LOG.DEBUG("[listen %s] Got new values.", sr->id.toString().c_str());
+            DHT_LOG_DEBUG("[listen %s] Got new values.", sr->id.toString().c_str());
             onGetValuesDone(status, answer, sr, orig_query);
         }
 
@@ -3214,7 +3216,7 @@ Dht::onListenDone(const Request& status,
             scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(types, now));
         }
     } else
-        DHT_LOG.DEBUG("Unknown search or announce!");
+        DHT_LOG_DEBUG("Unknown search or announce!");
 }
 
 NetworkEngine::RequestAnswer
@@ -3225,14 +3227,14 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         time_point created)
 {
     if (hash == zeroes) {
-        DHT_LOG.WARN("Put with no info_hash.");
+        DHT_LOG_WARN("Put with no info_hash.");
         throw DhtProtocolException {
             DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
             DhtProtocolException::PUT_NO_INFOHASH
         };
     }
     if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
-        DHT_LOG.WARN("[node %s] incorrect token %s for 'put'.", node->toString().c_str(), hash.toString().c_str());
+        DHT_LOG_WARN("[node %s] incorrect token %s for 'put'.", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }
     {
@@ -3240,14 +3242,14 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         // SEARCH_NODES nodes around the target id.
         auto closest_nodes = buckets(node->getFamily()).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
         if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
-            DHT_LOG.WARN("[node %s] announce too far from the target. Dropping value.", node->toString().c_str());
+            DHT_LOG_WARN("[node %s] announce too far from the target. Dropping value.", node->toString().c_str());
             return {};
         }
     }
 
     for (const auto& v : values) {
         if (v->id == Value::INVALID_ID) {
-            DHT_LOG.WARN("[value %s %s] incorrect value id", hash.toString().c_str(), v->id);
+            DHT_LOG_WARN("[value %s %s] incorrect value id", hash.toString().c_str(), v->id);
             throw DhtProtocolException {
                 DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
                 DhtProtocolException::PUT_INVALID_ID
@@ -3257,15 +3259,15 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         std::shared_ptr<Value> vc = v;
         if (lv) {
             if (*lv == *vc) {
-                DHT_LOG.WARN("[value %s %lu] nothing to do.", hash.toString().c_str(), lv->id);
+                DHT_LOG_WARN("[value %s %lu] nothing to do.", hash.toString().c_str(), lv->id);
             } else {
                 const auto& type = getType(lv->type);
                 if (type.editPolicy(hash, lv, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
-                    DHT_LOG.DEBUG("[value %s %lu] editing %s.",
+                    DHT_LOG_DEBUG("[value %s %lu] editing %s.",
                             hash.toString().c_str(), lv->id, vc->toString().c_str());
                     storageStore(hash, vc, created);
                 } else {
-                    DHT_LOG.DEBUG("[value %s %lu] rejecting edition of %s because of storage policy.",
+                    DHT_LOG_DEBUG("[value %s %lu] rejecting edition of %s because of storage policy.",
                             hash.toString().c_str(), lv->id, vc->toString().c_str());
                 }
             }
@@ -3273,10 +3275,10 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
             if (type.storePolicy(hash, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
-                DHT_LOG.DEBUG("[value %s %lu] storing %s.", hash.toString().c_str(), vc->id, vc->toString().c_str());
+                DHT_LOG_DEBUG("[value %s %lu] storing %s.", hash.toString().c_str(), vc->id, vc->toString().c_str());
                 storageStore(hash, vc, created);
             } else {
-                DHT_LOG.DEBUG("[value %s %lu] rejecting storage of %s.",
+                DHT_LOG_DEBUG("[value %s %lu] rejecting storage of %s.",
                         hash.toString().c_str(), vc->id, vc->toString().c_str());
             }
         }
@@ -3288,7 +3290,7 @@ void
 Dht::onAnnounceDone(const Request& req, NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
 {
     const auto& now = scheduler.time();
-    DHT_LOG.DEBUG("[search %s] [node %s] got reply to put!",
+    DHT_LOG_DEBUG("[search %s] [node %s] got reply to put!",
             sr->id.toString().c_str(), req.node->toString().c_str());
     searchSendGetValues(sr);
     sr->checkAnnounced(types, now, answer.vid);

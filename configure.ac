@@ -24,6 +24,14 @@ AS_IF([test "x$enable_debug" = "xyes"],
 AC_PROG_CXX
 AM_PROG_AR
 
+dnl Check for logs
+AC_ARG_ENABLE([logs], [AS_HELP_STRING([--disable-logs], [Disble DHT logs])])
+AS_IF([test "x$enable_logs" != "xno"], [
+	AC_DEFINE([OPENDHT_LOG], [true], [Define if DHT logs are enabled])
+], [
+	AC_DEFINE([OPENDHT_LOG], [false], [Define if DHT logs are enabled])
+])
+
 dnl Check for Doxygen
 AC_ARG_ENABLE([doc], AS_HELP_STRING([--enable-doc], [Enable documentation generation (doxygen)]))
 AS_IF([test "x$enable_doc" = "xyes"], [
