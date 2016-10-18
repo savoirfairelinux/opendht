@@ -2827,7 +2827,6 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
             want4 = false;
         }
     }
-    else { want4 = false; }
 
     auto nodes6 = buckets6.findClosestNodes(id, now);
     if (!nodes6.empty()) {
@@ -2843,7 +2842,6 @@ Dht::maintainStorage(InfoHash id, bool force, DoneCallback donecb) {
             want6 = false;
         }
     }
-    else { want6 = false; }
 
     if (not want4 and not want6) {
         DHT_LOG_DEBUG("Discarding storage values %s", id.toString().c_str());
