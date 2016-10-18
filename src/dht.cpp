@@ -1282,7 +1282,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                     sn->acked[a.value->id] = network_engine.sendAnnounceValue(sn->node,
                                                                     sr->id,
                                                                     a.value,
-                                                                    a.created,
+                                                                    a.permanent ? time_point::max() : a.created,
                                                                     sn->token,
                                                                     onDone,
                                                                     onExpired);
@@ -2209,7 +2209,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
     const auto& now = scheduler.time();
     created = std::min(created, now);
 
-    if ( created + getType(value->id).expiration < clock::now() )
+    if (created + getType(value->id).expiration < clock::now())
         return false;
 
     auto st = store.find(id);
