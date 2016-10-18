@@ -501,12 +501,12 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             switch (msg->type) {
             case MessageType::Ping:
                 ++in_stats.ping;
-                DHT_LOG_DEBUG("Sending pong.");
+                DHT_LOG_DEBUG("[node %s] Sending pong.", node->toString().c_str());
                 onPing(node);
                 sendPong(from, msg->tid);
                 break;
             case MessageType::FindNode: {
-                DHT_LOG_DEBUG("[node %s] got 'find' request (%d).", node->toString().c_str(), msg->want);
+                DHT_LOG_DEBUG("[node %s] got 'find' request for %s (%d).", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
