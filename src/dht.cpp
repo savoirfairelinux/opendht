@@ -1890,8 +1890,13 @@ Dht::cancelListen(const InfoHash& id, size_t token)
                     for (auto& ls : sn.listenStatus)
                         network_engine.cancelRequest(ls.second);
                     sn.listenStatus.clear();
-                } else if (query)
-                    sn.listenStatus.erase(query);
+                } else if (query) {
+                    auto it = sn.listenStatus.find(query);
+                    if (it != sn.listenStatus.end()) {
+                        network_engine.cancelRequest(it->second);
+                        sn.listenStatus.erase(it);
+                    }
+                }
             }
             s->listeners.erase(af_token);
         }
@@ -2350,8 +2355,11 @@ Dht::connectivityChanged(sa_family_t af)
     network_engine.connectivityChanged(af);
     auto& searches = (af == AF_INET) ? searches4 : searches6;
     for (auto& sp : searches)
-        for (auto& sn : sp.second->nodes)
+        for (auto& sn : sp.second->nodes) {
+            for (auto& ls : sn.listenStatus)
+                network_engine.cancelRequest(ls.second);
             sn.listenStatus.clear();
+        }
     reported_addr.erase(std::remove_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& addr){
         return addr.second.getFamily() == af;
     }), reported_addr.end());
