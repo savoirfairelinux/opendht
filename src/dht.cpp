@@ -866,26 +866,12 @@ Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
         //scheduler.edit(nextNodesConfirmation, now);
     }
 
-    unsigned expired_count = 0;
+    // Try to get rid of an expired node.
     for (auto& n : b->nodes)
-        if (n->isExpired())
-            expired_count++;
-    if (/*confirm < 2 && */b->nodes.size() - expired_count == 0) {
-        // No good or dubious node in this bucket
-        // Try to confirm this one
-        DHT_LOG_DEBUG("[node %s] Sending find node to new node.", node->toString().c_str());
-        network_engine.sendFindNode(node, list.randomId(b), -1, nullptr, nullptr);
-        if (confirm >= 2)
-            scheduler.edit(nextNodesConfirmation, scheduler.time());
-    }
-    if (expired_count > 0)  {
-        // Try to get rid of an expired node.
-        for (auto& n : b->nodes)
-            if (n->isExpired()) {
-                n = node;
-                return;
-            }
-    }
+        if (n->isExpired()) {
+            n = node;
+            return;
+        }
 
     if (b->nodes.size() >= TARGET_NODES) {
         /* Bucket full.  Ping a dubious node */
