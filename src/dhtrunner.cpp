@@ -129,6 +129,7 @@ DhtRunner::join()
 {
     running = false;
     cv.notify_all();
+    bootstrap_cv.notify_all();
     if (dht_thread.joinable())
         dht_thread.join();
     if (rcv_thread.joinable())
@@ -606,16 +607,21 @@ DhtRunner::tryBootstrapCoutinuously()
 
             next += BOOTSTRAP_PERIOD;
             {
-                std::mutex mtx; // dummy mutex
+                std::mutex mtx;
                 std::unique_lock<std::mutex> blck(mtx);
-                std::atomic<unsigned> ping_count(0);
+                unsigned ping_count(0);
                 // Reverse: try last inserted bootstrap nodes first
                 for (auto it = nodes.rbegin(); it != nodes.rend(); it++) {
                     ++ping_count;
                     try {
                         bootstrap(getAddrInfo(it->first, it->second), [&](bool) {
-                            --ping_count;
-                            cv.notify_all();
+                            if (not running)
+                                return;
+                            {
+                                std::unique_lock<std::mutex> blck(mtx);
+                                --ping_count;
+                            }
+                            bootstrap_cv.notify_all();
                         });
                     } catch (std::invalid_argument& e) {
                         --ping_count;
@@ -623,10 +629,10 @@ DhtRunner::tryBootstrapCoutinuously()
                     }
                 }
                 // wait at least until the next BOOTSTRAP_PERIOD
-                cv.wait_until(blck, next, [&]() { return not running; });
+                bootstrap_cv.wait_until(blck, next, [&]() { return not running; });
                 // wait for bootstrap requests to end.
                 if (running)
-                    cv.wait(blck, [&]() { return not running or ping_count == 0; });
+                   bootstrap_cv.wait(blck, [&]() { return not running or ping_count == 0; });
             }
             // update state
             {

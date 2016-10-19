@@ -388,6 +388,7 @@ private:
     std::thread bootstrap_thread {};
     /** protects bootstrap_nodes, bootstrap_thread */
     std::mutex bootstrap_mtx {};
+    std::condition_variable bootstrap_cv {};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};

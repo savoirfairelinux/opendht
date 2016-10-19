@@ -250,8 +250,10 @@ NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
 {
     request->start = scheduler.time();
     auto e = requests.emplace(request->tid, request);
-    if (!e.second)
+    if (!e.second) {
         DHT_LOG_ERR("Request already existed (tid: %d)!", request->tid);
+        return;
+    }
     request->node->requested(request);
     requestStep(request);
 }
