@@ -24,6 +24,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <chrono>
 
 namespace dht {
 namespace log {
@@ -63,13 +64,23 @@ constexpr const Color::Modifier yellow(Color::FG_YELLOW);
  */
 void
 printLog(std::ostream& s, char const* m, va_list args) {
-    static constexpr int BUF_SZ = 8192;
-    char buffer[BUF_SZ];
-    int ret = vsnprintf(buffer, sizeof(buffer), m, args);
+    // print log to buffer
+    std::array<char, 8192> buffer;
+    int ret = vsnprintf(buffer.data(), buffer.size(), m, args);
     if (ret < 0)
         return;
-    s.write(buffer, std::min(ret, BUF_SZ));
-    if (ret >= BUF_SZ)
+
+    // write timestamp
+    using namespace std::chrono;
+    using log_precision = microseconds;
+    constexpr auto den = log_precision::period::den;
+    auto micro = duration_cast<log_precision>(steady_clock::now().time_since_epoch()).count();
+    s << "[" << std::setfill('0') << std::setw(6) << micro / den << "." 
+             << std::setfill('0') << std::setw(6) << micro % den << "]" << " ";
+
+    // write log
+    s.write(buffer.data(), std::min((size_t)ret, buffer.size()));
+    if ((size_t)ret >= buffer.size())
         s << "[[TRUNCATED]]";
     s.put('\n');
 }
