@@ -382,7 +382,7 @@ private:
     size_t listener_token {1};
 
     // timing
-    Scheduler scheduler {};
+    Scheduler scheduler;
     std::shared_ptr<Scheduler::Job> nextNodesConfirmation {};
     std::shared_ptr<Scheduler::Job> nextStorageMaintenance {};
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};

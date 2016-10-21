@@ -36,8 +36,10 @@ namespace dht {
  */
 class Scheduler {
 public:
+    Scheduler(const Logger& l) : DHT_LOG(l) {}
+
     struct Job {
-        Job(std::function<void()>&& f) : do_(std::forward<std::function<void()>>(f)) {}
+        Job(std::function<void()>&& f) : do_(std::move(f)) {}
         std::function<void()> do_;
     };
 
@@ -50,7 +52,7 @@ public:
      * @return pointer to the newly scheduled job.
      */
     std::shared_ptr<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
-        auto job = std::make_shared<Job>(std::forward<std::function<void()>>(job_func));
+        auto job = std::make_shared<Job>(std::move(job_func));
         if (t != time_point::max())
             timers.emplace(std::move(t), job);
         return job;
@@ -66,10 +68,14 @@ public:
      */
     void edit(std::shared_ptr<Scheduler::Job>& job, time_point t) {
         if (not job) {
-            std::cerr << "editing an empty job" << std::endl;
+            DHT_LOG.ERR("editing an empty job");
             return;
         }
-        job = add(t, std::move(job->do_));
+        // std::function move doesn't garantee to leave the object empty.
+        // Force clearing old value.
+        auto task = std::move(job->do_);
+        job->do_ = {};
+        job = add(t, std::move(task));
     }
 
     /**
@@ -89,17 +95,16 @@ public:
             if (timer->first > now)
                 break;
 
-            const auto& job = *timer->second;
-            if (job.do_)
-                job.do_();
+            auto job = std::move(timer->second);
             timers.erase(timer);
+
+            if (job->do_)
+                job->do_();
         }
         return getNextJobTime();
     }
 
     inline time_point getNextJobTime() const {
-        //if (not timers.empty())
-        //    std::cout << "Next job in " << print_dt(timers.begin()->first - clock::now()) << std::endl;
         return timers.empty() ? time_point::max() : timers.begin()->first;
     }
 
@@ -113,6 +118,7 @@ public:
 private:
     time_point now {clock::now()};
     std::multimap<time_point, std::shared_ptr<Job>> timers {}; /* the jobs ordered by time */
+    const Logger& DHT_LOG;
 };
 
 }

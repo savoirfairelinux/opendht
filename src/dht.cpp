@@ -1386,14 +1386,14 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock()) {
                                     onListenDone(req, answer, sr, query);
-                                    searchStep(sr);
+                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
                                 }
                             },
                             [this,ws,last_req,query](const Request& req, bool over) mutable
                             { /* on expired */
                                 network_engine.cancelRequest(last_req);
                                 if (auto sr = ws.lock()) {
-                                    searchStep(sr);
+                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
                                     if (over)
                                         if (auto sn = sr->getNode(req.node))
                                             sn->listenStatus.erase(query);
@@ -2652,11 +2652,11 @@ Dht::~Dht()
         s.second->clear();
 }
 
-Dht::Dht() : store(), network_engine(DHT_LOG, scheduler) {}
+Dht::Dht() : store(), scheduler(DHT_LOG), network_engine(DHT_LOG, scheduler) {}
 
 Dht::Dht(int s, int s6, Config config)
  : myid(config.node_id), is_bootstrap(config.is_bootstrap), store(),
-    network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
+    scheduler(DHT_LOG), network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),
@@ -2779,9 +2779,13 @@ Dht::bucketMaintenance(RoutingTable& list)
                 }
 
                 DHT_LOG_DEBUG("[node %s] sending find %s for bucket maintenance.", n->toString().c_str(), id.toString().c_str());
-                network_engine.sendFindNode(n, id, want, nullptr, [&](const Request&, bool ok){
-                    if (not ok)
-                        scheduler.edit(nextNodesConfirmation, scheduler.time());
+                auto start = scheduler.time();
+                network_engine.sendFindNode(n, id, want, nullptr, [this,start,n](const Request&, bool over) {
+                    if (over) {
+                        auto end = scheduler.time();
+                        DHT_LOG_DEBUG("[node %s] bucket maintenance op expired after %llu", n->toString().c_str(), std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count());
+                        scheduler.edit(nextNodesConfirmation, end + 3 * Node::NODE_EXPIRE_TIME);
+                    }
                 });
                 /* In order to avoid sending queries back-to-back,
                    give up for now and reschedule us soon. */
@@ -2938,7 +2942,10 @@ Dht::confirmNodes()
         : uniform_duration_distribution<> {seconds(60), seconds(180)};
     auto confirm_nodes_time = now + time_dis(rd);
 
-    nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
+    if (nextNodesConfirmation)
+        scheduler.edit(nextNodesConfirmation, confirm_nodes_time);
+    else
+        nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
 }
 
 std::vector<ValuesExport>
