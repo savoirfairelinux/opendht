@@ -1,0 +1,142 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8x]{inputenc}
+\usepackage[top=2cm,bottom=2cm]{geometry}
+
+\usepackage{forloop}
+\newcounter{counter}
+
+% maths
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{mathrsfs}
+\usepackage{shadethm}
+\usepackage{amsthm}
+\newshadetheorem{shadeDef}{Definition}[section]
+\newtheorem{remark}{Remark}[section]
+\renewcommand{\P}{\mathbb{P}}
+
+\usepackage{float}
+\usepackage{booktabs}
+
+\setlength{\parindent}{0ex}
+\setlength{\parskip}{0.5em}
+
+\begin{document}
+    \title{Annex 1: Probabilistic analysis of connectivity changes}
+    \author{Adrien Béraud, Simon Désaulniers, Guillaume Roguez}
+    \maketitle
+    \pagestyle{empty}
+    \begin{shadeDef}
+        A node flagged as \emph{``expired''} by a node $n$ is a node which has not responded to any
+        of $n$'s last three requests.
+    \end{shadeDef}
+    \begin{remark}
+        An expired node will not be contacted before 10 minutes from its expiration time.
+    \end{remark}
+
+    Let $N$ the DHT network, $n_0\in N$, a given node and the following probabilistic events:
+    \begin{itemize}
+        \item $A$: $\forall n \in N$ $n$ is unreachable by $n_0$, \emph{i.e.} $n_0$ lost connection
+            with $N$;
+        \item $B$: $S\subset N$, the nodes unreachable by $n_0$ with $k={|S|\over|N|}$;
+        \item $C$: $m \le |N|$ nodes are flagged as ``expired''.
+    \end{itemize}
+
+    We are interested in knowing $\P(A|C)$, \emph{i.e.} the probability of the event where $A$ occurs
+    prior to $C$. From the above, we immediately get
+    $$\left\{
+        \begin{array}{ll}
+            \P(C|A)       & = 1\\
+            \P(A) + \P(B) & = 1
+        \end{array}
+    \right.$$
+    Also, the event $A|C$ can be abstracted as the urn problem of draw without replacement. Then,
+        $$\P(C|B) = \prod_{i=0}^m \left[k|N| - i \over |N|\right] = \prod_{i=0}^m \left[k - { i \over |N| }\right]$$
+    Furthermore, using Bayes' theroem we have
+    \begin{align*}
+        \P(A|C) & = { \P(C|A)\P(A) \over \P(C|A)\P(A) + \P(C|B)\P(B)}\\
+                & = { \P(A) \over \P(A) + \P(C|B)\P(B) }\\
+                & = { \P(A) \over \P(A) + \P(C|B)\left[1 - \P(A)\right] }\\
+        \Rightarrow \forloop{counter}{0}{\value{counter} < 5}{\qquad}\quad  \P(A)  & =
+            \P(A|C)\left[\P(A) + \P(C|B)\left(1 - \P(A)\right) \right] \\
+        \Rightarrow \forloop{counter}{0}{\value{counter} < 2}{\qquad}\;\:\, \P(A)\left[{ 1 \over \P(A|C)} - 1\right] & =
+            \P(C|B)\left(1 - \P(A)\right) \\
+    \end{align*}
+    Finally,
+    \begin{equation}
+        \label{eq:final}
+        \left[{\P(A) \over 1 - \P(A)}\right]\left[{ 1 \over \P(A|C)} - 1\right] =
+            \prod_{i=0}^m \left[k - { i \over |N| }\right]
+    \end{equation}
+
+    From \eqref{eq:final}, we may set a plausible configuration $\{\P(A),\P(A|C),k,|N|\}$ letting us
+    produce results such as in table \ref{tbl:k_1_2}, \ref{tbl:k_2_3} and \ref{tbl:k_3_4}.
+
+    \begin{table}[H]
+        \centering
+        \caption{The values for $m$ assuming $\P(A|C) \ge 0.95,\, k = {1 \over 2}$}
+        \label{tbl:k_1_2}
+        \begin{tabular}{lcccc}
+            \toprule
+            $|N| \diagdown \P(A)$ & ${1 \over 10 }$ & ${1 \over 100 }$ & ${1 \over 1000 }$ & ${1 \over 10000 }$\\
+            \midrule
+            $2^0$               & 1               & 1                & 1                 & 1\\
+            $2^1$               & 1               & 1                & 1                 & 1\\
+            $2^2$               & 2               & 2                & 2                 & 2\\
+            $2^3$               & 4               & 4                & 4                 & 4\\
+            $2^4$               & 5               & 6                & 7                 & 8\\
+            $2^5$               & 5               & 7                & 9                 & 10\\
+            $2^6$               & 6               & 9                & 11                & 13\\
+            $2^7$               & 6               & 9                & 12                & 14\\
+            $2^8$               & 7               & 10               & 13                & 16\\
+            $2^9$               & 7               & 10               & 13                & 16\\
+            $2^{10}$            & 7               & 10               & 13                & 17\\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+    \begin{table}[H]
+        \centering
+        \caption{The values for $m$ assuming $\P(A|C) \ge 0.95,\, k = {2 \over 3}$}
+        \label{tbl:k_2_3}
+        \begin{tabular}{lcccc}
+            \toprule
+            $|N| \diagdown \P(A)$ & ${1 \over 10 }$ & ${1 \over 100 }$ & ${1 \over 1000 }$ & ${1 \over 10000 }$\\
+            \midrule
+            $2^0$               & 1               & 1                & 1                 & 1\\
+            $2^1$               & 2               & 2                & 2                 & 2\\
+            $2^2$               & 3               & 3                & 4                 & 4\\
+            $2^3$               & 5               & 5                & 6                 & 8\\
+            $2^4$               & 6               & 8                & 9                 & 10\\
+            $2^5$               & 8               & 10               & 12                & 14\\
+            $2^6$               & 9               & 13               & 16                & 18\\
+            $2^7$               & 11              & 15               & 18                & 22\\
+            $2^8$               & 11              & 16               & 21                & 25\\
+            $2^9$               & 12              & 17               & 22                & 27\\
+            $2^{10}$            & 12              & 18               & 23                & 28\\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+    \begin{table}[H]
+        \centering
+        \caption{The values for $m$ assuming $\P(A|C) \ge 0.95,\, k = {3 \over 4}$}
+        \label{tbl:k_3_4}
+        \begin{tabular}{lcccc}
+            \toprule
+            $|N| \diagdown \P(A)$ & ${1 \over 10 }$ & ${1 \over 100 }$ & ${1 \over 1000 }$ & ${1 \over 10000 }$\\
+            \midrule
+            $2^0$               & 1               & 1                & 1                 & 1\\
+            $2^1$               & 2               & 2                & 2                 & 2\\
+            $2^2$               & 3               & 3                & 3                 & 3\\
+            $2^3$               & 5               & 6                & 6                 & 6\\
+            $2^4$               & 7               & 9                & 10                & 11\\
+            $2^5$               & 10              & 12               & 14                & 16\\
+            $2^6$               & 12              & 16               & 19                & 22\\
+            $2^7$               & 14              & 19               & 23                & 27\\
+            $2^8$               & 15              & 21               & 27                & 32\\
+            $2^9$               & 16              & 23               & 30                & 36\\
+            $2^{10}$            & 17              & 24               & 31                & 38\\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+\end{document}
