@@ -331,7 +331,7 @@ private:
     /* Timeout for listen */
     static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME {30};
 
-    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {5};
+    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {10};
 
     static constexpr size_t TOKEN_SIZE {64};
 
