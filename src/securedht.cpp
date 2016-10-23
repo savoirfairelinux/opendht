@@ -321,7 +321,7 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
         },
         [hash,val,this,callback,permanent] (bool /* ok */) {
             sign(*val);
-            put(hash, val, callback, {}, permanent);
+            put(hash, val, callback, time_point::max(), permanent);
         },
         Value::IdFilter(val->id)
     );
