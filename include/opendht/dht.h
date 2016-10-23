@@ -26,6 +26,7 @@
 #include "scheduler.h"
 #include "routing_table.h"
 #include "callbacks.h"
+#include "log_enable.h"
 
 #include <string>
 #include <array>
@@ -98,6 +99,13 @@ public:
      * Enable or disable logging of DHT internal messages
      */
     void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
+
+    /**
+     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
+     */
+    void setLogFilter(const InfoHash& f) {
+        DHT_LOG.setFilter(f);
+    }
 
     virtual void registerType(const ValueType& type) {
         types[type.id] = type;
@@ -290,6 +298,8 @@ public:
 
 protected:
     Logger DHT_LOG;
+    bool logFilerEnable_ {};
+    InfoHash logFiler_ {};
 
 private:
 

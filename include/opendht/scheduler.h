@@ -22,6 +22,7 @@
 #pragma once
 
 #include "utils.h"
+#include "log_enable.h"
 
 #include <functional>
 #include <map>

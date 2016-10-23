@@ -89,45 +89,6 @@ public:
     }
 };
 
-// Logging related utility functions
-
-/**
- * Dummy function used to disable logging
- */
-inline void NOLOG(char const*, va_list) {}
-
-/**
- * Wrapper for logging methods
- */
-struct LogMethod {
-    LogMethod() = default;
-
-    template<typename T>
-    LogMethod(T&& t) : func(std::forward<T>(t)) {}
-
-    void operator()(char const* format, ...) const {
-        va_list args;
-        va_start(args, format);
-        func(format, args);
-        va_end(args);
-    }
-
-    void logPrintable(const uint8_t *buf, size_t buflen) const {
-        std::string buf_clean(buflen, '\0');
-        for (size_t i=0; i<buflen; i++)
-            buf_clean[i] = isprint(buf[i]) ? buf[i] : '.';
-        (*this)("%s", buf_clean.c_str());
-    }
-private:
-    std::function<void(char const*, va_list)> func;
-};
-
-struct Logger {
-    LogMethod DEBUG = NOLOG;
-    LogMethod WARN = NOLOG;
-    LogMethod ERR = NOLOG;
-};
-
 // Serialization related definitions and utility functions
 
 using Blob = std::vector<uint8_t>;

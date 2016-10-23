@@ -25,6 +25,7 @@
 #include "value.h"
 #include "callbacks.h"
 #include "sockaddr.h"
+#include "log_enable.h"
 
 #include <thread>
 #include <mutex>
@@ -260,6 +261,11 @@ public:
     std::vector<ValuesExport> exportValues() const;
 
     void setLoggers(LogMethod err = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
+
+    /**
+     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
+     */
+    void setLogFilter(const InfoHash& f = {});
 
     void registerType(const ValueType& type);
 

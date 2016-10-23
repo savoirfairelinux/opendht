@@ -215,6 +215,12 @@ DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
 }
 
 void
+DhtRunner::setLogFilter(const InfoHash& f) {
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    dht_->setLogFilter(f);
+}
+
+void
 DhtRunner::registerType(const ValueType& type) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     dht_->registerType(type);
@@ -446,10 +452,12 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
 void
 DhtRunner::get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f, Where w)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) mutable {
-        dht.get(hash, vcb, dcb, std::move(f), std::move(w));
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) mutable {
+            dht.get(hash, vcb, dcb, std::move(f), std::move(w));
+        });
+    }
     cv.notify_all();
 }
 
@@ -459,21 +467,25 @@ DhtRunner::get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb, 
     get(InfoHash::get(key), vcb, dcb, f, w);
 }
 void DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Query q) {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) mutable {
-        dht.query(hash, cb, done_cb, std::move(q));
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) mutable {
+            dht.query(hash, cb, done_cb, std::move(q));
+        });
+    }
     cv.notify_all();
 }
 
 std::future<size_t>
 DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f, Where w)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
     auto ret_token = std::make_shared<std::promise<size_t>>();
-    pending_ops.emplace([=](SecureDht& dht) mutable {
-        ret_token->set_value(dht.listen(hash, vcb, std::move(f), std::move(w)));
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) mutable {
+            ret_token->set_value(dht.listen(hash, vcb, std::move(f), std::move(w)));
+        });
+    }
     cv.notify_all();
     return ret_token->get_future();
 }
@@ -487,42 +499,50 @@ DhtRunner::listen(const std::string& key, GetCallback vcb, Value::Filter f, Wher
 void
 DhtRunner::cancelListen(InfoHash h, size_t token)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.cancelListen(h, token);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.cancelListen(h, token);
+        });
+    }
     cv.notify_all();
 }
 
 void
 DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        auto tk = token.get();
-        dht.cancelListen(h, tk);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            auto tk = token.get();
+            dht.cancelListen(h, tk);
+        });
+    }
     cv.notify_all();
 }
 
 void
 DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb, time_point created, bool permanent)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    auto sv = std::make_shared<Value>(std::move(value));
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.put(hash, sv, cb, created, permanent);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        auto sv = std::make_shared<Value>(std::move(value));
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.put(hash, sv, cb, created, permanent);
+        });
+    }
     cv.notify_all();
 }
 
 void
 DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, time_point created, bool permanent)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.put(hash, value, cb, created, permanent);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.put(hash, value, cb, created, permanent);
+        });
+    }
     cv.notify_all();
 }
 
@@ -535,20 +555,24 @@ DhtRunner::put(const std::string& key, Value&& value, DoneCallbackSimple cb, tim
 void
 DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.cancelPut(h, id);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.cancelPut(h, id);
+        });
+    }
     cv.notify_all();
 }
 
 void
 DhtRunner::putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.putSigned(hash, value, cb);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.putSigned(hash, value, cb);
+        });
+    }
     cv.notify_all();
 }
 
@@ -567,10 +591,12 @@ DhtRunner::putSigned(const std::string& key, Value&& value, DoneCallbackSimple c
 void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.putEncrypted(hash, to, value, cb);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.putEncrypted(hash, to, value, cb);
+        });
+    }
     cv.notify_all();
 }
 
@@ -707,30 +733,36 @@ DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& 
 void
 DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht& dht) {
-        for (auto& node : nodes)
-            dht.insertNode(node);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops_prio.emplace([=](SecureDht& dht) {
+            for (auto& node : nodes)
+                dht.insertNode(node);
+        });
+    }
     cv.notify_all();
 }
 
 void
 DhtRunner::connectivityChanged()
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.connectivityChanged();
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.connectivityChanged();
+        });
+    }
     cv.notify_all();
 }
 
 void
 DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb) {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.findCertificate(hash, cb);
-    });
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.findCertificate(hash, cb);
+        });
+    }
     cv.notify_all();
 }
 

@@ -140,11 +140,14 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             }
             continue;
         } else if (op == "log") {
-            params.log = !params.log;
+            iss >> idstr;
+            InfoHash filter(idstr);
+            params.log = filter == InfoHash{} ? !params.log : true;
             if (params.log)
                 log::enableLogging(*dht);
             else
                 log::disableLogging(*dht);
+            dht->setLogFilter(filter);
             continue;
         }
 
