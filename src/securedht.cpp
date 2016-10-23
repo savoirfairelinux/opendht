@@ -338,7 +338,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_pt
         }
         DHT_LOG.WARN("Encrypting data for PK: %s", pk->getId().toString().c_str());
         try {
-            put(hash, encrypt(*val, *pk), callback, {}, permanent);
+            put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
         } catch (const std::exception& e) {
             DHT_LOG.ERR("Error putting encrypted data: %s", e.what());
             if (callback)
