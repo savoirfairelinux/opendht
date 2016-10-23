@@ -2603,24 +2603,44 @@ Dht::dumpTables() const
 std::string
 Dht::getStorageLog() const
 {
-    const auto& now = scheduler.time();
-    using namespace std::chrono;
     std::stringstream out;
-    for (const auto& st : store) {
-        out << "Storage " << st.first << " "
-                          << st.second.listeners.size() << " list., "
-                          << st.second.valueCount() << " values ("
-                          << st.second.totalSize() << " bytes)" << std::endl;
-        if (not st.second.local_listeners.empty())
-            out << "   " << st.second.local_listeners.size() << " local listeners" << std::endl;
-        for (const auto& l : st.second.listeners) {
-            out << "   " << "Listener " << l.first->toString();
-            auto since = duration_cast<seconds>(now - l.second.time);
-            auto expires = duration_cast<seconds>(l.second.time + Node::NODE_EXPIRE_TIME - now);
-            out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
-        }
-    }
+    for (const auto& s : store)
+        out << printStorageLog(s);
     out << "Total " << store.size() << " storages, " << total_values << " values (" << (total_store_size/1024) << " KB)" << std::endl;
+    return out.str();
+}
+
+std::string
+Dht::getStorageLog(const InfoHash& h) const
+{
+    auto s = store.find(h);
+    if (s == store.end()) {
+        std::stringstream out;
+        out << "Storage " << h << " empty" << std::endl;
+        return out.str();
+    }
+    return printStorageLog(*s);
+}
+
+std::string
+Dht::printStorageLog(const decltype(store)::value_type& s) const
+{
+    std::stringstream out;
+    using namespace std::chrono;
+    const auto& st = s.second;
+    out << "Storage " << s.first << " "
+                      << st.listeners.size() << " list., "
+                      << st.valueCount() << " values ("
+                      << st.totalSize() << " bytes)" << std::endl;
+    if (not st.local_listeners.empty())
+        out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
+    const auto& now = scheduler.time();
+    for (const auto& l : st.listeners) {
+        out << "   " << "Listener " << l.first->toString();
+        auto since = duration_cast<seconds>(now - l.second.time);
+        auto expires = duration_cast<seconds>(l.second.time + Node::NODE_EXPIRE_TIME - now);
+        out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
+    }
     return out.str();
 }
 

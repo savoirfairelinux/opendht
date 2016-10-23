@@ -113,7 +113,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             std::cout << dht->getRoutingTablesLog(AF_INET6) << std::endl;
             continue;
         } else if (op == "ld") {
-            std::cout << dht->getStorageLog() << std::endl;
+            iss >> idstr;
+            InfoHash filter(idstr);
+            if (filter == InfoHash{})
+                std::cout << dht->getStorageLog() << std::endl;
+            else
+                std::cout << dht->getStorageLog(filter) << std::endl;
             continue;
         } else if (op == "ls") {
             std::cout << "Searches:" << std::endl;

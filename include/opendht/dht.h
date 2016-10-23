@@ -271,6 +271,8 @@ public:
     unsigned getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
             unsigned *incoming_return) const;
     std::string getStorageLog() const;
+    std::string getStorageLog(const InfoHash&) const;
+
     std::string getRoutingTablesLog(sa_family_t) const;
     std::string getSearchesLog(sa_family_t) const;
 
@@ -416,6 +418,7 @@ private:
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created);
     void expireStorage();
     void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
+    std::string printStorageLog(const decltype(store)::value_type&) const;
 
     /**
      * For a given storage, if values don't belong there anymore because this

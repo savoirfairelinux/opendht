@@ -253,6 +253,12 @@ DhtRunner::getStorageLog() const
     return dht_->getStorageLog();
 }
 std::string
+DhtRunner::getStorageLog(const InfoHash& f) const
+{
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    return dht_->getStorageLog(f);
+}
+std::string
 DhtRunner::getRoutingTablesLog(sa_family_t af) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);

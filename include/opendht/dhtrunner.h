@@ -279,6 +279,7 @@ public:
 
     std::vector<unsigned> getNodeMessageStats(bool in = false) const;
     std::string getStorageLog() const;
+    std::string getStorageLog(const InfoHash&) const;
     std::string getRoutingTablesLog(sa_family_t af) const;
     std::string getSearchesLog(sa_family_t af = 0) const;
     std::vector<SockAddr> getPublicAddress(sa_family_t af = 0);
