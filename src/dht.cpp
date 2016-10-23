@@ -1724,7 +1724,7 @@ Dht::announce(const InfoHash& id,
             callback(false, {});
         return;
     }
-
+    created = std::min(now, created);
     storageStore(id, value, created);
 
     auto& srs = af == AF_INET ? searches4 : searches6;
@@ -1741,7 +1741,7 @@ Dht::announce(const InfoHash& id,
         return a.value->id == value->id;
     });
     if (a_sr == sr->announce.end()) {
-        sr->announce.emplace_back(Announce {permanent, value, std::min(now, created), callback});
+        sr->announce.emplace_back(Announce {permanent, value, created, callback});
         for (auto& n : sr->nodes) {
             n.probe_query.reset();
             n.acked[value->id].first.reset();
@@ -2200,8 +2200,6 @@ bool
 Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created)
 {
     const auto& now = scheduler.time();
-    created = std::min(created, now);
-
     auto expiration = created + getType(value->type).expiration;
     if (expiration < now) {
         using namespace std::chrono;
@@ -3003,6 +3001,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
         if (h.second.empty())
             continue;
 
+        const auto& now = scheduler.time();
         try {
             msgpack::unpacked msg;
             msgpack::unpack(msg, (const char*)h.second.data(), h.second.size());
@@ -3022,10 +3021,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     DHT_LOG.e(h.first, "Error reading value at %s", h.first.toString().c_str());
                     continue;
                 }
-                if (val_time + getType(tmp_val.type).expiration < scheduler.time()) {
-                    DHT_LOG.d(h.first, "Discarding expired value at %s", h.first.toString().c_str());
-                    continue;
-                }
+                val_time = std::min(val_time, now);
                 storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
             }
         } catch (const std::exception&) {
@@ -3287,7 +3283,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         const InfoHash& hash,
         const Blob& token,
         const std::vector<std::shared_ptr<Value>>& values,
-        const time_point& created)
+        const time_point& creation_date)
 {
     if (hash == zeroes) {
         DHT_LOG.w(node->id, "put with no info_hash");
@@ -3310,6 +3306,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
         }
     }
 
+    auto created = std::min(creation_date, scheduler.time());
     for (const auto& v : values) {
         if (v->id == Value::INVALID_ID) {
             DHT_LOG.w(hash, node->id, "[value %s] incorrect value id", hash.toString().c_str());
