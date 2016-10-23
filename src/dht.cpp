@@ -2207,8 +2207,14 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
     const auto& now = scheduler.time();
     created = std::min(created, now);
 
-    if (created + getType(value->id).expiration < clock::now())
+    auto expiration = created + getType(value->type).expiration;
+    if (expiration < now) {
+        using namespace std::chrono;
+        DHT_LOG_WARN("[store %s] won't store already expired value (created %lld s ago, expired %lld s ago)",
+            id.toString().c_str(), duration_cast<seconds>(now - created).count(),
+                                   duration_cast<seconds>(now - expiration).count());
         return false;
+    }
 
     auto st = store.find(id);
     if (st == store.end()) {
