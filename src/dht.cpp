@@ -185,15 +185,17 @@ struct Dht::Storage {
     /**
      * Refreshes the time point of the value's lifetime begining.
      *
-     * @param now  The reference to now;
-     * @param vid  The value id;
+     * @param now  The reference to now
+     * @param vid  The value id
+     * @return true if a value storage was updated, false otherwise
      */
-    void refresh(const time_point& now, const Value::Id& vid) {
-        auto vs = std::find_if(values.begin(), values.end(), [&vid](const ValueStorage& vs) {
-            return vs.data->id == vid;
-        });
-        if (vs != values.end())
-            vs->time = now;
+    bool refresh(const time_point& now, const Value::Id& vid) {
+        for (auto& vs : values)
+            if (vs.data->id == vid) {
+                vs.time = now;
+                return true;
+            }
+        return false;
     }
 
     std::pair<ssize_t, ssize_t> expire(const std::map<ValueType::Id, ValueType>& types, time_point now);
@@ -3338,9 +3340,8 @@ Dht::onRefresh(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& tok
     }
 
     auto s = store.find(hash);
-    if (s != store.end()) {
-        DHT_LOG.DEBUG("[Storage %s] refreshed value (vid: %d).", hash.toString().c_str(), vid);
-        s->second.refresh(now, vid);
+    if (s != store.end() and s->second.refresh(now, vid)) {
+        DHT_LOG.DEBUG("[store %s] refreshed value %s.", hash.toString().c_str(), std::to_string(vid).c_str());
     } else {
         DHT_LOG.DEBUG("[node %s] got refresh value for unknown storage (id: %s).",
                 node->id.toString().c_str(),
