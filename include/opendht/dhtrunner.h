@@ -25,6 +25,7 @@
 #include "value.h"
 #include "callbacks.h"
 #include "sockaddr.h"
+#include "log_enable.h"
 
 #include <thread>
 #include <mutex>
@@ -261,6 +262,11 @@ public:
 
     void setLoggers(LogMethod err = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
 
+    /**
+     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
+     */
+    void setLogFilter(const InfoHash& f = {});
+
     void registerType(const ValueType& type);
 
     void importValues(const std::vector<ValuesExport>& values);
@@ -273,6 +279,7 @@ public:
 
     std::vector<unsigned> getNodeMessageStats(bool in = false) const;
     std::string getStorageLog() const;
+    std::string getStorageLog(const InfoHash&) const;
     std::string getRoutingTablesLog(sa_family_t af) const;
     std::string getSearchesLog(sa_family_t af = 0) const;
     std::vector<SockAddr> getPublicAddress(sa_family_t af = 0);

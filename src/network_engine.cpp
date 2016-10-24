@@ -166,7 +166,7 @@ NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, const Info
         sendNodesValues(node->addr, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
                 values, query, ntoken);
     } catch (const std::overflow_error& e) {
-        DHT_LOG_ERR("Can't send value: buffer not large enough !");
+        DHT_LOG.e("Can't send value: buffer not large enough !");
     }
 }
 
@@ -221,7 +221,7 @@ NetworkEngine::requestStep(std::shared_ptr<Request> sreq)
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
-        DHT_LOG_ERR("[node %s] expired !", node.toString().c_str());
+        DHT_LOG.e(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
         requests.erase(req.tid);
         return;
@@ -255,7 +255,7 @@ NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
         // Try to handle this scenario as well as we can
         e.first->second->setExpired();
         e.first->second = request;
-        DHT_LOG_ERR("Request already existed (tid: %d)!", request->tid);
+        DHT_LOG.e(request->node->id, "Request already existed (tid: %d)!", request->tid);
     }
     request->node->requested(request);
     requestStep(request);
@@ -345,12 +345,12 @@ void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
 {
     if (isMartian(from)) {
-        DHT_LOG_WARN("Received packet from martian node %s", from.toString().c_str());
+        DHT_LOG.w("Received packet from martian node %s", from.toString().c_str());
         return;
     }
 
     if (isNodeBlacklisted(from)) {
-        DHT_LOG_WARN("Received packet from blacklisted node %s", from.toString().c_str());
+        DHT_LOG.w("Received packet from blacklisted node %s", from.toString().c_str());
         return;
     }
 
@@ -359,13 +359,13 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
         msg->msgpack_unpack(msg_res.get());
     } catch (const std::exception& e) {
-        DHT_LOG_WARN("Can't process message of size %lu: %s.", buflen, e.what());
-        DHT_LOG_DEBUG.logPrintable(buf, buflen);
+        DHT_LOG.w("Can't process message of size %lu: %s", buflen, e.what());
+        DHT_LOG.DEBUG.logPrintable(buf, buflen);
         return;
     }
 
     if (msg->network != network) {
-        DHT_LOG_DEBUG("Received message from other network %u.", msg->network);
+        DHT_LOG.d("Received message from other network %u", msg->network);
         return;
     }
 
@@ -375,12 +375,12 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
     if (msg->type == MessageType::ValueData) {
         auto pmsg_it = partial_messages.find(msg->tid);
         if (pmsg_it == partial_messages.end()) {
-            DHT_LOG_DEBUG("Can't find partial message");
+            DHT_LOG.d("Can't find partial message");
             rateLimit(from);
             return;
         }
         if (!pmsg_it->second.from.equals(from)) {
-            DHT_LOG_DEBUG("Received partial message data from unexpected IP address");
+            DHT_LOG.d("Received partial message data from unexpected IP address");
             rateLimit(from);
             return;
         }
@@ -399,14 +399,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
     }
 
     if (msg->id == myid || msg->id == zeroes) {
-        DHT_LOG_DEBUG("Received message from self.");
+        DHT_LOG.d("Received message from self");
         return;
     }
 
     if (msg->type > MessageType::Reply) {
         /* Rate limit requests. */
         if (!rateLimit(from)) {
-            DHT_LOG_WARN("Dropping request due to rate limiting.");
+            DHT_LOG.w("Dropping request due to rate limiting");
             return;
         }
     }
@@ -425,7 +425,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
             scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
         } else
-            DHT_LOG_ERR("Partial message with given TID already exists.");
+            DHT_LOG.e("Partial message with given TID already exists");
     }
 }
 
@@ -451,7 +451,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 // received reply from unexpected node
                 node->received(now, req);
                 onNewNode(node, 2);
-                DHT_LOG_WARN("[node %s] Message received from unexpected node.", node->toString().c_str());
+                DHT_LOG.w(node->id, "[node %s] message received from unexpected node", node->toString().c_str());
                 return;
             }
         } else
@@ -462,7 +462,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         onReportedAddr(msg->id, msg->addr);
 
         if (req->cancelled() or req->expired() or (req->completed() and not req->persistent)) {
-            DHT_LOG_WARN("[node %s] response to expired, cancelled or completed request", node->toString().c_str());
+            DHT_LOG.w(node->id, "[node %s] response to expired, cancelled or completed request", node->toString().c_str());
             requests.erase(reqp);
             return;
         }
@@ -478,7 +478,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 req->reply_time = TIME_INVALID;
                 onError(req, DhtProtocolException {msg->error_code});
             } else {
-                DHT_LOG_WARN("[node %s %s] received unknown error message %u",
+                DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
             }
             break;
@@ -506,12 +506,12 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             switch (msg->type) {
             case MessageType::Ping:
                 ++in_stats.ping;
-                DHT_LOG_DEBUG("[node %s] Sending pong.", node->toString().c_str());
+                DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
                 onPing(node);
                 sendPong(from, msg->tid);
                 break;
             case MessageType::FindNode: {
-                DHT_LOG_DEBUG("[node %s] got 'find' request for %s (%d).", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
+                DHT_LOG.d(msg->target, node->id, "[node %s] got 'find' request for %s (%d)", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
@@ -519,7 +519,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::GetValues: {
-                DHT_LOG_DEBUG("[node %s] got 'get' request for %s.", node->toString().c_str(), msg->info_hash.toString().c_str());
+                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'get' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
@@ -527,7 +527,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::AnnounceValue: {
-                DHT_LOG_DEBUG("[node %s] got 'put' request for %s.", node->toString().c_str(), msg->info_hash.toString().c_str());
+                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
 
@@ -540,15 +540,13 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::Refresh:
-                DHT_LOG.DEBUG("[node %s %s] got 'refresh value' request for %s.",
-                    msg->id.toString().c_str(), from.toString().c_str(),
-                    msg->info_hash.toString().c_str());
+                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
                 sendValueAnnounced(from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
-                DHT_LOG_DEBUG("[node %s] got 'listen' request for %s.", node->toString().c_str(), msg->info_hash.toString().c_str());
+                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->tid.getTid(), std::move(msg->query));
                 sendListenConfirmation(from, msg->tid);
@@ -558,7 +556,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
         } catch (const std::overflow_error& e) {
-            DHT_LOG_ERR("Can't send value: buffer not large enough !");
+            DHT_LOG.e("Can't send value: buffer not large enough !");
         } catch (DhtProtocolException& e) {
             sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
@@ -625,7 +623,7 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
     Blob b {buffer.data(), buffer.data() + buffer.size()};
     std::shared_ptr<Request> req(new Request {tid.getTid(), node, std::move(b),
         [=](const Request& req_status, ParsedMessage&&) {
-            DHT_LOG_DEBUG("[node %s] Got pong !", req_status.node->toString().c_str());
+            DHT_LOG.d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
             if (on_done) {
                 on_done(req_status, {});
             }
@@ -814,7 +812,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<std::
     if (svals.size() < 50 && total_size < MAX_PACKET_VALUE_SIZE) {
         for (const auto& b : svals)
             buffer.write((const char*)b.data(), b.size());
-        DHT_LOG_DEBUG("sending %lu bytes of values", total_size);
+        DHT_LOG.d("sending %lu bytes of values", total_size);
         svals.clear();
     } else {
         for (const auto& b : svals)
@@ -1063,7 +1061,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
-                DHT_LOG_DEBUG("Unknown search or announce!");
+                DHT_LOG.d(infohash, "Unknown search or announce!");
             } else {
                 if (on_done) {
                     RequestAnswer answer {};
@@ -1117,7 +1115,7 @@ NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
     std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
-                DHT_LOG.DEBUG("Unknown search or announce!");
+                DHT_LOG.d(infohash, "Unknown search or announce!");
             } else {
                 if (on_done) {
                     RequestAnswer answer {};
@@ -1375,7 +1373,7 @@ NetworkEngine::maintainRxBuffer(const TransId& tid)
     if (msg != partial_messages.end()) {
         if (msg->second.start + RX_MAX_PACKET_TIME < now
          || msg->second.last_part + RX_TIMEOUT < now) {
-            DHT_LOG_WARN("Dropping expired partial message from %s", msg->second.from.toString().c_str());
+            DHT_LOG.w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
             partial_messages.erase(msg);
         }
     }

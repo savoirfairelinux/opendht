@@ -87,6 +87,7 @@ list (APPEND opendht_HEADERS
     include/opendht/rate_limiter.h
     include/opendht/securedht.h
     include/opendht/log.h
+    include/opendht/log_enable.h
     include/opendht.h
     include/opendht/indexation/pht.h
 )
