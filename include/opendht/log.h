@@ -24,6 +24,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <chrono>
 
 namespace dht {
 namespace log {
@@ -63,11 +64,15 @@ constexpr const Color::Modifier yellow(Color::FG_YELLOW);
  */
 void
 printLog(std::ostream& s, char const* m, va_list args) {
+    using namespace std::chrono;
     static constexpr int BUF_SZ = 8192;
     char buffer[BUF_SZ];
     int ret = vsnprintf(buffer, sizeof(buffer), m, args);
     if (ret < 0)
         return;
+    auto micro = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
+    auto level = 1000000;
+    s << "[" << micro/level << "." << micro % level << "]" << " ";
     s.write(buffer, std::min(ret, BUF_SZ));
     if (ret >= BUF_SZ)
         s << "[[TRUNCATED]]";
