@@ -1,3 +1,20 @@
+/*
+ * Argon2 reference source code package - reference C implementations
+ *
+ * Copyright 2015
+ * Daniel Dinu, Dmitry Khovratovich, Jean-Philippe Aumasson, and Samuel Neves
+ *
+ * You may use this work under the terms of a Creative Commons CC0 1.0 
+ * License/Waiver or the Apache Public License 2.0, at your option. The terms of
+ * these licenses can be found at:
+ *
+ * - CC0 1.0 Universal : http://creativecommons.org/publicdomain/zero/1.0
+ * - Apache 2.0        : http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * You should have received a copy of both of these licenses along with this
+ * software. If not, they may be obtained at the above URLs.
+ */
+
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -44,7 +61,7 @@ static BLAKE2_INLINE void blake2b_increment_counter(blake2b_state *S,
 }
 
 static BLAKE2_INLINE void blake2b_invalidate_state(blake2b_state *S) {
-    burn(S, sizeof(*S));      /* wipe */
+    secure_wipe_memory(S, sizeof(*S));      /* wipe */
     blake2b_set_lastblock(S); /* invalidate for further use */
 }
 
@@ -140,7 +157,7 @@ int blake2b_init_key(blake2b_state *S, size_t outlen, const void *key,
         memset(block, 0, BLAKE2B_BLOCKBYTES);
         memcpy(block, key, keylen);
         blake2b_update(S, block, BLAKE2B_BLOCKBYTES);
-        burn(block, BLAKE2B_BLOCKBYTES); /* Burn the key from stack */
+        secure_wipe_memory(block, BLAKE2B_BLOCKBYTES); /* Burn the key from stack */
     }
     return 0;
 }
@@ -267,9 +284,9 @@ int blake2b_final(blake2b_state *S, void *out, size_t outlen) {
     }
 
     memcpy(out, buffer, S->outlen);
-    burn(buffer, sizeof(buffer));
-    burn(S->buf, sizeof(S->buf));
-    burn(S->h, sizeof(S->h));
+    secure_wipe_memory(buffer, sizeof(buffer));
+    secure_wipe_memory(S->buf, sizeof(S->buf));
+    secure_wipe_memory(S->h, sizeof(S->h));
     return 0;
 }
 
@@ -307,7 +324,7 @@ int blake2b(void *out, size_t outlen, const void *in, size_t inlen,
     ret = blake2b_final(&S, out, outlen);
 
 fail:
-    burn(&S, sizeof(S));
+    secure_wipe_memory(&S, sizeof(S));
     return ret;
 }
 
@@ -365,7 +382,7 @@ int blake2b_long(void *pout, size_t outlen, const void *in, size_t inlen) {
         memcpy(out, out_buffer, toproduce);
     }
 fail:
-    burn(&blake_state, sizeof(blake_state));
+    secure_wipe_memory(&blake_state, sizeof(blake_state));
     return ret;
 #undef TRY
 }

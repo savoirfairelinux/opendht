@@ -1,14 +1,18 @@
 /*
- * Argon2 source code package
+ * Argon2 reference source code package - reference C implementations
  *
- * Written by Daniel Dinu and Dmitry Khovratovich, 2015
+ * Copyright 2015
+ * Daniel Dinu, Dmitry Khovratovich, Jean-Philippe Aumasson, and Samuel Neves
  *
- * This work is licensed under a Creative Commons CC0 1.0 License/Waiver.
+ * You may use this work under the terms of a Creative Commons CC0 1.0 
+ * License/Waiver or the Apache Public License 2.0, at your option. The terms of
+ * these licenses can be found at:
  *
- * You should have received a copy of the CC0 Public Domain Dedication along
- * with
- * this software. If not, see
- * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ * - CC0 1.0 Universal : http://creativecommons.org/publicdomain/zero/1.0
+ * - Apache 2.0        : http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * You should have received a copy of both of these licenses along with this
+ * software. If not, they may be obtained at the above URLs.
  */
 
 /*For memory wiping*/
@@ -252,26 +256,28 @@ int fill_memory_blocks(argon2_instance_t *instance) {
     uint32_t r, s;
     argon2_thread_handle_t *thread = NULL;
     argon2_thread_data *thr_data = NULL;
+    int rc = ARGON2_OK;
 
     if (instance == NULL || instance->lanes == 0) {
-        return ARGON2_THREAD_FAIL;
+        rc = ARGON2_THREAD_FAIL;
+        goto fail;
     }
 
     /* 1. Allocating space for threads */
     thread = calloc(instance->lanes, sizeof(argon2_thread_handle_t));
     if (thread == NULL) {
-        return ARGON2_MEMORY_ALLOCATION_ERROR;
+        rc = ARGON2_MEMORY_ALLOCATION_ERROR;
+        goto fail;
     }
 
     thr_data = calloc(instance->lanes, sizeof(argon2_thread_data));
     if (thr_data == NULL) {
-        free(thread);
-        return ARGON2_MEMORY_ALLOCATION_ERROR;
+        rc = ARGON2_MEMORY_ALLOCATION_ERROR;
+        goto fail;
     }
 
     for (r = 0; r < instance->passes; ++r) {
         for (s = 0; s < ARGON2_SYNC_POINTS; ++s) {
-            int rc;
             uint32_t l;
 
             /* 2. Calling threads */
@@ -280,11 +286,9 @@ int fill_memory_blocks(argon2_instance_t *instance) {
 
                 /* 2.1 Join a thread if limit is exceeded */
                 if (l >= instance->threads) {
-                    rc = argon2_thread_join(thread[l - instance->threads]);
-                    if (rc) {
-                        free(thr_data);
-                        free(thread);
-                        return ARGON2_THREAD_FAIL;
+                    if (argon2_thread_join(thread[l - instance->threads])) {
+                        rc = ARGON2_THREAD_FAIL;
+                        goto fail;
                     }
                 }
 
@@ -297,12 +301,10 @@ int fill_memory_blocks(argon2_instance_t *instance) {
                     instance; /* preparing the thread input */
                 memcpy(&(thr_data[l].pos), &position,
                        sizeof(argon2_position_t));
-                rc = argon2_thread_create(&thread[l], &fill_segment_thr,
-                                          (void *)&thr_data[l]);
-                if (rc) {
-                    free(thr_data);
-                    free(thread);
-                    return ARGON2_THREAD_FAIL;
+                if (argon2_thread_create(&thread[l], &fill_segment_thr,
+                                         (void *)&thr_data[l])) {
+                    rc = ARGON2_THREAD_FAIL;
+                    goto fail;
                 }
 
                 /* fill_segment(instance, position); */
@@ -312,9 +314,9 @@ int fill_memory_blocks(argon2_instance_t *instance) {
             /* 3. Joining remaining threads */
             for (l = instance->lanes - instance->threads; l < instance->lanes;
                  ++l) {
-                rc = argon2_thread_join(thread[l]);
-                if (rc) {
-                    return ARGON2_THREAD_FAIL;
+                if (argon2_thread_join(thread[l])) {
+                    rc = ARGON2_THREAD_FAIL;
+                    goto fail;
                 }
             }
         }
@@ -324,13 +326,14 @@ int fill_memory_blocks(argon2_instance_t *instance) {
 #endif
     }
 
+fail:
     if (thread != NULL) {
         free(thread);
     }
     if (thr_data != NULL) {
         free(thr_data);
     }
-    return ARGON2_OK;
+    return rc;
 }
 
 int validate_inputs(const argon2_context *context) {
@@ -575,7 +578,7 @@ int initialize(argon2_instance_t *instance, argon2_context *context) {
         if (ARGON2_OK != result) {
             return result;
         }
-        memcpy(&(instance->memory), p, sizeof(instance->memory));
+        instance->memory = (block *)p;
     } else {
         result = allocate_memory(&(instance->memory), instance->memory_blocks);
         if (ARGON2_OK != result) {

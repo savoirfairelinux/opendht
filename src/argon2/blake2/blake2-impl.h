@@ -1,3 +1,20 @@
+/*
+ * Argon2 reference source code package - reference C implementations
+ *
+ * Copyright 2015
+ * Daniel Dinu, Dmitry Khovratovich, Jean-Philippe Aumasson, and Samuel Neves
+ *
+ * You may use this work under the terms of a Creative Commons CC0 1.0 
+ * License/Waiver or the Apache Public License 2.0, at your option. The terms of
+ * these licenses can be found at:
+ *
+ * - CC0 1.0 Universal : http://creativecommons.org/publicdomain/zero/1.0
+ * - Apache 2.0        : http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * You should have received a copy of both of these licenses along with this
+ * software. If not, they may be obtained at the above URLs.
+ */
+
 #ifndef PORTABLE_BLAKE2_IMPL_H
 #define PORTABLE_BLAKE2_IMPL_H
 
@@ -134,10 +151,6 @@ static BLAKE2_INLINE uint64_t rotr64(const uint64_t w, const unsigned c) {
     return (w >> c) | (w << (64 - c));
 }
 
-/* prevents compiler optimizing out memset() */
-static BLAKE2_INLINE void burn(void *v, size_t n) {
-    static void *(*const volatile memset_v)(void *, int, size_t) = &memset;
-    memset_v(v, 0, n);
-}
+void secure_wipe_memory(void *v, size_t n);
 
 #endif
