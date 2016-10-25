@@ -47,6 +47,9 @@ int
 main(int argc, char **argv)
 {
     auto params = parseArgs(argc, argv);
+#ifdef WIN32_NATIVE
+    gnutls_global_init();
+#endif
 
     DhtRunner dht;
     dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
@@ -61,8 +64,10 @@ main(int argc, char **argv)
     InfoHash room;
     const InfoHash myid = dht.getId();
 
+#ifndef WIN32_NATIVE
     // using the GNU History API
     using_history();
+#endif
 
     while (true)
     {
@@ -125,5 +130,8 @@ main(int argc, char **argv)
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;
     dht.join();
+#ifdef WIN32_NATIVE
+    gnutls_global_deinit();
+#endif
     return 0;
 }

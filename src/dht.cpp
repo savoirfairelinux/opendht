@@ -2263,8 +2263,8 @@ Dht::Storage::store(const std::shared_ptr<Value>& value, time_point created, ssi
 std::pair<ssize_t, ssize_t>
 Dht::Storage::clear()
 {
-    size_t num_values = values.size();
-    size_t tot_size = total_size;
+    ssize_t num_values = values.size();
+    ssize_t tot_size = total_size;
     values.clear();
     total_size = 0;
     return std::make_pair(-tot_size, -num_values);

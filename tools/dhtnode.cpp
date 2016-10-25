@@ -76,8 +76,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
     print_node_info(dht, params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
+#ifndef WIN32_NATIVE
     // using the GNU History API
     using_history();
+#endif
 
     std::map<std::string, indexation::Pht> indexes;
 
@@ -339,6 +341,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
 int
 main(int argc, char **argv)
 {
+#ifdef WIN32_NATIVE
+    gnutls_global_init();
+#endif
+
     auto dht = std::make_shared<DhtRunner>();
 
     try {
@@ -398,5 +404,8 @@ main(int argc, char **argv)
     cv.wait(lk, [&](){ return done.load(); });
 
     dht->join();
+#ifdef WIN32_NATIVE
+    gnutls_global_deinit();
+#endif
     return 0;
 }
