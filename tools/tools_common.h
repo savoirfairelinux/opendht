@@ -20,9 +20,14 @@
 // Common utility methods used by C++ OpenDHT tools.
 
 #include <opendht.h>
+#ifndef WIN32_NATIVE
 #include <getopt.h>
 #include <readline/readline.h>
 #include <readline/history.h>
+#else
+#define SIGHUP 0
+#include "wingetopt.h"
+#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -177,10 +182,16 @@ static const constexpr char* PROMPT = ">> ";
 std::string
 readLine(const char* prefix = PROMPT)
 {
+#ifndef WIN32_NATIVE
     const char* line_read = readline(prefix);
     if (line_read && *line_read)
         add_history(line_read);
 
+#else
+    char line_read[512];
+    std::cout << PROMPT;
+    fgets(line_read, 512 , stdin);
+#endif
     return line_read ? std::string(line_read) : std::string("\0", 1);
 }
 
@@ -197,6 +208,7 @@ void signal_handler(int sig)
 
 void daemonize()
 {
+#ifndef WIN32_NATIVE
     pid_t pid = fork();
     if (pid < 0) exit(EXIT_FAILURE);
     if (pid > 0) exit(EXIT_SUCCESS);
@@ -222,4 +234,5 @@ void daemonize()
     signal(SIGTTIN,SIG_IGN);
     signal(SIGHUP,signal_handler); /* catch hangup signal */
     signal(SIGTERM,signal_handler); /* catch kill signal */
+#endif
 }

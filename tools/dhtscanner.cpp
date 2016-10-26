@@ -69,6 +69,9 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
 int
 main(int argc, char **argv)
 {
+#ifdef WIN32_NATIVE
+    gnutls_global_init();
+#endif
     auto params = parseArgs(argc, argv);
     auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
     auto crt_tmp = dht::crypto::generateIdentity("Scanner node", ca_tmp);
@@ -104,5 +107,8 @@ main(int argc, char **argv)
         std::cout << "Node " << *n << std::endl;
 
     dht.join();
+#ifdef WIN32_NATIVE
+    gnutls_global_deinit();
+#endif
     return 0;
 }
