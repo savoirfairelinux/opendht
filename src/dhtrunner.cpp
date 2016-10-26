@@ -106,7 +106,8 @@ DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner:
                     std::lock_guard<std::mutex> lck(storage_mtx);
                     if (not pending_ops_prio.empty())
                         return true;
-                    if (not pending_ops.empty() and getStatus() != NodeStatus::Connecting)
+                    auto s = getStatus();
+                    if (not pending_ops.empty() and (s == NodeStatus::Connected or (s == NodeStatus::Disconnected and not bootstraping)))
                         return true;
                 }
                 return false;
@@ -305,21 +306,13 @@ DhtRunner::loop_()
     decltype(pending_ops) ops {};
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
-        ops = std::move(pending_ops_prio);
+        auto s = getStatus();
+        ops = (pending_ops_prio.empty() && (s == NodeStatus::Connected or (s == NodeStatus::Disconnected and not bootstraping))) ?
+               std::move(pending_ops) : std::move(pending_ops_prio);
     }
     while (not ops.empty()) {
         ops.front()(*dht_);
         ops.pop();
-    }
-    if (getStatus() != NodeStatus::Connecting) {
-        {
-            std::lock_guard<std::mutex> lck(storage_mtx);
-            ops = std::move(pending_ops);
-        }
-        while (not ops.empty()) {
-            ops.front()(*dht_);
-            ops.pop();
-        }
     }
 
     time_point wakeup {};
