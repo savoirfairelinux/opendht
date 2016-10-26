@@ -1329,14 +1329,15 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         }
     } else if (auto raw_fields = findMapValue(req, "fields")) {
         if (auto rfields = findMapValue(*raw_fields, "f")) {
-            auto fields_ = rfields->as<std::set<Value::Field>>();
+            auto vfields = rfields->as<std::set<Value::Field>>();
             if (auto rvalues = findMapValue(*raw_fields, "v")) {
                 if (rvalues->type != msgpack::type::ARRAY)
                     throw msgpack::type_error();
-                for (size_t i = 0; i < rvalues->via.array.size; ++i) {
+                size_t val_num = rvalues->via.array.size / vfields.size();
+                for (size_t i = 0; i < val_num; ++i) {
                     try {
                         auto v = std::make_shared<FieldValueIndex>();
-                        v->msgpack_unpack_fields(fields_, *rvalues, i*fields_.size());
+                        v->msgpack_unpack_fields(vfields, *rvalues, i*vfields.size());
                         fields.emplace_back(std::move(v));
                     } catch (const std::exception& e) { }
                 }
