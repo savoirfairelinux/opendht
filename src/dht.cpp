@@ -1654,7 +1654,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         return {};
     }
 
-    auto& srs = af == AF_INET ? searches4 : searches6;
+    auto& srs = searches(af);
     const auto& srp = srs.find(id);
     std::shared_ptr<Search> sr {};
 
@@ -1726,7 +1726,7 @@ Dht::announce(const InfoHash& id,
     created = std::min(now, created);
     storageStore(id, value, created);
 
-    auto& srs = af == AF_INET ? searches4 : searches6;
+    auto& srs = searches(af);
     auto srp = srs.find(id);
     auto sr = srp == srs.end() ? search(id, af) : srp->second;
     if (!sr) {
@@ -1780,7 +1780,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
        // DHT_LOG_ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
 
     //DHT_LOG_WARN("listenTo %s", id.toString().c_str());
-    auto& srs = af == AF_INET ? searches4 : searches6;
+    auto& srs = searches(af);
     auto srp = srs.find(id);
     std::shared_ptr<Search> sr = (srp == srs.end()) ? search(id, af) : srp->second;
     if (!sr)
@@ -2349,8 +2349,7 @@ Dht::connectivityChanged(sa_family_t af)
     for (auto& b : buckets(af))
         b.time = time_point::min();
     network_engine.connectivityChanged(af);
-    auto& searches = (af == AF_INET) ? searches4 : searches6;
-    for (auto& sp : searches)
+    for (auto& sp : searches(af))
         for (auto& sn : sp.second->nodes) {
             for (auto& ls : sn.listenStatus)
                 network_engine.cancelRequest(ls.second);
@@ -2678,9 +2677,9 @@ Dht::getSearchLog(const InfoHash& id, sa_family_t af) const
     if (af == AF_UNSPEC) {
         out << getSearchLog(id, AF_INET) << getSearchLog(id, AF_INET);
     } else {
-        auto& searches = (af == AF_INET) ? searches4 : searches6;
-        auto sr = searches.find(id);
-        if (sr != searches.end())
+        auto& srs = searches(af);
+        auto sr = srs.find(id);
+        if (sr != srs.end())
             dumpSearch(*sr->second, out);
     }
     return out.str();
@@ -3110,7 +3109,7 @@ Dht::onError(std::shared_ptr<Request> req, DhtProtocolException e) {
         DHT_LOG.e(req->node->id, "[node %s] token flush", req->node->toString().c_str());
         req->node->authError();
         network_engine.cancelRequest(req);
-        for (auto& srp : req->node->getFamily() == AF_INET ? searches4 : searches6) {
+        for (auto& srp : searches(req->node->getFamily())) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
                 if (n.node != req->node) continue;

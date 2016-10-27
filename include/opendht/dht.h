@@ -385,8 +385,9 @@ private:
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    std::map<InfoHash, std::shared_ptr<Search>> searches4 {};
-    std::map<InfoHash, std::shared_ptr<Search>> searches6 {};
+    using SearchMap = std::map<InfoHash, std::shared_ptr<Search>>;
+    SearchMap searches4 {};
+    SearchMap searches6 {};
     uint16_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
@@ -461,6 +462,9 @@ private:
     bool trySearchInsert(const std::shared_ptr<Node>& node);
 
     // Searches
+
+    inline SearchMap& searches(sa_family_t af) { return af == AF_INET ? searches4 : searches6; }
+    inline const SearchMap& searches(sa_family_t af) const { return af == AF_INET ? searches4 : searches6; }
 
     /**
      * Low-level method that will perform a search on the DHT for the specified
