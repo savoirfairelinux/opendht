@@ -275,6 +275,7 @@ public:
 
     std::string getRoutingTablesLog(sa_family_t) const;
     std::string getSearchesLog(sa_family_t) const;
+    std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;
 
     void dumpTables() const;
     std::vector<unsigned> getNodeMessageStats(bool in = false) {

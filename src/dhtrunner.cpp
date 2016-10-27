@@ -271,6 +271,12 @@ DhtRunner::getSearchesLog(sa_family_t af) const
     std::lock_guard<std::mutex> lck(dht_mtx);
     return dht_->getSearchesLog(af);
 }
+std::string
+DhtRunner::getSearchLog(const InfoHash& f, sa_family_t af) const
+{
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    return dht_->getSearchLog(f, af);
+}
 std::vector<SockAddr>
 DhtRunner::getPublicAddress(sa_family_t af)
 {

@@ -2650,13 +2650,39 @@ std::string
 Dht::getSearchesLog(sa_family_t af) const
 {
     std::stringstream out;
-    out << "s:synched, u:updated, a:announced, c:candidate, f:cur req, x:expired, *:known" << std::endl;
-    if (not af or af == AF_INET)
-        for (const auto& sr : searches4)
-            dumpSearch(*sr.second, out);
-    if (not af or af == AF_INET6)
-        for (const auto& sr : searches6)
-            dumpSearch(*sr.second, out);
+    auto num_searches = searches4.size() + searches6.size();
+    if (num_searches > 8) {
+        if (not af or af == AF_INET)
+            for (const auto& sr : searches4)
+                out << "[search " << sr.first << " IPv4]" << std::endl;
+        if (not af or af == AF_INET6)
+            for (const auto& sr : searches6)
+                out << "[search " << sr.first << " IPv6]" << std::endl;
+    } else {
+        out << "s:synched, u:updated, a:announced, c:candidate, f:cur req, x:expired, *:known" << std::endl;
+        if (not af or af == AF_INET)
+            for (const auto& sr : searches4)
+                dumpSearch(*sr.second, out);
+        if (not af or af == AF_INET6)
+            for (const auto& sr : searches6)
+                dumpSearch(*sr.second, out);
+    }
+    out << "Total: " << num_searches << " searches (" << searches4.size() << " IPv4, " << searches6.size() << " IPv6)." << std::endl;
+    return out.str();
+}
+
+std::string
+Dht::getSearchLog(const InfoHash& id, sa_family_t af) const
+{
+    std::stringstream out;
+    if (af == AF_UNSPEC) {
+        out << getSearchLog(id, AF_INET) << getSearchLog(id, AF_INET);
+    } else {
+        auto& searches = (af == AF_INET) ? searches4 : searches6;
+        auto sr = searches.find(id);
+        if (sr != searches.end())
+            dumpSearch(*sr->second, out);
+    }
     return out.str();
 }
 
@@ -2952,10 +2978,7 @@ Dht::confirmNodes()
         : uniform_duration_distribution<> {seconds(60), seconds(180)};
     auto confirm_nodes_time = now + time_dis(rd);
 
-    if (nextNodesConfirmation)
-        scheduler.edit(nextNodesConfirmation, confirm_nodes_time);
-    else
-        nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
+    scheduler.edit(nextNodesConfirmation, confirm_nodes_time);
 }
 
 std::vector<ValuesExport>

@@ -53,8 +53,8 @@ void print_help() {
 
     std::cout << std::endl << "Node information:" << std::endl
               << "  ll         Print basic information and stats about the current node." << std::endl
-              << "  ls         Print basic information about current searches." << std::endl
-              << "  ld         Print basic information about currenty stored values on this node." << std::endl
+              << "  ls [key]   Print basic information about current search(es)." << std::endl
+              << "  ld [key]   Print basic information about currenty stored values on this node (or key)." << std::endl
               << "  lr         Print the full current routing table of this node" << std::endl;
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
@@ -123,8 +123,14 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
                 std::cout << dht->getStorageLog(filter) << std::endl;
             continue;
         } else if (op == "ls") {
-            std::cout << "Searches:" << std::endl;
-            std::cout << dht->getSearchesLog() << std::endl;
+            iss >> idstr;
+            InfoHash filter(idstr);
+            if (filter == InfoHash{}) {
+                std::cout << "Searches:" << std::endl;
+                std::cout << dht->getSearchesLog() << std::endl;
+            } else {
+                std::cout << dht->getSearchLog(filter) << std::endl;
+            }
             continue;
         } else if (op == "la")  {
             std::cout << "Reported public addresses:" << std::endl;
