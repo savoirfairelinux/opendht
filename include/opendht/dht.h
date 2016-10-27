@@ -425,8 +425,8 @@ private:
      * node is too far from the target, values are sent to the appropriate
      * nodes.
      */
-    void dataPersistence();
-    size_t maintainStorage(InfoHash id, bool force=false, DoneCallback donecb=nullptr);
+    void dataPersistence(InfoHash id);
+    size_t maintainStorage(decltype(store)::value_type&, bool force=false, DoneCallback donecb=nullptr);
 
     // Buckets
     RoutingTable& buckets(sa_family_t af) { return af == AF_INET ? buckets4 : buckets6; }
