@@ -815,15 +815,31 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
     const auto& now = scheduler.time();
     if (not node) return false;
 
-    bool inserted = false;
-    auto family = node->getFamily();
-    auto& srs = family == AF_INET ? searches4 : searches6;
-    for (auto& srp : srs) {
-        auto& s = *srp.second;
+    auto& srs = searches(node->getFamily());
+    auto closest = srs.lower_bound(node->id);
+    bool inserted {false};
+
+    // insert forward
+    auto it = closest;
+    while (it != srs.end()) {
+        auto& s = *it->second;
         if (s.insertNode(node, now)) {
             inserted = true;
             scheduler.edit(s.nextSearchStep, s.getNextStepTime(now));
-        }
+        } else
+            break;
+        ++it;
+    }
+    // insert backward
+    it = closest;
+    while (it != srs.begin()) {
+        --it;
+        auto& s = *it->second;
+        if (s.insertNode(node, now)) {
+            inserted = true;
+            scheduler.edit(s.nextSearchStep, s.getNextStepTime(now));
+        } else
+            break;
     }
     return inserted;
 }
