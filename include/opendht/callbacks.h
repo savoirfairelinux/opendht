@@ -55,6 +55,9 @@ struct Config {
 
     /** For testing purposes only, enables bootstrap mode */
     bool is_bootstrap;
+
+    /** Makes the DHT responsible to maintain its stored values. Consumes more ressources. */
+    bool maintain_storage;
 };
 
 /**

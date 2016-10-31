@@ -733,11 +733,12 @@ Dht::getStatus(sa_family_t af) const
 }
 
 void
-Dht::shutdown(ShutdownCallback cb) {
-    /****************************
-     *  Last store maintenance  *
-     ****************************/
+Dht::shutdown(ShutdownCallback cb)
+{
+    if (not maintain_storage)
+        return;
 
+    // Last store maintenance
     scheduler.syncTime();
     auto remaining = std::make_shared<int>(0);
     auto str_donecb = [=](bool, const std::vector<std::shared_ptr<Node>>&) {
@@ -2228,8 +2229,10 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return false;
-        st = store.emplace(id, Storage(now)).first;
-        scheduler.add(st->second.maintenance_time, std::bind(&Dht::dataPersistence, this, id));
+        auto st_i = store.emplace(id, Storage(now));
+        st = st_i.first;
+        if (maintain_storage and st_i.second)
+            scheduler.add(st->second.maintenance_time, std::bind(&Dht::dataPersistence, this, id));
     }
 
     auto store = st->second.store(value, created, max_store_size - total_store_size);
@@ -2712,8 +2715,10 @@ Dht::~Dht()
 Dht::Dht() : store(), scheduler(DHT_LOG), network_engine(DHT_LOG, scheduler) {}
 
 Dht::Dht(int s, int s6, Config config)
- : myid(config.node_id), is_bootstrap(config.is_bootstrap), store(),
-    scheduler(DHT_LOG), network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
+ : myid(config.node_id),
+   is_bootstrap(config.is_bootstrap),
+   maintain_storage(config.maintain_storage), store(), scheduler(DHT_LOG),
+   network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),

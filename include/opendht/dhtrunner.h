@@ -309,7 +309,8 @@ public:
                 /*.node_config = */{
                     /*.node_id = */{},
                     /*.network = */network,
-                    /*.is_bootstrap = */false
+                    /*.is_bootstrap = */false,
+                    /*.maintain_storage*/false
                 },
                 /*.id = */identity
             },

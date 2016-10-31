@@ -375,6 +375,7 @@ private:
     //       Only nodes running only as bootstrap nodes should
     //       be put in bootstrap mode.
     const bool is_bootstrap {false};
+    const bool maintain_storage {false};
 
     // the stuff
     RoutingTable buckets4 {};
