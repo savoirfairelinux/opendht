@@ -302,7 +302,7 @@ cdef class DhtRunner(_WithID):
     def disableLogging(self):
         cpp.disableLogging(self.thisptr.get()[0])
     def enableFileLogging(self, str path):
-        cpp.enableFileLogging(self.thisptr.get()[0], path)
+        cpp.enableFileLogging(self.thisptr.get()[0], path.encode())
     def isRunning(self):
         return self.thisptr.get().isRunning()
     def getStorageLog(self):
