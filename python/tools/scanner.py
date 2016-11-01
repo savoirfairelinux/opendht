@@ -18,7 +18,7 @@
 import time, sys, os
 from pprint import pprint
 from math import cos, sin, pi
-from urllib import request
+import urllib3
 import gzip
 import asyncio
 
@@ -34,6 +34,8 @@ from matplotlib.widgets import Button
 from mpl_toolkits.basemap import Basemap
 
 import GeoIP
+
+http = urllib3.PoolManager()
 
 done = 0
 all_nodes = NodeSet()
@@ -72,7 +74,7 @@ def check_dl(fname, url):
     if os.path.isfile(fname):
         return
     print('downloading', url)
-    ghandle = gzip.GzipFile(fileobj=request.urlopen(url))
+    ghandle = gzip.GzipFile(fileobj=http.request('GET', url, headers={'User-Agent': 'Mozilla/5.0'}))
     with open(fname, 'wb') as out:
         for line in ghandle:
             out.write(line)
