@@ -82,7 +82,7 @@ printLog(std::ostream& s, char const* m, va_list args) {
     s.write(buffer.data(), std::min((size_t)ret, buffer.size()));
     if ((size_t)ret >= buffer.size())
         s << "[[TRUNCATED]]";
-    s.put('\n');
+    s << std::endl;
 }
 
 void
