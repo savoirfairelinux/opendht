@@ -116,7 +116,7 @@ struct Dht::ValueStorage {
 
 struct Dht::Storage {
     time_point maintenance_time {};
-    std::map<std::shared_ptr<Node>, Listener> listeners {};
+    std::map<std::shared_ptr<Node>, std::map<TransId, Listener>> listeners {};
     std::map<size_t, LocalListener> local_listeners {};
     size_t listener_token {1};
 
@@ -2294,8 +2294,9 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
             return;
         st = store.emplace(id, Storage(now)).first;
     }
-    auto l = st->second.listeners.find(node);
-    if (l == st->second.listeners.end()) {
+    auto l = st->second.listeners.emplace(node).first;
+    auto trans = l->second.find(rid);
+    if (trans == l->second.end()) {
         auto vals = st->second.get(query.where.getFilter());
         if (not vals.empty()) {
             network_engine.tellListener(node, rid, id, WANT4 | WANT6, makeToken((sockaddr*)&node->addr.first, false),
@@ -2305,7 +2306,7 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
         st->second.listeners.emplace(node, Listener {rid, now, std::forward<Query>(query)});
     }
     else
-        l->second.refresh(rid, now);
+        trans->second.refresh(rid, now, query);
 }
 
 void

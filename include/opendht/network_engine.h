@@ -332,13 +332,16 @@ public:
                 want_t want,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
+
     std::shared_ptr<Request>
         sendListen(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
                 const Query& query,
                 const Blob& token,
+                std::shared_ptr<Request> previous,
                 RequestCb on_done,
                 RequestExpiredCb on_expired);
+
     std::shared_ptr<Request>
         sendAnnounceValue(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
@@ -534,7 +537,7 @@ private:
 
     // requests handling
     uint16_t transaction_id {1};
-    std::map<uint16_t, std::shared_ptr<Request>> requests {};
+    std::map<TransId, std::shared_ptr<Request>> requests {};
     std::map<TransId, PartialMessage> partial_messages;
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};
