@@ -484,8 +484,6 @@ private:
      * @return the number inserted nodes.
      */
     unsigned refill(Search& sr);
-
-    Search *findSearch(unsigned short tid, sa_family_t af);
     void expireSearches();
 
     void confirmNodes();
