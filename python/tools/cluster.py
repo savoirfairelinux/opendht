@@ -36,7 +36,6 @@ class NodeCluster(object):
         if logfile:
             n.enableFileLogging(logfile)
         if bootstrap:
-            print("bootstrap", bootstrap[0], bootstrap[1])
             n.bootstrap(bootstrap[0], bootstrap[1])
         time.sleep(.01)
         return ((ip4, ip6, p), n, id)
@@ -177,10 +176,53 @@ class ClusterShell(cmd.Cmd):
     intro = 'Welcome to the OpenDHT node cluster control. Type help or ? to list commands.\n'
     prompt = '>> '
     net = None
+    node = None
+    log = False
     def __init__(self, network):
         super(ClusterShell, self).__init__()
-        net = network
+        self.net = network
+    def setNode(self, node=None, num=0):
+        if node == self.node:
+            return
+        if self.node:
+            self.node.disableLogging()
+        self.node = node
+        if self.node:
+            self.prompt = '('+str(num)+') >> '
+            if self.log:
+                self.node.enableLogging()
+        else:
+            self.prompt = '>> '
     def do_exit(self, arg):
+        self.close()
+        return True
+    def do_node(self, arg):
+        if not arg:
+            setNode()
+        else:
+            nodenum = int(arg)
+            if nodenum > len(self.net.nodes) or nodenum < 1:
+                print("Invalid node number:", nodenum, " (accepted: 1-", len(self.net.nodes), ")")
+            else:
+                self.setNode(self.net.nodes[nodenum-1][1], nodenum)
+    def do_ll(self, arg):
+        if self.node:
+            print('Node', self.node.getNodeId().decode())
+        else:
+            print(len(self.net.nodes), 'nodes running.')
+    def do_ls(self, arg):
+        if self.node:
+            print(self.node.getSearchesLog(0))
+        else:
+            print('No node selected.')
+    def do_log(self, arg):
+        if self.node:
+            self.log = not self.log
+            if self.log:
+                self.node.enableLogging()
+            else:
+                self.node.disableLogging()
+    def do_EOF(self, line):
         self.close()
         return True
     def close(self):
@@ -208,7 +250,8 @@ if __name__ == '__main__':
         net = NodeCluster(iface=args.iface, port=args.port, bootstrap=args.bootstrap, logfile=args.log)
         net.resize(args.node_num)
         if args.daemonize:
-            import daemon
+            import daemon, lockfile
+            #pidfile=lockfile.FileLock('/var/run/dhtcluster.'+str(args.port))
             with daemon.DaemonContext():
                 while True:
                     time.sleep(2)
