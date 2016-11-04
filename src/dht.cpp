@@ -735,8 +735,10 @@ Dht::getStatus(sa_family_t af) const
 void
 Dht::shutdown(ShutdownCallback cb)
 {
-    if (not maintain_storage)
+    if (not maintain_storage) {
+        if (cb) cb();
         return;
+    }
 
     // Last store maintenance
     scheduler.syncTime();
