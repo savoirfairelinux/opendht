@@ -18,7 +18,12 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA.
  */
 
+#pragma once
+
+#include "net.h"
+
 namespace dht {
+namespace net {
 
 class NetworkEngine;
 struct ParsedMessage;
@@ -32,7 +37,8 @@ struct ParsedMessage;
  * request is done.
  */
 struct Request {
-    friend class dht::NetworkEngine;
+    friend class dht::net::NetworkEngine;
+
     std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
     time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
 
@@ -110,4 +116,5 @@ private:
     const bool persistent {false};            /* the request is not erased upon completion. */
 };
 
+} /* namespace net  */
 }

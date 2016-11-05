@@ -72,7 +72,7 @@ Node::update(const SockAddr& new_addr)
 
 /** To be called when a message was sent to the node */
 void
-Node::requested(std::shared_ptr<Request>& req)
+Node::requested(std::shared_ptr<net::Request>& req)
 {
     requests_.emplace_back(req);
 }
@@ -80,7 +80,7 @@ Node::requested(std::shared_ptr<Request>& req)
 /** To be called when a message was received from the node.
  Req should be true if the message was an aswer to a request we made*/
 void
-Node::received(time_point now, std::shared_ptr<Request> req)
+Node::received(time_point now, std::shared_ptr<net::Request> req)
 {
     time = now;
     if (req) {

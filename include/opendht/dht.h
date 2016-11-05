@@ -41,7 +41,9 @@
 
 namespace dht {
 
+namespace net {
 struct Request;
+} /* namespace net */
 
 /**
  * Main Dht class.
@@ -402,7 +404,7 @@ private:
     std::shared_ptr<Scheduler::Job> nextStorageMaintenance {};
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
-    NetworkEngine network_engine;
+    net::NetworkEngine network_engine;
     unsigned pending_pings4 {0};
     unsigned pending_pings6 {0};
 
@@ -497,8 +499,8 @@ private:
      * @param ws      A weak pointer to the search concerned by the request.
      * @param query   The query sent to the node.
      */
-    void searchNodeGetDone(const Request& status,
-            NetworkEngine::RequestAnswer&& answer,
+    void searchNodeGetDone(const net::Request& status,
+            net::NetworkEngine::RequestAnswer&& answer,
             std::weak_ptr<Search> ws,
             std::shared_ptr<Query> query);
 
@@ -511,7 +513,7 @@ private:
      * @param ws      A weak pointer to the search concerned by the request.
      * @param query   The query sent to the node.
      */
-    void searchNodeGetExpired(const Request& status, bool over, std::weak_ptr<Search> ws, std::shared_ptr<Query> query);
+    void searchNodeGetExpired(const net::Request& status, bool over, std::weak_ptr<Search> ws, std::shared_ptr<Query> query);
 
     /**
      * This method recovers sends individual request for values per id.
@@ -549,44 +551,44 @@ private:
 
     void processMessage(const uint8_t *buf, size_t buflen, const SockAddr&);
 
-    void onError(std::shared_ptr<Request> node, DhtProtocolException e);
+    void onError(std::shared_ptr<net::Request> node, net::DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, const SockAddr&);
     /* when we receive a ping request */
-    NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
+    net::NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
-    NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, const InfoHash& hash, want_t want);
-    void onFindNodeDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    net::NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, const InfoHash& hash, want_t want);
+    void onFindNodeDone(const Request& status, net::NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
-    NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node,
             const InfoHash& hash,
             want_t want,
             const Query& q);
     void onGetValuesDone(const Request& status,
-            NetworkEngine::RequestAnswer& a,
+            net::NetworkEngine::RequestAnswer& a,
             std::shared_ptr<Search>& sr,
             const std::shared_ptr<Query>& orig_query);
     /* when we receive a listen request */
-    NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node,
             const InfoHash& hash,
             const Blob& token,
             size_t rid,
             const Query& query);
     void onListenDone(const Request& status,
-            NetworkEngine::RequestAnswer& a,
+            net::NetworkEngine::RequestAnswer& a,
             std::shared_ptr<Search>& sr,
             const std::shared_ptr<Query>& orig_query);
     /* when we receive an announce request */
-    NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const std::vector<std::shared_ptr<Value>>& v,
             const time_point& created);
-    NetworkEngine::RequestAnswer onRefresh(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onRefresh(std::shared_ptr<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const Value::Id& vid);
-    void onAnnounceDone(const Request& status, NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    void onAnnounceDone(const Request& status, net::NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
 };
 
 }

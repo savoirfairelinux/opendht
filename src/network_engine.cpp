@@ -26,6 +26,7 @@
 #include <msgpack.hpp>
 
 namespace dht {
+namespace net {
 
 const std::string DhtProtocolException::GET_NO_INFOHASH {"Get_values with no info_hash"};
 const std::string DhtProtocolException::LISTEN_NO_INFOHASH {"Listen with no info_hash"};
@@ -40,15 +41,15 @@ constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
 const std::string NetworkEngine::my_v {"RNG1"};
-const constexpr uint16_t NetworkEngine::TransId::INVALID;
+const constexpr uint16_t TransId::INVALID;
 std::mt19937 NetworkEngine::rd_device {dht::crypto::random_device{}()};
 
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::PING = {"pn"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::FIND_NODE = {"fn"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::GET_VALUES = {"gt"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::ANNOUNCE_VALUES = {"pt"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::REFRESH = {"rf"};
-const NetworkEngine::TransPrefix NetworkEngine::TransPrefix::LISTEN = {"lt"};
+const TransPrefix TransPrefix::PING = {"pn"};
+const TransPrefix TransPrefix::FIND_NODE = {"fn"};
+const TransPrefix TransPrefix::GET_VALUES = {"gt"};
+const TransPrefix TransPrefix::ANNOUNCE_VALUES = {"pt"};
+const TransPrefix TransPrefix::REFRESH = {"rf"};
+const TransPrefix TransPrefix::LISTEN = {"lt"};
 constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
 
 static const uint8_t v4prefix[16] = {
@@ -1419,4 +1420,5 @@ ParsedMessage::complete()
 }
 
 
-}
+} /* namespace net  */
+} /* namespace dht */

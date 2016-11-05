@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
+#include "net.h"
 
 #include <vector>
 #include <string>
@@ -37,6 +38,9 @@
 #include <queue>
 
 namespace dht {
+namespace net {
+
+struct Request;
 
 #ifndef MSG_CONFIRM
 #define MSG_CONFIRM 0
@@ -96,56 +100,7 @@ struct ParsedMessage;
  */
 class NetworkEngine final
 {
-    struct TransPrefix : public  std::array<uint8_t, 2>  {
-        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
-        static const TransPrefix PING;
-        static const TransPrefix FIND_NODE;
-        static const TransPrefix GET_VALUES;
-        static const TransPrefix ANNOUNCE_VALUES;
-        static const TransPrefix REFRESH;
-        static const TransPrefix LISTEN;
-    };
 public:
-
-    /* Transaction-ids are 4-bytes long, with the first two bytes identifying
-     * the kind of request, and the remaining two a sequence number in
-     * host order.
-     */
-    struct TransId final : public std::array<uint8_t, 4> {
-        static const constexpr uint16_t INVALID {0};
-
-        TransId() {}
-        TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
-        TransId(const TransPrefix prefix, uint16_t seqno = 0) {
-            std::copy_n(prefix.begin(), prefix.size(), begin());
-            *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
-        }
-
-        TransId(const char* q, size_t l) : array<uint8_t, 4>() {
-            if (l > 4) {
-                length = 0;
-            } else {
-                std::copy_n(q, l, begin());
-                length = l;
-            }
-        }
-
-        uint16_t getTid() const {
-            return *reinterpret_cast<const uint16_t*>(&(*this)[2]);
-        }
-
-        bool matches(const TransPrefix prefix, uint16_t* tid = nullptr) const {
-            if (std::equal(begin(), begin()+2, prefix.begin())) {
-                if (tid)
-                    *tid = getTid();
-                return true;
-            } else
-                return false;
-        }
-
-        unsigned length {4};
-    };
-
     /*!
      * @class   RequestAnswer
      * @brief   Answer for a request.
@@ -440,11 +395,11 @@ private:
     }
 
     struct MessageStats {
-        unsigned ping {0};
-        unsigned find {0};
-        unsigned get {0};
-        unsigned put {0};
-        unsigned listen {0};
+        unsigned ping    {0};
+        unsigned find    {0};
+        unsigned get     {0};
+        unsigned put     {0};
+        unsigned listen  {0};
         unsigned refresh {0};
     };
 
@@ -542,4 +497,5 @@ private:
     Scheduler& scheduler;
 };
 
-}
+} /* namespace net  */
+} /* namespace dht */
