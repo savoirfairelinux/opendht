@@ -81,7 +81,9 @@ struct ParsedMessage {
     /* target id around which to find nodes */
     InfoHash target;
     /* transaction id */
-    NetworkEngine::TransId tid;
+    TransId tid;
+    /* tid for packets going through request socket */
+    TransId socket_id;
     /* security token */
     Blob token;
     /* the value id (announce confirmation) */
@@ -157,15 +159,14 @@ NetworkEngine::~NetworkEngine() {
 }
 
 void
-NetworkEngine::tellListener(std::shared_ptr<Node> node, uint16_t rid, const InfoHash& hash, want_t want,
+NetworkEngine::tellListener(std::shared_ptr<Node> node, uint32_t socket_id, const InfoHash& hash, want_t want,
         const Blob& ntoken, std::vector<std::shared_ptr<Node>>&& nodes,
         std::vector<std::shared_ptr<Node>>&& nodes6, std::vector<std::shared_ptr<Value>>&& values,
         const Query& query)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(node->addr, TransId {TransPrefix::GET_VALUES, (uint16_t)rid}, nnodes.first, nnodes.second,
-                values, query, ntoken);
+        sendNodesValues(node->addr, TransId((char*)&socket_id, 4), nnodes.first, nnodes.second, values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.e("Can't send value: buffer not large enough !");
     }
@@ -186,11 +187,29 @@ NetworkEngine::isRunning(sa_family_t af) const
     }
 }
 
+std::shared_ptr<Socket>
+NetworkEngine::openSocket(const std::shared_ptr<Node>& node, TransPrefix tp, SocketCb&& cb)
+{
+    auto tid = TransId {tp, getNewTid()};
+    auto s = opened_sockets.emplace(tid, std::make_shared<Socket>(node, tid, cb));
+    if (not s.second)
+        DHT_LOG.e(node->id, "[node %s] socket (tid: %d) already opened!", node->id.toString().c_str(), tid.toInt());
+    return s.first->second;
+}
+
+void
+NetworkEngine::closeSocket(std::shared_ptr<Socket> socket)
+{
+    if (socket)
+        opened_sockets.erase(socket->id);
+}
+
 void
 NetworkEngine::cancelRequest(std::shared_ptr<Request>& req)
 {
     if (req) {
         req->cancel();
+        closeSocket(req->socket);
         requests.erase(req->tid);
     }
 }
@@ -256,7 +275,7 @@ NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
         // Try to handle this scenario as well as we can
         e.first->second->setExpired();
         e.first->second = request;
-        DHT_LOG.e(request->node->id, "Request already existed (tid: %d)!", request->tid);
+        DHT_LOG.e(request->node->id, "Request already existed (tid: %d)!", request->tid.getTid());
     }
     request->node->requested(request);
     requestStep(request);
@@ -436,19 +455,22 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     const auto& now = scheduler.time();
 
     if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
-        auto reqp = requests.find(msg->tid.getTid());
-        if (reqp == requests.end()) {
+        /* either response for a request or data for an opened socket */
+        auto req_it = requests.find(msg->tid);
+        auto rsocket_it = opened_sockets.end();
+        if (req_it == requests.end())
+            rsocket_it = opened_sockets.find(msg->tid);
+        if (req_it == requests.end() and rsocket_it == opened_sockets.end())
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
-        }
-        auto req = reqp->second;
-        auto node = req->node;
+
+        auto req = req_it != requests.end() ? req_it->second : nullptr;
+        auto rsocket = rsocket_it != opened_sockets.end() ? rsocket_it->second : nullptr;
+
+        auto& node = req ? req->node : rsocket->node;
         if (node->id != msg->id) {
-            bool unknown_node = node->id == zeroes;
-            node = cache.getNode(msg->id, from, now, true);
-            if (unknown_node) {
-                // received reply to a message sent when we didn't know the node ID.
-                req->node = node;
-            } else {
+            if (node->id == zeroes) // received reply to a message sent when we didn't know the node ID.
+                node = cache.getNode(msg->id, from, now, true);
+            else {
                 // received reply from unexpected node
                 node->received(now, req);
                 onNewNode(node, 2);
@@ -457,14 +479,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             }
         } else
             node->update(from);
+
         node->received(now, req);
 
         onNewNode(node, 2);
         onReportedAddr(msg->id, msg->addr);
 
-        if (req->cancelled() or req->expired() or (req->completed() and not req->persistent)) {
+        if (req and (req->cancelled() or req->expired() or req->completed())) {
             DHT_LOG.w(node->id, "[node %s] response to expired, cancelled or completed request", node->toString().c_str());
-            requests.erase(reqp);
+            requests.erase(req_it);
             return;
         }
 
@@ -485,17 +508,21 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
         case MessageType::Reply:
-            if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
-                req->node->authSuccess();
+         if (req) { /* request reply */
+             if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
+                 req->node->authSuccess();
 
-            // erase before calling callback to make sure iterator is still valid
-            if (not req->persistent)
-                requests.erase(reqp);
-            req->reply_time = scheduler.time();
+             // erase before calling callback to make sure iterator is still valid
+             requests.erase(req_it);
+             req->reply_time = scheduler.time();
 
-            deserializeNodes(*msg);
-            req->setDone(std::move(*msg));
-            break;
+             deserializeNodes(*msg);
+             req->setDone(std::move(*msg));
+             break;
+         } else { /* request socket data */
+             deserializeNodes(*msg);
+             rsocket->on_receive(rsocket->node, std::move(*msg));
+         }
         default:
             break;
         }
@@ -549,7 +576,9 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             case MessageType::Listen: {
                 DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
-                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->tid.getTid(), std::move(msg->query));
+                /* TODO: backward compatibility check to remove in a few versions (see ::sendListen doc) */
+                auto socket_id = msg->socket_id.getTid() ? msg->socket_id : TransId { TransPrefix::GET_VALUES, msg->tid.getTid() };
+                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, socket_id.toInt(), std::move(msg->query));
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
@@ -603,7 +632,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 }
 
 std::shared_ptr<Request>
-NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestExpiredCb on_expired) {
+NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -622,7 +651,7 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb on_done, RequestEx
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), node, std::move(b),
+    std::shared_ptr<Request> req(new Request {tid, node, std::move(b),
         [=](const Request& req_status, ParsedMessage&&) {
             DHT_LOG.d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
             if (on_done) {
@@ -663,7 +692,7 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
 
 std::shared_ptr<Request>
 NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
-        RequestCb on_done, RequestExpiredCb on_expired) {
+        RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -689,7 +718,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
+    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -709,7 +738,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 
 std::shared_ptr<Request>
 NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
-        RequestCb on_done, RequestExpiredCb on_expired) {
+        RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -738,7 +767,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
+    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -854,7 +883,8 @@ NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const
 
 void
 NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& nodes, const Blob& nodes6,
-        const std::vector<std::shared_ptr<Value>>& st, const Query& query, const Blob& token) {
+        const std::vector<std::shared_ptr<Value>>& st, const Query& query, const Blob& token)
+{
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
@@ -962,18 +992,50 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 std::shared_ptr<Request>
-NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, const Query& query, const Blob& token,
-        RequestCb on_done, RequestExpiredCb on_expired) {
-    auto tid = TransId {TransPrefix::LISTEN, getNewTid()};
+NetworkEngine::sendListen(std::shared_ptr<Node> n,
+        const InfoHash& hash,
+        const Query& query,
+        const Blob& token,
+        std::shared_ptr<Request> previous,
+        RequestCb&& on_done,
+        RequestExpiredCb&& on_expired,
+        SocketCb&& socket_cb)
+{
+    std::shared_ptr<Socket> socket;
+    auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : getNewTid() };
+    if (previous) {
+        socket = previous->socket;
+        if (previous->node == n)
+            cancelRequest(previous);
+        else {
+            DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node");
+            return {};
+        }
+    } else {
+        /* TODO: Manually creating a socket for "listen" backward compatibility.
+         * As soon as this is not an issue anymore, switch to using
+         * ::createSocket function! */
+        auto sid = TransId {TransPrefix::GET_VALUES, tid.getTid()};
+        socket = std::make_shared<Socket>(n, sid, socket_cb);
+        opened_sockets.emplace(sid, socket);
+    }
+
+    if (not socket) {
+        DHT_LOG.e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
+        return {};
+    }
+
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
     auto has_query = query.where.getFilter() or not query.select.getSelection().empty();
-    pk.pack(std::string("a")); pk.pack_map(3 + has_query);
+    pk.pack(std::string("a")); pk.pack_map(4 + has_query);
       pk.pack(std::string("id"));    pk.pack(myid);
-      pk.pack(std::string("h"));     pk.pack(infohash);
+      pk.pack(std::string("h"));     pk.pack(hash);
       pk.pack(std::string("token")); packToken(pk, token);
+      pk.pack(std::string("sid"));  pk.pack_bin(socket->id.size());
+                                     pk.pack_bin_body((const char*)socket->id.data(), socket->id.size());
       if (has_query) {
           pk.pack(std::string("q")); pk.pack(query);
       }
@@ -988,7 +1050,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
+    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -997,7 +1059,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n, const InfoHash& infohash, con
             if (on_expired)
                 on_expired(req_status, done);
         },
-        true
+        socket
     });
     sendRequest(req);
     ++out_stats.listen;
@@ -1031,8 +1093,8 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
         const std::shared_ptr<Value>& value,
         time_point created,
         const Blob& token,
-        RequestCb on_done,
-        RequestExpiredCb on_expired)
+        RequestCb&& on_done,
+        RequestExpiredCb&& on_expired)
 {
     auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
@@ -1059,7 +1121,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
+    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.d(infohash, "Unknown search or announce!");
@@ -1089,8 +1151,8 @@ NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
                 const InfoHash& infohash,
                 const Value::Id& vid,
                 const Blob& token,
-                RequestCb on_done,
-                RequestExpiredCb on_expired)
+                RequestCb&& on_done,
+                RequestExpiredCb&& on_expired)
 {
     auto tid = TransId {TransPrefix::REFRESH, getNewTid()};
     msgpack::sbuffer buffer;
@@ -1113,7 +1175,7 @@ NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid.getTid(), n, std::move(b),
+    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.d(infohash, "Unknown search or announce!");
@@ -1164,7 +1226,8 @@ NetworkEngine::sendError(const SockAddr& addr,
         TransId tid,
         uint16_t code,
         const std::string& message,
-        bool include_id) {
+        bool include_id)
+{
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4 + (include_id?1:0));
@@ -1260,6 +1323,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
             throw msgpack::type_error();
         error_code = e->via.array.ptr[0].as<uint16_t>();
     }
+
+    if (auto t = findMapValue(req, "sid"))
+        socket_id = {t->as<std::array<char, 4>>()};
 
     if (auto rid = findMapValue(req, "id"))
         id = {*rid};

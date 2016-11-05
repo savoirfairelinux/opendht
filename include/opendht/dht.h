@@ -558,13 +558,15 @@ private:
     net::NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
     /* when we receive a "find node" request */
     net::NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, const InfoHash& hash, want_t want);
-    void onFindNodeDone(const Request& status, net::NetworkEngine::RequestAnswer& a, std::shared_ptr<Search> sr);
+    void onFindNodeDone(const std::shared_ptr<Node>& status,
+            net::NetworkEngine::RequestAnswer& a,
+            std::shared_ptr<Search> sr);
     /* when we receive a "get values" request */
     net::NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node,
             const InfoHash& hash,
             want_t want,
             const Query& q);
-    void onGetValuesDone(const Request& status,
+    void onGetValuesDone(const std::shared_ptr<Node>& status,
             net::NetworkEngine::RequestAnswer& a,
             std::shared_ptr<Search>& sr,
             const std::shared_ptr<Query>& orig_query);
@@ -572,12 +574,11 @@ private:
     net::NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node,
             const InfoHash& hash,
             const Blob& token,
-            size_t rid,
+            size_t socket_id,
             const Query& query);
-    void onListenDone(const Request& status,
+    void onListenDone(const std::shared_ptr<Node>& status,
             net::NetworkEngine::RequestAnswer& a,
-            std::shared_ptr<Search>& sr,
-            const std::shared_ptr<Query>& orig_query);
+            std::shared_ptr<Search>& sr);
     /* when we receive an announce request */
     net::NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
             const InfoHash& hash,
@@ -588,7 +589,9 @@ private:
             const InfoHash& hash,
             const Blob& token,
             const Value::Id& vid);
-    void onAnnounceDone(const Request& status, net::NetworkEngine::RequestAnswer& a, std::shared_ptr<Search>& sr);
+    void onAnnounceDone(const std::shared_ptr<Node>& status,
+            net::NetworkEngine::RequestAnswer& a,
+            std::shared_ptr<Search>& sr);
 };
 
 }
