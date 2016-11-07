@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
+#include "net.h"
 
 #include <vector>
 #include <string>
@@ -37,6 +38,10 @@
 #include <queue>
 
 namespace dht {
+namespace net {
+
+struct Request;
+struct Socket;
 
 #ifndef MSG_CONFIRM
 #define MSG_CONFIRM 0
@@ -96,56 +101,7 @@ struct ParsedMessage;
  */
 class NetworkEngine final
 {
-    struct TransPrefix : public  std::array<uint8_t, 2>  {
-        TransPrefix(const std::string& str) : std::array<uint8_t, 2>({{(uint8_t)str[0], (uint8_t)str[1]}}) {}
-        static const TransPrefix PING;
-        static const TransPrefix FIND_NODE;
-        static const TransPrefix GET_VALUES;
-        static const TransPrefix ANNOUNCE_VALUES;
-        static const TransPrefix REFRESH;
-        static const TransPrefix LISTEN;
-    };
 public:
-
-    /* Transaction-ids are 4-bytes long, with the first two bytes identifying
-     * the kind of request, and the remaining two a sequence number in
-     * host order.
-     */
-    struct TransId final : public std::array<uint8_t, 4> {
-        static const constexpr uint16_t INVALID {0};
-
-        TransId() {}
-        TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
-        TransId(const TransPrefix prefix, uint16_t seqno = 0) {
-            std::copy_n(prefix.begin(), prefix.size(), begin());
-            *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
-        }
-
-        TransId(const char* q, size_t l) : array<uint8_t, 4>() {
-            if (l > 4) {
-                length = 0;
-            } else {
-                std::copy_n(q, l, begin());
-                length = l;
-            }
-        }
-
-        uint16_t getTid() const {
-            return *reinterpret_cast<const uint16_t*>(&(*this)[2]);
-        }
-
-        bool matches(const TransPrefix prefix, uint16_t* tid = nullptr) const {
-            if (std::equal(begin(), begin()+2, prefix.begin())) {
-                if (tid)
-                    *tid = getTid();
-                return true;
-            } else
-                return false;
-        }
-
-        unsigned length {4};
-    };
-
     /*!
      * @class   RequestAnswer
      * @brief   Answer for a request.
@@ -165,16 +121,7 @@ public:
     };
 
 
-    /**
-     * Cancel a request. Setting req->cancelled = true is not enough in the case
-     * a request is "persistent".
-     */
-    void cancelRequest(std::shared_ptr<Request>& req);
-
-    void connectivityChanged(sa_family_t);
-
 private:
-
     /**
      * @brief when we receive an error message.
      *
@@ -241,7 +188,7 @@ private:
     std::function<RequestAnswer(std::shared_ptr<Node>,
             const InfoHash&,
             const Blob&,
-            uint16_t,
+            uint32_t,
             const Query&)> onListen {};
     /**
      * @brief on announce request callback.
@@ -271,6 +218,7 @@ private:
             const Value::Id&)> onRefresh {};
 
 public:
+    using SocketCb = std::function<void(const std::shared_ptr<Node>&, RequestAnswer&&)>;
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
@@ -293,67 +241,186 @@ public:
     /**
      * Sends values (with closest nodes) to a listenner.
      *
-     * @param sa  The address of the listenner.
-     * @param sslen  The length of the sockaddr structure.
-     * @param rid  The request id of the initial listen request.
-     * @param hash  The hash key of the value.
-     * @param want  Wether to send ipv4 and/or ipv6 nodes.
-     * @param ntoken  Listen security token.
-     * @param nodes  The ipv4 closest nodes.
-     * @param nodes6  The ipv6 closest nodes.
-     * @param values  The values to send.
+     * @param sa          The address of the listenner.
+     * @param sslen       The length of the sockaddr structure.
+     * @param socket_id  The tid to use to write to the request socket.
+     * @param hash        The hash key of the value.
+     * @param want        Wether to send ipv4 and/or ipv6 nodes.
+     * @param ntoken      Listen security token.
+     * @param nodes       The ipv4 closest nodes.
+     * @param nodes6      The ipv6 closest nodes.
+     * @param values      The values to send.
      */
-    void tellListener(std::shared_ptr<Node> n, uint16_t rid, const InfoHash& hash, want_t want, const Blob& ntoken,
+    void tellListener(std::shared_ptr<Node> n, uint32_t socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<std::shared_ptr<Node>>&& nodes, std::vector<std::shared_ptr<Node>>&& nodes6,
             std::vector<std::shared_ptr<Value>>&& values, const Query& q);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
 
+    /**
+     * Cancel a request. Setting req->cancelled = true is not enough in the case
+     * a request is "persistent".
+     */
+    void cancelRequest(std::shared_ptr<Request>& req);
+
+    void connectivityChanged(sa_family_t);
+
     /**************
      *  Requests  *
      **************/
+
+    /**
+     * Send a "ping" request to a given node.
+     *
+     * @param n           The node.
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
     std::shared_ptr<Request>
-        sendPing(std::shared_ptr<Node> n, RequestCb on_done, RequestExpiredCb on_expired);
+        sendPing(std::shared_ptr<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+    /**
+     * Send a "ping" request to a given node.
+     *
+     * @param sa          The node's ip sockaddr info.
+     * @param salen       The associated sockaddr struct length.
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
     std::shared_ptr<Request>
-        sendPing(const sockaddr* sa, socklen_t salen, RequestCb on_done, RequestExpiredCb on_expired) {
-            return sendPing(std::make_shared<Node>(zeroes, sa, salen), on_done, on_expired);
+        sendPing(const sockaddr* sa, socklen_t salen, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+            return sendPing(std::make_shared<Node>(zeroes, sa, salen),
+                    std::forward<RequestCb>(on_done),
+                    std::forward<RequestExpiredCb>(on_expired));
         }
-    std::shared_ptr<Request>
-        sendFindNode(std::shared_ptr<Node> n,
-                const InfoHash& target,
-                want_t want,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
-    std::shared_ptr<Request>
-        sendGetValues(std::shared_ptr<Node> n,
-                const InfoHash& info_hash,
-                const Query& query,
-                want_t want,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
-    std::shared_ptr<Request>
-        sendListen(std::shared_ptr<Node> n,
-                const InfoHash& infohash,
-                const Query& query,
-                const Blob& token,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
-    std::shared_ptr<Request>
-        sendAnnounceValue(std::shared_ptr<Node> n,
-                const InfoHash& infohash,
-                const std::shared_ptr<Value>& v,
-                time_point created,
-                const Blob& token,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
-    std::shared_ptr<Request>
-        sendRefreshValue(std::shared_ptr<Node> n,
-                const InfoHash& infohash,
-                const Value::Id& vid,
-                const Blob& token,
-                RequestCb on_done,
-                RequestExpiredCb on_expired);
+    /**
+     * Send a "find node" request to a given node.
+     *
+     * @param n           The node.
+     * @param target      The target hash.
+     * @param want        Indicating wether IPv4 or IPv6 are wanted in response.
+     *                    Use NetworkEngine::want()
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
+    std::shared_ptr<Request> sendFindNode(std::shared_ptr<Node> n,
+                                          const InfoHash& hash,
+                                          want_t want,
+                                          RequestCb&& on_done,
+                                          RequestExpiredCb&& on_expired);
+    /**
+     * Send a "get" request to a given node.
+     *
+     * @param n           The node.
+     * @param hash        The target hash.
+     * @param query       The query describing filters.
+     * @param token       A security token.
+     * @param want        Indicating wether IPv4 or IPv6 are wanted in response.
+     *                    Use NetworkEngine::want()
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
+    std::shared_ptr<Request> sendGetValues(std::shared_ptr<Node> n,
+                                           const InfoHash& hash,
+                                           const Query& query,
+                                           want_t want,
+                                           RequestCb&& on_done,
+                                           RequestExpiredCb&& on_expired);
+    /**
+     * Send a "listen" request to a given node.
+     *
+     * @param n           The node.
+     * @param hash        The storage's hash.
+     * @param query       The query describing filters.
+     * @param token       A security token.
+     * @param previous    The previous request "listen" sent to this node.
+     * @param socket      **UNUSED** The socket for further response.
+     *
+     *                    For backward compatibility purpose, sendListen has to
+     *                    handle creation of the socket. Therefor, you cannot
+     *                    use openSocket yourself. TODO: Once we don't support
+     *                    the old "listen" negociation, sendListen shall not
+     *                    create the socket itself.
+     *
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     * @param socket_cb   Callback to execute each time new updates arrive on
+     *                    the socket.
+     *
+     * @return the request with information concerning its success.
+     */
+    std::shared_ptr<Request> sendListen(std::shared_ptr<Node> n,
+                                        const InfoHash& hash,
+                                        const Query& query,
+                                        const Blob& token,
+                                        std::shared_ptr<Request> previous,
+                                        RequestCb&& on_done,
+                                        RequestExpiredCb&& on_expired,
+                                        SocketCb&& socket_cb);
+    /**
+     * Send a "announce" request to a given node.
+     *
+     * @param n           The node.
+     * @param hash        The target hash.
+     * @param created     The time when the value was created (avoiding extended
+     *                    value lifetime)
+     * @param token       A security token.
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
+    std::shared_ptr<Request> sendAnnounceValue(std::shared_ptr<Node> n,
+                                               const InfoHash& hash,
+                                               const std::shared_ptr<Value>& v,
+                                               time_point created,
+                                               const Blob& token,
+                                               RequestCb&& on_done,
+                                               RequestExpiredCb&& on_expired);
+    /**
+     * Send a "refresh" request to a given node. Asks a node to keep the
+     * associated value Value.type.expiration more minutes in its storage.
+     *
+     * @param n           The node.
+     * @param hash        The target hash.
+     * @param vid         The value id.
+     * @param token       A security token.
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
+    std::shared_ptr<Request> sendRefreshValue(std::shared_ptr<Node> n,
+                                              const InfoHash& hash,
+                                              const Value::Id& vid,
+                                              const Blob& token,
+                                              RequestCb&& on_done,
+                                              RequestExpiredCb&& on_expired);
+    /**
+     * Opens a socket on which a node will be able allowed to write for further
+     * additionnal updates following the response to a previous request.
+     *
+     * @param node  The node which will be allowed to write on this socket.
+     * @param cb    The callback to execute once updates arrive on the socket.
+     *
+     * @return the socket.
+     */
+    std::shared_ptr<Socket> openSocket(const std::shared_ptr<Node>& node, TransPrefix tp, SocketCb&& cb);
+
+    /**
+     * Closes a socket so that no further data will be red on that socket.
+     *
+     * @param socket  The socket to close.
+     */
+    void closeSocket(std::shared_ptr<Socket> socket);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -440,11 +507,11 @@ private:
     }
 
     struct MessageStats {
-        unsigned ping {0};
-        unsigned find {0};
-        unsigned get {0};
-        unsigned put {0};
-        unsigned listen {0};
+        unsigned ping    {0};
+        unsigned find    {0};
+        unsigned get     {0};
+        unsigned put     {0};
+        unsigned listen  {0};
         unsigned refresh {0};
     };
 
@@ -534,12 +601,15 @@ private:
 
     // requests handling
     uint16_t transaction_id {1};
-    std::map<uint16_t, std::shared_ptr<Request>> requests {};
+    std::map<TransId, std::shared_ptr<Request>> requests {};
     std::map<TransId, PartialMessage> partial_messages;
+    std::map<TransId, std::shared_ptr<Socket>> opened_sockets {};
+
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};
 
     Scheduler& scheduler;
 };
 
-}
+} /* namespace net  */
+} /* namespace dht */
