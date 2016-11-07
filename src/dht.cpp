@@ -94,16 +94,16 @@ constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
  * Foreign nodes asking for updates about an InfoHash.
  */
 struct Dht::Listener {
-    size_t sid {};
-    time_point time {};
-    Query query {};
+    size_t sid;
+    time_point time;
+    Query query;
 
-    Listener(size_t sid, time_point t, Query&& q) : sid(sid), time(t), query(q) {}
+    Listener(size_t sid, time_point t, Query&& q) : sid(sid), time(t), query(std::move(q)) {}
 
-    void refresh(size_t sid, time_point time, Query query) {
-        this->sid = sid;
-        this->time = time;
-        this->query = query;
+    void refresh(size_t s, time_point t, Query&& q) {
+        sid = s;
+        time = t;
+        query = std::move(q);
     }
 };
 
@@ -2321,7 +2321,7 @@ Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, s
         node_listeners->second.emplace(socket_id, Listener {socket_id, now, std::forward<Query>(query)});
     }
     else
-        l->second.refresh(socket_id, now, query);
+        l->second.refresh(socket_id, now, std::forward<Query>(query));
 }
 
 void
@@ -2330,7 +2330,7 @@ Dht::expireStorage()
     const auto& now = scheduler.time();
     auto i = store.begin();
     while (i != store.end()) {
-        for (auto nl_it = i->second.listeners.begin(); nl_it != i->second.listeners.end();){
+        for (auto nl_it = i->second.listeners.begin(); nl_it != i->second.listeners.end();) {
             auto& node_listeners = nl_it->second;
             for (auto l = node_listeners.cbegin(); l != node_listeners.cend();) {
                 bool expired = l->second.time + Node::NODE_EXPIRE_TIME < now;
@@ -2344,6 +2344,8 @@ Dht::expireStorage()
             }
             if (node_listeners.empty())
                 nl_it = i->second.listeners.erase(nl_it);
+            else
+                ++nl_it;
         }
 
         auto stats = i->second.expire(types, now);
