@@ -34,6 +34,7 @@ nobase_include_HEADERS = \
         ../include/opendht/node_cache.h \
         ../include/opendht/routing_table.h \
         ../include/opendht/network_engine.h \
+        ../include/opendht/net.h \
         ../include/opendht/scheduler.h \
         ../include/opendht/rate_limiter.h \
         ../include/opendht/utils.h \
