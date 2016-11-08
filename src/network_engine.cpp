@@ -1003,15 +1003,11 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n,
 {
     std::shared_ptr<Socket> socket;
     auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : getNewTid() };
-    if (previous) {
+    if (previous and previous->node == n) {
         socket = previous->socket;
-        if (previous->node == n)
-            cancelRequest(previous);
-        else {
-            DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node");
-            return {};
-        }
     } else {
+        if (previous)
+            DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
         /* TODO: Manually creating a socket for "listen" backward compatibility.
          * As soon as this is not an issue anymore, switch to using
          * ::createSocket function! */
