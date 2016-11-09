@@ -20,6 +20,8 @@ option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_LTO "Build with LTO" OFF)
 
+include(GNUInstallDirs)
+
 find_package (GnuTLS 3.3 REQUIRED)
 find_package (Msgpack 1.2 REQUIRED)
 if (OPENDHT_TOOLS)
