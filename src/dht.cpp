@@ -2220,9 +2220,6 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
             Blob ntoken = makeToken((const sockaddr*)&node_listeners.first->addr.first, false);
             network_engine.tellListener(node_listeners.first, l.second.sid, id, 0, ntoken, {}, {},
                     std::move(vals), l.second.query);
-            /* The node will distribute a copy of the value for each listener on
-             * that node himself. */
-            break;
         }
     }
 }
