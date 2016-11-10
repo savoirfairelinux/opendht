@@ -280,8 +280,11 @@ cdef class DhtRunner(_WithID):
         return h
     def getNodeId(self):
         return self.thisptr.get().getNodeId().toString()
-    def bootstrap(self, str host, str port):
-        self.thisptr.get().bootstrap(host.encode(), port.encode())
+    def bootstrap(self, str host, str port=None):
+        if port:
+            self.thisptr.get().bootstrap(host.encode(), port.encode())
+        else:
+            self.thisptr.get().bootstrap(host.encode(), b'4222')
     def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=DhtConfig()):
         if id:
             config.setIdentity(id)
