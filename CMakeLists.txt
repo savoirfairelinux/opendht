@@ -8,10 +8,11 @@ set (VERSION "${opendht_VERSION}")
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
+include(GNUInstallDirs)
 set (prefix ${CMAKE_INSTALL_PREFIX})
 set (exec_prefix "\${prefix}")
-set (libdir "\${exec_prefix}/lib")
-set (includedir "\${prefix}/include")
+set (libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
+set (includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 
 option (OPENDHT_STATIC "Build static library" ON)
 option (OPENDHT_SHARED "Build shared library" ON)
@@ -19,8 +20,6 @@ option (OPENDHT_LOG "Build with logs" ON)
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_LTO "Build with LTO" OFF)
-
-include(GNUInstallDirs)
 
 find_package (GnuTLS 3.3 REQUIRED)
 find_package (Msgpack 1.2 REQUIRED)
