@@ -26,6 +26,7 @@
 #include "callbacks.h"
 #include "sockaddr.h"
 #include "log_enable.h"
+#include "def.h"
 
 #include <thread>
 #include <mutex>
@@ -48,7 +49,7 @@ struct SecureDhtConfig;
  * either wait for (expectedly frequent) calls to ::loop() or start an internal
  * thread that will update the DHT when appropriate.
  */
-class DhtRunner {
+class OPENDHT_PUBLIC DhtRunner {
 
 public:
     typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
