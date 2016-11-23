@@ -70,9 +70,6 @@ print_dt(DT d) {
     return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
 }
 
-static /*constexpr*/ const time_point TIME_INVALID = {time_point::min()};
-static /*constexpr*/ const time_point TIME_MAX {time_point::max()};
-
 template <typename Duration = duration>
 class uniform_duration_distribution : public std::uniform_int_distribution<typename Duration::rep> {
     using Base = std::uniform_int_distribution<typename Duration::rep>;

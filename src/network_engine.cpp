@@ -498,8 +498,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 (msg->error_code == DhtProtocolException::UNAUTHORIZED and (msg->tid.matches(TransPrefix::ANNOUNCE_VALUES)
                                                                          or msg->tid.matches(TransPrefix::LISTEN)))))
             {
-                req->last_try = TIME_INVALID;
-                req->reply_time = TIME_INVALID;
+                req->last_try = time_point::min();
+                req->reply_time = time_point::min();
                 onError(req, DhtProtocolException {msg->error_code});
             } else {
                 DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",

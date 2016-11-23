@@ -1015,7 +1015,7 @@ Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, cons
 
         // Reset search timer if the search is empty
         if (nodes.empty()) {
-            step_time = TIME_INVALID;
+            step_time = time_point::min();
         }
         n = nodes.insert(n, SearchNode(snode));
         node.time = now;
@@ -1704,7 +1704,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         }
         sr->af = af;
         sr->tid = search_id++;
-        sr->step_time = TIME_INVALID;
+        sr->step_time = time_point::min();
         sr->id = id;
         sr->done = false;
         sr->expired = false;
