@@ -47,10 +47,10 @@ def listen_cb(key, val):
     global pending_tests
     kstr = str(key)
     if kstr in pending_tests:
-        if pending_tests[kstr].id == val.id:
+        if pending_tests[kstr]['v'].id == val.id:
             pending_tests.pop(kstr, None)
         else:
-            print("Expected vid", val.id, "got", pending_tests[kstr].id)
+            print("Expected vid", val.id, "got", pending_tests[kstr]['v'].id)
     return True
 
 def listen(key):
