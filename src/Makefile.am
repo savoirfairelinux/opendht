@@ -21,7 +21,8 @@ libopendht_la_SOURCES = \
         securedht.cpp \
         dhtrunner.cpp \
         default_types.cpp \
-        indexation/pht.cpp
+        indexation/pht.cpp \
+        log.cpp
 
 if WIN32
 libopendht_la_SOURCES += rng.cpp
