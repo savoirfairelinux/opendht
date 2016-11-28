@@ -29,6 +29,7 @@ endif
 
 nobase_include_HEADERS = \
         ../include/opendht.h \
+        ../include/opendht/def.h \
         ../include/opendht/dht.h \
         ../include/opendht/callbacks.h \
         ../include/opendht/node_cache.h \

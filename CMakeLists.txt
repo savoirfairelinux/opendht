@@ -71,6 +71,7 @@ list (APPEND opendht_SOURCES
 )
 
 list (APPEND opendht_HEADERS
+    include/opendht/def.h
     include/opendht/utils.h
     include/opendht/sockaddr.h
     include/opendht/rng.h
