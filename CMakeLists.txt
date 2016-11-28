@@ -71,6 +71,7 @@ list (APPEND opendht_SOURCES
 )
 
 list (APPEND opendht_HEADERS
+    include/opendht/def.h
     include/opendht/utils.h
     include/opendht/sockaddr.h
     include/opendht/rng.h
@@ -92,7 +93,6 @@ list (APPEND opendht_HEADERS
     include/opendht/log_enable.h
     include/opendht.h
     include/opendht/indexation/pht.h
-    include/opendht/indexation/def.h
 )
 
 configure_file (
