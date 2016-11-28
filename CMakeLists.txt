@@ -68,6 +68,7 @@ list (APPEND opendht_SOURCES
     src/argon2/encoding.c
     src/argon2/ref.c
     src/indexation/pht.cpp
+    src/log.cpp
 )
 
 list (APPEND opendht_HEADERS
