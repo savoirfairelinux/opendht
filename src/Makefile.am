@@ -29,6 +29,7 @@ endif
 
 nobase_include_HEADERS = \
         ../include/opendht.h \
+        ../include/opendht/def.h \
         ../include/opendht/dht.h \
         ../include/opendht/callbacks.h \
         ../include/opendht/node_cache.h \
@@ -49,8 +50,7 @@ nobase_include_HEADERS = \
         ../include/opendht/log.h \
         ../include/opendht/log_enable.h \
         ../include/opendht/rng.h \
-        ../include/opendht/indexation/pht.h \
-        ../include/opendht/def.h
+        ../include/opendht/indexation/pht.h
 
 nobase_noinst_HEADERS = \
         ../include/opendht/request.h
