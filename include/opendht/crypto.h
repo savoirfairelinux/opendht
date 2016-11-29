@@ -148,6 +148,7 @@ struct OPENDHT_PUBLIC PrivateKey
      *      Recommended values: 4096, 8192
      */
     static PrivateKey generate(unsigned key_length = 4096);
+    static PrivateKey generateEC();
 
     gnutls_privkey_t key {};
     gnutls_x509_privkey_t x509_key {};

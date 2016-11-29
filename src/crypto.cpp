@@ -739,6 +739,20 @@ PrivateKey::generate(unsigned key_length)
     return PrivateKey{key};
 }
 
+PrivateKey
+PrivateKey::generateEC()
+{
+    gnutls_x509_privkey_t key;
+    if (gnutls_x509_privkey_init(&key) != GNUTLS_E_SUCCESS)
+        throw CryptoException("Can't initialize private key.");
+    int err = gnutls_x509_privkey_generate(key, GNUTLS_PK_EC, gnutls_sec_param_to_pk_bits(GNUTLS_PK_EC, GNUTLS_SEC_PARAM_ULTRA), 0);
+    if (err != GNUTLS_E_SUCCESS) {
+        gnutls_x509_privkey_deinit(key);
+        throw CryptoException(std::string("Can't generate EC key pair: ") + gnutls_strerror(err));
+    }
+    return PrivateKey{key};
+}
+
 Identity
 generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_length, bool is_ca)
 {
