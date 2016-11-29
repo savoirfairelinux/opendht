@@ -317,6 +317,38 @@ private:
 };
 
 
+class OPENDHT_PUBLIC RevocationList
+{
+public:
+    RevocationList();
+    RevocationList(const Blob& b);
+    ~RevocationList();
+
+    bool isRevoked(const Certificate& crt) const;
+
+    void revoke(const Certificate& crt, std::chrono::system_clock::time_point t = {});
+
+    /**
+     * Sign this revocation list using provided key and certificate.
+     */
+    void sign(const PrivateKey&, const Certificate&);
+    void sign(const Identity& id) { sign(*id.first, *id.second); }
+
+    bool isIssuedBy(const Certificate& crt);
+
+    bool isValid(const Certificate& issuer);
+
+    std::string toString();
+
+    gnutls_x509_crl_t get() { return crl; }
+
+private:
+    gnutls_x509_crl_t crl {};
+    RevocationList(const RevocationList&) = delete;
+    RevocationList& operator=(const RevocationList&) = delete;
+};
+
+
 /**
  * Generate an RSA key pair (4096 bits) and a certificate.
  * @param name the name used in the generated certificate

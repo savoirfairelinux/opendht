@@ -812,5 +812,119 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
     return ret;
 }
 
+RevocationList::RevocationList()
+{
+    gnutls_x509_crl_init(&crl);
+}
+
+RevocationList::RevocationList(const Blob& b)
+{
+    gnutls_x509_crl_init(&crl);
+    const gnutls_datum_t gdat {(uint8_t*)b.data(), (unsigned)b.size()};
+    if (auto err_pem = gnutls_x509_crl_import(crl, &gdat, GNUTLS_X509_FMT_PEM))
+        if (auto err_der = gnutls_x509_crl_import(crl, &gdat, GNUTLS_X509_FMT_DER)) {
+            gnutls_x509_crl_deinit(crl);
+            crl = nullptr;
+            throw CryptoException(std::string("Can't load CRL: PEM: ") + gnutls_strerror(err_pem)
+                                                           + " DER: "  + gnutls_strerror(err_der));
+        }
+}
+
+RevocationList::~RevocationList()
+{
+    if (crl) {
+        gnutls_x509_crl_deinit(crl);
+        crl = nullptr;
+    }
+}
+
+bool
+RevocationList::isRevoked(const Certificate& crt) const
+{
+    auto ret = gnutls_x509_crt_check_revocation(crt.cert, &crl, 1);
+    if (ret < 0)
+        throw CryptoException(std::string("Can't check certificate revocation status: ") + gnutls_strerror(ret));
+    return ret != 0;
+}
+
+void
+RevocationList::revoke(const Certificate& crt, std::chrono::system_clock::time_point t)
+{
+    if (auto err = gnutls_x509_crl_set_crt(crl, crt.cert, std::chrono::system_clock::to_time_t(t)))
+        throw CryptoException(std::string("Can't revoke certificate: ") + gnutls_strerror(err));
+}
+
+enum class Endian : uint32_t
+{
+    LITTLE = 0,
+    BIG = 1
+};
+
+template <typename T>
+T endian(T w, Endian endian)
+{
+    // this gets optimized out into if (endian == host_endian) return w;
+    union { uint64_t quad; uint32_t islittle; } t;
+    t.quad = 1;
+    if (t.islittle ^ (uint32_t)endian) return w;
+    T r = 0;
+
+    // decent compilers will unroll this (gcc)
+    // or even convert straight into single bswap (clang)
+    for (size_t i = 0; i < sizeof(r); i++) {
+        r <<= 8;
+        r |= w & 0xff;
+        w >>= 8;
+    }
+    return r;
+}
+
+void
+RevocationList::sign(const PrivateKey& key, const Certificate& ca)
+{
+    if (auto err = gnutls_x509_crl_set_version(crl, 2))
+        throw CryptoException(std::string("Can't set CRL version: ") + gnutls_strerror(err));
+    auto now = std::chrono::system_clock::now();
+    auto next_update = now + std::chrono::hours(24*7);
+    if (auto err = gnutls_x509_crl_set_this_update(crl, std::chrono::system_clock::to_time_t(now)))
+        throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));
+    if (auto err = gnutls_x509_crl_set_next_update(crl, std::chrono::system_clock::to_time_t(next_update)))
+        throw CryptoException(std::string("Can't set CRL next update time: ") + gnutls_strerror(err));
+    uint64_t number {0};
+    size_t number_sz {sizeof(number)};
+    unsigned critical {0};
+    gnutls_x509_crl_get_number(crl, &number, &number_sz, &critical);
+    auto s = endian(number, Endian::BIG);
+    s++;
+    number = endian(s, Endian::BIG);
+    if (auto err = gnutls_x509_crl_set_number(crl, &number, sizeof(number)))
+        throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));   
+    if (auto err = gnutls_x509_crl_sign2(crl, ca.cert, key.x509_key, GNUTLS_DIG_SHA512, 0))
+        throw CryptoException(std::string("Can't sign certificate revocation list: ") + gnutls_strerror(err));
+}
+
+bool
+RevocationList::isIssuedBy(const Certificate& crt)
+{
+    return gnutls_x509_crl_check_issuer(crl, crt.cert);
+}
+
+bool
+RevocationList::isValid(const Certificate& issuer)
+{
+    unsigned result {0};
+    gnutls_x509_crl_verify(crl, &issuer.cert, 1, 0, &result);
+}
+
+std::string
+RevocationList::toString()
+{
+    gnutls_datum_t out;
+    gnutls_x509_crl_print(crl, GNUTLS_CRT_PRINT_FULL, &out);
+    std::string ret(out.data, out.data+out.size);
+    gnutls_free(out.data);
+    return ret;
+}
+
 }
 }
