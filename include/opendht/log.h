@@ -74,8 +74,5 @@ enableFileLogging(dht::DhtRunner &dht, const std::string &path);
 OPENDHT_PUBLIC void
 disableLogging(dht::DhtRunner &dht);
 
-
-
 } /* log */
 } /* dht  */
-
