@@ -327,7 +327,10 @@ class OPENDHT_PUBLIC RevocationList
 public:
     RevocationList();
     RevocationList(const Blob& b);
+    RevocationList(RevocationList&& o) : crl(o.crl) { o.crl = nullptr; }
     ~RevocationList();
+
+    RevocationList& operator=(RevocationList&& o) { crl = o.crl; o.crl = nullptr; return *this; }
 
     void pack(Blob& b) const;
     void unpack(const uint8_t* dat, size_t dat_size);

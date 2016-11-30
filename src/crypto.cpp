@@ -865,7 +865,7 @@ void
 RevocationList::pack(Blob& b) const
 {
     gnutls_datum_t gdat {nullptr, 0};
-    if (auto err = gnutls_x509_crl_export2(crl, GNUTLS_X509_FMT_PEM, &gdat)) {
+    if (auto err = gnutls_x509_crl_export2(crl, GNUTLS_X509_FMT_DER, &gdat)) {
         throw CryptoException(std::string("Can't export CRL: ") + gnutls_strerror(err));
     }
     b.insert(b.end(), gdat.data, gdat.data + gdat.size);
