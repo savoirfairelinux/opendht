@@ -725,6 +725,16 @@ Certificate::toString(bool chain) const
     return ss.str();
 }
 
+std::string
+Certificate::print() const
+{
+    gnutls_datum_t out;
+    gnutls_x509_crt_print(cert, GNUTLS_CRT_PRINT_FULL, &out);
+    std::string ret(out.data, out.data+out.size);
+    gnutls_free(out.data);
+    return ret;
+}
+
 PrivateKey
 PrivateKey::generate(unsigned key_length)
 {
@@ -834,14 +844,13 @@ RevocationList::RevocationList()
 RevocationList::RevocationList(const Blob& b)
 {
     gnutls_x509_crl_init(&crl);
-    const gnutls_datum_t gdat {(uint8_t*)b.data(), (unsigned)b.size()};
-    if (auto err_pem = gnutls_x509_crl_import(crl, &gdat, GNUTLS_X509_FMT_PEM))
-        if (auto err_der = gnutls_x509_crl_import(crl, &gdat, GNUTLS_X509_FMT_DER)) {
-            gnutls_x509_crl_deinit(crl);
-            crl = nullptr;
-            throw CryptoException(std::string("Can't load CRL: PEM: ") + gnutls_strerror(err_pem)
-                                                           + " DER: "  + gnutls_strerror(err_der));
-        }
+    try {
+        unpack(b.data(), b.size());
+    } catch (const std::exception& e) {
+        gnutls_x509_crl_deinit(crl);
+        crl = nullptr;
+        throw e;
+    }
 }
 
 RevocationList::~RevocationList()
@@ -850,6 +859,29 @@ RevocationList::~RevocationList()
         gnutls_x509_crl_deinit(crl);
         crl = nullptr;
     }
+}
+
+void
+RevocationList::pack(Blob& b) const
+{
+    gnutls_datum_t gdat {nullptr, 0};
+    if (auto err = gnutls_x509_crl_export2(crl, GNUTLS_X509_FMT_PEM, &gdat)) {
+        throw CryptoException(std::string("Can't export CRL: ") + gnutls_strerror(err));
+    }
+    b.insert(b.end(), gdat.data, gdat.data + gdat.size);
+}
+
+void
+RevocationList::unpack(const uint8_t* dat, size_t dat_size)
+{
+    if (std::numeric_limits<unsigned>::max() < dat_size)
+        throw CryptoException("Can't load CRL: too large!");
+    const gnutls_datum_t gdat {(uint8_t*)dat, (unsigned)dat_size};
+    if (auto err_pem = gnutls_x509_crl_import(crl, &gdat, GNUTLS_X509_FMT_PEM))
+        if (auto err_der = gnutls_x509_crl_import(crl, &gdat, GNUTLS_X509_FMT_DER)) {
+            throw CryptoException(std::string("Can't load CRL: PEM: ") + gnutls_strerror(err_pem)
+                                                           + " DER: "  + gnutls_strerror(err_der));
+        }
 }
 
 bool
@@ -864,6 +896,8 @@ RevocationList::isRevoked(const Certificate& crt) const
 void
 RevocationList::revoke(const Certificate& crt, std::chrono::system_clock::time_point t)
 {
+    if (t == time_point::min())
+        t = clock::now();
     if (auto err = gnutls_x509_crl_set_crt(crl, crt.cert, std::chrono::system_clock::to_time_t(t)))
         throw CryptoException(std::string("Can't revoke certificate: ") + gnutls_strerror(err));
 }
@@ -875,7 +909,7 @@ enum class Endian : uint32_t
 };
 
 template <typename T>
-T endian(T w, Endian endian)
+T endian(T w, Endian endian = Endian::BIG)
 {
     // this gets optimized out into if (endian == host_endian) return w;
     union { uint64_t quad; uint32_t islittle; } t;
@@ -908,9 +942,11 @@ RevocationList::sign(const PrivateKey& key, const Certificate& ca)
     size_t number_sz {sizeof(number)};
     unsigned critical {0};
     gnutls_x509_crl_get_number(crl, &number, &number_sz, &critical);
-    auto s = endian(number, Endian::BIG);
-    s++;
-    number = endian(s, Endian::BIG);
+    if (number == 0) {
+        number = (uint64_t)1 | ((uint64_t)1 << (7*8));
+        number_sz = sizeof(number);
+    }
+    number = endian(endian(number) + 1);
     if (auto err = gnutls_x509_crl_set_number(crl, &number, sizeof(number)))
         throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));   
     if (auto err = gnutls_x509_crl_sign2(crl, ca.cert, key.x509_key, GNUTLS_DIG_SHA512, 0))
@@ -918,20 +954,19 @@ RevocationList::sign(const PrivateKey& key, const Certificate& ca)
 }
 
 bool
-RevocationList::isIssuedBy(const Certificate& crt)
-{
-    return gnutls_x509_crl_check_issuer(crl, crt.cert);
-}
-
-bool
-RevocationList::isValid(const Certificate& issuer)
+RevocationList::isSignedBy(const Certificate& issuer) const
 {
     unsigned result {0};
-    gnutls_x509_crl_verify(crl, &issuer.cert, 1, 0, &result);
+    auto err = gnutls_x509_crl_verify(crl, &issuer.cert, 1, 0, &result);
+    if (err < 0) {
+        //std::cout << "Can't verify CRL: " << err << " " << result << " " << gnutls_strerror(err) << std::endl;
+        return false;
+    }
+    return result == 0;
 }
 
 std::string
-RevocationList::toString()
+RevocationList::toString() const
 {
     gnutls_datum_t out;
     gnutls_x509_crl_print(crl, GNUTLS_CRT_PRINT_FULL, &out);

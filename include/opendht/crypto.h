@@ -308,6 +308,8 @@ struct OPENDHT_PUBLIC Certificate {
      */
     std::string toString(bool chain = true) const;
 
+    std::string print() const;
+
     static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
 
     gnutls_x509_crt_t cert {};
@@ -320,14 +322,24 @@ private:
 
 class OPENDHT_PUBLIC RevocationList
 {
+    using clock = std::chrono::system_clock;
+    using time_point = clock::time_point;
 public:
     RevocationList();
     RevocationList(const Blob& b);
     ~RevocationList();
 
+    void pack(Blob& b) const;
+    void unpack(const uint8_t* dat, size_t dat_size);
+    Blob getPacked() const {
+        Blob b;
+        pack(b);
+        return b;
+    }
+
     bool isRevoked(const Certificate& crt) const;
 
-    void revoke(const Certificate& crt, std::chrono::system_clock::time_point t = {});
+    void revoke(const Certificate& crt, time_point t = time_point::min());
 
     /**
      * Sign this revocation list using provided key and certificate.
@@ -335,11 +347,9 @@ public:
     void sign(const PrivateKey&, const Certificate&);
     void sign(const Identity& id) { sign(*id.first, *id.second); }
 
-    bool isIssuedBy(const Certificate& crt);
+    bool isSignedBy(const Certificate& issuer) const;
 
-    bool isValid(const Certificate& issuer);
-
-    std::string toString();
+    std::string toString() const;
 
     gnutls_x509_crl_t get() { return crl; }
 
