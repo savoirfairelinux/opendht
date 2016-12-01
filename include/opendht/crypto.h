@@ -53,6 +53,7 @@ class OPENDHT_PUBLIC DecryptError : public CryptoException {
 
 struct PrivateKey;
 struct Certificate;
+class RevocationList;
 
 using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certificate>>;
 
@@ -310,6 +311,11 @@ struct OPENDHT_PUBLIC Certificate {
 
     std::string print() const;
 
+    void revoke(const PrivateKey&, const Certificate&);
+    std::vector<std::shared_ptr<RevocationList>> getRevocationLists() const { return revocation_lists; }
+    void addRevocationList(RevocationList&&);
+    void addRevocationList(std::shared_ptr<RevocationList>);
+
     static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
 
     gnutls_x509_crt_t cert {};
@@ -317,6 +323,7 @@ struct OPENDHT_PUBLIC Certificate {
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
+    std::vector<std::shared_ptr<RevocationList>> revocation_lists;
 };
 
 
@@ -340,9 +347,19 @@ public:
         return b;
     }
 
-    bool isRevoked(const Certificate& crt) const;
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
+        Blob b = getPacked();
+        p.pack_bin(b.size());
+        p.pack_bin_body((const char*)b.data(), b.size());
+    }
+
+    void msgpack_unpack(msgpack::object o);
 
     void revoke(const Certificate& crt, time_point t = time_point::min());
+
+    bool isRevoked(const Certificate& crt) const;
 
     /**
      * Sign this revocation list using provided key and certificate.
@@ -353,6 +370,11 @@ public:
     bool isSignedBy(const Certificate& issuer) const;
 
     std::string toString() const;
+
+    /**
+     * Read the CRL number extension field.
+     */
+    Blob getNumber() const;
 
     gnutls_x509_crl_t get() { return crl; }
 

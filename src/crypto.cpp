@@ -735,6 +735,30 @@ Certificate::print() const
     return ret;
 }
 
+void
+Certificate::revoke(const PrivateKey& key, const Certificate& to_revoke)
+{
+    if (revocation_lists.empty())
+        revocation_lists.emplace_back(std::make_shared<RevocationList>());
+    auto& list = *revocation_lists.back();
+    list.revoke(to_revoke);
+    list.sign(key, *this);
+}
+
+void
+Certificate::addRevocationList(RevocationList&& list)
+{
+    addRevocationList(std::make_shared<RevocationList>(std::forward<RevocationList>(list)));
+}
+
+void
+Certificate::addRevocationList(std::shared_ptr<RevocationList> list)
+{
+    if (not list->isSignedBy(*this))
+        throw CryptoException("CRL is not signed by this certificate");
+    revocation_lists.emplace_back(std::move(list));
+}
+
 PrivateKey
 PrivateKey::generate(unsigned key_length)
 {
@@ -884,6 +908,21 @@ RevocationList::unpack(const uint8_t* dat, size_t dat_size)
         }
 }
 
+void
+RevocationList::msgpack_unpack(msgpack::object o)
+{
+    try {
+        if (o.type == msgpack::type::BIN)
+            unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
+        else {
+            Blob dat = unpackBlob(o);
+            unpack(dat.data(), dat.size());
+        }
+    } catch (...) {
+        throw msgpack::type_error();
+    }
+}
+
 bool
 RevocationList::isRevoked(const Certificate& crt) const
 {
@@ -963,6 +1002,19 @@ RevocationList::isSignedBy(const Certificate& issuer) const
         return false;
     }
     return result == 0;
+}
+
+
+Blob
+RevocationList::getNumber() const
+{
+    Blob number(20);
+    size_t number_sz {number.size()};
+    unsigned critical {0};
+    gnutls_x509_crl_get_number(crl, number.data(), &number_sz, &critical);
+    if (number_sz != number.size())
+        number.resize(number_sz);
+    return number;
 }
 
 std::string
