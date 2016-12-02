@@ -759,6 +759,15 @@ Certificate::addRevocationList(std::shared_ptr<RevocationList> list)
     revocation_lists.emplace_back(std::move(list));
 }
 
+std::chrono::system_clock::time_point
+Certificate::getExpiration() const
+{
+    auto t = gnutls_x509_crt_get_expiration_time(cert);
+    if (t == (time_t)-1)
+        return std::chrono::system_clock::time_point::min();
+    return std::chrono::system_clock::from_time_t(t);
+}
+
 PrivateKey
 PrivateKey::generate(unsigned key_length)
 {

@@ -298,6 +298,8 @@ struct OPENDHT_PUBLIC Certificate {
     /** Read certificate alternative names */
     std::vector<std::pair<NameType, std::string>> getAltNames() const;
 
+    std::chrono::system_clock::time_point getExpiration() const;
+
     /**
      * Returns true if the certificate is marked as a Certificate Authority.
      */
