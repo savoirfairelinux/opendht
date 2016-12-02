@@ -333,6 +333,7 @@ class OPENDHT_PUBLIC RevocationList
 {
     using clock = std::chrono::system_clock;
     using time_point = clock::time_point;
+    using duration = clock::duration;
 public:
     RevocationList();
     RevocationList(const Blob& b);
@@ -365,8 +366,9 @@ public:
 
     /**
      * Sign this revocation list using provided key and certificate.
+     * Validity_period sets the duration until expiration (default to certificate expiration).
      */
-    void sign(const PrivateKey&, const Certificate&);
+    void sign(const PrivateKey&, const Certificate&, duration validity_period = {});
     void sign(const Identity& id) { sign(*id.first, *id.second); }
 
     bool isSignedBy(const Certificate& issuer) const;

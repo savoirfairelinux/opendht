@@ -976,12 +976,12 @@ T endian(T w, Endian endian = Endian::BIG)
 }
 
 void
-RevocationList::sign(const PrivateKey& key, const Certificate& ca)
+RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration validity)
 {
     if (auto err = gnutls_x509_crl_set_version(crl, 2))
         throw CryptoException(std::string("Can't set CRL version: ") + gnutls_strerror(err));
     auto now = std::chrono::system_clock::now();
-    auto next_update = now + std::chrono::hours(24*7);
+    auto next_update = (validity == duration{}) ? ca.getExpiration() : now + validity;
     if (auto err = gnutls_x509_crl_set_this_update(crl, std::chrono::system_clock::to_time_t(now)))
         throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));
     if (auto err = gnutls_x509_crl_set_next_update(crl, std::chrono::system_clock::to_time_t(next_update)))
