@@ -314,7 +314,7 @@ struct OPENDHT_PUBLIC Certificate {
     std::string print() const;
 
     void revoke(const PrivateKey&, const Certificate&);
-    std::vector<std::shared_ptr<RevocationList>> getRevocationLists() const { return revocation_lists; }
+    std::vector<std::shared_ptr<RevocationList>> getRevocationLists() const;
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
@@ -325,7 +325,7 @@ struct OPENDHT_PUBLIC Certificate {
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
-    std::vector<std::shared_ptr<RevocationList>> revocation_lists;
+    std::set<std::shared_ptr<RevocationList>> revocation_lists;
 };
 
 

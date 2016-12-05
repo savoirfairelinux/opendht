@@ -739,8 +739,8 @@ void
 Certificate::revoke(const PrivateKey& key, const Certificate& to_revoke)
 {
     if (revocation_lists.empty())
-        revocation_lists.emplace_back(std::make_shared<RevocationList>());
-    auto& list = *revocation_lists.back();
+        revocation_lists.emplace(std::make_shared<RevocationList>());
+    auto& list = *(*revocation_lists.begin());
     list.revoke(to_revoke);
     list.sign(key, *this);
 }
@@ -754,9 +754,11 @@ Certificate::addRevocationList(RevocationList&& list)
 void
 Certificate::addRevocationList(std::shared_ptr<RevocationList> list)
 {
+    if (revocation_lists.find(list) != revocation_lists.end())
+        return; // Already in the list
     if (not list->isSignedBy(*this))
         throw CryptoException("CRL is not signed by this certificate");
-    revocation_lists.emplace_back(std::move(list));
+    revocation_lists.emplace(std::move(list));
 }
 
 std::chrono::system_clock::time_point
@@ -866,6 +868,16 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
         }
     }
 
+    return ret;
+}
+
+std::vector<std::shared_ptr<RevocationList>>
+Certificate::getRevocationLists() const
+{
+    std::vector<std::shared_ptr<RevocationList>> ret;
+    ret.reserve(revocation_lists.size());
+    for (const auto& crl : revocation_lists)
+        ret.emplace_back(crl);
     return ret;
 }
 
