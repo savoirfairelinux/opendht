@@ -199,10 +199,6 @@ public:
 
     std::string toString() const;
 
-    const char* toCString() const {
-        return toString().c_str();
-    }
-
     template <typename Packer>
     void msgpack_pack(Packer& pk) const
     {
