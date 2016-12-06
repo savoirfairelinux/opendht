@@ -161,6 +161,70 @@ private:
     //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
+
+class OPENDHT_PUBLIC RevocationList
+{
+    using clock = std::chrono::system_clock;
+    using time_point = clock::time_point;
+    using duration = clock::duration;
+public:
+    RevocationList();
+    RevocationList(const Blob& b);
+    RevocationList(RevocationList&& o) : crl(o.crl) { o.crl = nullptr; }
+    ~RevocationList();
+
+    RevocationList& operator=(RevocationList&& o) { crl = o.crl; o.crl = nullptr; return *this; }
+
+    void pack(Blob& b) const;
+    void unpack(const uint8_t* dat, size_t dat_size);
+    Blob getPacked() const {
+        Blob b;
+        pack(b);
+        return b;
+    }
+
+    template <typename Packer>
+    void msgpack_pack(Packer& p) const
+    {
+        Blob b = getPacked();
+        p.pack_bin(b.size());
+        p.pack_bin_body((const char*)b.data(), b.size());
+    }
+
+    void msgpack_unpack(msgpack::object o);
+
+    void revoke(const Certificate& crt, time_point t = time_point::min());
+
+    bool isRevoked(const Certificate& crt) const;
+
+    /**
+     * Sign this revocation list using provided key and certificate.
+     * Validity_period sets the duration until next update (default to no next update).
+     */
+    void sign(const PrivateKey&, const Certificate&, duration validity_period = {});
+    void sign(const Identity& id) { sign(*id.first, *id.second); }
+
+    bool isSignedBy(const Certificate& issuer) const;
+
+    std::string toString() const;
+
+    /**
+     * Read the CRL number extension field.
+     */
+    Blob getNumber() const;
+
+    time_point getUpdateTime() const;
+    time_point getNextUpdateTime() const;
+
+    gnutls_x509_crl_t get() { return crl; }
+
+private:
+    gnutls_x509_crl_t crl {};
+    RevocationList(const RevocationList&) = delete;
+    RevocationList& operator=(const RevocationList&) = delete;
+};
+
+
 struct OPENDHT_PUBLIC Certificate {
     Certificate() {}
 
@@ -325,67 +389,14 @@ struct OPENDHT_PUBLIC Certificate {
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
-    std::set<std::shared_ptr<RevocationList>> revocation_lists;
-};
 
+    struct crlNumberCmp {
+        bool operator() (const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const {
+            return lhs->getNumber() < rhs->getNumber();
+        }
+    };
 
-class OPENDHT_PUBLIC RevocationList
-{
-    using clock = std::chrono::system_clock;
-    using time_point = clock::time_point;
-    using duration = clock::duration;
-public:
-    RevocationList();
-    RevocationList(const Blob& b);
-    RevocationList(RevocationList&& o) : crl(o.crl) { o.crl = nullptr; }
-    ~RevocationList();
-
-    RevocationList& operator=(RevocationList&& o) { crl = o.crl; o.crl = nullptr; return *this; }
-
-    void pack(Blob& b) const;
-    void unpack(const uint8_t* dat, size_t dat_size);
-    Blob getPacked() const {
-        Blob b;
-        pack(b);
-        return b;
-    }
-
-    template <typename Packer>
-    void msgpack_pack(Packer& p) const
-    {
-        Blob b = getPacked();
-        p.pack_bin(b.size());
-        p.pack_bin_body((const char*)b.data(), b.size());
-    }
-
-    void msgpack_unpack(msgpack::object o);
-
-    void revoke(const Certificate& crt, time_point t = time_point::min());
-
-    bool isRevoked(const Certificate& crt) const;
-
-    /**
-     * Sign this revocation list using provided key and certificate.
-     * Validity_period sets the duration until expiration (default to certificate expiration).
-     */
-    void sign(const PrivateKey&, const Certificate&, duration validity_period = {});
-    void sign(const Identity& id) { sign(*id.first, *id.second); }
-
-    bool isSignedBy(const Certificate& issuer) const;
-
-    std::string toString() const;
-
-    /**
-     * Read the CRL number extension field.
-     */
-    Blob getNumber() const;
-
-    gnutls_x509_crl_t get() { return crl; }
-
-private:
-    gnutls_x509_crl_t crl {};
-    RevocationList(const RevocationList&) = delete;
-    RevocationList& operator=(const RevocationList&) = delete;
+    std::set<std::shared_ptr<RevocationList>, crlNumberCmp> revocation_lists;
 };
 
 

@@ -962,6 +962,24 @@ RevocationList::revoke(const Certificate& crt, std::chrono::system_clock::time_p
         throw CryptoException(std::string("Can't revoke certificate: ") + gnutls_strerror(err));
 }
 
+RevocationList::time_point
+RevocationList::getNextUpdateTime() const
+{
+    auto t = gnutls_x509_crl_get_next_update(crl);
+    if (t == (time_t)-1)
+        return std::chrono::system_clock::time_point::min();
+    return std::chrono::system_clock::from_time_t(t);
+}
+
+RevocationList::time_point
+RevocationList::getUpdateTime() const
+{
+    auto t = gnutls_x509_crl_get_this_update(crl);
+    if (t == (time_t)-1)
+        return std::chrono::system_clock::time_point::min();
+    return std::chrono::system_clock::from_time_t(t);
+}
+
 enum class Endian : uint32_t
 {
     LITTLE = 0,
@@ -1003,14 +1021,19 @@ RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration vali
     unsigned critical {0};
     gnutls_x509_crl_get_number(crl, &number, &number_sz, &critical);
     if (number == 0) {
-        number = (uint64_t)1 | ((uint64_t)1 << (7*8));
+        // initialize to a random number
         number_sz = sizeof(number);
-    }
-    number = endian(endian(number) + 1);
+        random_device rdev;
+        std::generate_n((uint8_t*)&number, sizeof(number), std::bind(rand_byte, std::ref(rdev)));
+    } else
+        number = endian(endian(number) + 1);
     if (auto err = gnutls_x509_crl_set_number(crl, &number, sizeof(number)))
         throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));   
     if (auto err = gnutls_x509_crl_sign2(crl, ca.cert, key.x509_key, GNUTLS_DIG_SHA512, 0))
         throw CryptoException(std::string("Can't sign certificate revocation list: ") + gnutls_strerror(err));
+    // to be able to actually use the CRL we need to serialize/deserialize it
+    auto packed = getPacked();
+    unpack(packed.data(), packed.size());
 }
 
 bool
