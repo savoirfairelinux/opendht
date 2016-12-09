@@ -74,7 +74,7 @@ def check_dl(fname, url):
     if os.path.isfile(fname):
         return
     print('downloading', url)
-    ghandle = gzip.GzipFile(fileobj=http.request('GET', url, headers={'User-Agent': 'Mozilla/5.0'}))
+    ghandle = gzip.GzipFile(fileobj=http.request('GET', url, headers={'User-Agent': 'Mozilla/5.0'}, preload_content=False))
     with open(fname, 'wb') as out:
         for line in ghandle:
             out.write(line)
