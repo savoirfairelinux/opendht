@@ -73,11 +73,9 @@ main(int argc, char **argv)
     gnutls_global_init();
 #endif
     auto params = parseArgs(argc, argv);
-    auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
-    auto crt_tmp = dht::crypto::generateIdentity("Scanner node", ca_tmp);
 
     DhtRunner dht;
-    dht.run(params.port, crt_tmp, true, params.network);
+    dht.run(params.port, {}, true, params.network);
 
     if (not params.bootstrap.first.empty())
         dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
@@ -86,12 +84,13 @@ main(int argc, char **argv)
     std::cout << "Scanning network..." << std::endl;
     auto all_nodes = std::make_shared<NodeSet>();
 
+    // Set hash to 1 because 0 is the null hash
     dht::InfoHash cur_h {};
     cur_h.setBit(8*HASH_LEN-1, 1);
 
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    std::atomic_uint done {false};
+    std::atomic_uint done {0};
     step(dht, done, all_nodes, cur_h, 0);
 
     {
