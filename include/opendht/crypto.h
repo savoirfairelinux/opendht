@@ -213,6 +213,12 @@ public:
      */
     Blob getNumber() const;
 
+    /** Read CRL issuer Common Name (CN) */
+    std::string getIssuerName() const;
+
+    /** Read CRL issuer User ID (UID) */
+    std::string getIssuerUID() const;
+
     time_point getUpdateTime() const;
     time_point getNextUpdateTime() const;
 

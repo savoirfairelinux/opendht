@@ -962,6 +962,32 @@ RevocationList::revoke(const Certificate& crt, std::chrono::system_clock::time_p
         throw CryptoException(std::string("Can't revoke certificate: ") + gnutls_strerror(err));
 }
 
+static std::string
+getCRLIssuerDN(gnutls_x509_crl_t cert, const char* oid)
+{
+    std::string dn;
+    dn.resize(512);
+    size_t dn_sz = dn.size();
+    int ret = gnutls_x509_crl_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
+    if (ret != GNUTLS_E_SUCCESS)
+        return {};  
+    dn.resize(dn_sz);
+    return dn;
+}
+
+std::string
+RevocationList::getIssuerName() const
+{
+    return getCRLIssuerDN(crl, GNUTLS_OID_X520_COMMON_NAME);
+}
+
+/** Read CRL issuer User ID (UID) */
+std::string
+RevocationList::getIssuerUID() const
+{
+    return getCRLIssuerDN(crl, GNUTLS_OID_LDAP_UID);
+}
+
 RevocationList::time_point
 RevocationList::getNextUpdateTime() const
 {
