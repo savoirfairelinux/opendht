@@ -150,6 +150,12 @@ if (OPENDHT_PYTHON)
     add_subdirectory(python)
 endif ()
 
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake"
+  VERSION ${opendht_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
 install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtConfig.cmake)
+install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
