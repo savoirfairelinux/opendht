@@ -854,6 +854,10 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
     gnutls_x509_crt_set_key_usage(cert, key_usage);
 
     if (ca.first && ca.second) {
+        if (not ca.second->isCA()) {
+            // Signing certificate must be CA.
+            return {};
+        }
         //if (gnutls_x509_crt_sign2(cert, ca.second->cert, ca.first->x509_key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
         if (gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
             std::cerr << "Error when signing certificate" << std::endl;
