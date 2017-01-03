@@ -46,7 +46,7 @@ struct OPENDHT_PUBLIC Config {
     /** DHT node ID */
     InfoHash node_id;
 
-    /** 
+    /**
      * DHT network ID. A node will only talk with other nodes having
      * the same network ID.
      * Network ID 0 (default) represents the main public network.

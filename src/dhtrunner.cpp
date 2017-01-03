@@ -348,7 +348,7 @@ DhtRunner::loop_()
             // We have lost connection with the DHT.  Try to recover using bootstrap nodes.
             std::unique_lock<std::mutex> lck(bootstrap_mtx);
             bootstrap_nodes = bootstrap_nodes_all;
-            tryBootstrapCoutinuously();
+            tryBootstrapContinuously();
         } else {
             std::unique_lock<std::mutex> lck(bootstrap_mtx);
             bootstrap_nodes.clear();
@@ -618,7 +618,7 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Done
 }
 
 void
-DhtRunner::tryBootstrapCoutinuously()
+DhtRunner::tryBootstrapContinuously()
 {
     if (bootstrap_thread.joinable()) {
         if (bootstraping)
@@ -707,7 +707,7 @@ DhtRunner::bootstrap(const std::string& host, const std::string& service)
     std::lock_guard<std::mutex> lck(bootstrap_mtx);
     bootstrap_nodes_all.emplace_back(host, service);
     bootstrap_nodes.emplace_back(host, service);
-    tryBootstrapCoutinuously();
+    tryBootstrapContinuously();
 }
 
 void
