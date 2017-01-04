@@ -2829,11 +2829,12 @@ Dht::bucketMaintenance(RoutingTable& list)
     std::bernoulli_distribution rand_trial(1./8.);
     std::bernoulli_distribution rand_trial_38(1./38.);
 
+    bool sent {false};
     for (auto b = list.begin(); b != list.end(); ++b) {
         if (b->time < scheduler.time() - std::chrono::minutes(10) || b->nodes.empty()) {
             /* This bucket hasn't seen any positive confirmation for a long
-               time.  Pick a random id in this bucket's range, and send
-               a request to a random node. */
+               time. Pick a random id in this bucket's range, and send a request
+               to a random node. */
             InfoHash id = list.randomId(b);
             auto q = b;
             /* If the bucket is empty, we try to fill it from a neighbour.
@@ -2848,7 +2849,7 @@ Dht::bucketMaintenance(RoutingTable& list)
             }
 
             auto n = q->randomNode();
-            if (n) {
+            if (n and not n->isPendingMessage()) {
                 want_t want = -1;
 
                 if (network_engine.want() != want) {
@@ -2872,16 +2873,14 @@ Dht::bucketMaintenance(RoutingTable& list)
                         const auto& end = scheduler.time();
                         using namespace std::chrono;
                         DHT_LOG.d(n->id, "[node %s] bucket maintenance op expired after %llu ms", n->toString().c_str(), duration_cast<milliseconds>(end-start).count());
-                        scheduler.edit(nextNodesConfirmation, end + 3 * Node::NODE_EXPIRE_TIME);
+                        scheduler.edit(nextNodesConfirmation, end + Node::MAX_RESPONSE_TIME);
                     }
                 });
-                /* In order to avoid sending queries back-to-back,
-                   give up for now and reschedule us soon. */
-                return true;
+                sent = true;
             }
         }
     }
-    return false;
+    return sent;
 }
 
 void

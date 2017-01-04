@@ -283,7 +283,7 @@ public:
     std::string getStorageLog(const InfoHash&) const;
     std::string getRoutingTablesLog(sa_family_t af) const;
     std::string getSearchesLog(sa_family_t af = AF_UNSPEC) const;
-    std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;    
+    std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;
     std::vector<SockAddr> getPublicAddress(sa_family_t af = AF_UNSPEC);
     std::vector<std::string> getPublicAddressStr(sa_family_t af = AF_UNSPEC);
 
@@ -370,7 +370,7 @@ private:
      * nodes so that the DHT node can recover quickly from losing connection
      * with the network.
      */
-    void tryBootstrapCoutinuously();
+    void tryBootstrapContinuously();
 
     void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
     time_point loop_();

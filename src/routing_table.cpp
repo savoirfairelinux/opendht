@@ -17,10 +17,21 @@ Bucket::randomNode()
 {
     if (nodes.empty())
         return nullptr;
-    std::uniform_int_distribution<unsigned> rand_node(0, nodes.size()-1);
+    unsigned expired_node_count = std::count_if(nodes.cbegin(), nodes.cend(), [](const decltype(nodes)::value_type& node) {
+        return node->isExpired();
+    });
+    auto prioritize_not_expired = expired_node_count < nodes.size();
+
+    std::uniform_int_distribution<unsigned> rand_node(0, prioritize_not_expired
+            ? nodes.size() - expired_node_count - 1
+            : nodes.size()-1);
     unsigned nn = rand_node(rd);
-    for (auto& n : nodes)
-        if (not nn--) return n;
+    for (auto& n : nodes) {
+        if (not (prioritize_not_expired and n->isExpired())) {
+            if (not nn--)
+                return n;
+        }
+    }
     return nodes.back();
 }
 
