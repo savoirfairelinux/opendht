@@ -83,9 +83,9 @@ void
 Node::received(time_point now, std::shared_ptr<net::Request> req)
 {
     time = now;
+    expired_ = false;
     if (req) {
         reply_time = now;
-        expired_ = false;
         for (auto it = requests_.begin(); it != requests_.end();) {
             auto r = it->lock();
             if (not r or r == req)
