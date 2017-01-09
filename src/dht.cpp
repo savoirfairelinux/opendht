@@ -216,7 +216,6 @@ struct Dht::Get {
     time_point start;
     Value::Filter filter;
     std::shared_ptr<Query> query;
-    std::set<std::shared_ptr<Query>> pagination_queries;
     QueryCallback query_cb;
     GetCallback get_cb;
     DoneCallback done_cb;
@@ -1365,14 +1364,22 @@ Dht::searchStep(std::shared_ptr<Search> sr)
         if (not (sr->callbacks.empty() and sr->announce.empty())) {
             // search is synced but some (newer) get operations are not complete
             // Call callbacks when done
+            std::vector<Get> completed_gets;
             for (auto b = sr->callbacks.begin(); b != sr->callbacks.end();) {
                 if (sr->isDone(b->second)) {
                     sr->setDone(b->second);
+                    completed_gets.emplace_back(std::move(b->second));
                     b = sr->callbacks.erase(b);
                 }
                 else
                     ++b;
             }
+            // clear corresponding queries
+            for (const auto& get : completed_gets)
+                for (auto& sn : sr->nodes) {
+                    sn.getStatus.erase(get.query);
+                    sn.pagination_queries.erase(get.query);
+                }
 
             /* clearing callbacks for announced values */
             sr->checkAnnounced(now);
@@ -1725,7 +1732,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         auto now = scheduler.time();
         sr->callbacks.insert(std::make_pair<time_point, Get>(
             std::move(now),
-            Get { scheduler.time(), f, std::make_shared<Query>(q), {},
+            Get { scheduler.time(), f, std::make_shared<Query>(q),
                 qcb ? qcb : QueryCallback {}, gcb ? gcb : GetCallback {}, dcb
             }
         ));
