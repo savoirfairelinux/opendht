@@ -685,7 +685,7 @@ struct Dht::Search {
      * @param now  The time reference to now.
      */
     void checkAnnounced(time_point now, Value::Id vid = Value::INVALID_ID) {
-        announce.erase(std::remove_if(announce.begin(), announce.end(),
+        auto announced = std::remove_if(announce.begin(), announce.end(),
             [this,&vid,&now](Announce& a) {
                 if (vid != Value::INVALID_ID and (!a.value || a.value->id != vid))
                     return false;
@@ -698,7 +698,13 @@ struct Dht::Search {
                         return true;
                 }
                 return false;
-        }), announce.end());
+        });
+        // remove acked for cleared annouces
+        for (auto it = announced; it != announce.end(); ++it) {
+            for (auto& n : nodes)
+                n.acked.erase(it->value->id);
+        }
+        announce.erase(announced, announce.end());
     }
 
     std::vector<std::shared_ptr<Node>> getNodes() const;
