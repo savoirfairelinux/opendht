@@ -17,6 +17,7 @@
 
 import opendht as dht
 import time
+import asyncio
 
 ping_node = dht.DhtRunner()
 ping_node.run(port = 5632)
@@ -35,19 +36,28 @@ loc_pong = dht.InfoHash.get(str(loc_ping))
 i = 0
 MAX = 8192
 
-def pong(node, h):
+loop = asyncio.get_event_loop()
+
+def done(h, ok):
+	print(h, "over", ok)
+
+def ping(node, h):
 	global i
-	print("got ping", h, i)
-	time.sleep(0.0075)
+	time.sleep(0.0075) 
 	i += 1
 	if i < MAX:
-		node.put(h, dht.Value(b"hey"), lambda ok, nodes: print("over", ok))
+		node.put(h, dht.Value(b"hey"), lambda ok, nodes: done(node.getNodeId().decode(), ok))
+	else:
+		loop.stop()
+
+def pong(node, h):
+	print(node.getNodeId().decode(), "got ping", h, i)
+	loop.call_soon_threadsafe(ping, node, h);
 	return True
 
 ping_node.listen(loc_ping, lambda v: pong(pong_node, loc_pong))
 pong_node.listen(loc_pong, lambda v: pong(ping_node, loc_ping))
 
-pong_node.put(loc_pong, dht.Value(b"hey"), lambda ok, nodes: print("i over", ok))
+ping(pong_node, loc_ping)
 
-while (i < MAX):
-	time.sleep(1)
+loop.run_forever()
