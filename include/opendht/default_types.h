@@ -149,7 +149,8 @@ public:
 
     std::string service;
     Blob payload;
-    MSGPACK_DEFINE(service, payload)
+    bool confirm {false};
+    MSGPACK_DEFINE_MAP(service, payload, confirm)
 };
 
 class OPENDHT_PUBLIC IceCandidates : public EncryptedValue<IceCandidates>
