@@ -1,12 +1,11 @@
 @ECHO OFF
 SETLOCAL EnableDelayedExpansion
 
-SET UPSTREAMURL=https://github.com/atraczyk
+SET UPSTREAMURL=https://github.com/ShiftMediaProject
 SET DEPENDENCIES=( ^
 gmp, ^
 gnutls, ^
-nettle, ^
-msgpack-c ^
+nettle ^
 )
 
 SET PASSDEPENDENCIES=%~1
@@ -24,6 +23,15 @@ IF %ERRORLEVEL% EQU 128 (
 SET CURRDIR=%~dp1
 
 cd ..\..
+set MSGPACK_VERSION=1df97bc37b363a340c5ad06c5cbcc53310aaff80
+set MSGPACK_URL="https://github.com/msgpack/msgpack-c.git"
+ECHO Cloning msgpack-c...
+git clone %MSGPACK_URL% --quiet
+cd msgpack-c
+git checkout %MSGPACK_VERSION%
+git apply --reject --whitespace=fix ..\opendht\MSVC\msgpack-msvc.patch
+cd ..
+
 FOR %%I IN %DEPENDENCIES% DO (
     ECHO !PASSDEPENDENCIES! | FINDSTR /C:"%%I" >NUL 2>&1 || (
         CALL :cloneOrUpdateRepo "%%I" )
@@ -46,10 +54,10 @@ IF NOT EXIST "%REPONAME%" (
 
 SET PASSDEPENDENCIES=%PASSDEPENDENCIES% %REPONAME%
 
-IF EXIST "%REPONAME%\MSVC\project_get_dependencies.bat" (
+IF EXIST "%REPONAME%\SMP\project_get_dependencies.bat" (
     ECHO %REPONAME%: Found additional dependencies...
     ECHO.
-    cd %REPONAME%\MSVC
+    cd %REPONAME%\SMP
     project_get_dependencies.bat "!PASSDEPENDENCIES!" || GOTO exitOnError
     cd ..\..
 )

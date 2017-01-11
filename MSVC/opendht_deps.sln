@@ -13,9 +13,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "opendht", "opendht.vcxproj"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dependencies", "dependencies", "{71A1A9EC-1104-4335-A87E-AF8749FD5B34}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libgmp", "..\..\gmp\MSVC\libgmp.vcxproj", "{02B94302-23D6-43EF-8865-95CDE99D5DC2}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libgmp", "..\..\gmp\SMP\libgmp.vcxproj", "{02B94302-23D6-43EF-8865-95CDE99D5DC2}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libgnutls", "..\..\gnutls\MSVC\libgnutls.vcxproj", "{6F610EE8-7F59-4191-AB88-F63843267C02}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libgnutls", "..\..\gnutls\SMP\libgnutls.vcxproj", "{6F610EE8-7F59-4191-AB88-F63843267C02}"
 	ProjectSection(ProjectDependencies) = postProject
 		{02B94302-23D6-43EF-8865-95CDE99D5DC2} = {02B94302-23D6-43EF-8865-95CDE99D5DC2}
 		{070FEF2B-0C3F-4F33-9D3C-53C7330BF518} = {070FEF2B-0C3F-4F33-9D3C-53C7330BF518}
@@ -24,16 +24,16 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libgnutls", "..\..\gnutls\M
 		{CB8BB76F-D3FF-434E-A85E-7FFC0893EC9B} = {CB8BB76F-D3FF-434E-A85E-7FFC0893EC9B}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libiconv", "..\..\libiconv\MSVC\libiconv.vcxproj", "{CB8BB76F-D3FF-434E-A85E-7FFC0893EC9B}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libiconv", "..\..\libiconv\SMP\libiconv.vcxproj", "{CB8BB76F-D3FF-434E-A85E-7FFC0893EC9B}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libhogweed", "..\..\nettle\MSVC\libhogweed.vcxproj", "{200F3D3C-8B84-46D8-953A-6C0EBD283B5C}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libhogweed", "..\..\nettle\SMP\libhogweed.vcxproj", "{200F3D3C-8B84-46D8-953A-6C0EBD283B5C}"
 	ProjectSection(ProjectDependencies) = postProject
 		{02B94302-23D6-43EF-8865-95CDE99D5DC2} = {02B94302-23D6-43EF-8865-95CDE99D5DC2}
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libnettle", "..\..\nettle\MSVC\libnettle.vcxproj", "{070FEF2B-0C3F-4F33-9D3C-53C7330BF518}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libnettle", "..\..\nettle\SMP\libnettle.vcxproj", "{070FEF2B-0C3F-4F33-9D3C-53C7330BF518}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libzlib", "..\..\zlib\MSVC\libzlib.vcxproj", "{CA9A4A38-CC63-4BDB-8CFB-E058965DDA32}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libzlib", "..\..\zlib\SMP\libzlib.vcxproj", "{CA9A4A38-CC63-4BDB-8CFB-E058965DDA32}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MessagePack", "..\..\msgpack-c\msgpack_vc8.vcxproj", "{122A2EA4-B283-4241-9655-786DE78283B2}"
 EndProject
