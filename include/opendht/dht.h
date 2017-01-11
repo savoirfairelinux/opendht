@@ -348,7 +348,7 @@ private:
 
     static constexpr std::chrono::seconds REANNOUNCE_MARGIN {10};
 
-    static constexpr size_t TOKEN_SIZE {64};
+    static constexpr size_t TOKEN_SIZE {32};
 
     // internal structures
     struct SearchNode;

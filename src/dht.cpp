@@ -2461,8 +2461,8 @@ Dht::makeToken(const sockaddr *sa, bool old) const
     Blob ret {};
     ret.resize(sz);
     gnutls_datum_t gnudata = {data.data(), (unsigned int)data.size()};
-    if (gnutls_fingerprint(GNUTLS_DIG_SHA512, &gnudata, ret.data(), &sz) != GNUTLS_E_SUCCESS)
-        throw DhtException("Can't compute SHA512");
+    if (gnutls_fingerprint(GNUTLS_DIG_SHA256, &gnudata, ret.data(), &sz) != GNUTLS_E_SUCCESS)
+        throw DhtException("Can't compute SHA256");
     ret.resize(sz);
     return ret;
 }
