@@ -270,8 +270,8 @@ public:
     std::vector<ValuesExport> exportValues() const;
     void importValues(const std::vector<ValuesExport>&);
 
-    unsigned getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return,
-            unsigned *incoming_return) const;
+    NodeStats getNodesStats(sa_family_t af) const;
+
     std::string getStorageLog() const;
     std::string getStorageLog(const InfoHash&) const;
 

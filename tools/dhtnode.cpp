@@ -101,12 +101,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             continue;
         } else if (op == "ll") {
             print_node_info(dht, params);
-            unsigned good4, dubious4, cached4, incoming4;
-            unsigned good6, dubious6, cached6, incoming6;
-            dht->getNodesStats(AF_INET, &good4, &dubious4, &cached4, &incoming4);
-            dht->getNodesStats(AF_INET6, &good6, &dubious6, &cached6, &incoming6);
-            std::cout << "IPv4 nodes : " << good4 << " good, " << dubious4 << " dubious, " << incoming4 << " incoming." << std::endl;
-            std::cout << "IPv6 nodes : " << good6 << " good, " << dubious6 << " dubious, " << incoming6 << " incoming." << std::endl;
+            std::cout << "IPv4 stats:" << std::endl;
+            std::cout << dht->getNodesStats(AF_INET).toString() << std::endl;
+            std::cout << "IPv6 stats:" << std::endl;
+            std::cout << dht->getNodesStats(AF_INET6).toString() << std::endl;
             continue;
         } else if (op == "lr") {
             std::cout << "IPv4 routing table:" << std::endl;

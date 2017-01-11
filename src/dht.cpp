@@ -728,12 +728,11 @@ Dht::setLoggers(LogMethod error, LogMethod warn, LogMethod debug)
 NodeStatus
 Dht::getStatus(sa_family_t af) const
 {
-    unsigned good = 0, dubious = 0, cached = 0, incoming = 0;
-    unsigned tot = getNodesStats(af, &good, &dubious, &cached, &incoming);
+    const auto& stats = getNodesStats(af);
     auto& ping = af == AF_INET ? pending_pings4 : pending_pings6;
-    if (good)
+    if (stats.good_nodes)
         return NodeStatus::Connected;
-    if (ping or tot)
+    if (ping or stats.getKnownNodes())
         return NodeStatus::Connecting;
     return NodeStatus::Disconnected;
 }
@@ -2479,32 +2478,26 @@ Dht::tokenMatch(const Blob& token, const sockaddr *sa) const
     return false;
 }
 
-unsigned
-Dht::getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
+NodeStats
+Dht::getNodesStats(sa_family_t af) const
 {
+    NodeStats stats {};
     const auto& now = scheduler.time();
-    unsigned good = 0, dubious = 0, cached = 0, incoming = 0;
-    for (const auto& b : buckets(af)) {
+    const auto& bcks = buckets(af);
+    for (const auto& b : bcks) {
         for (auto& n : b.nodes) {
             if (n->isGood(now)) {
-                good++;
+                stats.good_nodes++;
                 if (n->time > n->reply_time)
-                    incoming++;
+                    stats.incoming_nodes++;
             } else if (not n->isExpired())
-                dubious++;
+                stats.dubious_nodes++;
         }
         if (b.cached)
-            cached++;
+            stats.cached_nodes++;
     }
-    if (good_return)
-        *good_return = good;
-    if (dubious_return)
-        *dubious_return = dubious;
-    if (cached_return)
-        *cached_return = cached;
-    if (incoming_return)
-        *incoming_return = incoming;
-    return good + dubious;
+    stats.table_depth = bcks.depth(bcks.findBucket(myid));
+    return stats;
 }
 
 void

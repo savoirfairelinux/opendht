@@ -70,6 +70,8 @@ RoutingTable::middle(const RoutingTable::const_iterator& it) const
 unsigned
 RoutingTable::depth(const RoutingTable::const_iterator& it) const
 {
+    if (it == end())
+        return 0;
     int bit1 = it->first.lowbit();
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
     return std::max(bit1, bit2)+1;

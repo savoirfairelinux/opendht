@@ -39,6 +39,16 @@ enum class NodeStatus {
     Connected     // 1+ good nodes
 };
 
+struct OPENDHT_PUBLIC NodeStats {
+    unsigned good_nodes,
+             dubious_nodes,
+             cached_nodes,
+             incoming_nodes;
+    unsigned table_depth;
+    unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
+    std::string toString() const;
+};
+
 /**
  * Dht configuration.
  */

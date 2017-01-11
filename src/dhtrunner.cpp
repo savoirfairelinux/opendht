@@ -233,11 +233,27 @@ DhtRunner::importValues(const std::vector<ValuesExport>& values) {
     dht_->importValues(values);
 }
 
-int
+unsigned
 DhtRunner::getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return dht_->getNodesStats(af, good_return, dubious_return, cached_return, incoming_return);
+    const auto stats = dht_->getNodesStats(af);
+    if (good_return)
+        *good_return = stats.good_nodes;
+    if (dubious_return)
+        *dubious_return = stats.dubious_nodes;
+    if (cached_return)
+        *cached_return = stats.cached_nodes;
+    if (incoming_return)
+        *incoming_return = stats.incoming_nodes;
+    return stats.good_nodes + stats.dubious_nodes;
+}
+
+NodeStats
+DhtRunner::getNodesStats(sa_family_t af) const
+{
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    return dht_->getNodesStats(af);
 }
 
 std::vector<unsigned>

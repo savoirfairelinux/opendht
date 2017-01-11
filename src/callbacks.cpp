@@ -55,4 +55,17 @@ bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
     };
 }
 
+std::string
+NodeStats::toString() const
+{
+    std::stringstream ss;
+    ss << "Known nodes: " << good_nodes << " good, " << dubious_nodes << " dubious, " << incoming_nodes << " incoming." << std::endl;
+    if (table_depth > 1) {
+        ss << "Routing table depth: " << table_depth << std::endl;
+        unsigned long tot_nodes = 8 * std::exp2(table_depth);
+        ss << "Network size estimation: " << tot_nodes << " nodes" << std::endl;
+    }
+    return ss.str();
+}
+
 }

@@ -594,7 +594,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 }
 
 void
-packToken(msgpack::packer<msgpack::sbuffer>& pk, Blob token)
+packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
 {
     pk.pack_bin(token.size());
     pk.pack_bin_body((char*)token.data(), token.size());
