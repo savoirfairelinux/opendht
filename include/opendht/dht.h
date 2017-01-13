@@ -423,7 +423,10 @@ private:
     // Storage
     void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
     bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created, const SockAddr* sa = nullptr);
-    void expireStorage();
+    void expireStore();
+    void expireStorage(InfoHash h);
+    void expireStore(decltype(store)::iterator);
+
     void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
     std::string printStorageLog(const decltype(store)::value_type&) const;
     void printStorageQuota(std::ostream& out, const decltype(store_quota)::value_type& ip) const;
