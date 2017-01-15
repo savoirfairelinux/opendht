@@ -99,7 +99,7 @@ for r in results:
 IRC: join us on Freenode at [`#opendht`](https://webchat.freenode.net/?channels=%23opendht).
 
 ## Licence
-Copyright (C) 2014-2016 Savoir-faire Linux Inc.
+Copyright (C) 2014-2017 Savoir-faire Linux Inc.
 
 OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 
