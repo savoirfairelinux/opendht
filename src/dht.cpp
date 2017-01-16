@@ -153,7 +153,7 @@ struct Dht::Storage {
     size_t listener_token {1};
 
     /**
-     * Changes caused by an operation on the storage. 
+     * Changes caused by an operation on the storage.
      */
     struct StoreDiff {
         /** Difference in stored size caused by the op */
@@ -1167,41 +1167,42 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
     auto sr = ws.lock();
     if (not sr) return;
     auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
-    auto onSelectDone =
-        [this,ws,query](const net::Request& status, net::NetworkEngine::RequestAnswer&& answer) mutable
-        {
-            if (auto sr = ws.lock()) {
-                if (auto sn = sr->getNode(status.node)) {
-                    if (answer.fields.empty()) {
-                        searchNodeGetDone(status, std::move(answer), ws, query);
-                        return;
-                    } else {
-                        for (const auto& fvi : answer.fields) {
-                            try {
-                                auto vid = fvi->index.at(Value::Field::Id).getInt();
-                                if (vid == Value::INVALID_ID) continue;
-                                auto query_for_vid = std::make_shared<Query>(Select {}, Where {}.id(vid));
-                                sn->pagination_queries[query].push_back(query_for_vid);
-                                DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending %s",
-                                        sr->id.toString().c_str(), sn->node->toString().c_str(), query_for_vid->toString().c_str());
-                                sn->getStatus[query_for_vid] = network_engine.sendGetValues(status.node,
-                                        sr->id,
-                                        *query_for_vid,
-                                        -1,
-                                        std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
-                                        std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query_for_vid)
-                                        );
-                            } catch (std::out_of_range&) {
-                                DHT_LOG.e(sr->id, sn->node->id, "[search %s] [node %s] received non-id field in response to "\
-                                        "'SELECT id' request...",
-                                        sr->id.toString().c_str(), sn->node->toString().c_str());
-                            }
-                        }
-                    }
-
-                }
+    auto onSelectDone = [this,ws,query](const net::Request& status,
+                                        net::NetworkEngine::RequestAnswer&& answer) mutable {
+        // retreive search
+        auto sr = ws.lock();
+        if (not sr) return;
+        const auto& id = sr->id;
+        // retreive search node
+        auto sn = sr->getNode(status.node);
+        if (not sn) return;
+        // backward compatibility
+        if (answer.fields.empty()) {
+            searchNodeGetDone(status, std::move(answer), ws, query);
+            return;
+        }
+        for (const auto& fvi : answer.fields) {
+            try {
+                auto vid = fvi->index.at(Value::Field::Id).getInt();
+                if (vid == Value::INVALID_ID) continue;
+                auto query_for_vid = std::make_shared<Query>(Select {}, Where {}.id(vid));
+                sn->pagination_queries[query].push_back(query_for_vid);
+                DHT_LOG.w(id, sn->node->id, "[search %s] [node %s] sending %s",
+                        id.toString().c_str(), sn->node->toString().c_str(), query_for_vid->toString().c_str());
+                sn->getStatus[query_for_vid] = network_engine.sendGetValues(status.node,
+                        id,
+                        *query_for_vid,
+                        -1,
+                        std::bind(&Dht::searchNodeGetDone, this, _1, _2, ws, query),
+                        std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, query_for_vid)
+                        );
+            } catch (const std::out_of_range&) {
+                DHT_LOG.e(id, sn->node->id, "[search %s] [node %s] received non-id field in response to "\
+                        "'SELECT id' request...",
+                        id.toString().c_str(), sn->node->toString().c_str());
             }
-        };
+        }
+    };
     /* add pagination query key for tracking ongoing requests. */
     n->pagination_queries[query].push_back(select_q);
 
