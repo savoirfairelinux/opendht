@@ -357,7 +357,7 @@ private:
     struct LocalListener;
     struct Search;
     struct ValueStorage;
-    struct StorageBucket;
+    class StorageBucket;
     struct Listener;
     struct Storage;
 
