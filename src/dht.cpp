@@ -879,7 +879,7 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         if (s.insertNode(node, now)) {
             inserted = true;
             scheduler.edit(s.nextSearchStep, s.getNextStepTime(now));
-        } else
+        } else if (not s.expired and not s.done)
             break;
         ++it;
     }
@@ -891,7 +891,7 @@ Dht::trySearchInsert(const std::shared_ptr<Node>& node)
         if (s.insertNode(node, now)) {
             inserted = true;
             scheduler.edit(s.nextSearchStep, s.getNextStepTime(now));
-        } else
+        } else if (not s.expired and not s.done)
             break;
     }
     return inserted;
