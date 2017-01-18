@@ -83,6 +83,7 @@ struct OPENDHT_PUBLIC PublicKey
     PublicKey& operator=(PublicKey&& o) noexcept;
 
     InfoHash getId() const;
+    PkId getLongId() const;
     bool checkSignature(const Blob& data, const Blob& signature) const;
     Blob encrypt(const Blob&) const;
 
@@ -350,6 +351,7 @@ struct OPENDHT_PUBLIC Certificate {
 
     /** Same as getPublicKey().getId() */
     InfoHash getId() const;
+    PkId getLongId() const;
 
     /** Read certificate Common Name (CN) */
     std::string getName() const;

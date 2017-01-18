@@ -50,6 +50,51 @@ typedef uint16_t in_port_t;
 
 namespace dht {
 
+using byte = uint8_t;
+
+template <size_t N>
+class OPENDHT_PUBLIC Hash
+{
+public:
+    Hash() {
+        data_.fill(0);
+    }
+    Hash(const msgpack::object& o) {
+        msgpack_unpack(o);
+    }
+    byte* data() {
+        return data_.data();
+    }
+    const byte* data() const {
+        return data_.data();
+    }
+    constexpr size_t size() const { return data_.size(); }
+    explicit operator bool() const { return std::any_of(data_.begin(), data_.end(), [](byte _b) { return _b != 0; }); }
+    bool operator==(Hash const& _c) const { return data_ == _c.data_; }
+    bool operator!=(Hash const& _c) const { return data_ != _c.data_; }
+    bool operator<(Hash const& _c) const { for (unsigned i = 0; i < N; ++i) if (data_[i] < _c.data_[i]) return true; else if (data_[i] > _c.data_[i]) return false; return false; }
+    bool operator>=(Hash const& _c) const { return !operator<(_c); }
+    bool operator<=(Hash const& _c) const { return operator==(_c) || operator<(_c); }
+    bool operator>(Hash const& _c) const { return !operator<=(_c); }
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack_bin(N);
+        pk.pack_bin_body((char*)data_.data(), N);
+    }
+    void msgpack_unpack(msgpack::object o) {
+        if (o.type != msgpack::type::BIN or o.via.bin.size != N)
+            throw msgpack::type_error();
+        std::copy_n(o.via.bin.ptr, N, data_.data());
+    }
+
+private:
+    std::array<byte, N> data_;
+};
+
+using h256 = Hash<32>;
+using PkId = h256;
+
 /**
  * Represents an InfoHash.
  * An InfoHash is a byte array of HASH_LEN bytes.

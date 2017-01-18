@@ -517,6 +517,16 @@ PublicKey::getId() const
     return id;
 }
 
+PkId
+PublicKey::getLongId() const
+{
+    PkId h;
+    size_t sz = h.size();
+    if (gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz) != GNUTLS_E_SUCCESS || sz != h.size())
+        return {};
+    return h;
+}
+
 Certificate::Certificate(const Blob& certData) : cert(nullptr)
 {
     unpack(certData.data(), certData.size());
@@ -617,6 +627,18 @@ Certificate::getId() const
     InfoHash id;
     size_t sz = id.size();
     if (gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
+        throw CryptoException("Can't get certificate public key ID.");
+    return id;
+}
+
+PkId
+Certificate::getLongId() const
+{
+    if (not cert)
+        return {};
+    PkId id;
+    size_t sz = id.size();
+    if (gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
         throw CryptoException("Can't get certificate public key ID.");
     return id;
 }
