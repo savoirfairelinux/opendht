@@ -42,6 +42,7 @@ typedef uint16_t in_port_t;
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <sstream>
 #include <cstring>
 
 
@@ -88,9 +89,45 @@ public:
         std::copy_n(o.via.bin.ptr, N, data_.data());
     }
 
+    template <size_t M>
+    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Hash<M>& h);
+
+    template <size_t M>
+    OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, Hash<M>& h);
+
+    std::string toString() const {
+        std::stringstream ss;
+        ss << *this;
+        return ss.str();
+    }
+
 private:
     std::array<byte, N> data_;
 };
+
+template <size_t N>
+std::ostream& operator<< (std::ostream& s, const Hash<N>& h)
+{
+    s << std::hex;
+    for (unsigned i=0; i<h.size(); i++)
+        s << std::setfill('0') << std::setw(2) << (unsigned)h.data_[i];
+    s << std::dec;
+    return s;
+}
+
+template <size_t N>
+std::istream& operator>> (std::istream& s, Hash<N>& h)
+{
+    std::array<char, h.size()*2> dat;
+    s.exceptions(std::istream::eofbit | std::istream::failbit);
+    s.read(&(*dat.begin()), dat.size());
+    for (size_t i = 0; i < h.size(); i++) {
+        unsigned res = 0;
+        sscanf(dat.data() + 2*i, "%02x", &res);
+        h[i] = res;
+    }
+    return s;
+}
 
 using h256 = Hash<32>;
 using PkId = h256;
