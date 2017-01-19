@@ -63,6 +63,9 @@ public:
     InfoHash getId() const {
         return key_ ? key_->getPublicKey().getId() : InfoHash();
     }
+    PkId getLongId() const {
+        return key_ ? key_->getPublicKey().getLongId() : PkId();
+    }
 
     ValueType secureType(ValueType&& type);
 
