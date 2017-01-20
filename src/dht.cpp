@@ -728,20 +728,20 @@ struct Dht::Search {
      * @param types  The sequence of existing types.
      * @param now  The time reference to now.
      */
-    void checkAnnounced(time_point now, Value::Id vid = Value::INVALID_ID) {
-        auto announced = std::remove_if(announce.begin(), announce.end(),
-            [this,&vid,&now](Announce& a) {
+    void checkAnnounced(Value::Id vid = Value::INVALID_ID) {
+        auto announced = std::partition(announce.begin(), announce.end(),
+            [this,&vid](Announce& a) {
                 if (vid != Value::INVALID_ID and (!a.value || a.value->id != vid))
-                    return false;
+                    return true;
                 if (isAnnounced(a.value->id)) {
                     if (a.callback) {
                         a.callback(true, getNodes());
                         a.callback = nullptr;
                     }
                     if (not a.permanent)
-                        return true;
+                        return false;
                 }
-                return false;
+                return true;
         });
         // remove acked for cleared annouces
         for (auto it = announced; it != announce.end(); ++it) {
