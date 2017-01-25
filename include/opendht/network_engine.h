@@ -112,10 +112,10 @@ public:
     struct RequestAnswer {
         Blob ntoken {};
         Value::Id vid {};
-        std::vector<std::shared_ptr<Value>> values {};
-        std::vector<std::shared_ptr<FieldValueIndex>> fields {};
-        std::vector<std::shared_ptr<Node>> nodes4 {};
-        std::vector<std::shared_ptr<Node>> nodes6 {};
+        std::vector<Sp<Value>> values {};
+        std::vector<Sp<FieldValueIndex>> fields {};
+        std::vector<Sp<Node>> nodes4 {};
+        std::vector<Sp<Node>> nodes6 {};
         RequestAnswer() {}
         RequestAnswer(ParsedMessage&& msg);
     };
@@ -123,102 +123,90 @@ public:
 
 private:
     /**
-     * @brief when we receive an error message.
-     *
-     * @param node (type: std::shared_ptr<Request>) the associated request for
-     *             which we got an error;
+     * Called when we receive an error message.
      */
-    std::function<void(std::shared_ptr<Request>, DhtProtocolException)> onError;
+    std::function<void(Sp<Request>, DhtProtocolException)> onError;
+
     /**
-     * @brief when a new node happens.
-     *
      * Called for every packets received for handling new nodes contacting us.
      *
-     * @param id (type: InfoHash) id of the node.
-     * @param saddr (type: sockaddr*) sockaddr* pointer containing address ip information.
-     * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
-     * @param confirm (type: int) 1 if the node sent a message, 2 if it sent us a reply.
+     * @param node: the node
+     * @param confirm: 1 if the node sent a message, 2 if it sent us a reply.
      */
-    std::function<void(const std::shared_ptr<Node>&, int)> onNewNode;
+    std::function<void(const Sp<Node>&, int)> onNewNode;
     /**
-     * @brief when an addres is reported from a distant node.
+     * Called when an addres is reported from a requested node.
      *
-     * @param id (type: InfoHash) id of the node.
-     * @param saddr (type: sockaddr*) sockaddr* pointer containing address ip information.
+     * @param h: id 
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      */
     std::function<void(const InfoHash&, const SockAddr&)> onReportedAddr;
     /**
-     * @brief on ping request callback.
+     * Called on ping reception.
      *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
+     * @param node (type: Sp<Node>) the requesting node.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>)> onPing {};
+    std::function<RequestAnswer(Sp<Node>)> onPing {};
     /**
-     * @brief on find node request callback.
+     * Called on find node request.
      *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
+     * @param node (type: Sp<Node>) the requesting node.
+     * @param h (type: InfoHash) hash of the value of interest.
      * @param want (type: want_t) states if nodes sent in the response are ipv4
      *             or ipv6.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>,
-            const InfoHash&,
-            want_t)> onFindNode {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, want_t)> onFindNode {};
     /**
-     * @brief on "get values" request callback.
+     * Called on "get values" request.
      *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
+     * @param node (type: Sp<Node>) the requesting node.
+     * @param h (type: InfoHash) hash of the value of interest.
      * @param want (type: want_t) states if nodes sent in the response are ipv4
      *             or ipv6.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>,
-            const InfoHash&,
-            want_t,
-            const Query&)> onGetValues {};
+    std::function<RequestAnswer(Sp<Node>, const InfoHash&, want_t, const Query&)> onGetValues {};
     /**
-     * @brief on listen request callback.
+     * Called on listen request.
      *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
+     * @param node (type: Sp<Node>) the requesting node.
+     * @param h (type: InfoHash) hash of the value of interest.
      * @param token (type: Blob) security token.
      * @param rid (type: uint16_t) request id.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>,
+    std::function<RequestAnswer(Sp<Node>,
             const InfoHash&,
             const Blob&,
             uint32_t,
             const Query&)> onListen {};
     /**
-     * @brief on announce request callback.
+     * Called on announce request.
      *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
+     * @param node (type: Sp<Node>) the requesting node.
+     * @param h (type: InfoHash) hash of the value of interest.
      * @param token (type: Blob) security token.
-     * @param values (type: std::vector<std::shared_ptr<Value>>) values to store.
+     * @param values (type: std::vector<Sp<Value>>) values to store.
      * @param created (type: time_point) time when the value was created.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>,
+    std::function<RequestAnswer(Sp<Node>,
             const InfoHash&,
             const Blob&,
-            const std::vector<std::shared_ptr<Value>>&,
+            const std::vector<Sp<Value>>&,
             const time_point&)> onAnnounce {};
     /**
-     * @brief on refresh request callback.
+     * Called on refresh request.
      *
-     * @param node (type: std::shared_ptr<Node>) the requesting node.
-     * @param vhash (type: InfoHash) hash of the value of interest.
+     * @param node (type: Sp<Node>) the requesting node.
+     * @param h (type: InfoHash) hash of the value of interest.
      * @param token (type: Blob) security token.
      * @param vid (type: Value::id) the value id.
      */
-    std::function<RequestAnswer(std::shared_ptr<Node>,
+    std::function<RequestAnswer(Sp<Node>,
             const InfoHash&,
             const Blob&,
             const Value::Id&)> onRefresh {};
 
 public:
-    using SocketCb = std::function<void(const std::shared_ptr<Node>&, RequestAnswer&&)>;
+    using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
@@ -251,9 +239,9 @@ public:
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
      */
-    void tellListener(std::shared_ptr<Node> n, uint32_t socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
-            std::vector<std::shared_ptr<Node>>&& nodes, std::vector<std::shared_ptr<Node>>&& nodes6,
-            std::vector<std::shared_ptr<Value>>&& values, const Query& q);
+    void tellListener(Sp<Node> n, uint32_t socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
+            std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
+            std::vector<Sp<Value>>&& values, const Query& q);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
@@ -262,7 +250,7 @@ public:
      * Cancel a request. Setting req->cancelled = true is not enough in the case
      * a request is "persistent".
      */
-    void cancelRequest(std::shared_ptr<Request>& req);
+    void cancelRequest(Sp<Request>& req);
 
     void connectivityChanged(sa_family_t);
 
@@ -279,8 +267,8 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request>
-        sendPing(std::shared_ptr<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+    Sp<Request>
+        sendPing(Sp<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
     /**
      * Send a "ping" request to a given node.
      *
@@ -291,7 +279,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request>
+    Sp<Request>
         sendPing(const sockaddr* sa, socklen_t salen, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
             return sendPing(std::make_shared<Node>(zeroes, sa, salen),
                     std::forward<RequestCb>(on_done),
@@ -309,11 +297,11 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request> sendFindNode(std::shared_ptr<Node> n,
-                                          const InfoHash& hash,
-                                          want_t want,
-                                          RequestCb&& on_done,
-                                          RequestExpiredCb&& on_expired);
+    Sp<Request> sendFindNode(Sp<Node> n,
+                             const InfoHash& hash,
+                             want_t want,
+                             RequestCb&& on_done,
+                             RequestExpiredCb&& on_expired);
     /**
      * Send a "get" request to a given node.
      *
@@ -328,12 +316,12 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request> sendGetValues(std::shared_ptr<Node> n,
-                                           const InfoHash& hash,
-                                           const Query& query,
-                                           want_t want,
-                                           RequestCb&& on_done,
-                                           RequestExpiredCb&& on_expired);
+    Sp<Request> sendGetValues(Sp<Node> n,
+                              const InfoHash& hash,
+                              const Query& query,
+                              want_t want,
+                              RequestCb&& on_done,
+                              RequestExpiredCb&& on_expired);
     /**
      * Send a "listen" request to a given node.
      *
@@ -357,14 +345,14 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request> sendListen(std::shared_ptr<Node> n,
-                                        const InfoHash& hash,
-                                        const Query& query,
-                                        const Blob& token,
-                                        std::shared_ptr<Request> previous,
-                                        RequestCb&& on_done,
-                                        RequestExpiredCb&& on_expired,
-                                        SocketCb&& socket_cb);
+    Sp<Request> sendListen(Sp<Node> n,
+                           const InfoHash& hash,
+                           const Query& query,
+                           const Blob& token,
+                           Sp<Request> previous,
+                           RequestCb&& on_done,
+                           RequestExpiredCb&& on_expired,
+                           SocketCb&& socket_cb);
     /**
      * Send a "announce" request to a given node.
      *
@@ -378,13 +366,13 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request> sendAnnounceValue(std::shared_ptr<Node> n,
-                                               const InfoHash& hash,
-                                               const std::shared_ptr<Value>& v,
-                                               time_point created,
-                                               const Blob& token,
-                                               RequestCb&& on_done,
-                                               RequestExpiredCb&& on_expired);
+    Sp<Request> sendAnnounceValue(Sp<Node> n,
+                                  const InfoHash& hash,
+                                  const Sp<Value>& v,
+                                  time_point created,
+                                  const Blob& token,
+                                  RequestCb&& on_done,
+                                  RequestExpiredCb&& on_expired);
     /**
      * Send a "refresh" request to a given node. Asks a node to keep the
      * associated value Value.type.expiration more minutes in its storage.
@@ -398,12 +386,12 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    std::shared_ptr<Request> sendRefreshValue(std::shared_ptr<Node> n,
-                                              const InfoHash& hash,
-                                              const Value::Id& vid,
-                                              const Blob& token,
-                                              RequestCb&& on_done,
-                                              RequestExpiredCb&& on_expired);
+    Sp<Request> sendRefreshValue(Sp<Node> n,
+                                 const InfoHash& hash,
+                                 const Value::Id& vid,
+                                 const Blob& token,
+                                 RequestCb&& on_done,
+                                 RequestExpiredCb&& on_expired);
     /**
      * Opens a socket on which a node will be able allowed to write for further
      * additionnal updates following the response to a previous request.
@@ -413,14 +401,14 @@ public:
      *
      * @return the socket.
      */
-    std::shared_ptr<Socket> openSocket(const std::shared_ptr<Node>& node, TransPrefix tp, SocketCb&& cb);
+    Sp<Socket> openSocket(const Sp<Node>& node, TransPrefix tp, SocketCb&& cb);
 
     /**
      * Closes a socket so that no further data will be red on that socket.
      *
      * @param socket  The socket to close.
      */
-    void closeSocket(std::shared_ptr<Socket> socket);
+    void closeSocket(Sp<Socket> socket);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -433,7 +421,7 @@ public:
      */
     void processMessage(const uint8_t *buf, size_t buflen, const SockAddr& addr);
 
-    std::shared_ptr<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
+    Sp<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
         auto n = cache.getNode(myid, addr, scheduler.time(), 0);
         onNewNode(n, 0);
         return n;
@@ -446,9 +434,9 @@ public:
         return stats;
     }
 
-    void blacklistNode(const std::shared_ptr<Node>& n);
+    void blacklistNode(const Sp<Node>& n);
 
-    std::vector<std::shared_ptr<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
+    std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
         return cache.getCachedNodes(id, sa_f, count);
     }
 
@@ -488,13 +476,13 @@ private:
     static bool isMartian(const SockAddr& addr);
     bool isNodeBlacklisted(const SockAddr& addr) const;
 
-    void requestStep(std::shared_ptr<Request> req);
+    void requestStep(Sp<Request> req);
 
     /**
      * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
      * be made before the request expires.
      */
-    void sendRequest(std::shared_ptr<Request>& request);
+    void sendRequest(Sp<Request>& request);
 
     /**
      * Generates a new request id, skipping the invalid id.
@@ -520,7 +508,7 @@ private:
     int send(const char *buf, size_t len, int flags, const SockAddr& addr);
 
     void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
-    std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<std::shared_ptr<Value>>&);
+    std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
     void maintainRxBuffer(const TransId& tid);
 
     /*************
@@ -533,16 +521,16 @@ private:
             TransId tid,
             const Blob& nodes,
             const Blob& nodes6,
-            const std::vector<std::shared_ptr<Value>>& st,
+            const std::vector<Sp<Value>>& st,
             const Query& query,
             const Blob& token);
-    Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::shared_ptr<Node>>& nodes);
+    Blob bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes);
 
     std::pair<Blob, Blob> bufferNodes(sa_family_t af,
             const InfoHash& id,
             want_t want,
-            std::vector<std::shared_ptr<Node>>& nodes,
-            std::vector<std::shared_ptr<Node>>& nodes6);
+            std::vector<Sp<Node>>& nodes,
+            std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
     void sendListenConfirmation(const SockAddr& addr, TransId tid);
     /* answer to put request */
@@ -601,9 +589,9 @@ private:
 
     // requests handling
     uint16_t transaction_id {1};
-    std::map<TransId, std::shared_ptr<Request>> requests {};
+    std::map<TransId, Sp<Request>> requests {};
     std::map<TransId, PartialMessage> partial_messages;
-    std::map<TransId, std::shared_ptr<Socket>> opened_sockets {};
+    std::map<TransId, Sp<Socket>> opened_sockets {};
 
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};

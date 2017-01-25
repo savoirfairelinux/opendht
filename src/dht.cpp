@@ -136,19 +136,19 @@ private:
 };
 
 struct Dht::ValueStorage {
-    std::shared_ptr<Value> data {};
+    Sp<Value> data {};
     time_point created {};
     time_point expiration {};
     StorageBucket* store_bucket {nullptr};
 
     ValueStorage() {}
-    ValueStorage(const std::shared_ptr<Value>& v, time_point t, time_point e)
+    ValueStorage(const Sp<Value>& v, time_point t, time_point e)
      : data(v), created(t), expiration(e) {}
 };
 
 struct Dht::Storage {
     time_point maintenance_time {};
-    std::map<std::shared_ptr<Node>, std::map<size_t, Listener>> listeners;
+    std::map<Sp<Node>, std::map<size_t, Listener>> listeners;
     std::map<size_t, LocalListener> local_listeners {};
     size_t listener_token {1};
 
@@ -198,14 +198,14 @@ struct Dht::Storage {
 
     const std::vector<ValueStorage>& getValues() const { return values; }
 
-    std::shared_ptr<Value> getById(Value::Id vid) const {
+    Sp<Value> getById(Value::Id vid) const {
         for (auto& v : values)
             if (v.data->id == vid) return v.data;
         return {};
     }
 
-    std::vector<std::shared_ptr<Value>> get(Value::Filter f = {}) const {
-        std::vector<std::shared_ptr<Value>> newvals {};
+    std::vector<Sp<Value>> get(Value::Filter f = {}) const {
+        std::vector<Sp<Value>> newvals {};
         if (not f) newvals.reserve(values.size());
         for (auto& v : values) {
             if (not f || f(*v.data))
@@ -223,7 +223,7 @@ struct Dht::Storage {
      *      change_value_num: change of value number (0 or 1)
      */
     std::pair<ValueStorage*, StoreDiff>
-    store(const InfoHash& id, const std::shared_ptr<Value>&, time_point created, time_point expiration, StorageBucket*);
+    store(const InfoHash& id, const Sp<Value>&, time_point created, time_point expiration, StorageBucket*);
 
     /**
      * Refreshes the time point of the value's lifetime begining.
@@ -260,7 +260,7 @@ private:
 struct Dht::Get {
     time_point start;
     Value::Filter filter;
-    std::shared_ptr<Query> query;
+    Sp<Query> query;
     QueryCallback query_cb;
     GetCallback get_cb;
     DoneCallback done_cb;
@@ -271,7 +271,7 @@ struct Dht::Get {
  */
 struct Dht::Announce {
     bool permanent;
-    std::shared_ptr<Value> value;
+    Sp<Value> value;
     time_point created;
     DoneCallback callback;
 };
@@ -280,7 +280,7 @@ struct Dht::Announce {
  * A single "listen" operation data
  */
 struct Dht::LocalListener {
-    std::shared_ptr<Query> query;
+    Sp<Query> query;
     Value::Filter filter;
     GetCallback get_cb;
 };
@@ -291,19 +291,19 @@ struct Dht::SearchNode {
      * request is the request returned by the network engine and the time_point
      * is the next time at which the value must be refreshed.
      */
-    using AnnounceStatus = std::map<Value::Id, std::pair<std::shared_ptr<net::Request>, time_point>>;
+    using AnnounceStatus = std::map<Value::Id, std::pair<Sp<net::Request>, time_point>>;
     /**
      * Foreach Query, we keep track of the request returned by the network
      * engine when we sent the "get".
      */
-    using SyncStatus = std::map<std::shared_ptr<Query>, std::shared_ptr<net::Request>>;
+    using SyncStatus = std::map<Sp<Query>, Sp<net::Request>>;
 
-    std::shared_ptr<Node> node {};                 /* the node info */
+    Sp<Node> node {};                 /* the node info */
 
     /* queries sent for finding out values hosted by the node */
-    std::shared_ptr<Query> probe_query {};
+    Sp<Query> probe_query {};
     /* queries substituting formal 'get' requests */
-    std::map<std::shared_ptr<Query>, std::vector<std::shared_ptr<Query>>> pagination_queries {};
+    std::map<Sp<Query>, std::vector<Sp<Query>>> pagination_queries {};
 
     SyncStatus getStatus {};    /* get/sync status */
     SyncStatus listenStatus {}; /* listen status */
@@ -315,7 +315,7 @@ struct Dht::SearchNode {
                                                       node is a new candidate for inclusion. */
 
     SearchNode() : node() {}
-    SearchNode(const std::shared_ptr<Node>& node) : node(node) {}
+    SearchNode(const Sp<Node>& node) : node(node) {}
 
     /**
      * Can we use this node to listen/announce now ?
@@ -343,7 +343,7 @@ struct Dht::SearchNode {
      *
      * @return true if we can send get, else false.
      */
-    bool canGet(time_point now, time_point update, std::shared_ptr<Query> q = {}) const {
+    bool canGet(time_point now, time_point update, Sp<Query> q = {}) const {
         if (node->isExpired())
             return false;
 
@@ -374,12 +374,12 @@ struct Dht::SearchNode {
      *
      * @return true if pagination process has started, else false.
      */
-    bool hasStartedPagination(const std::shared_ptr<Query>& q) const {
+    bool hasStartedPagination(const Sp<Query>& q) const {
         const auto& pqs = pagination_queries.find(q);
         if (pqs == pagination_queries.cend() or pqs->second.empty())
             return false;
         return std::find_if(pqs->second.cbegin(), pqs->second.cend(),
-            [this](const std::shared_ptr<Query>& query) {
+            [this](const Sp<Query>& query) {
                 const auto& req = getStatus.find(query);
                 return req != getStatus.cend() and req->second;
             }) != pqs->second.cend();
@@ -401,7 +401,7 @@ struct Dht::SearchNode {
         if (hasStartedPagination(get.query)) {
             const auto& pqs = pagination_queries.find(get.query);
             auto paginationPending = std::find_if(pqs->second.cbegin(), pqs->second.cend(),
-                    [this](const std::shared_ptr<Query>& query) {
+                    [this](const Sp<Query>& query) {
                         const auto& req = getStatus.find(query);
                         return req != getStatus.cend() and req->second and req->second->pending();
                     }) != pqs->second.cend();
@@ -456,7 +456,7 @@ struct Dht::SearchNode {
         }
         return ls != listenStatus.end();
     }
-    bool isListening(time_point now, const std::shared_ptr<Query>& q) const {
+    bool isListening(time_point now, const Sp<Query>& q) const {
         const auto& ls = listenStatus.find(q);
         if (ls == listenStatus.end())
             return false;
@@ -488,7 +488,7 @@ struct Dht::SearchNode {
      * Assumng the node is synced, should the "listen" request with Query q be
      * sent to this node now ?
      */
-    time_point getListenTime(const std::shared_ptr<Query>& q) const {
+    time_point getListenTime(const Sp<Query>& q) const {
         auto listen_status = listenStatus.find(q);
         if (listen_status == listenStatus.end() or not listen_status->second)
             return time_point::min();
@@ -515,7 +515,7 @@ struct Dht::Search {
     uint16_t tid;
     time_point refill_time {time_point::min()};
     time_point step_time {time_point::min()};           /* the time of the last search step */
-    std::shared_ptr<Scheduler::Job> nextSearchStep {};
+    Sp<Scheduler::Job> nextSearchStep {};
 
     bool expired {false};              /* no node, or all nodes expired */
     bool done {false};                 /* search is over, cached for later */
@@ -545,9 +545,9 @@ struct Dht::Search {
     /**
      * @returns true if the node was not present and added to the search
      */
-    bool insertNode(const std::shared_ptr<Node>& n, time_point now, const Blob& token={});
+    bool insertNode(const Sp<Node>& n, time_point now, const Blob& token={});
 
-    SearchNode* getNode(const std::shared_ptr<Node>& n) {
+    SearchNode* getNode(const Sp<Node>& n) {
         auto srn = std::find_if(nodes.begin(), nodes.end(), [&](SearchNode& sn) {
             return n == sn.node;
         });
@@ -574,7 +574,7 @@ struct Dht::Search {
      *
      * @param query  The query identifying a 'get' request.
      */
-    time_point getLastGetTime(std::shared_ptr<Query> query = {}) const;
+    time_point getLastGetTime(Sp<Query> query = {}) const;
 
     /**
      * Is this get operation done ?
@@ -751,7 +751,7 @@ struct Dht::Search {
         announce.erase(announced, announce.end());
     }
 
-    std::vector<std::shared_ptr<Node>> getNodes() const;
+    std::vector<Sp<Node>> getNodes() const;
 
     void clear() {
         announce.clear();
@@ -793,7 +793,7 @@ Dht::shutdown(ShutdownCallback cb)
     // Last store maintenance
     scheduler.syncTime();
     auto remaining = std::make_shared<int>(0);
-    auto str_donecb = [=](bool, const std::vector<std::shared_ptr<Node>>&) {
+    auto str_donecb = [=](bool, const std::vector<Sp<Node>>&) {
         --*remaining;
         DHT_LOG.w("shuting down node: %u ops remaining", *remaining);
         if (!*remaining && cb) { cb(); }
@@ -813,7 +813,7 @@ bool
 Dht::isRunning(sa_family_t af) const { return network_engine.isRunning(af); }
 
 /* Every bucket contains an unordered list of nodes. */
-std::shared_ptr<Node>
+Sp<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af)
 {
     Bucket* b = findBucket(id, af);
@@ -824,7 +824,7 @@ Dht::findNode(const InfoHash& id, sa_family_t af)
     return {};
 }
 
-const std::shared_ptr<Node>
+const Sp<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af) const
 {
     const Bucket* b = findBucket(id, af);
@@ -863,7 +863,7 @@ Dht::getPublicAddress(sa_family_t family)
 }
 
 bool
-Dht::trySearchInsert(const std::shared_ptr<Node>& node)
+Dht::trySearchInsert(const Sp<Node>& node)
 {
     const auto& now = scheduler.time();
     if (not node) return false;
@@ -913,7 +913,7 @@ Dht::reportedAddr(const SockAddr& addr)
 /* We just learnt about a node, not necessarily a new one.  Confirm is 1 if
    the node sent a message, 2 if it sent us a reply. */
 void
-Dht::onNewNode(const std::shared_ptr<Node>& node, int confirm)
+Dht::onNewNode(const Sp<Node>& node, int confirm)
 {
     auto& list = buckets(node->getFamily());
     auto b = list.findBucket(node->id);
@@ -992,7 +992,7 @@ Dht::expireBuckets(RoutingTable& list)
 {
     for (auto& b : list) {
         bool changed = false;
-        b.nodes.remove_if([this,&changed](const std::shared_ptr<Node>& n) {
+        b.nodes.remove_if([this,&changed](const Sp<Node>& n) {
             if (n->isExpired()) {
                 changed = true;
                 return true;
@@ -1008,7 +1008,7 @@ Dht::expireBuckets(RoutingTable& list)
    target.  We just got a new candidate, insert it at the right spot or
    discard it. */
 bool
-Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, const Blob& token)
+Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token)
 {
     auto& node = *snode;
     const auto& nid = node.id;
@@ -1095,10 +1095,10 @@ Dht::Search::insertNode(const std::shared_ptr<Node>& snode, time_point now, cons
     return new_search_node;
 }
 
-std::vector<std::shared_ptr<Node>>
+std::vector<Sp<Node>>
 Dht::Search::getNodes() const
 {
-    std::vector<std::shared_ptr<Node>> ret {};
+    std::vector<Sp<Node>> ret {};
     ret.reserve(nodes.size());
     for (const auto& sn : nodes)
         ret.emplace_back(sn.node);
@@ -1109,7 +1109,7 @@ void
 Dht::expireSearches()
 {
     auto t = scheduler.time() - SEARCH_EXPIRE_TIME;
-    auto expired = [&](std::pair<const InfoHash, std::shared_ptr<Search>>& srp) {
+    auto expired = [&](std::pair<const InfoHash, Sp<Search>>& srp) {
         auto& sr = *srp.second;
         auto b = sr.callbacks.empty() && sr.announce.empty() && sr.listeners.empty() && sr.step_time < t;
         if (b) {
@@ -1126,7 +1126,7 @@ void
 Dht::searchNodeGetDone(const net::Request& req,
         net::NetworkEngine::RequestAnswer&& answer,
         std::weak_ptr<Search> ws,
-        std::shared_ptr<Query> query)
+        Sp<Query> query)
 {
     const auto& now = scheduler.time();
     if (auto sr = ws.lock()) {
@@ -1151,7 +1151,7 @@ void
 Dht::searchNodeGetExpired(const net::Request& status,
         bool over,
         std::weak_ptr<Search> ws,
-        std::shared_ptr<Query> query)
+        Sp<Query> query)
 {
     if (auto sr = ws.lock()) {
         if (auto srn = sr->getNode(status.node)) {
@@ -1163,7 +1163,7 @@ Dht::searchNodeGetExpired(const net::Request& status,
     }
 }
 
-void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, SearchNode* n) {
+void Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n) {
     auto sr = ws.lock();
     if (not sr) return;
     auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
@@ -1218,7 +1218,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, Searc
 }
 
 Dht::SearchNode*
-Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update)
+Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
 {
     if (sr->done or sr->currentlySolicitedNodeCount() >= MAX_REQUESTED_SEARCH_NODES)
         return nullptr;
@@ -1284,7 +1284,7 @@ Dht::searchSendGetValues(std::shared_ptr<Search> sr, SearchNode* pn, bool update
     return nullptr;
 }
 
-void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
+void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
     if (sr->announce.empty())
         return;
     unsigned i = 0;
@@ -1325,7 +1325,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
                                 uint16_t seq_no = 0;
                                 try {
                                     const auto& f = std::find_if(answer.fields.cbegin(), answer.fields.cend(),
-                                            [&a](const std::shared_ptr<FieldValueIndex>& i){
+                                            [&a](const Sp<FieldValueIndex>& i){
                                                 return i->index.at(Value::Field::Id).getInt() == a.value->id;
                                             });
                                     if (f != answer.fields.cend() and *f) {
@@ -1391,7 +1391,7 @@ void Dht::searchSendAnnounceValue(const std::shared_ptr<Search>& sr) {
 /* When a search is in progress, we periodically call search_step to send
    further requests. */
 void
-Dht::searchStep(std::shared_ptr<Search> sr)
+Dht::searchStep(Sp<Search> sr)
 {
     if (not sr or sr->expired or sr->done) return;
 
@@ -1471,7 +1471,7 @@ Dht::searchStep(std::shared_ptr<Search> sr)
                                             sn->listenStatus.erase(query);
                                 }
                             },
-                            [this,ws,query](const std::shared_ptr<Node>& node, net::NetworkEngine::RequestAnswer&& answer) mutable
+                            [this,ws,query](const Sp<Node>& node, net::NetworkEngine::RequestAnswer&& answer) mutable
                             { /* on new values */
                                 if (auto sr = ws.lock()) {
                                     onGetValuesDone(node, answer, sr, query);
@@ -1537,7 +1537,7 @@ Dht::Search::isSynced(time_point now) const
 }
 
 time_point
-Dht::Search::getLastGetTime(std::shared_ptr<Query> q) const
+Dht::Search::getLastGetTime(Sp<Query> q) const
 {
     time_point last = time_point::min();
     for (const auto& g : callbacks)
@@ -1727,7 +1727,7 @@ unsigned Dht::refill(Dht::Search& sr) {
 
 
 /* Start a search. */
-std::shared_ptr<Dht::Search>
+Sp<Dht::Search>
 Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback qcb, DoneCallback dcb, Value::Filter f, Query q)
 {
     if (!isRunning(af)) {
@@ -1739,7 +1739,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
 
     auto& srs = searches(af);
     const auto& srp = srs.find(id);
-    std::shared_ptr<Search> sr {};
+    Sp<Search> sr {};
 
     if (srp != srs.end()) {
         sr = srp->second;
@@ -1795,7 +1795,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
 void
 Dht::announce(const InfoHash& id,
         sa_family_t af,
-        std::shared_ptr<Value> value,
+        Sp<Value> value,
         DoneCallback callback,
         time_point created,
         bool permanent)
@@ -1855,7 +1855,7 @@ Dht::announce(const InfoHash& id,
 }
 
 size_t
-Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, const std::shared_ptr<Query>& q)
+Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, const Sp<Query>& q)
 {
     const auto& now = scheduler.time();
     if (!isRunning(af))
@@ -1865,7 +1865,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     //DHT_LOG_WARN("listenTo %s", id.toString().c_str());
     auto& srs = searches(af);
     auto srp = srs.find(id);
-    std::shared_ptr<Search> sr = (srp == srs.end()) ? search(id, af) : srp->second;
+    Sp<Search> sr = (srp == srs.end()) ? search(id, af) : srp->second;
     if (!sr)
         throw DhtException("Can't create search");
     DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
@@ -1882,11 +1882,11 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where
     scheduler.syncTime();
 
     Query q {{}, where};
-    auto vals = std::make_shared<std::map<Value::Id, std::shared_ptr<Value>>>();
+    auto vals = std::make_shared<std::map<Value::Id, Sp<Value>>>();
     auto token = ++listener_token;
 
-    auto gcb = [=](const std::vector<std::shared_ptr<Value>>& values) {
-        std::vector<std::shared_ptr<Value>> newvals;
+    auto gcb = [=](const std::vector<Sp<Value>>& values) {
+        std::vector<Sp<Value>> newvals;
         for (const auto& v : values) {
             auto it = vals->find(v->id);
             if (it == vals->cend() || !(*it->second == *v))
@@ -1914,7 +1914,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where
         st = store.emplace(id, Storage(scheduler.time())).first;
     if (st != store.end()) {
         if (not st->second.empty()) {
-            std::vector<std::shared_ptr<Value>> newvals = st->second.get(filter);
+            std::vector<Sp<Value>> newvals = st->second.get(filter);
             if (not newvals.empty()) {
                 if (!cb(newvals))
                     return 0;
@@ -1953,14 +1953,14 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     if (st != store.end() && tokenlocal)
         st->second.local_listeners.erase(tokenlocal);
 
-    auto searches_cancel_listen = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
+    auto searches_cancel_listen = [&](std::map<InfoHash, Sp<Search>> srs) {
         for (auto& sp : srs) {
             auto& s = sp.second;
             if (s->id != id) continue;
             auto af_token = s->af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
             if (af_token == 0)
                 continue;
-            std::shared_ptr<Query> query;
+            Sp<Query> query;
             const auto& ll = s->listeners.find(af_token);
             if (ll != s->listeners.cend())
                 query = ll->second.query;
@@ -1987,7 +1987,7 @@ Dht::cancelListen(const InfoHash& id, size_t token)
 }
 
 void
-Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, time_point created, bool permanent)
+Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point created, bool permanent)
 {
     scheduler.syncTime();
 
@@ -2003,20 +2003,20 @@ Dht::put(const InfoHash& id, std::shared_ptr<Value> val, DoneCallback callback, 
     auto done = std::make_shared<bool>(false);
     auto done4 = std::make_shared<bool>(false);
     auto done6 = std::make_shared<bool>(false);
-    auto donecb = [=](const std::vector<std::shared_ptr<Node>>& nodes) {
+    auto donecb = [=](const std::vector<Sp<Node>>& nodes) {
         // Callback as soon as the value is announced on one of the available networks
         if (callback && !*done && (*done4 && *done6)) {
             callback(*ok, nodes);
             *done = true;
         }
     };
-    announce(id, AF_INET, val, [=](bool ok4, const std::vector<std::shared_ptr<Node>>& nodes) {
+    announce(id, AF_INET, val, [=](bool ok4, const std::vector<Sp<Node>>& nodes) {
         DHT_LOG.d(id, "Announce done IPv4 %d", ok4);
         *done4 = true;
         *ok |= ok4;
         donecb(nodes);
     }, created, permanent);
-    announce(id, AF_INET6, val, [=](bool ok6, const std::vector<std::shared_ptr<Node>>& nodes) {
+    announce(id, AF_INET6, val, [=](bool ok6, const std::vector<Sp<Node>>& nodes) {
         DHT_LOG.d(id, "Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
@@ -2033,12 +2033,12 @@ struct OpStatus {
     Status status;
     Status status4;
     Status status6;
-    std::vector<std::shared_ptr<T>> values;
-    std::vector<std::shared_ptr<Node>> nodes;
+    std::vector<Sp<T>> values;
+    std::vector<Sp<Node>> nodes;
 };
 
 template <typename T>
-void doneCallbackWrapper(DoneCallback dcb, const std::vector<std::shared_ptr<Node>>& nodes, std::shared_ptr<OpStatus<T>> op) {
+void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, Sp<OpStatus<T>> op) {
     if (op->status.done)
         return;
     op->nodes.insert(op->nodes.end(), nodes.begin(), nodes.end());
@@ -2053,9 +2053,9 @@ void doneCallbackWrapper(DoneCallback dcb, const std::vector<std::shared_ptr<Nod
 template <typename T, typename Cb>
 bool callbackWrapper(Cb get_cb,
         DoneCallback done_cb,
-        const std::vector<std::shared_ptr<T>>& values,
-        std::function<std::vector<std::shared_ptr<T>>(const std::vector<std::shared_ptr<T>>&)> add_values,
-        std::shared_ptr<OpStatus<T>> op)
+        const std::vector<Sp<T>>& values,
+        std::function<std::vector<Sp<T>>(const std::vector<Sp<T>>&)> add_values,
+        Sp<OpStatus<T>> op)
 {
     if (op->status.done)
         return false;
@@ -2077,10 +2077,10 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     auto op = std::make_shared<OpStatus<Value>>();
 
     auto f = filter.chain(q.where.getFilter());
-    auto add_values = [op,f](const std::vector<std::shared_ptr<Value>>& values) {
-        std::vector<std::shared_ptr<Value>> newvals {};
+    auto add_values = [op,f](const std::vector<Sp<Value>>& values) {
+        std::vector<Sp<Value>> newvals {};
         for (const auto& v : values) {
-            auto it = std::find_if(op->values.cbegin(), op->values.cend(), [&](const std::shared_ptr<Value>& sv) {
+            auto it = std::find_if(op->values.cbegin(), op->values.cend(), [&](const Sp<Value>& sv) {
                 return sv == v or *sv == *v;
             });
             if (it == op->values.cend()) {
@@ -2095,13 +2095,13 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     /* Try to answer this search locally. */
     gcb(getLocal(id, f));
 
-    Dht::search(id, AF_INET, gcb, {}, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
+    Dht::search(id, AF_INET, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4.done = true;
         op->status4.ok = ok;
         doneCallbackWrapper(donecb, nodes, op);
     }, f, q);
-    Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
+    Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6.done = true;
         op->status6.ok = ok;
@@ -2116,16 +2116,16 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
 
     auto f = q.where.getFilter();
     auto values = getLocal(id, f);
-    auto add_fields = [=](const std::vector<std::shared_ptr<FieldValueIndex>>& fields) {
-        std::vector<std::shared_ptr<FieldValueIndex>> newvals {};
+    auto add_fields = [=](const std::vector<Sp<FieldValueIndex>>& fields) {
+        std::vector<Sp<FieldValueIndex>> newvals {};
         for (const auto& f : fields) {
             auto it = std::find_if(op->values.cbegin(), op->values.cend(),
-                [&](const std::shared_ptr<FieldValueIndex>& sf) {
+                [&](const Sp<FieldValueIndex>& sf) {
                     return sf == f or f->containedIn(*sf);
                 });
             if (it == op->values.cend()) {
                 auto lesser = std::find_if(op->values.begin(), op->values.end(),
-                    [&](const std::shared_ptr<FieldValueIndex>& sf) {
+                    [&](const Sp<FieldValueIndex>& sf) {
                         return sf->containedIn(*f);
                     });
                 if (lesser != op->values.end())
@@ -2135,8 +2135,8 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
         }
         return newvals;
     };
-    std::vector<std::shared_ptr<FieldValueIndex>> local_fields(values.size());
-    std::transform(values.begin(), values.end(), local_fields.begin(), [&q](const std::shared_ptr<Value>& v) {
+    std::vector<Sp<FieldValueIndex>> local_fields(values.size());
+    std::transform(values.begin(), values.end(), local_fields.begin(), [&q](const Sp<Value>& v) {
         return std::make_shared<FieldValueIndex>(*v, q.select);
     });
     auto qcb = std::bind(callbackWrapper<FieldValueIndex, QueryCallback>, cb, done_cb, _1, add_fields, op);
@@ -2144,13 +2144,13 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
     /* Try to answer this search locally. */
     qcb(local_fields);
 
-    Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
+    Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4.done = true;
         op->status4.ok = ok;
         doneCallbackWrapper(done_cb, nodes, op);
     }, f, q);
-    Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<std::shared_ptr<Node>>& nodes) {
+    Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6.done = true;
         op->status6.ok = ok;
@@ -2158,7 +2158,7 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
     }, f, q);
 }
 
-std::vector<std::shared_ptr<Value>>
+std::vector<Sp<Value>>
 Dht::getLocal(const InfoHash& id, Value::Filter f) const
 {
     auto s = store.find(id);
@@ -2166,7 +2166,7 @@ Dht::getLocal(const InfoHash& id, Value::Filter f) const
     return s->second.get(f);
 }
 
-std::shared_ptr<Value>
+Sp<Value>
 Dht::getLocalById(const InfoHash& id, Value::Id vid) const
 {
     auto s = store.find(id);
@@ -2175,11 +2175,11 @@ Dht::getLocalById(const InfoHash& id, Value::Id vid) const
     return {};
 }
 
-std::vector<std::shared_ptr<Value>>
+std::vector<Sp<Value>>
 Dht::getPut(const InfoHash& id)
 {
-    std::vector<std::shared_ptr<Value>> ret;
-    auto find_values = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
+    std::vector<Sp<Value>> ret;
+    auto find_values = [&](std::map<InfoHash, Sp<Search>> srs) {
         auto srp = srs.find(id);
         if (srp == srs.end())
             return;
@@ -2193,19 +2193,19 @@ Dht::getPut(const InfoHash& id)
     return ret;
 }
 
-std::shared_ptr<Value>
+Sp<Value>
 Dht::getPut(const InfoHash& id, const Value::Id& vid)
 {
-    auto find_value = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
+    auto find_value = [&](std::map<InfoHash, Sp<Search>> srs) {
         auto srp = srs.find(id);
         if (srp == srs.end())
-            return std::shared_ptr<Value> {};
+            return Sp<Value> {};
         auto& search = srp->second;
         for (auto& a : search->announce) {
             if (a.value->id == vid)
                 return a.value;
         }
-        return std::shared_ptr<Value> {};
+        return Sp<Value> {};
     };
     auto v4 = find_value(searches4);
     if (v4) return v4;
@@ -2218,7 +2218,7 @@ bool
 Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 {
     bool canceled {false};
-    auto sr_cancel_put = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
+    auto sr_cancel_put = [&](std::map<InfoHash, Sp<Search>> srs) {
         auto srp = srs.find(id);
         if (srp == srs.end())
             return;
@@ -2247,9 +2247,9 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
     DHT_LOG.d(id, "[store %s] changed", id.toString().c_str());
     if (not st.local_listeners.empty()) {
         DHT_LOG.d(id, "[store %s] %lu local listeners", id.toString().c_str(), st.local_listeners.size());
-        std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> cbs;
+        std::vector<std::pair<GetCallback, std::vector<Sp<Value>>>> cbs;
         for (const auto& l : st.local_listeners) {
-            std::vector<std::shared_ptr<Value>> vals;
+            std::vector<Sp<Value>> vals;
             if (not l.second.filter or l.second.filter(*v.data))
                 vals.push_back(v.data);
             if (not vals.empty()) {
@@ -2273,7 +2273,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
             DHT_LOG.w(id, node_listeners.first->id, "[store %s] [node %s] sending update",
                     id.toString().c_str(),
                     node_listeners.first->toString().c_str());
-            std::vector<std::shared_ptr<Value>> vals {};
+            std::vector<Sp<Value>> vals {};
             vals.push_back(v.data);
             Blob ntoken = makeToken((const sockaddr*)&node_listeners.first->addr.first, false);
             network_engine.tellListener(node_listeners.first, l.second.sid, id, 0, ntoken, {}, {},
@@ -2283,7 +2283,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
 }
 
 bool
-Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created, const SockAddr* sa)
+Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr* sa)
 {
     const auto& now = scheduler.time();
     created = std::min(created, now);
@@ -2321,7 +2321,7 @@ Dht::storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_
 }
 
 std::pair<Dht::ValueStorage*, Dht::Storage::StoreDiff>
-Dht::Storage::store(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created, time_point expiration, StorageBucket* sb)
+Dht::Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, time_point expiration, StorageBucket* sb)
 {
     auto it = std::find_if (values.begin(), values.end(), [&](const ValueStorage& vr) {
         return vr.data == value || vr.data->id == value->id;
@@ -2388,7 +2388,7 @@ Dht::Storage::clear()
 }
 
 void
-Dht::storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t socket_id, Query&& query)
+Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_id, Query&& query)
 {
     const auto& now = scheduler.time();
     auto st = store.find(id);
@@ -2748,7 +2748,7 @@ Dht::dumpTables() const
     for (const auto& b : buckets6)
         dumpBucket(b, out);
 
-    auto dump_searches = [&](std::map<InfoHash, std::shared_ptr<Search>> srs) {
+    auto dump_searches = [&](std::map<InfoHash, Sp<Search>> srs) {
         for (auto& srp : srs)
             dumpSearch(*srp.second, out);
     };
@@ -3293,7 +3293,7 @@ Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
 }
 
 void
-Dht::onError(std::shared_ptr<net::Request> req, net::DhtProtocolException e) {
+Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
     if (e.getCode() == net::DhtProtocolException::UNAUTHORIZED) {
         DHT_LOG.e(req->node->id, "[node %s] token flush", req->node->toString().c_str());
         req->node->authError();
@@ -3324,13 +3324,13 @@ Dht::onReportedAddr(const InfoHash& id, const SockAddr& addr)
 }
 
 net::NetworkEngine::RequestAnswer
-Dht::onPing(std::shared_ptr<Node>)
+Dht::onPing(Sp<Node>)
 {
     return {};
 }
 
 net::NetworkEngine::RequestAnswer
-Dht::onFindNode(std::shared_ptr<Node> node, const InfoHash& target, want_t want)
+Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
     net::NetworkEngine::RequestAnswer answer;
@@ -3343,7 +3343,7 @@ Dht::onFindNode(std::shared_ptr<Node> node, const InfoHash& target, want_t want)
 }
 
 net::NetworkEngine::RequestAnswer
-Dht::onGetValues(std::shared_ptr<Node> node, const InfoHash& hash, want_t, const Query& query)
+Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query)
 {
     if (hash == zeroes) {
         DHT_LOG.w("[node %s] Eek! Got get_values with no info_hash", node->toString().c_str());
@@ -3367,10 +3367,10 @@ Dht::onGetValues(std::shared_ptr<Node> node, const InfoHash& hash, want_t, const
     return answer;
 }
 
-void Dht::onGetValuesDone(const std::shared_ptr<Node>& node,
+void Dht::onGetValuesDone(const Sp<Node>& node,
         net::NetworkEngine::RequestAnswer& a,
-        std::shared_ptr<Search>& sr,
-        const std::shared_ptr<Query>& orig_query)
+        Sp<Search>& sr,
+        const Sp<Query>& orig_query)
 {
     if (not sr) {
         DHT_LOG.w("[search unknown] got reply to 'get'. Ignoring.");
@@ -3395,14 +3395,14 @@ void Dht::onGetValuesDone(const std::shared_ptr<Node>& node,
                     if (not a.fields.empty()) {
                         get.query_cb(a.fields);
                     } else if (not a.values.empty()) {
-                        std::vector<std::shared_ptr<FieldValueIndex>> fields;
+                        std::vector<Sp<FieldValueIndex>> fields;
                         fields.reserve(a.values.size());
                         for (const auto& v : a.values)
                             fields.emplace_back(std::make_shared<FieldValueIndex>(*v, orig_query ? orig_query->select : Select {}));
                         get.query_cb(fields);
                     }
                 } else if (get.get_cb) { /* in case of a vanilla get request */
-                    std::vector<std::shared_ptr<Value>> tmp;
+                    std::vector<Sp<Value>> tmp;
                     for (const auto& v : a.values)
                         if (not get.filter or get.filter(*v))
                             tmp.emplace_back(v);
@@ -3412,11 +3412,11 @@ void Dht::onGetValuesDone(const std::shared_ptr<Node>& node,
             }
 
             /* callbacks for local search listeners */
-            std::vector<std::pair<GetCallback, std::vector<std::shared_ptr<Value>>>> tmp_lists;
+            std::vector<std::pair<GetCallback, std::vector<Sp<Value>>>> tmp_lists;
             for (auto& l : sr->listeners) {
                 if (!l.second.get_cb or (orig_query and l.second.query and not l.second.query->isSatisfiedBy(*orig_query)))
                     continue;
-                std::vector<std::shared_ptr<Value>> tmp;
+                std::vector<Sp<Value>> tmp;
                 for (const auto& v : a.values)
                     if (not l.second.filter or l.second.filter(*v))
                         tmp.emplace_back(v);
@@ -3440,7 +3440,7 @@ void Dht::onGetValuesDone(const std::shared_ptr<Node>& node,
 }
 
 net::NetworkEngine::RequestAnswer
-Dht::onListen(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query)
+Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query)
 {
     if (hash == zeroes) {
         DHT_LOG.w(node->id, "[node %s] listen with no info_hash", node->toString().c_str());
@@ -3459,9 +3459,9 @@ Dht::onListen(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& toke
 }
 
 void
-Dht::onListenDone(const std::shared_ptr<Node>& node,
+Dht::onListenDone(const Sp<Node>& node,
         net::NetworkEngine::RequestAnswer& answer,
-        std::shared_ptr<Search>& sr)
+        Sp<Search>& sr)
 {
     DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
                 sr->id.toString().c_str(), node->toString().c_str(), answer.values.size());
@@ -3474,10 +3474,10 @@ Dht::onListenDone(const std::shared_ptr<Node>& node,
 }
 
 net::NetworkEngine::RequestAnswer
-Dht::onAnnounce(std::shared_ptr<Node> node,
+Dht::onAnnounce(Sp<Node> node,
         const InfoHash& hash,
         const Blob& token,
-        const std::vector<std::shared_ptr<Value>>& values,
+        const std::vector<Sp<Value>>& values,
         const time_point& creation_date)
 {
     if (hash == zeroes) {
@@ -3511,7 +3511,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
             };
         }
         auto lv = getLocalById(hash, v->id);
-        std::shared_ptr<Value> vc = v;
+        Sp<Value> vc = v;
         if (lv) {
             if (*lv == *vc) {
                 DHT_LOG.w(hash, node->id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
@@ -3542,7 +3542,7 @@ Dht::onAnnounce(std::shared_ptr<Node> node,
 }
 
 net::NetworkEngine::RequestAnswer
-Dht::onRefresh(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid)
+Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid)
 {
     using namespace net;
 
@@ -3564,7 +3564,7 @@ Dht::onRefresh(std::shared_ptr<Node> node, const InfoHash& hash, const Blob& tok
 }
 
 void
-Dht::onAnnounceDone(const std::shared_ptr<Node>& node, net::NetworkEngine::RequestAnswer& answer, std::shared_ptr<Search>& sr)
+Dht::onAnnounceDone(const Sp<Node>& node, net::NetworkEngine::RequestAnswer& answer, Sp<Search>& sr)
 {
     DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got reply to put!",
             sr->id.toString().c_str(), node->toString().c_str());

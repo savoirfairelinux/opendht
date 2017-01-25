@@ -12,7 +12,7 @@ static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint
 static std::uniform_int_distribution<uint8_t> rand_byte;
 #endif
 
-std::shared_ptr<Node>
+Sp<Node>
 Bucket::randomNode()
 {
     if (nodes.empty())
@@ -77,10 +77,10 @@ RoutingTable::depth(const RoutingTable::const_iterator& it) const
     return std::max(bit1, bit2)+1;
 }
 
-std::vector<std::shared_ptr<Node>>
+std::vector<Sp<Node>>
 RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) const
 {
-    std::vector<std::shared_ptr<Node>> nodes {};
+    std::vector<Sp<Node>> nodes {};
     auto bucket = findBucket(id);
 
     if (bucket == end()) { return nodes; }
@@ -91,7 +91,7 @@ RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) 
                 continue;
 
             auto here = std::find_if(nodes.begin(), nodes.end(),
-                [&id,&n](std::shared_ptr<Node> &node) {
+                [&id,&n](Sp<Node> &node) {
                     return id.xorCmp(n->id, node->id) < 0;
                 }
             );
@@ -162,7 +162,7 @@ RoutingTable::split(const RoutingTable::iterator& b)
     insert(std::next(b), Bucket {b->af, new_id, b->time});
 
     // Re-assign nodes
-    std::list<std::shared_ptr<Node>> nodes {};
+    std::list<Sp<Node>> nodes {};
     nodes.splice(nodes.begin(), b->nodes);
     while (!nodes.empty()) {
         auto n = nodes.begin();

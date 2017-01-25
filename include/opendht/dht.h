@@ -175,12 +175,12 @@ public:
     /**
      * Get locally stored data for the given hash.
      */
-    std::vector<std::shared_ptr<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const;
+    std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const;
 
     /**
      * Get locally stored data for the given key and value id.
      */
-    std::shared_ptr<Value> getLocalById(const InfoHash& key, Value::Id vid) const;
+    Sp<Value> getLocalById(const InfoHash& key, Value::Id vid) const;
 
     /**
      * Announce a value on all available protocols (IPv4, IPv6).
@@ -189,12 +189,12 @@ public:
      * The done callback will be called once, when the first announce succeeds, or fails.
      */
     void put(const InfoHash& key,
-            std::shared_ptr<Value>,
+            Sp<Value>,
             DoneCallback cb=nullptr,
             time_point created=time_point::max(),
             bool permanent = false);
     void put(const InfoHash& key,
-            const std::shared_ptr<Value>& v,
+            const Sp<Value>& v,
             DoneCallbackSimple cb,
             time_point created=time_point::max(),
             bool permanent = false)
@@ -222,12 +222,12 @@ public:
     /**
      * Get data currently being put at the given hash.
      */
-    std::vector<std::shared_ptr<Value>> getPut(const InfoHash&);
+    std::vector<Sp<Value>> getPut(const InfoHash&);
 
     /**
      * Get data currently being put at the given hash with the given id.
      */
-    std::shared_ptr<Value> getPut(const InfoHash&, const Value::Id&);
+    Sp<Value> getPut(const InfoHash&, const Value::Id&);
 
     /**
      * Stop any put/announce operation at the given location,
@@ -390,7 +390,7 @@ private:
     size_t total_store_size {0};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    using SearchMap = std::map<InfoHash, std::shared_ptr<Search>>;
+    using SearchMap = std::map<InfoHash, Sp<Search>>;
     SearchMap searches4 {};
     SearchMap searches6 {};
     uint16_t search_id {0};
@@ -402,8 +402,8 @@ private:
 
     // timing
     Scheduler scheduler;
-    std::shared_ptr<Scheduler::Job> nextNodesConfirmation {};
-    std::shared_ptr<Scheduler::Job> nextStorageMaintenance {};
+    Sp<Scheduler::Job> nextNodesConfirmation {};
+    Sp<Scheduler::Job> nextStorageMaintenance {};
     time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     net::NetworkEngine network_engine;
@@ -421,8 +421,8 @@ private:
     void reportedAddr(const SockAddr&);
 
     // Storage
-    void storageAddListener(const InfoHash& id, const std::shared_ptr<Node>& node, size_t tid, Query&& = {});
-    bool storageStore(const InfoHash& id, const std::shared_ptr<Value>& value, time_point created, const SockAddr* sa = nullptr);
+    void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {});
+    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr* sa = nullptr);
     void expireStore();
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);
@@ -465,10 +465,10 @@ private:
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
     // Nodes
-    void onNewNode(const std::shared_ptr<Node>& node, int confirm);
-    std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af);
-    const std::shared_ptr<Node> findNode(const InfoHash& id, sa_family_t af) const;
-    bool trySearchInsert(const std::shared_ptr<Node>& node);
+    void onNewNode(const Sp<Node>& node, int confirm);
+    Sp<Node> findNode(const InfoHash& id, sa_family_t af);
+    const Sp<Node> findNode(const InfoHash& id, sa_family_t af) const;
+    bool trySearchInsert(const Sp<Node>& node);
 
     // Searches
 
@@ -479,10 +479,10 @@ private:
      * Low-level method that will perform a search on the DHT for the specified
      * infohash (id), using the specified IP version (IPv4 or IPv6).
      */
-    std::shared_ptr<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, QueryCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
+    Sp<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, QueryCallback = {}, DoneCallback = {}, Value::Filter = {}, Query q = {});
 
-    void announce(const InfoHash& id, sa_family_t af, std::shared_ptr<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
-    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), const std::shared_ptr<Query>& q = {});
+    void announce(const InfoHash& id, sa_family_t af, Sp<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
+    size_t listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f = Value::AllFilter(), const Sp<Query>& q = {});
 
     /**
      * Refill the search with good nodes if possible.
@@ -508,7 +508,7 @@ private:
     void searchNodeGetDone(const net::Request& status,
             net::NetworkEngine::RequestAnswer&& answer,
             std::weak_ptr<Search> ws,
-            std::shared_ptr<Query> query);
+            Sp<Query> query);
 
     /**
      * Generic function to execute when a 'get' request expires.
@@ -519,7 +519,7 @@ private:
      * @param ws      A weak pointer to the search concerned by the request.
      * @param query   The query sent to the node.
      */
-    void searchNodeGetExpired(const net::Request& status, bool over, std::weak_ptr<Search> ws, std::shared_ptr<Query> query);
+    void searchNodeGetExpired(const net::Request& status, bool over, std::weak_ptr<Search> ws, Sp<Query> query);
 
     /**
      * This method recovers sends individual request for values per id.
@@ -528,12 +528,12 @@ private:
      * @param query  The initial query passed through the API.
      * @param n      The node to which send the requests.
      */
-    void paginate(std::weak_ptr<Search> ws, std::shared_ptr<Query> query, SearchNode* n);
+    void paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n);
 
     /**
      * If update is true, this method will also send message to synced but non-updated search nodes.
      */
-    SearchNode* searchSendGetValues(std::shared_ptr<Search> sr, SearchNode *n = nullptr, bool update = true);
+    SearchNode* searchSendGetValues(Sp<Search> sr, SearchNode *n = nullptr, bool update = true);
 
     /**
      * Forwards an 'announce' request for a list of nodes to the network engine.
@@ -541,7 +541,7 @@ private:
      * @param sr  The search for which we want to announce a value.
      * @param announce  The 'announce' structure.
      */
-    void searchSendAnnounceValue(const std::shared_ptr<Search>& sr);
+    void searchSendAnnounceValue(const Sp<Search>& sr);
 
     /**
      * Main process of a Search's operations. This function will demand the
@@ -550,54 +550,54 @@ private:
      *
      * @param sr  The search to execute its operations.
      */
-    void searchStep(std::shared_ptr<Search> sr);
+    void searchStep(Sp<Search> sr);
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
     bool neighbourhoodMaintenance(RoutingTable&);
 
     void processMessage(const uint8_t *buf, size_t buflen, const SockAddr&);
 
-    void onError(std::shared_ptr<net::Request> node, net::DhtProtocolException e);
+    void onError(Sp<net::Request> node, net::DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, const SockAddr&);
     /* when we receive a ping request */
-    net::NetworkEngine::RequestAnswer onPing(std::shared_ptr<Node> node);
+    net::NetworkEngine::RequestAnswer onPing(Sp<Node> node);
     /* when we receive a "find node" request */
-    net::NetworkEngine::RequestAnswer onFindNode(std::shared_ptr<Node> node, const InfoHash& hash, want_t want);
-    void onFindNodeDone(const std::shared_ptr<Node>& status,
+    net::NetworkEngine::RequestAnswer onFindNode(Sp<Node> node, const InfoHash& hash, want_t want);
+    void onFindNodeDone(const Sp<Node>& status,
             net::NetworkEngine::RequestAnswer& a,
-            std::shared_ptr<Search> sr);
+            Sp<Search> sr);
     /* when we receive a "get values" request */
-    net::NetworkEngine::RequestAnswer onGetValues(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onGetValues(Sp<Node> node,
             const InfoHash& hash,
             want_t want,
             const Query& q);
-    void onGetValuesDone(const std::shared_ptr<Node>& status,
+    void onGetValuesDone(const Sp<Node>& status,
             net::NetworkEngine::RequestAnswer& a,
-            std::shared_ptr<Search>& sr,
-            const std::shared_ptr<Query>& orig_query);
+            Sp<Search>& sr,
+            const Sp<Query>& orig_query);
     /* when we receive a listen request */
-    net::NetworkEngine::RequestAnswer onListen(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onListen(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             size_t socket_id,
             const Query& query);
-    void onListenDone(const std::shared_ptr<Node>& status,
+    void onListenDone(const Sp<Node>& status,
             net::NetworkEngine::RequestAnswer& a,
-            std::shared_ptr<Search>& sr);
+            Sp<Search>& sr);
     /* when we receive an announce request */
-    net::NetworkEngine::RequestAnswer onAnnounce(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onAnnounce(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
-            const std::vector<std::shared_ptr<Value>>& v,
+            const std::vector<Sp<Value>>& v,
             const time_point& created);
-    net::NetworkEngine::RequestAnswer onRefresh(std::shared_ptr<Node> node,
+    net::NetworkEngine::RequestAnswer onRefresh(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const Value::Id& vid);
-    void onAnnounceDone(const std::shared_ptr<Node>& status,
+    void onAnnounceDone(const Sp<Node>& status,
             net::NetworkEngine::RequestAnswer& a,
-            std::shared_ptr<Search>& sr);
+            Sp<Search>& sr);
 };
 
 }

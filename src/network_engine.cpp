@@ -92,11 +92,11 @@ struct ParsedMessage {
     time_point created { time_point::max() };
     /* IPv4 nodes in response to a 'find' request */
     Blob nodes4_raw, nodes6_raw;
-    std::vector<std::shared_ptr<Node>> nodes4, nodes6;
+    std::vector<Sp<Node>> nodes4, nodes6;
     /* values to store or retreive request */
-    std::vector<std::shared_ptr<Value>> values;
+    std::vector<Sp<Value>> values;
     /* index for fields values */
-    std::vector<std::shared_ptr<FieldValueIndex>> fields;
+    std::vector<Sp<FieldValueIndex>> fields;
     /** When part of the message header: {index -> (total size, {})}
      *  When part of partial value data: {index -> (offset, part_data)} */
     std::map<unsigned, std::pair<unsigned, Blob>> value_parts;
@@ -123,7 +123,7 @@ struct NetworkEngine::PartialMessage {
 };
 
 std::vector<Blob>
-serializeValues(const std::vector<std::shared_ptr<Value>>& st)
+serializeValues(const std::vector<Sp<Value>>& st)
 {
     std::vector<Blob> svals;
     svals.reserve(st.size());
@@ -159,9 +159,9 @@ NetworkEngine::~NetworkEngine() {
 }
 
 void
-NetworkEngine::tellListener(std::shared_ptr<Node> node, uint32_t socket_id, const InfoHash& hash, want_t want,
-        const Blob& ntoken, std::vector<std::shared_ptr<Node>>&& nodes,
-        std::vector<std::shared_ptr<Node>>&& nodes6, std::vector<std::shared_ptr<Value>>&& values,
+NetworkEngine::tellListener(Sp<Node> node, uint32_t socket_id, const InfoHash& hash, want_t want,
+        const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
+        std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
         const Query& query)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
@@ -187,8 +187,8 @@ NetworkEngine::isRunning(sa_family_t af) const
     }
 }
 
-std::shared_ptr<Socket>
-NetworkEngine::openSocket(const std::shared_ptr<Node>& node, TransPrefix tp, SocketCb&& cb)
+Sp<Socket>
+NetworkEngine::openSocket(const Sp<Node>& node, TransPrefix tp, SocketCb&& cb)
 {
     auto tid = TransId {tp, getNewTid()};
     auto s = opened_sockets.emplace(tid, std::make_shared<Socket>(node, tid, cb));
@@ -198,14 +198,14 @@ NetworkEngine::openSocket(const std::shared_ptr<Node>& node, TransPrefix tp, Soc
 }
 
 void
-NetworkEngine::closeSocket(std::shared_ptr<Socket> socket)
+NetworkEngine::closeSocket(Sp<Socket> socket)
 {
     if (socket)
         opened_sockets.erase(socket->id);
 }
 
 void
-NetworkEngine::cancelRequest(std::shared_ptr<Request>& req)
+NetworkEngine::cancelRequest(Sp<Request>& req)
 {
     if (req) {
         req->cancel();
@@ -229,7 +229,7 @@ NetworkEngine::connectivityChanged(sa_family_t af)
 }
 
 void
-NetworkEngine::requestStep(std::shared_ptr<Request> sreq)
+NetworkEngine::requestStep(Sp<Request> sreq)
 {
     auto& req = *sreq;
     if (not req.pending()) {
@@ -266,7 +266,7 @@ NetworkEngine::requestStep(std::shared_ptr<Request> sreq)
  * be made before the request expires.
  */
 void
-NetworkEngine::sendRequest(std::shared_ptr<Request>& request)
+NetworkEngine::sendRequest(Sp<Request>& request)
 {
     request->start = scheduler.time();
     auto e = requests.emplace(request->tid, request);
@@ -341,7 +341,7 @@ NetworkEngine::isMartian(const SockAddr& addr)
 /* The internal blacklist is an LRU cache of nodes that have sent
    incorrect messages. */
 void
-NetworkEngine::blacklistNode(const std::shared_ptr<Node>& n)
+NetworkEngine::blacklistNode(const Sp<Node>& n)
 {
     n->setExpired();
     for (auto rit = requests.begin(); rit != requests.end();) {
@@ -631,8 +631,8 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
     return sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second);
 }
 
-std::shared_ptr<Request>
-NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+Sp<Request>
+NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::PING, getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -651,7 +651,7 @@ NetworkEngine::sendPing(std::shared_ptr<Node> node, RequestCb&& on_done, Request
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid, node, std::move(b),
+    Sp<Request> req(new Request {tid, node, std::move(b),
         [=](const Request& req_status, ParsedMessage&&) {
             DHT_LOG.d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
             if (on_done) {
@@ -690,8 +690,8 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
     send(buffer.data(), buffer.size(), 0, addr);
 }
 
-std::shared_ptr<Request>
-NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, want_t want,
+Sp<Request>
+NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
     msgpack::sbuffer buffer;
@@ -718,7 +718,7 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
+    Sp<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -736,8 +736,8 @@ NetworkEngine::sendFindNode(std::shared_ptr<Node> n, const InfoHash& target, wan
 }
 
 
-std::shared_ptr<Request>
-NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
+Sp<Request>
+NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
     msgpack::sbuffer buffer;
@@ -767,7 +767,7 @@ NetworkEngine::sendGetValues(std::shared_ptr<Node> n, const InfoHash& info_hash,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
+    Sp<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -828,7 +828,7 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg) {
 }
 
 std::vector<Blob>
-NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<std::shared_ptr<Value>>& st)
+NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Value>>& st)
 {
     auto svals = serializeValues(st);
     size_t total_size = 0;
@@ -883,7 +883,7 @@ NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const
 
 void
 NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& nodes, const Blob& nodes6,
-        const std::vector<std::shared_ptr<Value>>& st, const Query& query, const Blob& token)
+        const std::vector<Sp<Value>>& st, const Query& query, const Blob& token)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -940,9 +940,9 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
 }
 
 Blob
-NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::shared_ptr<Node>>& nodes)
+NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<Node>>& nodes)
 {
-    std::sort(nodes.begin(), nodes.end(), [&](const std::shared_ptr<Node>& a, const std::shared_ptr<Node>& b){
+    std::sort(nodes.begin(), nodes.end(), [&](const Sp<Node>& a, const Sp<Node>& b){
         return id.xorCmp(a->id, b->id) < 0;
     });
     size_t nnode = std::min<size_t>(SEND_NODES, nodes.size());
@@ -975,7 +975,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<std::
 
 std::pair<Blob, Blob>
 NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
-        std::vector<std::shared_ptr<Node>>& nodes4, std::vector<std::shared_ptr<Node>>& nodes6)
+        std::vector<Sp<Node>>& nodes4, std::vector<Sp<Node>>& nodes6)
 {
     if (want < 0)
         want = af == AF_INET ? WANT4 : WANT6;
@@ -991,17 +991,17 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
     return {std::move(bnodes4), std::move(bnodes6)};
 }
 
-std::shared_ptr<Request>
-NetworkEngine::sendListen(std::shared_ptr<Node> n,
+Sp<Request>
+NetworkEngine::sendListen(Sp<Node> n,
         const InfoHash& hash,
         const Query& query,
         const Blob& token,
-        std::shared_ptr<Request> previous,
+        Sp<Request> previous,
         RequestCb&& on_done,
         RequestExpiredCb&& on_expired,
         SocketCb&& socket_cb)
 {
-    std::shared_ptr<Socket> socket;
+    Sp<Socket> socket;
     auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : getNewTid() };
     if (previous and previous->node == n) {
         socket = previous->socket;
@@ -1046,7 +1046,7 @@ NetworkEngine::sendListen(std::shared_ptr<Node> n,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
+    Sp<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -1083,10 +1083,10 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
     send(buffer.data(), buffer.size(), 0, addr);
 }
 
-std::shared_ptr<Request>
-NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
+Sp<Request>
+NetworkEngine::sendAnnounceValue(Sp<Node> n,
         const InfoHash& infohash,
-        const std::shared_ptr<Value>& value,
+        const Sp<Value>& value,
         time_point created,
         const Blob& token,
         RequestCb&& on_done,
@@ -1117,7 +1117,7 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
+    Sp<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.d(infohash, "Unknown search or announce!");
@@ -1142,8 +1142,8 @@ NetworkEngine::sendAnnounceValue(std::shared_ptr<Node> n,
     return req;
 }
 
-std::shared_ptr<Request>
-NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
+Sp<Request>
+NetworkEngine::sendRefreshValue(Sp<Node> n,
                 const InfoHash& infohash,
                 const Value::Id& vid,
                 const Blob& token,
@@ -1171,7 +1171,7 @@ NetworkEngine::sendRefreshValue(std::shared_ptr<Node> n,
     }
 
     Blob b {buffer.data(), buffer.data() + buffer.size()};
-    std::shared_ptr<Request> req(new Request {tid, n, std::move(b),
+    Sp<Request> req(new Request {tid, n, std::move(b),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.d(infohash, "Unknown search or announce!");

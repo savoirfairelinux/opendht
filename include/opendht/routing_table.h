@@ -32,12 +32,12 @@ struct Bucket {
         : af(af), first(f), time(t), cached() {}
     sa_family_t af {0};
     InfoHash first {};
-    time_point time {time_point::min()};             /* time of last reply in this bucket */
-    std::list<std::shared_ptr<Node>> nodes {};
-    std::shared_ptr<Node> cached;                    /* the address of a likely candidate */
+    time_point time {time_point::min()}; /* time of last reply in this bucket */
+    std::list<Sp<Node>> nodes {};
+    Sp<Node> cached;                    /* the address of a likely candidate */
 
     /** Return a random node in a bucket. */
-    std::shared_ptr<Node> randomNode();
+    Sp<Node> randomNode();
 };
 
 class RoutingTable : public std::list<Bucket> {
@@ -46,7 +46,7 @@ public:
 
     InfoHash middle(const RoutingTable::const_iterator&) const;
 
-    std::vector<std::shared_ptr<Node>> findClosestNodes(const InfoHash id, time_point now, size_t count = TARGET_NODES) const;
+    std::vector<Sp<Node>> findClosestNodes(const InfoHash id, time_point now, size_t count = TARGET_NODES) const;
 
     RoutingTable::iterator findBucket(const InfoHash& id);
     RoutingTable::const_iterator findBucket(const InfoHash& id) const;

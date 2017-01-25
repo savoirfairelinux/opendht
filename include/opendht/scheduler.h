@@ -52,7 +52,7 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    std::shared_ptr<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
+    Sp<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
         auto job = std::make_shared<Job>(std::move(job_func));
         if (t != time_point::max())
             timers.emplace(std::move(t), job);
@@ -67,7 +67,7 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    void edit(std::shared_ptr<Scheduler::Job>& job, time_point t) {
+    void edit(Sp<Scheduler::Job>& job, time_point t) {
         if (not job) {
             DHT_LOG.ERR("editing an empty job");
             return;
@@ -118,7 +118,7 @@ public:
 
 private:
     time_point now {clock::now()};
-    std::multimap<time_point, std::shared_ptr<Job>> timers {}; /* the jobs ordered by time */
+    std::multimap<time_point, Sp<Job>> timers {}; /* the jobs ordered by time */
     const Logger& DHT_LOG;
 };
 

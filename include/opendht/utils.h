@@ -37,6 +37,10 @@ namespace dht {
 using NetId = uint32_t;
 using want_t = int_fast8_t;
 
+// shortcut for std::shared_ptr
+template<class T>
+using Sp = std::shared_ptr<T>;
+
 template <typename Key, typename Item, typename Condition>
 void erase_if(std::map<Key, Item>& map, const Condition& condition)
 {
@@ -52,7 +56,6 @@ class OPENDHT_PUBLIC DhtException : public std::runtime_error {
         DhtException(const std::string &str = "") :
             std::runtime_error("DhtException occurred: " + str) {}
 };
-
 
 // Time related definitions and utility functions
 

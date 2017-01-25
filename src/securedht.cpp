@@ -81,7 +81,7 @@ SecureDht::~SecureDht()
 ValueType
 SecureDht::secureType(ValueType&& type)
 {
-    type.storePolicy = [this,type](InfoHash id, std::shared_ptr<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
+    type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
         if (v->isSigned()) {
             if (!v->owner or !v->owner->checkSignature(v->getToSign(), v->signature)) {
                 DHT_LOG.WARN("Signature verification failed");
@@ -92,7 +92,7 @@ SecureDht::secureType(ValueType&& type)
         }
         return type.storePolicy(id, v, nid, a, al);
     };
-    type.editPolicy = [this,type](InfoHash id, const std::shared_ptr<Value>& o, std::shared_ptr<Value>& n, InfoHash nid, const sockaddr* a, socklen_t al) {
+    type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, InfoHash nid, const sockaddr* a, socklen_t al) {
         if (!o->isSigned())
             return type.editPolicy(id, o, n, nid, a, al);
         if (o->owner != n->owner) {
@@ -118,7 +118,7 @@ SecureDht::secureType(ValueType&& type)
     return type;
 }
 
-const std::shared_ptr<crypto::Certificate>
+const Sp<crypto::Certificate>
 SecureDht::getCertificate(const InfoHash& node) const
 {
     if (node == getId())
@@ -130,7 +130,7 @@ SecureDht::getCertificate(const InfoHash& node) const
         return it->second;
 }
 
-const std::shared_ptr<const crypto::PublicKey>
+const Sp<const crypto::PublicKey>
 SecureDht::getPublicKey(const InfoHash& node) const
 {
     if (node == getId())
@@ -142,10 +142,10 @@ SecureDht::getPublicKey(const InfoHash& node) const
         return it->second;
 }
 
-const std::shared_ptr<crypto::Certificate>
+const Sp<crypto::Certificate>
 SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
 {
-    std::shared_ptr<crypto::Certificate> crt;
+    Sp<crypto::Certificate> crt;
     try {
         crt = std::make_shared<crypto::Certificate>(data);
     } catch (const std::exception& e) {
@@ -167,16 +167,16 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
 }
 
 void
-SecureDht::registerCertificate(std::shared_ptr<crypto::Certificate>& cert)
+SecureDht::registerCertificate(Sp<crypto::Certificate>& cert)
 {
     if (cert)
         nodesCertificates_[cert->getId()] = cert;
 }
 
 void
-SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb)
+SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<crypto::Certificate>)> cb)
 {
-    std::shared_ptr<crypto::Certificate> b = getCertificate(node);
+    Sp<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
         DHT_LOG.DEBUG("Using certificate from cache for %s", node.toString().c_str());
         if (cb)
@@ -195,7 +195,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
     }
 
     auto found = std::make_shared<bool>(false);
-    Dht::get(node, [cb,node,found,this](const std::vector<std::shared_ptr<Value>>& vals) {
+    Dht::get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
         if (*found)
             return false;
         for (const auto& v : vals) {
@@ -215,7 +215,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const std::s
 }
 
 void
-SecureDht::findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<const crypto::PublicKey>)> cb)
+SecureDht::findPublicKey(const InfoHash& node, std::function<void(const Sp<const crypto::PublicKey>)> cb)
 {
     auto pk = getPublicKey(node);
     if (pk && *pk) {
@@ -224,7 +224,7 @@ SecureDht::findPublicKey(const InfoHash& node, std::function<void(const std::sha
             cb(pk);
         return;
     }
-    findCertificate(node, [=](const std::shared_ptr<crypto::Certificate> crt) {
+    findCertificate(node, [=](const Sp<crypto::Certificate> crt) {
         if (crt && *crt) {
             auto pk = std::make_shared<crypto::PublicKey>(crt->getPublicKey());
             nodesPubKeys_[pk->getId()] = pk;
@@ -238,8 +238,8 @@ SecureDht::findPublicKey(const InfoHash& node, std::function<void(const std::sha
 GetCallback
 SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 {
-    return [=](const std::vector<std::shared_ptr<Value>>& values) {
-        std::vector<std::shared_ptr<Value>> tmpvals {};
+    return [=](const std::vector<Sp<Value>>& values) {
+        std::vector<Sp<Value>> tmpvals {};
         for (const auto& v : values) {
             // Decrypt encrypted values
             if (v->isEncrypted()) {
@@ -292,7 +292,7 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&&
 }
 
 void
-SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback, bool permanent)
+SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback, bool permanent)
 {
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
@@ -308,7 +308,7 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
 
     // Check if data already exists on the dht
     get(hash,
-        [val,this] (const std::vector<std::shared_ptr<Value>>& vals) {
+        [val,this] (const std::vector<Sp<Value>>& vals) {
             DHT_LOG.DEBUG("Found online previous value being announced.");
             for (const auto& v : vals) {
                 if (!v->isSigned())
@@ -329,9 +329,9 @@ SecureDht::putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallb
 }
 
 void
-SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback, bool permanent)
+SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    findPublicKey(to, [=](const std::shared_ptr<const crypto::PublicKey> pk) {
+    findPublicKey(to, [=](const Sp<const crypto::PublicKey> pk) {
         if(!pk || !*pk) {
             if (callback)
                 callback(false, {});

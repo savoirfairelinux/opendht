@@ -105,7 +105,7 @@ public:
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
      */
-    void putSigned(const InfoHash& hash, std::shared_ptr<Value> val, DoneCallback callback, bool permanent = false);
+    void putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback, bool permanent = false);
     void putSigned(const InfoHash& hash, Value&& v, DoneCallback callback, bool permanent = false) {
         putSigned(hash, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
@@ -115,7 +115,7 @@ public:
      * and put it in the DHT.
      * The operation will be immediate if the recipient' public key is known (otherwise it will be retrived first).
      */
-    void putEncrypted(const InfoHash& hash, const InfoHash& to, std::shared_ptr<Value> val, DoneCallback callback, bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
     void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
@@ -129,14 +129,14 @@ public:
 
     Value decrypt(const Value& v);
 
-    void findCertificate(const InfoHash& node, std::function<void(const std::shared_ptr<crypto::Certificate>)> cb);
-    void findPublicKey(const InfoHash& node, std::function<void(const std::shared_ptr<const crypto::PublicKey>)> cb);
+    void findCertificate(const InfoHash& node, std::function<void(const Sp<crypto::Certificate>)> cb);
+    void findPublicKey(const InfoHash& node, std::function<void(const Sp<const crypto::PublicKey>)> cb);
 
-    const std::shared_ptr<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
-    void registerCertificate(std::shared_ptr<crypto::Certificate>& cert);
+    const Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
+    void registerCertificate(Sp<crypto::Certificate>& cert);
 
-    const std::shared_ptr<crypto::Certificate> getCertificate(const InfoHash& node) const;
-    const std::shared_ptr<const crypto::PublicKey> getPublicKey(const InfoHash& node) const;
+    const Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
+    const Sp<const crypto::PublicKey> getPublicKey(const InfoHash& node) const;
 
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.
@@ -154,15 +154,15 @@ private:
 
     GetCallback getCallbackFilter(GetCallback, Value::Filter&&);
 
-    std::shared_ptr<crypto::PrivateKey> key_ {};
-    std::shared_ptr<crypto::Certificate> certificate_ {};
+    Sp<crypto::PrivateKey> key_ {};
+    Sp<crypto::Certificate> certificate_ {};
 
     // method to query the local certificate store
     CertificateStoreQuery localQueryMethod_ {};
 
     // our certificate cache
-    std::map<InfoHash, std::shared_ptr<crypto::Certificate>> nodesCertificates_ {};
-    std::map<InfoHash, std::shared_ptr<const crypto::PublicKey>> nodesPubKeys_ {};
+    std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};
+    std::map<InfoHash, Sp<const crypto::PublicKey>> nodesPubKeys_ {};
 
     std::uniform_int_distribution<Value::Id> rand_id {};
 };
@@ -170,7 +170,7 @@ private:
 const ValueType CERTIFICATE_TYPE = {
     8, "Certificate", std::chrono::hours(24 * 7),
     // A certificate can only be stored at its public key ID.
-    [](InfoHash id, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t) {
+    [](InfoHash id, Sp<Value>& v, InfoHash, const sockaddr*, socklen_t) {
         try {
             crypto::Certificate crt(v->data);
             // TODO check certificate signature
@@ -178,7 +178,7 @@ const ValueType CERTIFICATE_TYPE = {
         } catch (const std::exception& e) {}
         return false;
     },
-    [](InfoHash, const std::shared_ptr<Value>& o, std::shared_ptr<Value>& n, InfoHash, const sockaddr*, socklen_t) {
+    [](InfoHash, const Sp<Value>& o, Sp<Value>& n, InfoHash, const sockaddr*, socklen_t) {
         try {
             return crypto::Certificate(o->data).getPublicKey().getId() == crypto::Certificate(n->data).getPublicKey().getId();
         } catch (const std::exception& e) {}
