@@ -269,6 +269,10 @@ cdef class DhtConfig(object):
         self._config.dht_config.node_config.is_bootstrap = bootstrap
     def setNodeId(self, InfoHash id):
         self._config.dht_config.node_config.node_id = id._infohash
+    def setNetwork(self, unsigned netid):
+        self._config.dht_config.node_config.network = netid
+    def setMaintainStorage(self, bool maintain_storage):
+        self._config.dht_config.node_config.maintain_storage = maintain_storage
 
 cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr

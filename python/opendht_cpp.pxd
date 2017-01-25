@@ -123,7 +123,9 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
 
     cppclass Config:
         InfoHash node_id
+        uint32_t network
         bool is_bootstrap
+        bool maintain_storage
     cppclass SecureDhtConfig:
         Config node_config
         Identity id
