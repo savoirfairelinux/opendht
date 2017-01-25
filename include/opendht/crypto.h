@@ -373,7 +373,8 @@ struct OPENDHT_PUBLIC Certificate {
     std::chrono::system_clock::time_point getExpiration() const;
 
     /**
-     * Returns true if the certificate is marked as a Certificate Authority.
+     * Returns true if the certificate is marked as a Certificate Authority
+     * and has necessary key usage flags to sign certificates.
      */
     bool isCA() const;
 
