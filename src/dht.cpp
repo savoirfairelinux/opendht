@@ -2883,11 +2883,11 @@ Dht::~Dht()
 Dht::Dht() : store(), scheduler(DHT_LOG), network_engine(DHT_LOG, scheduler) {}
 
 Dht::Dht(int s, int s6, Config config)
- : myid(config.node_id),
-   is_bootstrap(config.is_bootstrap),
-   maintain_storage(config.maintain_storage), store(), store_quota(),
-   scheduler(DHT_LOG),
-   network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
+    : myid(config.node_id != zeroes ? config.node_id : InfoHash::getRandom()),
+    is_bootstrap(config.is_bootstrap),
+    maintain_storage(config.maintain_storage), store(), store_quota(),
+    scheduler(DHT_LOG),
+    network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),

@@ -36,12 +36,8 @@ namespace dht {
 Config& getConfig(SecureDht::Config& conf)
 {
     auto& c = conf.node_config;
-    if (c.node_id == InfoHash()) {
-          if (conf.id.second)
-            c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
-        else
-            c.node_id = InfoHash::getRandom();
-    }
+    if (c.node_id == InfoHash() and conf.id.second)
+        c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
     return c;
 }
 
