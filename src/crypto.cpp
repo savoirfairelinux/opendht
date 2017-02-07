@@ -722,7 +722,20 @@ bool
 Certificate::isCA() const
 {
     unsigned critical;
-    return gnutls_x509_crt_get_ca_status(cert, &critical) > 0;
+    bool ca_flag = gnutls_x509_crt_get_ca_status(cert, &critical) > 0;
+    if (ca_flag) {
+        unsigned usage;
+        auto ret = gnutls_x509_crt_get_key_usage(cert, &usage, &critical);
+        /* Conforming CAs MUST include this extension in certificates that
+           contain public keys that are used to validate digital signatures on
+           other public key certificates or CRLs. */
+        if (ret < 0)
+            return false;
+        if (not critical)
+            return true;
+        return usage & GNUTLS_KEY_KEY_CERT_SIGN;
+    }
+    return false;
 }
 
 std::string
