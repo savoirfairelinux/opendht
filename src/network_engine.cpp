@@ -650,8 +650,8 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Sp<Request> req(new Request {tid, node, std::move(b),
+    auto req = std::make_shared<Request>(tid, node,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&&) {
             DHT_LOG.d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
             if (on_done) {
@@ -663,7 +663,7 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
                 on_expired(req_status, done);
             }
         }
-    });
+    );
     sendRequest(req);
     ++out_stats.ping;
     return req;
@@ -717,8 +717,8 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Sp<Request> req(new Request {tid, n, std::move(b),
+    auto req = std::make_shared<Request>(tid, n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -729,7 +729,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
                 on_expired(req_status, done);
             }
         }
-    });
+    );
     sendRequest(req);
     ++out_stats.find;
     return req;
@@ -766,8 +766,8 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Sp<Request> req(new Request {tid, n, std::move(b),
+    auto req = std::make_shared<Request>(tid, n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -778,7 +778,7 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
                 on_expired(req_status, done);
             }
         }
-    });
+    );
     sendRequest(req);
     ++out_stats.get;
     return req;
@@ -1045,8 +1045,8 @@ NetworkEngine::sendListen(Sp<Node> n,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Sp<Request> req(new Request {tid, n, std::move(b),
+    auto req = std::make_shared<Request>(tid, n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
                 on_done(req_status, {std::forward<ParsedMessage>(msg)});
@@ -1056,7 +1056,7 @@ NetworkEngine::sendListen(Sp<Node> n,
                 on_expired(req_status, done);
         },
         socket
-    });
+    );
     sendRequest(req);
     ++out_stats.listen;
     return req;
@@ -1116,8 +1116,8 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Sp<Request> req(new Request {tid, n, std::move(b),
+    auto req = std::make_shared<Request>(tid, n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.d(infohash, "Unknown search or announce!");
@@ -1134,7 +1134,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
                 on_expired(req_status, done);
             }
         }
-    });
+    );
     sendRequest(req);
     if (not v.empty())
         sendValueParts(tid, v, n->addr);
@@ -1170,8 +1170,8 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    Blob b {buffer.data(), buffer.data() + buffer.size()};
-    Sp<Request> req(new Request {tid, n, std::move(b),
+    auto req = std::make_shared<Request>(tid, n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
                 DHT_LOG.d(infohash, "Unknown search or announce!");
@@ -1188,11 +1188,10 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                 on_expired(req_status, done);
             }
         }
-    });
+    );
     sendRequest(req);
     ++out_stats.refresh;
     return req;
-
 }
 
 void
@@ -1432,9 +1431,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
 void
 NetworkEngine::maintainRxBuffer(const TransId& tid)
 {
-    const auto& now = scheduler.time();
     auto msg = partial_messages.find(tid);
     if (msg != partial_messages.end()) {
+        const auto& now = scheduler.time();
         if (msg->second.start + RX_MAX_PACKET_TIME < now
          || msg->second.last_part + RX_TIMEOUT < now) {
             DHT_LOG.w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
