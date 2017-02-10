@@ -68,6 +68,62 @@ public:
         return print_addr(first, second);
     }
     sa_family_t getFamily() const { return second > sizeof(sa_family_t) ? first.ss_family : AF_UNSPEC; }
+    void setFamily(sa_family_t af) {
+        first.ss_family = af;
+        switch(af) {
+        case AF_INET:
+            second = sizeof(sockaddr_in);
+            break;
+        case AF_INET6:
+            second = sizeof(sockaddr_in6);
+            break;
+        }
+    }
+    in_port_t getPort() const {
+        switch(getFamily()) {
+        case AF_INET:
+            return getIPv4().sin_port;
+        case AF_INET6:
+            return getIPv6().sin6_port;
+        default:
+            return 0;
+        }
+    }
+    void setPort(in_port_t p) {
+        switch(getFamily()) {
+        case AF_INET:
+            getIPv4().sin_port = p;
+            break;
+        case AF_INET6:
+            getIPv6().sin6_port = p;
+            break;
+        }
+    }
+
+    const sockaddr_in& getIPv4() const {
+        return *reinterpret_cast<const sockaddr_in*>(&first);
+    }
+    const sockaddr_in6& getIPv6() const {
+        return *reinterpret_cast<const sockaddr_in6*>(&first);
+    }
+    sockaddr_in& getIPv4() {
+        return *reinterpret_cast<sockaddr_in*>(&first);
+    }
+    sockaddr_in6& getIPv6() {
+        return *reinterpret_cast<sockaddr_in6*>(&first);
+    }
+
+    /**
+     * Return true if address is a loopback IP address.
+     */
+    bool isLoopback() const;
+
+    /**
+     * Return true if address is not a public IP address.
+     */
+    bool isPrivate() const;
+
+    bool isUnspecified() const;
 
     /**
      * A comparator to classify IP addresses, only considering the

@@ -21,6 +21,11 @@
 #include "sockaddr.h"
 #include "default_types.h"
 
+/* An IPv4 equivalent to IN6_IS_ADDR_UNSPECIFIED */
+#ifndef IN_IS_ADDR_UNSPECIFIED
+#define IN_IS_ADDR_UNSPECIFIED(a) (((long int) (a)->s_addr) == 0x00000000)
+#endif /* IN_IS_ADDR_UNSPECIFIED */
+
 namespace dht {
 
 std::string
@@ -50,6 +55,66 @@ print_addr(const sockaddr_storage& ss, socklen_t sslen)
 std::string
 printAddr(const SockAddr& addr) {
     return print_addr((const sockaddr*)&addr.first, addr.second);
+}
+
+bool
+SockAddr::isUnspecified() const
+{
+    switch (getFamily()) {
+    case AF_INET:
+        return IN_IS_ADDR_UNSPECIFIED(&getIPv4().sin_addr);
+    case AF_INET6:
+        return IN6_IS_ADDR_UNSPECIFIED(reinterpret_cast<const in6_addr*>(&getIPv6().sin6_addr));
+    default:
+        return true;
+    }
+}
+
+bool
+SockAddr::isLoopback() const
+{
+    switch (getFamily()) {
+    case AF_INET: {
+        uint8_t b1 = (uint8_t)(getIPv4().sin_addr.s_addr >> 24);
+        return b1 == 127;
+    }
+    case AF_INET6:
+        return IN6_IS_ADDR_LOOPBACK(reinterpret_cast<const in6_addr*>(&getIPv6().sin6_addr));
+    default:
+        return false;
+    }
+}
+
+bool
+SockAddr::isPrivate() const
+{
+    if (isLoopback()) {
+        return true;
+    }
+    switch (getFamily()) {
+    case AF_INET:
+        uint8_t b1, b2;
+        b1 = (uint8_t)(getIPv4().sin_addr.s_addr >> 24);
+        b2 = (uint8_t)((getIPv4().sin_addr.s_addr >> 16) & 0x0ff);
+        // 10.x.y.z
+        if (b1 == 10)
+            return true;
+        // 172.16.0.0 - 172.31.255.255
+        if ((b1 == 172) && (b2 >= 16) && (b2 <= 31))
+            return true;
+        // 192.168.0.0 - 192.168.255.255
+        if ((b1 == 192) && (b2 == 168))
+            return true;
+        return false;
+    case AF_INET6: {
+        const uint8_t* addr6 = reinterpret_cast<const uint8_t*>(&getIPv6().sin6_addr);
+        if (addr6[0] == 0xfc)
+            return true;
+        return false;
+    }
+    default:
+        return false;
+    }
 }
 
 bool operator==(const SockAddr& a, const SockAddr& b) {
