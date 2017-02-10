@@ -542,7 +542,7 @@ private:
             const std::string& message,
             bool include_id=false);
 
-    void deserializeNodes(ParsedMessage& msg);
+    void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 
     /* DHT info */
     const InfoHash& myid;
