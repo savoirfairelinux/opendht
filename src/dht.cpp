@@ -942,14 +942,13 @@ Dht::onNewNode(const Sp<Node>& node, int confirm)
         //scheduler.edit(nextNodesConfirmation, now);
     }
 
-    // Try to get rid of an expired node.
-    for (auto& n : b->nodes)
-        if (n->isExpired()) {
-            n = node;
-            return;
-        }
-
     if (b->nodes.size() >= TARGET_NODES) {
+        /* Try to get rid of an expired node. */
+        for (auto& n : b->nodes)
+            if (n->isExpired()) {
+                n = node;
+                return;
+            }
         /* Bucket full.  Ping a dubious node */
         bool dubious = false;
         for (auto& n : b->nodes) {
