@@ -78,7 +78,7 @@ struct Request {
     bool over() const { return not pending(); }
     State getState() const { return state_; }
 
-    Request() {}
+    Request(State state = State::PENDING) : state_(state) {}
     Request(TransId tid,
             std::shared_ptr<Node> node,
             Blob&& msg,
