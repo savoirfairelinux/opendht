@@ -2861,7 +2861,7 @@ Dht::getSearchLog(const InfoHash& id, sa_family_t af) const
 {
     std::stringstream out;
     if (af == AF_UNSPEC) {
-        out << getSearchLog(id, AF_INET) << getSearchLog(id, AF_INET);
+        out << getSearchLog(id, AF_INET) << getSearchLog(id, AF_INET6);
     } else {
         auto& srs = searches(af);
         auto sr = srs.find(id);
