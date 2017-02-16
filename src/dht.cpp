@@ -1357,7 +1357,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                                 } else {
                                     DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %d). Aborting.",
                                             sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                                    auto ack_req = std::make_shared<net::Request>();
+                                    auto ack_req = std::make_shared<net::Request>(net::Request::State::COMPLETED);
                                     ack_req->reply_time = now;
                                     sn->acked[a.value->id] = std::make_pair(std::move(ack_req), next_refresh_time);
 
@@ -2721,7 +2721,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                     if (ack == n.acked.end() or not ack->second.first) {
                         out << ' ';
                     } else {
-                        if (ack->second.first->reply_time + getType(a.value->type).expiration > now)
+                        if (ack->second.first->completed())
                             out << 'a';
                         else if (ack->second.first->pending())
                             out << 'f';
