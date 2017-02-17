@@ -1,0 +1,445 @@
+--- a/SMP/libgnutls.vcxproj
++++ b/SMP/libgnutls.vcxproj
+@@ -743,91 +744,91 @@
+   </ImportGroup>
+   <PropertyGroup Label="UserMacros" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libgnutlsd</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libgnutlsd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutlsd</TargetName>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLLStaticDeps|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutlsd</TargetName>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutlsd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLLStaticDeps|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutlsd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libgnutls</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libgnutls</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libgnutls</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libgnutls</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutls</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLLStaticDeps|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutls</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutls</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLLStaticDeps|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>gnutls</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+@@ -1834,7 +1834,7 @@ del /f /q $(OutDir)\licenses\gnutls.txt
+       <BufferSecurityCheck>false</BufferSecurityCheck>
+       <FloatingPointModel>Fast</FloatingPointModel>
+       <FloatingPointExceptions>false</FloatingPointExceptions>
+-      <PreprocessorDefinitions>HAVE_CONFIG_H;inline=__inline;ASN1_BUILDING;ASN1_STATIC;LOCALEDIR=".";__func__=__FUNCTION__;ASM_X86;ASM_X86_64;_WIN32_WINNT=0x0600;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>RING_UWP;HAVE_WIN32_LOCKS;HAVE_CONFIG_H;inline=__inline;ASN1_BUILDING;ASN1_STATIC;LOCALEDIR=".";__func__=__FUNCTION__;ASM_X86_64;_WIN32_WINNT=0x0600;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <AdditionalIncludeDirectories>.\;.\lib;..\lib;..\lib\accelerated;..\lib\auth;..\lib\ext;..\lib\extras;..\lib\minitasn1;..\lib\nettle;..\lib\nettle\int;..\lib\openpgp;..\lib\opencdk;..\lib\x509;..\lib\includes;..\gl;$(OutDir)\include;..\lib\accelerated\x86;$(ProjectDir)\..\..\prebuilt\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+       <ExceptionHandling>false</ExceptionHandling>
+       <DisableSpecificWarnings>4996;4244;4018;4146;4267;4028;4101;4020;4047;4024;4005;4311;4312;4334;4116;4090;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+@@ -1850,7 +1850,7 @@ del /f /q $(OutDir)\licenses\gnutls.txt
+       <OutputFile>$(OutDir)\lib\x64\$(TargetName)$(TargetExt)</OutputFile>
+       <TargetMachine>MachineX64</TargetMachine>
+       <SubSystem>Windows</SubSystem>
+-      <AdditionalDependencies>Crypt32.lib;Ws2_32.lib;libzlib.lib;libiconv.lib;libhogweed.lib;libgmp.lib;libnettle.lib;%(AdditionalDependencies)</AdditionalDependencies>
++      <AdditionalDependencies>bcrypt.lib;Ws2_32.lib;libzlib.lib;libiconv.lib;libhogweed.lib;libgmp.lib;libnettle.lib;%(AdditionalDependencies)</AdditionalDependencies>
+       <AdditionalLibraryDirectories>$(OutDir)\lib\x64\;$(ProjectDir)\..\..\prebuilt\lib\x64\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+       <AdditionalOptions>/IGNORE:4006,4221,4042 %(AdditionalOptions)</AdditionalOptions>
+     </Lib>
+--- a/lib/nettle/rnd-common.c
++++ b/lib/nettle/rnd-common.c
+@@ -45,6 +45,7 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
++#include <bcrypt.h>
+ 
+ /* gnulib wants to claim strerror even if it cannot provide it. WTF */
+ #undef strerror
+@@ -88,16 +89,25 @@ void _rnd_get_event(struct event_st *e)
+ #include <wincrypt.h>
+ 
+ static HCRYPTPROV device_fd = 0;
++static BCRYPT_ALG_HANDLE bdevice_fd = 0;
+ 
+ static
+ int _rnd_get_system_entropy_win32(void* rnd, size_t size)
+ {
++#ifndef RING_UWP
+ 	if (!CryptGenRandom(device_fd, (DWORD) size, rnd)) {
+ 		_gnutls_debug_log("Error in CryptGenRandom: %d\n",
+ 					(int)GetLastError());
+ 		return GNUTLS_E_RANDOM_DEVICE_ERROR;
+ 	}
+-
++#else
++    NTSTATUS ret = BCryptGenRandom(bdevice_fd, rnd, (ULONG) size, 0);
++    if (!(BCRYPT_SUCCESS(ret))) {
++		_gnutls_debug_log("Error in BCryptGenRandom: %d\n",
++					(int)GetLastError());
++		return GNUTLS_E_RANDOM_DEVICE_ERROR;
++	}
++#endif
+ 	return 0;
+ }
+ 
+@@ -111,7 +121,7 @@ int _rnd_system_entropy_check(void)
+ int _rnd_system_entropy_init(void)
+ {
+ 	int old;
+-
++#ifndef RING_UWP
+ 	if (!CryptAcquireContext
+ 		(&device_fd, NULL, NULL, PROV_RSA_FULL,
+ 		 CRYPT_SILENT | CRYPT_VERIFYCONTEXT)) {
+@@ -119,13 +129,26 @@ int _rnd_system_entropy_init(void)
+ 			("error in CryptAcquireContext!\n");
+ 		return GNUTLS_E_RANDOM_DEVICE_ERROR;
+ 	}
+-	
++#else
++	NTSTATUS ret = BCryptOpenAlgorithmProvider(&bdevice_fd,
++        BCRYPT_RNG_ALGORITHM, MS_PRIMITIVE_PROVIDER,
++        0);
++	if (!(BCRYPT_SUCCESS(ret))) {
++		_gnutls_debug_log
++			("error in BCryptOpenAlgorithmProvider!\n");
++		return GNUTLS_E_RANDOM_DEVICE_ERROR;
++	}
++#endif
+ 	return 0;
+ }
+ 
+ void _rnd_system_entropy_deinit(void)
+ {
++#ifndef RING_UWP
+ 	CryptReleaseContext(device_fd, 0);
++#else
++    BCryptCloseAlgorithmProvider(bdevice_fd, 0);
++#endif
+ }
+ 
+ #else /* POSIX */
+--- a/lib/opencdk/misc.c
++++ b/lib/opencdk/misc.c
+@@ -34,7 +34,6 @@
+ #include <gnutls_int.h>
+ #include <gnutls_str.h>
+ 
+-
+ u32 _cdk_buftou32(const byte * buf)
+ {
+ 	u32 u;
+@@ -149,6 +148,13 @@ int _cdk_check_args(int overwrite, const char *in, const char *out)
+ }
+ 
+ #ifdef _WIN32
++#if (_WIN32_WINNT >= 0x0600)
++FILE *_cdk_tmpfile(void)
++{
++	return NULL;
++}
++#else
++
+ #include <io.h>
+ #include <fcntl.h>
+ 
+@@ -183,6 +189,7 @@ FILE *_cdk_tmpfile(void)
+ 	_close(fd);
+ 	return NULL;
+ }
++#endif /*_WIN32*/
+ #else
+ FILE *_cdk_tmpfile(void)
+ {
+--- a/lib/system-keys-win.c
++++ b/lib/system-keys-win.c
+@@ -20,9 +20,10 @@
+ 
+ // Before including any Windows header we need to set _WIN32_WINNT to Vista
+ // (or higher) so that the NCRYPT stuff can be used.
+-#if _WIN32_WINNT < 0x600
++#define _WIN32_WINNT 0x0A00
++#if _WIN32_WINNT < 0x0600
+ #undef _WIN32_WINNT
+-#define _WIN32_WINNT 0x600
++#define _WIN32_WINNT 0x0600
+ #endif
+ 
+ 
+@@ -1075,7 +1076,11 @@ int _gnutls_system_key_init(void)
+ 	int ret;
+ 
+ #ifdef DYN_NCRYPT
+-	ncrypt_lib = LoadLibraryA("ncrypt.dll");
++#if (_WIN32_WINNT < 0x0A00)
++	ncrypt_lib = LoadLibrary("ncrypt.dll");
++#else
++    ncrypt_lib = LoadPackagedLibrary("ncrypt.dll", 0);
++#endif
+ 	if (ncrypt_lib == NULL) {
+ 		return gnutls_assert_val(GNUTLS_E_CRYPTO_INIT_FAILED);
+ 	}
+--- a/lib/system-keys-win.c
++++ b/lib/system-keys-win.c
+@@ -396,7 +396,11 @@ _gnutls_privkey_import_system_url(gnutls_privkey_t pkey,
+ 	blob.cbData = id_size;
+ 	blob.pbData = id;
+ 
+-	store = CertOpenSystemStore(0, "MY");
++	store = CertOpenStore(  CERT_STORE_PROV_SYSTEM_A,
++                        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
++                        0,
++                        CERT_SYSTEM_STORE_CURRENT_USER,
++                        (const void*)"MY");
+ 	if (store == NULL) {
+ 		gnutls_assert();
+ 		ret = GNUTLS_E_FILE_ERROR;
+@@ -535,7 +539,11 @@ _gnutls_x509_crt_import_system_url(gnutls_x509_crt_t crt, const char *url)
+ 	blob.cbData = id_size;
+ 	blob.pbData = id;
+ 
+-	store = CertOpenSystemStore(0, "MY");
++	store = CertOpenStore(  CERT_STORE_PROV_SYSTEM_A,
++                        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
++                        0,
++                        CERT_SYSTEM_STORE_CURRENT_USER,
++                        (const void*)"MY");
+ 	if (store == NULL) {
+ 		gnutls_assert();
+ 		ret = GNUTLS_E_FILE_ERROR;
+@@ -776,7 +784,11 @@ gnutls_system_key_iter_get_info(gnutls_system_key_iter_t *iter,
+ 		if (*iter == NULL)
+ 			return gnutls_assert_val(GNUTLS_E_MEMORY_ERROR);
+ 
+-		(*iter)->store = CertOpenSystemStore(0, "MY");
++		(*iter)->store = CertOpenStore(  CERT_STORE_PROV_SYSTEM_A,
++                        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
++                        0,
++                        CERT_SYSTEM_STORE_CURRENT_USER,
++                        (const void*)"MY");
+ 		if ((*iter)->store == NULL) {
+ 			gnutls_free(*iter);
+ 			*iter = NULL;
+@@ -841,7 +853,11 @@ int gnutls_system_key_delete(const char *cert_url, const char *key_url)
+ 	blob.cbData = id_size;
+ 	blob.pbData = id;
+ 
+-	store = CertOpenSystemStore(0, "MY");
++	store = CertOpenStore(  CERT_STORE_PROV_SYSTEM_A,
++                        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
++                        0,
++                        CERT_SYSTEM_STORE_CURRENT_USER,
++                        (const void*)"MY");
+ 	if (store != NULL) {
+ 		do {
+ 			cert = CertFindCertificateInStore(store,
+--- a/lib/system.c
++++ b/lib/system.c
+@@ -446,9 +446,17 @@ int add_system_trust(gnutls_x509_trust_list_t list, unsigned int tl_flags,
+ 		gnutls_datum_t data;
+ 
+ 		if (i == 0)
+-			store = CertOpenSystemStore(0, "ROOT");
++            store = CertOpenStore(  CERT_STORE_PROV_SYSTEM_A,
++                        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
++                        0,
++                        CERT_SYSTEM_STORE_CURRENT_USER,
++                        (const void*)"ROOT");
+ 		else
+-			store = CertOpenSystemStore(0, "CA");
++			store = CertOpenStore(  CERT_STORE_PROV_SYSTEM_A,
++                        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
++                        0,
++                        CERT_SYSTEM_STORE_CURRENT_USER,
++                        (const void*)"CA");
+ 
+ 		if (store == NULL)
+ 			return GNUTLS_E_FILE_ERROR;
+--- a/lib/accelerated/x86/x86-common.c
++++ b/lib/accelerated/x86/x86-common.c
+@@ -652,6 +652,7 @@ void register_x86_intel_crypto(unsigned capabilities)
+ 
+ void register_x86_crypto(void)
+ {
++#ifndef RING_UWP
+ 	unsigned capabilities = 0;
+ 	char *p;
+ 	p = secure_getenv("GNUTLS_CPUID_OVERRIDE");
+@@ -663,5 +664,7 @@ void register_x86_crypto(void)
+ #ifdef ENABLE_PADLOCK
+ 	register_x86_padlock_crypto(capabilities);
+ #endif
++#endif
++    register_x86_intel_crypto(0);
+ }
+ 
+--- a/lib/gnutls_global.c
++++ b/lib/gnutls_global.c
+@@ -240,7 +240,9 @@ int gnutls_global_init(void)
+ 
+ 	_gnutls_switch_lib_state(LIB_STATE_INIT);
+ 
++#ifndef RING_UWP
+ 	e = secure_getenv("GNUTLS_DEBUG_LEVEL");
++#endif
+ 	if (e != NULL) {
+ 		level = atoi(e);
+ 		gnutls_global_set_log_level(level);
+@@ -473,8 +475,10 @@ const char *e;
+ 	if (_gnutls_global_init_skip() != 0)
+ 		return;
+ 
++#ifndef RING_UWP
+ 	e = secure_getenv("GNUTLS_NO_EXPLICIT_INIT");
+-	if (e != NULL) {
++#endif
++    if (e != NULL) {
+ 		ret = atoi(e);
+ 		if (ret == 1)
+ 			return;
+@@ -494,7 +498,9 @@ static void _DESTRUCTOR lib_deinit(void)
+ 	if (_gnutls_global_init_skip() != 0)
+ 		return;
+ 
++#ifndef RING_UWP
+ 	e = secure_getenv("GNUTLS_NO_EXPLICIT_INIT");
++#endif
+ 	if (e != NULL) {
+ 		int ret = atoi(e);
+ 		if (ret == 1)
+--- a/lib/gnutls_kx.c
++++ b/lib/gnutls_kx.c
+@@ -105,7 +105,9 @@ static void write_nss_key_log(gnutls_session_t session, const gnutls_datum_t *pr
+ 
+ 	if (!checked_env) {
+ 		checked_env = 1;
++#ifndef RING_UWP
+ 		keylogfile = secure_getenv("SSLKEYLOGFILE");
++#endif
+ 	}
+ 
+ 	if (keylogfile == NULL)
+--- a/lib/system.c
++++ b/lib/system.c
+@@ -340,7 +340,11 @@ void gnutls_system_global_deinit(void)
+  */
+ int _gnutls_find_config_path(char *path, size_t max_size)
+ {
+-	const char *home_dir = secure_getenv("HOME");
++#ifndef RING_UWP
++    const char *home_dir = secure_getenv("HOME");
++#else
++    const char *home_dir = NULL;
++#endif
+ 
+ 	if (home_dir != NULL && home_dir[0] != 0) {
+ 		snprintf(path, max_size, "%s/" CONFIG_PATH, home_dir);
+@@ -349,8 +353,13 @@ int _gnutls_find_config_path(char *path, size_t max_size)
+ 
+ #ifdef _WIN32
+ 	if (home_dir == NULL || home_dir[0] == '\0') {
++#ifndef RING_UWP
+ 		const char *home_drive = getenv("HOMEDRIVE");
+ 		const char *home_path = getenv("HOMEPATH");
++#else
++        const char *home_drive = NULL;
++		const char *home_path = NULL;
++#endif
+ 
+ 		if (home_drive != NULL && home_path != NULL) {
+ 			snprintf(path, max_size, "%s%s\\" CONFIG_PATH, home_drive, home_path);
+2.8.1.windows.1
+

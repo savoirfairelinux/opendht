@@ -1,0 +1,228 @@
+--- a/SMP/libhogweed.vcxproj
++++ b/SMP/libhogweed.vcxproj
+@@ -242,6 +242,7 @@
+   <PropertyGroup Label="Globals">
+     <ProjectGuid>{200F3D3C-8B84-46D8-953A-6C0EBD283B5C}</ProjectGuid>
+     <RootNamespace>libhogweed</RootNamespace>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+   </PropertyGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+@@ -405,91 +406,91 @@
+   </ImportGroup>
+   <PropertyGroup Label="UserMacros" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libhogweedd</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libhogweedd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweedd</TargetName>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLLStaticDeps|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweedd</TargetName>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweedd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLLStaticDeps|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweedd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libhogweed</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libhogweed</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libhogweed</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libhogweed</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweed</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLLStaticDeps|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweed</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweed</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLLStaticDeps|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>hogweed</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+--- a/SMP/libnettle.vcxproj
++++ b/SMP/libnettle.vcxproj
+@@ -278,6 +278,7 @@
+   <PropertyGroup Label="Globals">
+     <ProjectGuid>{070FEF2B-0C3F-4F33-9D3C-53C7330BF518}</ProjectGuid>
+     <RootNamespace>libnettle</RootNamespace>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+   </PropertyGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+@@ -397,65 +398,65 @@
+   </ImportGroup>
+   <PropertyGroup Label="UserMacros" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libnettled</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libnettled</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>nettled</TargetName>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>nettled</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libnettle</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libnettle</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libnettle</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libnettle</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>nettle</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>nettle</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-- 
+2.8.1.windows.1
