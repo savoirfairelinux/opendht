@@ -1,0 +1,99 @@
+--- a/SMP/libiconv.vcxproj
++++ b/SMP/libiconv.vcxproj
+@@ -45,6 +45,7 @@
+   <PropertyGroup Label="Globals">
+     <ProjectGuid>{CB8BB76F-D3FF-434E-A85E-7FFC0893EC9B}</ProjectGuid>
+     <RootNamespace>libiconv</RootNamespace>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+   </PropertyGroup>
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+@@ -164,65 +165,65 @@
+   </ImportGroup>
+   <PropertyGroup Label="UserMacros" />
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libiconvd</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libiconvd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>iconvd</TargetName>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>iconvd</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <LinkIncremental>false</LinkIncremental>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libiconv</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libiconv</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libiconv</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLTO|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>libiconv</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|Win32'">
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>iconv</TargetName>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseDLL|x64'">
+-    <IntDir>$(SolutionDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
++    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
+     <TargetName>iconv</TargetName>
+-    <OutDir>$(ProjectDir)..\..\..\msvc\</OutDir>
++    <OutDir>$(ProjectDir)..\..\</OutDir>
+     <CustomBuildAfterTargets>Clean</CustomBuildAfterTargets>
+   </PropertyGroup>
+   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+-- 
+2.8.1.windows.1
+

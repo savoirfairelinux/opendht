@@ -1,0 +1,221 @@
+--- /dev/null
++++ b/msgpack_vc8.vcxproj
+@@ -0,0 +1,214 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <ItemGroup Label="ProjectConfigurations">
++    <ProjectConfiguration Include="Debug|Win32">
++      <Configuration>Debug</Configuration>
++      <Platform>Win32</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Debug|x64">
++      <Configuration>Debug</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Release|Win32">
++      <Configuration>Release</Configuration>
++      <Platform>Win32</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Release|x64">
++      <Configuration>Release</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++  </ItemGroup>
++  <PropertyGroup Label="Globals">
++    <ProjectName>MessagePack</ProjectName>
++    <ProjectGuid>{122A2EA4-B283-4241-9655-786DE78283B2}</ProjectGuid>
++    <RootNamespace>MessagePack</RootNamespace>
++    <Keyword>Win32Proj</Keyword>
++    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
++    <CharacterSet>Unicode</CharacterSet>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
++    <CharacterSet>Unicode</CharacterSet>
++    <WholeProgramOptimization>false</WholeProgramOptimization>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
++    <CharacterSet>Unicode</CharacterSet>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
++    <ConfigurationType>StaticLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
++    <CharacterSet>Unicode</CharacterSet>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
++  <ImportGroup Label="ExtensionSettings">
++  </ImportGroup>
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
++    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
++  </ImportGroup>
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
++    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
++  </ImportGroup>
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
++    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
++  </ImportGroup>
++  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
++    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
++  </ImportGroup>
++  <PropertyGroup Label="UserMacros" />
++  <PropertyGroup>
++    <_ProjectFileVersion>14.0.25123.0</_ProjectFileVersion>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
++    <OutDir>$(ProjectDir)..\</OutDir>
++    <IntDir>$(Configuration)\</IntDir>
++    <TargetName>msgpackd</TargetName>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <TargetName>msgpackd</TargetName>
++    <OutDir>$(ProjectDir)..\</OutDir>
++    <IntDir>$(Configuration)\</IntDir>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
++    <OutDir>$(ProjectDir)..\</OutDir>
++    <IntDir>$(Configuration)\</IntDir>
++    <TargetName>msgpack</TargetName>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <TargetName>msgpack</TargetName>
++    <OutDir>$(ProjectDir)..\</OutDir>
++    <IntDir>$(Configuration)\</IntDir>
++  </PropertyGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
++    <ClCompile>
++      <Optimization>Disabled</Optimization>
++      <AdditionalIncludeDirectories>.;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <PreprocessorDefinitions>WIN32_NATIVE;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <MinimalRebuild>true</MinimalRebuild>
++      <BasicRuntimeChecks>StackFrameRuntimeCheck</BasicRuntimeChecks>
++      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
++      <PrecompiledHeader />
++      <WarningLevel>Level3</WarningLevel>
++      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
++    </ClCompile>
++    <Lib>
++      <OutputFile>$(OutDir)\lib\x86\$(TargetName)$(TargetExt)</OutputFile>
++    </Lib>
++    <PostBuildEvent>
++      <Command>mkdir $(OutDir)\include
++
++mkdir $(OutDir)\include\msgpack
++
++copy include\*.h $(OutDir)\include\
++
++copy include\*.hpp $(OutDir)\include\
++xcopy /S /Y include\msgpack\*.h $(OutDir)\include\msgpack
++xcopy /S /Y include\msgpack\*.hpp $(OutDir)\include\msgpack
++</Command>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <ClCompile>
++      <Optimization>Disabled</Optimization>
++      <AdditionalIncludeDirectories>.;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <PreprocessorDefinitions>WIN32_NATIVE;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <BasicRuntimeChecks>StackFrameRuntimeCheck</BasicRuntimeChecks>
++      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
++      <PrecompiledHeader>
++      </PrecompiledHeader>
++      <WarningLevel>Level3</WarningLevel>
++      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++    </ClCompile>
++    <Lib>
++      <OutputFile>$(OutDir)\lib\x64\$(TargetName)$(TargetExt)</OutputFile>
++    </Lib>
++    <PostBuildEvent>
++      <Command>mkdir $(OutDir)\include
++
++mkdir $(OutDir)\include\msgpack
++
++copy include\*.h $(OutDir)\include\
++
++copy include\*.hpp $(OutDir)\include\
++xcopy /S /Y include\msgpack\*.h $(OutDir)\include\msgpack
++xcopy /S /Y include\msgpack\*.hpp $(OutDir)\include\msgpack
++</Command>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
++    <ClCompile>
++      <AdditionalIncludeDirectories>.;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <PreprocessorDefinitions>WIN32_NATIVE;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
++      <PrecompiledHeader />
++      <WarningLevel>Level3</WarningLevel>
++      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++      <ProgramDataBaseFileName>$(OutDir)\lib\x86\$(TargetName).pdb</ProgramDataBaseFileName>
++    </ClCompile>
++    <Lib>
++      <OutputFile>$(OutDir)\lib\x86\$(TargetName)$(TargetExt)</OutputFile>
++      <LinkTimeCodeGeneration />
++    </Lib>
++    <PostBuildEvent>
++      <Command>mkdir $(OutDir)\include
++
++mkdir $(OutDir)\include\msgpack
++
++copy include\*.h $(OutDir)\include\
++
++copy include\*.hpp $(OutDir)\include\
++xcopy /S /Y include\msgpack\*.h $(OutDir)\include\msgpack
++xcopy /S /Y include\msgpack\*.hpp $(OutDir)\include\msgpack
++</Command>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <ClCompile>
++      <AdditionalIncludeDirectories>.;include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <PreprocessorDefinitions>MSGPACK_USE_CPP03;WIN32_NATIVE;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
++      <PrecompiledHeader>
++      </PrecompiledHeader>
++      <WarningLevel>Level3</WarningLevel>
++      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++      <ProgramDataBaseFileName>$(OutDir)\lib\x64\$(TargetName).pdb</ProgramDataBaseFileName>
++    </ClCompile>
++    <Lib>
++      <OutputFile>$(OutDir)\lib\x64\$(TargetName)$(TargetExt)</OutputFile>
++      <LinkTimeCodeGeneration />
++    </Lib>
++    <PostBuildEvent>
++      <Command>mkdir $(OutDir)\include
++
++mkdir $(OutDir)\include\msgpack
++
++copy include\*.h $(OutDir)\include\
++
++copy include\*.hpp $(OutDir)\include\
++xcopy /S /Y include\msgpack\*.h $(OutDir)\include\msgpack
++xcopy /S /Y include\msgpack\*.hpp $(OutDir)\include\msgpack
++</Command>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemGroup>
++    <ClCompile Include="src\objectc.c" />
++    <ClCompile Include="src\unpack.c" />
++    <ClCompile Include="src\version.c" />
++    <ClCompile Include="src\vrefbuffer.c" />
++    <ClCompile Include="src\zone.c" />
++  </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="include\msgpack.hpp" />
++  </ItemGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
++  <ImportGroup Label="ExtensionTargets">
++  </ImportGroup>
++</Project>
+\ No newline at end of file
+-- 
+2.8.1.windows.1
+
