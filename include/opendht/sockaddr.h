@@ -22,6 +22,10 @@
 
 #ifndef _WIN32
 #include <sys/socket.h>
+#include <netinet/in.h>
+#ifdef __ANDROID__
+typedef uint16_t in_port_t;
+#endif
 #else
 #include <iso646.h>
 #include <ws2def.h>
