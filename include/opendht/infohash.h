@@ -46,7 +46,7 @@ typedef uint16_t in_port_t;
 
 
 // bytes
-#define HASH_LEN 20u
+#define HASH_LEN 32u
 
 namespace dht {
 
