@@ -960,25 +960,23 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
     Blob bnodes;
     if (af == AF_INET) {
         bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
-        const constexpr size_t size = HASH_LEN + sizeof(in_addr) + sizeof(in_port_t); // 26
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
             sockaddr_in *sin = (sockaddr_in*)&n.addr.first;
-            auto dest = bnodes.data() + size * i;
+            auto dest = bnodes.data() + NODE4_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
             memcpy(dest + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
-            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin->sin_port, 2);
+            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin->sin_port, sizeof(in_port_t));
         }
     } else if (af == AF_INET6) {
         bnodes.resize(NODE6_INFO_BUF_LEN * nnode);
-        const constexpr size_t size = HASH_LEN + sizeof(in6_addr) + sizeof(in_port_t); // 38
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
             sockaddr_in6 *sin6 = (sockaddr_in6*)&n.addr.first;
-            auto dest = bnodes.data() + size * i;
+            auto dest = bnodes.data() + NODE6_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
             memcpy(dest + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
-            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, 2);
+            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, sizeof(in_port_t));
         }
     }
     return bnodes;

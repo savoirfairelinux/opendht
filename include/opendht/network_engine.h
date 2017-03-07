@@ -449,9 +449,9 @@ private:
      ***************/
     static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
-    static const constexpr size_t NODE4_INFO_BUF_LEN {26};
+    static const constexpr size_t NODE4_INFO_BUF_LEN {HASH_LEN + sizeof(in_addr) + sizeof(in_port_t)};
     /* the length of a node info buffer in ipv6 format */
-    static const constexpr size_t NODE6_INFO_BUF_LEN {38};
+    static const constexpr size_t NODE6_INFO_BUF_LEN {HASH_LEN + sizeof(in6_addr) + sizeof(in_port_t)};
     /* after a UDP reply, the period during which we tell the link layer about it */
     static constexpr std::chrono::seconds UDP_REPLY_TIME {15};
 
