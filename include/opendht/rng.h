@@ -107,4 +107,14 @@ using random_device = std::random_device;
 using random_device = std::random_device;
 #endif
 
+template<class T = std::mt19937, std::size_t N = T::state_size>
+auto getSeededRandomEngine () -> typename std::enable_if<!!N, T>::type {
+    typename T::result_type random_data[N];
+    random_device source;
+    std::generate(std::begin(random_data), std::end(random_data), std::ref(source));
+    std::seed_seq seeds(std::begin(random_data), std::end(random_data));
+    T seededEngine (seeds);
+    return seededEngine;
+}
+
 }} // dht::crypto

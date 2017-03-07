@@ -14,7 +14,7 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <http://www.gnu.org/licenses/>.
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
 
@@ -72,13 +72,6 @@ set_nonblocking(int fd, int nonblocking)
 
 #endif
 
-static std::mt19937 rd {dht::crypto::random_device{}()};
-#ifdef _WIN32
-static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
-#else
-static std::uniform_int_distribution<uint8_t> rand_byte;
-#endif
-
 namespace dht {
 
 using namespace std::placeholders;
@@ -87,6 +80,13 @@ constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
+
+static std::mt19937 rd = crypto::getSeededRandomEngine();
+#ifdef _WIN32
+static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
+static std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
 // internal structures definition
 
