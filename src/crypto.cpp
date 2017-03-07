@@ -116,7 +116,7 @@ bool aesKeySizeGood(size_t key_size)
 #define GCM_DIGEST_SIZE GCM_BLOCK_SIZE
 #endif
 
-Blob aesEncrypt(const Blob& data, const Blob& key)
+Blob aesEncrypt(const Blob& data, const SecureBlob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
@@ -127,7 +127,7 @@ Blob aesEncrypt(const Blob& data, const Blob& key)
         std::generate_n(ret.begin(), GCM_IV_SIZE, std::bind(rand_byte, std::ref(rdev)));
     }
     struct gcm_aes_ctx aes;
-    gcm_aes_set_key(&aes, key.size(), key.data());
+    gcm_aes_set_key(&aes, key.size(), key.makeInsecure().data());
     gcm_aes_set_iv(&aes, GCM_IV_SIZE, ret.data());
     gcm_aes_update(&aes, data.size(), data.data());
 
@@ -139,13 +139,13 @@ Blob aesEncrypt(const Blob& data, const Blob& key)
 Blob aesEncrypt(const Blob& data, const std::string& password)
 {
     Blob salt;
-    Blob key = stretchKey(password, salt, 256 / 8);
+    SecureBlob key = stretchKey(password, salt, 256 / 8);
     Blob encrypted = aesEncrypt(data, key);
     encrypted.insert(encrypted.begin(), salt.begin(), salt.end());
     return encrypted;
 }
 
-Blob aesDecrypt(const Blob& data, const Blob& key)
+Blob aesDecrypt(const Blob& data, const SecureBlob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
@@ -185,12 +185,12 @@ Blob aesDecrypt(const Blob& data, const std::string& password)
     if (data.size() <= PASSWORD_SALT_LENGTH)
         throw DecryptError("Wrong data size");
     Blob salt {data.begin(), data.begin()+PASSWORD_SALT_LENGTH};
-    Blob key = stretchKey(password, salt, 256/8);
+    SecureBlob key = stretchKey(password, salt, 256/8);
     Blob encrypted {data.begin()+PASSWORD_SALT_LENGTH, data.end()};
     return aesDecrypt(encrypted, key);
 }
 
-Blob stretchKey(const std::string& password, Blob& salt, size_t key_length)
+SecureBlob stretchKey(const std::string& password, Blob& salt, size_t key_length)
 {
     if (salt.empty()) {
         salt.resize(PASSWORD_SALT_LENGTH);
@@ -506,11 +506,7 @@ PublicKey::encrypt(const Blob& data) const
     unsigned aes_key_sz = aesKeySize(max_block_sz);
     if (aes_key_sz == 0)
         throw CryptoException("Key is not long enough for AES128");
-    Blob key(aes_key_sz);
-    {
-        crypto::random_device rdev;
-        std::generate_n(key.begin(), key.size(), std::bind(rand_byte, std::ref(rdev)));
-    }
+    auto key = SecureBlob::getRandom(aes_key_sz);
     auto data_encrypted = aesEncrypt(data, key);
 
     Blob ret;
@@ -940,7 +936,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
 
     if (ca.first && ca.second) {
         if (not ca.second->isCA()) {
-            // Signing certificate must be CA.
+            std::cerr << "Error: signing certificate must be CA." << std::endl;
             return {};
         }
         //if (gnutls_x509_crt_sign2(cert, ca.second->cert, ca.first->x509_key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
