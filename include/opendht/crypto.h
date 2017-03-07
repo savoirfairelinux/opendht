@@ -90,6 +90,8 @@ struct OPENDHT_PUBLIC PublicKey
     void pack(Blob& b) const;
     void unpack(const uint8_t* dat, size_t dat_size);
 
+    std::string toString() const;
+
     template <typename Packer>
     void msgpack_pack(Packer& p) const
     {

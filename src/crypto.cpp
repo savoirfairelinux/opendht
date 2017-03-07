@@ -426,6 +426,22 @@ PublicKey::unpack(const uint8_t* data, size_t data_size)
         throw CryptoException(std::string("Could not read public key: ") + gnutls_strerror(err));
 }
 
+std::string
+PublicKey::toString() const
+{
+    std::string ret;
+    size_t sz = ret.size();
+    int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_PEM, (void*)ret.data(), &sz);
+    if (err ==  GNUTLS_E_SHORT_MEMORY_BUFFER) {
+        ret.resize(sz);
+        int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_PEM, (void*)ret.data(), &sz);
+        if (err != GNUTLS_E_SUCCESS)
+            throw CryptoException(std::string("Could not print public key: ") + gnutls_strerror(err));
+    } else if (err != GNUTLS_E_SUCCESS)
+        throw CryptoException(std::string("Could not print public key: ") + gnutls_strerror(err));
+    return ret;
+}
+
 void
 PublicKey::msgpack_unpack(msgpack::object o)
 {
