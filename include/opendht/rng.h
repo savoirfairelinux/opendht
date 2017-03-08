@@ -20,6 +20,7 @@
 #pragma once
 
 #include <random>
+#include <algorithm>
 
 namespace dht {
 namespace crypto {
