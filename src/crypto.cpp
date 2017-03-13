@@ -27,7 +27,7 @@ extern "C" {
 #include <nettle/gcm.h>
 #include <nettle/aes.h>
 
-#include "argon2/argon2.h"
+#include <argon2.h>
 }
 
 #include <random>

@@ -99,6 +99,24 @@ PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
+dnl Check for Argon2 				
+AC_ARG_WITH([argon2], AS_HELP_STRING([--without-argon2], [Use included Argon2]))
+AS_IF([test "x$with_argon2" != "xno"],
+			[PKG_CHECK_MODULES([Argon2], [libargon2], [have_argon2=yes], [have_argon2=no])],
+			[have_argon2=no])
+AS_IF([test "x$have_argon2" = "xyes"], [], [
+		AS_IF([test "x$with_argon2" = "xyes"], [
+				AC_MSG_ERROR([Argon2 requested but not found])
+		],[
+				AC_MSG_NOTICE([Using included Argon2])
+				AC_CONFIG_FILES(argon2/Makefile)
+				AC_SUBST(Argon2_CFLAGS, "-I\${top_srcdir}/argon2")
+				AC_SUBST(Argon2_LIBS, "\${top_srcdir}/argon2/libargon2.la")
+		])
+])
+
+AM_CONDITIONAL([WITH_INCLUDED_ARGON2], [test "x$have_argon2" = "xno"])
+
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
 AM_COND_IF([ENABLE_TOOLS], [
@@ -120,7 +138,6 @@ AM_COND_IF([USE_CYTHON], [
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/argon2/Makefile
                  tools/Makefile
                  opendht.pc])
 AC_OUTPUT

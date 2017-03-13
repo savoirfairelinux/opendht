@@ -19,12 +19,21 @@ option (OPENDHT_SHARED "Build shared library" ON)
 option (OPENDHT_LOG "Build with logs" ON)
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
+option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 
 find_package (GnuTLS 3.3 REQUIRED)
 find_package (Msgpack 1.2 REQUIRED)
 if (OPENDHT_TOOLS)
     find_package (Readline 6 REQUIRED)
+endif ()
+if (NOT OPENDHT_ARGON2)
+    find_package(PkgConfig)
+    pkg_search_module(argon2 libargon2)
+    if (NOT argon2_FOUND)
+        message("Argon2 not found, using included version.")
+        set(OPENDHT_ARGON2 ON)
+    endif()
 endif ()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
@@ -61,15 +70,20 @@ list (APPEND opendht_SOURCES
     src/network_engine.cpp
     src/securedht.cpp
     src/dhtrunner.cpp
-    src/argon2/argon2.c
-    src/argon2/core.c
-    src/argon2/blake2/blake2b.c
-    src/argon2/thread.c
-    src/argon2/encoding.c
-    src/argon2/ref.c
     src/indexation/pht.cpp
     src/log.cpp
 )
+
+if (OPENDHT_ARGON2)
+    list (APPEND opendht_SOURCES
+        argon2/argon2.c
+        argon2/core.c
+        argon2/blake2/blake2b.c
+        argon2/thread.c
+        argon2/encoding.c
+        argon2/ref.c
+    )
+endif ()
 
 list (APPEND opendht_HEADERS
     include/opendht/def.h
@@ -122,6 +136,12 @@ if (OPENDHT_STATIC)
     if (OPENDHT_LTO)
         target_link_libraries(opendht-static -flto -fuse-linker-plugin)
     endif ()
+    if (OPENDHT_ARGON2)
+        target_include_directories(opendht-static SYSTEM PRIVATE argon2)
+    else ()
+        target_link_libraries(opendht-static ${argon2_LIBRARIES})
+        target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+    endif ()
     target_link_libraries(opendht-static gnutls nettle)
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
@@ -136,6 +156,12 @@ if (OPENDHT_SHARED)
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
     if (OPENDHT_LTO)
         target_link_libraries(opendht -flto -fuse-linker-plugin)
+    endif ()
+    if (OPENDHT_ARGON2)
+        target_include_directories(opendht SYSTEM PRIVATE argon2)
+    else ()
+        target_link_libraries(opendht ${argon2_LIBRARIES})
+        target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht gnutls nettle)
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
