@@ -923,7 +923,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
         }
     }
 
-    return ret;
+    return ret.getPacked();
 }
 
 std::vector<std::shared_ptr<RevocationList>>
