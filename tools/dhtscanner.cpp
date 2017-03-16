@@ -30,6 +30,12 @@ extern "C" {
 
 using namespace dht;
 
+void print_usage() {
+    std::cout << "Usage: dhtscanner [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
+    std::cout << "dhtscanner, a simple OpenDHT command line utility generating scan result the network." << std::endl;
+    std::cout << "Report bugs to: http://opendht.net" << std::endl;
+}
+
 struct snode_compare {
     bool operator() (const std::shared_ptr<Node>& lhs, const std::shared_ptr<Node>& rhs) const{
         return (lhs->id < rhs->id) ||
@@ -73,6 +79,10 @@ main(int argc, char **argv)
     gnutls_global_init();
 #endif
     auto params = parseArgs(argc, argv);
+    if (params.help) {
+        print_usage();
+        return 0;
+    }
 
     DhtRunner dht;
     dht.run(params.port, {}, true, params.network);

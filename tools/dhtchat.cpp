@@ -43,10 +43,20 @@ void print_node_info(const DhtRunner& dht, const dht_params&) {
     std::cout << "Public key ID " << dht.getId() << std::endl;
 }
 
+void print_usage() {
+    std::cout << "Usage: dhtchat [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
+    std::cout << "dhtchat, a simple OpenDHT command line chat client." << std::endl;
+    std::cout << "Report bugs to: http://opendht.net" << std::endl;
+}
+
 int
 main(int argc, char **argv)
 {
     auto params = parseArgs(argc, argv);
+    if (params.help) {
+        print_usage();
+        return 0;
+    }
 #ifdef WIN32_NATIVE
     gnutls_global_init();
 #endif
