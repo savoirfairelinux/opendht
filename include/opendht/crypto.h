@@ -35,6 +35,8 @@ extern "C" {
 #include <iso646.h>
 #endif
 
+#include <sys/mman.h>
+
 namespace dht {
 
 /**
@@ -500,11 +502,19 @@ public:
     secure_vector() {}
     secure_vector(secure_vector<T> const&) = default;
     secure_vector(secure_vector<T> &&) = default;
-    explicit secure_vector(unsigned size): data_(size) {}
-    explicit secure_vector(unsigned size, T _item): data_(size, _item) {}
-    explicit secure_vector(const std::vector<T>& c): data_(c) {}
-    secure_vector(std::vector<T>&& c): data_(std::move(c)) {}
-    ~secure_vector() { clean(); }
+    explicit secure_vector(unsigned size): data_(size) {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    explicit secure_vector(unsigned size, T _item): data_(size, _item) {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    explicit secure_vector(const std::vector<T>& c): data_(c) {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    secure_vector(std::vector<T>&& c): data_(std::move(c)) {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    ~secure_vector() { clean(); munlock(data_.data(), data_.size()*sizeof(T)); }
 
     static secure_vector<T> getRandom(size_t size) {
         secure_vector<T> ret(size/sizeof(T));
@@ -517,6 +527,7 @@ public:
         if (&c == this)
             return *this;
         clean();
+        munlock(data_.data(), data_.size()*sizeof(T));
         data_ = c.data_;
         return *this;
     }
@@ -524,12 +535,15 @@ public:
         if (&c == this)
             return *this;
         clean();
+        munlock(data_.data(), data_.size()*sizeof(T));
         data_ = std::move(c.data_);
         return *this;
     }
     secure_vector<T>& operator=(std::vector<T>&& c) {
         clean();
+        munlock(data_.data(), data_.size()*sizeof(T));
         data_ = std::move(c);
+        mlock(data_.data(), data_.size()*sizeof(T));
         return *this;
     }
     std::vector<T>& writable() { clean(); return data_; }
@@ -551,14 +565,17 @@ public:
         if (s < data_.size()) {
             //shrink
             clean(data_.begin()+s, data_.end());
+            munlock(data_.data()+s, (data_.size()-s)*sizeof(T));
             data_.resize(s);
         } else {
             //grow
             auto data = std::move(data_); // move protected data
             clear();
             data_.resize(s);
+            mlock(data_.data(), data_.size()*sizeof(T));
             std::copy(data.begin(), data.end(), data_.begin());
             clean(data.begin(), data.end());
+            munlock(data.data(), data.size()*sizeof(T));
         }
     }
 
