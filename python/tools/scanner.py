@@ -226,7 +226,7 @@ def update_plot():
         del collection
         collection = None
     collection = ringx.add_collection(RegularPolyCollection(
-                fig.dpi, 6, sizes=(10,), facecolors=colors,
+                int(fig.dpi), 6, sizes=(10,), facecolors=colors,
                 offsets = xys, transOffset = ringx.transData))
 
     node_ip4s, node_ip6s = generate_set()
