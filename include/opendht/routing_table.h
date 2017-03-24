@@ -42,6 +42,14 @@ struct Bucket {
     Sp<Node> randomNode();
 
     void sendCachedPing(net::NetworkEngine& ne);
+
+    /** Return false if there is a single non-expired node in this bucket. */
+    bool expired() const {
+        for (const auto& n : nodes)
+            if (not n->isExpired())
+                return false;
+        return true;
+    }
 };
 
 class RoutingTable : public std::list<Bucket> {
