@@ -37,6 +37,14 @@ struct Bucket {
 
     /** Return a random node in a bucket. */
     Sp<Node> randomNode();
+
+    /** Return false if there is a single non-expired node in this bucket. */
+    bool expired() const {
+        for (const auto& n : nodes)
+            if (not n->isExpired())
+                return false;
+        return true;
+    }
 };
 
 class RoutingTable : public std::list<Bucket> {

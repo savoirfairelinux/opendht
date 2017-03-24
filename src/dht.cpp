@@ -209,7 +209,8 @@ Dht::onNewNode(const Sp<Node>& node, int confirm)
             mybucket_grow_time = now;
         else
             mybucket6_grow_time = now;
-        //scheduler.edit(nextNodesConfirmation, now);
+        if (b->expired())
+            scheduler.edit(nextNodesConfirmation);
     }
 
     if (b->nodes.size() >= TARGET_NODES) {
@@ -1858,7 +1859,7 @@ Dht::bucketMaintenance(RoutingTable& list)
 
     bool sent {false};
     for (auto b = list.begin(); b != list.end(); ++b) {
-        if (b->time < scheduler.time() - std::chrono::minutes(10) || b->nodes.empty()) {
+        if (b->time < scheduler.time() - std::chrono::minutes(10) || b->expired()) {
             /* This bucket hasn't seen any positive confirmation for a long
                time. Pick a random id in this bucket's range, and send a request
                to a random node. */
@@ -1867,11 +1868,11 @@ Dht::bucketMaintenance(RoutingTable& list)
             /* If the bucket is empty, we try to fill it from a neighbour.
                We also sometimes do it gratuitiously to recover from
                buckets full of broken nodes. */
-            if (std::next(b) != list.end() && (q->nodes.empty() || rand_trial(rd)))
+            if (std::next(b) != list.end() && (q->expired() || rand_trial(rd)))
                 q = std::next(b);
-            if (b != list.begin() && (q->nodes.empty() || rand_trial(rd))) {
+            if (b != list.begin() && (q->expired() || rand_trial(rd))) {
                 auto r = std::prev(b);
-                if (!r->nodes.empty())
+                if (!r->expired())
                     q = r;
             }
 
@@ -1881,16 +1882,14 @@ Dht::bucketMaintenance(RoutingTable& list)
 
                 if (network_engine.want() != want) {
                     auto otherbucket = findBucket(id, q->af == AF_INET ? AF_INET6 : AF_INET);
-                    if (otherbucket && otherbucket->nodes.size() < TARGET_NODES)
+                    if ((otherbucket and otherbucket->nodes.size() < TARGET_NODES) or rand_trial_38(rd))
                         /* The corresponding bucket in the other family
                            is emptyish -- querying both is useful. */
                         want = WANT4 | WANT6;
-                    else if (rand_trial_38(rd))
                         /* Most of the time, this just adds overhead.
                            However, it might help stitch back one of
                            the DHTs after a network collapse, so query
                            both, but only very occasionally. */
-                        want = WANT4 | WANT6;
                 }
 
                 DHT_LOG.d(id, n->id, "[node %s] sending find %s for bucket maintenance", n->toString().c_str(), id.toString().c_str());
