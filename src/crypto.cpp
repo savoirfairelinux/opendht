@@ -184,7 +184,7 @@ Blob aesDecrypt(const Blob& data, const Blob& key)
 Blob aesDecrypt(const Blob& data, const std::string& password)
 {
     if (data.size() <= PASSWORD_SALT_LENGTH)
-        throw DecryptError("Wrong data size");    
+        throw DecryptError("Wrong data size");
     Blob salt {data.begin(), data.begin()+PASSWORD_SALT_LENGTH};
     Blob key = stretchKey(password, salt, 256/8);
     Blob encrypted {data.begin()+PASSWORD_SALT_LENGTH, data.end()};
@@ -208,7 +208,7 @@ Blob stretchKey(const std::string& password, Blob& salt, size_t key_length)
 
 Blob hash(const Blob& data, size_t hash_len)
 {
-    auto algo = gnutlsHashAlgo(hash_len);    
+    auto algo = gnutlsHashAlgo(hash_len);
     size_t res_size = gnutlsHashSize(algo);
     Blob res;
     res.resize(res_size);
@@ -239,7 +239,7 @@ PrivateKey::PrivateKey(const Blob& import, const std::string& password)
 
     const gnutls_datum_t dt {(uint8_t*)import.data(), static_cast<unsigned>(import.size())};
     const char* password_ptr = password.empty() ? nullptr : password.c_str();
-    int flags = password.empty() ? GNUTLS_PKCS_PLAIN 
+    int flags = password.empty() ? GNUTLS_PKCS_PLAIN
                 : ( GNUTLS_PKCS_PBES2_AES_128 | GNUTLS_PKCS_PBES2_AES_192  | GNUTLS_PKCS_PBES2_AES_256
                   | GNUTLS_PKCS_PKCS12_3DES   | GNUTLS_PKCS_PKCS12_ARCFOUR | GNUTLS_PKCS_PKCS12_RC2_40);
 
@@ -669,7 +669,7 @@ getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
             ? gnutls_x509_crt_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz)
             : gnutls_x509_crt_get_dn_by_oid(       cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
     if (ret != GNUTLS_E_SUCCESS)
-        return {};  
+        return {};
     dn.resize(dn_sz);
     return dn;
 }
@@ -1025,7 +1025,7 @@ getCRLIssuerDN(gnutls_x509_crl_t cert, const char* oid)
     size_t dn_sz = dn.size();
     int ret = gnutls_x509_crl_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
     if (ret != GNUTLS_E_SUCCESS)
-        return {};  
+        return {};
     dn.resize(dn_sz);
     return dn;
 }
@@ -1109,7 +1109,7 @@ RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration vali
     } else
         number = endian(endian(number) + 1);
     if (auto err = gnutls_x509_crl_set_number(crl, &number, sizeof(number)))
-        throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));   
+        throw CryptoException(std::string("Can't set CRL update time: ") + gnutls_strerror(err));
     if (auto err = gnutls_x509_crl_sign2(crl, ca.cert, key.x509_key, GNUTLS_DIG_SHA512, 0))
         throw CryptoException(std::string("Can't sign certificate revocation list: ") + gnutls_strerror(err));
     // to be able to actually use the CRL we need to serialize/deserialize it
