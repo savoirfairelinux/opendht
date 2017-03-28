@@ -752,6 +752,16 @@ DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& 
 }
 
 void
+DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops_prio.emplace([addr,cb](SecureDht& dht) mutable {
+        dht.pingNode((const sockaddr*)&addr.first, addr.second, std::move(cb));
+    });
+    cv.notify_all();
+}
+
+void
 DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 {
     {

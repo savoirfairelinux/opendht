@@ -204,6 +204,7 @@ public:
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
     void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb={});
+    void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
