@@ -241,6 +241,24 @@ cdef class NodeSet(object):
     def __iter__(self):
         return NodeSetIter(self)
 
+cdef class PrivateKey(_WithID):
+    cdef cpp.PrivateKey _key
+    def getId(self):
+        h = InfoHash()
+        h._infohash = self._key.getPublicKey().getId()
+        return h
+    def getPublicKey(self):
+        pk = PublicKey()
+        pk._key = self._key.getPublicKey()
+        return pk
+    def __str__(self):
+        return self.getId().toString().decode()
+    @staticmethod
+    def generate():
+        k = PrivateKey()
+        k._key = cpp.PrivateKey.generate()
+        return k
+
 cdef class PublicKey(_WithID):
     cdef cpp.PublicKey _key
     def getId(self):
@@ -250,10 +268,23 @@ cdef class PublicKey(_WithID):
 
 cdef class Certificate(_WithID):
     cdef shared_ptr[cpp.Certificate] _cert
+    def __init__(self, bytes dat = None):
+        if dat:
+            self._cert = cpp.make_shared[cpp.Certificate](<cpp.string>dat)
     def getId(self):
         h = InfoHash()
-        h._infohash = self._cert.get().getId()
+        if self._cert:
+            h._infohash = self._cert.get().getId()
         return h
+    def toString(self):
+        return self._cert.get().toString().decode()
+    @staticmethod
+    def generate(PrivateKey k, str name, Identity i = Identity(), bool is_ca = False):
+        c = Certificate()
+        c._cert = cpp.make_shared[cpp.Certificate](cpp.Certificate.generate(k._key, name.encode(), i._id, is_ca))
+        return c
+    def __bytes__(self):
+        return self._cert.get().toString() if self._cert else b''
 
 cdef class ListenToken(object):
     cdef cpp.InfoHash _h
@@ -297,7 +328,8 @@ cdef class DhtRunner(_WithID):
         self.thisptr.reset(new cpp.DhtRunner())
     def getId(self):
         h = InfoHash()
-        h._infohash = self.thisptr.get().getId()
+        if self.thisptr:
+            h._infohash = self.thisptr.get().getId()
         return h
     def getNodeId(self):
         return self.thisptr.get().getNodeId().toString()

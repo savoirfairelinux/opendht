@@ -250,7 +250,10 @@ struct OPENDHT_PUBLIC Certificate {
      * ordered from subject to issuer
      */
     Certificate(const Blob& crt);
-    Certificate(const uint8_t* dat, size_t dat_size) {
+    Certificate(const std::string& pem) : cert(nullptr) {
+        unpack((const uint8_t*)pem.data(), pem.size());
+    }
+    Certificate(const uint8_t* dat, size_t dat_size) : cert(nullptr) {
         unpack(dat, dat_size);
     }
 

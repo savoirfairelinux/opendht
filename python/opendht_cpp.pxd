@@ -32,7 +32,9 @@ cdef extern from "<memory>" namespace "std" nogil:
         shared_ptr(T*) except +
         T* get()
         T operator*()
+        bool operator bool() const
         void reset(T*)
+    shared_ptr[T] make_shared[T](...) except +
 
 cdef extern from "<functional>" namespace "std" nogil:
     cdef cppclass hash[T]:
@@ -82,6 +84,8 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     cdef cppclass PrivateKey:
         PrivateKey()
         PublicKey getPublicKey() const
+        @staticmethod
+        PrivateKey generate()
 
     cdef cppclass PublicKey:
         PublicKey()
@@ -89,7 +93,11 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
     cdef cppclass Certificate:
         Certificate()
+        Certificate(string pem)
         InfoHash getId() const
+        string toString() const
+        @staticmethod
+        Certificate generate(PrivateKey key, string name, Identity ca, bool is_ca)
 
 cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:
