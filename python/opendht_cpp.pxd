@@ -157,7 +157,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void join()
         void shutdown(ShutdownCallback)
         bool isRunning()
-        SockAddr getBound() const
+        SockAddr getBound(sa_family_t af) const
         string getStorageLog() const
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const
