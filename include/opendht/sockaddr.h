@@ -83,12 +83,13 @@ public:
             break;
         }
     }
+
     in_port_t getPort() const {
         switch(getFamily()) {
         case AF_INET:
-            return getIPv4().sin_port;
+            return ntohs(getIPv4().sin_port);
         case AF_INET6:
-            return getIPv6().sin6_port;
+            return ntohs(getIPv6().sin6_port);
         default:
             return 0;
         }
@@ -96,10 +97,10 @@ public:
     void setPort(in_port_t p) {
         switch(getFamily()) {
         case AF_INET:
-            getIPv4().sin_port = p;
+            getIPv4().sin_port = htons(p);
             break;
         case AF_INET6:
-            getIPv6().sin6_port = p;
+            getIPv6().sin6_port = htons(p);
             break;
         }
     }

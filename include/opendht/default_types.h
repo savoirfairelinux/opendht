@@ -225,7 +225,7 @@ public:
     void msgpack_pack(Packer& pk) const
     {
         pk.pack_array(2);
-        pk.pack(getPort());
+        pk.pack(reinterpret_cast<const sockaddr_in*>(&ss)->sin_port);
         if (ss.ss_family == AF_INET) {
             pk.pack_bin(sizeof(in_addr));
             pk.pack_bin_body((const char*)&reinterpret_cast<const sockaddr_in*>(&ss)->sin_addr, sizeof(in_addr));
@@ -239,7 +239,7 @@ public:
     {
         if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
         if (o.via.array.size < 2) throw msgpack::type_error();
-        setPort(o.via.array.ptr[0].as<in_port_t>());
+        reinterpret_cast<sockaddr_in*>(&ss)->sin_port = o.via.array.ptr[0].as<in_port_t>();
         auto ip_dat = o.via.array.ptr[1].as<Blob>();
         if (ip_dat.size() == sizeof(in_addr))
             std::copy(ip_dat.begin(), ip_dat.end(), (char*)&reinterpret_cast<sockaddr_in*>(&ss)->sin_addr);
