@@ -26,6 +26,7 @@ import threading
 import queue
 import re
 import traceback
+import subprocess
 
 import ipaddress
 import netifaces
@@ -39,7 +40,7 @@ from opendht import *
 # useful functions
 b_space_join = lambda *l: b' '.join(map(bytes, l))
 
-class DhtNetworkSubProcess(NSPopen):
+class DhtNetworkSubProcess():
     """
     Handles communication with DhtNetwork sub process.
 
@@ -64,10 +65,14 @@ class DhtNetworkSubProcess(NSPopen):
     MESSAGE_STATS             = "gms"  # "gms"
 
     def __init__(self, ns, cmd, quit=False, **kwargs):
-        super(DhtNetworkSubProcess, self).__init__(ns, cmd, **kwargs)
-        self._setStdoutFlags()
-        self._virtual_ns = ns
+        self._virtual_ns = None
+        if ns:
+            self._popen = NSPopen(ns, cmd, **kwargs)
+            self._virtual_ns = ns
+        else:
+            self._popen = subprocess.Popen(cmd, **kwargs)
 
+        self._setStdoutFlags()
         self._quit = quit
         self._lock = threading.Condition()
         self._in_queue = queue.Queue()
@@ -79,15 +84,23 @@ class DhtNetworkSubProcess(NSPopen):
         self._thread.start()
 
     def __repr__(self):
-        return 'DhtNetwork on virtual namespace "%s"' % self._virtual_ns
+        return 'DhtNetwork ' +\
+               'on virtual namespace "%s"' % self._virtual_ns if self._virtual_ns\
+           else\
+               '(pid: %s)' % str(self._popen.pid)
 
     def _setStdoutFlags(self):
         """
         Sets non-blocking read flags for subprocess stdout file descriptor.
         """
         import fcntl
-        flags = self.stdout.fcntl(fcntl.F_GETFL)
-        self.stdout.fcntl(fcntl.F_SETFL, flags | os.O_NDELAY)
+        if self._virtual_ns:
+            flags = self._popen.stdout.fcntl(fcntl.F_GETFL)
+            self._popen.stdout.fcntl(fcntl.F_SETFL, flags | os.O_NDELAY)
+        else:
+            flags = fcntl.fcntl(self._popen.stdout, fcntl.F_GETFL)
+            fcntl.fcntl(self._popen.stdout, fcntl.F_SETFL, flags | os.O_NDELAY)
+
 
     def _communicate(self):
         """
@@ -101,14 +114,14 @@ class DhtNetworkSubProcess(NSPopen):
                     packet = self._in_queue.get_nowait()
 
                     # sending data to sub process
-                    self.stdin.write(packet)
-                    self.stdin.flush()
+                    self._popen.stdin.write(packet)
+                    self._popen.stdin.flush()
                 except queue.Empty:
                     pass
 
                 # reading from sub process
                 out_string = ''
-                for p in msgpack.Unpacker(self.stdout):
+                for p in msgpack.Unpacker(self._popen.stdout):
                     if isinstance(p, dict):
                         self._process_packet(p)
                     else:
@@ -140,9 +153,10 @@ class DhtNetworkSubProcess(NSPopen):
         until the sub process finishes.
         """
         self._stop_communicating()
-        self.send_signal(signal.SIGINT);
-        self.wait()
-        self.release()
+        self._popen.send_signal(signal.SIGINT);
+        self._popen.wait()
+        if self._virtual_ns:
+            self._popen.release()
 
     def _send(self, msg):
         """
@@ -310,13 +324,15 @@ class DhtNetwork(object):
             DhtNetwork.Log._log_with_color(*to_print, color=DhtNetwork.Log.RED)
 
     @staticmethod
-    def run_node(ip4, ip6, p, bootstrap=[], is_bootstrap=False):
-        DhtNetwork.Log.log("run_node", ip4, ip6, p, bootstrap)
+    def run_node(ip4, ip6, port=0, bootstrap=[], is_bootstrap=False):
+        import socket
         n = DhtRunner()
-        n.run(ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
+        n.run(ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=port, is_bootstrap=is_bootstrap)
         for b in bootstrap:
             n.bootstrap(b[0], b[1])
         time.sleep(.01)
+        p = n.getBound(socket.AF_INET).getPort()
+        DhtNetwork.Log.log("run_node", ip4, ip6, p, "bootstrap info:", bootstrap)
         return ((ip4, ip6, p), n, id)
 
     @staticmethod
@@ -328,18 +344,16 @@ class DhtNetwork(object):
         if_ip6 = netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr']
         return (if_ip4, if_ip6)
 
-    def __init__(self, iface=None, ip4=None, ip6=None, port=4000, bootstrap=[], first_bootstrap=False):
+    def __init__(self, iface=None, ip4=None, ip6=None, bs_port=5000, bootstrap=[], first_bootstrap=False):
         DhtNetwork.iface = iface
-        self.port = port
         ips = DhtNetwork.find_ip(iface)
         self.ip4 = ip4 if ip4 else ips[0]
         self.ip6 = ip6 if ip6 else ips[1]
         self.bootstrap = bootstrap
         if first_bootstrap:
             DhtNetwork.Log.log("Starting bootstrap node")
-            self.nodes.append(DhtNetwork.run_node(self.ip4, self.ip6, self.port, self.bootstrap, is_bootstrap=True))
-            self.bootstrap = [(self.ip4, str(self.port))]
-            self.port += 1
+            self.nodes.append(DhtNetwork.run_node(self.ip4, self.ip6, port=bs_port, bootstrap=self.bootstrap, is_bootstrap=True))
+            self.bootstrap = [(self.ip4, self.nodes[-1][0][2])]
         #print(self.ip4, self.ip6, self.port)
 
     def front(self):
@@ -366,12 +380,11 @@ class DhtNetwork(object):
         return None
 
     def launch_node(self):
-        n = DhtNetwork.run_node(self.ip4, self.ip6, self.port, self.bootstrap)
+        n = DhtNetwork.run_node(self.ip4, self.ip6, bootstrap=self.bootstrap)
         self.nodes.append(n)
         if not self.bootstrap:
             DhtNetwork.Log.log("Using fallback bootstrap", self.ip4, self.port)
             self.bootstrap = [(self.ip4, str(self.port))]
-        self.port += 1
         return n
 
     def end_node(self, id=None, shutdown=False, last_msg_stats=None):
@@ -500,10 +513,9 @@ if __name__ == '__main__':
         parser = argparse.ArgumentParser(description='Create a dht network of -n nodes')
         parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
         parser.add_argument('-I', '--iface', help='local interface to bind', default='any')
-        parser.add_argument('-p', '--port', help='start of port range (port, port+node_num)', type=int, default=4000)
         parser.add_argument('-b', '--bootstrap', help='bootstrap address')
         parser.add_argument('-b6', '--bootstrap6', help='bootstrap address (IPv6)')
-        parser.add_argument('-bp', '--bootstrap-port', help='bootstrap port', default="4000")
+        parser.add_argument('-bp', '--bootstrap-port', help='bootstrap port', default="5000")
         args = parser.parse_args()
 
         bs = []
@@ -512,7 +524,7 @@ if __name__ == '__main__':
         if args.bootstrap6:
             bs.append((args.bootstrap6, args.bootstrap_port))
 
-        net = DhtNetwork(iface=args.iface, port=args.port, bootstrap=bs)
+        net = DhtNetwork(iface=args.iface, bootstrap=bs)
         net.resize(args.node_num)
 
         q = queue.Queue()

@@ -40,8 +40,9 @@ class WorkBench():
     nodes and cluster to create, etc. This class is also used to initialise and
     finish the network.
     """
-    def __init__(self, ifname='ethdht', virtual_locs=8, node_num=32, remote_bootstrap=None, loss=0, delay=0, disable_ipv4=False,
-            disable_ipv6=False):
+    def __init__(self, ifname='lo', virtual_ns=False, virtual_locs=8, node_num=32, remote_bootstrap=None, loss=0,
+                 delay=0, disable_ipv4=False, disable_ipv6=False):
+        self.virtual_ns   = virtual_ns
         self.ifname       = ifname
         self.virtual_locs = virtual_locs
         self.node_num     = node_num
@@ -54,14 +55,14 @@ class WorkBench():
 
         self.remote_bootstrap = remote_bootstrap
         self.local_bootstrap  = None
-        self.bs_port          = "5000"
+        self.bs_port          = 5000
         self.procs            = [None for _ in range(self.clusters)]
 
     def get_bootstrap(self):
         if not self.local_bootstrap:
-            self.local_bootstrap = DhtNetwork(iface='br'+self.ifname,
-                    first_bootstrap=False if self.remote_bootstrap else True,
-                    bootstrap=[(self.remote_bootstrap, self.bs_port)] if self.remote_bootstrap else [])
+            self.local_bootstrap = DhtNetwork(iface='br'+self.ifname if self.virtual_ns else self.ifname,
+                    first_bootstrap=not bool(self.remote_bootstrap),
+                    bootstrap=[(self.remote_bootstrap, str(self.bs_port))] if self.remote_bootstrap else [])
         return self.local_bootstrap
 
     def create_virtual_net(self):
@@ -81,14 +82,18 @@ class WorkBench():
             print(output.decode())
 
     def destroy_virtual_net(self):
-        print('Shuting down the virtual IP network.')
-        subprocess.call(["python3", os.path.abspath(virtual_network_builder.__file__), "-i", self.ifname, "-n", str(self.clusters), "-r"])
+        cmd = ["python3", os.path.abspath(virtual_network_builder.__file__), "-i", self.ifname, "-n", str(self.clusters), "-r"]
+        print(cmd)
+        subprocess.call(cmd)
 
     def start_cluster(self, i):
         if self.local_bootstrap:
-            cmd = ["python3", os.path.abspath(dhtnetwork.__file__), "-n", str(self.node_per_loc), '-I', self.ifname+str(i)+'.1']
+            cmd = ["python3", os.path.abspath(dhtnetwork.__file__),
+                    "-n", str(self.node_per_loc),
+                    '-I', self.ifname+str(i)+'.1' if self.virtual_ns else self.ifname]
+
             if self.remote_bootstrap:
-                cmd.extend(['-b', self.remote_bootstrap, '-bp', "5000"])
+                cmd.extend(['-b', self.remote_bootstrap, '-bp', str(self.bs_port)])
             else:
                 if not self.disable_ipv4 and self.local_bootstrap.ip4:
                     cmd.extend(['-b', self.local_bootstrap.ip4])
@@ -102,7 +107,10 @@ class WorkBench():
                 with lock:
                     lock.notify()
             with lock:
-                self.procs[i] = DhtNetworkSubProcess('node'+str(i), cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                self.procs[i] = DhtNetworkSubProcess('node'+str(i) if self.virtual_ns else None,
+                                                     cmd,
+                                                     stdin=subprocess.PIPE,
+                                                     stdout=subprocess.PIPE)
                 self.procs[i].sendPing(done_cb=dcb)
                 lock.wait()
         else:
@@ -147,7 +155,9 @@ if __name__ == '__main__':
             'DHT network on a local virtual network with simulated packet '\
             'loss and latency.')
     ifConfArgs = parser.add_argument_group('Virtual interface configuration')
-    ifConfArgs.add_argument('-i', '--ifname', default='ethdht', help='interface name')
+    ifConfArgs.add_argument('-i', '--ifname', default='lo', help='interface name')
+    ifConfArgs.add_argument('--virt-ns', action='store_true', help='Create virtual namespaces. This option is needed'\
+                            ' required for options -v,-l,-d to have any effect.')
     ifConfArgs.add_argument('-n', '--node-num', type=int, default=32, help='number of dht nodes to run')
     ifConfArgs.add_argument('-v', '--virtual-locs', type=int, default=8,
             help='number of virtual locations (node clusters)')
@@ -183,9 +193,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
     test_opt = { o : True for o in args.opt }
 
-    wb = WorkBench(args.ifname, args.virtual_locs, args.node_num, loss=args.loss,
-            delay=args.delay, disable_ipv4=args.disable_ipv4,
-            disable_ipv6=args.disable_ipv6)
+    wb = WorkBench(ifname=args.ifname, virtual_ns=args.virt_ns, virtual_locs=args.virtual_locs,
+                   node_num=args.node_num, remote_bootstrap=args.bootstrap, loss=args.loss, delay=args.delay, disable_ipv4=args.disable_ipv4,
+                   disable_ipv6=args.disable_ipv6)
+
+    if args.virt_ns:
+        wb.create_virtual_net()
+
     bootstrap = wb.get_bootstrap()
 
     bs_dht_log_enabled = False
@@ -203,11 +217,12 @@ if __name__ == '__main__':
         bs_dht_log_enabled = True
         bootstrap.front().enableLogging()
 
-    wb.create_virtual_net()
     bootstrap.resize(1)
-    print("Launching", wb.node_num, "nodes (", wb.clusters, "clusters of", wb.node_per_loc, "nodes)")
 
     try:
+        print("Launching", wb.node_num, "nodes",
+              "("+str(wb.clusters)+" clusters of "+str(wb.node_per_loc)+" nodes)" if args.virt_ns \
+              else "(on interface \'"+args.ifname+"\')")
         for i in range(wb.clusters):
             wb.start_cluster(i)
 
@@ -234,7 +249,8 @@ if __name__ == '__main__':
             if p:
                 p.quit()
         bootstrap.resize(0)
-        sys.stdout.write('Shutting down the virtual IP network... ')
-        sys.stdout.flush()
-        wb.destroy_virtual_net()
+        if args.virt_ns:
+            sys.stdout.write('Shutting down the virtual IP network... ')
+            sys.stdout.flush()
+            wb.destroy_virtual_net()
         print('Done.')
