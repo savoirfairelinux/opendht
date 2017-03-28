@@ -227,6 +227,12 @@ public:
     time_point getNextUpdateTime() const;
 
     gnutls_x509_crl_t get() { return crl; }
+    gnutls_x509_crl_t getCopy() const {
+        auto copy = RevocationList(getPacked());
+        gnutls_x509_crl_t ret = copy.crl;
+        copy.crl = nullptr;
+        return ret;
+    }
 
 private:
     gnutls_x509_crl_t crl {};
@@ -398,6 +404,13 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(std::shared_ptr<RevocationList>);
 
     static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
+
+    gnutls_x509_crt_t getCopy() const {
+        auto copy = Certificate(getPacked());
+        gnutls_x509_crt_t ret = copy.cert;
+        copy.cert = nullptr;
+        return ret;
+    }
 
     gnutls_x509_crt_t cert {};
     std::shared_ptr<Certificate> issuer {};
