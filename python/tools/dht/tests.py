@@ -12,6 +12,7 @@ import time
 import subprocess
 import re
 import collections
+import traceback
 
 from matplotlib.ticker import FuncFormatter
 import math
@@ -302,7 +303,8 @@ class PhtTest(FeatureTest):
             if self._test == 'insert':
                 self._insertTest()
         except Exception as e:
-            print(e)
+            traceback.print_tb(e.__traceback__)
+            print(type(e).__name__+':', e, file=sys.stderr)
         finally:
             self._bootstrap.resize(1)
 

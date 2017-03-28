@@ -31,7 +31,8 @@ import subprocess
 import ipaddress
 import netifaces
 import numpy as np
-from pyroute2.netns.process.proxy import NSPopen
+if "linux" in sys.platform:
+    from pyroute2.netns.process.proxy import NSPopen
 import msgpack
 
 from opendht import *
