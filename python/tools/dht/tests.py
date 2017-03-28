@@ -11,6 +11,7 @@ import string
 import time
 import subprocess
 import re
+import traceback
 import collections
 
 from matplotlib.ticker import FuncFormatter
