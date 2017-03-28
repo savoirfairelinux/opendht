@@ -601,10 +601,10 @@ void
 DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([addr,cb](SecureDht& dht) mutable {
-        dht.pingNode((const sockaddr*)&addr.first, addr.second, std::move(cb));
+    pending_ops_prio.emplace([addr,cb=std::move(cb)](SecureDht& dht) mutable {
+        dht.pingNode(addr, std::move(cb));
     });
-    cv.notify_all();
+    uv_async_send(&uv_async_);
 }
 
 void
