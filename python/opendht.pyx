@@ -125,6 +125,23 @@ cdef class InfoHash(_WithID):
         h._infohash = cpp.InfoHash.getRandom()
         return h
 
+cdef class SockAddr(object):
+    cdef cpp.SockAddr _addr
+    def toString(SockAddr self):
+        return self._addr.toString()
+    def getPort(SockAddr self):
+        return self._addr.getPort()
+    def getFamily(SockAddr self):
+        return self._addr.getFamily()
+    def setPort(SockAddr self, cpp.in_port_t port):
+        return self._addr.setPort(port)
+    def setFamily(SockAddr self, cpp.sa_family_t af):
+        return self._addr.setFamily(af)
+    def __str__(self):
+        return self.toString().decode()
+    def __repr__(self):
+        return "<%s '%s'>" % (self.__class__.__name__, str(self))
+
 cdef class Node(_WithID):
     cdef shared_ptr[cpp.Node] _node
     def getId(self):
@@ -284,11 +301,31 @@ cdef class DhtRunner(_WithID):
         return h
     def getNodeId(self):
         return self.thisptr.get().getNodeId().toString()
-    def bootstrap(self, str host, str port=None):
-        if port:
-            self.thisptr.get().bootstrap(host.encode(), port.encode())
+    def bootstrap(self, SockAddr addr, done_cb=None):
+        if done_cb:
+            cb_obj = {'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.get().bootstrap(addr._addr, cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj))
         else:
-            self.thisptr.get().bootstrap(host.encode(), b'4222')
+            lock = threading.Condition()
+            pending = 0
+            ok = False
+            def tmp_done(ok_ret):
+                nonlocal pending, ok, lock
+                with lock:
+                    ok = ok_ret
+                    pending -= 1
+                    lock.notify()
+            with lock:
+                pending += 1
+                self.bootstrap(addr, done_cb=tmp_done)
+                while pending > 0:
+                    lock.wait()
+            return ok
+    def bootstrap(self, str host, str port=None):
+        host_bytes = host.encode()
+        port_bytes = port.encode() if port else b'4222'
+        self.thisptr.get().bootstrap(<cpp.const_char*>host_bytes, <cpp.const_char*>port_bytes)
     def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=DhtConfig()):
         if id:
             config.setIdentity(id)
@@ -312,6 +349,10 @@ cdef class DhtRunner(_WithID):
         cpp.enableFileLogging(self.thisptr.get()[0], path.encode())
     def isRunning(self):
         return self.thisptr.get().isRunning()
+    def getBound(self):
+        s = SockAddr()
+        s._addr = self.thisptr.get().getBound()
+        return s
     def getStorageLog(self):
         return self.thisptr.get().getStorageLog().decode()
     def getRoutingTablesLog(self, cpp.sa_family_t af):

@@ -21,6 +21,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
 from libcpp.map cimport map
+from libc.string cimport const_char, const_uchar
 
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
@@ -64,6 +65,15 @@ cdef extern from "opendht/infohash.h" namespace "dht":
         InfoHash getRandom()
         bool operator==(InfoHash)
         bool operator<(InfoHash)
+
+cdef extern from "opendht/sockaddr.h" namespace "dht":
+    cdef cppclass SockAddr:
+        SockAddr() except +
+        string toString() const
+        in_port_t getPort() const
+        void setPort(in_port_t p)
+        sa_family_t getFamily() const
+        void setFamily(sa_family_t f)
 
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
@@ -140,12 +150,14 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
             bool threaded
         InfoHash getId() const
         InfoHash getNodeId() const
-        void bootstrap(const char*, const char*)
+        void bootstrap(const_char*, const_char*)
+        void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
         void run(in_port_t, Config config)
-        void run(const char*, const char*, const char*, Config config)
+        void run(const_char*, const_char*, const_char*, Config config)
         void join()
         void shutdown(ShutdownCallback)
         bool isRunning()
+        SockAddr getBound() const
         string getStorageLog() const
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const
