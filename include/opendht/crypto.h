@@ -399,6 +399,13 @@ struct OPENDHT_PUBLIC Certificate {
 
     static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
 
+    gnutls_x509_crt_t getRawCopy() const {
+        auto copy = Certificate(getPacked());
+        gnutls_x509_crt_t ret = copy.cert;
+        copy.cert = nullptr;
+        return ret;
+    }
+
     gnutls_x509_crt_t cert {};
     std::shared_ptr<Certificate> issuer {};
 private:
