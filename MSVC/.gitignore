@@ -245,3 +245,4 @@ _Pvt_Extensions
 .fake/
 
 !config.h
+contrib/build/

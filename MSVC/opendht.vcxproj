@@ -208,7 +208,7 @@ copy ..\include\opendht.h $(OutDir)\include\</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)contrib\build\include;$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)contrib\build\msgpack-c\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)contrib\build\include;$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)contrib\build\msgpack-c\include;$(ProjectDir)..\argon2</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS %(AdditionalOptions)</AdditionalOptions>
