@@ -21,6 +21,7 @@
 
 #include <random>
 #include <algorithm>
+#include <functional>
 
 namespace dht {
 namespace crypto {
