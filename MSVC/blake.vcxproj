@@ -137,13 +137,13 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\argon2\blake2\blake2b.c" />
+    <ClCompile Include="..\argon2\blake2\blake2b.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\argon2\blake2\blake2-impl.h" />
-    <ClInclude Include="..\src\argon2\blake2\blake2.h" />
-    <ClInclude Include="..\src\argon2\blake2\blamka-round-opt.h" />
-    <ClInclude Include="..\src\argon2\blake2\blamka-round-ref.h" />
+    <ClInclude Include="..\argon2\blake2\blake2-impl.h" />
+    <ClInclude Include="..\argon2\blake2\blake2.h" />
+    <ClInclude Include="..\argon2\blake2\blamka-round-opt.h" />
+    <ClInclude Include="..\argon2\blake2\blamka-round-ref.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

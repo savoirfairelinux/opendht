@@ -141,20 +141,20 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\src\argon2\argon2.c" />
-    <ClCompile Include="..\src\argon2\core.c" />
-    <ClCompile Include="..\src\argon2\encoding.c" />
-    <ClCompile Include="..\src\argon2\opt.c" />
-    <ClCompile Include="..\src\argon2\ref.c" />
-    <ClCompile Include="..\src\argon2\thread.c" />
+    <ClCompile Include="..\argon2\argon2.c" />
+    <ClCompile Include="..\argon2\core.c" />
+    <ClCompile Include="..\argon2\encoding.c" />
+    <ClCompile Include="..\argon2\opt.c" />
+    <ClCompile Include="..\argon2\ref.c" />
+    <ClCompile Include="..\argon2\thread.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\argon2\argon2.h" />
-    <ClInclude Include="..\src\argon2\core.h" />
-    <ClInclude Include="..\src\argon2\encoding.h" />
-    <ClInclude Include="..\src\argon2\opt.h" />
-    <ClInclude Include="..\src\argon2\ref.h" />
-    <ClInclude Include="..\src\argon2\thread.h" />
+    <ClInclude Include="..\argon2\argon2.h" />
+    <ClInclude Include="..\argon2\core.h" />
+    <ClInclude Include="..\argon2\encoding.h" />
+    <ClInclude Include="..\argon2\opt.h" />
+    <ClInclude Include="..\argon2\ref.h" />
+    <ClInclude Include="..\argon2\thread.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
