@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\src\callbacks.cpp" />
+    <ClCompile Include="..\src\crypto.cpp" />
+    <ClCompile Include="..\src\default_types.cpp" />
+    <ClCompile Include="..\src\dht.cpp" />
+    <ClCompile Include="..\src\dhtrunner.cpp" />
+    <ClCompile Include="..\src\indexation\pht.cpp" />
+    <ClCompile Include="..\src\infohash.cpp" />
+    <ClCompile Include="..\src\log.cpp" />
+    <ClCompile Include="..\src\network_engine.cpp" />
+    <ClCompile Include="..\src\node.cpp" />
+    <ClCompile Include="..\src\node_cache.cpp" />
+    <ClCompile Include="..\src\routing_table.cpp" />
+    <ClCompile Include="..\src\securedht.cpp" />
+    <ClCompile Include="..\src\utils.cpp" />
+    <ClCompile Include="..\src\value.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\include\opendht.h" />
+    <ClInclude Include="..\include\opendht\callbacks.h" />
+    <ClInclude Include="..\include\opendht\crypto.h" />
+    <ClInclude Include="..\include\opendht\default_types.h" />
+    <ClInclude Include="..\include\opendht\dht.h" />
+    <ClInclude Include="..\include\opendht\dhtrunner.h" />
+    <ClInclude Include="..\include\opendht\indexation\pht.h" />
+    <ClInclude Include="..\include\opendht\infohash.h" />
+    <ClInclude Include="..\include\opendht\log.h" />
+    <ClInclude Include="..\include\opendht\log_enable.h" />
+    <ClInclude Include="..\include\opendht\network_engine.h" />
+    <ClInclude Include="..\include\opendht\node.h" />
+    <ClInclude Include="..\include\opendht\node_cache.h" />
+    <ClInclude Include="..\include\opendht\rate_limiter.h" />
+    <ClInclude Include="..\include\opendht\request.h" />
+    <ClInclude Include="..\include\opendht\rng.h" />
+    <ClInclude Include="..\include\opendht\routing_table.h" />
+    <ClInclude Include="..\include\opendht\scheduler.h" />
+    <ClInclude Include="..\include\opendht\securedht.h" />
+    <ClInclude Include="..\include\opendht\utils.h" />
+    <ClInclude Include="..\include\opendht\value.h" />
+  </ItemGroup>
+</Project>

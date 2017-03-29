@@ -15,7 +15,6 @@ Release/
 *.VC.VC.opendb
 *.VC.db
 *.db
-*.filters
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -246,3 +245,4 @@ _Pvt_Extensions
 .fake/
 
 !config.h
+contrib/build/
