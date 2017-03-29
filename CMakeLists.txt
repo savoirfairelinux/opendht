@@ -74,6 +74,17 @@ list (APPEND opendht_SOURCES
     src/log.cpp
 )
 
+if (OPENDHT_ARGON2)
+    list (APPEND opendht_SOURCES
+        argon2/argon2.c
+        argon2/core.c
+        argon2/blake2/blake2b.c
+        argon2/thread.c
+        argon2/encoding.c
+        argon2/ref.c
+    )
+endif ()
+
 list (APPEND opendht_HEADERS
     include/opendht/def.h
     include/opendht/utils.h
@@ -105,28 +116,12 @@ configure_file (
     @ONLY
 )
 
-include_directories(
+include_directories (
     ./
     include/
     include/opendht/
     ${CMAKE_CURRENT_BINARY_DIR}/include/
 )
-if(OPENDHT_ARGON2)
-    # make sure argon2 submodule is up to date and initialized
-    message("Initializing Argon2 submodule")
-    execute_process(COMMAND git submodule update --init)
-
-    # add local argon2 files to build
-    list (APPEND opendht_SOURCES
-        argon2/src/argon2.c
-        argon2/src/core.c
-        argon2/src/blake2/blake2b.c
-        argon2/src/thread.c
-        argon2/src/ref.c
-        argon2/src/encoding.c
-    )
-    include_directories(argon2/include/)
-endif()
 
 if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
     set(CMAKE_INSTALL_LIBDIR lib)

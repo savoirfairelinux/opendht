@@ -2,6 +2,10 @@ AM_CXXFLAGS = -pthread
 
 SUBDIRS =
 
+if WITH_INCLUDED_ARGON2
+SUBDIRS += argon2
+endif
+
 SUBDIRS += src
 
 if ENABLE_TOOLS
