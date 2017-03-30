@@ -186,6 +186,7 @@ if __name__ == '__main__':
     wb = WorkBench(args.ifname, args.virtual_locs, args.node_num, loss=args.loss,
             delay=args.delay, disable_ipv4=args.disable_ipv4,
             disable_ipv6=args.disable_ipv6)
+    wb.create_virtual_net()
     bootstrap = wb.get_bootstrap()
 
     bs_dht_log_enabled = False
@@ -203,7 +204,6 @@ if __name__ == '__main__':
         bs_dht_log_enabled = True
         bootstrap.front().enableLogging()
 
-    wb.create_virtual_net()
     bootstrap.resize(1)
     print("Launching", wb.node_num, "nodes (", wb.clusters, "clusters of", wb.node_per_loc, "nodes)")
 
