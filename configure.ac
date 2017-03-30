@@ -99,7 +99,7 @@ PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
-dnl Check for Argon2 				
+dnl Check for Argon2
 AC_ARG_WITH([argon2], AS_HELP_STRING([--without-argon2], [Use included Argon2]))
 AS_IF([test "x$with_argon2" != "xno"],
 			[PKG_CHECK_MODULES([Argon2], [libargon2], [have_argon2=yes], [have_argon2=no])],
@@ -109,9 +109,9 @@ AS_IF([test "x$have_argon2" = "xyes"], [], [
 				AC_MSG_ERROR([Argon2 requested but not found])
 		],[
 				AC_MSG_NOTICE([Using included Argon2])
-				AC_CONFIG_FILES(argon2/Makefile)
-				AC_SUBST(Argon2_CFLAGS, "-I\${top_srcdir}/argon2")
-				AC_SUBST(Argon2_LIBS, "\${top_srcdir}/argon2/libargon2.la")
+				AC_SUBST(Argon2_CFLAGS, "-I\${top_srcdir}/argon2/src -I\${top_srcdir}/argon2/include")
+				AC_SUBST(Argon2_LIBS, "libargon2.la")
+				AC_SUBST(Argon2_LDFLAGS, "-L\${abs_top_srcdir}/argon2/src/.libs")
 		])
 ])
 
