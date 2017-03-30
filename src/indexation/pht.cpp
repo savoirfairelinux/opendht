@@ -44,20 +44,7 @@ static std::string blobToString(const Blob &bl) {
 
     return ss.str();
 }
-
-std::string Prefix::toString() const {
-    std::stringstream ss;
-
-    ss << "Prefix : " << std::endl << "\tContent_ : \"";
-    ss << blobToString(content_);
-    ss << "\"" << std::endl;
-
-    ss << "\tFlags_   : \"";
-    ss << blobToString(flags_);
-    ss << "\"" << std::endl;
-
-    return ss.str();
-}
+std::string Prefix::toString() const { return blobToString(content_); }
 
 void Pht::Cache::insert(const Prefix& p) {
     size_t i = 0;
