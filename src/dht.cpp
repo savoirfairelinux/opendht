@@ -994,24 +994,24 @@ Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point cr
     auto done = std::make_shared<bool>(false);
     auto done4 = std::make_shared<bool>(false);
     auto done6 = std::make_shared<bool>(false);
-    auto donecb = [=](const std::vector<Sp<Node>>& nodes) {
+    auto donecb = [=](std::vector<Sp<Node>>&& nodes) {
         // Callback as soon as the value is announced on one of the available networks
         if (callback && !*done && (*done4 && *done6)) {
-            callback(*ok, nodes);
+            callback(*ok, std::move(nodes));
             *done = true;
         }
     };
-    announce(id, AF_INET, val, [=](bool ok4, const std::vector<Sp<Node>>& nodes) {
+    announce(id, AF_INET, val, [=](bool ok4, std::vector<Sp<Node>>&& nodes) {
         DHT_LOG.d(id, "Announce done IPv4 %d", ok4);
         *done4 = true;
         *ok |= ok4;
-        donecb(nodes);
+        donecb(std::move(nodes));
     }, created, permanent);
-    announce(id, AF_INET6, val, [=](bool ok6, const std::vector<Sp<Node>>& nodes) {
+    announce(id, AF_INET6, val, [=](bool ok6, std::vector<Sp<Node>>&& nodes) {
         DHT_LOG.d(id, "Announce done IPv6 %d", ok6);
         *done6 = true;
         *ok |= ok6;
-        donecb(nodes);
+        donecb(std::move(nodes));
     }, created, permanent);
 }
 
@@ -1029,7 +1029,7 @@ struct OpStatus {
 };
 
 template <typename T>
-void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, Sp<OpStatus<T>> op) {
+void doneCallbackWrapper(DoneCallback dcb, std::vector<Sp<Node>>&& nodes, Sp<OpStatus<T>> op) {
     if (op->status.done)
         return;
     op->nodes.insert(op->nodes.end(), nodes.begin(), nodes.end());
@@ -1037,7 +1037,7 @@ void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, S
         bool ok = op->status.ok || op->status4.ok || op->status6.ok;
         op->status.done = true;
         if (dcb)
-            dcb(ok, op->nodes);
+            dcb(ok, std::move(op->nodes));
     }
 }
 
@@ -1100,17 +1100,17 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     /* Try to answer this search locally. */
     gcb(getLocal(id, f));
 
-    Dht::search(id, AF_INET, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET, gcb, {}, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4.done = true;
         op->status4.ok = ok;
-        doneCallbackWrapper(donecb, nodes, op);
+        doneCallbackWrapper(donecb, std::move(nodes), op);
     }, f, q);
-    Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6.done = true;
         op->status6.ok = ok;
-        doneCallbackWrapper(donecb, nodes, op);
+        doneCallbackWrapper(donecb, std::move(nodes), op);
     }, f, q);
 }
 
@@ -1149,17 +1149,17 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
     /* Try to answer this search locally. */
     qcb(local_fields);
 
-    Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET, {}, qcb, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4.done = true;
         op->status4.ok = ok;
-        doneCallbackWrapper(done_cb, nodes, op);
+        doneCallbackWrapper(done_cb, std::move(nodes), op);
     }, f, q);
-    Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6.done = true;
         op->status6.ok = ok;
-        doneCallbackWrapper(done_cb, nodes, op);
+        doneCallbackWrapper(done_cb, std::move(nodes), op);
     }, f, q);
 }
 
@@ -2143,21 +2143,21 @@ Dht::insertNode(const InfoHash& id, const SockAddr& addr)
 }
 
 void
-Dht::pingNode(const SockAddr& sa, DoneCallbackSimple&& cb)
+Dht::pingNode(const SockAddr& sa, DoneCallback&& cb)
 {
     scheduler.syncTime();
     DHT_LOG.d("Sending ping to %s", sa.toString().c_str());
     auto& count = sa.getFamily() == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, [&count,cb](const net::Request&, net::NetworkEngine::RequestAnswer&&) {
+    network_engine.sendPing(sa, [&count,cb](const net::Request& req, net::NetworkEngine::RequestAnswer&&) {
         count--;
         if (cb)
-            cb(true);
+            cb(true, {req.node});
     }, [&count,cb](const net::Request&, bool last){
         if (last) {
             count--;
             if (cb)
-                cb(false);
+                cb(false, {});
         }
     });
 }

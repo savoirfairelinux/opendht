@@ -222,7 +222,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         InfoHash getId() const
         InfoHash getNodeId() const
         void bootstrap(const_char*, const_char*)
-        void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
+        void ping(const SockAddr&, DoneCallbackSimple done_cb)
         void run(Config config)
         void join()
         void shutdown(ShutdownCallback)
