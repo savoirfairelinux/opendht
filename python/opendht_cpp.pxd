@@ -73,7 +73,7 @@ cdef extern from "opendht/sockaddr.h" namespace "dht":
         SockAddr() except +
         string toString() const
         in_port_t getPort() const
-        void setPort(in_port_t p)
+        void setPort(in_port_t p) const
         sa_family_t getFamily() const
         void setFamily(sa_family_t f)
 
@@ -227,7 +227,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void join()
         void shutdown(ShutdownCallback)
         bool isRunning()
-        SockAddr getBound(sa_family_t af) const
+        SockAddr getBound() const
         string getStorageLog() const
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const

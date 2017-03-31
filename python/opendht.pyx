@@ -508,9 +508,9 @@ cdef class DhtRunner(_WithID):
         cpp.enableFileLogging(self.thisptr.get()[0], path.encode())
     def isRunning(self):
         return self.thisptr.get().isRunning()
-    def getBound(self, cpp.sa_family_t af = 0):
+    def getBound(self):
         s = SockAddr()
-        s._addr = self.thisptr.get().getBound(af)
+        s._addr = self.thisptr.get().getBound()
         return s
     def getStorageLog(self):
         return self.thisptr.get().getStorageLog().decode()
