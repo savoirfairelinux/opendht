@@ -186,7 +186,8 @@ NetworkEngine::NetworkEngine(uv_loop_t* loop, const NetworkConfig& config, InfoH
         decltype(NetworkEngine::onRefresh) onRefresh) :
     onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
     onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
-    network(net), DHT_LOG(log), sock(std::make_shared<UdpSocket>(loop)), tcp_sock(std::make_shared<TcpSocket>(loop)), scheduler(scheduler)
+    network(net), DHT_LOG(log), sock(std::make_shared<UdpSocket>(loop)), tcp_sock(std::make_shared<TcpSocket>(loop)),
+    id_key(crypto::EcSecretKey::generate()), scheduler(scheduler)
 {
     if (dht_socket >= 0) {
         if (!set_nonblocking(dht_socket, 1))

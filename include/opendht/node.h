@@ -23,6 +23,7 @@
 #include "utils.h"
 #include "sockaddr.h"
 #include "uv_utils.h"
+#include "crypto.h"
 
 #include <list>
 
@@ -36,6 +37,9 @@ struct Node {
     InfoHash id;
     SockAddr addr;
     Sp<TcpSocket> sock;
+
+    crypto::EcPublicKey last_known_pk;
+    //std::list<crypto::EcSecretKey> 
 
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */

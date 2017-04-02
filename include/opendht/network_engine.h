@@ -569,6 +569,9 @@ private:
     std::set<Sp<TcpSocket>> pending_connect;
     NodeCache cache {};
 
+    crypto::EcSecretKey id_key;
+    //crypto::EcSecretKey id_key;
+
     /**
      * A comparator to classify IP addresses, only considering the
      * first 64 bits in IPv6.
