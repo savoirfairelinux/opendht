@@ -304,13 +304,13 @@ public:
     /* Specifications of the keys. It defines the number, the length and the
      * serialization order of fields. */
     using KeySpec = std::map<std::string, size_t>;
-    using LookupCallback = std::function<void(std::vector<std::shared_ptr<Value>>& values, Prefix p)>;
+    using LookupCallback = std::function<void(std::vector<std::shared_ptr<Value>>& values, const Prefix& p)>;
 
     typedef void (*LookupCallbackRaw)(std::vector<std::shared_ptr<Value>>* values, Prefix* p, void *user_data);
     static LookupCallback
     bindLookupCb(LookupCallbackRaw raw_cb, void* user_data) {
         if (not raw_cb) return {};
-        return [=](std::vector<std::shared_ptr<Value>>& values, Prefix p) {
+        return [=](std::vector<std::shared_ptr<Value>>& values, const Prefix& p) {
             raw_cb((std::vector<std::shared_ptr<Value>>*) &values, (Prefix*) &p, user_data);
         };
     }
@@ -373,7 +373,7 @@ private:
      * @param done_cb     : Callback to call when the insert is done
      */
 
-    void insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
+    void insert(const Prefix& kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
                 bool check_split, DoneCallbackSimple done_cb = {});
 
     class Cache {
@@ -416,8 +416,8 @@ private:
     };
 
     /* Callback used for insert value by using the pht */
-    using RealInsertCallback = std::function<void(std::shared_ptr<Prefix> p, IndexEntry entry)>;
-    using LookupCallbackWrapper = std::function<void(std::vector<std::shared_ptr<IndexEntry>>& values, Prefix p)>;
+    using RealInsertCallback = std::function<void(const Prefix& p, IndexEntry entry)>;
+    using LookupCallbackWrapper = std::function<void(std::vector<std::shared_ptr<IndexEntry>>& values, const Prefix& p)>;
 
     /**
      * Performs a step in the lookup operation. Each steps are performed
@@ -466,7 +466,7 @@ private:
      * @param entry   The entry to put at the prefix p
      * @param end_cb  Callback to use at the end of counting
      */
-    void getRealPrefix(std::shared_ptr<Prefix> p, IndexEntry entry, RealInsertCallback end_cb );
+    void getRealPrefix(const std::shared_ptr<Prefix>& p, IndexEntry entry, RealInsertCallback end_cb );
 
     /**
      * Looking where to put the data cause if there is free space on the node
@@ -485,12 +485,11 @@ private:
      * @param vals     : The vector of values to compare with comapred
      * @return position compared diverge from all others
      */
-    size_t foundSplitLocation(Prefix compared, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals) {
+    static size_t findSplitLocation(const Prefix& compared, const std::vector<std::shared_ptr<IndexEntry>>& vals) {
         for ( size_t i = 0; i < compared.content_.size() * 8 - 1; i++ )
-            for ( auto const& v : *vals)
+            for ( auto const& v : vals)
                 if ( Prefix(v->prefix).isContentBitActive(i) != compared.isContentBitActive(i) )
                     return i + 1;
-
         return compared.content_.size() * 8 - 1;
     }
 
@@ -502,7 +501,7 @@ private:
      * @param entry  : Entry to put on the pht
      * @param end_cb : Callback to apply to the insert prefi (here does the insert)
      */
-    void split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals, IndexEntry entry, RealInsertCallback end_cb);
+    void split(const Prefix& insert, const std::vector<std::shared_ptr<IndexEntry>>& vals, IndexEntry entry, RealInsertCallback end_cb);
 
     /**
      * Tells if the key is valid according to the key spec.
