@@ -239,7 +239,7 @@ private:
      * @throw out_of_range if bit is superior to blob size * 8
      */
     bool isActiveBit(const Blob &b, size_t pos) const {
-        if ( pos >= content_.size() * 8 )
+        if (pos >= content_.size() * 8)
             throw std::out_of_range("Can't detect active bit at pos, pos larger than prefix size or empty prefix");
 
         return ((b[pos / 8] >> (7 - (pos % 8)) ) & 1) == 1;
@@ -256,12 +256,14 @@ private:
      * @throw out_of_range if bit is superior to blob size * 8
      */
     void swapBit(Blob &b, size_t bit) {
-        if ( bit >= b.size() * 8 )
+        if (bit >= b.size() * 8)
             throw std::out_of_range("bit larger than prefix size.");
 
         size_t offset_bit = (8 - bit) % 8;
         b[bit / 8] ^= (1 << offset_bit);
     }
+
+    std::string firstBitsToString(const Blob&, size_t) const;
 };
 
 using Value = std::pair<InfoHash, dht::Value::Id>;
