@@ -1362,7 +1362,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                                     sn->acked[a.value->id] = std::make_pair(std::move(ack_req), next_refresh_time);
 
                                     /* step to clear announces */
-                                    scheduler.edit(sr->nextSearchStep, next_refresh_time);
+                                    scheduler.edit(sr->nextSearchStep, now);
                                 }
                             } else {
                                 /* Search is now unsynced. Let's call searchStep to sync again. */
