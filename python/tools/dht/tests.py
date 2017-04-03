@@ -249,21 +249,22 @@ class PhtTest(FeatureTest):
     @staticmethod
     def lookupCb(vals, prefix):
         PhtTest.indexEntries = list(vals)
-        PhtTest.prefix = prefix.decode()
-        DhtNetwork.log('Index name: <todo>')
-        DhtNetwork.log('Leaf prefix:', prefix)
+        PhtTest.prefix = str(prefix)
+        # TODO: output index name
+        # DhtNetwork.Log.log('Index name: <todo>')
+        DhtNetwork.Log.log('Leaf prefix:', PhtTest.prefix)
         for v in vals:
-            DhtNetwork.log('[ENTRY]:', v)
+            DhtNetwork.Log.log('[ENTRY]:', v)
 
     @staticmethod
     def lookupDoneCb(ok):
-        DhtNetwork.log('[LOOKUP]:', PhtTest.key, "--", "success!" if ok else "Fail...")
+        DhtNetwork.Log.log('[LOOKUP]:', PhtTest.key, "--", "success!" if ok else "Fail...")
         with FeatureTest.lock:
             FeatureTest.lock.notify()
 
     @staticmethod
     def insertDoneCb(ok):
-        DhtNetwork.log('[INSERT]:', PhtTest.key, "--", "success!" if ok else "Fail...")
+        DhtNetwork.Log.log('[INSERT]:', PhtTest.key, "--", "success!" if ok else "Fail...")
         with FeatureTest.lock:
             FeatureTest.lock.notify()
 
@@ -323,10 +324,8 @@ class PhtTest(FeatureTest):
         keyspec = collections.OrderedDict([('foo', NUM_DIG)])
         pht = Pht(b'foo_index', keyspec, dht)
 
-        DhtNetwork.log('PHT has',
-                       pht.MAX_NODE_ENTRY_COUNT,
-                       'node'+ ('s' if pht.MAX_NODE_ENTRY_COUNT > 1 else ''),
-                       'per leaf bucket.')
+        DhtNetwork.Log.log('PHT has %s entr%s per leaf bucket.' %
+                           (pht.MAX_NODE_ENTRY_COUNT, 'ies' if pht.MAX_NODE_ENTRY_COUNT > 1 else 'y'))
         keys = [{
             [_ for _ in keyspec.keys()][0] :
             ''.join(random.SystemRandom().choice(string.hexdigits)
@@ -340,7 +339,7 @@ class PhtTest(FeatureTest):
             with FeatureTest.lock:
                 time_taken = timer(pht.insert, key, IndexValue(random_hash()), PhtTest.insertDoneCb)
                 if self._timer:
-                    DhtNetwork.log('This insert step took : ', time_taken, 'second')
+                    DhtNetwork.Log.log('This insert step took : ', time_taken, 'second')
                 FeatureTest.lock.wait()
 
         time.sleep(1)
@@ -351,15 +350,17 @@ class PhtTest(FeatureTest):
             with FeatureTest.lock:
                 time_taken = timer(pht.lookup, key, PhtTest.lookupCb, PhtTest.lookupDoneCb)
                 if self._timer:
-                    DhtNetwork.log('This lookup step took : ', time_taken, 'second')
+                    DhtNetwork.Log.log('This lookup step took : ', time_taken, 'second')
                 FeatureTest.lock.wait()
 
-            all_entries[PhtTest.prefix] = [e.__str__()
-                                           for e in PhtTest.indexEntries]
+            if PhtTest.prefix not in all_entries.keys():
+                all_entries[PhtTest.prefix] = []
+            all_entries[PhtTest.prefix].extend([e.__str__() for e in PhtTest.indexEntries])
 
         for p in all_entries.keys():
-            DhtNetwork.log('All entries under prefix', p, ':')
-            DhtNetwork.log(all_entries[p])
+            DhtNetwork.Log.log('All entries under prefix', p, ':')
+            for e in all_entries[p]:
+                DhtNetwork.Log.log(e)
         PhtTest.drawTrie(all_entries)
 
 ##################################
@@ -496,7 +497,7 @@ class PersistenceTest(DhtFeatureTest):
             n.run(config=config)
             n.bootstrap(self._bootstrap.ip4,
                         str(self._bootstrap.port))
-            DhtNetwork.log('Node','['+_hash_str+']',
+            DhtNetwork.Log.log('Node','['+_hash_str+']',
                            'started around', _hash.toString().decode()
                            if n.isRunning() else
                            'failed to start...'
@@ -536,6 +537,7 @@ class PersistenceTest(DhtFeatureTest):
             else:
                 raise NameError("This test is not defined '" + self._test + "'")
         except Exception as e:
+            DhtNetwork.Log.err('Unexpected error')
             traceback.print_tb(e.__traceback__)
             print(type(e).__name__+':', e, file=sys.stderr)
         finally:
