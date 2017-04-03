@@ -630,30 +630,6 @@ private:
     Blob blobValue {};
 };
 
-
-/**
- * @struct  FieldSelectorDescription
- * @brief   Describes a selection.
- * @details
- * This is meant to narrow data to a set of specified fields. This structure is
- * used to construct a Select structure.
- */
-struct OPENDHT_PUBLIC FieldSelectorDescription
-{
-    FieldSelectorDescription() {}
-    FieldSelectorDescription(Value::Field f) : field(f) {}
-
-    Value::Field getField() const { return field; }
-
-    bool operator==(const FieldSelectorDescription& fd) const { return field == fd.field; }
-
-    template <typename Packer>
-    void msgpack_pack(Packer& p) const { p.pack(static_cast<uint8_t>(field)); }
-    void msgpack_unpack(msgpack::object msg) { field = static_cast<Value::Field>(msg.as<int>()); }
-private:
-    Value::Field field {Value::Field::None};
-};
-
 /**
  * @class   Select
  * @brief   Serializable Value field selection.
@@ -686,11 +662,7 @@ struct OPENDHT_PUBLIC Select
      * @return the set of fields.
      */
     std::set<Value::Field> getSelection() const {
-        std::set<Value::Field> fields {};
-        for (const auto& f : fieldSelection_) {
-            fields.insert(f.getField());
-        }
-        return fields;
+        return std::set<Value::Field>(fieldSelection_.begin(), fieldSelection_.end());
     }
 
     template <typename Packer>
@@ -702,7 +674,7 @@ struct OPENDHT_PUBLIC Select
 
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
 private:
-    std::vector<FieldSelectorDescription> fieldSelection_ {};
+    std::vector<Value::Field> fieldSelection_ {};
 };
 
 /**
@@ -953,3 +925,5 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
 }
 
 }
+
+MSGPACK_ADD_ENUM(dht::Value::Field)

@@ -427,7 +427,7 @@ bool Query::isSatisfiedBy(const Query& q) const {
 std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
     s << "SELECT " << (select.fieldSelection_.empty() ? "*" : "");
     for (auto fs = select.fieldSelection_.begin() ; fs != select.fieldSelection_.end() ; ++fs) {
-        switch (fs->getField()) {
+        switch (*fs) {
             case Value::Field::Id:
                 s << "id";
                 break;

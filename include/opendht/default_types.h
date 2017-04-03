@@ -21,8 +21,6 @@
 
 #include "value.h"
 
-MSGPACK_ADD_ENUM(dht::Value::Field)
-
 namespace dht {
 enum class ImStatus : uint8_t {
     NONE = 0,
