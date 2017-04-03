@@ -187,7 +187,13 @@ cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
     cdef cppclass Prefix:
         Prefix() except +
         Prefix(vector[uint8_t]) except +
+        Prefix(vector[uint8_t], size_t first) except +
+        Prefix(Prefix& p) except +
         string toString() const
+        string flagsToString() const
+        size_t size_
+        vector[uint8_t] flags_
+        vector[uint8_t] content_
     ctypedef pair[InfoHash, uint64_t] IndexValue "dht::indexation::Value"
     ctypedef map[string, vector[uint8_t]] IndexKey "dht::indexation::Pht::Key"
     ctypedef map[string, uint32_t] IndexKeySpec "dht::indexation::Pht::KeySpec"
