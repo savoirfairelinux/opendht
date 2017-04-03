@@ -48,6 +48,7 @@ std::string Prefix::firstBitsToString(const Blob &bl, size_t len) const {
 }
 
 std::string Prefix::toString() const { return firstBitsToString(content_, size_); }
+std::string Prefix::flagsToString() const { return firstBitsToString(flags_, size_); }
 
 void Pht::Cache::insert(const Prefix& p) {
     size_t i = 0;

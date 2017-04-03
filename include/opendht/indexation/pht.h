@@ -200,6 +200,7 @@ ee     *
     }
 
     std::string toString() const;
+    std::string flagsToString() const;
 
     size_t size_ {0};
 
