@@ -296,7 +296,7 @@ void Pht::lookup(Key k, Pht::LookupCallback cb, DoneCallbackSimple done_cb, bool
     std::shared_ptr<unsigned> max_common_prefix_len = not exact_match ? std::make_shared<unsigned>(0) : nullptr;
 
     lookupStep(prefix, lo, hi, values,
-        [=](std::vector<std::shared_ptr<IndexEntry>>& entries, Prefix p) {
+        [=](std::vector<std::shared_ptr<IndexEntry>>& entries, const Prefix& p) {
             std::vector<std::shared_ptr<Value>> vals(entries.size());
 
             std::transform(entries.begin(), entries.end(), vals.begin(),
@@ -329,7 +329,7 @@ void Pht::updateCanary(Prefix p) {
     }
 }
 
-void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
+void Pht::insert(const Prefix& kp, IndexEntry entry, std::shared_ptr<int> lo, std::shared_ptr<int> hi, time_point time_p,
                  bool check_split, DoneCallbackSimple done_cb) {
 
     if (time_p + ValueType::USER_DATA.expiration < clock::now()) return;
@@ -347,26 +347,25 @@ void Pht::insert(Prefix kp, IndexEntry entry, std::shared_ptr<int> lo, std::shar
                     done_cb(false);
             } else {
 
-                RealInsertCallback real_insert = [=]( std::shared_ptr<Prefix> p, IndexEntry entry) {
-                    updateCanary(*p);
-                    checkPhtUpdate(*p, entry, time_p);
-                    cache_.insert(*p);
-                    dht_->put(p->hash(), std::move(entry), done_cb , time_p);
+                RealInsertCallback real_insert = [=](const Prefix& p, IndexEntry entry) {
+                    updateCanary(p);
+                    checkPhtUpdate(p, entry, time_p);
+                    cache_.insert(p);
+                    dht_->put(p.hash(), std::move(entry), done_cb , time_p);
                 };
 
                 if ( not check_split or final_prefix->size_ == kp.size_ ) {
-                    real_insert(final_prefix, std::move(entry));
+                    real_insert(*final_prefix, std::move(entry));
                 } else {
                     if ( vals->size() < MAX_NODE_ENTRY_COUNT ) {
                         getRealPrefix(final_prefix, std::move(entry), real_insert);
                     }
                     else {
-                        split(*final_prefix, vals, entry, real_insert);
+                        split(*final_prefix, *vals, entry, real_insert);
                     }
                 }
             }
-        }, nullptr, cache_.lookup(kp), true
-    );
+        }, nullptr, cache_.lookup(kp), true);
 }
 
 Prefix Pht::zcurve(const std::vector<Prefix>& all_prefix) const {
@@ -440,43 +439,44 @@ Prefix Pht::linearize(Key k) const {
     return zcurve(all_prefix);
 }
 
-void Pht::getRealPrefix(std::shared_ptr<Prefix> p, IndexEntry entry, RealInsertCallback end_cb ) {
-
+void Pht::getRealPrefix(const std::shared_ptr<Prefix>& p, IndexEntry entry, RealInsertCallback end_cb )
+{
     if ( p->size_ == 0 ) {
-        end_cb(p, std::move(entry));
+        end_cb(*p, std::move(entry));
         return;
     }
 
-    auto total = std::make_shared<unsigned int>(0); /* Will contains the total number of data on 3 nodes */
-    auto ended = std::make_shared<unsigned int>(0); /* Just indicate how many have end */
-
-    auto parent = std::make_shared<Prefix>(p->getPrefix(-1));
-    auto sibling = std::make_shared<Prefix>(p->getSibling());
+    struct OpState {
+        unsigned entry_count {0}; /* Total number of data on 3 nodes */
+        unsigned ended {0};      /* How many ops have ended */
+        Prefix parent;
+        OpState(Prefix p) : parent(p) {}
+    };
+    auto op_state = std::make_shared<OpState>(p->getPrefix(-1));
 
     auto pht_filter = [&](const dht::Value& v) {
         return v.user_type.compare(0, name_.size(), name_) == 0;
     };
 
     /* Lambda will count total number of data node */
-    auto count = [=]( const std::shared_ptr<dht::Value> value ) {
-        if ( value->user_type != canary_)
-            (*total)++;
-
+    auto count = [=]( const std::shared_ptr<dht::Value>& value ) {
+        if (value->user_type != canary_)
+            op_state->entry_count++;
         return true;
     };
 
     auto on_done = [=] ( bool ) {
-        (*ended)++;
+        op_state->ended++;
         /* Only the last one do the CallBack*/
-        if  ( *ended == 3 ) {
-            if ( *total < MAX_NODE_ENTRY_COUNT )
-                end_cb(parent, std::move(entry));
+        if  (op_state->ended == 3) {
+            if (op_state->entry_count < MAX_NODE_ENTRY_COUNT)
+                end_cb(op_state->parent, std::move(entry));
             else
-                end_cb(p, std::move(entry));
+                end_cb(*p, std::move(entry));
         }
     };
 
-    dht_->get(parent->hash(),
+    dht_->get(op_state->parent.hash(),
         count,
         on_done,
         pht_filter
@@ -488,7 +488,7 @@ void Pht::getRealPrefix(std::shared_ptr<Prefix> p, IndexEntry entry, RealInsertC
         pht_filter
     );
 
-    dht_->get(sibling->hash(),
+    dht_->get(p->getSibling().hash(),
         count,
         on_done,
         pht_filter
@@ -520,11 +520,11 @@ void Pht::checkPhtUpdate(Prefix p, IndexEntry entry, time_point time_p) {
     );
 }
 
-void Pht::split(Prefix insert, std::shared_ptr<std::vector<std::shared_ptr<IndexEntry>>> vals, IndexEntry entry, RealInsertCallback end_cb ) {
-    auto full = Prefix(entry.prefix);
+void Pht::split(const Prefix& insert, const std::vector<std::shared_ptr<IndexEntry>>& vals, IndexEntry entry, RealInsertCallback end_cb ) {
+    const auto full = Prefix(entry.prefix);
 
-    auto loc = foundSplitLocation(full, vals);
-    auto prefix_to_insert = std::make_shared<Prefix>(full.getPrefix(loc));
+    auto loc = findSplitLocation(full, vals);
+    const auto prefix_to_insert = full.getPrefix(loc);
 
     for(;loc != insert.size_ - 1; loc--) {
         updateCanary(full.getPrefix(loc));
