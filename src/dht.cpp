@@ -670,10 +670,8 @@ struct Dht::Search {
      * @return true if a node has been removed, else false.
      */
     bool removeExpiredNode(time_point now) {
-        auto e = nodes.end();
-        while (e != nodes.cbegin()) {
-            e = std::prev(e);
-            const Node& n = *e->node;
+        for (auto e = nodes.cend(); e != nodes.cbegin();) {
+            const Node& n = *(--e)->node;
             if (n.isExpired() and n.time + Node::NODE_EXPIRE_TIME < now) {
                 //std::cout << "Removing expired node " << n.id << " from IPv" << (af==AF_INET?'4':'6') << " search " << id << std::endl;
                 nodes.erase(e);
