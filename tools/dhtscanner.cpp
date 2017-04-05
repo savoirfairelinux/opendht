@@ -85,35 +85,39 @@ main(int argc, char **argv)
     }
 
     DhtRunner dht;
-    dht.run(params.port, {}, true, params.network);
+    try {
+        dht.run(params.port, {}, true, params.network);
 
-    if (not params.bootstrap.first.empty())
-        dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
+        if (not params.bootstrap.first.empty())
+            dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
-    std::cout << "Scanning network..." << std::endl;
-    auto all_nodes = std::make_shared<NodeSet>();
+        std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
+        std::cout << "Scanning network..." << std::endl;
+        auto all_nodes = std::make_shared<NodeSet>();
 
-    // Set hash to 1 because 0 is the null hash
-    dht::InfoHash cur_h {};
-    cur_h.setBit(8*HASH_LEN-1, 1);
+        // Set hash to 1 because 0 is the null hash
+        dht::InfoHash cur_h {};
+        cur_h.setBit(8*HASH_LEN-1, 1);
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+        std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    std::atomic_uint done {0};
-    step(dht, done, all_nodes, cur_h, 0);
+        std::atomic_uint done {0};
+        step(dht, done, all_nodes, cur_h, 0);
 
-    {
-        std::mutex m;
-        std::unique_lock<std::mutex> lk(m);
-        cv.wait(lk, [&](){
-            return done.load() == 0;
-        });
+        {
+            std::mutex m;
+            std::unique_lock<std::mutex> lk(m);
+            cv.wait(lk, [&](){
+                return done.load() == 0;
+            });
+        }
+
+        std::cout << std::endl << "Scan ended: " << all_nodes->size() << " nodes found." << std::endl;
+        for (const auto& n : *all_nodes)
+            std::cout << "Node " << *n << std::endl;
+    } catch(const std::exception&e) {
+        std::cerr << std::endl <<  e.what() << std::endl;
     }
-
-    std::cout << std::endl << "Scan ended: " << all_nodes->size() << " nodes found." << std::endl;
-    for (const auto& n : *all_nodes)
-        std::cout << "Node " << *n << std::endl;
 
     dht.join();
 #ifdef WIN32_NATIVE

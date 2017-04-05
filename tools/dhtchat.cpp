@@ -62,80 +62,84 @@ main(int argc, char **argv)
 #endif
 
     DhtRunner dht;
-    dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
+    try {
+        dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
 
-    if (not params.bootstrap.first.empty())
-        dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
+        if (not params.bootstrap.first.empty())
+            dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
-    print_node_info(dht, params);
-    std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
+        print_node_info(dht, params);
+        std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
 
-    bool connected {false};
-    InfoHash room;
-    const InfoHash myid = dht.getId();
+        bool connected {false};
+        InfoHash room;
+        const InfoHash myid = dht.getId();
 
 #ifndef WIN32_NATIVE
-    // using the GNU History API
-    using_history();
+        // using the GNU History API
+        using_history();
 #endif
 
-    while (true)
-    {
-        // using the GNU Readline API
-        std::string line = readLine(connected ? PROMPT : "> ");
-        if (!line.empty() && line[0] == '\0')
-            break;
-        if (line.empty())
-            continue;
-
-        static constexpr dht::InfoHash INVALID_ID {};
-
-        std::istringstream iss(line);
-        std::string op, idstr;
-        iss >> op;
-        if (not connected) {
-            if (op  == "x" || op == "q" || op == "exit" || op == "quit")
+        while (true)
+        {
+            // using the GNU Readline API
+            std::string line = readLine(connected ? PROMPT : "> ");
+            if (!line.empty() && line[0] == '\0')
                 break;
-            else if (op == "c") {
-                iss >> idstr;
-                room = InfoHash(idstr);
-                if (room == INVALID_ID) {
-                    room = InfoHash::get(idstr);
-                    std::cout << "Joining h(" << idstr << ") = " << room << std::endl;
-                }
-
-                dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
-                    if (msg.from != myid)
-                        std::cout << msg.from.toString() << " at " << printTime(msg.date)
-                                  << " (took " << print_dt(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
-                                  << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.id << " - " << msg.msg << std::endl;
-                    return true;
-                });
-                connected = true;
-            } else {
-                std::cout << "Unknown command. Type 'c {hash}' to join a channel" << std::endl << std::endl;
-            }
-        } else {
-            auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-            if (op == "d") {
-                connected = false;
+            if (line.empty())
                 continue;
-            } else if (op == "e") {
-                iss >> idstr;
-                std::getline(iss, line);
-                dht.putEncrypted(room, InfoHash(idstr), dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
-                    //dht.cancelPut(room, id);
-                    if (not ok)
-                        std::cout << "Message publishing failed !" << std::endl;
-                });
+
+            static constexpr dht::InfoHash INVALID_ID {};
+
+            std::istringstream iss(line);
+            std::string op, idstr;
+            iss >> op;
+            if (not connected) {
+                if (op  == "x" || op == "q" || op == "exit" || op == "quit")
+                    break;
+                else if (op == "c") {
+                    iss >> idstr;
+                    room = InfoHash(idstr);
+                    if (room == INVALID_ID) {
+                        room = InfoHash::get(idstr);
+                        std::cout << "Joining h(" << idstr << ") = " << room << std::endl;
+                    }
+
+                    dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
+                        if (msg.from != myid)
+                            std::cout << msg.from.toString() << " at " << printTime(msg.date)
+                                      << " (took " << print_dt(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
+                                      << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.id << " - " << msg.msg << std::endl;
+                        return true;
+                    });
+                    connected = true;
+                } else {
+                    std::cout << "Unknown command. Type 'c {hash}' to join a channel" << std::endl << std::endl;
+                }
             } else {
-                dht.putSigned(room, dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
-                    //dht.cancelPut(room, id);
-                    if (not ok)
-                        std::cout << "Message publishing failed !" << std::endl;
-                });
+                auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+                if (op == "d") {
+                    connected = false;
+                    continue;
+                } else if (op == "e") {
+                    iss >> idstr;
+                    std::getline(iss, line);
+                    dht.putEncrypted(room, InfoHash(idstr), dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
+                        //dht.cancelPut(room, id);
+                        if (not ok)
+                            std::cout << "Message publishing failed !" << std::endl;
+                    });
+                } else {
+                    dht.putSigned(room, dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
+                        //dht.cancelPut(room, id);
+                        if (not ok)
+                            std::cout << "Message publishing failed !" << std::endl;
+                    });
+                }
             }
         }
+    } catch(const std::exception&e) {
+        std::cerr << std::endl <<  e.what() << std::endl;
     }
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;
