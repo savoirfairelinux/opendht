@@ -662,13 +662,12 @@ struct OPENDHT_PUBLIC Select
      * @return the set of fields.
      */
     std::set<Value::Field> getSelection() const {
-        return std::set<Value::Field>(fieldSelection_.begin(), fieldSelection_.end());
+        return {fieldSelection_.begin(), fieldSelection_.end()};
     }
 
     template <typename Packer>
     void msgpack_pack(Packer& pk) const { pk.pack(fieldSelection_); }
     void msgpack_unpack(const msgpack::object& o) {
-        fieldSelection_.clear();
         fieldSelection_ = o.as<decltype(fieldSelection_)>();
     }
 
