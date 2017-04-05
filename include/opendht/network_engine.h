@@ -505,7 +505,7 @@ private:
 
 
     // basic wrapper for socket sendto function
-    int send(const char *buf, size_t len, int flags, const SockAddr& addr);
+    void send(const char *buf, size_t len, int flags, const SockAddr& addr);
 
     void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);

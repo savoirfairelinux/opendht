@@ -605,11 +605,11 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
     pk.pack_bin_body((char*)addr_ptr, addr_len);
 }
 
-int
+void
 NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
 {
     if (addr.second == 0)
-        return -1;
+        return;
 
     int s;
     if (addr.getFamily() == AF_INET)
@@ -620,8 +620,9 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
         s = -1;
 
     if (s < 0)
-        return -1;
-    return sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second);
+        return;
+    if (sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second) == -1)
+        DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(errno));
 }
 
 Sp<Request>
