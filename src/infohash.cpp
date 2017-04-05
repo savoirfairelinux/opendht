@@ -57,7 +57,7 @@ InfoHash::get(const uint8_t* data, size_t data_len)
     int rc = gnutls_fingerprint(algo, &gnudata, h.data(), &s);
     if (rc == 0 && s == HASH_LEN)
         return h;
-    throw std::string("Error while hashing");
+    throw std::runtime_error(std::string("Error hashing: ") + gnutls_strerror(rc));
 }
 
 InfoHash
