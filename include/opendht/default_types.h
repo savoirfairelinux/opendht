@@ -121,7 +121,7 @@ public:
     }
 
     dht::InfoHash to;
-    dht::Value::Id id;
+    dht::Value::Id id {0};
     std::string msg;
     long date {0};
     ImStatus status {ImStatus::NONE};
@@ -191,7 +191,7 @@ public:
         ice_data = unpackBlob(o.via.array.ptr[1]);
     }
 
-    Value::Id id;
+    Value::Id id {0};
     Blob ice_data;
 };
 
