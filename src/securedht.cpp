@@ -40,10 +40,10 @@ Config& getConfig(SecureDht::Config& conf)
     return c;
 }
 
-SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
-: Dht(s, s6, getConfig(conf)), key_(conf.id.first), certificate_(conf.id.second)
+SecureDht::SecureDht(uv_loop_t* loop, SecureDht::Config conf)
+: Dht(loop, getConfig(conf)), key_(conf.id.first), certificate_(conf.id.second)
 {
-    if (s < 0 && s6 < 0)
+    if (not loop)
         return;
 
     for (const auto& type : DEFAULT_TYPES)

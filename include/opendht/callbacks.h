@@ -49,6 +49,12 @@ struct OPENDHT_PUBLIC NodeStats {
     std::string toString() const;
 };
 
+
+struct OPENDHT_PUBLIC NetworkConfig {
+    std::string bind_addr {"::0"};
+    in_port_t bind_port {0};
+};
+
 /**
  * Dht configuration.
  */
@@ -68,6 +74,8 @@ struct OPENDHT_PUBLIC Config {
 
     /** Makes the DHT responsible to maintain its stored values. Consumes more ressources. */
     bool maintain_storage;
+
+    NetworkConfig network_config;
 };
 
 /**
@@ -87,6 +95,7 @@ using QueryCallback = std::function<bool(const std::vector<std::shared_ptr<Field
 using GetCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>;
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;
+using StatusCallback = std::function<void(NodeStatus, NodeStatus)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 

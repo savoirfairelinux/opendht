@@ -19,11 +19,14 @@
 #include "utils.h"
 #include "sockaddr.h"
 #include "default_types.h"
+#include "uv_utils.h"
 
 /* An IPv4 equivalent to IN6_IS_ADDR_UNSPECIFIED */
 #ifndef IN_IS_ADDR_UNSPECIFIED
 #define IN_IS_ADDR_UNSPECIFIED(a) (((long int) (a)->s_addr) == 0x00000000)
 #endif /* IN_IS_ADDR_UNSPECIFIED */
+
+static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
 
 namespace dht {
 
@@ -114,6 +117,57 @@ SockAddr::isPrivate() const
     default:
         return false;
     }
+}
+
+bool
+SockAddr::isMappedIPv4() const
+{
+    if (getFamily() != AF_INET6)
+        return false;
+    const uint8_t* addr6 = reinterpret_cast<const uint8_t*>(&getIPv6().sin6_addr);
+    return std::equal(MAPPED_IPV4_PREFIX.begin(), MAPPED_IPV4_PREFIX.end(), addr6);
+}
+
+SockAddr
+SockAddr::getMappedIPv4() const
+{
+    if (getFamily() != AF_INET6)
+        return *this;
+    SockAddr ret;
+    ret.setFamily(AF_INET);
+    ret.setPort(getPort());
+    auto addr6 = reinterpret_cast<const uint8_t*>(&getIPv6().sin6_addr);
+    auto addr4 = reinterpret_cast<uint8_t*>(&ret.getIPv4().sin_addr);
+    addr6 += MAPPED_IPV4_PREFIX.size();
+    std::copy_n(addr6, sizeof(in_addr), addr4);
+    return ret;
+}
+
+void get_addr_info_cb(uv_getaddrinfo_t* req, int status, struct addrinfo* res) {
+    if (auto cb = static_cast<GetAddrInfoCb*>(req->data)) {
+        size_t count {0};
+        for (auto addr = res; addr; addr = addr->ai_next)
+            count++;
+        std::vector<SockAddr> ret;
+        ret.reserve(count);
+        for (auto addr = res; addr; addr = addr->ai_next)
+            ret.emplace_back(addr->ai_addr, addr->ai_addrlen);
+        (*cb)(std::move(ret));
+        delete cb;
+    }
+    delete req;
+    uv_freeaddrinfo(res);
+}
+
+void getAddrInfo(uv_loop_t* loop, const char* node, const char* service, GetAddrInfoCb&& cb)
+{
+    auto req = new uv_getaddrinfo_t;
+    req->data = new GetAddrInfoCb(std::move(cb));
+    addrinfo hints {};
+    hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_DGRAM;
+    uv_getaddrinfo(loop, req, get_addr_info_cb, node, service, &hints);
 }
 
 bool operator==(const SockAddr& a, const SockAddr& b) {

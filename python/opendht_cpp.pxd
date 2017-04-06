@@ -198,11 +198,15 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
     cdef DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
     cdef DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw cb, void *user_data)
 
+    cppclass NetworkConfig:
+        string bind_addr
+        in_port_t bind_port
     cppclass Config:
         InfoHash node_id
         uint32_t network
         bool is_bootstrap
         bool maintain_storage
+        NetworkConfig network_config
     cppclass SecureDhtConfig:
         Config node_config
         Identity id
@@ -219,8 +223,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         InfoHash getNodeId() const
         void bootstrap(const_char*, const_char*)
         void bootstrap(const SockAddr&, DoneCallbackSimple done_cb)
-        void run(in_port_t, Config config)
-        void run(const_char*, const_char*, const_char*, Config config)
+        void run(Config config)
         void join()
         void shutdown(ShutdownCallback)
         bool isRunning()

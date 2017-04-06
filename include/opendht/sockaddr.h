@@ -50,6 +50,15 @@ public:
             throw std::runtime_error("Socket address length is too large");
         std::copy_n((uint8_t*)sa, len, (uint8_t*)&first);
     }
+    SockAddr(const sockaddr* sa) : pair<sockaddr_storage, socklen_t>::pair({},0) {
+        if (sa) {
+            if (sa->sa_family == AF_INET)
+                second = sizeof(sockaddr_in);
+            else if(sa->sa_family == AF_INET6)
+                second = sizeof(sockaddr_in6);
+        }
+        std::copy_n((uint8_t*)sa, second, (uint8_t*)&first);
+    }
     SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
 
     bool operator<(const SockAddr& o) const {
@@ -117,6 +126,12 @@ public:
     sockaddr_in6& getIPv6() {
         return *reinterpret_cast<sockaddr_in6*>(&first);
     }
+    sockaddr* get() {
+        return reinterpret_cast<sockaddr*>(&first);
+    }
+    const sockaddr* get() const {
+        return reinterpret_cast<const sockaddr*>(&first);
+    }
 
     /**
      * Return true if address is a loopback IP address.
@@ -129,6 +144,9 @@ public:
     bool isPrivate() const;
 
     bool isUnspecified() const;
+
+    bool isMappedIPv4() const;
+    SockAddr getMappedIPv4() const;
 
     /**
      * A comparator to classify IP addresses, only considering the

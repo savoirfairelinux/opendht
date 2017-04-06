@@ -26,6 +26,7 @@
 #include "sockaddr.h"
 #include "log_enable.h"
 #include "def.h"
+#include "uv_utils.h"
 
 #include <thread>
 #include <mutex>
@@ -51,8 +52,6 @@ struct SecureDhtConfig;
 class OPENDHT_PUBLIC DhtRunner {
 
 public:
-    typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
-
     DhtRunner();
     virtual ~DhtRunner();
 
@@ -241,16 +240,14 @@ public:
      * Returns the currently bound address.
      * @param f: address family of the bound address to retreive.
      */
-    const SockAddr& getBound(sa_family_t f = AF_INET) const {
-        return (f == AF_INET) ? bound4 : bound6;
-    }
+    SockAddr getBound() const;
 
     /**
      * Returns the currently bound port, in host byte order.
      * @param f: address family of the bound port to retreive.
      */
-    in_port_t getBoundPort(sa_family_t f = AF_INET) const {
-        return ntohs(((sockaddr_in*)&getBound(f).first)->sin_port);
+    in_port_t getBoundPort() const {
+        return getBound().getPort();
     }
 
     std::pair<size_t, size_t> getStoreSize() const;
@@ -306,20 +303,24 @@ public:
      * @param cb: Optional callback to receive general state information.
      */
     void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0) {
-        run(port, {
+        run({
             /*.dht_config = */{
                 /*.node_config = */{
                     /*.node_id = */{},
                     /*.network = */network,
                     /*.is_bootstrap = */false,
-                    /*.maintain_storage*/false
+                    /*.maintain_storage = */false,
+                    /* .network_config = */{
+                        /*.addr = */ "::0",
+                        /*.port = */ port
+                    }
                 },
                 /*.id = */identity
             },
             /*.threaded = */threaded
         });
     }
-    void run(in_port_t port, Config config);
+    void run(Config config);
 
     /**
      * @param local4: Local IPv4 address and port to bind. Can be null.
@@ -329,25 +330,22 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const sockaddr_in* local4, const sockaddr_in6* local6, Config config);
+    //void run(const sockaddr_in* local4, const sockaddr_in6* local6, Config config);
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, Config config);
+    //void run(const char* ip4, const char* ip6, const char* service, Config config);
 
-    void setOnStatusChanged(StatusCallback&& cb) {
-        statusCb = std::move(cb);
-    }
+    void setOnStatusChanged(StatusCallback&& cb);
 
     /**
      * In non-threaded mode, the user should call this method
      * regularly and everytime a new packet is received.
      * @return the next op
      */
-    time_point loop() {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return loop_();
+    void loop() {
+        uv_loop_.runOnce();
     }
 
     /**
@@ -373,33 +371,41 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
-    time_point loop_();
+    void doRun(SecureDhtConfig config);
+    void loop_();
 
     static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const std::string& host, const std::string& service);
 
-    NodeStatus getStatus() const {
-        return std::max(status4, status6);
+    void loopCallback() {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        if (running)
+            loop_();
+        else {
+            uv_close((uv_handle_t*)&uv_async_, nullptr);
+            uv_loop_.stop();
+        }
+    }
+
+    static void loop_callback(uv_async_t* handle) {
+        if (handle->data)
+            static_cast<DhtRunner*>(handle->data)->loopCallback();
     }
 
     std::unique_ptr<SecureDht> dht_;
+    EventLoop uv_loop_;
+    uv_async_t uv_async_;
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
-    std::condition_variable cv {};
-
-    std::thread rcv_thread {};
-    std::mutex sock_mtx {};
-    std::vector<std::pair<Blob, SockAddr>> rcv {};
 
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};
     /* bootstrap nodes given as (host, service) pairs */
-    std::vector<std::pair<std::string,std::string>> bootstrap_nodes_all {};
+    /*std::vector<std::pair<std::string,std::string>> bootstrap_nodes_all {};
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
-    std::thread bootstrap_thread {};
+    std::thread bootstrap_thread {};*/
     /** protects bootstrap_nodes, bootstrap_thread */
-    std::mutex bootstrap_mtx {};
-    std::condition_variable bootstrap_cv {};
+    /*std::mutex bootstrap_mtx {};
+    std::condition_variable bootstrap_cv {};*/
 
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
@@ -407,12 +413,12 @@ private:
 
     std::atomic<bool> running {false};
 
-    NodeStatus status4 {NodeStatus::Disconnected},
+    /*NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
     SockAddr bound4 {};
-    SockAddr bound6 {};
+    SockAddr bound6 {};*/
 };
 
 }

@@ -300,6 +300,8 @@ cdef class NodeSet(object):
         return s
     def __iter__(self):
         return NodeSetIter(self)
+    def __len__(self):
+        return self.size()
 
 cdef class PrivateKey(_WithID):
     cdef shared_ptr[cpp.PrivateKey] _key
@@ -442,6 +444,10 @@ cdef class DhtConfig(object):
         self._config.dht_config.node_config.node_id = id._infohash
     def setNetwork(self, unsigned netid):
         self._config.dht_config.node_config.network = netid
+    def setPort(self, cpp.in_port_t port):
+        self._config.dht_config.node_config.network_config.bind_port = port
+    def setBindAddr(self, string addr):
+        self._config.dht_config.node_config.network_config.bind_addr = addr
     def setMaintainStorage(self, bool maintain_storage):
         self._config.dht_config.node_config.maintain_storage = maintain_storage
 
@@ -484,12 +490,10 @@ cdef class DhtRunner(_WithID):
     def run(self, Identity id=None, is_bootstrap=False, cpp.in_port_t port=0, str ipv4="", str ipv6="", DhtConfig config=DhtConfig()):
         if id:
             config.setIdentity(id)
-        if ipv4 or ipv6:
-            bind4 = ipv4.encode() if ipv4 else b''
-            bind6 = ipv6.encode() if ipv6 else b''
-            self.thisptr.get().run(bind4, bind6, str(port).encode(), config._config)
-        else:
-            self.thisptr.get().run(port, config._config)
+        config.setPort(port)
+        if ipv6:
+            config.setBindAddr(ipv6)
+        self.thisptr.get().run(config._config)
     def join(self):
         self.thisptr.get().join()
     def shutdown(self, shutdown_cb=None):
