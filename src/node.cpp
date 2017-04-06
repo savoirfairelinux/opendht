@@ -64,9 +64,11 @@ Node::getPendingMessageCount() const
 }
 
 void
-Node::update(const SockAddr& new_addr)
+Node::update(const SockAddr& new_addr, const Sp<TcpSocket>& s)
 {
     addr = new_addr;
+    if (not sock or (s and sock->isClosed() and not s->isClosed()))
+        sock = s;
 }
 
 /** To be called when a message was sent to the node */

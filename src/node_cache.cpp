@@ -26,22 +26,22 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 }
 
 std::shared_ptr<Node>
-NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm) {
+NodeCache::getNode(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& sock, time_point now, bool confirm) {
     if (id == zeroes)
-        return std::make_shared<Node>(id, addr);
-    return (addr.getFamily() == AF_INET ? cache_4 : cache_6).getNode(id, addr, now, confirm);
+        return std::make_shared<Node>(id, addr, sock);
+    return (addr.getFamily() == AF_INET ? cache_4 : cache_6).getNode(id, addr, sock, now, confirm);
 }
 
 std::vector<std::shared_ptr<Node>>
 NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
     const auto& c = (sa_f == AF_INET ? cache_4 : cache_6);
-    auto it_p = c.lower_bound(id),
-         it_n = it_p;
 
     std::vector<std::shared_ptr<Node>> nodes;
     nodes.reserve(std::min(c.size(), count));
     NodeMap::const_iterator it;
 
+    auto it_p = c.lower_bound(id),
+         it_n = it_p;
     if (it_p != c.begin()) /* Create 2 separate iterator if we could */
         --it_p;
 
@@ -75,6 +75,17 @@ NodeCache::clearBadNodes(sa_family_t family)
     }
 }
 
+void
+NodeCache::closeAll(sa_family_t family)
+{
+    if (family == 0) {
+        closeAll(AF_INET);
+        closeAll(AF_INET6);
+    } else {
+        (family == AF_INET ? cache_4 : cache_6).closeAll();
+    }
+}
+
 std::shared_ptr<Node>
 NodeCache::NodeMap::getNode(const InfoHash& id)
 {
@@ -88,15 +99,15 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
 }
 
 std::shared_ptr<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm)
+NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& sock, time_point now, bool confirm)
 {
     auto it = emplace(id, std::weak_ptr<Node>{});
     auto node = it.first->second.lock();
     if (not node) {
-        node = std::make_shared<Node>(id, addr);
+        node = std::make_shared<Node>(id, addr, sock);
         it.first->second = node;
     } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
-        node->update(addr);
+        node->update(addr, sock);
     }
     return node;
 }
@@ -112,5 +123,22 @@ NodeCache::NodeMap::clearBadNodes() {
         }
     }
 }
+
+void
+NodeCache::NodeMap::closeAll()
+{
+    for (auto it = cbegin(); it != cend();) {
+        if (auto n = it->second.lock()) {
+            if (n->sock) {
+                n->sock->close();
+                n->sock.reset();
+            }
+            ++it;
+        } else {
+            erase(it++);
+        }
+    }
+}
+
 
 }

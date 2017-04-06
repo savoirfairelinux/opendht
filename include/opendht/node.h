@@ -22,6 +22,7 @@
 #include "infohash.h" // includes socket structures
 #include "utils.h"
 #include "sockaddr.h"
+#include "uv_utils.h"
 
 #include <list>
 
@@ -34,13 +35,18 @@ struct Request;
 struct Node {
     InfoHash id;
     SockAddr addr;
+    Sp<TcpSocket> sock;
 
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
 
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
         : id(id), addr(sa, salen) {}
-    Node(const InfoHash& id, const SockAddr& addr) : id(id), addr(addr) {}
+    Node(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& s = {}) : id(id), addr(addr), sock(s) {}
+    ~Node() {
+        if (sock)
+            sock->close();
+    }
 
     InfoHash getId() const {
         return id;
@@ -71,10 +77,14 @@ struct Node {
     NodeExport exportNode() const { return NodeExport {id, addr.first, addr.second}; }
     sa_family_t getFamily() const { return addr.getFamily(); }
 
-    void update(const SockAddr&);
+    void update(const SockAddr&, const Sp<TcpSocket>&);
 
-    void requested(std::shared_ptr<net::Request>& req);
-    void received(time_point now, std::shared_ptr<net::Request> req);
+    bool canStream() const {
+        return sock and not sock->isClosed() and sock->canWrite();
+    }
+
+    void requested(Sp<net::Request>& req);
+    void received(time_point now, Sp<net::Request> req);
 
     void setExpired();
 

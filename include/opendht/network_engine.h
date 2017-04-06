@@ -229,6 +229,8 @@ public:
     void clear();
     void close(OnClose cb) {
         sock->close(cb);
+        tcp_sock->close();
+        cache.closeAll();
     }
 
     /**
@@ -273,7 +275,7 @@ public:
      * @return the request with information concerning its success.
      */
     Sp<Request>
-        sendPing(Sp<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+        sendPing(const Sp<Node>& n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
     /**
      * Send a "ping" request to a given node.
      *
@@ -302,7 +304,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendFindNode(Sp<Node> n,
+    Sp<Request> sendFindNode(const Sp<Node>& n,
                              const InfoHash& hash,
                              want_t want,
                              RequestCb&& on_done,
@@ -321,7 +323,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendGetValues(Sp<Node> n,
+    Sp<Request> sendGetValues(const Sp<Node>& n,
                               const InfoHash& hash,
                               const Query& query,
                               want_t want,
@@ -350,7 +352,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendListen(Sp<Node> n,
+    Sp<Request> sendListen(const Sp<Node>& n,
                            const InfoHash& hash,
                            const Query& query,
                            const Blob& token,
@@ -371,7 +373,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendAnnounceValue(Sp<Node> n,
+    Sp<Request> sendAnnounceValue(const Sp<Node>& n,
                                   const InfoHash& hash,
                                   const Sp<Value>& v,
                                   time_point created,
@@ -391,7 +393,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendRefreshValue(Sp<Node> n,
+    Sp<Request> sendRefreshValue(const Sp<Node>& n,
                                  const InfoHash& hash,
                                  const Value::Id& vid,
                                  const Blob& token,
@@ -427,7 +429,7 @@ public:
     void processMessage(const uint8_t *buf, size_t buflen, const SockAddr& addr);
 
     Sp<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
-        auto n = cache.getNode(myid, addr, scheduler.time(), 0);
+        auto n = cache.getNode(myid, addr, {}, scheduler.time(), 0);
         onNewNode(n, 0);
         return n;
     }
@@ -478,7 +480,7 @@ private:
     static const std::string my_v;
     static std::mt19937 rd_device;
 
-    void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
+    void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from, const Sp<TcpSocket>& s = {});
 
     bool rateLimit(const SockAddr& addr);
 
@@ -513,21 +515,24 @@ private:
     };
 
 
-    // basic wrapper for socket sendto function
-    int send(msgpack::sbuffer& msg, const SockAddr& addr);
-    int send(const Blob& msg, int flags, const SockAddr& addr);
+    int send(msgpack::sbuffer& msg, const Sp<Node>& node);
+    int sendUDP(msgpack::sbuffer& msg, const SockAddr& addr);
+
+    int send(const Blob& msg, int flags, const Sp<Node>& node);
+
+    void startTcp(const Sp<TcpSocket>& sock, bool assigned = false);
 
     void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
-    std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
+    std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&, bool stream);
     void maintainRxBuffer(const TransId& tid);
 
     /*************
      *  Answers  *
      *************/
     /* answer to a ping  request */
-    void sendPong(const SockAddr& addr, TransId tid);
+    void sendPong(const Sp<Node>& node, TransId tid);
     /* answer to findnodes/getvalues request */
-    void sendNodesValues(const SockAddr& addr,
+    void sendNodesValues(const Sp<Node>& node,
             TransId tid,
             const Blob& nodes,
             const Blob& nodes6,
@@ -542,11 +547,11 @@ private:
             std::vector<Sp<Node>>& nodes,
             std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, TransId tid);
+    void sendListenConfirmation(const Sp<Node>& node, TransId tid);
     /* answer to put request */
-    void sendValueAnnounced(const SockAddr& addr, TransId, Value::Id);
+    void sendValueAnnounced(const Sp<Node>& node, TransId, Value::Id);
     /* answer in case of error */
-    void sendError(const SockAddr& addr,
+    void sendError(const Sp<Node>& node,
             TransId tid,
             uint16_t code,
             const std::string& message,
@@ -559,7 +564,9 @@ private:
     const NetId network {0};
     const Logger& DHT_LOG;
 
-    std::shared_ptr<UdpSocket> sock;
+    Sp<UdpSocket> sock;
+    Sp<TcpSocket> tcp_sock;
+    std::set<Sp<TcpSocket>> pending_connect;
     NodeCache cache {};
 
     /**
