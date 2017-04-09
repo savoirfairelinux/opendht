@@ -20,21 +20,20 @@ import time
 import asyncio
 
 ping_node = dht.DhtRunner()
-ping_node.run(port = 5632)
+ping_node.run()
 #ping_node.enableLogging()
 #ping_node.bootstrap("bootstrap.ring.cx", "4222")
 
 pong_node = dht.DhtRunner()
-pong_node.run(port = 5633)
+pong_node.run()
 #pong_node.enableLogging()
-pong_node.bootstrap("192.168.49.55", "5632");
-#pong_node.bootstrap("192.168.49.55", "5632");
+pong_node.ping(ping_node.getBound());
 
 loc_ping = dht.InfoHash.get("toto99")
 loc_pong = dht.InfoHash.get(str(loc_ping))
 
 i = 0
-MAX = 8192
+MAX = 2048
 
 loop = asyncio.get_event_loop()
 
