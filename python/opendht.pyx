@@ -333,7 +333,7 @@ cdef class DhtRunner(_WithID):
         return h
     def getNodeId(self):
         return self.thisptr.get().getNodeId().toString()
-    def bootstrap(self, SockAddr addr, done_cb=None):
+    def ping(self, SockAddr addr, done_cb=None):
         if done_cb:
             cb_obj = {'done':done_cb}
             ref.Py_INCREF(cb_obj)
@@ -350,7 +350,7 @@ cdef class DhtRunner(_WithID):
                     lock.notify()
             with lock:
                 pending += 1
-                self.bootstrap(addr, done_cb=tmp_done)
+                self.ping(addr, done_cb=tmp_done)
                 while pending > 0:
                     lock.wait()
             return ok
