@@ -2,11 +2,11 @@
 
 // Generic helper definitions for shared library support
 #if defined _WIN32 || defined __CYGWIN__
-  #define OPENDTH_IMPORT __declspec(dllimport)
+  #define OPENDHT_IMPORT __declspec(dllimport)
   #define OPENDHT_EXPORT __declspec(dllexport)
   #define OPENDHT_HIDDEN
 #else
-  #define OPENDTH_IMPORT __attribute__ ((visibility ("default")))
+  #define OPENDHT_IMPORT __attribute__ ((visibility ("default")))
   #define OPENDHT_EXPORT __attribute__ ((visibility ("default")))
   #define OPENDHT_HIDDEN __attribute__ ((visibility ("hidden")))
 #endif
@@ -19,7 +19,7 @@
   #ifdef OPENDHT_BUILD // defined if we are building the OpenDHT shared library (instead of using it)
     #define OPENDHT_PUBLIC OPENDHT_EXPORT
   #else
-    #define OPENDHT_PUBLIC OPENDTH_IMPORT
+    #define OPENDHT_PUBLIC OPENDHT_IMPORT
   #endif // OPENDHT_BUILD
   #define OPENDHT_LOCAL OPENDHT_HIDDEN
 #else // opendht_EXPORTS is not defined: this means OpenDHT is a static lib.
