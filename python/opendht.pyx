@@ -25,7 +25,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with OpenDHT Python Wrapper. If not, see <http://www.gnu.org/licenses/>.
+# along with OpenDHT Python Wrapper. If not, see <https://www.gnu.org/licenses/>.
 
 from libcpp.map cimport map as map
 from libcpp cimport bool
