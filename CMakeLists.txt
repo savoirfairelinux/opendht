@@ -24,6 +24,7 @@ option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
+option (OPENDHT_C "Build C bindings" ON)
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -312,6 +313,15 @@ if (OPENDHT_SHARED)
                 ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
+endif ()
+
+if (OPENDHT_C)
+    add_library (opendht-c SHARED
+        c/opendht.cpp
+        c/opendht_c.h
+    )
+    target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
+    target_link_libraries(opendht-c opendht)
 endif ()
 
 if (OPENDHT_TOOLS)

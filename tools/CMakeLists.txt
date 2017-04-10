@@ -17,6 +17,15 @@ else ()
 	target_link_libraries (dhtchat LINK_PUBLIC opendht-static)
 endif ()
 
+if (OPENDHT_C)
+	add_executable (dhtcnode dhtcnode.c)
+	target_link_libraries (dhtcnode LINK_PUBLIC opendht-c readline)
+endif ()
+
+if (NOT DEFINED CMAKE_INSTALL_BINDIR)
+    set(CMAKE_INSTALL_BINDIR bin)
+endif ()
+
 install (TARGETS dhtnode dhtscanner dhtchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if (OPENDHT_SYSTEMD)
