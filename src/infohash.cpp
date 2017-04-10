@@ -71,20 +71,40 @@ InfoHash::getRandom()
     return h;
 }
 
+struct HexMap : public std::array<std::array<char, 2>, 256> {
+    HexMap() {
+        for (size_t i=0; i<size(); i++) {
+            auto& e = (*this)[i];
+            e[0] = hex_digits[(i >> 4) & 0x0F];
+            e[1] = hex_digits[i & 0x0F];
+        }
+    }
+private:
+    static constexpr const char* hex_digits = "0123456789abcdef";
+};
+
+const char*
+InfoHash::to_c_str() const
+{
+    static const HexMap map;
+    thread_local std::array<char, HASH_LEN*2+1> buf;
+    for (size_t i=0; i<HASH_LEN; i++) {
+        auto b = buf.data()+i*2;
+        const auto& m = map[(*this)[i]];
+        *((uint16_t*)b) = *((uint16_t*)&m);
+    }
+    return buf.data();
+}
+
 std::string
 InfoHash::toString() const
 {
-    std::stringstream ss;
-    ss << *this;
-    return ss.str();
+    return std::string(to_c_str(), HASH_LEN*2);
 }
 
 std::ostream& operator<< (std::ostream& s, const InfoHash& h)
 {
-    s << std::hex;
-    for (unsigned i=0; i<HASH_LEN; i++)
-        s << std::setfill('0') << std::setw(2) << (unsigned)h[i];
-    s << std::dec;
+    s.write(h.to_c_str(), HASH_LEN*2);
     return s;
 }
 

@@ -278,6 +278,8 @@ public:
     OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
     OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, InfoHash& h);
 
+    const char* to_c_str() const;
+
     std::string toString() const;
 
     template <typename Packer>
