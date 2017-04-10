@@ -64,12 +64,10 @@ InfoHash::getRandom()
 {
     InfoHash h;
     crypto::random_device rdev;
-#ifdef _WIN32
-    static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
-#else
-    static std::uniform_int_distribution<uint8_t> rand_byte;
-#endif
-    std::generate(h.begin(), h.end(), std::bind(rand_byte, std::ref(rdev)));
+    std::uniform_int_distribution<uint32_t> rand_int;
+    auto a = reinterpret_cast<uint32_t*>(&(*h.begin()));
+    auto b = reinterpret_cast<uint32_t*>(&(*h.end()));
+    std::generate(a, b, std::bind(rand_int, std::ref(rdev)));
     return h;
 }
 
