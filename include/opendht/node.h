@@ -52,7 +52,7 @@ struct Node {
 
     Sp<TcpSocket> sock;
 
-    crypto::EcPublicKey last_known_pk;
+    InfoHash last_known_pk;
     //std::list<crypto::EcSecretKey> 
 
     Node(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& s = {}, bool client=false);
@@ -76,6 +76,10 @@ struct Node {
     const time_point& getTime() const { return time; }
     const time_point& getReplyTime() const { return reply_time; }
     void setTime(const time_point& t) { time = t; }
+
+    void startTCP() {
+        
+    }
 
     /**
      * Makes notice about an additionnal authentication error with this node. Up

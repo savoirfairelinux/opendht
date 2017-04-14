@@ -22,6 +22,8 @@
 
 #include <msgpack.hpp>
 
+#include <sodium.h>
+
 #ifndef _WIN32
 #include <netinet/in.h>
 #include <netdb.h>
@@ -46,7 +48,7 @@ typedef uint16_t in_port_t;
 
 
 // bytes
-#define HASH_LEN 32u
+#define HASH_LEN crypto_box_PUBLICKEYBYTES
 
 namespace dht {
 
@@ -145,6 +147,12 @@ public:
             fill(0);
         else
             std::copy_n(h, HASH_LEN, begin());
+    }
+
+    std::vector<uint8_t> encrypt(const uint8_t* msg, size_t msg_size) const {
+        std::vector<uint8_t> ret(crypto_box_SEALBYTES+msg_size);
+        crypto_box_seal(ret.data(), msg, msg_size, data());
+        return ret;
     }
 
     /**

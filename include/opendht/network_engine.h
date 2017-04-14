@@ -205,7 +205,7 @@ public:
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
     NetworkEngine(uv_loop_t*, Logger& log, Scheduler& scheduler);
-    NetworkEngine(uv_loop_t*, const NetworkConfig& config, InfoHash& myid, NetId net, Logger& log, Scheduler& scheduler,
+    NetworkEngine(uv_loop_t*, const NetworkConfig& config, NetId net, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -217,6 +217,10 @@ public:
             decltype(NetworkEngine::onRefresh) onRefresh);
 
     virtual ~NetworkEngine();
+
+    const InfoHash& getNodeId() const {
+        return id_key.getPublicKey();
+    }
 
     void clear();
     void close(OnClose cb) {
@@ -386,17 +390,6 @@ public:
                                  RequestCb&& on_done,
                                  RequestExpiredCb&& on_expired);
 
-    /**
-     * Parses a message and calls appropriate callbacks.
-     *
-     * @param buf  The buffer containing the binary message.
-     * @param buflen  The length of the buffer.
-     * @param from  The address info of the sender.
-     * @param fromlen  The length of the corresponding sockaddr structure.
-     * @param now  The time to adjust the clock in the network engine.
-     */
-    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr& addr);
-
     Sp<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
         auto n = cache.getNode(myid, addr, {}, scheduler.time(), 0);
         onNewNode(n, 0);
@@ -448,7 +441,20 @@ private:
 
     static const std::string my_v;
 
-    void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from, const Sp<TcpSocket>& s = {});
+    /**
+     * Parses a message and calls appropriate callbacks.
+     *
+     * @param buf  The buffer containing the binary message.
+     * @param buflen  The length of the buffer.
+     * @param from  The address info of the sender.
+     * @param fromlen  The length of the corresponding sockaddr structure.
+     * @param now  The time to adjust the clock in the network engine.
+     */
+    void processMessage(const uint8_t* data, size_t size, const SockAddr& addr);
+    Sp<Node> processEncrypted(const msgpack::object& o, const SockAddr& from);
+    Sp<Node> process(const msgpack::object& o, const SockAddr& addr);
+
+    Sp<Node> process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from, const Sp<TcpSocket>& s = {});
 
     bool rateLimit(const SockAddr& addr);
 
@@ -478,7 +484,7 @@ private:
 
     int send(const Blob& msg, int flags, const Sp<Node>& node, UdpSocket::OnSent&& cb);
 
-    void startTcp(const Sp<TcpSocket>& sock, bool assigned = false);
+    void startTcp(const Sp<TcpSocket>& sock, const Sp<Node>& node = {});
 
     void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&, bool stream);
@@ -518,7 +524,7 @@ private:
     void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 
     /* DHT info */
-    const InfoHash& myid;
+    //const InfoHash& myid;
     const NetId network {0};
     const Logger& DHT_LOG;
 
