@@ -38,7 +38,7 @@ struct Node {
     SockAddr addr;
     Sp<TcpSocket> sock;
 
-    crypto::EcPublicKey last_known_pk;
+    InfoHash last_known_pk;
     //std::list<crypto::EcSecretKey> 
 
     time_point time {time_point::min()};            /* last time eared about */
@@ -60,6 +60,10 @@ struct Node {
     }
     std::string getAddrStr() const {
         return addr.toString();
+    }
+
+    void startTCP() {
+        
     }
 
     /**

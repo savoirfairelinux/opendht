@@ -651,7 +651,7 @@ private:
 
 using SecureBlob = secure_vector<uint8_t>;
 
-class EcPublicKey : public std::array<uint8_t, crypto_box_PUBLICKEYBYTES> {
+/*class EcPublicKey : public std::array<uint8_t, crypto_box_PUBLICKEYBYTES> {
 public:
     Blob encrypt(const Blob& message) const {
         Blob ret(crypto_box_SEALBYTES+message.size());
@@ -659,11 +659,16 @@ public:
         return ret;
     }
 
-};
+    const InfoHash& getId() const {
+        return *reinterpret_cast<const InfoHash*>(this);
+    }
+
+};*/
 
 class EcSecretKey {
 public:
     using KeyData = secure_array<uint8_t, crypto_box_SECRETKEYBYTES>;
+    using EcPublicKey = InfoHash;
 
     static EcSecretKey generate() {
         EcSecretKey ret;
@@ -675,34 +680,34 @@ public:
         return pk;
     }
 
-    Blob encrypt(const Blob& message, const EcPublicKey& pub) const {
-        Blob ret(crypto_box_NONCEBYTES+crypto_box_MACBYTES+message.size());
+    Blob encrypt(const uint8_t* data, size_t size, const EcPublicKey& pub) const {
+        Blob ret(crypto_box_NONCEBYTES+crypto_box_MACBYTES+size);
         randombytes_buf(ret.data(), crypto_box_NONCEBYTES);
-        if (crypto_box_easy(ret.data()+crypto_box_NONCEBYTES, message.data(), message.size(), ret.data(),
+        if (crypto_box_easy(ret.data()+crypto_box_NONCEBYTES, data, size, ret.data(),
                             pub.data(), key.data()) != 0) {
             throw CryptoException("Can't encrypt data");
         }
         return ret;
     }
 
-    Blob decrypt(const Blob& cypher) const {
-        if (cypher.size() <= crypto_box_SEALBYTES)
+    Blob decrypt(const uint8_t* cypher, size_t cypher_size) const {
+        if (cypher_size <= crypto_box_SEALBYTES)
             throw DecryptError("Unexpected cipher length");
-        Blob ret(cypher.size() - crypto_box_SEALBYTES);
-        if (crypto_box_seal_open(ret.data(), cypher.data(), cypher.size(), pk.data(), key.data()) != 0) {
+        Blob ret(cypher_size - crypto_box_SEALBYTES);
+        if (crypto_box_seal_open(ret.data(), cypher, cypher_size, pk.data(), key.data()) != 0) {
             throw DecryptError("Can't decrypt data");
         }
         return ret;
     }
 
-    Blob decrypt(const Blob& cypher, const EcPublicKey& pub) const {
-        if (cypher.size() <= crypto_box_NONCEBYTES+crypto_box_MACBYTES)
+    Blob decrypt(const uint8_t* cypher, size_t cypher_size, const EcPublicKey& pub) const {
+        if (cypher_size <= crypto_box_NONCEBYTES+crypto_box_MACBYTES)
             throw DecryptError("Unexpected cipher length");
-        Blob ret(cypher.size() - crypto_box_NONCEBYTES - crypto_box_MACBYTES);
+        Blob ret(cypher_size - crypto_box_NONCEBYTES - crypto_box_MACBYTES);
         if (crypto_box_open_easy(ret.data(),
-                cypher.data()+crypto_box_NONCEBYTES,
-                cypher.size()-crypto_box_NONCEBYTES,
-                cypher.data(),
+                cypher+crypto_box_NONCEBYTES,
+                cypher_size-crypto_box_NONCEBYTES,
+                cypher,
                 pub.data(), key.data()) != 0) {
             throw DecryptError("Can't decrypt data");
         }

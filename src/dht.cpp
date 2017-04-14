@@ -203,7 +203,7 @@ Dht::onNewNode(const Sp<Node>& node, int confirm)
     trySearchInsert(node);
 
     const auto& now = scheduler.time();
-    bool mybucket = list.contains(b, myid);
+    bool mybucket = list.contains(b, getNodeId());
     if (mybucket) {
         if (node->getFamily() == AF_INET)
             mybucket_grow_time = now;
@@ -606,7 +606,7 @@ Dht::searchStep(Sp<Search> sr)
         }
 
         // true if this node is part of the target nodes cluter.
-        /*bool in = sr->id.xorCmp(myid, sr->nodes.back().node->id) < 0;
+        /*bool in = sr->id.xorCmp(getNodeId(), sr->nodes.back().node->id) < 0;
 
         DHT_LOG_DEBUG("[search %s IPv%c] synced%s",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', in ? ", in" : "");*/
@@ -1508,7 +1508,7 @@ Dht::getNodesStats(sa_family_t af) const
         if (b.cached)
             stats.cached_nodes++;
     }
-    stats.table_depth = bcks.depth(bcks.findBucket(myid));
+    stats.table_depth = bcks.depth(bcks.findBucket(getNodeId()));
     return stats;
 }
 
@@ -1629,7 +1629,7 @@ void
 Dht::dumpTables() const
 {
     std::stringstream out;
-    out << "My id " << myid << std::endl;
+    out << "My id " << getNodeId() << std::endl;
 
     out << "Buckets IPv4 :" << std::endl;
     for (const auto& b : buckets4)
@@ -1773,11 +1773,10 @@ Dht::~Dht()
 Dht::Dht() : store(), scheduler(nullptr, DHT_LOG), network_engine(nullptr, DHT_LOG, scheduler) {}
 
 Dht::Dht(uv_loop_t* loop, Config config)
-    : myid(config.node_id != zeroes ? config.node_id : InfoHash::getRandom()),
-    is_bootstrap(config.is_bootstrap), maintain_storage(config.maintain_storage),
+    : is_bootstrap(config.is_bootstrap), maintain_storage(config.maintain_storage),
     buckets4{Bucket {AF_INET}},buckets6{Bucket {AF_INET6}}, store(), store_quota(),
     scheduler(loop, DHT_LOG),
-    network_engine(loop, config.network_config, myid, config.network, DHT_LOG, scheduler,
+    network_engine(loop, config.network_config, config.network, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),
@@ -1803,7 +1802,7 @@ Dht::Dht(uv_loop_t* loop, Config config)
 
     expire();
 
-    DHT_LOG.d("DHT initialised with node ID %s", myid.toString().c_str());
+    DHT_LOG.d("DHT initialised with node ID %s", getNodeId().toString().c_str());
 }
 
 
@@ -1811,11 +1810,11 @@ bool
 Dht::neighbourhoodMaintenance(RoutingTable& list)
 {
     //DHT_LOG_DEBUG("neighbourhoodMaintenance");
-    auto b = list.findBucket(myid);
+    auto b = list.findBucket(getNodeId());
     if (b == list.end())
         return false;
 
-    InfoHash id = myid;
+    InfoHash id = getNodeId();
 #ifdef _WIN32
     std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
 #else
@@ -1932,7 +1931,7 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, DoneCallb
 
     auto nodes = buckets4.findClosestNodes(storage.first, now);
     if (!nodes.empty()) {
-        if (force || storage.first.xorCmp(nodes.back()->id, myid) < 0) {
+        if (force || storage.first.xorCmp(nodes.back()->id, getNodeId()) < 0) {
             for (auto &value : storage.second.getValues()) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.created + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
@@ -1947,7 +1946,7 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, DoneCallb
 
     auto nodes6 = buckets6.findClosestNodes(storage.first, now);
     if (!nodes6.empty()) {
-        if (force || storage.first.xorCmp(nodes6.back()->id, myid) < 0) {
+        if (force || storage.first.xorCmp(nodes6.back()->id, getNodeId()) < 0) {
             for (auto &value : storage.second.getValues()) {
                 const auto& vt = getType(value.data->type);
                 if (force || value.created + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
@@ -1980,7 +1979,7 @@ Dht::updateStatus()
         status6 = nstatus6;
         if (status4 == NodeStatus::Disconnected and status6 == NodeStatus::Disconnected) {
             // We have lost connection with the DHT.  Try to recover using bootstrap nodes.
-            DHT_LOG.e(myid, "DHT disconnected", myid.toString().c_str());
+            DHT_LOG.e(getNodeId(), "DHT disconnected", getNodeId().toString().c_str());
         } else {
             //bootstrap_nodes.clear();
         }
@@ -2011,12 +2010,12 @@ Dht::confirmNodes()
     updateStatus();
 
     if (searches4.empty() and status4 == NodeStatus::Connected) {
-        DHT_LOG.d(myid, "[confirm nodes] initial IPv4 'get' for my id (%s)", myid.toString().c_str());
-        search(myid, AF_INET);
+        DHT_LOG.d(getNodeId(), "[confirm nodes] initial IPv4 'get' for my id (%s)", getNodeId().toString().c_str());
+        search(getNodeId(), AF_INET);
     }
     if (searches6.empty() and status6 == NodeStatus::Connected) {
-        DHT_LOG.d(myid, "[confirm nodes] initial IPv6 'get' for my id (%s)", myid.toString().c_str());
-        search(myid, AF_INET6);
+        DHT_LOG.d(getNodeId(), "[confirm nodes] initial IPv6 'get' for my id (%s)", getNodeId().toString().c_str());
+        search(getNodeId(), AF_INET6);
     }
 
     soon |= bucketMaintenance(buckets4);
@@ -2106,13 +2105,13 @@ Dht::exportNodes()
 {
     const auto& now = scheduler.time();
     std::vector<NodeExport> nodes;
-    const auto b4 = buckets4.findBucket(myid);
+    const auto b4 = buckets4.findBucket(getNodeId());
     if (b4 != buckets4.end()) {
         for (auto& n : b4->nodes)
             if (n->isGood(now))
                 nodes.push_back(n->exportNode());
     }
-    const auto b6 = buckets6.findBucket(myid);
+    const auto b6 = buckets6.findBucket(getNodeId());
     if (b6 != buckets6.end()) {
         for (auto& n : b6->nodes)
             if (n->isGood(now))
@@ -2365,7 +2364,7 @@ Dht::onAnnounce(Sp<Node> node,
         // We store a value only if we think we're part of the
         // SEARCH_NODES nodes around the target id.
         auto closest_nodes = buckets(node->getFamily()).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
-        if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
+        if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, getNodeId()) < 0) {
             DHT_LOG.w(hash, node->id, "[node %s] announce too far from the target. Dropping value.", node->toString().c_str());
             return {};
         }

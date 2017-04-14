@@ -76,7 +76,7 @@ public:
     /**
      * Get the ID of the node.
      */
-    inline const InfoHash& getNodeId() const { return myid; }
+    inline const InfoHash& getNodeId() const { return network_engine.getNodeId(); }
 
     /**
      * Get the current status of the node for the given family.
