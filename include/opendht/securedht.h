@@ -51,10 +51,11 @@ public:
     InfoHash getId() const {
         return key_ ? key_->getPublicKey().getId() : InfoHash();
     }
+#if GNUTLS_VERSION_NUMBER >= 0x030401
     PkId getLongId() const {
         return key_ ? key_->getPublicKey().getLongId() : PkId();
     }
-
+#endif
     ValueType secureType(ValueType&& type);
 
     ValueType secureType(const ValueType& type) {

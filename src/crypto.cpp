@@ -532,6 +532,7 @@ PublicKey::getId() const
     return id;
 }
 
+#if GNUTLS_VERSION_NUMBER >= 0x030401
 PkId
 PublicKey::getLongId() const
 {
@@ -541,6 +542,7 @@ PublicKey::getLongId() const
         return {};
     return h;
 }
+#endif
 
 Certificate::Certificate(const Blob& certData) : cert(nullptr)
 {
@@ -646,6 +648,7 @@ Certificate::getId() const
     return id;
 }
 
+#if GNUTLS_VERSION_NUMBER >= 0x030401
 PkId
 Certificate::getLongId() const
 {
@@ -657,6 +660,7 @@ Certificate::getLongId() const
         throw CryptoException("Can't get certificate public key ID.");
     return id;
 }
+#endif
 
 static std::string
 getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)

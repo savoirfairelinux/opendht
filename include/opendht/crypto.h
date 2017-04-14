@@ -83,7 +83,9 @@ struct OPENDHT_PUBLIC PublicKey
     PublicKey& operator=(PublicKey&& o) noexcept;
 
     InfoHash getId() const;
+#if GNUTLS_VERSION_NUMBER >= 0x030401
     PkId getLongId() const;
+#endif
     bool checkSignature(const Blob& data, const Blob& signature) const;
     Blob encrypt(const Blob&) const;
 
@@ -362,7 +364,9 @@ struct OPENDHT_PUBLIC Certificate {
 
     /** Same as getPublicKey().getId() */
     InfoHash getId() const;
+#if GNUTLS_VERSION_NUMBER >= 0x030401
     PkId getLongId() const;
+#endif
 
     /** Read certificate Common Name (CN) */
     std::string getName() const;
