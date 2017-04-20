@@ -525,24 +525,34 @@ PublicKey::encrypt(const Blob& data) const
 InfoHash
 PublicKey::getId() const
 {
+    if (not pk)
+        return {};
     InfoHash id;
     size_t sz = id.size();
-    if (gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
-        return {};
+    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
+        throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
+    if (sz != id.size())
+        throw CryptoException("Can't get public key ID: wrong output length.");
     return id;
 }
 
-#if GNUTLS_VERSION_NUMBER >= 0x030401
 PkId
 PublicKey::getLongId() const
 {
+    if (not pk)
+        return {};
+#if GNUTLS_VERSION_NUMBER < 0x030401
+    throw CryptoException("Can't get 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
+#else
     PkId h;
     size_t sz = h.size();
-    if (gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz) != GNUTLS_E_SUCCESS || sz != h.size())
-        return {};
+    if (auto err = gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz))
+        throw CryptoException(std::string("Can't get 256 bits public key ID: ") + gnutls_strerror(err));
+    if (sz != h.size())
+        throw CryptoException("Can't get 256 bits public key ID: wrong output length.");
     return h;
-}
 #endif
+}
 
 Certificate::Certificate(const Blob& certData) : cert(nullptr)
 {
@@ -643,24 +653,30 @@ Certificate::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-    if (gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
-        throw CryptoException("Can't get certificate public key ID.");
+    if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
+        throw CryptoException(std::string("Can't get certificate public key ID: ") + gnutls_strerror(err));
+    if (sz != id.size())
+        throw CryptoException("Can't get certificate public key ID: wrong output length.");
     return id;
 }
 
-#if GNUTLS_VERSION_NUMBER >= 0x030401
 PkId
 Certificate::getLongId() const
 {
     if (not cert)
         return {};
+#if GNUTLS_VERSION_NUMBER < 0x030401
+    throw CryptoException("Can't get certificate 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
+#else
     PkId id;
     size_t sz = id.size();
-    if (gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz) != GNUTLS_E_SUCCESS || sz != id.size())
-        throw CryptoException("Can't get certificate public key ID.");
+    if (auto err = gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz))
+        throw CryptoException(std::string("Can't get certificate 256 bits public key ID: ") + gnutls_strerror(err));
+    if (sz != id.size())
+        throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
     return id;
-}
 #endif
+}
 
 static std::string
 getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
