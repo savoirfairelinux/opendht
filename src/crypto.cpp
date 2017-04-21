@@ -529,7 +529,8 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
+    constexpr int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
+    if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get public key ID: wrong output length.");
