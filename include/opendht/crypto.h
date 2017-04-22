@@ -411,6 +411,18 @@ struct OPENDHT_PUBLIC Certificate {
         return ret;
     }
 
+    std::vector<gnutls_x509_crt_t>
+    getChain(bool copy = false) const
+    {
+        std::vector<gnutls_x509_crt_t> crts;
+        auto c = this;
+        do {
+            crts.emplace_back(copy ? c->getCopy() : c->cert);
+            c = c->issuer.get();
+        } while (c);
+        return crts;
+    }
+
     gnutls_x509_crt_t cert {};
     std::shared_ptr<Certificate> issuer {};
 private:
