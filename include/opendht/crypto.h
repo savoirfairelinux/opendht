@@ -423,6 +423,25 @@ struct OPENDHT_PUBLIC Certificate {
         return crts;
     }
 
+    std::pair<
+        std::vector<gnutls_x509_crt_t>,
+        std::vector<gnutls_x509_crl_t>
+    >
+    getChainWithRevocations(bool copy = false) const
+    {
+        std::vector<gnutls_x509_crt_t> crts;
+        std::vector<gnutls_x509_crl_t> crls;
+        auto c = this;
+        do {
+            crts.emplace_back(copy ? c->getCopy() : c->cert);
+            crls.reserve(crls.size() + c->revocation_lists.size());
+            for (const auto& crl : c->revocation_lists)
+                crls.emplace_back(copy ? crl->getCopy() : crl->get());
+            c = c->issuer.get();
+        } while (c);
+        return {crts, crls};
+    }
+
     gnutls_x509_crt_t cert {};
     std::shared_ptr<Certificate> issuer {};
 private:
