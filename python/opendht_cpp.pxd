@@ -96,8 +96,11 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
         Certificate(string pem)
         InfoHash getId() const
         string toString() const
+        string getName() const
+        void revoke(PrivateKey key, Certificate cert)
         @staticmethod
         Certificate generate(PrivateKey key, string name, Identity ca, bool is_ca)
+        shared_ptr[Certificate] issuer
 
 cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:

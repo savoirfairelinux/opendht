@@ -278,13 +278,22 @@ cdef class Certificate(_WithID):
         return h
     def toString(self):
         return self._cert.get().toString().decode()
+    def getName(self):
+        return self._cert.get().getName()
+    def revoke(self, PrivateKey k, Certificate c):
+        self._cert.get().revoke(k._key, deref(c._cert.get()));
+    def __bytes__(self):
+        return self._cert.get().toString() if self._cert else b''
+    property issuer:
+        def __get__(self):
+            c = Certificate()
+            c._cert = self._cert.get().issuer
+            return c;
     @staticmethod
     def generate(PrivateKey k, str name, Identity i = Identity(), bool is_ca = False):
         c = Certificate()
         c._cert = cpp.make_shared[cpp.Certificate](cpp.Certificate.generate(k._key, name.encode(), i._id, is_ca))
         return c
-    def __bytes__(self):
-        return self._cert.get().toString() if self._cert else b''
 
 cdef class ListenToken(object):
     cdef cpp.InfoHash _h
