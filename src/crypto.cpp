@@ -988,6 +988,7 @@ RevocationList::pack(Blob& b) const
         throw CryptoException(std::string("Can't export CRL: ") + gnutls_strerror(err));
     }
     b.insert(b.end(), gdat.data, gdat.data + gdat.size);
+    gnutls_free(gdat.data);
 }
 
 void
