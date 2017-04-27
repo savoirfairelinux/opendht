@@ -77,6 +77,8 @@ cdef extern from "opendht/sockaddr.h" namespace "dht":
         sa_family_t getFamily() const
         void setFamily(sa_family_t f)
 
+ctypedef vector[uint8_t] Blob
+
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
     cdef Identity generateIdentity(string name, Identity ca, unsigned bits)
@@ -84,12 +86,14 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     cdef cppclass PrivateKey:
         PrivateKey()
         PublicKey getPublicKey() const
+        Blob decrypt(Blob data) const
         @staticmethod
         PrivateKey generate()
 
     cdef cppclass PublicKey:
         PublicKey()
         InfoHash getId() const
+        Blob encrypt(Blob data) const
 
     cdef cppclass Certificate:
         Certificate()

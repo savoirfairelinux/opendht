@@ -251,6 +251,15 @@ cdef class PrivateKey(_WithID):
         pk = PublicKey()
         pk._key = self._key.get().getPublicKey()
         return pk
+    def decrypt(self, bytes dat):
+        cdef size_t d_len = len(dat)
+        cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
+        cdef cpp.Blob indat
+        indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
+        cdef cpp.Blob decrypted = self._key.get().decrypt(indat)
+        cdef char* decrypted_c_str = <char *>decrypted.data()
+        cdef Py_ssize_t length = decrypted.size()
+        return decrypted_c_str[:length]
     def __str__(self):
         return self.getId().toString().decode()
     @staticmethod
@@ -265,6 +274,15 @@ cdef class PublicKey(_WithID):
         h = InfoHash()
         h._infohash = self._key.getId()
         return h
+    def encrypt(self, bytes dat):
+        cdef size_t d_len = len(dat)
+        cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
+        cdef cpp.Blob indat
+        indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
+        cdef cpp.Blob encrypted = self._key.encrypt(indat)
+        cdef char* encrypted_c_str = <char *>encrypted.data()
+        cdef Py_ssize_t length = encrypted.size()
+        return encrypted_c_str[:length]
 
 cdef class Certificate(_WithID):
     cdef shared_ptr[cpp.Certificate] _cert
