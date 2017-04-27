@@ -457,6 +457,29 @@ private:
     std::set<std::shared_ptr<RevocationList>, crlNumberCmp> revocation_lists;
 };
 
+struct OPENDHT_PUBLIC TrustList
+{
+    struct VerifyResult {
+        int ret;
+        unsigned result;
+        bool hasError() const { return ret < 0; }
+        bool isValid() const { return !hasError() and !(result & GNUTLS_CERT_INVALID); }
+        explicit operator bool() const { return isValid(); }
+        std::string toString() const;
+        OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const VerifyResult& h);
+    };
+
+    TrustList();
+    ~TrustList();
+    void add(const Certificate& crt);
+    void add(const RevocationList& crl);
+    void remove(const Certificate& crt, bool parents = true);
+    VerifyResult verify(const Certificate& crt) const;
+
+private:
+    gnutls_x509_trust_list_t trust;
+};
+
 template <class T>
 class OPENDHT_PUBLIC secure_vector
 {

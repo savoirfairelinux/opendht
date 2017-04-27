@@ -1172,5 +1172,95 @@ RevocationList::toString() const
     return ret;
 }
 
+TrustList::TrustList() {
+    gnutls_x509_trust_list_init(&trust, 0);
+}
+
+TrustList::~TrustList() {
+    gnutls_x509_trust_list_deinit(trust, 1);
+}
+
+void TrustList::add(const Certificate& crt)
+{
+    auto chain = crt.getChainWithRevocations(true);
+    gnutls_x509_trust_list_add_cas(trust, chain.first.data(), chain.first.size(), GNUTLS_TL_NO_DUPLICATES);
+    if (not chain.second.empty())
+        gnutls_x509_trust_list_add_crls(
+                trust,
+                chain.second.data(), chain.second.size(),
+                GNUTLS_TL_VERIFY_CRL | GNUTLS_TL_NO_DUPLICATES, 0);
+}
+
+void TrustList::add(const RevocationList& crl)
+{
+    auto copy = crl.getCopy();
+    gnutls_x509_trust_list_add_crls(trust, &copy, 1, GNUTLS_TL_VERIFY_CRL | GNUTLS_TL_NO_DUPLICATES, 0);
+}
+
+void TrustList::remove(const Certificate& crt, bool parents)
+{
+    gnutls_x509_trust_list_remove_cas(trust, &crt.cert, 1);
+    if (parents) {
+        for (auto c = crt.issuer; c; c = c->issuer)
+            gnutls_x509_trust_list_remove_cas(trust, &c->cert, 1);
+    }
+}
+
+TrustList::VerifyResult
+TrustList::verify(const Certificate& crt) const
+{
+    auto chain = crt.getChain();
+    VerifyResult ret;
+    ret.ret = gnutls_x509_trust_list_verify_crt2(
+        trust,
+        chain.data(), chain.size(),
+        nullptr, 0,
+        GNUTLS_PROFILE_TO_VFLAGS(GNUTLS_PROFILE_MEDIUM),
+        &ret.result, nullptr);
+    return ret;
+}
+
+std::string
+TrustList::VerifyResult::toString() const
+{
+    std::ostringstream ss;
+    ss << *this;
+    return ss.str();
+}
+
+std::ostream& operator<< (std::ostream& o, const TrustList::VerifyResult& h)
+{
+    if (h.ret < 0) {
+        o << "Error verifying certificate: " << gnutls_strerror(h.ret) << std::endl;
+    } else if (h.result & GNUTLS_CERT_INVALID) {
+        o << "Certificate check failed with code: " << h.result << std::endl;
+        if (h.result & GNUTLS_CERT_SIGNATURE_FAILURE)
+            o << "* The signature verification failed." << std::endl;
+        if (h.result & GNUTLS_CERT_REVOKED)
+            o << "* Certificate is revoked" << std::endl;
+        if (h.result & GNUTLS_CERT_SIGNER_NOT_FOUND)
+            o << "* Certificate's issuer is not known" << std::endl;
+        if (h.result & GNUTLS_CERT_SIGNER_NOT_CA)
+            o << "* Certificate's issuer not a CA" << std::endl;
+        if (h.result & GNUTLS_CERT_SIGNER_CONSTRAINTS_FAILURE)
+            o << "* Certificate's signer constraints were violated" << std::endl;
+        if (h.result & GNUTLS_CERT_INSECURE_ALGORITHM)
+            o << "* Certificate was signed using an insecure algorithm" << std::endl;
+        if (h.result & GNUTLS_CERT_NOT_ACTIVATED)
+            o << "* Certificate is not yet activated" << std::endl;
+        if (h.result & GNUTLS_CERT_EXPIRED)
+            o << "* Certificate has expired" << std::endl;
+        if (h.result & GNUTLS_CERT_UNEXPECTED_OWNER)
+            o << "* The owner is not the expected one" << std::endl;
+        if (h.result & GNUTLS_CERT_PURPOSE_MISMATCH)
+            o << "* Certificate or an intermediate does not match the intended purpose" << std::endl;
+        if (h.result & GNUTLS_CERT_MISMATCH)
+            o << "* Certificate presented isn't the expected one" << std::endl;
+    } else {
+        o << "Certificate is valid" << std::endl;
+    }
+    return o;
+}
+
 }
 }
