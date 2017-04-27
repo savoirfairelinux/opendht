@@ -89,6 +89,8 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
         Blob decrypt(Blob data) const
         @staticmethod
         PrivateKey generate()
+        @staticmethod
+        PrivateKey generateEC()
 
     cdef cppclass PublicKey:
         PublicKey()

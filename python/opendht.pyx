@@ -267,6 +267,11 @@ cdef class PrivateKey(_WithID):
         k = PrivateKey()
         k._key = cpp.make_shared[cpp.PrivateKey](cpp.PrivateKey.generate())
         return k
+    @staticmethod
+    def generateEC():
+        k = PrivateKey()
+        k._key = cpp.make_shared[cpp.PrivateKey](cpp.PrivateKey.generateEC())
+        return k
 
 cdef class PublicKey(_WithID):
     cdef cpp.PublicKey _key
