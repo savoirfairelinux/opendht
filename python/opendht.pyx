@@ -242,21 +242,21 @@ cdef class NodeSet(object):
         return NodeSetIter(self)
 
 cdef class PrivateKey(_WithID):
-    cdef cpp.PrivateKey _key
+    cdef shared_ptr[cpp.PrivateKey] _key
     def getId(self):
         h = InfoHash()
-        h._infohash = self._key.getPublicKey().getId()
+        h._infohash = self._key.get().getPublicKey().getId()
         return h
     def getPublicKey(self):
         pk = PublicKey()
-        pk._key = self._key.getPublicKey()
+        pk._key = self._key.get().getPublicKey()
         return pk
     def __str__(self):
         return self.getId().toString().decode()
     @staticmethod
     def generate():
         k = PrivateKey()
-        k._key = cpp.PrivateKey.generate()
+        k._key = cpp.make_shared[cpp.PrivateKey](cpp.PrivateKey.generate())
         return k
 
 cdef class PublicKey(_WithID):
@@ -281,7 +281,7 @@ cdef class Certificate(_WithID):
     def getName(self):
         return self._cert.get().getName()
     def revoke(self, PrivateKey k, Certificate c):
-        self._cert.get().revoke(k._key, deref(c._cert.get()));
+        self._cert.get().revoke(deref(k._key.get()), deref(c._cert.get()));
     def __bytes__(self):
         return self._cert.get().toString() if self._cert else b''
     property issuer:
@@ -292,7 +292,7 @@ cdef class Certificate(_WithID):
     @staticmethod
     def generate(PrivateKey k, str name, Identity i = Identity(), bool is_ca = False):
         c = Certificate()
-        c._cert = cpp.make_shared[cpp.Certificate](cpp.Certificate.generate(k._key, name.encode(), i._id, is_ca))
+        c._cert = cpp.make_shared[cpp.Certificate](cpp.Certificate.generate(deref(k._key.get()), name.encode(), i._id, is_ca))
         return c
 
 cdef class ListenToken(object):
@@ -302,18 +302,31 @@ cdef class ListenToken(object):
 
 cdef class Identity(object):
     cdef cpp.Identity _id
-    def generate(self, str name = "pydht", Identity ca = Identity(), unsigned bits = 4096):
-        self._id = cpp.generateIdentity(name.encode(), ca._id, bits)
-    property PublicKey:
+    def __init__(self, PrivateKey k = None, Certificate c = None):
+        if k:
+            self._id.first = k._key
+        if c:
+            self._id.second = c._cert
+    @staticmethod
+    def generate(str name = "pydht", Identity ca = Identity(), unsigned bits = 4096):
+        i = Identity()
+        i._id = cpp.generateIdentity(name.encode(), ca._id, bits)
+        return i
+    property publickey:
         def __get__(self):
             k = PublicKey()
             k._key = self._id.first.get().getPublicKey()
             return k
-    property Certificate:
+    property certificate:
         def __get__(self):
             c = Certificate()
             c._cert = self._id.second
             return c
+    property key:
+        def __get__(self):
+            k = PrivateKey()
+            k._key = self._id.first
+            return k
 
 cdef class DhtConfig(object):
     cdef cpp.DhtRunnerConfig _config
