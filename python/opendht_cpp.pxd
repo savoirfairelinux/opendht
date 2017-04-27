@@ -108,6 +108,18 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
         Certificate generate(PrivateKey key, string name, Identity ca, bool is_ca)
         shared_ptr[Certificate] issuer
 
+    cdef cppclass TrustList:
+        cppclass VerifyResult:
+            bool operator bool() const
+            bool isValid() const
+            string toString() const
+        TrustList()
+        void add(Certificate)
+        void remove(Certificate)
+        VerifyResult verify(Certificate);
+
+ctypedef TrustList.VerifyResult TrustListVerifyResult
+
 cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:
         Value() except +

@@ -318,6 +318,24 @@ cdef class Certificate(_WithID):
         c._cert = cpp.make_shared[cpp.Certificate](cpp.Certificate.generate(deref(k._key.get()), name.encode(), i._id, is_ca))
         return c
 
+cdef class VerifyResult(object):
+    cdef cpp.TrustListVerifyResult _result
+    def __bool__(self):
+        return self._result.isValid()
+    def __str(self):
+        return self._result.toString()
+
+cdef class TrustList(object):
+    cdef cpp.TrustList _trust
+    def add(self, Certificate cert):
+        self._trust.add(deref(cert._cert.get()))
+    def remove(self, Certificate cert):
+        self._trust.remove(deref(cert._cert.get()))
+    def verify(self, Certificate cert):
+        r = VerifyResult()
+        r._result = self._trust.verify(deref(cert._cert.get()))
+        return r
+
 cdef class ListenToken(object):
     cdef cpp.InfoHash _h
     cdef cpp.shared_future[size_t] _t
