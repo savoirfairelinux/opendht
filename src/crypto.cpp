@@ -1180,6 +1180,15 @@ TrustList::~TrustList() {
     gnutls_x509_trust_list_deinit(trust, 1);
 }
 
+TrustList&
+TrustList::operator=(TrustList&& o)
+{
+    if (trust)
+        gnutls_x509_trust_list_deinit(trust, true);
+    trust = std::move(o.trust);
+    o.trust = nullptr;
+}
+
 void TrustList::add(const Certificate& crt)
 {
     auto chain = crt.getChainWithRevocations(true);

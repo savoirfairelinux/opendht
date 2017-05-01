@@ -470,6 +470,10 @@ struct OPENDHT_PUBLIC TrustList
     };
 
     TrustList();
+    TrustList(TrustList&& o) : trust(std::move(o.trust)) {
+        o.trust = nullptr;
+    }
+    TrustList& operator=(TrustList&& o);
     ~TrustList();
     void add(const Certificate& crt);
     void add(const RevocationList& crl);
@@ -477,6 +481,8 @@ struct OPENDHT_PUBLIC TrustList
     VerifyResult verify(const Certificate& crt) const;
 
 private:
+    TrustList(const TrustList& o) = delete;
+    TrustList& operator=(const TrustList& o) = delete;
     gnutls_x509_trust_list_t trust;
 };
 
