@@ -1187,6 +1187,7 @@ TrustList::operator=(TrustList&& o)
         gnutls_x509_trust_list_deinit(trust, true);
     trust = std::move(o.trust);
     o.trust = nullptr;
+    return *this;
 }
 
 void TrustList::add(const Certificate& crt)

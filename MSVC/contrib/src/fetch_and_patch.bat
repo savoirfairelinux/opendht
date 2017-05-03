@@ -3,9 +3,12 @@ SETLOCAL EnableDelayedExpansion
 
 set SRC=%~dp0
 
-set USE_CACHE=0
+if "%USE_CACHE%"=="" (
+    set USE_CACHE=0
+)
 
 set DEPENDENCIES=( ^
+argon2, ^
 gmp, ^
 gnutls, ^
 iconv, ^
