@@ -227,6 +227,8 @@ public:
 
     gnutls_x509_crl_t get() { return crl; }
     gnutls_x509_crl_t getCopy() const {
+        if (not crl)
+            return nullptr;
         auto copy = RevocationList(getPacked());
         gnutls_x509_crl_t ret = copy.crl;
         copy.crl = nullptr;
@@ -405,6 +407,8 @@ struct OPENDHT_PUBLIC Certificate {
     static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
 
     gnutls_x509_crt_t getCopy() const {
+        if (not cert)
+            return nullptr;
         auto copy = Certificate(getPacked());
         gnutls_x509_crt_t ret = copy.cert;
         copy.cert = nullptr;
@@ -414,12 +418,11 @@ struct OPENDHT_PUBLIC Certificate {
     std::vector<gnutls_x509_crt_t>
     getChain(bool copy = false) const
     {
+        if (not cert)
+            return {};
         std::vector<gnutls_x509_crt_t> crts;
-        auto c = this;
-        do {
+        for (auto c = this; c; c = c->issuer.get())
             crts.emplace_back(copy ? c->getCopy() : c->cert);
-            c = c->issuer.get();
-        } while (c);
         return crts;
     }
 
@@ -429,16 +432,16 @@ struct OPENDHT_PUBLIC Certificate {
     >
     getChainWithRevocations(bool copy = false) const
     {
+        if (not cert)
+            return {};
         std::vector<gnutls_x509_crt_t> crts;
         std::vector<gnutls_x509_crl_t> crls;
-        auto c = this;
-        do {
+        for (auto c = this; c; c = c->issuer.get()) {
             crts.emplace_back(copy ? c->getCopy() : c->cert);
             crls.reserve(crls.size() + c->revocation_lists.size());
             for (const auto& crl : c->revocation_lists)
                 crls.emplace_back(copy ? crl->getCopy() : crl->get());
-            c = c->issuer.get();
-        } while (c);
+        }
         return {crts, crls};
     }
 
