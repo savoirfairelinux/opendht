@@ -43,7 +43,7 @@ class NodeCluster(object):
     @staticmethod
     def find_ip(iface):
         if not iface or iface == 'any':
-            return ('0.0.0.0','')
+            return ('0.0.0.0','::0')
 
         if_ip4 = netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr']
         if_ip6 = netifaces.ifaddresses(iface)[netifaces.AF_INET6][0]['addr']
