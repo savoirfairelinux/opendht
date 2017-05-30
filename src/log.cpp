@@ -19,6 +19,13 @@
 
 #include "log.h"
 
+#ifndef _WIN32
+#include <syslog.h>
+#endif
+
+#include <fstream>
+#include <chrono>
+
 namespace dht {
 namespace log {
 
@@ -37,9 +44,9 @@ printLog(std::ostream& s, char const *m, va_list args) {
     using namespace std::chrono;
     using log_precision = microseconds;
     constexpr auto den = log_precision::period::den;
-    auto micro = duration_cast<log_precision>(steady_clock::now().time_since_epoch()).count();
-    s << "[" << std::setfill('0') << std::setw(6) << micro / den << "."
-      << std::setfill('0') << std::setw(6) << micro % den << "]" << " ";
+    auto num = duration_cast<log_precision>(steady_clock::now().time_since_epoch()).count();
+    s << "[" << std::setfill('0') << std::setw(6) << num / den << "."
+             << std::setfill('0') << std::setw(6) << num % den << "]" << " ";
 
     // write log
     s.write(buffer.data(), std::min((size_t) ret, buffer.size()));
@@ -75,6 +82,32 @@ enableFileLogging(dht::DhtRunner &dht, const std::string &path) {
         [=](char const *m, va_list args) { printLog(*logfile, m, args); },
         [=](char const *m, va_list args) { printLog(*logfile, m, args); }
     );
+}
+
+OPENDHT_PUBLIC void
+enableSyslog(dht::DhtRunner &dht, const char* name) {
+#ifndef _WIN32
+    struct Syslog {
+        Syslog(const char* n) {
+            openlog(n, LOG_NDELAY, LOG_USER);
+        }
+        ~Syslog() {
+            closelog();
+        }
+    };
+    // syslog is global. Existing instance must be reused.
+    static std::weak_ptr<Syslog> opened_logfile;
+    auto logfile = opened_logfile.lock();
+    if (not logfile) {
+        logfile = std::make_shared<Syslog>(name);
+        opened_logfile = logfile;
+    }
+    dht.setLoggers(
+        [logfile](char const *m, va_list args) { vsyslog(LOG_ERR, m, args); },
+        [logfile](char const *m, va_list args) { vsyslog(LOG_WARNING, m, args); },
+        [logfile](char const *m, va_list args) { vsyslog(LOG_INFO, m, args); }
+    );
+#endif
 }
 
 void

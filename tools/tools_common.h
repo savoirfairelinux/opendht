@@ -111,6 +111,7 @@ struct dht_params {
     bool help {false}; // print help and exit
     bool log {false};
     std::string logfile {};
+    bool syslog {false};
     in_port_t port {0};
     dht::NetId network {0};
     bool generate_identity {false};
@@ -127,6 +128,7 @@ static const constexpr struct option long_options[] = {
    {"verbose",    no_argument      , nullptr, 'v'},
    {"daemonize",  no_argument      , nullptr, 'd'},
    {"logfile",    required_argument, nullptr, 'l'},
+   {"syslog",     no_argument      , nullptr, 'L'},
    {nullptr,      0                , nullptr,  0}
 };
 
@@ -160,6 +162,10 @@ parseArgs(int argc, char **argv) {
             break;
         case 'l':
             params.logfile = optarg;
+            break;
+        case 'L':
+            params.log = true;
+            params.syslog = true;
             break;
         case 'v':
             params.log = true;

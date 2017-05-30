@@ -22,8 +22,6 @@
 #include "dhtrunner.h"
 
 #include <iostream>
-#include <fstream>
-#include <chrono>
 
 namespace dht {
 namespace log {
@@ -72,6 +70,9 @@ enableFileLogging(dht::DhtRunner &dht, const std::string &path);
 
 OPENDHT_PUBLIC void
 disableLogging(dht::DhtRunner &dht);
+
+OPENDHT_PUBLIC void
+enableSyslog(dht::DhtRunner &dht, const char* name);
 
 } /* log */
 } /* dht  */

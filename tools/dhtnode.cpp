@@ -370,7 +370,9 @@ main(int argc, char **argv)
         dht->run(params.port, crt, true, params.network);
 
         if (params.log) {
-            if (not params.logfile.empty())
+            if (params.syslog or (params.daemonize and params.logfile.empty()))
+                log::enableSyslog(*dht, "dhtnode");
+            else if (not params.logfile.empty())
                 log::enableFileLogging(*dht, params.logfile);
             else
                 log::enableLogging(*dht);
