@@ -13,12 +13,15 @@ set (prefix ${CMAKE_INSTALL_PREFIX})
 set (exec_prefix "\${prefix}")
 set (libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
 set (includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+set (bindir "${CMAKE_INSTALL_FULL_BINDIR}")
+set (sysconfdir "${CMAKE_INSTALL_FULL_SYSCONFDIR}")
 
 option (OPENDHT_STATIC "Build static library" ON)
 option (OPENDHT_SHARED "Build shared library" ON)
 option (OPENDHT_LOG "Build with logs" ON)
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
+option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 
@@ -127,10 +130,6 @@ if(OPENDHT_ARGON2)
     )
     include_directories(argon2/include/)
 endif()
-
-if (NOT DEFINED CMAKE_INSTALL_LIBDIR)
-    set(CMAKE_INSTALL_LIBDIR lib)
-endif ()
 
 if (OPENDHT_STATIC)
     add_library (opendht-static STATIC

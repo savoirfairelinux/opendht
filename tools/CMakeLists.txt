@@ -17,8 +17,14 @@ else ()
 	target_link_libraries (dhtchat LINK_PUBLIC opendht-static)
 endif ()
 
-if (NOT DEFINED CMAKE_INSTALL_BINDIR)
-    set(CMAKE_INSTALL_BINDIR bin)
-endif ()
-
 install (TARGETS dhtnode dhtscanner dhtchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if (OPENDHT_SYSTEMD)
+	configure_file (
+		systemd/dhtnode.service.in
+		systemd/dhtnode.service
+		@ONLY
+	)
+	install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtnode.service DESTINATION ${sysconfdir}/systemd/system)
+	install (FILES systemd/dhtnode.conf DESTINATION ${sysconfdir}/default)
+endif ()
