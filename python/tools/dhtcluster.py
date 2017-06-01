@@ -32,7 +32,7 @@ class NodeCluster(object):
 
     @staticmethod
     def run_node(ip4, ip6, p, bootstrap=None, is_bootstrap=False, logfile=None):
-        logger.info("run_node %s %s %s %s %s", ip4, ip6, p, bootstrap, logfile)
+        logger.info("Running node on port %s with bootstrap %s", p, bootstrap)
         n = dht.DhtRunner()
         n.run(ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
         if logfile:
