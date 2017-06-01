@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (C) 2015-2016 Savoir-faire Linux Inc.
+# Copyright (C) 2015-2017 Savoir-faire Linux Inc.
 # Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -19,9 +19,12 @@
 import os, sys, time, cmd
 import signal
 import argparse
-import threading
+import logging
+import logging.handlers
 
 import opendht as dht
+
+logger = logging.getLogger('dhtcluster')
 
 class NodeCluster(object):
     nodes = []
@@ -29,7 +32,7 @@ class NodeCluster(object):
 
     @staticmethod
     def run_node(ip4, ip6, p, bootstrap=None, is_bootstrap=False, logfile=None):
-        print("run_node", ip4, ip6, p, bootstrap, logfile)
+        logger.info("run_node %s %s %s %s %s", ip4, ip6, p, bootstrap, logfile)
         n = dht.DhtRunner()
         n.run(ipv4=ip4 if ip4 else "", ipv6=ip6 if ip6 else "", port=p, is_bootstrap=is_bootstrap)
         if logfile:
@@ -59,10 +62,10 @@ class NodeCluster(object):
         if bootstrap:
             self.bootstrap = (bootstrap.hostname, str(bootstrap.port) if bootstrap.port else "4222")
         else:
-            print("Using fallback bootstrap", self.ip4, self.port)
+            logger.info("Using fallback bootstrap %s %s", self.ip4, self.port)
             self.bootstrap = ((self.ip4, str(self.port)))
         if first_bootstrap:
-            print("Starting bootstrap node")
+            logger.info("Starting bootstrap node")
             self.nodes.append(NodeCluster.run_node(self.ip4, self.ip6, self.port, self.bootstrap, is_bootstrap=True))
             self.bootstrap = ((self.ip4, str(self.port)))
             self.port += 1
@@ -105,11 +108,11 @@ class NodeCluster(object):
         if n == l:
             return
         if n > l:
-            print("Launching", n-l, "nodes", self.ip4, self.ip6)
+            logger.info("Launching %d nodes %s %s", n-l, self.ip4, self.ip6)
             for i in range(l, n):
                 self.launch_node()
         else:
-            print("Ending", l-n, "nodes", self.ip4, self.ip6)
+            logger.info("Ending %d nodes %s %s", l-n, self.ip4, self.ip6)
             #random.shuffle(self.nodes)
             for i in range(n, l):
                 self.end_node()
@@ -201,6 +204,16 @@ if __name__ == '__main__':
         if args.bootstrap:
             args.bootstrap = urlparse('dht://'+args.bootstrap)
 
+        # setup logging
+        if args.daemonize:
+            syslog = logging.handlers.SysLogHandler(address = '/dev/log')
+            syslog.setLevel(logging.DEBUG)
+            logger.setLevel(logging.DEBUG)
+            logger.addHandler(syslog)
+        else:
+            logging.basicConfig(stream=sys.stdout,level=logging.DEBUG)
+
+        # start cluster
         net = NodeCluster(iface=args.iface, port=args.port, bootstrap=args.bootstrap, logfile=args.log)
 
         # main loop
@@ -225,9 +238,12 @@ if __name__ == '__main__':
         else:
             net.resize(args.node_num)
             ClusterShell(net).cmdloop()
-    except Exception as e:
-        traceback.print_tb(e.__traceback__)
-        print(type(e).__name__+':', e, file=sys.stderr)
+    except Exception:
+        logger.error("Exception ", exc_info=1)
     finally:
         if net:
             net.resize(0)
+        logger.warning("Ending node cluster")
+        for handler in logger.handlers:
+            handler.close()
+            logger.removeHandler(handler)
