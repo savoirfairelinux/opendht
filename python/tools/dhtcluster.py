@@ -191,13 +191,26 @@ if __name__ == '__main__':
     import argparse
     from urllib.parse import urlparse
     net = None
+    run = True
+    def clean_quit():
+        global net, run
+        if run:
+            run = False
+            if net:
+                net.resize(0)
+                net = None
+    def quit_signal(signum, frame):
+        clean_quit()
+
     try:
         parser = argparse.ArgumentParser(description='Create a dht network of -n nodes')
         parser.add_argument('-n', '--node-num', help='number of dht nodes to run', type=int, default=32)
         parser.add_argument('-I', '--iface', help='local interface to bind', default='any')
         parser.add_argument('-p', '--port', help='start of port range (port, port+node_num)', type=int, default=4000)
         parser.add_argument('-b', '--bootstrap', help='bootstrap address')
-        parser.add_argument('-d', '--daemonize', help='daemonize process', action='store_true')
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('-d', '--daemonize', help='daemonize process', action='store_true')
+        group.add_argument('-s', '--service', help='service mode (not forking)', action='store_true')
         parser.add_argument('-l', '--log', help='log file prefix')
         args = parser.parse_args()
 
@@ -205,7 +218,7 @@ if __name__ == '__main__':
             args.bootstrap = urlparse('dht://'+args.bootstrap)
 
         # setup logging
-        if args.daemonize:
+        if args.daemonize or args.service:
             syslog = logging.handlers.SysLogHandler(address = '/dev/log')
             syslog.setLevel(logging.DEBUG)
             logger.setLevel(logging.DEBUG)
@@ -219,30 +232,31 @@ if __name__ == '__main__':
         # main loop
         if args.daemonize:
             import daemon
-            def clean_stop(signum, frame):
-                global net
-                if net:
-                    net.resize(0)
-                    net = None
             context = daemon.DaemonContext()
             context.signal_map = {
                 signal.SIGHUP: 'terminate',
-                signal.SIGTERM: clean_stop,
-                signal.SIGINT: clean_stop,
-                signal.SIGQUIT: clean_stop
+                signal.SIGTERM: quit_signal,
+                signal.SIGINT: quit_signal,
+                signal.SIGQUIT: quit_signal
             }
             with context:
                 net.resize(args.node_num)
                 while net:
                     time.sleep(1)
+        elif args.service:
+            signal.signal(signal.SIGTERM, quit_signal)
+            signal.signal(signal.SIGINT, quit_signal)
+            signal.signal(signal.SIGQUIT, quit_signal)
+            net.resize(args.node_num)
+            while net:
+                time.sleep(1)
         else:
             net.resize(args.node_num)
             ClusterShell(net).cmdloop()
     except Exception:
         logger.error("Exception ", exc_info=1)
     finally:
-        if net:
-            net.resize(0)
+        clean_quit()
         logger.warning("Ending node cluster")
         for handler in logger.handlers:
             handler.close()
