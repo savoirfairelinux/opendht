@@ -108,12 +108,11 @@ class NodeCluster(object):
         if n == l:
             return
         if n > l:
-            logger.info("Launching %d nodes %s %s", n-l, self.ip4, self.ip6)
+            logger.info("Launching %d nodes bound on IPv4 %s IPv6 %s", n-l, self.ip4, self.ip6)
             for i in range(l, n):
                 self.launch_node()
         else:
-            logger.info("Ending %d nodes %s %s", l-n, self.ip4, self.ip6)
-            #random.shuffle(self.nodes)
+            logger.info("Ending %d nodes", l-n)
             for i in range(n, l):
                 self.end_node()
 
