@@ -248,14 +248,28 @@ if __name__ == '__main__':
             args.bootstrap = urlparse('dht://'+args.bootstrap)
 
         net = NodeCluster(iface=args.iface, port=args.port, bootstrap=args.bootstrap, logfile=args.log)
-        net.resize(args.node_num)
+
+        # main loop
         if args.daemonize:
-            import daemon, lockfile
-            #pidfile=lockfile.FileLock('/var/run/dhtcluster.'+str(args.port))
-            with daemon.DaemonContext():
-                while True:
-                    time.sleep(2)
+            import daemon
+            def clean_stop(signum, frame):
+                global net
+                if net:
+                    net.resize(0)
+                    net = None
+            context = daemon.DaemonContext()
+            context.signal_map = {
+                signal.SIGHUP: 'terminate',
+                signal.SIGTERM: clean_stop,
+                signal.SIGINT: clean_stop,
+                signal.SIGQUIT: clean_stop
+            }
+            with context:
+                net.resize(args.node_num)
+                while net:
+                    time.sleep(1)
         else:
+            net.resize(args.node_num)
             ClusterShell(net).cmdloop()
     except Exception as e:
         traceback.print_tb(e.__traceback__)
