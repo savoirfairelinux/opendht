@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenDHT node cluster
+After=network.target
+
+[Service]
+EnvironmentFile=@sysconfdir@/dhtcluster.conf
+ExecStart=@bindir@/dhtcluster -s $DHT_ARGS
+KillMode=process
+Restart=on-failure
+Type=simple
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateDevices=yes
+PrivateUsers=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -32,4 +32,13 @@ if (OPENDHT_SYSTEMD)
 	)
 	install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtnode.service DESTINATION ${systemdunitdir})
 	install (FILES systemd/dhtnode.conf DESTINATION ${sysconfdir})
+	if (OPENDHT_PYTHON)
+		configure_file (
+			systemd/dhtcluster.service.in
+			systemd/dhtcluster.service
+			@ONLY
+		)
+		install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtcluster.service DESTINATION ${systemdunitdir})
+		install (FILES systemd/dhtcluster.conf DESTINATION ${sysconfdir})
+	endif()
 endif ()
