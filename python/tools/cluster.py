@@ -17,7 +17,6 @@
 # along with this program; If not, see <http://www.gnu.org/licenses/>.
 
 import os, sys, time, cmd
-import subprocess
 import signal
 import argparse
 import threading
@@ -70,20 +69,12 @@ class NodeCluster(object):
         #print(self.ip4, self.ip6, self.port)
 
     def front(self):
-        if len(self.nodes) == 0:
-            return None
-        return self.nodes[0][1]
+        return self.nodes[0][1] if self.nodes else None
 
-    def get(self, i=None):
-        if not self.nodes:
+    def get(self, i):
+        if not self.nodes or i < 0 or i >= len(self.nodes):
             return None
-
-        if i is None:
-            l = list(self.nodes)
-            random.shuffle(l)
-            return l[0][1]
-        else:
-            return self.nodes[i][1]
+        return self.nodes[i][1]
 
     def getNodeInfoById(self, id=None):
         if id:
@@ -100,51 +91,13 @@ class NodeCluster(object):
         self.node_uid += 1
         return n
 
-    def end_node(self, id=None, shutdown=False, last_msg_stats=None):
-        """
-        Ends a running node.
-
-        @param id: The 40 hex chars id of the node.
-        @type  id: bytes
-
-        @return: If a node was deleted or not.
-        @rtype : boolean
-        """
-        lock = threading.Condition()
-        def shutdown_cb():
-            nonlocal lock
-            NodeCluster.Log.log('Done.')
-            with lock:
-                lock.notify()
-
+    def end_node(self):
         if not self.nodes:
             return
-        elif id:
-            n = self.getNodeInfoById(id)
-            if n:
-                if shutdown:
-                    with lock:
-                        print('Waiting for node to shutdown... ')
-                        n[1].shutdown(shutdown_cb)
-                        lock.wait()
-                    if last_msg_stats:
-                        last_msg_stats.append(self.getMessageStats())
-                n[1].join()
-                self.nodes.remove(n)
-                print(id, 'deleted !')
-                return True
-            else:
-                return False
         else:
             n = self.nodes.pop()
             n[1].join()
             return True
-
-    def replace_node(self, id=None, shutdown=False, last_msg_stats=None):
-        random.shuffle(self.nodes)
-        deleted = self.end_node(id=id, shutdown=shutdown, last_msg_stats=last_msg_stats)
-        if deleted:
-            self.launch_node()
 
     def resize(self, n):
         n = min(n, 500)
@@ -201,10 +154,11 @@ class ClusterShell(cmd.Cmd):
             setNode()
         else:
             nodenum = int(arg)
-            if nodenum > len(self.net.nodes) or nodenum < 1:
+            node = self.net.get(nodenum-1)
+            if not node:
                 print("Invalid node number:", nodenum, " (accepted: 1-", len(self.net.nodes), ")")
             else:
-                self.setNode(self.net.nodes[nodenum-1][1], nodenum)
+                self.setNode(node, nodenum)
     def do_ll(self, arg):
         if self.node:
             print('Node', self.node.getNodeId().decode())
