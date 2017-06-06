@@ -232,13 +232,13 @@ struct Dht::Storage {
      * @param vid  The value id
      * @return true if a value storage was updated, false otherwise
      */
-    bool refresh(const time_point& now, const Value::Id& vid) {
+    ValueStorage* refresh(const time_point& now, const Value::Id& vid) {
         for (auto& vs : values)
             if (vs.data->id == vid) {
                 vs.created = now;
-                return true;
+                return &vs;
             }
-        return false;
+        return nullptr;
     }
 
     StoreDiff remove(const InfoHash& id, Value::Id);
@@ -3550,9 +3550,16 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
     }
 
     auto s = store.find(hash);
-    if (s != store.end() and s->second.refresh(now, vid)) {
-        DHT_LOG.d(hash, node->id, "[store %s] [node %s] refreshed value %s", hash.toString().c_str(), node->toString().c_str(), std::to_string(vid).c_str());
-    } else {
+    ValueStorage* vs;
+    if (s != store.end()) {
+        vs = s->second.refresh(now, vid);
+        if (vs) {
+            DHT_LOG.d(hash, node->id, "[store %s] [node %s] refreshed value %s", hash.toString().c_str(), node->toString().c_str(), std::to_string(vid).c_str());
+            storageChanged(hash, s->second, *vs);
+        }
+    }
+
+    if (not vs) {
         DHT_LOG.d(hash, node->id, "[store %s] [node %s] got refresh for unknown value",
                 hash.toString().c_str(), node->toString().c_str());
         throw DhtProtocolException {DhtProtocolException::NOT_FOUND, DhtProtocolException::STORAGE_NOT_FOUND};
