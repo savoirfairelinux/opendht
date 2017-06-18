@@ -7,5 +7,5 @@ Description: C++ Distributed Hash Table library
 Version: @VERSION@
 Libs: -L${libdir} -lopendht
 Libs.private: -lpthread
-Requires.private: gnutls >= 3.1
+Requires.private: gnutls >= 3.1@argon2_lib@
 Cflags: -I${includedir}

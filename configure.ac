@@ -104,7 +104,10 @@ AC_ARG_WITH([argon2], AS_HELP_STRING([--without-argon2], [Use included Argon2]))
 AS_IF([test "x$with_argon2" != "xno"],
 			[PKG_CHECK_MODULES([Argon2], [libargon2], [have_argon2=yes], [have_argon2=no])],
 			[have_argon2=no])
-AS_IF([test "x$have_argon2" = "xyes"], [], [
+AS_IF([test "x$have_argon2" = "xyes"], [
+  AC_MSG_NOTICE([Using system Argon2])
+  AC_SUBST(argon2_lib, [", libargon2"])
+], [
 		AS_IF([test "x$with_argon2" = "xyes"], [
 				AC_MSG_ERROR([Argon2 requested but not found])
 		],[
