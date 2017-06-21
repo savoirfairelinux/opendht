@@ -671,6 +671,12 @@ struct OPENDHT_PUBLIC Select
         fieldSelection_ = o.as<decltype(fieldSelection_)>();
     }
 
+    std::string toString() const {
+        std::stringstream ss;
+        ss << *this;
+        return ss.str();
+    }
+
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
 private:
     std::vector<Value::Field> fieldSelection_ {};
@@ -783,6 +789,12 @@ struct OPENDHT_PUBLIC Where
         filters_ = o.as<decltype(filters_)>();
     }
 
+    std::string toString() const {
+        std::stringstream ss;
+        ss << *this;
+        return ss.str();
+    }
+
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
 
 private:
@@ -839,7 +851,7 @@ struct OPENDHT_PUBLIC Query
 
     void msgpack_unpack(const msgpack::object& o);
 
-    std::string toString() {
+    std::string toString() const {
         std::stringstream ss;
         ss << *this;
         return ss.str();

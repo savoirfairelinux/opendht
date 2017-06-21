@@ -120,6 +120,19 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
 ctypedef TrustList.VerifyResult TrustListVerifyResult
 
+cdef extern from "opendht/value.h" namespace "dht::Value":
+    cdef cppclass Field:
+        pass
+
+cdef extern from "opendht/value.h" namespace "dht::Value::Field":
+    cdef Field None
+    cdef Field Id
+    cdef Field ValueType
+    cdef Field OwnerPk
+    cdef Field SeqNum
+    cdef Field UserType
+    cdef Field COUNT
+
 cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:
         Value() except +
@@ -132,6 +145,31 @@ cdef extern from "opendht/value.h" namespace "dht":
         InfoHash recipient
         vector[uint8_t] data
         string user_type
+
+    cdef cppclass Query:
+        Query() except +
+        Query(Select s, Where w) except +
+        Query(string q_str) except +
+        bool isSatisfiedBy(const Query& q) const
+        string toString() const
+
+    cdef cppclass Select:
+        Select() except +
+        Select(const string& q_str) except +
+        bool isSatisfiedBy(const Select& os) const
+        Select& field(Field field)
+        string toString() const
+
+    cdef cppclass Where:
+        Where() except +
+        Where(const string& q_str)
+        bool isSatisfiedBy(const Where& where) const
+        Where& id(uint64_t id)
+        Where& valueType(uint16_t type)
+        Where& owner(InfoHash owner_pk_hash)
+        Where& seq(uint16_t seq_no)
+        Where& userType(string user_type)
+        string toString() const
 
 cdef extern from "opendht/node.h" namespace "dht":
     cdef cppclass Node:

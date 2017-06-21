@@ -164,6 +164,53 @@ cdef class NodeEntry(_WithID):
         n._node = self._v.second
         return n
 
+cdef class Query(object):
+    cdef cpp.Query _query
+    def __cinit__(self, str q_str=''):
+        self._query = cpp.Query(q_str.encode())
+    def __str__(self):
+        return self._query.toString().decode()
+    def buildFrom(self, Select s, Where w):
+        self._query = cpp.Query(s._select, w._where)
+    def isSatisfiedBy(self, Query q):
+        return self._query.isSatisfiedBy(q._query)
+
+cdef class Select(object):
+    cdef cpp.Select _select
+    def __cinit__(self, str q_str=''):
+        self._select = cpp.Select(q_str.encode())
+    def __str__(self):
+        return self._select.toString().decode()
+    def isSatisfiedBy(self, Select os):
+        return self._select.isSatisfiedBy(os._select)
+    def field(self, int field):
+        self._select.field(<cpp.Field> field)
+        return self
+
+cdef class Where(object):
+    cdef cpp.Where _where
+    def __cinit__(self, str q_str=''):
+        self._where = cpp.Where(q_str.encode())
+    def __str__(self):
+        return self._where.toString().decode()
+    def isSatisfiedBy(self, Where where):
+        return self._where.isSatisfiedBy(where._where)
+    def id(self, cpp.uint64_t id):
+        self._where.id(id)
+        return self
+    def valueType(self, cpp.uint16_t type):
+        self._where.valueType(type)
+        return self
+    def owner(self, InfoHash owner_pk_hash):
+        self._where.owner(owner_pk_hash._infohash)
+        return self
+    def seq(self, cpp.uint16_t seq_no):
+        self._where.seq(seq_no)
+        return self
+    def userType(self, str user_type):
+        self._where.userType(user_type.encode())
+        return self
+
 cdef class Value(object):
     cdef shared_ptr[cpp.Value] _value
     def __init__(self, bytes val=b''):
