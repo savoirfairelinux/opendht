@@ -57,11 +57,16 @@ cdef inline void shutdown_callback(void* user_data) with gil:
         cbs['shutdown']()
     ref.Py_DECREF(cbs)
 
+cdef inline bool get_filter(const cpp.Value& value, void *user_data) with gil:
+    return True
+
 cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with gil:
-    cb = (<object>user_data)['get']
+    cbs = <object>user_data
+    cb = cbs['get']
+    f = cbs['filter'] if 'filter' in cbs else None
     pv = Value()
     pv._value = value
-    return cb(pv)
+    return cb(pv) if not f or f(pv) else True
 
 cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
     node_ids = []
@@ -513,7 +518,7 @@ cdef class DhtRunner(_WithID):
             stats.append(n)
         return stats
 
-    def get(self, InfoHash key, get_cb=None, done_cb=None):
+    def get(self, InfoHash key, get_cb=None, done_cb=None, filter=None, Where where=None):
         """Retreive values associated with a key on the DHT.
 
         key     -- the key for which to search
@@ -523,9 +528,12 @@ cdef class DhtRunner(_WithID):
                    operation is completed.
         """
         if get_cb:
-            cb_obj = {'get':get_cb, 'done':done_cb}
+            cb_obj = {'get':get_cb, 'done':done_cb, 'filter':filter}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.get().get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj), cpp.bindDoneCb(done_callback, <void*>cb_obj))
+            self.thisptr.get().get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj),
+                    cpp.bindDoneCb(done_callback, <void*>cb_obj),
+                    cpp.bindFilterRaw(get_filter, <void*>cb_obj),
+                    where._where)
         else:
             lock = threading.Condition()
             pending = 0
@@ -541,7 +549,7 @@ cdef class DhtRunner(_WithID):
                     lock.notify()
             with lock:
                 pending += 1
-                self.get(key, get_cb=tmp_get, done_cb=tmp_done)
+                self.get(key, get_cb=tmp_get, done_cb=tmp_done, filter=filter, where=where)
                 while pending > 0:
                     lock.wait()
             return res

@@ -99,6 +99,7 @@ using DoneCallback = std::function<void(bool success, const std::vector<std::sha
 typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
 typedef void (*ShutdownCallbackRaw)(void *user_data);
 typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data);
+typedef bool (*FilterRaw)(const Value&, void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
@@ -106,5 +107,6 @@ OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(ShutdownCallbackRaw shutdown_cb_r
 OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackSimple donecb);
 OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
 OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data);
+OPENDHT_PUBLIC Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data);
 
 }

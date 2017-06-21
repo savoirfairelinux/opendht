@@ -41,6 +41,7 @@ namespace dht {
 struct Value;
 struct Query;
 
+
 /**
  * A storage policy is applied once to every incoming value storage requests.
  * If the policy returns false, the value is dropped.
