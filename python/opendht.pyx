@@ -187,6 +187,11 @@ cdef class Value(object):
             return string(<char*>self._value.get().data.data(), self._value.get().data.size())
         def __set__(self, bytes value):
             self._value.get().data = value
+    property user_type:
+        def __get__(self):
+            return self._value.get().user_type.decode()
+        def __set__(self, str t):
+            self._value.get().user_type = t.encode()
     property id:
         def __get__(self):
             return self._value.get().id
