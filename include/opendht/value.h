@@ -41,6 +41,7 @@ namespace dht {
 struct Value;
 struct Query;
 
+
 /**
  * A storage policy is applied once to every incoming value storage requests.
  * If the policy returns false, the value is dropped.
@@ -651,7 +652,8 @@ struct OPENDHT_PUBLIC Select
      * @return the resulting Select instance.
      */
     Select& field(Value::Field field) {
-        fieldSelection_.emplace_back(field);
+        if (std::find(fieldSelection_.begin(), fieldSelection_.end(), field) == fieldSelection_.end())
+            fieldSelection_.emplace_back(field);
         return *this;
     }
 
@@ -668,6 +670,12 @@ struct OPENDHT_PUBLIC Select
     void msgpack_pack(Packer& pk) const { pk.pack(fieldSelection_); }
     void msgpack_unpack(const msgpack::object& o) {
         fieldSelection_ = o.as<decltype(fieldSelection_)>();
+    }
+
+    std::string toString() const {
+        std::stringstream ss;
+        ss << *this;
+        return ss.str();
     }
 
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
@@ -697,7 +705,9 @@ struct OPENDHT_PUBLIC Where
      * @return the resulting Where instance.
      */
     Where& id(Value::Id id) {
-        filters_.emplace_back(Value::Field::Id, id);
+        FieldValue fv {Value::Field::Id, id};
+        if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
+            filters_.emplace_back(std::move(fv));
         return *this;
     }
 
@@ -709,7 +719,9 @@ struct OPENDHT_PUBLIC Where
      * @return the resulting Where instance.
      */
     Where& valueType(ValueType::Id type) {
-        filters_.emplace_back(Value::Field::ValueType, type);
+        FieldValue fv {Value::Field::ValueType, type};
+        if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
+            filters_.emplace_back(std::move(fv));
         return *this;
     }
 
@@ -721,7 +733,9 @@ struct OPENDHT_PUBLIC Where
      * @return the resulting Where instance.
      */
     Where& owner(InfoHash owner_pk_hash) {
-        filters_.emplace_back(Value::Field::OwnerPk, owner_pk_hash);
+        FieldValue fv {Value::Field::OwnerPk, owner_pk_hash};
+        if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
+            filters_.emplace_back(std::move(fv));
         return *this;
     }
 
@@ -733,7 +747,9 @@ struct OPENDHT_PUBLIC Where
      * @return the resulting Where instance.
      */
     Where& seq(uint16_t seq_no) {
-        filters_.emplace_back(Value::Field::SeqNum, seq_no);
+        FieldValue fv {Value::Field::SeqNum, seq_no};
+        if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
+            filters_.emplace_back(std::move(fv));
         return *this;
     }
 
@@ -745,7 +761,9 @@ struct OPENDHT_PUBLIC Where
      * @return the resulting Where instance.
      */
     Where& userType(std::string user_type) {
-        filters_.emplace_back(Value::Field::UserType, Blob {user_type.begin(), user_type.end()});
+        FieldValue fv {Value::Field::UserType, Blob {user_type.begin(), user_type.end()}};
+        if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
+            filters_.emplace_back(std::move(fv));
         return *this;
     }
 
@@ -770,6 +788,12 @@ struct OPENDHT_PUBLIC Where
     void msgpack_unpack(const msgpack::object& o) {
         filters_.clear();
         filters_ = o.as<decltype(filters_)>();
+    }
+
+    std::string toString() const {
+        std::stringstream ss;
+        ss << *this;
+        return ss.str();
     }
 
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
@@ -828,7 +852,7 @@ struct OPENDHT_PUBLIC Query
 
     void msgpack_unpack(const msgpack::object& o);
 
-    std::string toString() {
+    std::string toString() const {
         std::stringstream ss;
         ss << *this;
         return ss.str();

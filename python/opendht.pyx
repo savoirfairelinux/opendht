@@ -57,11 +57,16 @@ cdef inline void shutdown_callback(void* user_data) with gil:
         cbs['shutdown']()
     ref.Py_DECREF(cbs)
 
+cdef inline bool get_filter(const cpp.Value& value, void *user_data) with gil:
+    return True
+
 cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with gil:
-    cb = (<object>user_data)['get']
+    cbs = <object>user_data
+    cb = cbs['get']
+    f = cbs['filter'] if 'filter' in cbs else None
     pv = Value()
     pv._value = value
-    return cb(pv)
+    return cb(pv) if not f or f(pv) else True
 
 cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
     node_ids = []
@@ -164,6 +169,53 @@ cdef class NodeEntry(_WithID):
         n._node = self._v.second
         return n
 
+cdef class Query(object):
+    cdef cpp.Query _query
+    def __cinit__(self, str q_str=''):
+        self._query = cpp.Query(q_str.encode())
+    def __str__(self):
+        return self._query.toString().decode()
+    def buildFrom(self, Select s, Where w):
+        self._query = cpp.Query(s._select, w._where)
+    def isSatisfiedBy(self, Query q):
+        return self._query.isSatisfiedBy(q._query)
+
+cdef class Select(object):
+    cdef cpp.Select _select
+    def __cinit__(self, str q_str=''):
+        self._select = cpp.Select(q_str.encode())
+    def __str__(self):
+        return self._select.toString().decode()
+    def isSatisfiedBy(self, Select os):
+        return self._select.isSatisfiedBy(os._select)
+    def field(self, int field):
+        self._select.field(<cpp.Field> field)
+        return self
+
+cdef class Where(object):
+    cdef cpp.Where _where
+    def __cinit__(self, str q_str=''):
+        self._where = cpp.Where(q_str.encode())
+    def __str__(self):
+        return self._where.toString().decode()
+    def isSatisfiedBy(self, Where where):
+        return self._where.isSatisfiedBy(where._where)
+    def id(self, cpp.uint64_t id):
+        self._where.id(id)
+        return self
+    def valueType(self, cpp.uint16_t type):
+        self._where.valueType(type)
+        return self
+    def owner(self, InfoHash owner_pk_hash):
+        self._where.owner(owner_pk_hash._infohash)
+        return self
+    def seq(self, cpp.uint16_t seq_no):
+        self._where.seq(seq_no)
+        return self
+    def userType(self, str user_type):
+        self._where.userType(user_type.encode())
+        return self
+
 cdef class Value(object):
     cdef shared_ptr[cpp.Value] _value
     def __init__(self, bytes val=b''):
@@ -187,6 +239,11 @@ cdef class Value(object):
             return string(<char*>self._value.get().data.data(), self._value.get().data.size())
         def __set__(self, bytes value):
             self._value.get().data = value
+    property user_type:
+        def __get__(self):
+            return self._value.get().user_type.decode()
+        def __set__(self, str t):
+            self._value.get().user_type = t.encode()
     property id:
         def __get__(self):
             return self._value.get().id
@@ -461,7 +518,7 @@ cdef class DhtRunner(_WithID):
             stats.append(n)
         return stats
 
-    def get(self, InfoHash key, get_cb=None, done_cb=None):
+    def get(self, InfoHash key, get_cb=None, done_cb=None, filter=None, Where where=None):
         """Retreive values associated with a key on the DHT.
 
         key     -- the key for which to search
@@ -471,9 +528,12 @@ cdef class DhtRunner(_WithID):
                    operation is completed.
         """
         if get_cb:
-            cb_obj = {'get':get_cb, 'done':done_cb}
+            cb_obj = {'get':get_cb, 'done':done_cb, 'filter':filter}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.get().get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj), cpp.bindDoneCb(done_callback, <void*>cb_obj))
+            self.thisptr.get().get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj),
+                    cpp.bindDoneCb(done_callback, <void*>cb_obj),
+                    cpp.bindFilterRaw(get_filter, <void*>cb_obj),
+                    where._where)
         else:
             lock = threading.Condition()
             pending = 0
@@ -489,7 +549,7 @@ cdef class DhtRunner(_WithID):
                     lock.notify()
             with lock:
                 pending += 1
-                self.get(key, get_cb=tmp_get, done_cb=tmp_done)
+                self.get(key, get_cb=tmp_get, done_cb=tmp_done, filter=filter, where=where)
                 while pending > 0:
                     lock.wait()
             return res

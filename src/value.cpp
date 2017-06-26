@@ -26,6 +26,13 @@ namespace dht {
 
 const std::string Query::QUERY_PARSE_ERROR {"Error parsing query."};
 
+Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data) {
+    if (not raw_filter) return {};
+    return [=](const Value& value) {
+        return raw_filter(value, user_data);
+    };
+}
+
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     s << "Value[id:" << std::hex << v.id << std::dec << " ";

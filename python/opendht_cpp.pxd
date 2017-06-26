@@ -120,6 +120,21 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
 ctypedef TrustList.VerifyResult TrustListVerifyResult
 
+cdef extern from "opendht/value.h" namespace "dht::Value":
+    ctypedef bool(*Filter)(const Value& value)
+
+    cdef cppclass Field:
+        pass
+
+cdef extern from "opendht/value.h" namespace "dht::Value::Field":
+    cdef Field None
+    cdef Field Id
+    cdef Field ValueType
+    cdef Field OwnerPk
+    cdef Field SeqNum
+    cdef Field UserType
+    cdef Field COUNT
+
 cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:
         Value() except +
@@ -133,6 +148,31 @@ cdef extern from "opendht/value.h" namespace "dht":
         vector[uint8_t] data
         string user_type
 
+    cdef cppclass Query:
+        Query() except +
+        Query(Select s, Where w) except +
+        Query(string q_str) except +
+        bool isSatisfiedBy(const Query& q) const
+        string toString() const
+
+    cdef cppclass Select:
+        Select() except +
+        Select(const string& q_str) except +
+        bool isSatisfiedBy(const Select& os) const
+        Select& field(Field field)
+        string toString() const
+
+    cdef cppclass Where:
+        Where() except +
+        Where(const string& q_str)
+        bool isSatisfiedBy(const Where& where) const
+        Where& id(uint64_t id)
+        Where& valueType(uint16_t type)
+        Where& owner(InfoHash owner_pk_hash)
+        Where& seq(uint16_t seq_no)
+        Where& userType(string user_type)
+        string toString() const
+
 cdef extern from "opendht/node.h" namespace "dht":
     cdef cppclass Node:
         Node() except +
@@ -145,6 +185,7 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     ctypedef void (*DoneCallbackSimpleRaw)(bool done, void *user_data)
+    ctypedef bool(*FilterRaw)(const Value& value, void *user_data)
 
     cppclass ShutdownCallback:
         ShutdownCallback() except +
@@ -159,6 +200,7 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
     cdef GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
     cdef DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
     cdef DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw cb, void *user_data)
+    cdef Value.Filter bindFilterRaw(FilterRaw f, void *user_data)
 
     cppclass Config:
         InfoHash node_id
@@ -191,6 +233,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const
         void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb)
+        void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb, Value.Filter f, Where w)
         void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb)
         ListenToken listen(InfoHash key, GetCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)

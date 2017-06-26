@@ -32,23 +32,35 @@ class DhtServer(resource.Resource):
         self.node.bootstrap(b_url.hostname, str(b_url.port) if b_url.port else '4222')
 
     def render_GET(self, req):
-        uri = req.uri[1:]
-        h = dht.InfoHash(uri) if len(uri) == 40 else dht.InfoHash.get(uri.decode())
-        print('GET', '"'+uri.decode()+'"', h)
-        res = self.node.get(h)
+        uri = req.uri[1:].decode().rsplit('?', 1)[0]
+        h = dht.InfoHash(uri.encode()) if len(uri) == 40 else dht.InfoHash.get(uri)
+        w = dht.Where('WHERE '+''.join(k.decode()+'='+req.args[k][0].decode()+','
+            for k in req.args.keys()
+            if k in [b'id', b'user_type', b'value_type', b'owner', b'seq'])[:-1])
+        print('GET', '"'+uri+'"', h, w)
+        res = self.node.get(h, None, None, None, w)
         req.setHeader(b"content-type", b"application/json")
         return json.dumps({'{:x}'.format(v.id):{'base64':base64.b64encode(v.data).decode()} for v in res}).encode()
 
     def render_POST(self, req):
         uri = req.uri[1:]
         data = req.args[b'data'][0] if b'data' in req.args else None
+        user_type = req.args[b'user_type'][0].decode() if b'user_type' in req.args else ""
+        try:
+            vid = int(req.args[b'id'][0].decode()) if b'id' in req.args else 0
+        except ValueError:
+            vid = 0
         if not data and b'base64' in req.args:
             data = base64.b64decode(req.args[b'base64'][0])
         h = dht.InfoHash(uri) if len(uri) == 40 else dht.InfoHash.get(uri.decode())
         print('POST', h, data)
         req.setHeader(b"content-type", b"application/json")
         if data:
-            self.node.put(h, dht.Value(data))
+            v = dht.Value(data)
+            if vid != 0:
+                v.id = vid
+            v.user_type = user_type
+            self.node.put(h, v)
             return json.dumps({'success':True}).encode()
         else:
             req.setResponseCode(400)
