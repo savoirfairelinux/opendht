@@ -16,7 +16,7 @@
 # along with this program; If not, see <https://www.gnu.org/licenses/>.
 
 from libc.stdint cimport *
-from libcpp cimport bool
+from libcpp cimport bool, nullptr_t, nullptr
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
@@ -228,7 +228,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         string getStorageLog() const
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const
-        void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb)
+        void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb, nullptr_t f, Where w)
         void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb)
         ListenToken listen(InfoHash key, GetCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)
