@@ -116,6 +116,7 @@ struct dht_params {
     dht::NetId network {0};
     bool generate_identity {false};
     bool daemonize {false};
+    bool service {false};
     std::pair<std::string, std::string> bootstrap {};
 };
 
@@ -127,6 +128,7 @@ static const constexpr struct option long_options[] = {
    {"identity",   no_argument      , nullptr, 'i'},
    {"verbose",    no_argument      , nullptr, 'v'},
    {"daemonize",  no_argument      , nullptr, 'd'},
+   {"service",    no_argument      , nullptr, 's'},
    {"logfile",    required_argument, nullptr, 'l'},
    {"syslog",     no_argument      , nullptr, 'L'},
    {nullptr,      0                , nullptr,  0}
@@ -136,7 +138,7 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "hidvp:n:b:l:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidsvp:n:b:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -152,9 +154,7 @@ parseArgs(int argc, char **argv) {
         case 'b':
             params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
             if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
-                std::stringstream ss;
-                ss << DHT_DEFAULT_PORT;
-                params.bootstrap.second = ss.str();
+                params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
             }
             break;
         case 'h':
@@ -175,6 +175,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'd':
             params.daemonize = true;
+            break;
+        case 's':
+            params.service = true;
             break;
         default:
             break;
@@ -212,6 +215,18 @@ void signal_handler(int sig)
     }
 }
 
+void setupSignals()
+{
+#ifndef WIN32_NATIVE
+    signal(SIGCHLD,SIG_IGN); /* ignore child */
+    signal(SIGTSTP,SIG_IGN); /* ignore tty signals */
+    signal(SIGTTOU,SIG_IGN);
+    signal(SIGTTIN,SIG_IGN);
+    signal(SIGHUP,signal_handler); /* catch hangup signal */
+    signal(SIGTERM,signal_handler); /* catch kill signal */
+#endif
+}
+
 void daemonize()
 {
 #ifndef WIN32_NATIVE
@@ -234,11 +249,6 @@ void daemonize()
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
 
-    signal(SIGCHLD,SIG_IGN); /* ignore child */
-    signal(SIGTSTP,SIG_IGN); /* ignore tty signals */
-    signal(SIGTTOU,SIG_IGN);
-    signal(SIGTTIN,SIG_IGN);
-    signal(SIGHUP,signal_handler); /* catch hangup signal */
-    signal(SIGTERM,signal_handler); /* catch kill signal */
+    setupSignals();
 #endif
 }

@@ -359,6 +359,8 @@ main(int argc, char **argv)
         }
         if (params.daemonize) {
             daemonize();
+        } else if (params.service) {
+            setupSignals();
         }
 
         dht::crypto::Identity crt {};
@@ -383,7 +385,7 @@ main(int argc, char **argv)
             dht->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
         }
 
-        if (params.daemonize) {
+        if (params.daemonize or params.service) {
             while (true)
                 std::this_thread::sleep_for(std::chrono::seconds(30));
         } else {
