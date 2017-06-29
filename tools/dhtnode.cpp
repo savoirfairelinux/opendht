@@ -386,8 +386,7 @@ main(int argc, char **argv)
         }
 
         if (params.daemonize or params.service) {
-            while (true)
-                std::this_thread::sleep_for(std::chrono::seconds(30));
+            while (runner.wait());
         } else {
             cmd_loop(dht, params);
         }

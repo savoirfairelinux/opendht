@@ -18,6 +18,7 @@
  */
 
 // Common utility methods used by C++ OpenDHT tools.
+#pragma once
 
 #include <opendht.h>
 #ifndef WIN32_NATIVE
@@ -37,6 +38,8 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <mutex>
+#include <condition_variable>
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -204,13 +207,33 @@ readLine(const char* prefix = PROMPT)
     return line_read ? std::string(line_read) : std::string("\0", 1);
 }
 
+struct ServiceRunner {
+    bool wait() {
+        std::unique_lock<std::mutex> lock(m);
+        cv.wait(lock, [&]{return terminate;});
+        return !terminate;
+    }
+    void kill() {
+        std::lock_guard<std::mutex> lock(m);
+        terminate = true;
+        cv.notify_all();
+    }
+private:
+    std::condition_variable cv;
+    std::mutex m;
+    bool terminate = false;
+};
+
+ServiceRunner runner;
+
 void signal_handler(int sig)
 {
     switch(sig) {
     case SIGHUP:
         break;
+    case SIGINT:
     case SIGTERM:
-        exit(EXIT_SUCCESS);
+        runner.kill();
         break;
     }
 }
@@ -223,6 +246,7 @@ void setupSignals()
     signal(SIGTTOU,SIG_IGN);
     signal(SIGTTIN,SIG_IGN);
     signal(SIGHUP,signal_handler); /* catch hangup signal */
+    signal(SIGINT,signal_handler); /* catch interrupt signal */
     signal(SIGTERM,signal_handler); /* catch kill signal */
 #endif
 }
