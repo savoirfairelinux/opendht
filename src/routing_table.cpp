@@ -80,7 +80,8 @@ RoutingTable::depth(const RoutingTable::const_iterator& it) const
 std::vector<Sp<Node>>
 RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) const
 {
-    std::vector<Sp<Node>> nodes {};
+    std::vector<Sp<Node>> nodes;
+    nodes.reserve(count);
     auto bucket = findBucket(id);
 
     if (bucket == end()) { return nodes; }
@@ -100,7 +101,7 @@ RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) 
     };
 
     auto itn = bucket;
-    auto itp = std::prev(bucket);
+    auto itp = (bucket == begin()) ? end() : std::prev(bucket);
     while (nodes.size() < count && (itn != end() || itp != end())) {
         if (itn != end()) {
             sortedBucketInsert(*itn);
@@ -108,11 +109,7 @@ RoutingTable::findClosestNodes(const InfoHash id, time_point now, size_t count) 
         }
         if (itp != end()) {
             sortedBucketInsert(*itp);
-            if (itp == begin()) {
-                itp = end();
-                continue;
-            }
-            itp = std::prev(itp);
+            itp = (itp == begin()) ? end() : std::prev(itp);
         }
     }
 
