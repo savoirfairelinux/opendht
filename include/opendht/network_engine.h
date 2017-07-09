@@ -464,7 +464,7 @@ private:
     static constexpr unsigned BLACKLISTED_MAX {10};
 
     static constexpr size_t MTU {1280};
-    static constexpr size_t MAX_PACKET_VALUE_SIZE {8 * 1024};
+    static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
 
     static const std::string my_v;
     static std::mt19937 rd_device;
