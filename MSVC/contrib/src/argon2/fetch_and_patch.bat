@@ -17,4 +17,6 @@ rename %BUILD%\phc-winner-argon2-%ARGON2_VERSION% argon2
 
 cd %BUILD%\argon2
 
+git apply --reject --whitespace=fix %SRC%\argon2\argon2-uwp.patch
+
 cd %SRC%

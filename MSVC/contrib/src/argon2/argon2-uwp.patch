@@ -1,0 +1,39 @@
+--- a/vs2015/Argon2Ref/Argon2Ref.vcxproj
++++ b/vs2015/Argon2Ref/Argon2Ref.vcxproj
+@@ -59,7 +59,7 @@
+     <CharacterSet>MultiByte</CharacterSet>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+-    <ConfigurationType>Application</ConfigurationType>
++    <ConfigurationType>StaticLibrary</ConfigurationType>
+     <UseDebugLibraries>false</UseDebugLibraries>
+     <PlatformToolset>v140</PlatformToolset>
+     <WholeProgramOptimization>true</WholeProgramOptimization>
+@@ -117,8 +117,8 @@
+     <IncludePath>$(SolutionDir)include;$(IncludePath)</IncludePath>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+-    <OutDir>$(SolutionDir)vs2015\build\</OutDir>
+-    <IntDir>$(SolutionDir)vs2015\build\$(ProjectName)\</IntDir>
++    <OutDir>$(ProjectDir)..\..\..\lib\x64</OutDir>
++    <IntDir>$(ProjectDir)vs2015\build\$(ProjectName)\</IntDir>
+     <IncludePath>$(SolutionDir)include;$(IncludePath)</IncludePath>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseStatic|x64'">
+@@ -179,6 +179,7 @@
+       <IntrinsicFunctions>true</IntrinsicFunctions>
+       <SDLCheck>true</SDLCheck>
+       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <AdditionalIncludeDirectories>$(ProjectDir)..\..\include</AdditionalIncludeDirectories>
+     </ClCompile>
+     <Link>
+       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+@@ -223,4 +224,4 @@
+   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+   <ImportGroup Label="ExtensionTargets">
+   </ImportGroup>
+-</Project>
++</Project>
+\ No newline at end of file
+-- 
+2.10.2.windows.1
