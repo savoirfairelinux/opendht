@@ -86,7 +86,7 @@ const ValueType DhtMessage::TYPE(1, "DHT message", std::chrono::minutes(5), DhtM
 const ValueType IpServiceAnnouncement::TYPE(2, "Internet Service Announcement", std::chrono::minutes(15), IpServiceAnnouncement::storePolicy);
 const ValueType ImMessage::TYPE = {3, "IM message", std::chrono::minutes(5)};
 const ValueType TrustRequest::TYPE = {4, "Certificate trust request", std::chrono::hours(24*7)};
-const ValueType IceCandidates::TYPE = {5, "ICE candidates", std::chrono::minutes(5)};
+const ValueType IceCandidates::TYPE = {5, "ICE candidates", std::chrono::minutes(1)};
 
 const std::array<std::reference_wrapper<const ValueType>, 5>
 DEFAULT_TYPES
