@@ -269,7 +269,7 @@ cdef class NodeSet(object):
     def size(self):
         return self._nodes.size()
     def insert(self, NodeEntry l):
-        self._nodes.insert(l._v)
+        return self._nodes.insert(l._v).second
     def extend(self, li):
         for n in li:
             self.insert(n)
