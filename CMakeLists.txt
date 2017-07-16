@@ -72,6 +72,7 @@ list (APPEND opendht_SOURCES
     src/dht.cpp
     src/storage.h
     src/listener.h
+    src/search.h
     src/request.h
     src/callbacks.cpp
     src/routing_table.cpp

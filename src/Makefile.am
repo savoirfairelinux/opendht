@@ -8,6 +8,7 @@ libopendht_la_SOURCES  = \
         storage.h \
         listener.h \
         request.h \
+        search.h \
         node_cache.cpp \
         callbacks.cpp \
         routing_table.cpp \
