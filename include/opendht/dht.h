@@ -45,6 +45,12 @@ namespace net {
 struct Request;
 } /* namespace net */
 
+struct Storage;
+struct ValueStorage;
+class StorageBucket;
+struct Listener;
+struct LocalListener;
+
 /**
  * Main Dht class.
  * Provides a Distributed Hash Table node.
@@ -329,9 +335,6 @@ private:
     /* Number of listening nodes */
     static constexpr unsigned LISTEN_NODES {4};
 
-    /* The maximum number of values we store for a given hash. */
-    static constexpr unsigned MAX_VALUES {1024};
-
     /* The maximum number of hashes we're willing to track. */
     static constexpr unsigned MAX_HASHES {16384};
 
@@ -354,12 +357,7 @@ private:
     struct SearchNode;
     struct Get;
     struct Announce;
-    struct LocalListener;
     struct Search;
-    struct ValueStorage;
-    class StorageBucket;
-    struct Listener;
-    struct Storage;
 
     // prevent copy
     Dht(const Dht&) = delete;

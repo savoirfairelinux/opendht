@@ -70,6 +70,8 @@ list (APPEND opendht_SOURCES
     src/node.cpp
     src/value.cpp
     src/dht.cpp
+    src/storage.h
+    src/listener.h
     src/callbacks.cpp
     src/routing_table.cpp
     src/node_cache.cpp

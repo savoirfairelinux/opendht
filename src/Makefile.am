@@ -5,6 +5,8 @@ libopendht_la_LIBADD   = @Argon2_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@
 libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@
 libopendht_la_SOURCES  = \
         dht.cpp \
+        storage.h \
+        listener.h \
         node_cache.cpp \
         callbacks.cpp \
         routing_table.cpp \
