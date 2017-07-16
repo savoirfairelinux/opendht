@@ -25,9 +25,6 @@
 #include "request.h"
 
 #include <msgpack.hpp>
-extern "C" {
-#include <gnutls/gnutls.h>
-}
 
 #include <algorithm>
 #include <random>
@@ -1476,15 +1473,7 @@ Dht::makeToken(const sockaddr *sa, bool old) const
     data.insert(data.end(), c1.begin(), c1.end());
     data.insert(data.end(), (uint8_t*)ip, (uint8_t*)ip+iplen);
     data.insert(data.end(), (uint8_t*)&port, ((uint8_t*)&port)+2);
-
-    size_t sz = TOKEN_SIZE;
-    Blob ret {};
-    ret.resize(sz);
-    gnutls_datum_t gnudata = {data.data(), (unsigned int)data.size()};
-    if (gnutls_fingerprint(GNUTLS_DIG_SHA256, &gnudata, ret.data(), &sz) != GNUTLS_E_SUCCESS)
-        throw DhtException("Can't compute SHA256");
-    ret.resize(sz);
-    return ret;
+    return crypto::hash(data, TOKEN_SIZE);
 }
 
 bool
