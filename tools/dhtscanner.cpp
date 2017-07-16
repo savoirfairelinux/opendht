@@ -56,8 +56,8 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
         all_nodes->insert(nodes.begin(), nodes.end());
         NodeSet sbuck {nodes.begin(), nodes.end()};
         if (not sbuck.empty()) {
-            unsigned bdepth = sbuck.size()==1 ? 0u : InfoHash::commonBits((*sbuck.begin())->id, (*std::prev(sbuck.end()))->id);
-            unsigned target_depth = std::min(159u, bdepth+3u);
+            unsigned bdepth = sbuck.size()==1 ? 0u : InfoHash::commonBits((*sbuck.begin())->id, (*sbuck.rbegin())->id);
+            unsigned target_depth = std::min(8u, bdepth+6u);
             std::cout << cur_h << " : " << nodes.size() << " nodes; target is " << target_depth << " bits deep (cur " << cur_depth << ")" << std::endl;
             for (unsigned b = cur_depth ; b < target_depth; b++) {
                 auto new_h = cur_h;
@@ -86,6 +86,15 @@ main(int argc, char **argv)
     DhtRunner dht;
     try {
         dht.run(params.port, {}, true, params.network);
+
+        if (params.log) {
+            if (params.syslog)
+                log::enableSyslog(dht, "dhtnode");
+            else if (not params.logfile.empty())
+                log::enableFileLogging(dht, params.logfile);
+            else
+                log::enableLogging(dht);
+        }
 
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
