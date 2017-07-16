@@ -2451,9 +2451,9 @@ Dht::expireStore()
             DHT_LOG.w("No space left: local data consumes all the quota!");
             break;
         }
-        decltype(store_quota)::iterator largest = store_quota.end();
-        for (auto it = store_quota.begin(); it != store_quota.end(); ++it) {
-            if (largest == store_quota.end() or it->second.size() > largest->second.size())
+        auto largest = store_quota.begin();
+        for (auto it = ++largest; it != store_quota.end(); ++it) {
+            if (it->second.size() > largest->second.size())
                 largest = it;
         }
         DHT_LOG.w("No space left: discarding value of largest consumer %s", largest->first.toString().c_str());

@@ -210,6 +210,7 @@ public:
     }
 
     IpServiceAnnouncement(const sockaddr* sa, socklen_t sa_len) {
+        ss.ss_family = 0;
         if (sa)
             std::copy_n((const uint8_t*)sa, sa_len, (uint8_t*)&ss);
     }
