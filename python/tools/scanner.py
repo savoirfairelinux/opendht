@@ -20,7 +20,7 @@ from pprint import pprint
 from math import cos, sin, pi
 import urllib3
 import gzip
-import asyncio
+import queue
 
 sys.path.append('..')
 from opendht import *
@@ -37,14 +37,23 @@ import GeoIP
 
 http = urllib3.PoolManager()
 
+run = True
 done = 0
 all_nodes = NodeSet()
+nodes_ip4s = {}
+nodes_ip6s = {}
+lats = []
+lons = []
+cities=[]
+xys = []
+colors = []
+all_lines = []
 
 plt.ion()
 plt.figaspect(2.)
 
 fig, axes = plt.subplots(2, 1)
-fig.set_size_inches(12,16,forward=True)
+fig.set_size_inches(8,16,forward=True)
 fig.tight_layout()
 fig.canvas.set_window_title('OpenDHT scanner')
 
@@ -70,6 +79,11 @@ exitbtn = Button(exitax, 'Exit')
 reloadax = plt.axes([0.92, 0.90, 0.07, 0.04])
 button = Button(reloadax, 'Reload')
 
+def exitcb(arg):
+    global run
+    run = False
+exitbtn.on_clicked(exitcb)
+
 def check_dl(fname, url):
     if os.path.isfile(fname):
         return
@@ -92,35 +106,35 @@ r = DhtRunner()
 r.run(port=4112)
 r.bootstrap("bootstrap.ring.cx", "4222")
 
-all_lines = []
+plt.pause(1)
 
-plt.pause(2)
-
-loop = asyncio.get_event_loop()
+q = queue.Queue()
 
 def step(cur_h, cur_depth):
-    global done, all_nodes, all_lines
+    global done
     done += 1
     a = 2.*pi*cur_h.toFloat()
     b = a + 2.*pi/(2**(cur_depth))
+    arc = []
+    lines = []
+    q.put((stepUi, (cur_h, cur_depth, arc, lines)))
     print("step", cur_h, cur_depth)
-    arc = ringx.add_patch(mpatches.Wedge([0.,0,], 1., a*180/pi, b*180/pi, fill=True, color="blue", alpha=0.5))
-    lines = ringx.plot([0, cos(a)], [0, sin(a)], 'k-', lw=1.2)
-    all_lines.extend(lines)
-    r.get(cur_h, gcb, lambda d, nodes: loop.call_soon_threadsafe(nextstep, cur_h, cur_depth, d, nodes, arc, lines))
+    r.get(cur_h, gcb, lambda d, nodes: stepdone(cur_h, cur_depth, d, nodes, arc, lines))
 
-def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
-    global done, all_nodes
-    if arc:
-        arc.remove()
-        del arc
+def stepdone(cur_h, cur_depth, d, nodes, arc, lines):
+    #print("stepdone", cur_h, cur_depth)
+    q.put((nextstepUi, (nodes, arc, lines)))
+    nextstep(cur_h, cur_depth, d, nodes)
+
+def nextstep(cur_h, cur_depth, ok, nodes):
+    global done
     if nodes:
-        for l in lines:
-            l.set_color('#444444')
-        snodes = NodeSet()
-        snodes.extend(nodes)
-        all_nodes.extend(nodes)
-        depth = min(8, InfoHash.commonBits(snodes.first(), snodes.last())+6)
+        commonBits = 0
+        if len(nodes) > 1:
+            snodes = NodeSet()
+            snodes.extend(nodes)
+            commonBits = InfoHash.commonBits(snodes.first(), snodes.last())
+        depth = min(8, commonBits+6)
         if cur_depth < depth:
             for b in range(cur_depth, depth):
                 new_h = InfoHash(cur_h.toString());
@@ -130,11 +144,59 @@ def nextstep(cur_h, cur_depth, ok, nodes, arc=None, lines=[]):
         print("step done with no nodes", ok, cur_h.toString().decode())
     done -= 1
 
-run = True
-def exitcb(arg):
-    global run
-    run = False
-exitbtn.on_clicked(exitcb)
+def stepUi(cur_h, cur_depth, arc, lines):
+    global all_lines
+    a = 2.*pi*cur_h.toFloat()
+    b = a + 2.*pi/(2**(cur_depth))
+    arc.append(ringx.add_patch(mpatches.Wedge([0.,0,], 1., a*180/pi, b*180/pi, fill=True, color="blue", alpha=0.5)))
+    lines.extend(ringx.plot([0, cos(a)], [0, sin(a)], 'k-', lw=1.2))
+    all_lines.extend(lines)
+
+def nextstepUi(nodes, arc=None, lines=[]):
+    for a in arc:
+        if a:
+            a.remove()
+            del a
+    for l in lines:
+        l.set_color('#aaaaaa')
+    if nodes:
+        appendNodes(nodes)
+
+def appendNodes(nodes):
+    global all_nodes
+    for n in nodes:
+        if all_nodes.insert(n):
+            appendNewNode(n)
+
+def appendNewNode(n):
+    global nodes_ip4s, nodes_ip6s, colors, xys
+    addr = b''.join(n.getNode().getAddr().split(b':')[0:-1]).decode()
+    colors.append('red' if n.getNode().isExpired() else 'blue')
+    node_val = n.getId().toFloat()
+    xys.append((cos(node_val*2*pi), sin(node_val*2*pi)))
+    georecord = None
+    if addr[0] == '[':
+        addr = addr[1:-1]
+        if addr in nodes_ip6s:
+            nodes_ip6s[addr][1] += 1
+        else:
+            georecord = gi6.record_by_name_v6(addr)
+            nodes_ip6s[addr] = [n, 1, georecord]
+    else:
+        if addr in nodes_ip4s:
+            nodes_ip4s[addr][1] += 1
+        else:
+            georecord = gi.record_by_name(addr)
+            nodes_ip4s[addr] = [n, 1, georecord]
+    if georecord:
+        appendMapPoint(georecord)
+
+def appendMapPoint(res):
+    global lons, lats, cities
+    lons.append(res['longitude'])
+    lats.append(res['latitude'])
+    cities.append(res['city'] if res['city'] else (str(int(res['latitude']))+'-'+str(int(res['longitude']))))
+
 
 def restart(arg):
     global collection, all_lines, all_nodes, points, done
@@ -169,58 +231,17 @@ infos = [ringx.text(1.2, -0.8, ""),
 def num_nodes(node_set):
     return sorted([x for x in node_set.items()], key=lambda ip: ip[1][1])
 
-def generate_set():
-    node_ipv4 = {}
-    node_ipv6 = {}
-    for n in all_nodes:
-        addr = b''.join(n.getNode().getAddr().split(b':')[0:-1]).decode()
-        if addr[0] == '[':
-            addr = addr[1:-1]
-            if addr in node_ipv6:
-                node_ipv6[addr][1] += 1
-            else:
-                node_ipv6[addr] = [n, 1, gi6.record_by_name_v6(addr)]
-        else:
-            if addr in node_ipv4:
-                node_ipv4[addr][1] += 1
-            else:
-                node_ipv4[addr] = [n, 1, gi.record_by_name(addr)]
-    return num_nodes(node_ipv4), num_nodes(node_ipv6)
-
 def update_plot():
-    global done, m, collection, not_found, points
+    #print("update_plot", done)
+    global m, collection, points
     for p in points:
         p.remove()
         del p
     points = []
-    lats = []
-    lons = []
-    cities=[]
-    colors=[]
-    not_found.clear()
-    ip4s, ip6s = generate_set()
-    ares = []
-    for addr, n in ip4s:
-        ares.append((addr, n[0].getNode(), n[2]))
-    for addr, n in ip6s:
-        ares.append((addr, n[0].getNode(), n[2]))
-    for r in ares:
-        res = r[2]
-        n = r[1]
-        if res:
-            lats.append(res['latitude'])
-            lons.append(res['longitude'])
-            cities.append(res['city'] if res['city'] else (str(int(res['latitude']))+'-'+str(int(res['longitude']))))
-            colors.append('red' if n.isExpired() else 'blue')
-        else:
-            not_found.append(r[0])
-
     x,y = m(lons,lats)
     points.extend(m.plot(x,y,'bo'))
     for name, xpt, ypt in zip(cities, x, y):
         points.append(mpx.text(xpt+50000, ypt+50000, name))
-    node_val = [n.getId().toFloat() for n in all_nodes]
-    xys = [(cos(d*2*pi), sin(d*2*pi)) for d in node_val]
     if collection:
         collection.remove()
         del collection
@@ -229,9 +250,8 @@ def update_plot():
                 int(fig.dpi), 6, sizes=(10,), facecolors=colors,
                 offsets = xys, transOffset = ringx.transData))
 
-    node_ip4s, node_ip6s = generate_set()
-    infos[0].set_text("{} different IPv4s".format(len(node_ip4s)))
-    infos[1].set_text("{} different IPv6s".format(len(node_ip6s)))
+    infos[0].set_text("{} different IPv4s".format(len(nodes_ip4s)))
+    infos[1].set_text("{} different IPv6s".format(len(nodes_ip6s)))
 
 if run:
     # start first step
@@ -242,12 +262,19 @@ if run:
 def d(arg):
    pass
 
+def handle_tasks():
+    while True:
+        try:
+            f = q.get_nowait()
+            f[0](*f[1])
+            q.task_done()
+        except Exception as e:
+            break;
+    update_plot()
+
 while run:
     while run and done > 0:
-        loop.stop()
-        loop.run_forever()
-        update_plot()
-        plt.draw()
+        handle_tasks()
         plt.pause(.5)
 
     if not run:
@@ -255,13 +282,14 @@ while run:
 
     button.on_clicked(restart)
 
-    node_ip4s, node_ip6s = generate_set()
+    node_ip4s = num_nodes(nodes_ip4s)
+    node_ip6s = num_nodes(nodes_ip6s)
 
     print(all_nodes.size(), " nodes found")
     print(all_nodes)
-    print(len(not_found), " nodes not geolocalized")
-    for n in not_found:
-        print(n)
+    #print(len(not_found), " nodes not geolocalized")
+    #for n in not_found:
+    #    print(n)
     print('')
     print(len(node_ip4s), " different IPv4s :")
     for ip in node_ip4s:
@@ -271,6 +299,7 @@ while run:
     for ip in node_ip6s:
         print(ip[0], ":", str(ip[1][1]), "nodes",  ("(" + ip[1][2]['city'] + ")") if ip[1][2] and ip[1][2]['city'] else "")
 
+    handle_tasks()
     while run and done == 0:
         plt.pause(.5)
     button.on_clicked(d)
