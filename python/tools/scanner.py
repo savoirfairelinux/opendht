@@ -48,6 +48,8 @@ cities=[]
 xys = []
 colors = []
 all_lines = []
+points = []
+not_found = []
 
 plt.ion()
 plt.figaspect(2.)
@@ -78,6 +80,10 @@ exitax = plt.axes([0.92, 0.95, 0.07, 0.04])
 exitbtn = Button(exitax, 'Exit')
 reloadax = plt.axes([0.92, 0.90, 0.07, 0.04])
 button = Button(reloadax, 'Reload')
+
+collection = None
+infos = [ringx.text(1.2, -0.8, ""),
+         ringx.text(1.2, -0.9, "")]
 
 def exitcb(arg):
     global run
@@ -170,7 +176,7 @@ def appendNodes(nodes):
 
 def appendNewNode(n):
     global nodes_ip4s, nodes_ip6s, colors, xys
-    addr = b''.join(n.getNode().getAddr().split(b':')[0:-1]).decode()
+    addr = b':'.join(n.getNode().getAddr().split(b':')[0:-1]).decode()
     colors.append('red' if n.getNode().isExpired() else 'blue')
     node_val = n.getId().toFloat()
     xys.append((cos(node_val*2*pi), sin(node_val*2*pi)))
@@ -199,7 +205,7 @@ def appendMapPoint(res):
 
 
 def restart(arg):
-    global collection, all_lines, all_nodes, points, done
+    global collection, all_lines, all_nodes, points, done, nodes_ip4s, nodes_ip6s, lats, lons, cities, xys, colors
     if done:
         return
     for l in all_lines:
@@ -207,6 +213,13 @@ def restart(arg):
         del l
     all_lines = []
     all_nodes = NodeSet()
+    nodes_ip4s = {}
+    nodes_ip6s = {}
+    lats = []
+    lons = []
+    cities=[]
+    xys = []
+    colors = []
     if collection:
         collection.remove()
         del collection
@@ -221,12 +234,6 @@ def restart(arg):
     start_h.setBit(159, 1)
     step(start_h, 0)
     plt.draw()
-
-collection = None
-points = []
-not_found = []
-infos = [ringx.text(1.2, -0.8, ""),
-         ringx.text(1.2, -0.9, "")]
 
 def num_nodes(node_set):
     return sorted([x for x in node_set.items()], key=lambda ip: ip[1][1])
@@ -253,12 +260,6 @@ def update_plot():
     infos[0].set_text("{} different IPv4s".format(len(nodes_ip4s)))
     infos[1].set_text("{} different IPv6s".format(len(nodes_ip6s)))
 
-if run:
-    # start first step
-    start_h = InfoHash()
-    start_h.setBit(159, 1)
-    step(start_h, 0)
-
 def d(arg):
    pass
 
@@ -271,6 +272,12 @@ def handle_tasks():
         except Exception as e:
             break;
     update_plot()
+
+if run:
+    # start first step
+    start_h = InfoHash()
+    start_h.setBit(159, 1)
+    step(start_h, 0)
 
 while run:
     while run and done > 0:
