@@ -29,50 +29,9 @@ extern "C" {
 #include <gnutls/gnutls.h>
 }
 
-#ifndef _WIN32
-#include <arpa/inet.h>
-#else
-#include <ws2tcpip.h>
-#endif
-
 #include <algorithm>
 #include <random>
 #include <sstream>
-
-#ifndef _WIN32
-#include <unistd.h>
-#else
-#include <io.h>
-#endif
-
-#include <fcntl.h>
-#include <cstring>
-
-#ifdef _WIN32
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    unsigned long mode = !!nonblocking;
-    int rc = ioctlsocket(fd, FIONBIO, &mode);
-    return rc == 0;
-}
-
-extern const char *inet_ntop(int, const void *, char *, socklen_t);
-
-#else
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    int rc = fcntl(fd, F_GETFL, 0);
-    if (rc < 0)
-        return false;
-    rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
-    return rc >= 0;
-}
-
-#endif
 
 namespace dht {
 
@@ -1841,18 +1800,10 @@ Dht::Dht(int s, int s6, Config config)
     scheduler.syncTime();
     if (s < 0 && s6 < 0)
         return;
-
-    if (s >= 0) {
+    if (s >= 0)
         buckets4 = {Bucket {AF_INET}};
-        if (!set_nonblocking(s, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-
-    if (s6 >= 0) {
+    if (s6 >= 0)
         buckets6 = {Bucket {AF_INET6}};
-        if (!set_nonblocking(s6, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
 
     search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
 

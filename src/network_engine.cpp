@@ -25,6 +25,17 @@
 
 #include <msgpack.hpp>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <unistd.h>
+#else
+#include <ws2tcpip.h>
+#include <io.h>
+#endif
+#include <fcntl.h>
+
+#include <cstring>
+
 namespace dht {
 namespace net {
 
@@ -57,6 +68,32 @@ static const uint8_t v4prefix[16] = {
 };
 
 constexpr unsigned SEND_NODES {8};
+
+#ifdef _WIN32
+
+static bool
+set_nonblocking(int fd, int nonblocking)
+{
+    unsigned long mode = !!nonblocking;
+    int rc = ioctlsocket(fd, FIONBIO, &mode);
+    return rc == 0;
+}
+
+extern const char *inet_ntop(int, const void *, char *, socklen_t);
+
+#else
+
+static bool
+set_nonblocking(int fd, int nonblocking)
+{
+    int rc = fcntl(fd, F_GETFL, 0);
+    if (rc < 0)
+        return false;
+    rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
+    return rc >= 0;
+}
+
+#endif
 
 enum class MessageType {
     Error = 0,
@@ -151,6 +188,14 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& l
     onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
     network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {
+    if (dht_socket >= 0) {
+        if (!set_nonblocking(dht_socket, 1))
+            throw DhtException("Can't set socket to non-blocking mode");
+    }
+    if (dht_socket6 >= 0) {
+        if (!set_nonblocking(dht_socket6, 1))
+            throw DhtException("Can't set socket to non-blocking mode");
+    }
     transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
 }
 
