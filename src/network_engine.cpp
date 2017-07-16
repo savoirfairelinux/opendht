@@ -249,16 +249,23 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         req.on_expired(req, false);
     }
 
-    send((char*)req.msg.data(), req.msg.size(),
+    auto err = send((char*)req.msg.data(), req.msg.size(),
             (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             node.addr);
-    ++req.attempt_count;
-    req.last_try = now;
-    std::weak_ptr<Request> wreq = sreq;
-    scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
-        if (auto req = wreq.lock())
-            requestStep(req);
-    });
+    if (err == ENETUNREACH || err == EHOSTUNREACH) {
+        node.setExpired();
+        requests.erase(req.tid);
+    } else {
+        if (err != EAGAIN) {
+            ++req.attempt_count;
+        }
+        req.last_try = now;
+        std::weak_ptr<Request> wreq = sreq;
+        scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
+            if (auto req = wreq.lock())
+                requestStep(req);
+        });
+    }
 }
 
 /**
@@ -605,11 +612,11 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
     pk.pack_bin_body((char*)addr_ptr, addr_len);
 }
 
-void
+int
 NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
 {
     if (addr.second == 0)
-        return;
+        return EFAULT;
 
     int s;
     if (addr.getFamily() == AF_INET)
@@ -620,9 +627,13 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
         s = -1;
 
     if (s < 0)
-        return;
-    if (sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second) == -1)
-        DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(errno));
+        return EAFNOSUPPORT;
+    if (sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second) == -1) {
+        int err = errno;
+        DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
+        return err;
+    }
+    return 0;
 }
 
 Sp<Request>
