@@ -252,7 +252,10 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto err = send((char*)req.msg.data(), req.msg.size(),
             (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             node.addr);
-    if (err == ENETUNREACH || err == EHOSTUNREACH) {
+    if (err == ENETUNREACH  ||
+        err == EHOSTUNREACH ||
+        err == EAFNOSUPPORT)
+    {
         node.setExpired();
         requests.erase(req.tid);
     } else {
