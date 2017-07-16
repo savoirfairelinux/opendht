@@ -7,6 +7,7 @@ libopendht_la_SOURCES  = \
         dht.cpp \
         storage.h \
         listener.h \
+        request.h \
         node_cache.cpp \
         callbacks.cpp \
         routing_table.cpp \
@@ -50,9 +51,6 @@ nobase_include_HEADERS = \
         ../include/opendht/log_enable.h \
         ../include/opendht/rng.h \
         ../include/opendht/indexation/pht.h
-
-nobase_noinst_HEADERS = \
-        ../include/opendht/request.h
 
 clean-local:
 	rm -rf libargon2.la
