@@ -683,7 +683,8 @@ Dht::searchStep(Sp<Search> sr)
 }
 
 unsigned Dht::refill(Dht::Search& sr) {
-    auto now = scheduler.time();
+    const auto& now = scheduler.time();
+    sr.refill_time = now;
     /* we search for up to SEARCH_NODES good nodes. */
     auto cached_nodes = network_engine.getCachedNodes(sr.id, sr.af, SEARCH_NODES);
 
@@ -701,7 +702,6 @@ unsigned Dht::refill(Dht::Search& sr) {
     }
     DHT_LOG.d(sr.id, "[search %s IPv%c] refilled search with %u nodes from node cache",
             sr.id.toString().c_str(), (sr.af == AF_INET) ? '4' : '6', inserted);
-    sr.refill_time = now;
     return inserted;
 }
 
