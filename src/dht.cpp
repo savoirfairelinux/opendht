@@ -39,13 +39,6 @@ constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
 
-static std::mt19937 rd = crypto::getSeededRandomEngine();
-#ifdef _WIN32
-static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
-#else
-static std::uniform_int_distribution<uint8_t> rand_byte;
-#endif
-
 void
 Dht::setLoggers(LogMethod error, LogMethod warn, LogMethod debug)
 {
@@ -1434,15 +1427,13 @@ Dht::connectivityChanged(sa_family_t af)
 void
 Dht::rotateSecrets()
 {
-    const auto& now = scheduler.time();
-    uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
-    auto rotate_secrets_time = now + time_dist(rd);
-
     oldsecret = secret;
     {
         crypto::random_device rdev;
-        std::generate_n(secret.begin(), secret.size(), std::bind(rand_byte, std::ref(rdev)));
+        secret = std::uniform_int_distribution<uint64_t>{}(rdev);
     }
+    uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
+    auto rotate_secrets_time = scheduler.time() + time_dist(rd);
     scheduler.add(rotate_secrets_time, std::bind(&Dht::rotateSecrets, this));
 }
 
@@ -1469,10 +1460,10 @@ Dht::makeToken(const sockaddr *sa, bool old) const
 
     const auto& c1 = old ? oldsecret : secret;
     Blob data;
-    data.reserve(sizeof(secret)+2+iplen);
-    data.insert(data.end(), c1.begin(), c1.end());
+    data.reserve(sizeof(secret)+sizeof(in_port_t)+iplen);
+    data.insert(data.end(), (uint8_t*)&c1, ((uint8_t*)&c1) + sizeof(c1));
     data.insert(data.end(), (uint8_t*)ip, (uint8_t*)ip+iplen);
-    data.insert(data.end(), (uint8_t*)&port, ((uint8_t*)&port)+2);
+    data.insert(data.end(), (uint8_t*)&port, ((uint8_t*)&port)+sizeof(in_port_t));
     return crypto::hash(data, TOKEN_SIZE);
 }
 
@@ -1804,7 +1795,7 @@ Dht::Dht(int s, int s6, Config config)
     // Fill old secret
     {
         crypto::random_device rdev;
-        std::generate_n(secret.begin(), secret.size(), std::bind(rand_byte, std::ref(rdev)));
+        secret = std::uniform_int_distribution<uint64_t>{}(rdev);
     }
     rotateSecrets();
 
@@ -1823,6 +1814,11 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
         return false;
 
     InfoHash id = myid;
+#ifdef _WIN32
+    std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
+    std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
     id[HASH_LEN-1] = rand_byte(rd);
 
     std::bernoulli_distribution rand_trial(1./8.);

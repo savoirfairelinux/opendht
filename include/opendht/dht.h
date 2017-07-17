@@ -365,8 +365,8 @@ private:
 
     InfoHash myid {};
 
-    std::array<uint8_t, 8> secret {{}};
-    std::array<uint8_t, 8> oldsecret {{}};
+    uint64_t secret {};
+    uint64_t oldsecret {};
 
     // registred types
     std::map<ValueType::Id, ValueType> types;
@@ -410,6 +410,8 @@ private:
 
     using ReportedAddr = std::pair<unsigned, SockAddr>;
     std::vector<ReportedAddr> reported_addr;
+
+    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
 
     void rotateSecrets();
 
