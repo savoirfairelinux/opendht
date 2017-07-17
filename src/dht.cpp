@@ -90,17 +90,6 @@ bool
 Dht::isRunning(sa_family_t af) const { return network_engine.isRunning(af); }
 
 /* Every bucket contains an unordered list of nodes. */
-Sp<Node>
-Dht::findNode(const InfoHash& id, sa_family_t af)
-{
-    Bucket* b = findBucket(id, af);
-    if (!b)
-        return {};
-    for (auto& n : b->nodes)
-        if (n->id == id) return n;
-    return {};
-}
-
 const Sp<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af) const
 {

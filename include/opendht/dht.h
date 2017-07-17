@@ -466,7 +466,6 @@ private:
 
     // Nodes
     void onNewNode(const Sp<Node>& node, int confirm);
-    Sp<Node> findNode(const InfoHash& id, sa_family_t af);
     const Sp<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const Sp<Node>& node);
 
