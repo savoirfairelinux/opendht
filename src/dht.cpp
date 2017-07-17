@@ -102,17 +102,14 @@ Dht::findNode(const InfoHash& id, sa_family_t af) const
 }
 
 /* Every bucket caches the address of a likely node.  Ping it. */
-int
+void
 Dht::sendCachedPing(Bucket& b)
 {
-    /* We set family to 0 when there's no cached node. */
-    if (!b.cached)
-        return 0;
-
+    if (not b.cached)
+        return;
     DHT_LOG.d(b.cached->id, "[node %s] sending ping to cached node", b.cached->toString().c_str());
     network_engine.sendPing(b.cached, nullptr, nullptr);
     b.cached = {};
-    return 0;
 }
 
 std::vector<SockAddr>

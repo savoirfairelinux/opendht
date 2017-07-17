@@ -460,7 +460,7 @@ private:
     }
 
     void expireBuckets(RoutingTable&);
-    int sendCachedPing(Bucket& b);
+    void sendCachedPing(Bucket& b);
     bool bucketMaintenance(RoutingTable&);
     void dumpBucket(const Bucket& b, std::ostream& out) const;
 
