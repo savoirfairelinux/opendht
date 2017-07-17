@@ -415,8 +415,8 @@ private:
 
     void rotateSecrets();
 
-    Blob makeToken(const sockaddr *sa, bool old) const;
-    bool tokenMatch(const Blob& token, const sockaddr *sa) const;
+    Blob makeToken(const SockAddr&, bool old) const;
+    bool tokenMatch(const Blob& token, const SockAddr&) const;
 
     void reportedAddr(const SockAddr&);
 

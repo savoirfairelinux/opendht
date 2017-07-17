@@ -1269,7 +1269,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
                     node_listeners.first->toString().c_str());
             std::vector<Sp<Value>> vals {};
             vals.push_back(v.data);
-            Blob ntoken = makeToken((const sockaddr*)&node_listeners.first->addr.first, false);
+            Blob ntoken = makeToken(node_listeners.first->addr, false);
             network_engine.tellListener(node_listeners.first, l.second.sid, id, 0, ntoken, {}, {},
                     std::move(vals), l.second.query);
         }
@@ -1329,7 +1329,7 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
     if (l == node_listeners->second.end()) {
         auto vals = st->second.get(query.where.getFilter());
         if (not vals.empty()) {
-            network_engine.tellListener(node, socket_id, id, WANT4 | WANT6, makeToken((sockaddr*)&node->addr.first, false),
+            network_engine.tellListener(node, socket_id, id, WANT4 | WANT6, makeToken(node->addr, false),
                     buckets4.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
@@ -1438,22 +1438,23 @@ Dht::rotateSecrets()
 }
 
 Blob
-Dht::makeToken(const sockaddr *sa, bool old) const
+Dht::makeToken(const SockAddr& addr, bool old) const
 {
-    void *ip;
+    const void *ip;
     size_t iplen;
     in_port_t port;
 
-    if (sa->sa_family == AF_INET) {
-        sockaddr_in *sin = (sockaddr_in*)sa;
-        ip = &sin->sin_addr;
+    auto family = addr.getFamily();
+    if (family == AF_INET) {
+        const auto& sin = addr.getIPv4();
+        ip = &sin.sin_addr;
         iplen = 4;
-        port = htons(sin->sin_port);
-    } else if (sa->sa_family == AF_INET6) {
-        sockaddr_in6 *sin6 = (sockaddr_in6*)sa;
-        ip = &sin6->sin6_addr;
+        port = sin.sin_port;
+    } else if (family == AF_INET6) {
+        const auto& sin6 = addr.getIPv6();
+        ip = &sin6.sin6_addr;
         iplen = 16;
-        port = htons(sin6->sin6_port);
+        port = sin6.sin6_port;
     } else {
         return {};
     }
@@ -1468,13 +1469,13 @@ Dht::makeToken(const sockaddr *sa, bool old) const
 }
 
 bool
-Dht::tokenMatch(const Blob& token, const sockaddr *sa) const
+Dht::tokenMatch(const Blob& token, const SockAddr& addr) const
 {
-    if (!sa || token.size() != TOKEN_SIZE)
+    if (!addr.second || token.size() != TOKEN_SIZE)
         return false;
-    if (token == makeToken(sa, false))
+    if (token == makeToken(addr, false))
         return true;
-    if (token == makeToken(sa, true))
+    if (token == makeToken(addr, true))
         return true;
     return false;
 }
@@ -2210,7 +2211,7 @@ Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
     net::NetworkEngine::RequestAnswer answer;
-    answer.ntoken = makeToken((sockaddr*)&node->addr.first, false);
+    answer.ntoken = makeToken(node->addr, false);
     if (want & WANT4)
         answer.nodes4 = buckets4.findClosestNodes(target, now, TARGET_NODES);
     if (want & WANT6)
@@ -2231,7 +2232,7 @@ Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query
     const auto& now = scheduler.time();
     net::NetworkEngine::RequestAnswer answer {};
     auto st = store.find(hash);
-    answer.ntoken = makeToken((sockaddr*)&node->addr.first, false);
+    answer.ntoken = makeToken(node->addr, false);
     answer.nodes4 = buckets4.findClosestNodes(hash, now, TARGET_NODES);
     answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
     if (st != store.end() && not st->second.empty()) {
@@ -2325,7 +2326,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
             net::DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
+    if (!tokenMatch(token, node->addr)) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'listen'", node->toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
@@ -2363,7 +2364,7 @@ Dht::onAnnounce(Sp<Node> node,
             net::DhtProtocolException::PUT_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, (sockaddr*)&node->addr.first)) {
+    if (!tokenMatch(token, node->addr)) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'put'", node->toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::PUT_WRONG_TOKEN};
     }
@@ -2423,7 +2424,7 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
     using namespace net;
 
     const auto& now = scheduler.time();
-    if (not tokenMatch(token, (sockaddr*)&node->addr.first)) {
+    if (not tokenMatch(token, node->addr)) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'put'", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }
