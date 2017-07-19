@@ -57,6 +57,9 @@
     <ClInclude Include="..\include\opendht\securedht.h" />
     <ClInclude Include="..\include\opendht\utils.h" />
     <ClInclude Include="..\include\opendht\value.h" />
+    <ClInclude Include="..\src\listener.h" />
+    <ClInclude Include="..\src\search.h" />
+    <ClInclude Include="..\src\storage.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{711397CE-E5D5-467D-9457-8716C047E50C}</ProjectGuid>
