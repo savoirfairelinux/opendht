@@ -153,7 +153,7 @@ class ClusterShell(cmd.Cmd):
         return True
     def do_node(self, arg):
         if not arg:
-            setNode()
+            self.setNode()
         else:
             nodenum = int(arg)
             node = self.net.get(nodenum-1)
@@ -161,6 +161,14 @@ class ClusterShell(cmd.Cmd):
                 print("Invalid node number:", nodenum, " (accepted: 1-", len(self.net.nodes), ")")
             else:
                 self.setNode(node, nodenum)
+    def do_resize(self, arg):
+        if not arg:
+            return
+        try:
+            nodenum = int(arg)
+            self.net.resize(nodenum)
+        except Exception as e:
+            print("Can't resize:", e)
     def do_ll(self, arg):
         if self.node:
             print('Node', self.node.getNodeId().decode())
