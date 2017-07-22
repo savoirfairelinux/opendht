@@ -60,8 +60,15 @@ if (OPENDHT_LTO)
     endif ()
 endif ()
 
-include_directories (SYSTEM "${MSGPACK_INCLUDE_DIRS}")
-include_directories (SYSTEM "${GNUTLS_INCLUDE_DIRS}" "${Nettle_INCLUDE_DIRS}")
+if (MSGPACK_INCLUDE_DIRS)
+    include_directories (SYSTEM "${MSGPACK_INCLUDE_DIRS}")
+endif ()
+if (GNUTLS_INCLUDE_DIRS)
+    include_directories (SYSTEM "${GNUTLS_INCLUDE_DIRS}")
+endif ()
+if (Nettle_INCLUDE_DIRS)
+    include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
+endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 include_directories (
     ./
