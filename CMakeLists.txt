@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8.6)
+cmake_minimum_required (VERSION 3.1)
 project (opendht)
 set (opendht_VERSION_MAJOR 1)
 set (opendht_VERSION_MINOR 3.5)
@@ -6,16 +6,7 @@ set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
 
-list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-
-include(GNUInstallDirs)
-set (prefix ${CMAKE_INSTALL_PREFIX})
-set (exec_prefix "\${prefix}")
-set (libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
-set (includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
-set (bindir "${CMAKE_INSTALL_FULL_BINDIR}")
-set (sysconfdir "${CMAKE_INSTALL_FULL_SYSCONFDIR}")
-
+# Options
 option (OPENDHT_STATIC "Build static library" ON)
 option (OPENDHT_SHARED "Build shared library" ON)
 option (OPENDHT_LOG "Build with logs" ON)
@@ -25,7 +16,11 @@ option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 
+# Dependencies
+list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+find_package (PkgConfig)
 find_package (GnuTLS 3.3 REQUIRED)
+pkg_search_module (Nettle nettle)
 find_package (Msgpack 1.2 REQUIRED)
 if (OPENDHT_TOOLS)
     find_package (Readline 6 REQUIRED)
@@ -42,7 +37,10 @@ if (NOT OPENDHT_ARGON2)
     endif()
 endif ()
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11 -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+# Build flags
+set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD_REQUIRED on)
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -62,6 +60,26 @@ if (OPENDHT_LTO)
     endif ()
 endif ()
 
+include_directories (SYSTEM "${MSGPACK_INCLUDE_DIRS}")
+include_directories (SYSTEM "${GNUTLS_INCLUDE_DIRS}" "${Nettle_INCLUDE_DIRS}")
+link_directories (${Nettle_LIBRARY_DIRS})
+include_directories (
+    ./
+    include/
+    include/opendht/
+    ${CMAKE_CURRENT_BINARY_DIR}/include/
+)
+
+# Install dirs
+include (GNUInstallDirs)
+set (prefix ${CMAKE_INSTALL_PREFIX})
+set (exec_prefix "\${prefix}")
+set (libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
+set (includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+set (bindir "${CMAKE_INSTALL_FULL_BINDIR}")
+set (sysconfdir "${CMAKE_INSTALL_FULL_SYSCONFDIR}")
+
+# Sources
 list (APPEND opendht_SOURCES
     src/utils.cpp
     src/infohash.cpp
@@ -109,18 +127,6 @@ list (APPEND opendht_HEADERS
     include/opendht/indexation/pht.h
 )
 
-configure_file (
-    opendht.pc.in
-    opendht.pc
-    @ONLY
-)
-
-include_directories(
-    ./
-    include/
-    include/opendht/
-    ${CMAKE_CURRENT_BINARY_DIR}/include/
-)
 if(OPENDHT_ARGON2)
     # make sure argon2 submodule is up to date and initialized
     message("Initializing Argon2 submodule")
@@ -138,6 +144,7 @@ if(OPENDHT_ARGON2)
     include_directories(argon2/include/)
 endif()
 
+# Targets
 if (OPENDHT_STATIC)
     add_library (opendht-static STATIC
         ${opendht_SOURCES}
@@ -153,7 +160,7 @@ if (OPENDHT_STATIC)
         target_link_libraries(opendht-static ${argon2_LIBRARIES})
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht-static gnutls nettle)
+    target_link_libraries(opendht-static ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -174,7 +181,7 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht gnutls nettle)
+    target_link_libraries(opendht  ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -187,11 +194,20 @@ if (OPENDHT_PYTHON)
     add_subdirectory(python)
 endif ()
 
+# CMake module
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake"
   VERSION ${opendht_VERSION}
   COMPATIBILITY AnyNewerVersion
 )
+# PkgConfig module
+configure_file (
+    opendht.pc.in
+    opendht.pc
+    @ONLY
+)
+
+# Install targets
 install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtConfig.cmake)
