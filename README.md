@@ -91,7 +91,7 @@ for r in results:
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.3+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
-- Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, macOS).
+- Build tested with GCC 5.4+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, macOS).
 - Build tested with Microsoft Visual Studio 2015
 
 ## Contact
