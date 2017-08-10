@@ -1267,9 +1267,8 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
 {
     const auto& now = scheduler.time();
     created = std::min(created, now);
-    auto expiration = created + getType(value->id).expiration;
-
-    if ( expiration < now )
+    auto expiration = created + getType(value->type).expiration;
+    if (expiration < now)
         return false;
 
     auto st = store.find(id);
