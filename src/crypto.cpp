@@ -882,6 +882,19 @@ generateIdentity(const std::string& name, Identity ca, unsigned key_length) {
     return generateIdentity(name, ca, key_length, !ca.first || !ca.second);
 }
 
+Identity
+generateEcIdentity(const std::string& name, crypto::Identity ca, bool is_ca)
+{
+    auto key = std::make_shared<PrivateKey>(PrivateKey::generateEC());
+    auto cert = std::make_shared<Certificate>(Certificate::generate(*key, name, ca, is_ca));
+    return {std::move(key), std::move(cert)};
+}
+
+Identity
+generateEcIdentity(const std::string& name, Identity ca) {
+    return generateEcIdentity(name, ca, !ca.first || !ca.second);
+}
+
 Certificate
 Certificate::generate(const PrivateKey& key, const std::string& name, Identity ca, bool is_ca)
 {
@@ -916,10 +929,12 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
         gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
     }
 
-    unsigned key_usage = GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT;
+    unsigned key_usage = 0;
     if (is_ca) {
         gnutls_x509_crt_set_ca_status(cert, 1);
         key_usage |= GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN;
+    } else {
+        key_usage |= GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT;
     }
     gnutls_x509_crt_set_key_usage(cert, key_usage);
 

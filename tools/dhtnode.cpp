@@ -365,8 +365,8 @@ main(int argc, char **argv)
 
         dht::crypto::Identity crt {};
         if (params.generate_identity) {
-            auto ca_tmp = dht::crypto::generateIdentity("DHT Node CA");
-            crt = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+            auto ca_tmp = dht::crypto::generateEcIdentity("DHT Node CA");
+            crt = dht::crypto::generateEcIdentity("DHT Node", ca_tmp);
         }
 
         dht->run(params.port, crt, true, params.network);

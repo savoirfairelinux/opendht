@@ -583,6 +583,9 @@ using SecureBlob = secure_vector<uint8_t>;
 OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
 OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, Identity ca, bool is_ca);
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", Identity ca = {});
+
 
 /**
  * Performs SHA512, SHA256 or SHA1, depending on hash_length.
