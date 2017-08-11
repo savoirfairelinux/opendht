@@ -179,8 +179,11 @@ cdef class Query(object):
 
 cdef class Select(object):
     cdef cpp.Select _select
-    def __cinit__(self, str q_str=''):
-        self._select = cpp.Select(q_str.encode())
+    def __cinit__(self, str q_str=None):
+        if q_str:
+            self._select = cpp.Select(q_str.encode())
+        else:
+            self._select = cpp.Select()
     def __str__(self):
         return self._select.toString().decode()
     def isSatisfiedBy(self, Select os):
@@ -191,8 +194,11 @@ cdef class Select(object):
 
 cdef class Where(object):
     cdef cpp.Where _where
-    def __cinit__(self, str q_str=''):
-        self._where = cpp.Where(q_str.encode())
+    def __cinit__(self, str q_str=None):
+        if q_str:
+            self._where = cpp.Where(q_str.encode())
+        else:
+            self._where = cpp.Where()
     def __str__(self):
         return self._where.toString().decode()
     def isSatisfiedBy(self, Where where):
@@ -527,6 +533,8 @@ cdef class DhtRunner(_WithID):
         if get_cb:
             cb_obj = {'get':get_cb, 'done':done_cb, 'filter':filter}
             ref.Py_INCREF(cb_obj)
+            if where is None:
+                where = Where()
             self.thisptr.get().get(key._infohash, cpp.bindGetCb(get_callback, <void*>cb_obj),
                     cpp.bindDoneCb(done_callback, <void*>cb_obj),
                     cpp.nullptr, #filter implemented in the get_callback
@@ -654,4 +662,3 @@ cdef class Pht(object):
                 val,
                 cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj)
         )
-
