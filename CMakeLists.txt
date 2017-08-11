@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.1)
 project (opendht)
 set (opendht_VERSION_MAJOR 1)
-set (opendht_VERSION_MINOR 3.5)
+set (opendht_VERSION_MINOR 3.6)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
