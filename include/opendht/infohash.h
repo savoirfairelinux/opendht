@@ -299,10 +299,23 @@ public:
 
 static constexpr const InfoHash zeroes {};
 
-struct NodeExport {
+struct OPENDHT_PUBLIC NodeExport {
     InfoHash id;
     sockaddr_storage ss;
     socklen_t sslen;
+
+    template <typename Packer>
+    void msgpack_pack(Packer& pk) const
+    {
+        pk.pack_map(2);
+        pk.pack(std::string("id"));
+        pk.pack(id);
+        pk.pack(std::string("addr"));
+        pk.pack_bin(sslen);
+        pk.pack_bin_body((char*)&ss, sslen);
+    }
+
+    void msgpack_unpack(msgpack::object o);
 };
 
 }

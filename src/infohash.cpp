@@ -121,4 +121,25 @@ std::istream& operator>> (std::istream& s, InfoHash& h)
     return s;
 }
 
+void
+NodeExport::msgpack_unpack(msgpack::object o)
+{
+    if (o.type != msgpack::type::MAP)
+        throw msgpack::type_error();
+    if (o.via.map.size < 2)
+        throw msgpack::type_error();
+    if (o.via.map.ptr[0].key.as<std::string>() != "id")
+        throw msgpack::type_error();
+    if (o.via.map.ptr[1].key.as<std::string>() != "addr")
+        throw msgpack::type_error();
+    const auto& addr = o.via.map.ptr[1].val;
+    if (addr.type != msgpack::type::BIN)
+        throw msgpack::type_error();
+    if (addr.via.bin.size > sizeof(sockaddr_storage))
+        throw msgpack::type_error();
+    id.msgpack_unpack(o.via.map.ptr[0].val);
+    sslen = addr.via.bin.size;
+    std::copy_n(addr.via.bin.ptr, addr.via.bin.size, (char*)&ss);
+}
+
 }
