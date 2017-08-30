@@ -316,6 +316,8 @@ struct OPENDHT_PUBLIC NodeExport {
     }
 
     void msgpack_unpack(msgpack::object o);
+
+    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const InfoHash& h);
 };
 
 }

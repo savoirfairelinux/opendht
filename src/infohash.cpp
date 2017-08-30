@@ -142,4 +142,10 @@ NodeExport::msgpack_unpack(msgpack::object o)
     std::copy_n(addr.via.bin.ptr, addr.via.bin.size, (char*)&ss);
 }
 
+std::ostream& operator<< (std::ostream& s, const NodeExport& h)
+{
+    msgpack::pack(s, h);
+    return s;
+}
+
 }
