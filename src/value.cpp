@@ -360,10 +360,10 @@ Where::Where(const std::string& q_str) {
                 std::string s {};
                 std::istringstream convert {value_str};
                 convert >> v;
-                if (convert.failbit
+                if (not convert
                         and value_str.size() > 1
-                        and value_str[0] == '\"'
-                        and value_str[value_str.size()-1] == '\"')
+                        and value_str[0] == '"'
+                        and value_str[value_str.size()-1] == '"')
                     s = value_str.substr(1, value_str.size()-2);
                 else
                     s = value_str;
@@ -490,4 +490,3 @@ std::ostream& operator<<(std::ostream& s, const dht::Where& where) {
 
 
 }
-
