@@ -39,7 +39,7 @@ struct Node {
     Sp<TcpSocket> sock;
 
     InfoHash last_known_pk;
-    //std::list<crypto::EcSecretKey> 
+    //std::list<crypto::EcSecretKey>
 
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
@@ -61,9 +61,12 @@ struct Node {
     std::string getAddrStr() const {
         return addr.toString();
     }
+    SockAddr getAddress() const {
+        return canStream() ? sock->getPeerAddr() : addr;
+    }
 
     void startTCP() {
-        
+
     }
 
     /**

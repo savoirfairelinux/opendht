@@ -189,14 +189,6 @@ NetworkEngine::NetworkEngine(uv_loop_t* loop, const NetworkConfig& config, NetId
     network(net), DHT_LOG(log), sock(std::make_shared<UdpSocket>(loop)), tcp_sock(std::make_shared<TcpSocket>(loop)),
     id_key(crypto::EcSecretKey::generate()), scheduler(scheduler)
 {
-    if (dht_socket >= 0) {
-        if (!set_nonblocking(dht_socket, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-    if (dht_socket6 >= 0) {
-        if (!set_nonblocking(dht_socket6, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
     transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
     using namespace std::placeholders;
     sock->open(config.bind_addr.c_str(), config.bind_port, std::bind(&NetworkEngine::processMessage, this, _1, _2, _3));
@@ -290,25 +282,39 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         req.on_expired(req, false);
     }
 
-    auto err = send(req.msg, req.msg.size(),
-            (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            node.addr);
-    if (err == ENETUNREACH  ||
-        err == EHOSTUNREACH ||
-        err == EAFNOSUPPORT)
-    {
-        node.setExpired();
-        requests.erase(req.tid);
-    } else {
-        if (err != EAGAIN) {
-            ++req.attempt_count;
-        }
+    if (node.sock and node.sock->canWrite()) {
+        auto data = (uint8_t*)malloc(req.msg.size());
+        memcpy(data, req.msg.data(), req.msg.size());
         req.last_try = now;
-        std::weak_ptr<Request> wreq = sreq;
-        scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
-            if (auto req = wreq.lock())
-                requestStep(req);
+        ++req.attempt_count;
+        node.sock->write(data, req.msg.size(), [&,sreq](int status){
+            if (status != 0) {
+                DHT_LOG.w(sreq->node->id, "write failed ! %d", status);
+                sreq->node->setExpired();
+            }
         });
+    } else {
+        // UDP
+        auto err = send(req.msg,
+                (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+                node);
+        if (err == ENETUNREACH  ||
+            err == EHOSTUNREACH ||
+            err == EAFNOSUPPORT)
+        {
+            node.setExpired();
+            requests.erase(req.tid);
+        } else {
+            if (err != EAGAIN) {
+                ++req.attempt_count;
+            }
+            req.last_try = now;
+            std::weak_ptr<Request> wreq = sreq;
+            scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
+                if (auto req = wreq.lock())
+                    requestStep(req);
+            });
+        }
     }
 }
 
@@ -428,8 +434,10 @@ NetworkEngine::startTcp(const Sp<TcpSocket>& sock, const Sp<Node>& node)
         msgpack::object_handle result;
         // Message pack data loop
         while(rx_data->unpacker.next(result)) {
-            //std::unique_ptr<ParsedMessage> msg {new ParsedMessage};
+            std::unique_ptr<ParsedMessage> msg {new ParsedMessage};
             SockAddr from = sock->getPeerAddr();
+            if (from.isMappedIPv4())
+                from = from.getMappedIPv4();
             Sp<Node> node_found;
             try {
                 const auto& o = result.get();
@@ -439,8 +447,8 @@ NetworkEngine::startTcp(const Sp<TcpSocket>& sock, const Sp<Node>& node)
                     //msg->msgpack_unpack(oh.get());
                     node_found = processEncrypted(oh.get(), from);
                 } else {
-                    //msg->msgpack_unpack(o);
-                    node_found = process(o, from);
+                    msg->msgpack_unpack(o);
+                    node_found = process(std::move(msg), from, sock);
                 }
             } catch (const std::exception& e) {
                 DHT_LOG.w("Can't process message: %s", e.what());
@@ -589,7 +597,7 @@ NetworkEngine::process(const msgpack::object& o, const SockAddr& from)
 }
 
 Sp<Node>
-NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from, const Sp<TcpSocket>& sock)
+NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from, const Sp<TcpSocket>& tcpsock)
 {
     const auto& now = scheduler.time();
     Sp<Node> node;
@@ -611,7 +619,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         node = req ? req->node : rsocket->node;
         if (node->id != msg->id) {
             if (node->id == zeroes) // received reply to a message sent when we didn't know the node ID.
-                node = cache.getNode(msg->id, from, sock, now, true);
+                node = cache.getNode(msg->id, from, tcpsock, now, true);
             else {
                 // received reply from unexpected node
                 node->received(now, req);
@@ -620,7 +628,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 return node;
             }
         } else
-            node->update(from, sock);
+            node->update(from, tcpsock);
 
         node->received(now, req);
 
@@ -669,7 +677,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
     } else {
-        node = cache.getNode(msg->id, from, sock, now, true);
+        node = cache.getNode(msg->id, from, tcpsock, now, true);
         node->received(now, {});
         onNewNode(node, 1);
         try {
@@ -730,7 +738,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         } catch (const std::overflow_error& e) {
             DHT_LOG.e("Can't send value: buffer not large enough !");
         } catch (DhtProtocolException& e) {
-            sendError(node, msg->tid, e.getCode(), e.getMsg().c_str(), true);
+            DHT_LOG.w("Error during request handling, sending error ! %p", tcpsock.get());
+            sendError(node, msg->tid, e.getCode(), e.getMsg().c_str(), true, tcpsock);
         }
     }
 
@@ -765,17 +774,18 @@ NetworkEngine::sendUDP(msgpack::sbuffer& msg, const SockAddr& addr)
 }
 
 int
-NetworkEngine::send(msgpack::sbuffer& msg, const Sp<Node>& node)
+NetworkEngine::send(msgpack::sbuffer& msg, const Node& node, const Sp<TcpSocket>& tcpsock)
 {
+    DHT_LOG.d(node.id, "[node %s] send %lu", node.getId().to_c_str(), msg.size());
     uint8_t* data;
     size_t size;
-    if (node->id == InfoHash{}) {
+    if (node.id == InfoHash{}) {
         size = msg.size();
         data = (uint8_t*)msg.release();
     } else {
         Blob encrypted_out;
         {
-            Blob encrypted = id_key.encrypt((const uint8_t *)msg.data(), msg.size(), node->id);
+            Blob encrypted = id_key.encrypt((const uint8_t *)msg.data(), msg.size(), node.id);
             msgpack::sbuffer buffer;
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
             pk.pack_array(2);
@@ -783,7 +793,7 @@ NetworkEngine::send(msgpack::sbuffer& msg, const Sp<Node>& node)
             pk.pack_bin(encrypted.size());
             pk.pack_bin_body((const char *)encrypted.data(), encrypted.size());
 
-            encrypted_out = node->id.encrypt((const uint8_t *)buffer.data(), buffer.size());
+            encrypted_out = node.id.encrypt((const uint8_t *)buffer.data(), buffer.size());
         }
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -792,26 +802,31 @@ NetworkEngine::send(msgpack::sbuffer& msg, const Sp<Node>& node)
         size = buffer.size();
         data = (uint8_t*)buffer.release();
     }
-    if (node->canStream()) {
-        return node->sock->write(data, size);
+    if (tcpsock) {
+        return tcpsock->write(data, size);
+    } else if (node.canStream()) {
+        DHT_LOG.d(node.id, "[node %s] send (stream) %lu", node.getId().to_c_str(), msg.size());
+        return node.sock->write(data, size);
     } else {
-        return sock->send(data, size, node->addr);
+        DHT_LOG.d(node.id, "[node %s] send (datagram) %lu", node.getId().to_c_str(), msg.size());
+        return sock->send(data, size, node.addr);
     }
 }
 
 int
-NetworkEngine::send(const Blob& msg, int /*flags*/, const Sp<Node>& node)
+NetworkEngine::send(const Blob& msg, int /*flags*/, const Node& node)
 {
+    DHT_LOG.d(node.id, "[node %s] send %lu", node.getId().to_c_str(), msg.size());
     uint8_t* data;
     size_t size;
-    if (node->id == InfoHash{}) {
+    if (node.id == InfoHash{}) {
         size = msg.size();
         data = (uint8_t*)malloc(size);//(uint8_t*)msg.release();
         std::memcpy(data, msg.data(), size);
     } else {
         Blob encrypted_out;
         {
-            Blob encrypted = id_key.encrypt((const uint8_t *)msg.data(), msg.size(), node->id);
+            Blob encrypted = id_key.encrypt((const uint8_t *)msg.data(), msg.size(), node.id);
             msgpack::sbuffer buffer;
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
             pk.pack_array(2);
@@ -819,7 +834,7 @@ NetworkEngine::send(const Blob& msg, int /*flags*/, const Sp<Node>& node)
             pk.pack_bin(encrypted.size());
             pk.pack_bin_body((const char *)encrypted.data(), encrypted.size());
 
-            encrypted_out = node->id.encrypt((const uint8_t *)buffer.data(), buffer.size());
+            encrypted_out = node.id.encrypt((const uint8_t *)buffer.data(), buffer.size());
         }
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -828,10 +843,12 @@ NetworkEngine::send(const Blob& msg, int /*flags*/, const Sp<Node>& node)
         size = buffer.size();
         data = (uint8_t*)buffer.release();
     }
-    if (node->canStream()) {
-        return node->sock->write(data, size);
+    if (node.canStream()) {
+        DHT_LOG.d(node.id, "[node %s] send (stream) %lu", node.getId().to_c_str(), msg.size());
+        return node.sock->write(data, size);
     } else {
-        return sock->send(data, size, node->addr);
+        DHT_LOG.d(node.id, "[node %s] send (datagram) %lu", node.getId().to_c_str(), msg.size());
+        return sock->send(data, size, node.addr);
     }
 }
 
@@ -891,7 +908,7 @@ NetworkEngine::sendPong(const Sp<Node>& node, TransId tid) {
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, node);
+    send(buffer, *node);
 }
 
 Sp<Request>
@@ -1154,7 +1171,7 @@ NetworkEngine::sendNodesValues(const Sp<Node>& node, TransId tid, const Blob& no
     }
 
     // send response
-    send(buffer, node);
+    send(buffer, *node);
 
     // send parts
     if (not svals.empty())
@@ -1309,7 +1326,7 @@ NetworkEngine::sendListenConfirmation(const Sp<Node>& node, TransId tid) {
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, node);
+    send(buffer, *node);
 }
 
 Sp<Request>
@@ -1442,7 +1459,7 @@ NetworkEngine::sendValueAnnounced(const Sp<Node>& node, TransId tid, Value::Id v
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, node);
+    send(buffer, *node);
 }
 
 void
@@ -1450,7 +1467,8 @@ NetworkEngine::sendError(const Sp<Node>& node,
         TransId tid,
         uint16_t code,
         const std::string& message,
-        bool include_id)
+        bool include_id,
+        const Sp<TcpSocket>& tcpsock)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -1473,7 +1491,7 @@ NetworkEngine::sendError(const Sp<Node>& node,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, node);
+    send(buffer, *node, tcpsock);
 }
 
 void

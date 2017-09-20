@@ -2318,7 +2318,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
             net::DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
-    if (not tokenMatch(token, node->addr)) {
+    if (not tokenMatch(token, node->getAddress())) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'listen'", node->toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
