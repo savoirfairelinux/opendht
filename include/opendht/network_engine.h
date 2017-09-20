@@ -479,10 +479,10 @@ private:
     };
 
 
-    int send(msgpack::sbuffer& msg, const Sp<Node>& node);
+    int send(msgpack::sbuffer& msg, const Node& node, const Sp<TcpSocket>& sock = {});
     int sendUDP(msgpack::sbuffer& msg, const SockAddr& addr);
 
-    int send(const Blob& msg, int flags, const Sp<Node>& node, UdpSocket::OnSent&& cb);
+    int send(const Blob& msg, int flags, const Node& node, UdpSocket::OnSent&& cb);
 
     void startTcp(const Sp<TcpSocket>& sock, const Sp<Node>& node = {});
 
@@ -519,7 +519,8 @@ private:
             TransId tid,
             uint16_t code,
             const std::string& message,
-            bool include_id=false);
+            bool include_id=false,
+            const Sp<TcpSocket>& sock= {});
 
     void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 

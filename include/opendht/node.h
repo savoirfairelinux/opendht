@@ -53,7 +53,7 @@ struct Node {
     Sp<TcpSocket> sock;
 
     InfoHash last_known_pk;
-    //std::list<crypto::EcSecretKey> 
+    //std::list<crypto::EcSecretKey>
 
     Node(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& s = {}, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
@@ -70,6 +70,7 @@ struct Node {
     std::string getAddrStr() const {
         return addr.toString();
     }
+
     bool isClient() const { return is_client; }
     bool isIncoming() { return time > reply_time; }
 
@@ -77,8 +78,12 @@ struct Node {
     const time_point& getReplyTime() const { return reply_time; }
     void setTime(const time_point& t) { time = t; }
 
+    SockAddr getAddress() const {
+        return canStream() ? sock->getPeerAddr() : addr;
+    }
+
     void startTCP() {
-        
+
     }
 
     /**
