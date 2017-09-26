@@ -38,7 +38,7 @@ print_addr(const sockaddr* sa, socklen_t slen)
             out << "[" << hbuf << "]";
         else
             out << hbuf;
-        if (strcmp(sbuf, "0"))
+        if (std::strcmp(sbuf, "0"))
             out << ":" << sbuf;
     } else
         out << "[invalid address]";
@@ -49,11 +49,6 @@ std::string
 print_addr(const sockaddr_storage& ss, socklen_t sslen)
 {
     return print_addr((const sockaddr*)&ss, sslen);
-}
-
-std::string
-printAddr(const SockAddr& addr) {
-    return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 
 bool

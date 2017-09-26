@@ -120,7 +120,7 @@ Dht::getPublicAddress(sa_family_t family)
     });
     std::vector<SockAddr> ret;
     for (const auto& addr : reported_addr)
-        if (!family || family == addr.second.first.ss_family)
+        if (!family || family == addr.second.getFamily())
             ret.emplace_back(addr.second);
     return ret;
 }
@@ -1456,7 +1456,7 @@ Dht::makeToken(const SockAddr& addr, bool old) const
 bool
 Dht::tokenMatch(const Blob& token, const SockAddr& addr) const
 {
-    if (!addr.second || token.size() != TOKEN_SIZE)
+    if (not addr or token.size() != TOKEN_SIZE)
         return false;
     if (token == makeToken(addr, false))
         return true;
@@ -2181,7 +2181,7 @@ Dht::onReportedAddr(const InfoHash& id, const SockAddr& addr)
 {
     const auto& b = buckets(addr.getFamily()).findBucket(id);
     b->time = scheduler.time();
-    if (addr.second)
+    if (addr)
         reportedAddr(addr);
 }
 
@@ -2379,7 +2379,7 @@ Dht::onAnnounce(Sp<Node> node,
                 DHT_LOG.w(hash, node->id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
             } else {
                 const auto& type = getType(lv->type);
-                if (type.editPolicy(hash, lv, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
+                if (type.editPolicy(hash, lv, vc, node->id, node->addr.get(), node->addr.getLength())) {
                     DHT_LOG.d(hash, node->id, "[store %s] editing %s",
                             hash.toString().c_str(), vc->toString().c_str());
                     storageStore(hash, vc, created, &node->addr);
@@ -2391,7 +2391,7 @@ Dht::onAnnounce(Sp<Node> node,
         } else {
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
-            if (type.storePolicy(hash, vc, node->id, (sockaddr*)&node->addr.first, node->addr.second)) {
+            if (type.storePolicy(hash, vc, node->id, node->addr.get(), node->addr.getLength())) {
                 DHT_LOG.d(hash, node->id, "[store %s] storing %s", hash.toString().c_str(), vc->toString().c_str());
                 storageStore(hash, vc, created, &node->addr);
             } else {

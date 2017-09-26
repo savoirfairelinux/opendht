@@ -46,7 +46,7 @@ struct Node {
         return id;
     }
     std::pair<const sockaddr*, socklen_t> getAddr() const {
-        return {(const sockaddr*)&addr.first, addr.second};
+        return {addr.get(), addr.getLength()};
     }
     std::string getAddrStr() const {
         return addr.toString();
@@ -68,7 +68,13 @@ struct Node {
     bool isPendingMessage() const;
     size_t getPendingMessageCount() const;
 
-    NodeExport exportNode() const { return NodeExport {id, addr.first, addr.second}; }
+    NodeExport exportNode() const {
+        NodeExport ne;
+        ne.id = id;
+        ne.sslen = addr.getLength();
+        std::memcpy(&ne.ss, addr.get(), ne.sslen);
+        return ne;
+    }
     sa_family_t getFamily() const { return addr.getFamily(); }
 
     void update(const SockAddr&);

@@ -372,7 +372,7 @@ NetworkEngine::isMartian(const SockAddr& addr)
               ((address[0] & 0xE0) == 0xE0);
     }
     case AF_INET6: {
-        if (addr.second < sizeof(sockaddr_in6))
+        if (addr.getLength() < sizeof(sockaddr_in6))
             return true;
         const auto& sin6 = addr.getIPv6();
         const uint8_t* address = (const uint8_t*)&sin6.sin6_addr;
@@ -651,10 +651,10 @@ packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
 void
 insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 {
-    size_t addr_len = std::min<size_t>(addr.second,
+    size_t addr_len = std::min<size_t>(addr.getLength(),
                      (addr.getFamily() == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr));
-    void* addr_ptr = (addr.getFamily() == AF_INET) ? (void*)&((sockaddr_in*)&addr.first)->sin_addr
-                                                : (void*)&((sockaddr_in6*)&addr.first)->sin6_addr;
+    void* addr_ptr = (addr.getFamily() == AF_INET) ? (void*)&addr.getIPv4().sin_addr
+                                                : (void*)&addr.getIPv6().sin6_addr;
     pk.pack("sa");
     pk.pack_bin(addr_len);
     pk.pack_bin_body((char*)addr_ptr, addr_len);
@@ -663,7 +663,7 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 int
 NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
 {
-    if (addr.second == 0)
+    if (not addr)
         return EFAULT;
 
     int s;
@@ -676,7 +676,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 
     if (s < 0)
         return EAFNOSUPPORT;
-    if (sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second) == -1) {
+    if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
         DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
         return err;
@@ -839,20 +839,18 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
 
 SockAddr deserializeIPv4(const uint8_t* ni) {
     SockAddr addr;
-    auto& sin = addr.getIPv4();
-    std::fill_n((uint8_t*)&sin, sizeof(sockaddr_in), 0);
     addr.setFamily(AF_INET);
-    memcpy(&sin.sin_addr, ni, 4);
-    memcpy(&sin.sin_port, ni + 4, 2);
+    auto& sin = addr.getIPv4();
+    std::memcpy(&sin.sin_addr, ni, 4);
+    std::memcpy(&sin.sin_port, ni + 4, 2);
     return addr;
 }
 SockAddr deserializeIPv6(const uint8_t* ni) {
     SockAddr addr;
-    auto& sin6 = addr.getIPv6();
-    std::fill_n((uint8_t*)&sin6, sizeof(sockaddr_in6), 0);
     addr.setFamily(AF_INET6);
-    memcpy(&sin6.sin6_addr, ni, 16);
-    memcpy(&sin6.sin6_port, ni + 16, 2);
+    auto& sin6 = addr.getIPv6();
+    std::memcpy(&sin6.sin6_addr, ni, 16);
+    std::memcpy(&sin6.sin6_port, ni + 16, 2);
     return addr;
 }
 
@@ -860,41 +858,40 @@ void
 NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
     if (msg.nodes4_raw.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6_raw.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
-    } else {
-        // deserialize nodes
-        const auto& now = scheduler.time();
-        for (unsigned i = 0; i < msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i++) {
-            uint8_t *ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
-            const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
-            if (ni_id == myid)
-                continue;
-            SockAddr addr = deserializeIPv4(ni + ni_id.size());
-            if (addr.isLoopback() and from.getFamily() == AF_INET) {
-                auto port = addr.getPort();
-                addr = from;
-                addr.setPort(port);
-            }
-            if (isMartian(addr) || isNodeBlacklisted(addr))
-                continue;
-            msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
-            onNewNode(msg.nodes4.back(), 0);
+    }
+    // deserialize nodes
+    const auto& now = scheduler.time();
+    for (unsigned i = 0, n = msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i < n; i++) {
+        const uint8_t* ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
+        const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
+        if (ni_id == myid)
+            continue;
+        SockAddr addr = deserializeIPv4(ni + ni_id.size());
+        if (addr.isLoopback() and from.getFamily() == AF_INET) {
+            auto port = addr.getPort();
+            addr = from;
+            addr.setPort(port);
         }
-        for (unsigned i = 0; i < msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i++) {
-            uint8_t *ni = msg.nodes6_raw.data() + i * NODE6_INFO_BUF_LEN;
-            const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
-            if (ni_id == myid)
-                continue;
-            SockAddr addr = deserializeIPv6(ni + ni_id.size());
-            if (addr.isLoopback() and from.getFamily() == AF_INET6) {
-                auto port = addr.getPort();
-                addr = from;
-                addr.setPort(port);
-            }
-            if (isMartian(addr) || isNodeBlacklisted(addr))
-                continue;
-            msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
-            onNewNode(msg.nodes6.back(), 0);
+        if (isMartian(addr) || isNodeBlacklisted(addr))
+            continue;
+        msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
+        onNewNode(msg.nodes4.back(), 0);
+    }
+    for (unsigned i = 0, n = msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i < n; i++) {
+        const uint8_t* ni = msg.nodes6_raw.data() + i * NODE6_INFO_BUF_LEN;
+        const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
+        if (ni_id == myid)
+            continue;
+        SockAddr addr = deserializeIPv6(ni + ni_id.size());
+        if (addr.isLoopback() and from.getFamily() == AF_INET6) {
+            auto port = addr.getPort();
+            addr = from;
+            addr.setPort(port);
         }
+        if (isMartian(addr) || isNodeBlacklisted(addr))
+            continue;
+        msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
+        onNewNode(msg.nodes6.back(), 0);
     }
 }
 
@@ -1022,21 +1019,21 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
         bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            sockaddr_in *sin = (sockaddr_in*)&n.addr.first;
+            const auto& sin = n.addr.getIPv4();
             auto dest = bnodes.data() + NODE4_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
-            memcpy(dest + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
-            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin->sin_port, sizeof(in_port_t));
+            memcpy(dest + HASH_LEN, &sin.sin_addr, sizeof(in_addr));
+            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin.sin_port, sizeof(in_port_t));
         }
     } else if (af == AF_INET6) {
         bnodes.resize(NODE6_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            sockaddr_in6 *sin6 = (sockaddr_in6*)&n.addr.first;
+            const auto& sin6 = n.addr.getIPv6();
             auto dest = bnodes.data() + NODE6_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
-            memcpy(dest + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
-            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, sizeof(in_port_t));
+            memcpy(dest + HASH_LEN, &sin6.sin6_addr, sizeof(in6_addr));
+            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6.sin6_port, sizeof(in_port_t));
         }
     }
     return bnodes;
@@ -1420,22 +1417,20 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
             throw msgpack::type_error();
         auto l = sa->via.bin.size;
         if (l == sizeof(in_addr)) {
-            auto a = (sockaddr_in*)&addr.first;
-            std::fill_n((uint8_t*)a, sizeof(sockaddr_in), 0);
-            a->sin_family = AF_INET;
-            a->sin_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin_addr);
-            addr.second = sizeof(sockaddr_in);
+            addr.setFamily(AF_INET);
+            auto& a = addr.getIPv4();
+            std::fill_n((uint8_t*)&a, sizeof(a), 0);
+            a.sin_port = 0;
+            std::copy_n(sa->via.bin.ptr, l, (char*)&a.sin_addr);
         } else if (l == sizeof(in6_addr)) {
-            auto a = (sockaddr_in6*)&addr.first;
-            std::fill_n((uint8_t*)a, sizeof(sockaddr_in6), 0);
-            a->sin6_family = AF_INET6;
-            a->sin6_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin6_addr);
-            addr.second = sizeof(sockaddr_in6);
+            addr.setFamily(AF_INET6);
+            auto& a = addr.getIPv6();
+            std::fill_n((uint8_t*)&a, sizeof(a), 0);
+            a.sin6_port = 0;
+            std::copy_n(sa->via.bin.ptr, l, (char*)&a.sin6_addr);
         }
     } else
-        addr.second = 0;
+        addr = {};
 
     if (auto rcreated = findMapValue(req, "c"))
         created = from_time_t(rcreated->as<std::time_t>());

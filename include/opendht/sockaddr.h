@@ -34,54 +34,91 @@ typedef uint16_t sa_family_t;
 typedef uint16_t in_port_t;
 #endif
 
+#include <string>
+#include <memory>
+
+#include <cstring>
+#include <cstddef>
+
 namespace dht {
 
 OPENDHT_PUBLIC std::string print_addr(const sockaddr* sa, socklen_t slen);
 OPENDHT_PUBLIC std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
 
-struct OPENDHT_PUBLIC SockAddr : public std::pair<sockaddr_storage, socklen_t> {
+class OPENDHT_PUBLIC SockAddr {
 public:
-    SockAddr() : pair<sockaddr_storage, socklen_t>::pair({},0) {}
-    SockAddr(const SockAddr& o) : pair<sockaddr_storage, socklen_t>::pair({},o.second) {
-        std::copy_n((uint8_t*)&o.first, o.second, (uint8_t*)&first);
+    SockAddr() {}
+    SockAddr(const SockAddr& o) {
+        len = o.len;
+        if (len) {
+            addr.reset((sockaddr*)std::malloc(len));
+            std::memcpy((uint8_t*)addr.get(), (const uint8_t*)o.get(), len);
+        } else
+            addr.reset();
     }
-    SockAddr(const sockaddr* sa, socklen_t len) : pair<sockaddr_storage, socklen_t>::pair({},len) {
-        if (len > sizeof(sockaddr_storage))
+    SockAddr(SockAddr&& o) : len(o.len), addr(std::move(o.addr)) {
+        o.len = 0;
+    }
+    SockAddr(const sockaddr* sa, socklen_t length) {
+        if (length > sizeof(sockaddr_storage))
             throw std::runtime_error("Socket address length is too large");
-        std::copy_n((uint8_t*)sa, len, (uint8_t*)&first);
+        len = length;
+        addr.reset((sockaddr*)std::malloc(len));
+        std::memcpy((uint8_t*)get(), (const uint8_t*)sa, len);
     }
     SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
 
     bool operator<(const SockAddr& o) const {
-        if (second != o.second)
-            return second < o.second;
-        return std::memcmp((uint8_t*)&first, (uint8_t*)&o.first, second) < 0;
+        if (len != o.len)
+            return len < o.len;
+        return std::memcmp((uint8_t*)get(), (uint8_t*)o.get(), len) < 0;
     }
 
     bool equals(const SockAddr& o) const {
-        return second == o.second
-            && std::memcmp((uint8_t*)&first, (uint8_t*)&o.first, second) == 0;
+        return len == o.len
+            && std::memcmp((uint8_t*)get(), (uint8_t*)o.get(), len) == 0;
     }
     SockAddr& operator=(const SockAddr& o) {
-        std::copy_n((const uint8_t*)&o.first, o.second, (uint8_t*)&first);
-        second = o.second;
+        if (len != o.len) {
+            len = o.len;
+            addr.reset((sockaddr*)std::realloc(addr.release(), len));
+        }
+        std::memcpy((uint8_t*)get(), (const uint8_t*)o.get(), len);
+        return *this;
+    }
+    SockAddr& operator=(SockAddr&& o) {
+        len = o.len;
+        o.len = 0;
+        addr = std::move(o.addr);
         return *this;
     }
 
     std::string toString() const {
-        return print_addr(first, second);
+        return print_addr(get(), getLength());
     }
-    sa_family_t getFamily() const { return second > sizeof(sa_family_t) ? first.ss_family : AF_UNSPEC; }
+    sa_family_t getFamily() const { return len > sizeof(sa_family_t) ? addr->sa_family : AF_UNSPEC; }
     void setFamily(sa_family_t af) {
-        first.ss_family = af;
+        socklen_t new_length;
         switch(af) {
         case AF_INET:
-            second = sizeof(sockaddr_in);
+            new_length = sizeof(sockaddr_in);
             break;
         case AF_INET6:
-            second = sizeof(sockaddr_in6);
+            new_length = sizeof(sockaddr_in6);
             break;
+        default:
+            new_length = 0;
         }
+        if (new_length != len) {
+            len = new_length;
+            if (len) {
+                addr.reset((sockaddr*)std::realloc(addr.release(), len));
+                std::memset(addr.get(), '\0', len);
+            } else
+                addr.reset();
+        }
+        if (len > sizeof(sa_family_t))
+            addr->sa_family = af;
     }
 
     in_port_t getPort() const {
@@ -105,17 +142,23 @@ public:
         }
     }
 
+    socklen_t getLength() const { return len; }
+    explicit operator bool() const noexcept {
+        return len;
+    }
+
+    const sockaddr* get() const { return addr.get(); }
     const sockaddr_in& getIPv4() const {
-        return *reinterpret_cast<const sockaddr_in*>(&first);
+        return *reinterpret_cast<const sockaddr_in*>(get());
     }
     const sockaddr_in6& getIPv6() const {
-        return *reinterpret_cast<const sockaddr_in6*>(&first);
+        return *reinterpret_cast<const sockaddr_in6*>(get());
     }
     sockaddr_in& getIPv4() {
-        return *reinterpret_cast<sockaddr_in*>(&first);
+        return *reinterpret_cast<sockaddr_in*>(addr.get());
     }
     sockaddr_in6& getIPv6() {
-        return *reinterpret_cast<sockaddr_in6*>(&first);
+        return *reinterpret_cast<sockaddr_in6*>(addr.get());
     }
 
     /**
@@ -136,8 +179,8 @@ public:
      */
     struct ipCmp {
         bool operator()(const SockAddr& a, const SockAddr& b) const {
-            if (a.second != b.second)
-                return a.second < b.second;
+            if (a.len != b.len)
+                return a.len < b.len;
             socklen_t start, len;
             switch(a.getFamily()) {
                 case AF_INET:
@@ -151,18 +194,19 @@ public:
                     break;
                 default:
                     start = 0;
-                    len = a.second;
+                    len = a.len;
                     break;
             }
-
-            return std::memcmp((uint8_t*)&a.first+start, (uint8_t*)&b.first+start, len) < 0;
+            return std::memcmp((uint8_t*)a.get()+start,
+                               (uint8_t*)b.get()+start, len) < 0;
         }
     };
-
+private:
+    socklen_t len {0};
+    struct free_delete { void operator()(void* p) { free(p); } };
+    std::unique_ptr<sockaddr, free_delete> addr {};
 };
 
 OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);
-
-OPENDHT_PUBLIC std::string printAddr(const SockAddr& addr);
 
 }

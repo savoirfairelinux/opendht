@@ -250,7 +250,7 @@ public:
      * @param f: address family of the bound port to retreive.
      */
     in_port_t getBoundPort(sa_family_t f = AF_INET) const {
-        return ntohs(((sockaddr_in*)&getBound(f).first)->sin_port);
+        return getBound(f).getPort();
     }
 
     std::pair<size_t, size_t> getStoreSize() const;

@@ -303,7 +303,7 @@ DhtRunner::getPublicAddressStr(sa_family_t af)
 {
     auto addrs = getPublicAddress(af);
     std::vector<std::string> ret(addrs.size());
-    std::transform(addrs.begin(), addrs.end(), ret.begin(), dht::printAddr);
+    std::transform(addrs.begin(), addrs.end(), ret.begin(), [](const SockAddr& a) { return a.toString(); });
     return ret;
 }
 
@@ -390,8 +390,10 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
             int rc = bind(s4, (sockaddr*)sin4, sizeof(sockaddr_in));
             if(rc < 0)
                 throw DhtException("Can't bind IPv4 socket on " + dht::print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
-            bound4.second = sizeof(bound4.first);
-            getsockname(s4, (sockaddr*)&bound4.first, &bound4.second);
+            sockaddr_storage ss;
+            socklen_t ss_len = sizeof(ss);
+            getsockname(s4, (sockaddr*)&ss, &ss_len);
+            bound4 = {ss, ss_len};
         }
     }
 
@@ -408,8 +410,10 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
             rc = bind(s6, (sockaddr*)sin6, sizeof(sockaddr_in6));
             if(rc < 0)
                 throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin6, sizeof(sockaddr_in6)));
-            bound6.second = sizeof(bound6.first);
-            getsockname(s6, (sockaddr*)&bound6.first, &bound6.second);
+            sockaddr_storage ss;
+            socklen_t ss_len = sizeof(ss);
+            getsockname(s6, (sockaddr*)&ss, &ss_len);
+            bound6 = {ss, ss_len};
         }
     }
 #endif
@@ -441,19 +445,19 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
 
                 if(rc > 0) {
                     std::array<uint8_t, 1024 * 64> buf;
-                    SockAddr from;
-                    from.second = sizeof(from.first);
+                    sockaddr_storage from;
+                    socklen_t from_len = sizeof(from);
 
                     if(s4 >= 0 && FD_ISSET(s4, &readfds))
-                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from.first, &from.second);
+                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
                     else if(s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (struct sockaddr*)&from.first, &from.second);
+                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
                     else
                         break;
                     if (rc > 0) {
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
-                            rcv.emplace_back(Blob {buf.begin(), buf.begin()+rc+1}, from);
+                            rcv.emplace_back(Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len));
                         }
                         cv.notify_all();
                     }
@@ -755,7 +759,7 @@ DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([addr,cb](SecureDht& dht) mutable {
-        dht.pingNode((const sockaddr*)&addr.first, addr.second, std::move(cb));
+        dht.pingNode(addr.get(), addr.getLength(), std::move(cb));
     });
     cv.notify_all();
 }

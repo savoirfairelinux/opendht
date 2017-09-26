@@ -137,7 +137,7 @@ private:
     /**
      * Called when an addres is reported from a requested node.
      *
-     * @param h: id 
+     * @param h: id
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      */
     std::function<void(const InfoHash&, const SockAddr&)> onReportedAddr;
@@ -553,34 +553,6 @@ private:
 
     NodeCache cache {};
 
-    /**
-     * A comparator to classify IP addresses, only considering the
-     * first 64 bits in IPv6.
-     */
-    struct cmpSockAddr {
-        bool operator()(const SockAddr& a, const SockAddr& b) const {
-            if (a.second != b.second)
-                return a.second < b.second;
-            socklen_t start, len;
-            switch(a.getFamily()) {
-                case AF_INET:
-                    start = offsetof(sockaddr_in, sin_addr);
-                    len = sizeof(in_addr);
-                    break;
-                case AF_INET6:
-                    start = offsetof(sockaddr_in6, sin6_addr);
-                    // don't consider more than 64 bits (IPv6)
-                    len = 8;
-                    break;
-                default:
-                    start = 0;
-                    len = a.second;
-                    break;
-            }
-
-            return std::memcmp((uint8_t*)&a.first+start, (uint8_t*)&b.first+start, len) < 0;
-        }
-    };
     // global limiting should be triggered by at least 8 different IPs
     using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
