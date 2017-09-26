@@ -19,6 +19,7 @@ option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
 
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+find_package (Threads)
 find_package (PkgConfig)
 find_package (GnuTLS 3.3 REQUIRED)
 pkg_search_module (Nettle nettle)
@@ -41,7 +42,7 @@ endif ()
 # Build flags
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_THREAD_LIBS_INIT} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
 if (OPENDHT_SANITIZE)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
 endif ()
