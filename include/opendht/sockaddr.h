@@ -111,11 +111,8 @@ public:
         }
         if (new_length != len) {
             len = new_length;
-            if (len) {
-                addr.reset((sockaddr*)std::realloc(addr.release(), len));
-                std::memset(addr.get(), '\0', len);
-            } else
-                addr.reset();
+            if (len) addr.reset((sockaddr*)std::calloc(len, 1));
+            else     addr.reset();
         }
         if (len > sizeof(sa_family_t))
             addr->sa_family = af;
@@ -148,6 +145,8 @@ public:
     }
 
     const sockaddr* get() const { return addr.get(); }
+    sockaddr* get() { return addr.get(); }
+
     const sockaddr_in& getIPv4() const {
         return *reinterpret_cast<const sockaddr_in*>(get());
     }
@@ -155,10 +154,10 @@ public:
         return *reinterpret_cast<const sockaddr_in6*>(get());
     }
     sockaddr_in& getIPv4() {
-        return *reinterpret_cast<sockaddr_in*>(addr.get());
+        return *reinterpret_cast<sockaddr_in*>(get());
     }
     sockaddr_in6& getIPv6() {
-        return *reinterpret_cast<sockaddr_in6*>(addr.get());
+        return *reinterpret_cast<sockaddr_in6*>(get());
     }
 
     /**
@@ -203,7 +202,7 @@ public:
     };
 private:
     socklen_t len {0};
-    struct free_delete { void operator()(void* p) { free(p); } };
+    struct free_delete { void operator()(void* p) { std::free(p); } };
     std::unique_ptr<sockaddr, free_delete> addr {};
 };
 
