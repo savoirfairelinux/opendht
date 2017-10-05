@@ -49,12 +49,7 @@ class OPENDHT_PUBLIC SockAddr {
 public:
     SockAddr() {}
     SockAddr(const SockAddr& o) {
-        len = o.len;
-        if (len) {
-            addr.reset((sockaddr*)std::malloc(len));
-            std::memcpy((uint8_t*)addr.get(), (const uint8_t*)o.get(), len);
-        } else
-            addr.reset();
+        set(o.get(), o.getLength());
     }
     SockAddr(SockAddr&& o) : len(o.len), addr(std::move(o.addr)) {
         o.len = 0;
@@ -62,28 +57,22 @@ public:
     SockAddr(const sockaddr* sa, socklen_t length) {
         if (length > sizeof(sockaddr_storage))
             throw std::runtime_error("Socket address length is too large");
-        len = length;
-        addr.reset((sockaddr*)std::malloc(len));
-        std::memcpy((uint8_t*)get(), (const uint8_t*)sa, len);
+        set(sa, length);
     }
     SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
 
     bool operator<(const SockAddr& o) const {
         if (len != o.len)
             return len < o.len;
-        return std::memcmp((uint8_t*)get(), (uint8_t*)o.get(), len) < 0;
+        return std::memcmp((const uint8_t*)get(), (const uint8_t*)o.get(), len) < 0;
     }
 
     bool equals(const SockAddr& o) const {
         return len == o.len
-            && std::memcmp((uint8_t*)get(), (uint8_t*)o.get(), len) == 0;
+            && std::memcmp((const uint8_t*)get(), (const uint8_t*)o.get(), len) == 0;
     }
     SockAddr& operator=(const SockAddr& o) {
-        if (len != o.len) {
-            len = o.len;
-            addr.reset((sockaddr*)std::realloc(addr.release(), len));
-        }
-        std::memcpy((uint8_t*)get(), (const uint8_t*)o.get(), len);
+        set(o.get(), o.getLength());
         return *this;
     }
     SockAddr& operator=(SockAddr&& o) {
@@ -204,6 +193,17 @@ private:
     socklen_t len {0};
     struct free_delete { void operator()(void* p) { std::free(p); } };
     std::unique_ptr<sockaddr, free_delete> addr {};
+
+    void set(const sockaddr* sa, socklen_t length) {
+        if (len != length) {
+            len = length;
+            if (len) addr.reset((sockaddr*)std::malloc(len));
+            else     addr.reset();
+        }
+        if (len)
+            std::memcpy((uint8_t*)get(), (const uint8_t*)sa, len);
+    }
+
 };
 
 OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);
