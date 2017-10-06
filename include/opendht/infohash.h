@@ -250,8 +250,16 @@ public:
         return v;
     }
 
-    bool
-    operator<(const InfoHash& o) const {
+    bool operator==(const InfoHash& h) const {
+        auto a = reinterpret_cast<const uint32_t*>(data());
+        auto b = reinterpret_cast<const uint32_t*>(h.data());
+        for (size_t i=0; i<(size()/sizeof(uint32_t)); i++)
+            if (a[i] != b[i])
+                return false;
+        return true;
+    }
+
+    bool operator<(const InfoHash& o) const {
         for(unsigned i = 0; i < HASH_LEN; i++) {
             if((*this)[i] != o[i])
                 return (*this)[i] < o[i];
