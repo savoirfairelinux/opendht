@@ -242,12 +242,11 @@ public:
         num ^= (-b ^ num) & (1 << bit);
     }
 
-    double
-    toFloat() const
-    {
+    double toFloat() const {
+        using D = size_t;
         double v = 0.;
-        for (unsigned i = 0; i < std::min<size_t>(HASH_LEN, sizeof(unsigned)-1); i++)
-            v += *(cbegin()+i)/(double)(1<<(8*(i+1)));
+        for (size_t i = 0; i < std::min<size_t>(HASH_LEN, sizeof(D)-1); i++)
+            v += *(cbegin()+i) / (double)((D)1 << 8*(i+1));
         return v;
     }
 
