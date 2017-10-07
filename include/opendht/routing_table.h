@@ -24,6 +24,9 @@
 namespace dht {
 
 static constexpr unsigned TARGET_NODES {8};
+namespace net {
+class NetworkEngine;
+}
 
 struct Bucket {
     Bucket() : cached() {}
@@ -37,11 +40,16 @@ struct Bucket {
 
     /** Return a random node in a bucket. */
     Sp<Node> randomNode();
+
+    void sendCachedPing(net::NetworkEngine& ne);
 };
 
 class RoutingTable : public std::list<Bucket> {
 public:
     using std::list<Bucket>::list;
+
+    time_point grow_time {time_point::min()};
+    bool is_client {false};
 
     InfoHash middle(const RoutingTable::const_iterator&) const;
 
@@ -64,6 +72,14 @@ public:
     inline bool isEmpty() const {
         return empty() || (size() == 1 && front().nodes.empty());
     }
+
+    void connectivityChanged(const time_point& now) {
+        grow_time = now;
+        for (auto& b : *this)
+            b.time = time_point::min();
+    }
+
+    bool onNewNode(const Sp<Node>& node, int comfirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne);
 
     /**
      * Return a random id in the bucket's range.

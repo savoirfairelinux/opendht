@@ -402,7 +402,6 @@ private:
     Scheduler scheduler;
     Sp<Scheduler::Job> nextNodesConfirmation {};
     Sp<Scheduler::Job> nextStorageMaintenance {};
-    time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     net::NetworkEngine network_engine;
     unsigned pending_pings4 {0};

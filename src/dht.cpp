@@ -51,9 +51,9 @@ NodeStatus
 Dht::getStatus(sa_family_t af) const
 {
     const auto& stats = getNodesStats(af);
-    auto& ping = af == AF_INET ? pending_pings4 : pending_pings6;
     if (stats.good_nodes)
         return NodeStatus::Connected;
+    auto& ping = af == AF_INET ? pending_pings4 : pending_pings6;
     if (ping or stats.getKnownNodes())
         return NodeStatus::Connecting;
     return NodeStatus::Disconnected;
@@ -93,11 +93,9 @@ Dht::isRunning(sa_family_t af) const { return network_engine.isRunning(af); }
 const Sp<Node>
 Dht::findNode(const InfoHash& id, sa_family_t af) const
 {
-    const Bucket* b = findBucket(id, af);
-    if (!b)
-        return {};
-    for (const auto& n : b->nodes)
-        if (n->id == id) return n;
+    if (const Bucket* b = findBucket(id, af))
+        for (const auto& n : b->nodes)
+            if (n->id == id) return n;
     return {};
 }
 
@@ -105,11 +103,9 @@ Dht::findNode(const InfoHash& id, sa_family_t af) const
 void
 Dht::sendCachedPing(Bucket& b)
 {
-    if (not b.cached)
-        return;
-    DHT_LOG.d(b.cached->id, "[node %s] sending ping to cached node", b.cached->toString().c_str());
-    network_engine.sendPing(b.cached, nullptr, nullptr);
-    b.cached = {};
+    if (b.cached)
+        DHT_LOG.d(b.cached->id, "[node %s] sending ping to cached node", b.cached->toString().c_str());
+    b.sendCachedPing(network_engine);
 }
 
 std::vector<SockAddr>
@@ -178,71 +174,8 @@ Dht::reportedAddr(const SockAddr& addr)
 void
 Dht::onNewNode(const Sp<Node>& node, int confirm)
 {
-    auto& list = buckets(node->getFamily());
-    auto b = list.findBucket(node->id);
-    if (b == list.end())
-        return;
-
-    for (auto& n : b->nodes) {
-        if (n == node) {
-            if (confirm)
-                trySearchInsert(node);
-            return;
-        }
-    }
-
-    /* New node. */
-    /* Try adding the node to searches */
-    trySearchInsert(node);
-
-    const auto& now = scheduler.time();
-    bool mybucket = list.contains(b, myid);
-    if (mybucket) {
-        if (node->getFamily() == AF_INET)
-            mybucket_grow_time = now;
-        else
-            mybucket6_grow_time = now;
-        //scheduler.edit(nextNodesConfirmation, now);
-    }
-
-    if (b->nodes.size() >= TARGET_NODES) {
-        /* Try to get rid of an expired node. */
-        for (auto& n : b->nodes)
-            if (n->isExpired()) {
-                n = node;
-                return;
-            }
-        /* Bucket full.  Ping a dubious node */
-        bool dubious = false;
-        for (auto& n : b->nodes) {
-            /* Pick the first dubious node that we haven't pinged in the
-               last 9 seconds.  This gives nodes the time to reply, but
-               tends to concentrate on the same nodes, so that we get rid
-               of bad nodes fast. */
-            if (not n->isGood(now)) {
-                dubious = true;
-                if (not n->isPendingMessage()) {
-                    DHT_LOG.d(n->id, "[node %s] sending ping to dubious node", n->toString().c_str());
-                    network_engine.sendPing(n, nullptr, nullptr);
-                    break;
-                }
-            }
-        }
-
-        if ((mybucket || (is_bootstrap and list.depth(b) < 6)) && (!dubious || list.size() == 1)) {
-            DHT_LOG.d("Splitting from depth %u", list.depth(b));
-            sendCachedPing(*b);
-            list.split(b);
-            onNewNode(node, 0);
-            return;
-        }
-
-        /* No space for this node.  Cache it away for later. */
-        if (confirm or not b->cached)
-            b->cached = node;
-    } else {
-        /* Create a new node. */
-        b->nodes.emplace_front(node);
+    if (buckets(node->getFamily()).onNewNode(node, confirm, scheduler.time(), myid, network_engine) or confirm) {
+        trySearchInsert(node);
     }
 }
 
@@ -1393,10 +1326,7 @@ Dht::connectivityChanged(sa_family_t af)
 {
     const auto& now = scheduler.time();
     scheduler.edit(nextNodesConfirmation, now);
-    auto& bucket_grow_time = (af == AF_INET) ? mybucket_grow_time : mybucket6_grow_time;
-    bucket_grow_time = now;
-    for (auto& b : buckets(af))
-        b.time = time_point::min();
+    buckets(af).connectivityChanged(now);
     network_engine.connectivityChanged(af);
     for (auto& sp : searches(af))
         for (auto& sn : sp.second->nodes) {
@@ -1766,10 +1696,14 @@ Dht::Dht(int s, int s6, Config config)
     scheduler.syncTime();
     if (s < 0 && s6 < 0)
         return;
-    if (s >= 0)
+    if (s >= 0) {
         buckets4 = {Bucket {AF_INET}};
-    if (s6 >= 0)
+        buckets4.is_client = config.is_bootstrap;
+    }
+    if (s6 >= 0) {
         buckets6 = {Bucket {AF_INET6}};
+        buckets6.is_client = config.is_bootstrap;
+    }
 
     search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
 
@@ -2013,9 +1947,9 @@ Dht::confirmNodes()
     soon |= bucketMaintenance(buckets6);
 
     if (!soon) {
-        if (mybucket_grow_time >= now - seconds(150))
+        if (buckets4.grow_time >= now - seconds(150))
             soon |= neighbourhoodMaintenance(buckets4);
-        if (mybucket6_grow_time >= now - seconds(150))
+        if (buckets6.grow_time >= now - seconds(150))
             soon |= neighbourhoodMaintenance(buckets6);
     }
 

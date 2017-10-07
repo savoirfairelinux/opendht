@@ -1,4 +1,24 @@
+/*
+ *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include "routing_table.h"
+
+#include "network_engine.h"
 #include "rng.h"
 
 #include <memory>
@@ -33,6 +53,15 @@ Bucket::randomNode()
         }
     }
     return nodes.back();
+}
+
+void Bucket::sendCachedPing(net::NetworkEngine& ne)
+{
+    if (not cached)
+        return;
+    //DHT_LOG.d(b.cached->id, "[node %s] sending ping to cached node", cached->toString().c_str());
+    ne.sendPing(cached, nullptr, nullptr);
+    cached = {};
 }
 
 InfoHash
@@ -171,5 +200,63 @@ RoutingTable::split(const RoutingTable::iterator& b)
     }
     return true;
 }
+
+bool
+RoutingTable::onNewNode(const Sp<Node>& node, int comfirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne) {
+    auto b = findBucket(node->id);
+    if (b == end()) return false;
+    for (auto& n : b->nodes) {
+        if (n == node)
+            return false;
+    }
+
+    bool mybucket = contains(b, myid);
+    if (mybucket) {
+        grow_time = now;
+        //scheduler.edit(nextNodesConfirmation, now);
+    }
+
+    if (b->nodes.size() >= TARGET_NODES) {
+        /* Try to get rid of an expired node. */
+        for (auto& n : b->nodes)
+            if (n->isExpired()) {
+                n = node;
+                return true;
+            }
+        /* Bucket full.  Ping a dubious node */
+        bool dubious = false;
+        for (auto& n : b->nodes) {
+            /* Pick the first dubious node that we haven't pinged in the
+               last 9 seconds.  This gives nodes the time to reply, but
+               tends to concentrate on the same nodes, so that we get rid
+               of bad nodes fast. */
+            if (not n->isGood(now)) {
+                dubious = true;
+                if (not n->isPendingMessage()) {
+                    //DHT_LOG.d(n->id, "[node %s] sending ping to dubious node", n->toString().c_str());
+                    ne.sendPing(n, nullptr, nullptr);
+                    break;
+                }
+            }
+        }
+
+        if ((mybucket || (is_client and depth(b) < 6)) && (!dubious || size() == 1)) {
+            //DHT_LOG.d("Splitting from depth %u", depth(b));
+            b->sendCachedPing(ne);
+            split(b);
+            return onNewNode(node, comfirm, now, myid, ne);
+        }
+
+        /* No space for this node.  Cache it away for later. */
+        if (comfirm or not b->cached)
+            b->cached = node;
+    } else {
+        /* Create a new node. */
+        b->nodes.emplace_front(node);
+    }
+    return true;
+}
+
+
 
 }
