@@ -45,6 +45,9 @@ namespace dht {
 OPENDHT_PUBLIC std::string print_addr(const sockaddr* sa, socklen_t slen);
 OPENDHT_PUBLIC std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
 
+/**
+ * A Socket Address (sockaddr*), with abstraction for IPv4, IPv6 address families.
+ */
 class OPENDHT_PUBLIC SockAddr {
 public:
     SockAddr() {}
@@ -54,11 +57,18 @@ public:
     SockAddr(SockAddr&& o) : len(o.len), addr(std::move(o.addr)) {
         o.len = 0;
     }
+
+    /**
+     * Build from existing address.
+     */
     SockAddr(const sockaddr* sa, socklen_t length) {
         if (length > sizeof(sockaddr_storage))
             throw std::runtime_error("Socket address length is too large");
         set(sa, length);
     }
+    /**
+     * Build from an existing sockaddr_storage structure.
+     */
     SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
 
     bool operator<(const SockAddr& o) const {
@@ -85,7 +95,17 @@ public:
     std::string toString() const {
         return print_addr(get(), getLength());
     }
+
+    /**
+     * Returns the address family or AF_UNSPEC if the address is not set.
+     */
     sa_family_t getFamily() const { return len > sizeof(sa_family_t) ? addr->sa_family : AF_UNSPEC; }
+
+    /**
+     * Resize the managed structure to the appropriate size (if needed),
+     * in which case the sockaddr structure is cleared to zero,
+     * and set the address family field (sa_family).
+     */
     void setFamily(sa_family_t af) {
         socklen_t new_length;
         switch(af) {
@@ -107,6 +127,10 @@ public:
             addr->sa_family = af;
     }
 
+    /**
+     * Retreive the port (in host byte order) or 0 if the address is not
+     * of a supported family.
+     */
     in_port_t getPort() const {
         switch(getFamily()) {
         case AF_INET:
@@ -117,6 +141,10 @@ public:
             return 0;
         }
     }
+    /**
+     * Set the port. The address must be of a supported family.
+     * @param p The port in host byte order.
+     */
     void setPort(in_port_t p) {
         switch(getFamily()) {
         case AF_INET:
@@ -128,12 +156,29 @@ public:
         }
     }
 
+    /**
+     * Returns the accessible byte length at the pointer returned by #get().
+     * If zero, #get() returns null.
+     */
     socklen_t getLength() const { return len; }
+
+    /**
+     * An address is defined to be true if its length is not zero.
+     */
     explicit operator bool() const noexcept {
         return len;
     }
 
+    /**
+     * Returns the address to the managed sockaddr structure.
+     * The accessible length is returned by #getLength().
+     */
     const sockaddr* get() const { return addr.get(); }
+
+    /**
+     * Returns the address to the managed sockaddr structure.
+     * The accessible length is returned by #getLength().
+     */
     sockaddr* get() { return addr.get(); }
 
     const sockaddr_in& getIPv4() const {
