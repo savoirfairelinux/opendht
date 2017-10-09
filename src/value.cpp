@@ -35,6 +35,7 @@ Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data) {
 
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
+    auto flags(s.flags());
     s << "Value[id:" << std::hex << v.id << std::dec << " ";
     if (v.isEncrypted())
         s << "encrypted ";
@@ -63,6 +64,7 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
         }
     }
     s << "]";
+    s.flags(flags);
     return s;
 }
 
@@ -257,9 +259,12 @@ std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi) {
     os << "Index[";
     for (auto v = fvi.index.begin(); v != fvi.index.end(); ++v) {
         switch (v->first) {
-            case Value::Field::Id:
+            case Value::Field::Id: {
+                auto flags(os.flags());
                 os << "Id:" << std::hex << v->second.getInt();
+                os.flags(flags);
                 break;
+            }
             case Value::Field::ValueType:
                 os << "ValueType:" << v->second.getInt();
                 break;
