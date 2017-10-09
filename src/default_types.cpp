@@ -54,12 +54,11 @@ DhtMessage::ServiceFilter(std::string s)
 
 std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
 {
-    s << "Peer: ";
-    s << "port " << v.getPort();
-
-    if (v.ss.ss_family == AF_INET || v.ss.ss_family == AF_INET6) {
+    if (v.addr) {
+        s << "Peer: ";
+        s << "port " << v.getPort();
         char hbuf[NI_MAXHOST];
-        if (getnameinfo((sockaddr*)&v.ss, sizeof(v.ss), hbuf, sizeof(hbuf), nullptr, 0, NI_NUMERICHOST) == 0) {
+        if (getnameinfo(v.addr.get(), v.addr.getLength(), hbuf, sizeof(hbuf), nullptr, 0, NI_NUMERICHOST) == 0) {
             s << " addr " << std::string(hbuf, strlen(hbuf));
         }
     }
