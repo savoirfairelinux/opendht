@@ -17,6 +17,9 @@ option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
 
+find_package(Doxygen)
+option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
+
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 find_package (Threads)
@@ -90,6 +93,7 @@ set (libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
 set (includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 set (bindir "${CMAKE_INSTALL_FULL_BINDIR}")
 set (sysconfdir "${CMAKE_INSTALL_FULL_SYSCONFDIR}")
+set (top_srcdir "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Sources
 list (APPEND opendht_SOURCES
