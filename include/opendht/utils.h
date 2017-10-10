@@ -32,6 +32,9 @@
 #define WANT4 1
 #define WANT6 2
 
+/**
+ * OpenDHT C++ namespace
+ */
 namespace dht {
 
 using NetId = uint32_t;
@@ -93,6 +96,9 @@ public:
 
 // Serialization related definitions and utility functions
 
+/**
+ * Arbitrary binary data.
+ */
 using Blob = std::vector<uint8_t>;
 
 /**

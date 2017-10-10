@@ -24,6 +24,10 @@
 #include <iostream>
 
 namespace dht {
+
+/**
+ * Logging-related functions
+ */
 namespace log {
 
 /**

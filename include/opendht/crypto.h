@@ -36,6 +36,10 @@ extern "C" {
 #endif
 
 namespace dht {
+
+/**
+ * Contains all crypto primitives
+ */
 namespace crypto {
 
 class OPENDHT_PUBLIC CryptoException : public std::runtime_error {
