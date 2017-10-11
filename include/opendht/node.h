@@ -40,11 +40,12 @@ using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
 struct Node {
     InfoHash id;
     SockAddr addr;
+    bool is_client {false};
 
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
 
-    Node(const InfoHash& id, const SockAddr& addr);
+    Node(const InfoHash& id, const SockAddr& addr, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
         : Node(id, SockAddr(sa, salen)) {}
 
@@ -57,6 +58,7 @@ struct Node {
     std::string getAddrStr() const {
         return addr.toString();
     }
+    bool isClient() const { return is_client; }
 
     /**
      * Makes notice about an additionnal authentication error with this node. Up

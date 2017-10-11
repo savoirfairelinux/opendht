@@ -399,9 +399,9 @@ void
 NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from)
 {
     const auto& now = scheduler.time();
+    auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
 
     if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
-        auto node = cache.getNode(msg->id, from, now, true);
         auto rsocket = node->getSocket(msg->tid);
         auto req = node->getRequest(msg->tid);
 
@@ -414,14 +414,16 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 requests.erase(req_it);
             } else {
                 node->received(now, req);
-                onNewNode(node, 1);
+                if (not node->is_client)
+                    onNewNode(node, 1);
                 throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
             }
         }
 
         node->received(now, req);
 
-        onNewNode(node, 2);
+        if (not node->is_client)
+            onNewNode(node, 2);
         onReportedAddr(msg->id, msg->addr);
 
         if (req and (req->cancelled() or req->expired() or req->completed())) {
@@ -463,9 +465,9 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
     } else {
-        auto node = cache.getNode(msg->id, from, now, true);
         node->received(now, {});
-        onNewNode(node, 1);
+        if (not node->is_client)
+            onNewNode(node, 1);
         try {
             switch (msg->type) {
             case MessageType::Ping:

@@ -31,9 +31,8 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 
-Node::Node(const InfoHash& id, const SockAddr& addr)
-: id(id),
-  addr(addr)
+Node::Node(const InfoHash& id, const SockAddr& addr, bool client)
+: id(id), addr(addr), is_client(client)
 {
     crypto::random_device rd;
     transaction_id = TransactionDist{1}(rd);

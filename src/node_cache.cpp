@@ -22,19 +22,19 @@ namespace dht {
 
 std::shared_ptr<Node>
 NodeCache::getNode(const InfoHash& id, sa_family_t family) {
-    return (family == AF_INET ? cache_4 : cache_6).getNode(id);
+    return cache(family).getNode(id);
 }
 
 std::shared_ptr<Node>
-NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm) {
+NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client) {
     if (id == zeroes)
         return std::make_shared<Node>(id, addr);
-    return (addr.getFamily() == AF_INET ? cache_4 : cache_6).getNode(id, addr, now, confirm);
+    return cache(addr.getFamily()).getNode(id, addr, now, confirm, client);
 }
 
 std::vector<std::shared_ptr<Node>>
 NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
-    const auto& c = (sa_f == AF_INET ? cache_4 : cache_6);
+    const auto& c = cache(sa_f);
     auto it_p = c.lower_bound(id),
          it_n = it_p;
 
@@ -57,7 +57,7 @@ NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
             it_p = c.end();
 
         if (auto n = it->second.lock())
-            if ( not n->isExpired() )
+            if ( not n->isExpired() and not n->isClient() )
                 nodes.emplace_back(std::move(n));
     }
 
@@ -71,7 +71,7 @@ NodeCache::clearBadNodes(sa_family_t family)
         clearBadNodes(AF_INET);
         clearBadNodes(AF_INET6);
     } else {
-        (family == AF_INET ? cache_4 : cache_6).clearBadNodes();
+        cache(family).clearBadNodes();
     }
 }
 
@@ -88,12 +88,12 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
 }
 
 std::shared_ptr<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm)
+NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client)
 {
     auto it = emplace(id, std::weak_ptr<Node>{});
     auto node = it.first->second.lock();
     if (not node) {
-        node = std::make_shared<Node>(id, addr);
+        node = std::make_shared<Node>(id, addr, client);
         it.first->second = node;
     } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
         node->update(addr);

@@ -27,7 +27,7 @@ namespace dht {
 
 struct NodeCache {
     std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
-    std::shared_ptr<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed);
+    std::shared_ptr<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client=false);
     std::vector<std::shared_ptr<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count);
 
     /**
@@ -41,10 +41,11 @@ private:
     class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
     public:
         std::shared_ptr<Node> getNode(const InfoHash& id);
-        std::shared_ptr<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed);
+        std::shared_ptr<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
         void clearBadNodes();
     };
 
+    NodeMap& cache(sa_family_t af) { return af == AF_INET ? cache_4 : cache_6; }
     NodeMap cache_4;
     NodeMap cache_6;
 };

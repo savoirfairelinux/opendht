@@ -43,6 +43,8 @@ struct ParsedMessage {
     InfoHash id;
     /* Network id */
     NetId network {0};
+    /** Is a client node */
+    bool is_client {false};
     /* hash for which values are requested */
     InfoHash info_hash;
     /* target id around which to find nodes */
@@ -136,6 +138,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
 
     if (auto netid = findMapValue(msg, "n"))
         network = netid->as<NetId>();
+
+    if (auto is_client_v = findMapValue(msg, "s"))
+        is_client = is_client_v->as<bool>();
 
     std::string q;
     if (auto rq = findMapValue(msg, "q")) {
