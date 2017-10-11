@@ -218,7 +218,7 @@ Dht::expireSearches()
 
 void
 Dht::searchNodeGetDone(const net::Request& req,
-        net::NetworkEngine::RequestAnswer&& answer,
+        net::RequestAnswer&& answer,
         std::weak_ptr<Search> ws,
         Sp<Query> query)
 {
@@ -262,7 +262,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n) {
     if (not sr) return;
     auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
     auto onSelectDone = [this,ws,query](const net::Request& status,
-                                        net::NetworkEngine::RequestAnswer&& answer) mutable {
+                                        net::RequestAnswer&& answer) mutable {
         // retreive search
         auto sr = ws.lock();
         if (not sr) return;
@@ -393,7 +393,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         if (not something_to_announce)
             continue;
 
-        auto onDone = [this,ws](const net::Request& req, net::NetworkEngine::RequestAnswer&& answer)
+        auto onDone = [this,ws](const net::Request& req, net::RequestAnswer&& answer)
         { /* when put done */
             if (auto sr = ws.lock()) {
                 onAnnounceDone(req.node, answer, sr);
@@ -407,7 +407,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
         };
         auto onSelectDone =
-            [this,ws,onDone,onExpired](const net::Request& req, net::NetworkEngine::RequestAnswer&& answer) mutable
+            [this,ws,onDone,onExpired](const net::Request& req, net::RequestAnswer&& answer) mutable
             { /* on probing done */
                 const auto& now = scheduler.time();
                 if (auto sr = ws.lock()) {
@@ -549,7 +549,7 @@ Dht::searchStep(Sp<Search> sr)
 
                         std::weak_ptr<Search> ws = sr;
                         n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
-                            [this,ws,query](const net::Request& req, net::NetworkEngine::RequestAnswer&& answer) mutable
+                            [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
                             { /* on done */
                                 if (auto sr = ws.lock()) {
                                     onListenDone(req.node, answer, sr);
@@ -565,7 +565,7 @@ Dht::searchStep(Sp<Search> sr)
                                             sn->listenStatus.erase(query);
                                 }
                             },
-                            [this,ws,query](const Sp<Node>& node, net::NetworkEngine::RequestAnswer&& answer) mutable
+                            [this,ws,query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable
                             { /* on new values */
                                 if (auto sr = ws.lock()) {
                                     onGetValuesDone(node, answer, sr, query);
@@ -2075,7 +2075,7 @@ Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
     DHT_LOG.d("Sending ping to %s", print_addr(sa, salen).c_str());
     auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, salen, [&count,cb](const net::Request&, net::NetworkEngine::RequestAnswer&&) {
+    network_engine.sendPing(sa, salen, [&count,cb](const net::Request&, net::RequestAnswer&&) {
         count--;
         if (cb)
             cb(true);
@@ -2119,17 +2119,17 @@ Dht::onReportedAddr(const InfoHash& id, const SockAddr& addr)
         reportedAddr(addr);
 }
 
-net::NetworkEngine::RequestAnswer
+net::RequestAnswer
 Dht::onPing(Sp<Node>)
 {
     return {};
 }
 
-net::NetworkEngine::RequestAnswer
+net::RequestAnswer
 Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
-    net::NetworkEngine::RequestAnswer answer;
+    net::RequestAnswer answer;
     answer.ntoken = makeToken(node->addr, false);
     if (want & WANT4)
         answer.nodes4 = buckets4.findClosestNodes(target, now, TARGET_NODES);
@@ -2138,7 +2138,7 @@ Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
     return answer;
 }
 
-net::NetworkEngine::RequestAnswer
+net::RequestAnswer
 Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query)
 {
     if (hash == zeroes) {
@@ -2149,7 +2149,7 @@ Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query
         };
     }
     const auto& now = scheduler.time();
-    net::NetworkEngine::RequestAnswer answer {};
+    net::RequestAnswer answer {};
     auto st = store.find(hash);
     answer.ntoken = makeToken(node->addr, false);
     answer.nodes4 = buckets4.findClosestNodes(hash, now, TARGET_NODES);
@@ -2164,7 +2164,7 @@ Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query
 }
 
 void Dht::onGetValuesDone(const Sp<Node>& node,
-        net::NetworkEngine::RequestAnswer& a,
+        net::RequestAnswer& a,
         Sp<Search>& sr,
         const Sp<Query>& orig_query)
 {
@@ -2235,7 +2235,7 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
     }
 }
 
-net::NetworkEngine::RequestAnswer
+net::RequestAnswer
 Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query)
 {
     if (hash == zeroes) {
@@ -2256,7 +2256,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
 
 void
 Dht::onListenDone(const Sp<Node>& node,
-        net::NetworkEngine::RequestAnswer& answer,
+        net::RequestAnswer& answer,
         Sp<Search>& sr)
 {
     DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
@@ -2269,7 +2269,7 @@ Dht::onListenDone(const Sp<Node>& node,
     }
 }
 
-net::NetworkEngine::RequestAnswer
+net::RequestAnswer
 Dht::onAnnounce(Sp<Node> node,
         const InfoHash& hash,
         const Blob& token,
@@ -2337,7 +2337,7 @@ Dht::onAnnounce(Sp<Node> node,
     return {};
 }
 
-net::NetworkEngine::RequestAnswer
+net::RequestAnswer
 Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Value::Id& vid)
 {
     using namespace net;
@@ -2360,7 +2360,7 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
 }
 
 void
-Dht::onAnnounceDone(const Sp<Node>& node, net::NetworkEngine::RequestAnswer& answer, Sp<Search>& sr)
+Dht::onAnnounceDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>& sr)
 {
     DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got reply to put!",
             sr->id.toString().c_str(), node->toString().c_str());

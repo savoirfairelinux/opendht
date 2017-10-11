@@ -169,7 +169,7 @@ serializeValues(const std::vector<Sp<Value>>& st)
     return svals;
 }
 
-NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
+RequestAnswer::RequestAnswer(ParsedMessage&& msg)
  : ntoken(std::move(msg.token)), values(std::move(msg.values)), fields(std::move(msg.fields)),
     nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 

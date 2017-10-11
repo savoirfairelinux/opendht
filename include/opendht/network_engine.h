@@ -81,6 +81,20 @@ private:
 
 struct ParsedMessage;
 
+/**
+ * Answer for a request.
+ */
+struct RequestAnswer {
+    Blob ntoken {};
+    Value::Id vid {};
+    std::vector<Sp<Value>> values {};
+    std::vector<Sp<FieldValueIndex>> fields {};
+    std::vector<Sp<Node>> nodes4 {};
+    std::vector<Sp<Node>> nodes6 {};
+    RequestAnswer() {}
+    RequestAnswer(ParsedMessage&& msg);
+};
+
 /*!
  * @class   NetworkEngine
  * @brief   An abstraction of communication protocol on the network.
@@ -101,26 +115,6 @@ struct ParsedMessage;
  */
 class NetworkEngine final
 {
-public:
-    /*!
-     * @class   RequestAnswer
-     * @brief   Answer for a request.
-     * @details
-     * Answer for a request to be (de)serialized. Used for reponding to a node
-     * and looking up the response from a node.
-     */
-    struct RequestAnswer {
-        Blob ntoken {};
-        Value::Id vid {};
-        std::vector<Sp<Value>> values {};
-        std::vector<Sp<FieldValueIndex>> fields {};
-        std::vector<Sp<Node>> nodes4 {};
-        std::vector<Sp<Node>> nodes6 {};
-        RequestAnswer() {}
-        RequestAnswer(ParsedMessage&& msg);
-    };
-
-
 private:
     /**
      * Called when we receive an error message.

@@ -504,7 +504,7 @@ private:
      * @param query   The query sent to the node.
      */
     void searchNodeGetDone(const net::Request& status,
-            net::NetworkEngine::RequestAnswer&& answer,
+            net::RequestAnswer&& answer,
             std::weak_ptr<Search> ws,
             Sp<Query> query);
 
@@ -559,42 +559,42 @@ private:
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, const SockAddr&);
     /* when we receive a ping request */
-    net::NetworkEngine::RequestAnswer onPing(Sp<Node> node);
+    net::RequestAnswer onPing(Sp<Node> node);
     /* when we receive a "find node" request */
-    net::NetworkEngine::RequestAnswer onFindNode(Sp<Node> node, const InfoHash& hash, want_t want);
+    net::RequestAnswer onFindNode(Sp<Node> node, const InfoHash& hash, want_t want);
     void onFindNodeDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search> sr);
     /* when we receive a "get values" request */
-    net::NetworkEngine::RequestAnswer onGetValues(Sp<Node> node,
+    net::RequestAnswer onGetValues(Sp<Node> node,
             const InfoHash& hash,
             want_t want,
             const Query& q);
     void onGetValuesDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search>& sr,
             const Sp<Query>& orig_query);
     /* when we receive a listen request */
-    net::NetworkEngine::RequestAnswer onListen(Sp<Node> node,
+    net::RequestAnswer onListen(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             size_t socket_id,
             const Query& query);
     void onListenDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search>& sr);
     /* when we receive an announce request */
-    net::NetworkEngine::RequestAnswer onAnnounce(Sp<Node> node,
+    net::RequestAnswer onAnnounce(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const std::vector<Sp<Value>>& v,
             const time_point& created);
-    net::NetworkEngine::RequestAnswer onRefresh(Sp<Node> node,
+    net::RequestAnswer onRefresh(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const Value::Id& vid);
     void onAnnounceDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search>& sr);
 };
 
