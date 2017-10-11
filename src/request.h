@@ -77,12 +77,16 @@ struct Request {
 
     Request(State state = State::PENDING) : state_(state) {}
     Request(TransId tid,
-            std::shared_ptr<Node> node,
+            Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<void(const Request&, bool)> on_expired,
-            std::shared_ptr<Socket> socket = {}) :
+            Sp<Socket> socket = {}) :
         node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), socket(socket) { }
+
+    TransId getTid() const { return tid; }
+
+    const Sp<Socket>& getSocket() const { return socket; }
 
     void setExpired() {
         if (pending()) {
@@ -130,7 +134,7 @@ private:
 
     const TransId tid; /* the request id. */
     Blob msg {};                      /* the serialized message. */
-    std::shared_ptr<Socket> socket;   /* the socket used for further reponses. */
+    Sp<Socket> socket;   /* the socket used for further reponses. */
 };
 
 } /* namespace net  */
