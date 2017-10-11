@@ -9,6 +9,7 @@ libopendht_la_SOURCES  = \
         listener.h \
         request.h \
         search.h \
+        parsed_message.h \
         node_cache.cpp \
         callbacks.cpp \
         routing_table.cpp \
@@ -82,4 +83,3 @@ noinst_HEADERS = \
         @top_builddir@/argon2/src/encoding.h \
         @top_builddir@/argon2/src/thread.h
 endif
-

@@ -107,6 +107,7 @@ list (APPEND opendht_SOURCES
     src/storage.h
     src/listener.h
     src/search.h
+    src/parsed_message.h
     src/request.h
     src/callbacks.cpp
     src/routing_table.cpp
