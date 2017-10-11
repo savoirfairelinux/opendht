@@ -233,22 +233,8 @@ NetworkEngine::isRunning(sa_family_t af) const
 }
 
 void
-NetworkEngine::cancelRequest(Sp<Request>& req)
-{
-    if (req) {
-        req->cancel();
-        req->node->closeSocket(req->socket);
-        requests.erase(req->tid);
-    }
-}
-
-void
 NetworkEngine::clear()
-{
-    for (auto& req : requests)
-        req.second->setExpired();
-    requests.clear();
-}
+{}
 
 void
 NetworkEngine::connectivityChanged(sa_family_t af)
@@ -260,18 +246,16 @@ void
 NetworkEngine::requestStep(Sp<Request> sreq)
 {
     auto& req = *sreq;
-    if (not req.pending()) {
-        if (req.cancelled())
-            requests.erase(req.tid);
+    if (not req.pending())
         return;
-    }
 
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
         DHT_LOG.e(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
-        requests.erase(req.tid);
+        if (node.id == zeroes)
+            requests.erase(req.tid);
         return;
     } else if (req.attempt_count == 1) {
         req.on_expired(req, false);
@@ -285,7 +269,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         err == EAFNOSUPPORT)
     {
         node.setExpired();
-        requests.erase(req.tid);
+        if (node.id == zeroes)
+            requests.erase(req.tid);
     } else {
         if (err != EAGAIN) {
             ++req.attempt_count;
@@ -304,18 +289,13 @@ NetworkEngine::requestStep(Sp<Request> sreq)
  * be made before the request expires.
  */
 void
-NetworkEngine::sendRequest(Sp<Request>& request)
+NetworkEngine::sendRequest(const Sp<Request>& request)
 {
+    auto& node = request->node;
+    if (node->id == zeroes)
+        requests.emplace(request->tid, request);
     request->start = scheduler.time();
-    auto e = requests.emplace(request->tid, request);
-    if (not e.second) {
-        // Should not happen !
-        // Try to handle this scenario as well as we can
-        e.first->second->setExpired();
-        e.first->second = request;
-        DHT_LOG.e(request->node->id, "Request already existed (tid: %d)!", request->tid.getTid());
-    }
-    request->node->requested(request);
+    node->requested(request);
     requestStep(request);
 }
 
@@ -375,14 +355,6 @@ void
 NetworkEngine::blacklistNode(const Sp<Node>& n)
 {
     n->setExpired();
-    for (auto rit = requests.begin(); rit != requests.end();) {
-        if (rit->second->node == n) {
-            //rit->second->cancel();
-            requests.erase(rit++);
-        } else {
-            ++rit;
-        }
-    }
     blacklist.emplace(n->addr);
 }
 
@@ -488,20 +460,20 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         auto node = cache.getNode(msg->id, from, now, true);
         auto rsocket = node->getSocket(msg->tid);
-        //auto request = node->getRequest(msg->tid);
+        auto req = node->getRequest(msg->tid);
 
         /* either response for a request or data for an opened socket */
-        auto req_it = requests.find(msg->tid);
-        if (req_it == requests.end() and not rsocket) {
-            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
-        }
-
-        auto req = req_it != requests.end() ? req_it->second : nullptr;
-        if (req and req->node != node and req->node->id != zeroes) {
-            node->received(now, req);
-            onNewNode(node, 2);
-            DHT_LOG.w(node->id, "[node %s] message received from unexpected node", node->toString().c_str());
-            return;
+        if (not req and not rsocket) {
+            auto req_it = requests.find(msg->tid);
+            if (req_it != requests.end() and req_it->second->node->id == zeroes) {
+                req = req_it->second;
+                req->node = node;
+                requests.erase(req_it);
+            } else {
+                node->received(now, req);
+                onNewNode(node, 1);
+                throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
+            }
         }
 
         node->received(now, req);
@@ -511,7 +483,6 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         if (req and (req->cancelled() or req->expired() or req->completed())) {
             DHT_LOG.w(node->id, "[node %s] response to expired, cancelled or completed request", node->toString().c_str());
-            requests.erase(req_it);
             return;
         }
 
@@ -532,21 +503,19 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
         case MessageType::Reply:
-         if (req) { /* request reply */
-             if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
-                 req->node->authSuccess();
+            if (req) { /* request reply */
+                if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
+                    req->node->authSuccess();
+                req->reply_time = scheduler.time();
 
-             // erase before calling callback to make sure iterator is still valid
-             requests.erase(req_it);
-             req->reply_time = scheduler.time();
-
-             deserializeNodes(*msg, from);
-             req->setDone(std::move(*msg));
-             break;
-         } else { /* request socket data */
-             deserializeNodes(*msg, from);
-             rsocket->on_receive(node, std::move(*msg));
-         }
+                deserializeNodes(*msg, from);
+                req->setDone(std::move(*msg));
+                break;
+            } else { /* request socket data */
+                deserializeNodes(*msg, from);
+                rsocket->on_receive(node, std::move(*msg));
+            }
+            break;
         default:
             break;
         }

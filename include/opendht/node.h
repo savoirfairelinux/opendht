@@ -85,8 +85,10 @@ struct Node {
 
     void update(const SockAddr&);
 
-    void requested(std::shared_ptr<net::Request>& req);
-    void received(time_point now, std::shared_ptr<net::Request> req);
+    void requested(const Sp<net::Request>& req);
+    void received(time_point now, const Sp<net::Request>& req);
+    Sp<net::Request> getRequest(const net::TransId& tid);
+    void cancelRequest(const Sp<net::Request>& req);
 
     void setExpired();
 
@@ -131,17 +133,11 @@ private:
     /* Number of times we accept authentication errors from this node. */
     static const constexpr unsigned MAX_AUTH_ERRORS {3};
 
-    std::list<std::weak_ptr<net::Request>> requests_ {};
+    std::map<net::TransId, Sp<net::Request>> requests_ {};
     std::map<net::TransId, Sp<net::Socket>> sockets_ {};
 
     unsigned auth_errors {0};
     bool expired_ {false};
-
-    void clearPendingQueue() {
-        requests_.remove_if([](std::weak_ptr<net::Request>& w) {
-            return w.expired();
-        });
-    }
 };
 
 }

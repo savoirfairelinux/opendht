@@ -239,12 +239,6 @@ public:
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
 
-    /**
-     * Cancel a request. Setting req->cancelled = true is not enough in the case
-     * a request is "persistent".
-     */
-    void cancelRequest(Sp<Request>& req);
-
     void connectivityChanged(sa_family_t);
 
     /**************
@@ -458,7 +452,7 @@ private:
      * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
      * be made before the request expires.
      */
-    void sendRequest(Sp<Request>& request);
+    void sendRequest(const Sp<Request>& request);
 
     /**
      * Generates a new request id, skipping the invalid id.

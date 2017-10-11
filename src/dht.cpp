@@ -866,35 +866,13 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     if (st != store.end() && tokenlocal)
         st->second.local_listeners.erase(tokenlocal);
 
-    auto searches_cancel_listen = [&](std::map<InfoHash, Sp<Search>> srs) {
-        for (auto& sp : srs) {
-            auto& s = sp.second;
-            if (s->id != id) continue;
-            auto af_token = s->af == AF_INET ? std::get<1>(it->second) : std::get<2>(it->second);
-            if (af_token == 0)
-                continue;
-            Sp<Query> query;
-            const auto& ll = s->listeners.find(af_token);
-            if (ll != s->listeners.cend())
-                query = ll->second.query;
-            for (auto& sn : s->nodes) {
-                if (s->listeners.empty()) { /* also erase requests for all searchnodes. */
-                    for (auto& ls : sn.listenStatus)
-                        network_engine.cancelRequest(ls.second);
-                    sn.listenStatus.clear();
-                } else if (query) {
-                    auto it = sn.listenStatus.find(query);
-                    if (it != sn.listenStatus.end()) {
-                        network_engine.cancelRequest(it->second);
-                        sn.listenStatus.erase(it);
-                    }
-                }
-            }
-            s->listeners.erase(af_token);
-        }
+    auto searches_cancel_listen = [&id](std::map<InfoHash, Sp<Search>>& srs, size_t token) {
+        auto srp = srs.find(id);
+        if (srp != srs.end() and token)
+            srp->second->cancelListen(token);
     };
-    searches_cancel_listen(searches4);
-    searches_cancel_listen(searches6);
+    searches_cancel_listen(searches4, std::get<1>(it->second));
+    searches_cancel_listen(searches6, std::get<2>(it->second));
     listeners.erase(it);
     return true;
 }
@@ -1331,7 +1309,7 @@ Dht::connectivityChanged(sa_family_t af)
     for (auto& sp : searches(af))
         for (auto& sn : sp.second->nodes) {
             for (auto& ls : sn.listenStatus)
-                network_engine.cancelRequest(ls.second);
+                sn.node->cancelRequest(ls.second);
             sn.listenStatus.clear();
         }
     reported_addr.erase(std::remove_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& addr){
@@ -2090,14 +2068,15 @@ Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
 
 void
 Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
+    const auto& node = req->node;
     if (e.getCode() == net::DhtProtocolException::UNAUTHORIZED) {
-        DHT_LOG.e(req->node->id, "[node %s] token flush", req->node->toString().c_str());
-        req->node->authError();
-        network_engine.cancelRequest(req);
-        for (auto& srp : searches(req->node->getFamily())) {
+        DHT_LOG.e(node->id, "[node %s] token flush", node->toString().c_str());
+        node->authError();
+        node->cancelRequest(req);
+        for (auto& srp : searches(node->getFamily())) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
-                if (n.node != req->node) continue;
+                if (n.node != node) continue;
                 n.token.clear();
                 n.last_get_reply = time_point::min();
                 searchSendGetValues(sr);
@@ -2105,8 +2084,8 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
             }
         }
     } else if (e.getCode() == net::DhtProtocolException::NOT_FOUND) {
-        DHT_LOG.e(req->node->id, "[node %s] returned error 404: storage not found", req->node->toString().c_str());
-        network_engine.cancelRequest(req);
+        DHT_LOG.e(node->id, "[node %s] returned error 404: storage not found", node->toString().c_str());
+        node->cancelRequest(req);
     }
 }
 

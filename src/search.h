@@ -77,6 +77,13 @@ struct Dht::SearchNode {
 
     SearchNode() : node() {}
     SearchNode(const Sp<Node>& node) : node(node) {}
+    ~SearchNode() {
+        if (node) {
+            cancelGet();
+            cancelListen();
+            cancelAnnounce();
+        }
+    }
 
     /**
      * Can we use this node to listen/announce now ?
@@ -173,6 +180,14 @@ struct Dht::SearchNode {
         }
     }
 
+    void cancelGet() {
+        for (const auto& status : getStatus) {
+            if (status.second->pending()) {
+                node->cancelRequest(status.second);
+            }
+        }
+    }
+
     /**
      * Tells if a request in the status map is expired.
      *
@@ -180,12 +195,12 @@ struct Dht::SearchNode {
      *
      * @return true if there exists an expired request, else false.
      */
-    bool expired(const SyncStatus& status) const {
+    /*static bool expired(const SyncStatus& status) const {
         return std::find_if(status.begin(), status.end(),
             [](const SyncStatus::value_type& r){
                 return r.second and r.second->expired();
             }) != status.end();
-    }
+    }*/
 
     /**
      * Tells if a request in the status map is pending.
@@ -194,18 +209,28 @@ struct Dht::SearchNode {
      *
      * @return true if there exists an expired request, else false.
      */
-    bool pending(const SyncStatus& status) const {
+    static bool pending(const SyncStatus& status) {
         return std::find_if(status.begin(), status.end(),
             [](const SyncStatus::value_type& r){
                 return r.second and r.second->pending();
             }) != status.end();
     }
 
+    bool pendingGet() const { return pending(getStatus); }
+
     bool isAnnounced(Value::Id vid) const {
         auto ack = acked.find(vid);
         if (ack == acked.end() or not ack->second.first)
             return false;
         return ack->second.first->completed();
+    }
+    void cancelAnnounce() {
+        for (const auto& status : acked) {
+            const auto& req = status.second.first;
+            if (req->pending()) {
+                node->cancelRequest(req);
+            }
+        }
     }
 
     bool isListening(time_point now) const {
@@ -228,6 +253,18 @@ struct Dht::SearchNode {
         if (listen_status == listenStatus.end())
             return false;
         return listen_status->second->reply_time + LISTEN_EXPIRE_TIME > now;
+    }
+    void cancelListen() {
+        for (const auto& status : listenStatus)
+            node->cancelRequest(status.second);
+        listenStatus.clear();
+    }
+    void cancelListen(const Sp<Query>& query) {
+        auto it = listenStatus.find(query);
+        if (it != listenStatus.end()) {
+            node->cancelRequest(it->second);
+            listenStatus.erase(it);
+        }
     }
 
     /**
@@ -319,7 +356,7 @@ struct Dht::Search {
     unsigned currentlySolicitedNodeCount() const {
         unsigned count = 0;
         for (const auto& n : nodes)
-            if (not n.isBad() and n.pending(n.getStatus))
+            if (not n.isBad() and n.pendingGet())
                 count++;
         return count;
     }
@@ -381,6 +418,21 @@ struct Dht::Search {
 
     bool isAnnounced(Value::Id id) const;
     bool isListening(time_point now) const;
+
+    void cancelListen(size_t token) {
+        Sp<Query> query;
+        const auto& ll = listeners.find(token);
+        if (ll != listeners.cend()) {
+            query = ll->second.query;
+            listeners.erase(ll);
+        }
+        for (auto& sn : nodes) {
+            if (listeners.empty())
+                sn.cancelListen();
+            else if (query)
+                sn.cancelListen(query);
+        }
+    }
 
     /**
      * @return The number of non-good search nodes.
@@ -672,7 +724,7 @@ Dht::Search::getUpdateTime(time_point now) const
     for (const auto& sn : nodes) {
         if (sn.node->isExpired() or (sn.candidate and t >= TARGET_NODES))
             continue;
-        auto pending = sn.pending(sn.getStatus);
+        auto pending = sn.pendingGet();
         if (sn.last_get_reply < std::max(now - Node::NODE_EXPIRE_TIME, last_get) or pending) {
             // not isSynced
             if (not pending and solicited_nodes < MAX_REQUESTED_SEARCH_NODES)
