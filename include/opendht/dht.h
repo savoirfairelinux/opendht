@@ -553,8 +553,6 @@ private:
 
     bool neighbourhoodMaintenance(RoutingTable&);
 
-    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr&);
-
     void onError(Sp<net::Request> node, net::DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, const SockAddr&);

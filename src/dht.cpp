@@ -1863,32 +1863,17 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, DoneCallb
     return announce_per_af;
 }
 
-void
-Dht::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
-{
-    if (buflen == 0)
-        return;
-
-    try {
-        network_engine.processMessage(buf, buflen, from);
-    } catch (const std::exception& e) {
-        DHT_LOG.e("Can't parse message from %s: %s", from.toString().c_str(), e.what());
-        //auto code = e.getCode();
-        //if (code == net::DhtProtocolException::INVALID_TID_SIZE or code == net::DhtProtocolException::WRONG_NODE_INFO_BUF_LEN) {
-            /* This is really annoying, as it means that we will
-               time-out all our searches that go through this node.
-               Kill it. */
-            //const auto& id = e.getNodeId();
-            //blacklistNode(&id, from, fromlen);
-        ///}
-    }
-}
-
 time_point
 Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
 {
     scheduler.syncTime();
-    processMessage(buf, buflen, from);
+    if (buflen) {
+        try {
+            network_engine.processMessage(buf, buflen, from);
+        } catch (const std::exception& e) {
+            DHT_LOG.e("Can't parse message from %s: %s", from.toString().c_str(), e.what());
+        }
+    }
     return scheduler.run();
 }
 
