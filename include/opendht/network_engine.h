@@ -200,7 +200,6 @@ private:
             const Value::Id&)> onRefresh {};
 
 public:
-    using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
@@ -386,23 +385,6 @@ public:
                                  const Blob& token,
                                  RequestCb&& on_done,
                                  RequestExpiredCb&& on_expired);
-    /**
-     * Opens a socket on which a node will be able allowed to write for further
-     * additionnal updates following the response to a previous request.
-     *
-     * @param node  The node which will be allowed to write on this socket.
-     * @param cb    The callback to execute once updates arrive on the socket.
-     *
-     * @return the socket.
-     */
-    Sp<Socket> openSocket(const Sp<Node>& node, TransPrefix tp, SocketCb&& cb);
-
-    /**
-     * Closes a socket so that no further data will be red on that socket.
-     *
-     * @param socket  The socket to close.
-     */
-    void closeSocket(Sp<Socket> socket);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -557,7 +539,6 @@ private:
     uint16_t transaction_id {1};
     std::map<TransId, Sp<Request>> requests {};
     std::map<TransId, PartialMessage> partial_messages;
-    std::map<TransId, Sp<Socket>> opened_sockets {};
 
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};

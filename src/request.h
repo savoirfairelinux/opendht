@@ -20,17 +20,19 @@
 #pragma once
 
 #include "net.h"
+#include "value.h"
 
 namespace dht {
+struct Node;
 namespace net {
 
 class NetworkEngine;
 struct ParsedMessage;
+struct RequestAnswer;
+using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
 
-/*!
- * @class   Socket
- * @brief   Open route to a node for continous incoming packets.
- * @details
+/**
+ * Open route to a node for continous incoming packets.
  * A socket lets a remote node send us continuous packets treated using a
  * given callback. This is intended to provide an easy management of
  * specific updates nodes can send. For e.g, this is used in the case of the
@@ -38,14 +40,10 @@ struct ParsedMessage;
  */
 struct Socket {
     Socket() {}
-    Socket(std::shared_ptr<Node> node,
-           TransId id,
-           std::function<void(const std::shared_ptr<Node>&, ParsedMessage&&)> on_receive) :
-        node(node), id(id), on_receive(on_receive) {}
-
-    std::shared_ptr<Node> node;
+    Socket(TransId id, SocketCb on_receive) :
+        id(id), on_receive(on_receive) {}
     TransId id;
-    std::function<void(const std::shared_ptr<Node>&, ParsedMessage&&)> on_receive {};
+    SocketCb on_receive {};
 };
 
 /*!
@@ -59,7 +57,7 @@ struct Socket {
 struct Request {
     friend class dht::net::NetworkEngine;
 
-    std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
+    Sp<Node> node {};             /* the node to whom the request is destined. */
     time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
 
     enum class State

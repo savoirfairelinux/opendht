@@ -104,8 +104,37 @@ Node::setExpired()
             r->setExpired();
     }
     requests_.clear();
+    sockets_.clear();
 }
 
+
+Sp<net::Socket>
+Node::openSocket(const net::TransId& tid, net::SocketCb&& cb)
+{
+    auto s = sockets_.emplace(tid, std::make_shared<net::Socket>(tid, cb));
+    //if (not s.second)
+    //    DHT_LOG.e(id, "[node %s] socket (tid: %d) already opened!", id.toString().c_str(), tid.toInt());
+    //else
+    //    DHT_LOG.w("Opened socket (tid: %d), %lu opened", s.first->second->id, sockets_.size());
+    return s.first->second;
+}
+
+
+Sp<net::Socket>
+Node::getSocket(const net::TransId& tid) const
+{
+    auto it = sockets_.find(tid);
+    return it == sockets_.end() ? nullptr : it->second;
+}
+
+void
+Node::closeSocket(const Sp<net::Socket>& socket)
+{
+    if (socket) {
+        sockets_.erase(socket->id);
+        //DHT_LOG.w("Closing socket (tid: %d), %lu remaining", socket->id, sockets_.size());
+    }
+}
 
 std::string
 Node::toString() const

@@ -22,13 +22,19 @@
 #include "infohash.h" // includes socket structures
 #include "utils.h"
 #include "sockaddr.h"
+#include "net.h"
 
 #include <list>
+#include <map>
 
 namespace dht {
 
+struct Node;
 namespace net {
 struct Request;
+struct Socket;
+struct RequestAnswer;
+using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
 } /* namespace net */
 
 struct Node {
@@ -85,6 +91,26 @@ struct Node {
     void setExpired();
 
     /**
+     * Opens a socket on which a node will be able allowed to write for further
+     * additionnal updates following the response to a previous request.
+     *
+     * @param node  The node which will be allowed to write on this socket.
+     * @param cb    The callback to execute once updates arrive on the socket.
+     *
+     * @return the socket.
+     */
+    Sp<net::Socket> openSocket(const net::TransId& id, net::SocketCb&& cb);
+
+    Sp<net::Socket> getSocket(const net::TransId& id) const;
+
+    /**
+     * Closes a socket so that no further data will be red on that socket.
+     *
+     * @param socket  The socket to close.
+     */
+    void closeSocket(const Sp<net::Socket>& socket);
+
+    /**
      * Resets the state of the node so it's not expired anymore.
      */
     void reset() { expired_ = false; reply_time = time_point::min(); }
@@ -106,6 +132,8 @@ private:
     static const constexpr unsigned MAX_AUTH_ERRORS {3};
 
     std::list<std::weak_ptr<net::Request>> requests_ {};
+    std::map<net::TransId, Sp<net::Socket>> sockets_ {};
+
     unsigned auth_errors {0};
     bool expired_ {false};
 

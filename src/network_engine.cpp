@@ -232,29 +232,12 @@ NetworkEngine::isRunning(sa_family_t af) const
     }
 }
 
-Sp<Socket>
-NetworkEngine::openSocket(const Sp<Node>& node, TransPrefix tp, SocketCb&& cb)
-{
-    auto tid = TransId {tp, getNewTid()};
-    auto s = opened_sockets.emplace(tid, std::make_shared<Socket>(node, tid, cb));
-    if (not s.second)
-        DHT_LOG.e(node->id, "[node %s] socket (tid: %d) already opened!", node->id.toString().c_str(), tid.toInt());
-    return s.first->second;
-}
-
-void
-NetworkEngine::closeSocket(Sp<Socket> socket)
-{
-    if (socket)
-        opened_sockets.erase(socket->id);
-}
-
 void
 NetworkEngine::cancelRequest(Sp<Request>& req)
 {
     if (req) {
         req->cancel();
-        closeSocket(req->socket);
+        req->node->closeSocket(req->socket);
         requests.erase(req->tid);
     }
 }
@@ -503,30 +486,23 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     const auto& now = scheduler.time();
 
     if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
+        auto node = cache.getNode(msg->id, from, now, true);
+        auto rsocket = node->getSocket(msg->tid);
+        //auto request = node->getRequest(msg->tid);
+
         /* either response for a request or data for an opened socket */
         auto req_it = requests.find(msg->tid);
-        auto rsocket_it = opened_sockets.end();
-        if (req_it == requests.end())
-            rsocket_it = opened_sockets.find(msg->tid);
-        if (req_it == requests.end() and rsocket_it == opened_sockets.end())
+        if (req_it == requests.end() and not rsocket) {
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
+        }
 
         auto req = req_it != requests.end() ? req_it->second : nullptr;
-        auto rsocket = rsocket_it != opened_sockets.end() ? rsocket_it->second : nullptr;
-
-        auto& node = req ? req->node : rsocket->node;
-        if (node->id != msg->id) {
-            if (node->id == zeroes) // received reply to a message sent when we didn't know the node ID.
-                node = cache.getNode(msg->id, from, now, true);
-            else {
-                // received reply from unexpected node
-                node->received(now, req);
-                onNewNode(node, 2);
-                DHT_LOG.w(node->id, "[node %s] message received from unexpected node", node->toString().c_str());
-                return;
-            }
-        } else
-            node->update(from);
+        if (req and req->node != node and req->node->id != zeroes) {
+            node->received(now, req);
+            onNewNode(node, 2);
+            DHT_LOG.w(node->id, "[node %s] message received from unexpected node", node->toString().c_str());
+            return;
+        }
 
         node->received(now, req);
 
@@ -569,7 +545,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
              break;
          } else { /* request socket data */
              deserializeNodes(*msg, from);
-             rsocket->on_receive(rsocket->node, std::move(*msg));
+             rsocket->on_receive(node, std::move(*msg));
          }
         default:
             break;
@@ -624,9 +600,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             case MessageType::Listen: {
                 DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
-                /* TODO: backward compatibility check to remove in a few versions (see ::sendListen doc) */
-                auto socket_id = msg->socket_id.getTid() ? msg->socket_id : TransId { TransPrefix::GET_VALUES, msg->tid.getTid() };
-                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, socket_id.toInt(), std::move(msg->query));
+                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id.toInt(), std::move(msg->query));
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
@@ -1074,12 +1048,7 @@ NetworkEngine::sendListen(Sp<Node> n,
     } else {
         if (previous)
             DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
-        /* TODO: Manually creating a socket for "listen" backward compatibility.
-         * As soon as this is not an issue anymore, switch to using
-         * ::createSocket function! */
-        auto sid = TransId {TransPrefix::GET_VALUES, tid.getTid()};
-        socket = std::make_shared<Socket>(n, sid, socket_cb);
-        opened_sockets.emplace(sid, socket);
+        socket = n->openSocket(TransId {TransPrefix::GET_VALUES, getNewTid()}, std::move(socket_cb));
     }
 
     if (not socket) {
