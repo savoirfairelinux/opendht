@@ -20,6 +20,7 @@
 
 #include "node.h"
 #include "request.h"
+#include "rng.h"
 
 #include <sstream>
 
@@ -28,6 +29,15 @@ namespace dht {
 constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
 constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
+
+
+Node::Node(const InfoHash& id, const SockAddr& addr)
+: id(id),
+  addr(addr)
+{
+    crypto::random_device rd;
+    transaction_id = TransactionDist{1}(rd);
+}
 
 /* This is our definition of a known-good node. */
 bool

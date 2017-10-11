@@ -454,16 +454,6 @@ private:
      */
     void sendRequest(const Sp<Request>& request);
 
-    /**
-     * Generates a new request id, skipping the invalid id.
-     *
-     * @return the new id.
-     */
-    uint16_t getNewTid() {
-        ++transaction_id;
-        return transaction_id == TransId::INVALID ? ++transaction_id : transaction_id;
-    }
-
     struct MessageStats {
         unsigned ping    {0};
         unsigned find    {0};
@@ -530,7 +520,6 @@ private:
     RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
 
     // requests handling
-    uint16_t transaction_id {1};
     std::map<TransId, Sp<Request>> requests {};
     std::map<TransId, PartialMessage> partial_messages;
 

@@ -76,7 +76,7 @@ struct Request {
     State getState() const { return state_; }
 
     Request(State state = State::PENDING) : state_(state) {}
-    Request(TransId tid,
+    Request(const TransId& tid,
             Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,

@@ -196,7 +196,6 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& l
         if (!set_nonblocking(dht_socket6, 1))
             throw DhtException("Can't set socket to non-blocking mode");
     }
-    transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
 }
 
 NetworkEngine::~NetworkEngine() {
@@ -629,7 +628,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 
 Sp<Request>
 NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    auto tid = TransId {TransPrefix::PING, getNewTid()};
+    auto tid = TransId {TransPrefix::PING, node->getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -689,7 +688,7 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
 Sp<Request>
 NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
+    auto tid = TransId {TransPrefix::FIND_NODE, n->getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -735,7 +734,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
 Sp<Request>
 NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
+    auto tid = TransId {TransPrefix::GET_VALUES, n->getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -1011,13 +1010,13 @@ NetworkEngine::sendListen(Sp<Node> n,
         SocketCb&& socket_cb)
 {
     Sp<Socket> socket;
-    auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : getNewTid() };
+    auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : n->getNewTid() };
     if (previous and previous->node == n) {
         socket = previous->socket;
     } else {
         if (previous)
             DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
-        socket = n->openSocket(TransId {TransPrefix::GET_VALUES, getNewTid()}, std::move(socket_cb));
+        socket = n->openSocket(TransPrefix::GET_VALUES, std::move(socket_cb));
     }
 
     if (not socket) {
@@ -1096,7 +1095,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
         RequestCb&& on_done,
         RequestExpiredCb&& on_expired)
 {
-    auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
+    auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, n->getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -1154,7 +1153,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                 RequestCb&& on_done,
                 RequestExpiredCb&& on_expired)
 {
-    auto tid = TransId {TransPrefix::REFRESH, getNewTid()};
+    auto tid = TransId {TransPrefix::REFRESH, n->getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));

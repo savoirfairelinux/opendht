@@ -44,9 +44,9 @@ struct Node {
     time_point time {time_point::min()};            /* last time eared about */
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
 
+    Node(const InfoHash& id, const SockAddr& addr);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : id(id), addr(sa, salen) {}
-    Node(const InfoHash& id, const SockAddr& addr) : id(id), addr(addr) {}
+        : Node(id, SockAddr(sa, salen)) {}
 
     InfoHash getId() const {
         return id;
@@ -117,6 +117,16 @@ struct Node {
      */
     void reset() { expired_ = false; reply_time = time_point::min(); }
 
+    /**
+     * Generates a new request id, skipping the invalid id.
+     *
+     * @return the new id.
+     */
+    uint16_t getNewTid() {
+        ++transaction_id;
+        return transaction_id == net::TransId::INVALID ? ++transaction_id : transaction_id;
+    }
+
     std::string toString() const;
 
     OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Node& h);
@@ -138,6 +148,8 @@ private:
 
     unsigned auth_errors {0};
     bool expired_ {false};
+    uint16_t transaction_id {1};
+    using TransactionDist = std::uniform_int_distribution<decltype(transaction_id)>;
 };
 
 }
