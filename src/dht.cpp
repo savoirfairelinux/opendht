@@ -877,6 +877,23 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     return true;
 }
 
+struct OpStatus {
+    struct Status {
+        bool done {false};
+        bool ok {false};
+        Status(bool done=false, bool ok=false) : done(done), ok(ok) {}
+    };
+    Status status;
+    Status status4;
+    Status status6;
+};
+
+template <typename T>
+struct GetStatus : public OpStatus {
+    std::vector<Sp<T>> values;
+    std::vector<Sp<Node>> nodes;
+};
+
 void
 Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point created, bool permanent)
 {
@@ -890,54 +907,38 @@ Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point cr
 
     DHT_LOG.d(id, "put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
-    auto ok = std::make_shared<bool>(false);
-    auto done = std::make_shared<bool>(false);
-    auto done4 = std::make_shared<bool>(false);
-    auto done6 = std::make_shared<bool>(false);
-    auto donecb = [=](const std::vector<Sp<Node>>& nodes) {
+    auto op = std::make_shared<OpStatus>();
+    auto donecb = [callback](const std::vector<Sp<Node>>& nodes, OpStatus& op) {
         // Callback as soon as the value is announced on one of the available networks
-        if (callback && !*done && (*done4 && *done6)) {
-            callback(*ok, nodes);
-            *done = true;
+        if (callback and not op.status.done and (op.status4.done && op.status6.done)) {
+            callback(op.status4.ok or op.status6.ok, nodes);
+            op.status.done = true;
         }
     };
     announce(id, AF_INET, val, [=](bool ok4, const std::vector<Sp<Node>>& nodes) {
         DHT_LOG.d(id, "Announce done IPv4 %d", ok4);
-        *done4 = true;
-        *ok |= ok4;
-        donecb(nodes);
+        auto& o = *op;
+        o.status4 = {true, ok4};
+        donecb(nodes, o);
     }, created, permanent);
     announce(id, AF_INET6, val, [=](bool ok6, const std::vector<Sp<Node>>& nodes) {
         DHT_LOG.d(id, "Announce done IPv6 %d", ok6);
-        *done6 = true;
-        *ok |= ok6;
-        donecb(nodes);
+        auto& o = *op;
+        o.status6 = {true, ok6};
+        donecb(nodes, o);
     }, created, permanent);
 }
 
 template <typename T>
-struct OpStatus {
-    struct Status {
-        bool done {false};
-        bool ok {false};
-    };
-    Status status;
-    Status status4;
-    Status status6;
-    std::vector<Sp<T>> values;
-    std::vector<Sp<Node>> nodes;
-};
-
-template <typename T>
-void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, Sp<OpStatus<T>> op) {
-    if (op->status.done)
+void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, GetStatus<T>& op) {
+    if (op.status.done)
         return;
-    op->nodes.insert(op->nodes.end(), nodes.begin(), nodes.end());
-    if (op->status.ok || (op->status4.done and op->status6.done)) {
-        bool ok = op->status.ok || op->status4.ok || op->status6.ok;
-        op->status.done = true;
+    op.nodes.insert(op.nodes.end(), nodes.begin(), nodes.end());
+    if (op.status.ok or (op.status4.done and op.status6.done)) {
+        bool ok = op.status.ok or op.status4.ok or op.status6.ok;
+        op.status.done = true;
         if (dcb)
-            dcb(ok, op->nodes);
+            dcb(ok, op.nodes);
     }
 }
 
@@ -946,17 +947,18 @@ bool callbackWrapper(Cb get_cb,
         DoneCallback done_cb,
         const std::vector<Sp<T>>& values,
         std::function<std::vector<Sp<T>>(const std::vector<Sp<T>>&)> add_values,
-        Sp<OpStatus<T>> op)
+        Sp<GetStatus<T>> o)
 {
-    if (op->status.done)
+    auto& op = *o;
+    if (op.status.done)
         return false;
     auto newvals = add_values(values);
     if (not newvals.empty()) {
-        op->status.ok = !get_cb(newvals);
-        op->values.insert(op->values.end(), newvals.begin(), newvals.end());
+        op.status.ok = !get_cb(newvals);
+        op.values.insert(op.values.end(), newvals.begin(), newvals.end());
     }
     doneCallbackWrapper(done_cb, {}, op);
-    return !op->status.ok;
+    return !op.status.ok;
 }
 
 void
@@ -965,7 +967,7 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     scheduler.syncTime();
 
     Query q {{}, where};
-    auto op = std::make_shared<OpStatus<Value>>();
+    auto op = std::make_shared<GetStatus<Value>>();
 
     auto f = filter.chain(q.where.getFilter());
     auto add_values = [op,f](const std::vector<Sp<Value>>& values) {
@@ -988,22 +990,20 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
 
     Dht::search(id, AF_INET, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
-        op->status4.done = true;
-        op->status4.ok = ok;
-        doneCallbackWrapper(donecb, nodes, op);
+        op->status4 = {true, ok};
+        doneCallbackWrapper(donecb, nodes, *op);
     }, f, q);
     Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
-        op->status6.done = true;
-        op->status6.ok = ok;
-        doneCallbackWrapper(donecb, nodes, op);
+        op->status6 = {true, ok};
+        doneCallbackWrapper(donecb, nodes, *op);
     }, f, q);
 }
 
 void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Query&& q)
 {
     scheduler.syncTime();
-    auto op = std::make_shared<OpStatus<FieldValueIndex>>();
+    auto op = std::make_shared<GetStatus<FieldValueIndex>>();
 
     auto f = q.where.getFilter();
     auto values = getLocal(id, f);
@@ -1037,15 +1037,13 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
 
     Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
-        op->status4.done = true;
-        op->status4.ok = ok;
-        doneCallbackWrapper(done_cb, nodes, op);
+        op->status4 = {true, ok};
+        doneCallbackWrapper(done_cb, nodes, *op);
     }, f, q);
     Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
-        op->status6.done = true;
-        op->status6.ok = ok;
-        doneCallbackWrapper(done_cb, nodes, op);
+        op->status6 = {true, ok};
+        doneCallbackWrapper(done_cb, nodes, *op);
     }, f, q);
 }
 
