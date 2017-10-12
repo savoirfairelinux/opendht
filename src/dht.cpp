@@ -2234,29 +2234,30 @@ Dht::onListenDone(const Sp<Node>& node,
 }
 
 net::RequestAnswer
-Dht::onAnnounce(Sp<Node> node,
+Dht::onAnnounce(Sp<Node> n,
         const InfoHash& hash,
         const Blob& token,
         const std::vector<Sp<Value>>& values,
         const time_point& creation_date)
 {
+    auto& node = *n;
     if (hash == zeroes) {
-        DHT_LOG.w(node->id, "put with no info_hash");
+        DHT_LOG.w(node.id, "put with no info_hash");
         throw net::DhtProtocolException {
             net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
             net::DhtProtocolException::PUT_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, node->addr)) {
-        DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'put'", node->toString().c_str(), hash.toString().c_str());
+    if (!tokenMatch(token, node.addr)) {
+        DHT_LOG.w(hash, node.id, "[node %s] incorrect token %s for 'put'", node.toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::PUT_WRONG_TOKEN};
     }
     {
         // We store a value only if we think we're part of the
         // SEARCH_NODES nodes around the target id.
-        auto closest_nodes = buckets(node->getFamily()).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
+        auto closest_nodes = buckets(node.getFamily()).findClosestNodes(hash, scheduler.time(), SEARCH_NODES);
         if (closest_nodes.size() >= TARGET_NODES and hash.xorCmp(closest_nodes.back()->id, myid) < 0) {
-            DHT_LOG.w(hash, node->id, "[node %s] announce too far from the target. Dropping value.", node->toString().c_str());
+            DHT_LOG.w(hash, node.id, "[node %s] announce too far from the target. Dropping value.", node.toString().c_str());
             return {};
         }
     }
@@ -2264,7 +2265,7 @@ Dht::onAnnounce(Sp<Node> node,
     auto created = std::min(creation_date, scheduler.time());
     for (const auto& v : values) {
         if (v->id == Value::INVALID_ID) {
-            DHT_LOG.w(hash, node->id, "[value %s] incorrect value id", hash.toString().c_str());
+            DHT_LOG.w(hash, node.id, "[value %s] incorrect value id", hash.toString().c_str());
             throw net::DhtProtocolException {
                 net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
                 net::DhtProtocolException::PUT_INVALID_ID
@@ -2274,26 +2275,26 @@ Dht::onAnnounce(Sp<Node> node,
         Sp<Value> vc = v;
         if (lv) {
             if (*lv == *vc) {
-                DHT_LOG.w(hash, node->id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
+                DHT_LOG.d(hash, node.id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
             } else {
                 const auto& type = getType(lv->type);
-                if (type.editPolicy(hash, lv, vc, node->id, node->addr.get(), node->addr.getLength())) {
-                    DHT_LOG.d(hash, node->id, "[store %s] editing %s",
+                if (type.editPolicy(hash, lv, vc, node.id, node.addr.get(), node.addr.getLength())) {
+                    DHT_LOG.d(hash, node.id, "[store %s] editing %s",
                             hash.toString().c_str(), vc->toString().c_str());
-                    storageStore(hash, vc, created, &node->addr);
+                    storageStore(hash, vc, created, &node.addr);
                 } else {
-                    DHT_LOG.d(hash, node->id, "[store %s] rejecting edition of %s because of storage policy",
+                    DHT_LOG.d(hash, node.id, "[store %s] rejecting edition of %s because of storage policy",
                             hash.toString().c_str(), vc->toString().c_str());
                 }
             }
         } else {
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
-            if (type.storePolicy(hash, vc, node->id, node->addr.get(), node->addr.getLength())) {
-                DHT_LOG.d(hash, node->id, "[store %s] storing %s", hash.toString().c_str(), vc->toString().c_str());
-                storageStore(hash, vc, created, &node->addr);
+            if (type.storePolicy(hash, vc, node.id, node.addr.get(), node.addr.getLength())) {
+                DHT_LOG.d(hash, node.id, "[store %s] storing %s", hash.toString().c_str(), vc->toString().c_str());
+                storageStore(hash, vc, created, &node.addr);
             } else {
-                DHT_LOG.d(hash, node->id, "[store %s] rejecting storage of %s",
+                DHT_LOG.d(hash, node.id, "[store %s] rejecting storage of %s",
                         hash.toString().c_str(), vc->toString().c_str());
             }
         }
