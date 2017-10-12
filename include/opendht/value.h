@@ -22,6 +22,7 @@
 #include "infohash.h"
 #include "crypto.h"
 #include "utils.h"
+#include "sockaddr.h"
 
 #include <msgpack.hpp>
 
@@ -51,7 +52,7 @@ struct Query;
  * @param form_addr: network address of the incoming request.
  * @param from_len: network address lendth of the incoming request.
  */
-using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
+using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr& addr)>;
 
 /**
  * An edition policy is applied once to every incoming value storage requests,
@@ -67,15 +68,15 @@ using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& val
  * @param form_addr: network address of the incoming request.
  * @param from_len: network address lendth of the incoming request.
  */
-using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
+using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, const InfoHash& from, const SockAddr& addr)>;
 
 static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 
 struct OPENDHT_PUBLIC ValueType {
     typedef uint16_t Id;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t);
-    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t) {
+    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
+    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
         return false;
     }
 

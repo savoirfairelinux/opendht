@@ -46,7 +46,7 @@ public:
 
     static Value::Filter getFilter() { return {}; }
 
-    static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len);
+    static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr&);
 
     static Value::Filter ServiceFilter(std::string s);
 
@@ -210,7 +210,7 @@ public:
         addr.setPort(p);
     }
 
-    IpServiceAnnouncement(const sockaddr* sa, socklen_t sa_len) : addr(sa, sa_len) {}
+    IpServiceAnnouncement(const SockAddr& sa) : addr(sa) {}
 
     IpServiceAnnouncement(const Blob& b) {
         msgpack_unpack(unpackMsg(b).get());
@@ -246,7 +246,7 @@ public:
         return TYPE;
     }
 
-    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
+    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&);
 
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream&, const IpServiceAnnouncement&);

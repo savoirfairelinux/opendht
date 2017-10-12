@@ -76,7 +76,7 @@ SecureDht::~SecureDht()
 ValueType
 SecureDht::secureType(ValueType&& type)
 {
-    type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
+    type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
         if (v->isSigned()) {
             if (!v->owner or !v->owner->checkSignature(v->getToSign(), v->signature)) {
                 DHT_LOG.WARN("Signature verification failed");
@@ -85,11 +85,11 @@ SecureDht::secureType(ValueType&& type)
             else
                 DHT_LOG.WARN("Signature verification succeeded");
         }
-        return type.storePolicy(id, v, nid, a, al);
+        return type.storePolicy(id, v, nid, a);
     };
-    type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, InfoHash nid, const sockaddr* a, socklen_t al) {
+    type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
         if (!o->isSigned())
-            return type.editPolicy(id, o, n, nid, a, al);
+            return type.editPolicy(id, o, n, nid, a);
         if (o->owner != n->owner) {
             DHT_LOG.WARN("Edition forbidden: owner changed.");
             return false;

@@ -158,7 +158,7 @@ private:
 const ValueType CERTIFICATE_TYPE = {
     8, "Certificate", std::chrono::hours(24 * 7),
     // A certificate can only be stored at its public key ID.
-    [](InfoHash id, Sp<Value>& v, InfoHash, const sockaddr*, socklen_t) {
+    [](InfoHash id, Sp<Value>& v, const InfoHash&, const SockAddr&) {
         try {
             crypto::Certificate crt(v->data);
             // TODO check certificate signature
@@ -166,7 +166,7 @@ const ValueType CERTIFICATE_TYPE = {
         } catch (const std::exception& e) {}
         return false;
     },
-    [](InfoHash, const Sp<Value>& o, Sp<Value>& n, InfoHash, const sockaddr*, socklen_t) {
+    [](InfoHash, const Sp<Value>& o, Sp<Value>& n, const InfoHash&, const SockAddr&) {
         try {
             return crypto::Certificate(o->data).getPublicKey().getId() == crypto::Certificate(n->data).getPublicKey().getId();
         } catch (const std::exception& e) {}

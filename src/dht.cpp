@@ -1098,10 +1098,10 @@ Dht::getPut(const InfoHash& id, const Value::Id& vid)
         }
         return Sp<Value> {};
     };
-    auto v4 = find_value(searches4);
-    if (v4) return v4;
-    auto v6 = find_value(searches6);
-    if (v6) return v6;
+    if (auto v4 = find_value(searches4))
+        return v4;
+    if (auto v6 = find_value(searches6))
+        return v6;
     return {};
 }
 
@@ -2278,7 +2278,7 @@ Dht::onAnnounce(Sp<Node> n,
                 DHT_LOG.d(hash, node.id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
             } else {
                 const auto& type = getType(lv->type);
-                if (type.editPolicy(hash, lv, vc, node.id, node.getAddr().get(), node.getAddr().getLength())) {
+                if (type.editPolicy(hash, lv, vc, node.id, node.getAddr())) {
                     DHT_LOG.d(hash, node.id, "[store %s] editing %s",
                             hash.toString().c_str(), vc->toString().c_str());
                     storageStore(hash, vc, created, node.getAddr());
@@ -2290,7 +2290,7 @@ Dht::onAnnounce(Sp<Node> n,
         } else {
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
-            if (type.storePolicy(hash, vc, node.id, node.getAddr().get(), node.getAddr().getLength())) {
+            if (type.storePolicy(hash, vc, node.id, node.getAddr())) {
                 DHT_LOG.d(hash, node.id, "[store %s] storing %s", hash.toString().c_str(), vc->toString().c_str());
                 storageStore(hash, vc, created, node.getAddr());
             } else {

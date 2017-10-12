@@ -71,7 +71,7 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
 const ValueType ValueType::USER_DATA = {0, "User Data"};
 
 bool
-ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
+ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&)
 {
     return v->size() <= MAX_VALUE_SIZE;
 }
