@@ -38,7 +38,7 @@ using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
 } /* namespace net */
 
 struct Node {
-    InfoHash id;
+    const InfoHash id;
     SockAddr addr;
     bool is_client {false};
 
