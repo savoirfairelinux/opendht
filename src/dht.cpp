@@ -2077,10 +2077,8 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
 }
 
 void
-Dht::onReportedAddr(const InfoHash& id, const SockAddr& addr)
+Dht::onReportedAddr(const InfoHash& /*id*/, const SockAddr& addr)
 {
-    const auto& b = buckets(addr.getFamily()).findBucket(id);
-    b->time = scheduler.time();
     if (addr)
         reportedAddr(addr);
 }

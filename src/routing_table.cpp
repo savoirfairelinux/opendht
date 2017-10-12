@@ -202,9 +202,13 @@ RoutingTable::split(const RoutingTable::iterator& b)
 }
 
 bool
-RoutingTable::onNewNode(const Sp<Node>& node, int comfirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne) {
+RoutingTable::onNewNode(const Sp<Node>& node, int confirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne) {
     auto b = findBucket(node->id);
     if (b == end()) return false;
+
+    if (confirm == 2)
+        b->time = now;
+
     for (auto& n : b->nodes) {
         if (n == node)
             return false;
@@ -244,11 +248,11 @@ RoutingTable::onNewNode(const Sp<Node>& node, int comfirm, const time_point& now
             //DHT_LOG.d("Splitting from depth %u", depth(b));
             b->sendCachedPing(ne);
             split(b);
-            return onNewNode(node, comfirm, now, myid, ne);
+            return onNewNode(node, confirm, now, myid, ne);
         }
 
         /* No space for this node.  Cache it away for later. */
-        if (comfirm or not b->cached)
+        if (confirm or not b->cached)
             b->cached = node;
     } else {
         /* Create a new node. */
