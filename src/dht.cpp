@@ -1166,7 +1166,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
                     node_listeners.first->toString().c_str());
             std::vector<Sp<Value>> vals {};
             vals.push_back(v.data);
-            Blob ntoken = makeToken(node_listeners.first->addr, false);
+            Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
             network_engine.tellListener(node_listeners.first, l.second.sid, id, 0, ntoken, {}, {},
                     std::move(vals), l.second.query);
         }
@@ -1174,7 +1174,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
 }
 
 bool
-Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr* sa)
+Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa)
 {
     const auto& now = scheduler.time();
     created = std::min(created, now);
@@ -1194,7 +1194,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
 
     StorageBucket* store_bucket {nullptr};
     if (sa)
-        store_bucket = &store_quota.emplace(*sa, StorageBucket{}).first->second;
+        store_bucket = &store_quota.emplace(sa, StorageBucket{}).first->second;
 
     auto store = st->second.store(id, value, created, expiration, store_bucket);
     if (auto vs = store.first) {
@@ -1225,7 +1225,7 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
     if (l == node_listeners->second.end()) {
         auto vals = st->second.get(query.where.getFilter());
         if (not vals.empty()) {
-            network_engine.tellListener(node, socket_id, id, WANT4 | WANT6, makeToken(node->addr, false),
+            network_engine.tellListener(node, socket_id, id, WANT4 | WANT6, makeToken(node->getAddr(), false),
                     buckets4.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
@@ -1383,7 +1383,7 @@ Dht::getNodesStats(sa_family_t af) const
         for (auto& n : b.nodes) {
             if (n->isGood(now)) {
                 stats.good_nodes++;
-                if (n->time > n->reply_time)
+                if (n->isIncoming())
                     stats.incoming_nodes++;
             } else if (not n->isExpired())
                 stats.dubious_nodes++;
@@ -1406,10 +1406,12 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
     out  << std::endl;
     for (auto& n : b.nodes) {
         out << "    Node " << n->toString();
-        if (n->time != n->reply_time)
-            out << " age " << duration_cast<seconds>(now - n->time).count() << ", reply: " << duration_cast<seconds>(now - n->reply_time).count();
+        const auto& t = n->getTime();
+        const auto& r = n->getReplyTime();
+        if (t != r)
+            out << " age " << duration_cast<seconds>(now - t).count() << ", reply: " << duration_cast<seconds>(now - r).count();
         else
-            out << " age " << duration_cast<seconds>(now - n->time).count();
+            out << " age " << duration_cast<seconds>(now - t).count();
         if (n->isExpired())
             out << " [expired]";
         else if (n->isGood(now))
@@ -1504,7 +1506,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                 out << "] ";
             }
         }
-        out << n.node->addr.toString() << std::endl;
+        out << n.node->getAddrStr() << std::endl;
     }
 }
 
@@ -2094,7 +2096,7 @@ Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
 {
     const auto& now = scheduler.time();
     net::RequestAnswer answer;
-    answer.ntoken = makeToken(node->addr, false);
+    answer.ntoken = makeToken(node->getAddr(), false);
     if (want & WANT4)
         answer.nodes4 = buckets4.findClosestNodes(target, now, TARGET_NODES);
     if (want & WANT6)
@@ -2115,7 +2117,7 @@ Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query
     const auto& now = scheduler.time();
     net::RequestAnswer answer {};
     auto st = store.find(hash);
-    answer.ntoken = makeToken(node->addr, false);
+    answer.ntoken = makeToken(node->getAddr(), false);
     answer.nodes4 = buckets4.findClosestNodes(hash, now, TARGET_NODES);
     answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
     if (st != store.end() && not st->second.empty()) {
@@ -2209,7 +2211,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
             net::DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, node->addr)) {
+    if (!tokenMatch(token, node->getAddr())) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'listen'", node->toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
@@ -2248,7 +2250,7 @@ Dht::onAnnounce(Sp<Node> n,
             net::DhtProtocolException::PUT_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, node.addr)) {
+    if (!tokenMatch(token, node.getAddr())) {
         DHT_LOG.w(hash, node.id, "[node %s] incorrect token %s for 'put'", node.toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::PUT_WRONG_TOKEN};
     }
@@ -2278,10 +2280,10 @@ Dht::onAnnounce(Sp<Node> n,
                 DHT_LOG.d(hash, node.id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
             } else {
                 const auto& type = getType(lv->type);
-                if (type.editPolicy(hash, lv, vc, node.id, node.addr.get(), node.addr.getLength())) {
+                if (type.editPolicy(hash, lv, vc, node.id, node.getAddr().get(), node.getAddr().getLength())) {
                     DHT_LOG.d(hash, node.id, "[store %s] editing %s",
                             hash.toString().c_str(), vc->toString().c_str());
-                    storageStore(hash, vc, created, &node.addr);
+                    storageStore(hash, vc, created, node.getAddr());
                 } else {
                     DHT_LOG.d(hash, node.id, "[store %s] rejecting edition of %s because of storage policy",
                             hash.toString().c_str(), vc->toString().c_str());
@@ -2290,9 +2292,9 @@ Dht::onAnnounce(Sp<Node> n,
         } else {
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
-            if (type.storePolicy(hash, vc, node.id, node.addr.get(), node.addr.getLength())) {
+            if (type.storePolicy(hash, vc, node.id, node.getAddr().get(), node.getAddr().getLength())) {
                 DHT_LOG.d(hash, node.id, "[store %s] storing %s", hash.toString().c_str(), vc->toString().c_str());
-                storageStore(hash, vc, created, &node.addr);
+                storageStore(hash, vc, created, node.getAddr());
             } else {
                 DHT_LOG.d(hash, node.id, "[store %s] rejecting storage of %s",
                         hash.toString().c_str(), vc->toString().c_str());
@@ -2308,7 +2310,7 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
     using namespace net;
 
     const auto& now = scheduler.time();
-    if (not tokenMatch(token, node->addr)) {
+    if (not tokenMatch(token, node->getAddr())) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'put'", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }

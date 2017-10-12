@@ -421,7 +421,7 @@ private:
 
     // Storage
     void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {});
-    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr* sa = nullptr);
+    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {});
     void expireStore();
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);

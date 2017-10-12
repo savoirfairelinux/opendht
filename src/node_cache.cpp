@@ -95,7 +95,7 @@ NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point
     if (not node) {
         node = std::make_shared<Node>(id, addr, client);
         it.first->second = node;
-    } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
+    } else if (confirm or node->isOld(now)) {
         node->update(addr);
     }
     return node;

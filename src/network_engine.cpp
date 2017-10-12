@@ -154,7 +154,7 @@ NetworkEngine::tellListener(Sp<Node> node, uint32_t socket_id, const InfoHash& h
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(node->addr, TransId((char*)&socket_id, 4), nnodes.first, nnodes.second, values, query, ntoken);
+        sendNodesValues(node->getAddr(), TransId((char*)&socket_id, 4), nnodes.first, nnodes.second, values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.e("Can't send value: buffer not large enough !");
     }
@@ -205,8 +205,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     }
 
     auto err = send((char*)req.msg.data(), req.msg.size(),
-            (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            node.addr);
+            (node.getReplyTime() >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            node.getAddr());
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
         err == EAFNOSUPPORT)
@@ -298,7 +298,7 @@ void
 NetworkEngine::blacklistNode(const Sp<Node>& n)
 {
     n->setExpired();
-    blacklist.emplace(n->addr);
+    blacklist.emplace(n->getAddr());
 }
 
 bool
@@ -414,7 +414,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 requests.erase(req_it);
             } else {
                 node->received(now, req);
-                if (not node->is_client)
+                if (not node->isClient())
                     onNewNode(node, 1);
                 throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
             }
@@ -422,7 +422,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         node->received(now, req);
 
-        if (not node->is_client)
+        if (not node->isClient())
             onNewNode(node, 2);
         onReportedAddr(msg->id, msg->addr);
 
@@ -466,7 +466,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         }
     } else {
         node->received(now, {});
-        if (not node->is_client)
+        if (not node->isClient())
             onNewNode(node, 1);
         try {
             switch (msg->type) {
@@ -907,7 +907,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
         bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            const auto& sin = n.addr.getIPv4();
+            const auto& sin = n.getAddr().getIPv4();
             auto dest = bnodes.data() + NODE4_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
             memcpy(dest + HASH_LEN, &sin.sin_addr, sizeof(in_addr));
@@ -917,7 +917,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
         bnodes.resize(NODE6_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            const auto& sin6 = n.addr.getIPv6();
+            const auto& sin6 = n.getAddr().getIPv6();
             auto dest = bnodes.data() + NODE6_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
             memcpy(dest + HASH_LEN, &sin6.sin6_addr, sizeof(in6_addr));
@@ -1086,7 +1086,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     );
     sendRequest(req);
     if (not v.empty())
-        sendValueParts(tid, v, n->addr);
+        sendValueParts(tid, v, n->getAddr());
     ++out_stats.put;
     return req;
 }

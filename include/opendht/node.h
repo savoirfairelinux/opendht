@@ -39,11 +39,6 @@ using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
 
 struct Node {
     const InfoHash id;
-    SockAddr addr;
-    bool is_client {false};
-
-    time_point time {time_point::min()};            /* last time eared about */
-    time_point reply_time {time_point::min()};      /* time of last correct reply received */
 
     Node(const InfoHash& id, const SockAddr& addr, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
@@ -52,13 +47,16 @@ struct Node {
     InfoHash getId() const {
         return id;
     }
-    std::pair<const sockaddr*, socklen_t> getAddr() const {
-        return {addr.get(), addr.getLength()};
-    }
+    const SockAddr& getAddr() const { return addr; }
     std::string getAddrStr() const {
         return addr.toString();
     }
     bool isClient() const { return is_client; }
+    bool isIncoming() { return time > reply_time; }
+
+    const time_point& getTime() const { return time; }
+    const time_point& getReplyTime() const { return reply_time; }
+    void setTime(const time_point& t) { time = t; }
 
     /**
      * Makes notice about an additionnal authentication error with this node. Up
@@ -75,6 +73,13 @@ struct Node {
     bool isGood(time_point now) const;
     bool isPendingMessage() const;
     size_t getPendingMessageCount() const;
+
+    bool isOld(const time_point& now) const {
+        return time + NODE_EXPIRE_TIME < now;
+    }
+    bool isRemovable(const time_point& now) const {
+        return isExpired() and isOld(now);
+    }
 
     NodeExport exportNode() const {
         NodeExport ne;
@@ -145,13 +150,17 @@ private:
     /* Number of times we accept authentication errors from this node. */
     static const constexpr unsigned MAX_AUTH_ERRORS {3};
 
-    std::map<net::TransId, Sp<net::Request>> requests_ {};
-    std::map<net::TransId, Sp<net::Socket>> sockets_ {};
-
+    SockAddr addr;
+    bool is_client {false};
+    time_point time {time_point::min()};            /* last time eared about */
+    time_point reply_time {time_point::min()};      /* time of last correct reply received */
     unsigned auth_errors {0};
     bool expired_ {false};
     uint16_t transaction_id {1};
     using TransactionDist = std::uniform_int_distribution<decltype(transaction_id)>;
+
+    std::map<net::TransId, Sp<net::Request>> requests_ {};
+    std::map<net::TransId, Sp<net::Socket>> sockets_ {};
 };
 
 }
