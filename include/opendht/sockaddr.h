@@ -66,6 +66,19 @@ public:
             throw std::runtime_error("Socket address length is too large");
         set(sa, length);
     }
+    SockAddr(const sockaddr* sa) {
+        socklen_t len = 0;
+        if (sa) {
+            if (sa->sa_family == AF_INET)
+                len = sizeof(sockaddr_in);
+            else if(sa->sa_family == AF_INET6)
+                len = sizeof(sockaddr_in6);
+            else
+                throw std::runtime_error("Unknown address family");
+        }
+        set(sa, len);
+    }
+
     /**
      * Build from an existing sockaddr_storage structure.
      */
