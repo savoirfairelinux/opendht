@@ -915,24 +915,24 @@ Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point cr
     DHT_LOG.d(id, "put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
     auto op = std::make_shared<OpStatus>();
-    auto donecb = [callback](const std::vector<Sp<Node>>& nodes, OpStatus& op) {
+    auto donecb = [callback](std::vector<Sp<Node>>&& nodes, OpStatus& op) {
         // Callback as soon as the value is announced on one of the available networks
         if (callback and not op.status.done and (op.status4.done && op.status6.done)) {
-            callback(op.status4.ok or op.status6.ok, nodes);
+            callback(op.status4.ok or op.status6.ok, std::move(nodes));
             op.status.done = true;
         }
     };
-    announce(id, AF_INET, val, [=](bool ok4, const std::vector<Sp<Node>>& nodes) {
+    announce(id, AF_INET, val, [=](bool ok4, std::vector<Sp<Node>>&& nodes) {
         DHT_LOG.d(id, "Announce done IPv4 %d", ok4);
         auto& o = *op;
         o.status4 = {true, ok4};
-        donecb(nodes, o);
+        donecb(std::move(nodes), o);
     }, created, permanent);
-    announce(id, AF_INET6, val, [=](bool ok6, const std::vector<Sp<Node>>& nodes) {
+    announce(id, AF_INET6, val, [=](bool ok6, std::vector<Sp<Node>>&& nodes) {
         DHT_LOG.d(id, "Announce done IPv6 %d", ok6);
         auto& o = *op;
         o.status6 = {true, ok6};
-        donecb(nodes, o);
+        donecb(std::move(nodes), o);
     }, created, permanent);
 }
 
@@ -945,7 +945,7 @@ void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, G
         bool ok = op.status.ok or op.status4.ok or op.status6.ok;
         op.status.done = true;
         if (dcb)
-            dcb(ok, op.nodes);
+            dcb(ok, std::move(op.nodes));
     }
 }
 
@@ -1009,15 +1009,15 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     /* Try to answer this search locally. */
     gcb(getLocal(id, f));
 
-    Dht::search(id, AF_INET, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET, gcb, {}, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4 = {true, ok};
-        doneCallbackWrapper(donecb, nodes, *op);
+        doneCallbackWrapper(donecb, std::move(nodes), *op);
     }, f, q);
-    Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET6, gcb, {}, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6 = {true, ok};
-        doneCallbackWrapper(donecb, nodes, *op);
+        doneCallbackWrapper(donecb, std::move(nodes), *op);
     }, f, q);
 }
 
@@ -1056,15 +1056,15 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
     /* Try to answer this search locally. */
     qcb(local_fields);
 
-    Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET, {}, qcb, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4 = {true, ok};
-        doneCallbackWrapper(done_cb, nodes, *op);
+        doneCallbackWrapper(done_cb, std::move(nodes), *op);
     }, f, q);
-    Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
+    Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, std::vector<Sp<Node>>&& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6 = {true, ok};
-        doneCallbackWrapper(done_cb, nodes, *op);
+        doneCallbackWrapper(done_cb, std::move(nodes), *op);
     }, f, q);
 }
 
@@ -2063,21 +2063,21 @@ Dht::insertNode(const InfoHash& id, const SockAddr& addr)
 }
 
 void
-Dht::pingNode(const SockAddr& sa, DoneCallbackSimple&& cb)
+Dht::pingNode(const SockAddr& sa, DoneCallback&& cb)
 {
     scheduler.syncTime();
     DHT_LOG.d("Sending ping to %s", sa.toString().c_str());
     auto& count = sa.getFamily() == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, [&count,cb](const net::Request&, net::RequestAnswer&&) {
+    network_engine.sendPing(sa, [&count,cb](const net::Request& req, net::RequestAnswer&&) {
         count--;
         if (cb)
-            cb(true);
+            cb(true, {req.node});
     }, [&count,cb](const net::Request&, bool last){
         if (last) {
             count--;
             if (cb)
-                cb(false);
+                cb(false, {});
         }
     });
 }

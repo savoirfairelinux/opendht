@@ -466,7 +466,7 @@ cdef class DhtRunner(_WithID):
         if done_cb:
             cb_obj = {'done':done_cb}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.get().bootstrap(addr._addr, cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj))
+            self.thisptr.get().ping(addr._addr, cpp.bindDoneCbSimple(done_callback_simple, <void*>cb_obj))
         else:
             lock = threading.Condition()
             pending = 0

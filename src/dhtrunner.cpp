@@ -580,25 +580,32 @@ DhtRunner::clearBootstrap()
 }
 
 void
-DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb)
+DhtRunner::ping(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallback&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
-        auto rem = cb ? std::make_shared<std::pair<size_t, bool>>(nodes.size(), false) : nullptr;
+        struct GroupPing {
+            size_t remaining {0};
+            bool ok {false};
+            std::vector<Sp<Node>> nodes;
+            GroupPing(size_t s) : remaining(s) {}
+        };
+        Sp<GroupPing> rem = cb ? std::make_shared<GroupPing>(nodes.size()) : nullptr;
         for (auto& node : nodes)
-            dht.pingNode(SockAddr((sockaddr*)&node.first, node.second), cb ? [rem,cb](bool ok) {
+            dht.pingNode(SockAddr((sockaddr*)&node.first, node.second), cb ? [rem,cb](bool ok, std::vector<Sp<Node>>&& nodes) {
                 auto& r = *rem;
-                r.first--;
-                r.second |= ok;
-                if (not r.first)
-                    cb(r.second);
-            } : DoneCallbackSimple{});
+                r.remaining--;
+                r.ok |= ok;
+                r.nodes.insert(r.nodes.end(), nodes.begin(), nodes.end());
+                if (r.remaining == 0)
+                    cb(r.ok, std::move(r.nodes));
+            } : DoneCallback{});
     });
     uv_async_send(&uv_async_);
 }
 
 void
-DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
+DhtRunner::ping(const SockAddr& addr, DoneCallback&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([addr,cb](SecureDht& dht) mutable {

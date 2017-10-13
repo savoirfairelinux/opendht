@@ -104,7 +104,7 @@ typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
 OPENDHT_PUBLIC GetCallback bindGetCb(GetCallbackSimple cb);
 
-using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
+using DoneCallback = std::function<void(bool success, std::vector<std::shared_ptr<Node>>&& nodes)>;
 typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
 typedef void (*ShutdownCallbackRaw)(void *user_data);
 typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data);

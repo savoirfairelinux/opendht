@@ -141,7 +141,7 @@ public:
         bootstrap_nodes.clear();
     }
 
-    void pingNode(const SockAddr&, DoneCallbackSimple&& cb={});
+    void pingNode(const SockAddr&, DoneCallback&& cb={});
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
