@@ -23,6 +23,7 @@
 #include "utils.h"
 #include "sockaddr.h"
 #include "net.h"
+#include "uv_utils.h"
 
 #include <list>
 #include <map>
@@ -48,9 +49,15 @@ struct Socket {
 struct Node {
     const InfoHash id;
 
-    Node(const InfoHash& id, const SockAddr& addr, bool client=false);
+    Sp<TcpSocket> sock;
+
+    Node(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& s = {}, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
         : Node(id, SockAddr(sa, salen)) {}
+    ~Node() {
+        if (sock)
+            sock->close();
+    }
 
     InfoHash getId() const {
         return id;
@@ -98,7 +105,11 @@ struct Node {
     }
     sa_family_t getFamily() const { return addr.getFamily(); }
 
-    void update(const SockAddr&);
+    void update(const SockAddr&, const Sp<TcpSocket>&);
+
+    bool canStream() const {
+        return sock and not sock->isClosed() and sock->canWrite();
+    }
 
     void requested(const Sp<net::Request>& req);
     void received(time_point now, const Sp<net::Request>& req);

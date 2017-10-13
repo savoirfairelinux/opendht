@@ -31,8 +31,8 @@ constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 
-Node::Node(const InfoHash& id, const SockAddr& addr, bool client)
-: id(id), addr(addr), is_client(client), sockets_()
+Node::Node(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& s, bool client)
+: id(id), addr(addr), sock(s), is_client(client), sockets_()
 {
     crypto::random_device rd;
     transaction_id = std::uniform_int_distribution<SocketId>{1}(rd);
@@ -69,9 +69,11 @@ Node::getPendingMessageCount() const
 }
 
 void
-Node::update(const SockAddr& new_addr)
+Node::update(const SockAddr& new_addr, const Sp<TcpSocket>& s)
 {
     addr = new_addr;
+    if (not sock or (s and sock->isClosed() and not s->isClosed()))
+        sock = s;
 }
 
 /** To be called when a message was sent to the node */

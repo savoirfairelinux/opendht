@@ -27,7 +27,7 @@ namespace dht {
 
 struct NodeCache {
     Sp<Node> getNode(const InfoHash& id, sa_family_t family);
-    Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client=false);
+    Sp<Node> getNode(const InfoHash& id, const SockAddr&, const Sp<TcpSocket>&, time_point now, bool confirmed, bool client=false);
     std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) const;
 
     /**
@@ -36,13 +36,15 @@ struct NodeCache {
      * To use in case of connectivity change etc.
      */
     void clearBadNodes(sa_family_t family = 0);
+    void closeAll(sa_family_t family = 0);
 
 private:
     class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
     public:
         Sp<Node> getNode(const InfoHash& id);
-        Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
+        Sp<Node> getNode(const InfoHash& id, const SockAddr&, const Sp<TcpSocket>&, time_point now, bool confirmed, bool client);
         void clearBadNodes();
+        void closeAll();
     };
 
     const NodeMap& cache(sa_family_t af) const { return af == AF_INET ? cache_4 : cache_6; }

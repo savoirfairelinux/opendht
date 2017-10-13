@@ -145,7 +145,7 @@ struct UdpSocket : public std::enable_shared_from_this<UdpSocket>
         struct sockaddr_in6 addr;
         uv_ip6_addr(bind_addr, port, &addr);
         uv_udp_bind(&sock, (const struct sockaddr*)&addr, 0);
-        uv_udp_recv_start(&sock, alloc_buffer, &UdpSocket::on_receive);
+        uv_udp_recv_start(&sock, &UdpSocket::on_alloc_buffer, &UdpSocket::on_receive);
     }
 
     int send(uint8_t* data, size_t size, const SockAddr& addr, OnSent&& cb = {}) {
@@ -175,25 +175,32 @@ struct UdpSocket : public std::enable_shared_from_this<UdpSocket>
     }
 private:
     struct SendReq {
-        uint8_t* msg;
         uv_udp_send_t req;
+        uint8_t* msg;
         OnSent cb;
     };
 
     uv_udp_t sock;
     OnReceive receive_cb;
     OnClose close_cb;
+
+    void onAllocBuffer(size_t suggested_size, uv_buf_t* buf) {
+        buf->base = (char*)malloc(suggested_size);
+        buf->len = suggested_size;
+    }
     void onReceive(ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned /*flags*/) {
         if (nread > 0 and addr and receive_cb) {
             receive_cb((const uint8_t*)buf->base, nread, SockAddr(addr));
         }
+        if (buf->base)
+            free(buf->base);
     }
     void onClosed() {
         if (close_cb)
             close_cb();
-        if (sock.data) {
-            delete static_cast<std::shared_ptr<UdpSocket>*>(sock.data);
+        if (auto s = static_cast<std::shared_ptr<UdpSocket>*>(sock.data)) {
             sock.data = nullptr;
+            delete s;
         }
     }
     void onSent(SendReq& req, int status) {
@@ -219,58 +226,128 @@ private:
     static void on_receive(uv_udp_t* handle, ssize_t nread, const uv_buf_t* buf, const struct sockaddr* addr, unsigned flags) {
         if (auto node = get((uv_handle_t*)handle))
             node->onReceive(nread, buf, addr, flags);
-        if (buf->base)
-            free(buf->base);
+    }
+    static inline void on_alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t *buf) {
+        if (auto node = get((uv_handle_t*)handle))
+            node->onAllocBuffer(suggested_size, buf);
     }
 };
 
 struct TcpSocket : public std::enable_shared_from_this<TcpSocket>
 {
-    using OnConnect = std::function<void(const std::shared_ptr<TcpSocket>& new_socket)>;
+    using OnConnect = std::function<void(std::shared_ptr<TcpSocket>&& new_socket)>;
+    using OnConnected = std::function<void(int status)>;
+    using OnRead = std::function<void(const uint8_t* data, size_t size)>;
+    using OnWrite = std::function<void(int status)>;
 
     TcpSocket(uv_loop_t* loop) {
         uv_tcp_init(loop, &sock);
         sock.data = nullptr;
     }
-    void listen(in_port_t port, OnConnect cb) {
+    void listen(const char* bind_addr, in_port_t port, OnConnect cb) {
         if (not sock.data)
             sock.data = new std::shared_ptr<TcpSocket>(shared_from_this());
         connect_cb = cb;
         struct sockaddr_in6 addr;
-        uv_ip6_addr("::0", port, &addr);
+        uv_ip6_addr(bind_addr, port, &addr);
         uv_tcp_bind(&sock, (const struct sockaddr*)&addr, 0);
         if (int r = uv_listen((uv_stream_t*)&sock, 128, &TcpSocket::on_new_connection)) {
             fprintf(stderr, "Listen error %s\n", uv_strerror(r));
         }
     }
-    void accept(TcpSocket& server) {
+    void connect(const sockaddr* addr, OnConnected&& cb) {
         if (not sock.data)
             sock.data = new std::shared_ptr<TcpSocket>(shared_from_this());
-        if (uv_accept((uv_stream_t*)&server.sock, (uv_stream_t*) &sock) == 0) {
-            fprintf(stderr, "uv_read_start\n");
-            uv_read_start((uv_stream_t*)&sock, alloc_buffer, &TcpSocket::echo_read);
-        } else {
-            close();
-        }
+        auto req = new ConnectReq;
+        req->connect.data = req;
+        req->sock = shared_from_this();
+        req->callback = std::move(cb);
+        uv_tcp_connect(&req->connect, &sock, addr, &TcpSocket::on_connect);
+    }
+    void start(OnRead&& cb) {
+        std::cerr << "TCP start" << std::endl;
+        read_cb = std::move(cb);
+        uv_read_start((uv_stream_t*)&sock, &TcpSocket::on_alloc_buffer, &TcpSocket::on_read);
+    }
+    int write(uint8_t* msg, size_t len, OnWrite&& cb = {}) {
+        std::cerr << "TCP write " << len << std::endl;
+        auto req = new WriteReq;
+        req->write.data = req;
+        req->msg = msg;
+        req->sock = shared_from_this();
+        req->callback = std::move(cb);
+        uv_buf_t buf;
+        buf.base = (char*)msg;
+        buf.len = len;
+        return uv_write(&req->write, (uv_stream_t *)&sock, &buf, 1, &TcpSocket::on_write_end);
     }
     void close(OnClose onclose = {}) {
-        fprintf(stderr, "uv_close\n");
-        close_cb = onclose;
-        uv_close((uv_handle_t*) &sock, &TcpSocket::on_close);
+        std::cerr << "TCP close" << std::endl;
+        if (not isClosed()) {
+            close_cb = onclose;
+            uv_close((uv_handle_t*) &sock, &TcpSocket::on_close);
+        }
+    }
+    bool isClosed() {
+        return not sock.data or uv_is_closing((const uv_handle_t*) &sock);
+    }
+    bool canWrite() const {
+        return uv_is_writable((const uv_stream_t*)&sock);
+    }
+    SockAddr getBoundAddr() {
+        sockaddr_storage addr;
+        int size = sizeof(addr);
+        uv_tcp_getsockname(&sock, (sockaddr*)&addr, &size);
+        return {(const sockaddr*)&addr, (socklen_t)size};
+    }
+    SockAddr getPeerAddr() {
+        sockaddr_storage addr;
+        int size = sizeof(addr);
+        uv_tcp_getpeername(&sock, (sockaddr*)&addr, &size);
+        return {(const sockaddr*)&addr, (socklen_t)size};
     }
 private:
     uv_tcp_t sock;
     OnConnect connect_cb;
+    OnRead read_cb;
     OnClose close_cb;
+    struct ConnectReq {
+        uv_connect_t connect;
+        std::shared_ptr<TcpSocket> sock;
+        OnConnected callback;
+    };
+    struct WriteReq {
+        uv_write_t write;
+        uint8_t* msg;
+        std::shared_ptr<TcpSocket> sock;
+        OnWrite callback;
+    };
+    std::shared_ptr<TcpSocket> accept() {
+        auto s = std::make_shared<TcpSocket>(sock.loop);
+        s->sock.data = new std::shared_ptr<TcpSocket>(s);
+        if (uv_accept((uv_stream_t*)&sock, (uv_stream_t*) &s->sock) == 0) {
+            return s;
+        } else {
+            s->close();
+            return {};
+        }
+    }
     void onNewConnection(int status) {
         if (status < 0) {
             fprintf(stderr, "New connection error %s\n", uv_strerror(status));
             return;
         }
-        auto s = std::make_shared<TcpSocket>(sock.loop);
-        s->accept(*this);
-        connect_cb(s);
+        if (auto s = accept())
+            connect_cb(std::move(s));
         fprintf(stderr, "on_new_connection end\n");
+    }
+    void onConnected(int status, OnConnected&& cb) {
+        if (cb)
+            cb(status);
+    }
+    void onAllocBuffer(size_t suggested_size, uv_buf_t* buf) {
+        buf->base = (char*)malloc(suggested_size);
+        buf->len = suggested_size;
     }
     void onRead(ssize_t nread, const uv_buf_t *buf) {
         if (nread < 0) {
@@ -281,18 +358,26 @@ private:
             }
             close();
         } else if (nread > 0) {
-            uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-            uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-            fprintf(stderr, "uv_write\n");
-            uv_write(req, (uv_stream_t*) &sock, &wrbuf, 1, &TcpSocket::echo_write);
+            if (read_cb)
+                read_cb((const uint8_t*)buf->base, nread);
         }
+        if (buf->base)
+            free(buf->base);
+    }
+    void onWrite(int status, OnWrite&& cb) {
+        if (cb)
+            cb(status);
     }
     void onClosed() {
-        if (close_cb)
+        read_cb = {};
+        connect_cb = {};
+        if (close_cb) {
             close_cb();
-        if (sock.data) {
-            delete static_cast<std::shared_ptr<TcpSocket>*>(sock.data);
+            close_cb = {};
+        }
+        if (auto s = static_cast<std::shared_ptr<TcpSocket>*>(sock.data)) {
             sock.data = nullptr;
+            delete s;
         }
     }
     static std::shared_ptr<TcpSocket> get(uv_handle_t* handle) {
@@ -306,17 +391,27 @@ private:
         if (auto node = get(handle))
             node->onClosed();
     }
-    static void echo_read(uv_stream_t* client, ssize_t nread, const uv_buf_t *buf) {
+    static inline void on_alloc_buffer(uv_handle_t* handle, size_t suggested_size, uv_buf_t *buf) {
+        if (auto node = get((uv_handle_t*)handle))
+            node->onAllocBuffer(suggested_size, buf);
+    }
+    static void on_read(uv_stream_t* client, ssize_t nread, const uv_buf_t *buf) {
         if (auto node = get((uv_handle_t*)client))
             node->onRead(nread, buf);
-        if (buf->base)
-            free(buf->base);
     }
-    static void echo_write(uv_write_t *req, int status) {
-        if (status) {
-            fprintf(stderr, "Write error %s\n", uv_strerror(status));
+    static void on_write_end(uv_write_t* req, int status) {
+        if (auto write = static_cast<WriteReq*>(req->data)) {
+            write->sock->onWrite(status, std::move(write->callback));
+            if (write->msg)
+                free(write->msg);
+            delete write;
         }
-        free(req);
+    }
+    static void on_connect(uv_connect_t* req, int status) {
+        if (auto conn = static_cast<ConnectReq*>(req->data)) {
+            conn->sock->onConnected(status, std::move(conn->callback));
+            delete conn;
+        }
     }
 };
 

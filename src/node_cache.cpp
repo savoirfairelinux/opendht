@@ -26,10 +26,10 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 }
 
 Sp<Node>
-NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client) {
+NodeCache::getNode(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& sock, time_point now, bool confirm, bool client) {
     if (id == zeroes)
         return std::make_shared<Node>(id, addr);
-    return cache(addr.getFamily()).getNode(id, addr, now, confirm, client);
+    return cache(addr.getFamily()).getNode(id, addr, sock, now, confirm, client);
 }
 
 std::vector<Sp<Node>>
@@ -78,6 +78,17 @@ NodeCache::clearBadNodes(sa_family_t family)
     }
 }
 
+void
+NodeCache::closeAll(sa_family_t family)
+{
+    if (family == 0) {
+        closeAll(AF_INET);
+        closeAll(AF_INET6);
+    } else {
+        (family == AF_INET ? cache_4 : cache_6).closeAll();
+    }
+}
+
 Sp<Node>
 NodeCache::NodeMap::getNode(const InfoHash& id)
 {
@@ -91,15 +102,15 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
 }
 
 Sp<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client)
+NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& sock, time_point now, bool confirm, bool client)
 {
     auto it = emplace(id, std::weak_ptr<Node>{});
     auto node = it.first->second.lock();
     if (not node) {
-        node = std::make_shared<Node>(id, addr, client);
+        node = std::make_shared<Node>(id, addr, sock, client);
         it.first->second = node;
     } else if (confirm or node->isOld(now)) {
-        node->update(addr);
+        node->update(addr, sock);
     }
     return node;
 }
@@ -115,5 +126,22 @@ NodeCache::NodeMap::clearBadNodes() {
         }
     }
 }
+
+void
+NodeCache::NodeMap::closeAll()
+{
+    for (auto it = cbegin(); it != cend();) {
+        if (auto n = it->second.lock()) {
+            if (n->sock) {
+                n->sock->close();
+                n->sock.reset();
+            }
+            ++it;
+        } else {
+            erase(it++);
+        }
+    }
+}
+
 
 }

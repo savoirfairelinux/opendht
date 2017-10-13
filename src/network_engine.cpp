@@ -103,10 +103,13 @@ NetworkEngine::NetworkEngine(uv_loop_t* loop, const NetworkConfig& config, InfoH
         decltype(NetworkEngine::onRefresh) onRefresh) :
     onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
     onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
-    network(net), DHT_LOG(log), sock(std::make_shared<UdpSocket>(loop)), scheduler(scheduler)
+    network(net), DHT_LOG(log), sock(std::make_shared<UdpSocket>(loop)), tcp_sock(std::make_shared<TcpSocket>(loop)), scheduler(scheduler)
 {
     using namespace std::placeholders;
     sock->open(config.bind_addr.c_str(), config.bind_port, std::bind(&NetworkEngine::processMessage, this, _1, _2, _3));
+    tcp_sock->listen(config.bind_addr.c_str(), config.bind_port, [&](Sp<TcpSocket>&& new_socket){
+        startTcp(new_socket);
+    });
 }
 
 NetworkEngine::~NetworkEngine() {
@@ -120,7 +123,7 @@ NetworkEngine::tellListener(Sp<Node> node, uint32_t socket_id, const InfoHash& h
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(node->getAddr(), TransId(socket_id), nnodes.first, nnodes.second, values, query, ntoken);
+        sendNodesValues(node, TransId(socket_id), nnodes.first, nnodes.second, values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.e("Can't send value: buffer not large enough !");
     }
@@ -265,6 +268,53 @@ NetworkEngine::isNodeBlacklisted(const SockAddr& addr) const
 }
 
 void
+NetworkEngine::startTcp(const Sp<TcpSocket>& sock, bool assigned)
+{
+    struct SockRxData {
+        msgpack::unpacker unpacker;
+        /** the socket have been assigned to a node */
+        bool assigned;
+    };
+
+    auto rx_data = std::make_shared<SockRxData>();
+    rx_data->assigned = assigned;
+    if (not rx_data->assigned)
+        pending_connect.emplace(sock);
+    std::cout << "startTcp " << rx_data->assigned << std::endl;
+    //sock->start(std::bind(&NetworkEngine::onReceiveData, this, _1, _2, n, sock));
+    sock->start([this,sock,rx_data](const uint8_t* data, size_t size){
+        std::cout << "Received message !! " << size << std::endl;
+        rx_data->unpacker.reserve_buffer(size);
+        memcpy(rx_data->unpacker.buffer(), data, size);
+        rx_data->unpacker.buffer_consumed(size);
+        msgpack::object_handle result;
+        // Message pack data loop
+        while(rx_data->unpacker.next(result)) {
+            std::unique_ptr<ParsedMessage> msg {new ParsedMessage};
+            try {
+                msg->msgpack_unpack(result.get());
+            } catch (const std::exception& e) {
+                DHT_LOG.w("Can't process message: %s", e.what());
+                return;
+            }
+
+            if (msg->network != network) {
+                DHT_LOG.d("Received message from other network %u", msg->network);
+                return;
+            }
+            SockAddr from = sock->getPeerAddr();
+            if (from.isMappedIPv4())
+                from = from.getMappedIPv4();
+            if (not rx_data->assigned) {
+                pending_connect.erase(sock);
+                rx_data->assigned = true;
+            }
+            process(std::move(msg), from, sock);
+        }
+    });
+}
+
+void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from_raw)
 {
     SockAddr from = from_raw.isMappedIPv4() ? from_raw.getMappedIPv4() : from_raw;
@@ -354,7 +404,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
 }
 
 void
-NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from)
+NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from, const Sp<TcpSocket>& sock)
 {
     const auto& now = scheduler.time();
     auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
@@ -378,6 +428,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 return;
             }
         }
+        node->update(from, sock);
 
         node->received(now, req);
 
@@ -433,14 +484,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.ping;
                 DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
                 onPing(node);
-                sendPong(from, msg->tid);
+                sendPong(node, msg->tid);
                 break;
             case MessageType::FindNode: {
                 DHT_LOG.d(msg->target, node->id, "[node %s] got 'find' request for %s (%d)", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
+                sendNodesValues(node, msg->tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
                 break;
             }
             case MessageType::GetValues: {
@@ -448,7 +499,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
-                sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, answer.values, msg->query, answer.ntoken);
+                sendNodesValues(node, msg->tid, nnodes.first, nnodes.second, answer.values, msg->query, answer.ntoken);
                 break;
             }
             case MessageType::AnnounceValue: {
@@ -460,7 +511,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                    This is to prevent them from backtracking, and hence
                    polluting the DHT. */
                 for (auto& v : msg->values) {
-                   sendValueAnnounced(from, msg->tid, v->id);
+                   sendValueAnnounced(node, msg->tid, v->id);
                 }
                 break;
             }
@@ -468,13 +519,13 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
-                sendValueAnnounced(from, msg->tid, msg->value_id);
+                sendValueAnnounced(node, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
                 DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id.toInt(), std::move(msg->query));
-                sendListenConfirmation(from, msg->tid);
+                sendListenConfirmation(node, msg->tid);
                 break;
             }
             default:
@@ -483,7 +534,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         } catch (const std::overflow_error& e) {
             DHT_LOG.e("Can't send value: buffer not large enough !");
         } catch (DhtProtocolException& e) {
-            sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
+            sendError(node, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
     }
 }
@@ -508,27 +559,44 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 }
 
 int
-NetworkEngine::send(msgpack::sbuffer& msg, const SockAddr& addr)
+NetworkEngine::sendUDP(msgpack::sbuffer& msg, const SockAddr& addr)
 {
-    if (not addr)
-        return EFAULT;
-
-    // move data
     size_t size = msg.size();
     uint8_t* data = (uint8_t*)msg.release();
     return sock->send(data, size, addr);
 }
 
 int
-NetworkEngine::send(const Blob& msg, int /*flags*/, const SockAddr& addr, UdpSocket::OnSent&& cb)
+NetworkEngine::send(msgpack::sbuffer& msg, const Sp<Node>& node)
+{
+    /*if (addr.second == 0)
+        return -1;
+*/
+    // move data
+    size_t size = msg.size();
+    uint8_t* data = (uint8_t*)msg.release();
+    if (node->canStream()) {
+        return node->sock->write(data, size);
+    } else {
+        return sock->send(data, size, node->addr);
+    }
+}
+
+int
+NetworkEngine::send(const Blob& msg, int /*flags*/, const Sp<Node>& node, UdpSocket::OnSent&& cb)
 {
     auto data = (uint8_t*)malloc(msg.size());
     memcpy(data, msg.data(), msg.size());
-    return sock->send(data, msg.size(), addr, std::move(cb));
+    if (node->canStream()) {
+        return node->sock->write(data, msg.size());
+    } else {
+        return sock->send(data, msg.size(), node->addr, std::move(cb));
+    }
+    //return sock->send(data, msg.size(), addr);
 }
 
 Sp<Request>
-NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::PING, node->getNewTid()};
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -566,14 +634,14 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
 }
 
 void
-NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
+NetworkEngine::sendPong(const Sp<Node>& node, TransId tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
     pk.pack(std::string("r")); pk.pack_map(2);
       pk.pack(std::string("id")); pk.pack(myid);
-      insertAddr(pk, addr);
+      insertAddr(pk, node->addr);
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
@@ -583,11 +651,11 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, addr);
+    send(buffer, node);
 }
 
 Sp<Request>
-NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
+NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::FIND_NODE, n->getNewTid()};
     msgpack::sbuffer buffer;
@@ -633,7 +701,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
 
 
 Sp<Request>
-NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
+NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     auto tid = TransId {TransPrefix::GET_VALUES, n->getNewTid()};
     msgpack::sbuffer buffer;
@@ -717,7 +785,7 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
-        msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
+        msg.nodes4.emplace_back(cache.getNode(ni_id, addr, {}, now, false));
         onNewNode(msg.nodes4.back(), 0);
     }
     for (unsigned i = 0, n = msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i < n; i++) {
@@ -733,13 +801,13 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
-        msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
+        msg.nodes6.emplace_back(cache.getNode(ni_id, addr, {}, now, false));
         onNewNode(msg.nodes6.back(), 0);
     }
 }
 
 std::vector<Blob>
-NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Value>>& st)
+NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Value>>& st, bool stream)
 {
     auto svals = serializeValues(st);
     size_t total_size = 0;
@@ -750,7 +818,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
     pk.pack(std::string("values"));
     pk.pack_array(svals.size());
     // try to put everything in a single UDP packet
-    if (svals.size() < 50 && total_size < MAX_PACKET_VALUE_SIZE) {
+    if (stream or (svals.size() < 50 and total_size < MAX_PACKET_VALUE_SIZE)) {
         for (const auto& b : svals)
             buffer.write((const char*)b.data(), b.size());
         DHT_LOG.d("sending %lu bytes of values", total_size);
@@ -785,7 +853,7 @@ NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const
                     pk.pack(std::string("o")); pk.pack(start);
                     pk.pack(std::string("d")); pk.pack_bin(end-start);
                                                pk.pack_bin_body((const char*)v.data()+start, end-start);
-            send(buffer, addr);
+            sendUDP(buffer, addr);
             start = end;
         } while (start != v.size());
         i++;
@@ -793,7 +861,7 @@ NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const
 }
 
 void
-NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& nodes, const Blob& nodes6,
+NetworkEngine::sendNodesValues(const Sp<Node>& node, TransId tid, const Blob& nodes, const Blob& nodes6,
         const std::vector<Sp<Value>>& st, const Query& query, const Blob& token)
 {
     msgpack::sbuffer buffer;
@@ -803,7 +871,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
     pk.pack(std::string("r"));
     pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
     pk.pack(std::string("id")); pk.pack(myid);
-    insertAddr(pk, addr);
+    insertAddr(pk, node->addr);
     if (nodes.size() > 0) {
         pk.pack(std::string("n4"));
         pk.pack_bin(nodes.size());
@@ -821,7 +889,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
     if (not st.empty()) { /* pack complete values */
         auto fields = query.select.getSelection();
         if (fields.empty()) {
-            svals = packValueHeader(buffer, st);
+            svals = packValueHeader(buffer, st, node->canStream());
         } else { /* pack fields */
             pk.pack(std::string("fields"));
             pk.pack_map(2);
@@ -843,11 +911,11 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
     }
 
     // send response
-    send(buffer, addr);
+    send(buffer, node);
 
     // send parts
     if (not svals.empty())
-        sendValueParts(tid, svals, addr);
+        sendValueParts(tid, svals, node->addr);
 }
 
 Blob
@@ -901,7 +969,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 Sp<Request>
-NetworkEngine::sendListen(Sp<Node> n,
+NetworkEngine::sendListen(const Sp<Node>& n,
         const InfoHash& hash,
         const Query& query,
         const Blob& token,
@@ -910,6 +978,16 @@ NetworkEngine::sendListen(Sp<Node> n,
         RequestExpiredCb&& on_expired,
         SocketCb&& socket_cb)
 {
+
+    if (not n->sock) {
+        n->sock = std::make_shared<TcpSocket>(scheduler.getLoop());
+        n->sock->connect(n->addr.get(), [this,n](int status){
+            if (status == 0)
+                startTcp(n->sock, true);
+        });
+    }
+
+
     uint32_t socket;
     auto tid = TransId { TransPrefix::LISTEN, n->getNewTid() };
     if (previous and previous->node == n) {
@@ -968,14 +1046,14 @@ NetworkEngine::sendListen(Sp<Node> n,
 }
 
 void
-NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
+NetworkEngine::sendListenConfirmation(const Sp<Node>& node, TransId tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
     pk.pack(std::string("r")); pk.pack_map(2);
       pk.pack(std::string("id")); pk.pack(myid);
-      insertAddr(pk, addr);
+      insertAddr(pk, node->addr);
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
@@ -985,11 +1063,11 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, addr);
+    send(buffer, node);
 }
 
 Sp<Request>
-NetworkEngine::sendAnnounceValue(Sp<Node> n,
+NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
         const InfoHash& infohash,
         const Sp<Value>& value,
         time_point created,
@@ -1005,7 +1083,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     pk.pack(std::string("a")); pk.pack_map((created < scheduler.time() ? 5 : 4));
       pk.pack(std::string("id"));     pk.pack(myid);
       pk.pack(std::string("h"));      pk.pack(infohash);
-      auto v = packValueHeader(buffer, {value});
+      auto v = packValueHeader(buffer, {value}, n->canStream());
       if (created < scheduler.time()) {
           pk.pack(std::string("c"));
           pk.pack(to_time_t(created));
@@ -1048,7 +1126,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
 }
 
 Sp<Request>
-NetworkEngine::sendRefreshValue(Sp<Node> n,
+NetworkEngine::sendRefreshValue(const Sp<Node>& n,
                 const InfoHash& infohash,
                 const Value::Id& vid,
                 const Blob& token,
@@ -1100,7 +1178,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
 }
 
 void
-NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id vid) {
+NetworkEngine::sendValueAnnounced(const Sp<Node>& node, TransId tid, Value::Id vid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
@@ -1108,7 +1186,7 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id v
     pk.pack(std::string("r")); pk.pack_map(3);
       pk.pack(std::string("id"));  pk.pack(myid);
       pk.pack(std::string("vid")); pk.pack(vid);
-      insertAddr(pk, addr);
+      insertAddr(pk, node->addr);
 
     pk.pack(std::string("t")); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
@@ -1118,11 +1196,11 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id v
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, addr);
+    send(buffer, node);
 }
 
 void
-NetworkEngine::sendError(const SockAddr& addr,
+NetworkEngine::sendError(const Sp<Node>& node,
         TransId tid,
         uint16_t code,
         const std::string& message,
@@ -1149,7 +1227,7 @@ NetworkEngine::sendError(const SockAddr& addr,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer, addr);
+    send(buffer, node);
 }
 
 void
