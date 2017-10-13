@@ -26,9 +26,9 @@
 namespace dht {
 
 struct NodeCache {
-    std::shared_ptr<Node> getNode(const InfoHash& id, sa_family_t family);
-    std::shared_ptr<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client=false);
-    std::vector<std::shared_ptr<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count);
+    Sp<Node> getNode(const InfoHash& id, sa_family_t family);
+    Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client=false);
+    std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) const;
 
     /**
      * Reset the connectivity state of every node,
@@ -40,11 +40,12 @@ struct NodeCache {
 private:
     class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
     public:
-        std::shared_ptr<Node> getNode(const InfoHash& id);
-        std::shared_ptr<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
+        Sp<Node> getNode(const InfoHash& id);
+        Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
         void clearBadNodes();
     };
 
+    const NodeMap& cache(sa_family_t af) const { return af == AF_INET ? cache_4 : cache_6; }
     NodeMap& cache(sa_family_t af) { return af == AF_INET ? cache_4 : cache_6; }
     NodeMap cache_4;
     NodeMap cache_6;
