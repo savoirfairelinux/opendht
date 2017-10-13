@@ -28,6 +28,8 @@ extern "C" {
 #include <gnutls/x509.h>
 }
 
+#include <sodium.h>
+
 #include <vector>
 #include <memory>
 
@@ -529,6 +531,7 @@ public:
         clean();
         munlock(data_.data(), data_.size()*sizeof(T));
         data_ = c.data_;
+        mlock(data_.data(), data_.size()*sizeof(T));
         return *this;
     }
     secure_vector<T>& operator=(secure_vector<T>&& c) {
@@ -549,6 +552,7 @@ public:
     std::vector<T>& writable() { clean(); return data_; }
     const std::vector<T>& makeInsecure() const { return data_; }
     const uint8_t* data() const { return data_.data(); }
+    uint8_t* data() { return data_.data(); }
 
     void clean() {
         clean(data_.begin(), data_.end());
@@ -592,7 +596,148 @@ private:
     std::vector<T> data_;
 };
 
+
+template <class T, size_t N>
+class OPENDHT_PUBLIC secure_array
+{
+public:
+    secure_array() {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    explicit secure_array(T _item): data_( _item) {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    explicit secure_array(const std::array<T,N>& c): data_(c) {
+        mlock(data_.data(), data_.size()*sizeof(T));
+    }
+    secure_array(secure_array<T,N> const&) = default;
+    secure_array(secure_array<T,N> &&) = delete;
+    ~secure_array() { clean(); munlock(data_.data(), data_.size()*sizeof(T)); }
+
+    static secure_array<T,N> getRandom() {
+        secure_array<T,N> ret;
+        crypto::random_device rdev;
+        std::uniform_int_distribution<uint8_t> rand_byte;
+        std::generate_n((uint8_t*)ret.data_.data(), ret.size()*sizeof(T), std::bind(rand_byte, std::ref(rdev)));
+        return ret;
+    }
+    secure_array<T,N>& operator=(const secure_array<T,N>& c) {
+        if (&c == this)
+            return *this;
+        clean();
+        data_ = c.data_;
+        return *this;
+    }
+    secure_array<T,N>& operator=(secure_array<T,N>&& c) = delete;
+    std::array<T,N>& writable() { clean(); return data_; }
+    const std::array<T,N>& makeInsecure() const { return data_; }
+    const uint8_t* data() const { return data_.data(); }
+    uint8_t* data() { return data_.data(); }
+
+    void clean() {
+        clean(data_.begin(), data_.end());
+    }
+    size_t size() const { return data_.size(); }
+
+private:
+    /**
+     * Securely wipe memory
+     */
+    static void clean(const typename std::array<T,N>::iterator& i, const typename std::array<T,N>::iterator& j) {
+        volatile uint8_t* b = reinterpret_cast<uint8_t*>(&*i);
+        volatile uint8_t* e = reinterpret_cast<uint8_t*>(&*j);
+        std::fill(b, e, 0);
+    }
+
+    std::array<T, N> data_;
+};
+
+
 using SecureBlob = secure_vector<uint8_t>;
+
+class EcPublicKey : public std::array<uint8_t, crypto_box_PUBLICKEYBYTES> {
+public:
+    Blob encrypt(const Blob& message) const {
+        Blob ret(crypto_box_SEALBYTES+message.size());
+        crypto_box_seal(ret.data(), message.data(), message.size(), data());
+        return ret;
+    }
+
+};
+
+class EcSecretKey {
+public:
+    using KeyData = secure_array<uint8_t, crypto_box_SECRETKEYBYTES>;
+
+    static EcSecretKey generate() {
+        EcSecretKey ret;
+        crypto_box_keypair(ret.pk.data(), ret.key.data());
+        return ret;
+    }
+
+    const EcPublicKey& getPublicKey() const {
+        return pk;
+    }
+
+    Blob encrypt(const Blob& message, const EcPublicKey& pub) const {
+        Blob ret(crypto_box_NONCEBYTES+crypto_box_MACBYTES+message.size());
+        randombytes_buf(ret.data(), crypto_box_NONCEBYTES);
+        if (crypto_box_easy(ret.data()+crypto_box_NONCEBYTES, message.data(), message.size(), ret.data(),
+                            pub.data(), key.data()) != 0) {
+            throw CryptoException("Can't encrypt data");
+        }
+        return ret;
+    }
+
+    Blob decrypt(const Blob& cypher) const {
+        if (cypher.size() <= crypto_box_SEALBYTES)
+            throw DecryptError("Unexpected cipher length");
+        Blob ret(cypher.size() - crypto_box_SEALBYTES);
+        if (crypto_box_seal_open(ret.data(), cypher.data(), cypher.size(), pk.data(), key.data()) != 0) {
+            throw DecryptError("Can't decrypt data");
+        }
+        return ret;
+    }
+
+    Blob decrypt(const Blob& cypher, const EcPublicKey& pub) const {
+        if (cypher.size() <= crypto_box_NONCEBYTES+crypto_box_MACBYTES)
+            throw DecryptError("Unexpected cipher length");
+        Blob ret(cypher.size() - crypto_box_NONCEBYTES - crypto_box_MACBYTES);
+        if (crypto_box_open_easy(ret.data(),
+                cypher.data()+crypto_box_NONCEBYTES,
+                cypher.size()-crypto_box_NONCEBYTES,
+                cypher.data(),
+                pub.data(), key.data()) != 0) {
+            throw DecryptError("Can't decrypt data");
+        }
+        return ret;
+    }
+
+    SecureBlob computeSecret(const EcPublicKey& pub, bool sending) const {
+        // shared key = h(q ‖ client_publickey ‖ server_publickey)
+        crypto_generichash_state h;
+        crypto_generichash_init(&h, nullptr, 0U, crypto_generichash_BYTES);
+        {
+            std::array<uint8_t, crypto_scalarmult_BYTES> q;
+            if (auto err = crypto_scalarmult(q.data(), key.data(), pub.data()))
+                throw CryptoException("Can't compute secret: " + std::to_string(err));
+            crypto_generichash_update(&h, q.data(), q.size());
+        }
+        {
+            const auto& sender_pk = sending ? pk : pub;
+            const auto& receiver_pk = sending ? pub : pk;
+            crypto_generichash_update(&h, sender_pk.data(), sender_pk.size());
+            crypto_generichash_update(&h, receiver_pk.data(), receiver_pk.size());
+        }
+        SecureBlob ret(crypto_generichash_BYTES);
+        crypto_generichash_final(&h, ret.data(), ret.size());
+        return ret;
+    }
+
+private:
+    KeyData key;
+    EcPublicKey pk;
+};
 
 /**
  * Generate an RSA key pair (4096 bits) and a certificate.

@@ -24,6 +24,7 @@
 #include "sockaddr.h"
 #include "net.h"
 #include "uv_utils.h"
+#include "crypto.h"
 
 #include <list>
 #include <map>
@@ -50,6 +51,9 @@ struct Node {
     const InfoHash id;
 
     Sp<TcpSocket> sock;
+
+    crypto::EcPublicKey last_known_pk;
+    //std::list<crypto::EcSecretKey> 
 
     Node(const InfoHash& id, const SockAddr& addr, const Sp<TcpSocket>& s = {}, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)

@@ -527,6 +527,9 @@ private:
     std::set<Sp<TcpSocket>> pending_connect;
     NodeCache cache {};
 
+    crypto::EcSecretKey id_key;
+    //crypto::EcSecretKey id_key;
+
     // global limiting should be triggered by at least 8 different IPs
     using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
