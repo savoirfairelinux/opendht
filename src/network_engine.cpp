@@ -54,7 +54,6 @@ constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
 const std::string NetworkEngine::my_v {"RNG1"};
 const constexpr uint16_t TransId::INVALID;
-std::mt19937 NetworkEngine::rd_device {dht::crypto::random_device{}()};
 
 const TransPrefix TransPrefix::PING = {"pn"};
 const TransPrefix TransPrefix::FIND_NODE = {"fn"};
@@ -249,15 +248,15 @@ NetworkEngine::rateLimit(const SockAddr& addr)
 {
     const auto& now = scheduler.time();
 
-    // occasional IP limiter maintenance
-    std::bernoulli_distribution rand_trial(1./128.);
-    if (rand_trial(rd_device)) {
+    // occasional IP limiter maintenance (a few times every second at max rate)
+    if (limiter_maintenance++ == MAX_REQUESTS_PER_SEC/8) {
         for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
             if (it->second.maintain(now) == 0)
                 address_rate_limiter.erase(it++);
             else
                 ++it;
         }
+        limiter_maintenance = 0;
     }
 
     auto it = address_rate_limiter.emplace(addr, IpLimiter{});

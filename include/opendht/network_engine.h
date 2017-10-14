@@ -34,7 +34,6 @@
 #include <functional>
 #include <algorithm>
 #include <memory>
-#include <random>
 #include <queue>
 
 namespace dht {
@@ -417,7 +416,7 @@ private:
     /***************
      *  Constants  *
      ***************/
-    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
+    static constexpr size_t MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
     static const constexpr size_t NODE4_INFO_BUF_LEN {HASH_LEN + sizeof(in_addr) + sizeof(in_port_t)};
     /* the length of a node info buffer in ipv6 format */
@@ -437,7 +436,6 @@ private:
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
 
     static const std::string my_v;
-    static std::mt19937 rd_device;
 
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
 
@@ -518,6 +516,7 @@ private:
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
     IpLimiterMap address_rate_limiter {};
     RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
+    size_t limiter_maintenance {0};
 
     // requests handling
     std::map<TransId, Sp<Request>> requests {};
