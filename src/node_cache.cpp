@@ -48,7 +48,7 @@ NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) co
 
     auto it_p = c.lower_bound(id),
         it_n = it_p;
-    if (it_p != c.cend())
+    if (not c.empty())
         dec_it(it_p); /* Create 2 separate iterator if we could */
 
     while (nodes.size() < count and (it_n != c.cend() or it_p != c.cend())) {
