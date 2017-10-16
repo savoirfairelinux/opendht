@@ -2136,7 +2136,7 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
     }
 
     DHT_LOG.d(sr->id, "[search %s] [node %s] got reply to 'get' with %u nodes",
-            sr->id.toString().c_str(), node->toString().c_str(), a.nodes4.size());
+            sr->id.toString().c_str(), node->toString().c_str(), a.nodes4.size()+a.nodes6.size());
 
     if (not a.ntoken.empty()) {
         if (not a.values.empty() or not a.fields.empty()) {
