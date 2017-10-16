@@ -62,8 +62,16 @@ Dht::getStatus(sa_family_t af) const
 void
 Dht::shutdown(ShutdownCallback cb)
 {
+    auto final_shutdown = [this,cb](){
+        scheduler.stop();
+        DHT_LOG.w("closing socket...");
+        network_engine.close([=](){
+            if (cb)
+                cb();
+        });
+    };
     if (not maintain_storage) {
-        if (cb) cb();
+        final_shutdown();
         return;
     }
 
@@ -73,7 +81,7 @@ Dht::shutdown(ShutdownCallback cb)
     auto str_donecb = [=](bool, const std::vector<Sp<Node>>&) {
         --*remaining;
         DHT_LOG.w("shuting down node: %u ops remaining", *remaining);
-        if (!*remaining && cb) { cb(); }
+        if (!*remaining) { final_shutdown(); }
     };
 
     for (auto& str : store)
@@ -81,8 +89,7 @@ Dht::shutdown(ShutdownCallback cb)
 
     if (!*remaining) {
         DHT_LOG.w("shuting down node: %u ops remaining", *remaining);
-        if (cb)
-            cb();
+        final_shutdown();
     }
 }
 
@@ -700,7 +707,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
     if (sr->nextSearchStep)
         scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(scheduler.time()));
     else
-        sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
+        sr->nextSearchStep = scheduler.run(std::bind(&Dht::searchStep, this, sr));
 
     return sr;
 }
@@ -959,6 +966,20 @@ bool callbackWrapper(Cb get_cb,
     }
     doneCallbackWrapper(done_cb, {}, op);
     return !op.status.ok;
+}
+
+
+void
+Dht::bootstrap(const std::string& host, const std::string& service)
+{
+    for (const auto& bn : bootstrap_nodes)
+        if (bn.first == host and bn.second == service)
+            return;
+    bootstrap_nodes.emplace_back(host, service);
+    getAddrInfo(scheduler.getLoop(), host.c_str(), service.c_str(), [this](std::vector<SockAddr>&& res) {
+        for (const auto& addr : res)
+            pingNode(addr);
+    });
 }
 
 void
@@ -1300,6 +1321,7 @@ Dht::expireStore()
 void
 Dht::connectivityChanged(sa_family_t af)
 {
+    updateStatus();
     const auto& now = scheduler.time();
     scheduler.edit(nextNodesConfirmation, now);
     buckets(af).connectivityChanged(now);
@@ -1324,14 +1346,13 @@ Dht::rotateSecrets()
         secret = std::uniform_int_distribution<uint64_t>{}(rdev);
     }
     uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
-    auto rotate_secrets_time = scheduler.time() + time_dist(rd);
-    scheduler.add(rotate_secrets_time, std::bind(&Dht::rotateSecrets, this));
+    scheduler.add(time_dist(rd), std::bind(&Dht::rotateSecrets, this));
 }
 
 Blob
 Dht::makeToken(const SockAddr& addr, bool old) const
 {
-    const void *ip;
+    const void* ip;
     size_t iplen;
     in_port_t port;
 
@@ -1340,12 +1361,12 @@ Dht::makeToken(const SockAddr& addr, bool old) const
         const auto& sin = addr.getIPv4();
         ip = &sin.sin_addr;
         iplen = 4;
-        port = sin.sin_port;
+        port = ntohs(sin.sin_port);
     } else if (family == AF_INET6) {
         const auto& sin6 = addr.getIPv6();
         ip = &sin6.sin6_addr;
         iplen = 16;
-        port = sin6.sin6_port;
+        port = ntohs(sin6.sin6_port);
     } else {
         return {};
     }
@@ -1653,14 +1674,14 @@ Dht::~Dht()
         s.second->clear();
 }
 
-Dht::Dht() : store(), scheduler(DHT_LOG), network_engine(DHT_LOG, scheduler) {}
+Dht::Dht() : store(), scheduler(nullptr, DHT_LOG), network_engine(nullptr, DHT_LOG, scheduler) {}
 
-Dht::Dht(int s, int s6, Config config)
+Dht::Dht(uv_loop_t* loop, Config config)
     : myid(config.node_id != zeroes ? config.node_id : InfoHash::getRandom()),
-    is_bootstrap(config.is_bootstrap),
-    maintain_storage(config.maintain_storage), store(), store_quota(),
-    scheduler(DHT_LOG),
-    network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
+    is_bootstrap(config.is_bootstrap), maintain_storage(config.maintain_storage),
+    buckets4{Bucket {AF_INET}},buckets6{Bucket {AF_INET6}}, store(), store_quota(),
+    scheduler(loop, DHT_LOG),
+    network_engine(loop, config.network_config, myid, config.network, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),
@@ -1672,23 +1693,12 @@ Dht::Dht(int s, int s6, Config config)
             std::bind(&Dht::onRefresh, this, _1, _2, _3, _4))
 {
     scheduler.syncTime();
-    if (s < 0 && s6 < 0)
-        return;
-    if (s >= 0) {
-        buckets4 = {Bucket {AF_INET}};
-        buckets4.is_client = config.is_bootstrap;
-    }
-    if (s6 >= 0) {
-        buckets6 = {Bucket {AF_INET6}};
-        buckets6.is_client = config.is_bootstrap;
-    }
-
+    buckets4.is_client = config.is_bootstrap;
+    buckets6.is_client = config.is_bootstrap;
     search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
 
     uniform_duration_distribution<> time_dis {std::chrono::seconds(3), std::chrono::seconds(5)};
-    auto confirm_nodes_time = scheduler.time() + time_dis(rd);
-    DHT_LOG.d(myid, "Scheduling %s", myid.toString().c_str());
-    nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
+    nextNodesConfirmation = scheduler.add(time_dis(rd), std::bind(&Dht::confirmNodes, this));
 
     // Fill old secret
     {
@@ -1735,7 +1745,13 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
                 n->toString().c_str(), id.toString().c_str());
         /* Since our node-id is the same in both DHTs, it's probably
            profitable to query both families. */
-        network_engine.sendFindNode(n, id, network_engine.want(), nullptr, nullptr);
+        network_engine.sendFindNode(n, id, network_engine.want(), nullptr, [this,n](const net::Request&, bool over) {
+            if (over) {
+                DHT_LOG.d(n->id, "[node %s] neighborhood maintenance op expired", n->toString().c_str());
+                scheduler.edit(nextNodesConfirmation, Node::MAX_RESPONSE_TIME);
+                updateStatus();
+            }
+        });
     }
 
     return true;
@@ -1788,10 +1804,9 @@ Dht::bucketMaintenance(RoutingTable& list)
                 auto start = scheduler.time();
                 network_engine.sendFindNode(n, id, want, nullptr, [this,start,n](const net::Request&, bool over) {
                     if (over) {
-                        const auto& end = scheduler.time();
-                        using namespace std::chrono;
-                        DHT_LOG.d(n->id, "[node %s] bucket maintenance op expired after %llu ms", n->toString().c_str(), duration_cast<milliseconds>(end-start).count());
-                        scheduler.edit(nextNodesConfirmation, end + Node::MAX_RESPONSE_TIME);
+                        DHT_LOG.d(n->id, "[node %s] bucket maintenance op expired", n->toString().c_str());
+                        scheduler.edit(nextNodesConfirmation, Node::MAX_RESPONSE_TIME);
+                        updateStatus();
                     }
                 });
                 sent = true;
@@ -1863,7 +1878,7 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, DoneCallb
     return announce_per_af;
 }
 
-time_point
+/*time_point
 Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
 {
     scheduler.syncTime();
@@ -1875,19 +1890,37 @@ Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
         }
     }
     return scheduler.run();
+}*/
+
+void
+Dht::updateStatus()
+{
+    NodeStatus nstatus4 = getStatus(AF_INET);
+    NodeStatus nstatus6 = getStatus(AF_INET6);
+    if (nstatus4 != status4 || nstatus6 != status6) {
+        status4 = nstatus4;
+        status6 = nstatus6;
+        if (status4 == NodeStatus::Disconnected and status6 == NodeStatus::Disconnected) {
+            // We have lost connection with the DHT.  Try to recover using bootstrap nodes.
+            DHT_LOG.e(myid, "DHT disconnected", myid.toString().c_str());
+        } else {
+            //bootstrap_nodes.clear();
+        }
+        if (statusCb)
+            statusCb(status4, status6);
+    }
 }
 
 void
 Dht::expire()
 {
     uniform_duration_distribution<> time_dis(std::chrono::minutes(2), std::chrono::minutes(6));
-    auto expire_stuff_time = scheduler.time() + duration(time_dis(rd));
 
     expireBuckets(buckets4);
     expireBuckets(buckets6);
     expireStore();
     expireSearches();
-    scheduler.add(expire_stuff_time, std::bind(&Dht::expire, this));
+    scheduler.add(time_dis(rd), std::bind(&Dht::expire, this));
 }
 
 void
@@ -1897,11 +1930,13 @@ Dht::confirmNodes()
     bool soon = false;
     const auto& now = scheduler.time();
 
-    if (searches4.empty() and getStatus(AF_INET) == NodeStatus::Connected) {
+    updateStatus();
+
+    if (searches4.empty() and status4 == NodeStatus::Connected) {
         DHT_LOG.d(myid, "[confirm nodes] initial IPv4 'get' for my id (%s)", myid.toString().c_str());
         search(myid, AF_INET);
     }
-    if (searches6.empty() and getStatus(AF_INET6) == NodeStatus::Connected) {
+    if (searches6.empty() and status6 == NodeStatus::Connected) {
         DHT_LOG.d(myid, "[confirm nodes] initial IPv6 'get' for my id (%s)", myid.toString().c_str());
         search(myid, AF_INET6);
     }
@@ -1923,9 +1958,7 @@ Dht::confirmNodes()
     auto time_dis = soon
         ? uniform_duration_distribution<> {seconds(5) , seconds(25)}
         : uniform_duration_distribution<> {seconds(60), seconds(180)};
-    auto confirm_nodes_time = now + time_dis(rd);
-
-    scheduler.edit(nextNodesConfirmation, confirm_nodes_time);
+    scheduler.edit(nextNodesConfirmation, time_dis(rd));
 }
 
 std::vector<ValuesExport>
@@ -2032,13 +2065,13 @@ Dht::insertNode(const InfoHash& id, const SockAddr& addr)
 }
 
 void
-Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
+Dht::pingNode(const SockAddr& sa, DoneCallbackSimple&& cb)
 {
     scheduler.syncTime();
-    DHT_LOG.d("Sending ping to %s", print_addr(sa, salen).c_str());
-    auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
+    DHT_LOG.d("Sending ping to %s", sa.toString().c_str());
+    auto& count = sa.getFamily() == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, salen, [&count,cb](const net::Request&, net::RequestAnswer&&) {
+    network_engine.sendPing(sa, [&count,cb](const net::Request&, net::RequestAnswer&&) {
         count--;
         if (cb)
             cb(true);
@@ -2207,7 +2240,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
             net::DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, node->getAddr())) {
+    if (not tokenMatch(token, node->getAddr())) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'listen'", node->toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
@@ -2246,7 +2279,7 @@ Dht::onAnnounce(Sp<Node> n,
             net::DhtProtocolException::PUT_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, node.getAddr())) {
+    if (not tokenMatch(token, node.getAddr())) {
         DHT_LOG.w(hash, node.id, "[node %s] incorrect token %s for 'put'", node.toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::PUT_WRONG_TOKEN};
     }

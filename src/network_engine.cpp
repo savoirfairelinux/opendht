@@ -69,32 +69,6 @@ static const uint8_t v4prefix[16] = {
 
 constexpr unsigned SEND_NODES {8};
 
-#ifdef _WIN32
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    unsigned long mode = !!nonblocking;
-    int rc = ioctlsocket(fd, FIONBIO, &mode);
-    return rc == 0;
-}
-
-extern const char *inet_ntop(int, const void *, char *, socklen_t);
-
-#else
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    int rc = fcntl(fd, F_GETFL, 0);
-    if (rc < 0)
-        return false;
-    rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
-    return rc >= 0;
-}
-
-#endif
-
 struct NetworkEngine::PartialMessage {
     SockAddr from;
     time_point start;
@@ -116,8 +90,8 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
  : ntoken(std::move(msg.token)), values(std::move(msg.values)), fields(std::move(msg.fields)),
     nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 
-NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
-NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(uv_loop_t*, Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
+NetworkEngine::NetworkEngine(uv_loop_t* loop, const NetworkConfig& config, InfoHash& myid, NetId net, Logger& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError) onError,
         decltype(NetworkEngine::onNewNode) onNewNode,
         decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -129,20 +103,13 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& l
         decltype(NetworkEngine::onRefresh) onRefresh) :
     onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
     onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
-    network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+    network(net), DHT_LOG(log), sock(std::make_shared<UdpSocket>(loop)), scheduler(scheduler)
 {
-    if (dht_socket >= 0) {
-        if (!set_nonblocking(dht_socket, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-    if (dht_socket6 >= 0) {
-        if (!set_nonblocking(dht_socket6, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
+    using namespace std::placeholders;
+    sock->open(config.bind_addr.c_str(), config.bind_port, std::bind(&NetworkEngine::processMessage, this, _1, _2, _3));
 }
 
 NetworkEngine::~NetworkEngine() {
-    clear();
 }
 
 void
@@ -160,18 +127,9 @@ NetworkEngine::tellListener(Sp<Node> node, uint32_t socket_id, const InfoHash& h
 }
 
 bool
-NetworkEngine::isRunning(sa_family_t af) const
+NetworkEngine::isRunning(sa_family_t /*af*/) const
 {
-    switch (af) {
-    case 0:
-        return dht_socket  >= 0 ||  dht_socket6 >= 0;
-    case AF_INET:
-        return dht_socket  >= 0;
-    case AF_INET6:
-        return dht_socket6 >= 0;
-    default:
-        return false;
-    }
+    return sock->isRunning();
 }
 
 void
@@ -203,27 +161,27 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         req.on_expired(req, false);
     }
 
-    auto err = send((char*)req.msg.data(), req.msg.size(),
-            (node.getReplyTime() >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            node.getAddr());
-    if (err == ENETUNREACH  ||
-        err == EHOSTUNREACH ||
-        err == EAFNOSUPPORT)
-    {
-        node.setExpired();
-        if (node.id == zeroes)
-            requests.erase(req.tid);
-    } else {
-        if (err != EAGAIN) {
-            ++req.attempt_count;
+    std::weak_ptr<Request> wreq = sreq;
+    auto err = send(req.msg, 0, node.getAddr(), [this,wreq](int status) {
+        if (auto req = wreq.lock()) {
+            if (status >= 0) {
+                ++req->attempt_count;
+                return;
+            }
+            if (status == -EAGAIN)
+                return;
+            auto& node = *req->node;
+            DHT_LOG.e(node.id, "[node %s] can't send packet: %d %s", node.toString().c_str(), status, uv_strerror(status));
+            node.setExpired();
+            if (node.id == zeroes)
+                requests.erase(req->tid);
         }
-        req.last_try = now;
-        std::weak_ptr<Request> wreq = sreq;
-        scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
-            if (auto req = wreq.lock())
-                requestStep(req);
-        });
-    }
+    });
+    req.last_try = now;
+    scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
+        if (auto req = wreq.lock())
+            requestStep(req);
+    });
 }
 
 /**
@@ -307,8 +265,9 @@ NetworkEngine::isNodeBlacklisted(const SockAddr& addr) const
 }
 
 void
-NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
+NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from_raw)
 {
+    SockAddr from = from_raw.isMappedIPv4() ? from_raw.getMappedIPv4() : from_raw;
     if (isMartian(from)) {
         DHT_LOG.w("Received packet from martian node %s", from.toString().c_str());
         return;
@@ -358,7 +317,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
                 process(std::move(pmsg_it->second.msg), from);
                 partial_messages.erase(pmsg_it);
             } else
-                scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
+                scheduler.add(RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
         }
         return;
     }
@@ -387,8 +346,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         pmsg.last_part = now;
         auto wmsg = partial_messages.emplace(pmsg.msg->tid, std::move(pmsg));
         if (wmsg.second) {
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
+            scheduler.add(RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
+            scheduler.add(RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
         } else
             DHT_LOG.e("Partial message with given TID already exists");
     }
@@ -415,7 +374,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 node->received(now, req);
                 if (not node->isClient())
                     onNewNode(node, 1);
-                throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
+                DHT_LOG.e(node->id, "[node %s] Can't find transaction", node->toString().c_str());
+                return;
             }
         }
 
@@ -548,27 +508,23 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 }
 
 int
-NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
+NetworkEngine::send(msgpack::sbuffer& msg, const SockAddr& addr)
 {
     if (not addr)
         return EFAULT;
 
-    int s;
-    if (addr.getFamily() == AF_INET)
-        s = dht_socket;
-    else if (addr.getFamily() == AF_INET6)
-        s = dht_socket6;
-    else
-        s = -1;
+    // move data
+    size_t size = msg.size();
+    uint8_t* data = (uint8_t*)msg.release();
+    return sock->send(data, size, addr);
+}
 
-    if (s < 0)
-        return EAFNOSUPPORT;
-    if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
-        int err = errno;
-        DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
-        return err;
-    }
-    return 0;
+int
+NetworkEngine::send(const Blob& msg, int /*flags*/, const SockAddr& addr, UdpSocket::OnSent&& cb)
+{
+    auto data = (uint8_t*)malloc(msg.size());
+    memcpy(data, msg.data(), msg.size());
+    return sock->send(data, msg.size(), addr, std::move(cb));
 }
 
 Sp<Request>
@@ -627,7 +583,7 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(buffer, addr);
 }
 
 Sp<Request>
@@ -829,7 +785,7 @@ NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const
                     pk.pack(std::string("o")); pk.pack(start);
                     pk.pack(std::string("d")); pk.pack_bin(end-start);
                                                pk.pack_bin_body((const char*)v.data()+start, end-start);
-            send(buffer.data(), buffer.size(), 0, addr);
+            send(buffer, addr);
             start = end;
         } while (start != v.size());
         i++;
@@ -887,7 +843,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(buffer, addr);
 
     // send parts
     if (not svals.empty())
@@ -1029,7 +985,7 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(buffer, addr);
 }
 
 Sp<Request>
@@ -1162,7 +1118,7 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id v
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(buffer, addr);
 }
 
 void
@@ -1193,7 +1149,7 @@ NetworkEngine::sendError(const SockAddr& addr,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(buffer, addr);
 }
 
 void

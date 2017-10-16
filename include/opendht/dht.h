@@ -54,9 +54,6 @@ struct LocalListener;
 /**
  * Main Dht class.
  * Provides a Distributed Hash Table node.
- *
- * Must be given open UDP sockets and ::periodic must be
- * called regularly.
  */
 class OPENDHT_PUBLIC Dht {
 public:
@@ -73,7 +70,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(int s, int s6, Config config);
+    Dht(uv_loop_t* loop, Config config);
     virtual ~Dht();
 
     /**
@@ -88,6 +85,9 @@ public:
 
     NodeStatus getStatus() const {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
+    }
+    void setOnStatusChanged(StatusCallback&& cb) {
+        statusCb = std::move(cb);
     }
 
     /**
@@ -136,12 +136,12 @@ public:
         insertNode(n.id, SockAddr(n.ss, n.sslen));
     }
 
-    void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={});
-
-    time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr&);
-    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
-        return periodic(buf, buflen, SockAddr(from, fromlen));
+    void bootstrap(const std::string& host, const std::string& service);
+    void clearBootstrap() {
+        bootstrap_nodes.clear();
     }
+
+    void pingNode(const SockAddr&, DoneCallbackSimple&& cb={});
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -307,6 +307,10 @@ public:
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
 
+    SockAddr getBoundAddr() {
+        return network_engine.getBoundAddr();
+    }
+
 protected:
     Logger DHT_LOG;
     bool logFilerEnable_ {};
@@ -378,6 +382,8 @@ private:
     const bool is_bootstrap {false};
     const bool maintain_storage {false};
 
+    std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
+
     // the stuff
     RoutingTable buckets4 {};
     RoutingTable buckets6 {};
@@ -400,8 +406,7 @@ private:
 
     // timing
     Scheduler scheduler;
-    Sp<Scheduler::Job> nextNodesConfirmation {};
-    Sp<Scheduler::Job> nextStorageMaintenance {};
+    Sp<Job> nextNodesConfirmation {};
 
     net::NetworkEngine network_engine;
     unsigned pending_pings4 {0};
@@ -409,9 +414,13 @@ private:
 
     using ReportedAddr = std::pair<unsigned, SockAddr>;
     std::vector<ReportedAddr> reported_addr;
-
     std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
+    
+    NodeStatus status4 {NodeStatus::Disconnected},
+               status6 {NodeStatus::Disconnected};
+    StatusCallback statusCb {nullptr};
 
+    void updateStatus();
     void rotateSecrets();
 
     Blob makeToken(const SockAddr&, bool old) const;

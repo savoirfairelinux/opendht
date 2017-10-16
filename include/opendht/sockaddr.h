@@ -219,6 +219,9 @@ public:
 
     bool isUnspecified() const;
 
+    bool isMappedIPv4() const;
+    SockAddr getMappedIPv4() const;
+
     /**
      * A comparator to classify IP addresses, only considering the
      * first 64 bits in IPv6.

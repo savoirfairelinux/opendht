@@ -320,7 +320,7 @@ struct Dht::Search {
     uint16_t tid;
     time_point refill_time {time_point::min()};
     time_point step_time {time_point::min()};           /* the time of the last search step */
-    Sp<Scheduler::Job> nextSearchStep {};
+    Sp<Job> nextSearchStep {};
 
     bool expired {false};              /* no node, or all nodes expired */
     bool done {false};                 /* search is over, cached for later */

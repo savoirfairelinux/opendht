@@ -44,7 +44,7 @@ public:
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(int s, int s6, Config config);
+    SecureDht(uv_loop_t* loop, Config config);
 
     virtual ~SecureDht();
 

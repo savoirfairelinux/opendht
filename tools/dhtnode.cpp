@@ -39,7 +39,7 @@ void print_id_req() {
 }
 
 void print_node_info(const std::shared_ptr<DhtRunner>& dht, const dht_params& params) {
-    std::cout << "OpenDht node " << dht->getNodeId() << " running on port " <<  dht->getBoundPort() << std::endl;
+    std::cout << "OpenDht node " << dht->getNodeId() << " running on port " <<  dht->getBound().toString() << std::endl;
     if (params.generate_identity)
         std::cout << "Public key ID " << dht->getId() << std::endl;
 }
@@ -370,6 +370,9 @@ main(int argc, char **argv)
         }
 
         dht->run(params.port, crt, true, params.network);
+        dht->setOnStatusChanged([](dht::NodeStatus status4, dht::NodeStatus status6){
+            std::cout << "Node status changed : IPv4:" << (unsigned)status4 << " IPv6:" << (unsigned)status6 << std::endl;
+        });
 
         if (params.log) {
             if (params.syslog or (params.daemonize and params.logfile.empty()))

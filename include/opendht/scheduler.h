@@ -22,6 +22,9 @@
 
 #include "utils.h"
 #include "log_enable.h"
+#include "uv_utils.h"
+
+#include <uv.h>
 
 #include <functional>
 #include <map>
@@ -36,12 +39,7 @@ namespace dht {
  */
 class Scheduler {
 public:
-    Scheduler(const Logger& l) : DHT_LOG(l) {}
-
-    struct Job {
-        Job(std::function<void()>&& f) : do_(std::move(f)) {}
-        std::function<void()> do_;
-    };
+    Scheduler(uv_loop_t* loop, const Logger& l) : loop_(loop), DHT_LOG(l) {}
 
     /**
      * Adds another job to the queue.
@@ -51,10 +49,32 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    Sp<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
-        auto job = std::make_shared<Job>(std::move(job_func));
-        if (t != time_point::max())
-            timers.emplace(std::move(t), job);
+    Sp<Job> add(const time_point& t, std::function<void()>&& job_func) {
+        if (not loop_)
+            return {};
+        auto job = Job::make(loop_, std::move(job_func));
+        if (t != time_point::max()) {
+            garbageCollection();
+            pending_jobs.emplace(job);
+            job->run(t);
+        } else
+            job->cancel();
+        return job;
+    }
+    Sp<Job> add(const duration& t, std::function<void()>&& job_func) {
+        if (not loop_)
+            return {};
+        auto job = Job::make(loop_, std::move(job_func));
+        garbageCollection();
+        pending_jobs.emplace(job);
+        job->run(t);
+        return job;
+    }
+    Sp<Job> run(std::function<void()>&& job_func) {
+        auto job = Job::make(loop_, std::move(job_func));
+        garbageCollection();
+        pending_jobs.emplace(job);
+        job->run();
         return job;
     }
 
@@ -66,7 +86,9 @@ public:
      *
      * @return pointer to the newly scheduled job.
      */
-    void edit(Sp<Scheduler::Job>& job, time_point t) {
+    void edit(Sp<Job>& job, const duration& t = {}) {
+        if (not loop_)
+            return;
         if (not job) {
             DHT_LOG.ERR("editing an empty job");
             return;
@@ -75,50 +97,73 @@ public:
         // Force clearing old value.
         auto task = std::move(job->do_);
         job->do_ = {};
+        job->cancel();
+        job = add(t, std::move(task));
+    }
+    void edit(Sp<Job>& job, const time_point& t) {
+        if (not loop_)
+            return;
+        if (not job) {
+            DHT_LOG.ERR("editing an empty job");
+            return;
+        }
+        auto task = std::move(job->do_);
+        job->do_ = {};
+        job->cancel();
         job = add(t, std::move(task));
     }
 
-    /**
-     * Runs the jobs to do up to now.
-     *
-     * @return The time for the next job to run.
-     */
-    time_point run() {
-        syncTime();
-        while (not timers.empty()) {
-            auto timer = timers.begin();
-            /*
-             * Running jobs scheduled before "now" prevents run+rescheduling
-             * loops before this method ends. It is garanteed by the fact that a
-             * job will at least be scheduled for "now" and not before.
-             */
-            if (timer->first > now)
-                break;
-
-            auto job = std::move(timer->second);
-            timers.erase(timer);
-
-            if (job->do_)
-                job->do_();
-        }
-        return getNextJobTime();
+    void stop() {
+        loop_ = nullptr;
+        size_t del {0};
+        for (auto& w : pending_jobs)
+            if (auto job = w.lock()) {
+                job->cancel();
+                del++;
+            }
+        pending_jobs.clear();
+        DHT_LOG.DEBUG("stopping scheduler, %lu events canceled", del);
     }
 
-    inline time_point getNextJobTime() const {
-        return timers.empty() ? time_point::max() : timers.begin()->first;
+    ~Scheduler(){
+        stop();
     }
 
     /**
      * Accessors for the common time reference used for synchronizing
      * operations.
      */
-    inline const time_point& time() const { return now; }
-    inline time_point syncTime() { return (now = clock::now()); }
+    inline time_point time() const {
+        return time_point(std::chrono::duration_cast<duration>(std::chrono::milliseconds(uv_now(loop_))));
+    }
+    inline time_point syncTime() {
+        return time();
+    }
+    uv_loop_t* getLoop() const {
+        return loop_;
+    }
 
 private:
-    time_point now {clock::now()};
-    std::multimap<time_point, Sp<Job>> timers {}; /* the jobs ordered by time */
+    std::set<std::weak_ptr<Job>, std::owner_less<std::weak_ptr<Job>>> pending_jobs {};
+    size_t lastSize_ {0};
+    uv_loop_t* loop_;
     const Logger& DHT_LOG;
+
+    void garbageCollection() {
+        if (pending_jobs.size() > lastSize_ * 2) {
+            unsigned del {0};
+            for (auto it = pending_jobs.begin(); it != pending_jobs.end();) {
+                if (it->expired()) {
+                    it = pending_jobs.erase(it);
+                    del++;
+                } else 
+                    ++it;
+            }
+            //DHT_LOG.DEBUG("pending_jobs cleanup: %u removed, %zu remaining", del, pending_jobs.size());
+            lastSize_ = pending_jobs.size();
+        }
+    }
+
 };
 
 }
