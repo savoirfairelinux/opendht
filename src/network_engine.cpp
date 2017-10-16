@@ -180,7 +180,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     }
     // UDP
     std::weak_ptr<Request> wreq = sreq;
-    auto err = send(req.msg, 0, node, [this,wreq](int status) {
+    send(req.msg, 0, node, [this,wreq](int status) {
         if (auto req = wreq.lock()) {
             if (status >= 0) {
                 ++req->attempt_count;
