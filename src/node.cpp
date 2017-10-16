@@ -79,7 +79,7 @@ void
 Node::requested(const Sp<net::Request>& req)
 {
     auto e = requests_.emplace(req->getTid(), req);
-    if (not e.second) {
+    if (not e.second and req != e.first->second) {
         // Should not happen !
         // Try to handle this scenario as well as we can
         e.first->second->setExpired();
