@@ -61,7 +61,7 @@ const TransPrefix TransPrefix::GET_VALUES = {"gt"};
 const TransPrefix TransPrefix::ANNOUNCE_VALUES = {"pt"};
 const TransPrefix TransPrefix::REFRESH = {"rf"};
 const TransPrefix TransPrefix::LISTEN = {"lt"};
-constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
+constexpr size_t NetworkEngine::MAX_REQUESTS_PER_SEC;
 
 static const uint8_t v4prefix[16] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
