@@ -34,8 +34,16 @@ namespace net {
 struct Request;
 struct Socket;
 struct RequestAnswer;
-using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
 } /* namespace net */
+
+using SocketCb = std::function<void(const Sp<Node>&, net::RequestAnswer&&)>;
+using SocketId = uint32_t;
+struct Socket {
+    Socket() {}
+    Socket(SocketCb&& on_receive) :
+        on_receive(std::move(on_receive)) {}
+    SocketCb on_receive {};
+};
 
 struct Node {
     const InfoHash id;
@@ -108,16 +116,16 @@ struct Node {
      *
      * @return the socket.
      */
-    Sp<net::Socket> openSocket(const net::TransId& id, net::SocketCb&& cb);
+    SocketId openSocket(SocketCb&& cb);
 
-    Sp<net::Socket> getSocket(const net::TransId& id) const;
+    Socket* getSocket(SocketId id);
 
     /**
      * Closes a socket so that no further data will be red on that socket.
      *
      * @param socket  The socket to close.
      */
-    void closeSocket(const Sp<net::Socket>& socket);
+    void closeSocket(SocketId id);
 
     /**
      * Resets the state of the node so it's not expired anymore.
@@ -156,11 +164,11 @@ private:
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
     unsigned auth_errors {0};
     bool expired_ {false};
-    uint16_t transaction_id {1};
+    SocketId transaction_id;
     using TransactionDist = std::uniform_int_distribution<decltype(transaction_id)>;
 
     std::map<net::TransId, Sp<net::Request>> requests_ {};
-    std::map<net::TransId, Sp<net::Socket>> sockets_ {};
+    std::map<SocketId, Socket> sockets_;
 };
 
 }

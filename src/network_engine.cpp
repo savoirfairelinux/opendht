@@ -153,7 +153,7 @@ NetworkEngine::tellListener(Sp<Node> node, uint32_t socket_id, const InfoHash& h
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(node->getAddr(), TransId((char*)&socket_id, 4), nnodes.first, nnodes.second, values, query, ntoken);
+        sendNodesValues(node->getAddr(), TransId(socket_id), nnodes.first, nnodes.second, values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.e("Can't send value: buffer not large enough !");
     }
@@ -401,7 +401,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
 
     if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
-        auto rsocket = node->getSocket(msg->tid);
+        auto rsocket = node->getSocket(msg->tid.toInt());
         auto req = node->getRequest(msg->tid);
 
         /* either response for a request or data for an opened socket */
@@ -954,20 +954,21 @@ NetworkEngine::sendListen(Sp<Node> n,
         RequestExpiredCb&& on_expired,
         SocketCb&& socket_cb)
 {
-    Sp<Socket> socket;
-    auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : n->getNewTid() };
+    uint32_t socket;
+    auto tid = TransId { TransPrefix::LISTEN, n->getNewTid() };
     if (previous and previous->node == n) {
-        socket = previous->socket;
+        socket = previous->getSocket();
     } else {
         if (previous)
             DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
-        socket = n->openSocket(TransPrefix::GET_VALUES, std::move(socket_cb));
+        socket = n->openSocket(std::move(socket_cb));
     }
 
     if (not socket) {
         DHT_LOG.e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
         return {};
     }
+    TransId sid(socket);
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -978,8 +979,8 @@ NetworkEngine::sendListen(Sp<Node> n,
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(hash);
       pk.pack(std::string("token")); packToken(pk, token);
-      pk.pack(std::string("sid"));  pk.pack_bin(socket->id.size());
-                                     pk.pack_bin_body((const char*)socket->id.data(), socket->id.size());
+      pk.pack(std::string("sid"));  pk.pack_bin(sid.size());
+                                     pk.pack_bin_body((const char*)sid.data(), sid.size());
       if (has_query) {
           pk.pack(std::string("q")); pk.pack(query);
       }

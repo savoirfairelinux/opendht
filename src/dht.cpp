@@ -540,40 +540,40 @@ Dht::searchStep(Sp<Search> sr)
                     continue;
                 for (const auto& l : sr->listeners) {
                     const auto& query = l.second.query;
-                    if (n.getListenTime(query) <= now) {
-                        DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
-                                sr->id.toString().c_str(), n.node->toString().c_str());
+                    if (n.getListenTime(query) > now)
+                        continue;
+                    DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
+                            sr->id.toString().c_str(), n.node->toString().c_str());
 
-                        const auto& r = n.listenStatus.find(query);
-                        auto prev_req = r != n.listenStatus.end() ? r->second : nullptr;
+                    const auto& r = n.listenStatus.find(query);
+                    auto prev_req = r != n.listenStatus.end() ? r->second : nullptr;
 
-                        std::weak_ptr<Search> ws = sr;
-                        n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
-                            [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
-                            { /* on done */
-                                if (auto sr = ws.lock()) {
-                                    onListenDone(req.node, answer, sr);
-                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                                }
-                            },
-                            [this,ws,query](const net::Request& req, bool over) mutable
-                            { /* on expired */
-                                if (auto sr = ws.lock()) {
-                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                                    if (over)
-                                        if (auto sn = sr->getNode(req.node))
-                                            sn->listenStatus.erase(query);
-                                }
-                            },
-                            [this,ws,query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable
-                            { /* on new values */
-                                if (auto sr = ws.lock()) {
-                                    onGetValuesDone(node, answer, sr, query);
-                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                                }
+                    std::weak_ptr<Search> ws = sr;
+                    n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
+                        [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
+                        { /* on done */
+                            if (auto sr = ws.lock()) {
+                                onListenDone(req.node, answer, sr);
+                                scheduler.edit(sr->nextSearchStep, scheduler.time());
                             }
-                        );
-                    }
+                        },
+                        [this,ws,query](const net::Request& req, bool over) mutable
+                        { /* on expired */
+                            if (auto sr = ws.lock()) {
+                                scheduler.edit(sr->nextSearchStep, scheduler.time());
+                                if (over)
+                                    if (auto sn = sr->getNode(req.node))
+                                        sn->listenStatus.erase(query);
+                            }
+                        },
+                        [this,ws,query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable
+                        { /* on new values */
+                            if (auto sr = ws.lock()) {
+                                onGetValuesDone(node, answer, sr, query);
+                                scheduler.edit(sr->nextSearchStep, scheduler.time());
+                            }
+                        }
+                    );
                 }
                 if (not n.candidate and ++i == LISTEN_NODES)
                     break;

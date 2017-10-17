@@ -28,23 +28,6 @@ namespace net {
 
 class NetworkEngine;
 struct ParsedMessage;
-struct RequestAnswer;
-using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
-
-/**
- * Open route to a node for continous incoming packets.
- * A socket lets a remote node send us continuous packets treated using a
- * given callback. This is intended to provide an easy management of
- * specific updates nodes can send. For e.g, this is used in the case of the
- * "listen" operation for treating updates a node has for a given storage.
- */
-struct Socket {
-    Socket() {}
-    Socket(TransId id, SocketCb on_receive) :
-        id(id), on_receive(on_receive) {}
-    TransId id;
-    SocketCb on_receive {};
-};
 
 /*!
  * @class   Request
@@ -81,12 +64,13 @@ struct Request {
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<void(const Request&, bool)> on_expired,
-            Sp<Socket> socket = {}) :
+            uint32_t socket = 0) :
         node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), socket(socket) { }
 
     TransId getTid() const { return tid; }
 
-    const Sp<Socket>& getSocket() const { return socket; }
+    uint32_t getSocket() { return socket; }
+    uint32_t closeSocket() { auto ret = socket; socket = 0; return ret; }
 
     void setExpired() {
         if (pending()) {
@@ -134,7 +118,7 @@ private:
 
     const TransId tid; /* the request id. */
     Blob msg {};                      /* the serialized message. */
-    Sp<Socket> socket;   /* the socket used for further reponses. */
+    uint32_t socket;   /* the socket used for further reponses. */
 };
 
 } /* namespace net  */

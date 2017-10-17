@@ -42,41 +42,26 @@ struct TransPrefix : public std::array<uint8_t, 2> {
 struct TransId final : public std::array<uint8_t, 4> {
     static const constexpr uint16_t INVALID {0};
 
-    TransId() { std::fill_n(begin(), 4, 0); }
+    TransId() { std::fill(begin(), end(), 0); }
     TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
     TransId(const TransPrefix prefix, uint16_t seqno = 0) {
         std::copy_n(prefix.begin(), prefix.size(), begin());
         *reinterpret_cast<uint16_t*>(data()+prefix.size()) = seqno;
     }
-
-    TransId(const char* q, size_t l) : array<uint8_t, 4>() {
-        if (l > 4) {
-            length = 0;
-        } else {
-            std::copy_n(q, l, begin());
-            length = l;
-        }
-    }
-
-    uint16_t getTid() const {
-        return *reinterpret_cast<const uint16_t*>(&(*this)[2]);
+    TransId(uint32_t id) {
+        *reinterpret_cast<uint32_t*>(data()) = htonl(id);
     }
 
     uint32_t toInt() const {
-        return *reinterpret_cast<const uint32_t*>(&(*this)[0]);
+        return ntohl(*reinterpret_cast<const uint32_t*>(&(*this)[0]));
     }
 
-    bool matches(const TransPrefix prefix, uint16_t* tid = nullptr) const {
-        if (std::equal(begin(), begin()+2, prefix.begin())) {
-            if (tid)
-                *tid = getTid();
-            return true;
-        } else
-            return false;
+    bool matches(const TransPrefix prefix) const {
+        return std::equal(begin(), begin()+2, prefix.begin());
     }
-
-    unsigned length {4};
 };
+
+TransId unpackTid(msgpack::object& o);
 
 } /* namespace net */
 } /* dht */

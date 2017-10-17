@@ -32,10 +32,10 @@ constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
 
 Node::Node(const InfoHash& id, const SockAddr& addr, bool client)
-: id(id), addr(addr), is_client(client)
+: id(id), addr(addr), is_client(client), sockets_()
 {
     crypto::random_device rd;
-    transaction_id = TransactionDist{1}(rd);
+    transaction_id = std::uniform_int_distribution<SocketId>{1}(rd);
 }
 
 /* This is our definition of a known-good node. */
@@ -112,7 +112,7 @@ Node::cancelRequest(const Sp<net::Request>& req)
 {
     if (req) {
         req->cancel();
-        closeSocket(req->getSocket());
+        closeSocket(req->closeSocket());
         requests_.erase(req->getTid());
     }
 }
@@ -128,31 +128,31 @@ Node::setExpired()
     sockets_.clear();
 }
 
-
-Sp<net::Socket>
-Node::openSocket(const net::TransId& tid, net::SocketCb&& cb)
+SocketId
+Node::openSocket(SocketCb&& cb)
 {
-    auto s = sockets_.emplace(tid, std::make_shared<net::Socket>(tid, cb));
-    //if (not s.second)
-    //    DHT_LOG.e(id, "[node %s] socket (tid: %d) already opened!", id.toString().c_str(), tid.toInt());
-    //else
-    //    DHT_LOG.w("Opened socket (tid: %d), %lu opened", s.first->second->id, sockets_.size());
-    return s.first->second;
+    if (++transaction_id == 0)
+        transaction_id = 1;
+
+    auto sock = Socket(std::move(cb));
+    auto s = sockets_.emplace(transaction_id, std::move(sock));
+    if (not s.second)
+        s.first->second = std::move(sock);
+    return transaction_id;
 }
 
-
-Sp<net::Socket>
-Node::getSocket(const net::TransId& tid) const
+Socket*
+Node::getSocket(SocketId id)
 {
-    auto it = sockets_.find(tid);
-    return it == sockets_.end() ? nullptr : it->second;
+    auto it = sockets_.find(id);
+    return it == sockets_.end() ? nullptr : &it->second;
 }
 
 void
-Node::closeSocket(const Sp<net::Socket>& socket)
+Node::closeSocket(SocketId id)
 {
-    if (socket) {
-        sockets_.erase(socket->id);
+    if (id) {
+        sockets_.erase(id);
         //DHT_LOG.w("Closing socket (tid: %d), %lu remaining", socket->id, sockets_.size());
     }
 }

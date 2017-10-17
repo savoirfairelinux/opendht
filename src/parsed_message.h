@@ -19,6 +19,7 @@
 
 #include "infohash.h"
 #include "sockaddr.h"
+#include "net.h"
 
 #include <map>
 
@@ -131,7 +132,7 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
     auto v = findMapValue(msg, "p");
 
     if (auto t = findMapValue(msg, "t"))
-        tid = {t->as<std::array<char, 4>>()};
+        tid = unpackTid(*t);
 
     if (auto rv = findMapValue(msg, "v"))
         ua = rv->as<std::string>();
@@ -198,7 +199,7 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
     }
 
     if (auto t = findMapValue(req, "sid"))
-        socket_id = {t->as<std::array<char, 4>>()};
+        socket_id = unpackTid(*t);
 
     if (auto rid = findMapValue(req, "id"))
         id = {*rid};
