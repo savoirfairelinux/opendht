@@ -76,6 +76,11 @@ struct Dht::SearchNode {
                                                       node is a new candidate for inclusion. */
 
     SearchNode() : node() {}
+    SearchNode(const SearchNode&) = delete;
+    SearchNode(SearchNode&&) = default;
+    SearchNode& operator=(const SearchNode&) = delete;
+    SearchNode& operator=(SearchNode&&) = default;
+
     SearchNode(const Sp<Node>& node) : node(node) {}
     ~SearchNode() {
         if (node) {
@@ -186,6 +191,7 @@ struct Dht::SearchNode {
                 node->cancelRequest(status.second);
             }
         }
+        getStatus.clear();
     }
 
     /**
@@ -227,10 +233,11 @@ struct Dht::SearchNode {
     void cancelAnnounce() {
         for (const auto& status : acked) {
             const auto& req = status.second.first;
-            if (req->pending()) {
+            if (req and req->pending()) {
                 node->cancelRequest(req);
             }
         }
+        acked.clear();
     }
 
     bool isListening(time_point now) const {
