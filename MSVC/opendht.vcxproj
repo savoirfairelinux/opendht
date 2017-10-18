@@ -39,6 +39,7 @@
     <ClInclude Include="..\include\opendht.h" />
     <ClInclude Include="..\include\opendht\callbacks.h" />
     <ClInclude Include="..\include\opendht\crypto.h" />
+    <ClInclude Include="..\include\opendht\def.h" />
     <ClInclude Include="..\include\opendht\default_types.h" />
     <ClInclude Include="..\include\opendht\dht.h" />
     <ClInclude Include="..\include\opendht\dhtrunner.h" />
@@ -46,6 +47,7 @@
     <ClInclude Include="..\include\opendht\infohash.h" />
     <ClInclude Include="..\include\opendht\log.h" />
     <ClInclude Include="..\include\opendht\log_enable.h" />
+    <ClInclude Include="..\include\opendht\net.h" />
     <ClInclude Include="..\include\opendht\network_engine.h" />
     <ClInclude Include="..\include\opendht\node.h" />
     <ClInclude Include="..\include\opendht\node_cache.h" />
@@ -55,9 +57,11 @@
     <ClInclude Include="..\include\opendht\routing_table.h" />
     <ClInclude Include="..\include\opendht\scheduler.h" />
     <ClInclude Include="..\include\opendht\securedht.h" />
+    <ClInclude Include="..\include\opendht\sockaddr.h" />
     <ClInclude Include="..\include\opendht\utils.h" />
     <ClInclude Include="..\include\opendht\value.h" />
     <ClInclude Include="..\src\listener.h" />
+    <ClInclude Include="..\src\parsed_message.h" />
     <ClInclude Include="..\src\search.h" />
     <ClInclude Include="..\src\storage.h" />
   </ItemGroup>

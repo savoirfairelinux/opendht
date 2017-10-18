@@ -529,7 +529,7 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-    constexpr int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
+    const int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
     if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
