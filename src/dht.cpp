@@ -553,8 +553,8 @@ Dht::searchStep(Sp<Search> sr)
                         [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
                         { /* on done */
                             if (auto sr = ws.lock()) {
-                                onListenDone(req.node, answer, sr);
                                 scheduler.edit(sr->nextSearchStep, scheduler.time());
+                                onListenDone(req.node, answer, sr);
                             }
                         },
                         [this,ws,query](const net::Request& req, bool over) mutable
@@ -569,8 +569,8 @@ Dht::searchStep(Sp<Search> sr)
                         [this,ws,query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable
                         { /* on new values */
                             if (auto sr = ws.lock()) {
-                                onGetValuesDone(node, answer, sr, query);
                                 scheduler.edit(sr->nextSearchStep, scheduler.time());
+                                onGetValuesDone(node, answer, sr, query);
                             }
                         }
                     );
