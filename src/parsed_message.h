@@ -26,17 +26,14 @@
 namespace dht {
 namespace net {
 
-enum class MessageType {
-    Error = 0,
-    Reply,
-    Ping,
-    FindNode,
-    GetValues,
-    AnnounceValue,
-    Refresh,
-    Listen,
-    ValueData
-};
+Tid unpackTid(const msgpack::object& o) {
+    switch (o.type) {
+    case msgpack::type::POSITIVE_INTEGER:
+        return o.as<Tid>();
+    default:
+        return ntohl(*reinterpret_cast<const uint32_t*>(o.as<std::array<char, 4>>().data()));
+    }
+}
 
 struct ParsedMessage {
     MessageType type;
@@ -51,9 +48,9 @@ struct ParsedMessage {
     /* target id around which to find nodes */
     InfoHash target;
     /* transaction id */
-    TransId tid;
+    Tid tid;
     /* tid for packets going through request socket */
-    TransId socket_id;
+    Tid socket_id;
     /* security token */
     Blob token;
     /* the value id (announce confirmation) */

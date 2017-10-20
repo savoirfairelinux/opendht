@@ -107,6 +107,7 @@ list (APPEND opendht_SOURCES
     src/storage.h
     src/listener.h
     src/search.h
+    src/net.h
     src/parsed_message.h
     src/request.h
     src/callbacks.cpp
@@ -134,7 +135,6 @@ list (APPEND opendht_HEADERS
     include/opendht/routing_table.h
     include/opendht/node_cache.h
     include/opendht/network_engine.h
-    include/opendht/net.h
     include/opendht/scheduler.h
     include/opendht/rate_limiter.h
     include/opendht/securedht.h

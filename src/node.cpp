@@ -35,7 +35,7 @@ Node::Node(const InfoHash& id, const SockAddr& addr, bool client)
 : id(id), addr(addr), is_client(client), sockets_()
 {
     crypto::random_device rd;
-    transaction_id = std::uniform_int_distribution<SocketId>{1}(rd);
+    transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
 }
 
 /* This is our definition of a known-good node. */
@@ -101,7 +101,7 @@ Node::received(time_point now, const Sp<net::Request>& req)
 }
 
 Sp<net::Request>
-Node::getRequest(const net::TransId& tid)
+Node::getRequest(Tid tid)
 {
     auto it = requests_.find(tid);
     return it != requests_.end() ? it->second : nullptr;
@@ -128,7 +128,7 @@ Node::setExpired()
     sockets_.clear();
 }
 
-SocketId
+Tid
 Node::openSocket(SocketCb&& cb)
 {
     if (++transaction_id == 0)
@@ -142,14 +142,14 @@ Node::openSocket(SocketCb&& cb)
 }
 
 Socket*
-Node::getSocket(SocketId id)
+Node::getSocket(Tid id)
 {
     auto it = sockets_.find(id);
     return it == sockets_.end() ? nullptr : &it->second;
 }
 
 void
-Node::closeSocket(SocketId id)
+Node::closeSocket(Tid id)
 {
     if (id) {
         sockets_.erase(id);

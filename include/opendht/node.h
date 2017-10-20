@@ -22,7 +22,6 @@
 #include "infohash.h" // includes socket structures
 #include "utils.h"
 #include "sockaddr.h"
-#include "net.h"
 
 #include <list>
 #include <map>
@@ -36,8 +35,8 @@ struct Socket;
 struct RequestAnswer;
 } /* namespace net */
 
+using Tid = uint32_t;
 using SocketCb = std::function<void(const Sp<Node>&, net::RequestAnswer&&)>;
-using SocketId = uint32_t;
 struct Socket {
     Socket() {}
     Socket(SocketCb&& on_receive) :
@@ -102,7 +101,7 @@ struct Node {
 
     void requested(const Sp<net::Request>& req);
     void received(time_point now, const Sp<net::Request>& req);
-    Sp<net::Request> getRequest(const net::TransId& tid);
+    Sp<net::Request> getRequest(Tid tid);
     void cancelRequest(const Sp<net::Request>& req);
 
     void setExpired();
@@ -116,16 +115,16 @@ struct Node {
      *
      * @return the socket.
      */
-    SocketId openSocket(SocketCb&& cb);
+    Tid openSocket(SocketCb&& cb);
 
-    Socket* getSocket(SocketId id);
+    Socket* getSocket(Tid id);
 
     /**
      * Closes a socket so that no further data will be red on that socket.
      *
      * @param socket  The socket to close.
      */
-    void closeSocket(SocketId id);
+    void closeSocket(Tid id);
 
     /**
      * Resets the state of the node so it's not expired anymore.
@@ -137,9 +136,9 @@ struct Node {
      *
      * @return the new id.
      */
-    uint16_t getNewTid() {
+    Tid getNewTid() {
         ++transaction_id;
-        return transaction_id == net::TransId::INVALID ? ++transaction_id : transaction_id;
+        return transaction_id ? ++transaction_id : transaction_id;
     }
 
     std::string toString() const;
@@ -164,11 +163,11 @@ private:
     time_point reply_time {time_point::min()};      /* time of last correct reply received */
     unsigned auth_errors {0};
     bool expired_ {false};
-    SocketId transaction_id;
+    Tid transaction_id;
     using TransactionDist = std::uniform_int_distribution<decltype(transaction_id)>;
 
-    std::map<net::TransId, Sp<net::Request>> requests_ {};
-    std::map<SocketId, Socket> sockets_;
+    std::map<Tid, Sp<net::Request>> requests_ {};
+    std::map<Tid, Socket> sockets_;
 };
 
 }

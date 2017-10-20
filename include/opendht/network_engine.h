@@ -27,7 +27,6 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
-#include "net.h"
 
 #include <vector>
 #include <string>
@@ -41,6 +40,7 @@ namespace net {
 
 struct Request;
 struct Socket;
+struct TransId;
 
 #ifndef MSG_CONFIRM
 #define MSG_CONFIRM 0
@@ -169,7 +169,7 @@ private:
     std::function<RequestAnswer(Sp<Node>,
             const InfoHash&,
             const Blob&,
-            uint32_t,
+            Tid,
             const Query&)> onListen {};
     /**
      * Called on announce request.
@@ -231,7 +231,7 @@ public:
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
      */
-    void tellListener(Sp<Node> n, uint32_t socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
+    void tellListener(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
             std::vector<Sp<Value>>&& values, const Query& q);
 
@@ -465,18 +465,18 @@ private:
     // basic wrapper for socket sendto function
     int send(const char *buf, size_t len, int flags, const SockAddr& addr);
 
-    void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
+    void sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
-    void maintainRxBuffer(const TransId& tid);
+    void maintainRxBuffer(Tid tid);
 
     /*************
      *  Answers  *
      *************/
     /* answer to a ping  request */
-    void sendPong(const SockAddr& addr, TransId tid);
+    void sendPong(const SockAddr& addr, Tid tid);
     /* answer to findnodes/getvalues request */
     void sendNodesValues(const SockAddr& addr,
-            TransId tid,
+            Tid tid,
             const Blob& nodes,
             const Blob& nodes6,
             const std::vector<Sp<Value>>& st,
@@ -490,12 +490,12 @@ private:
             std::vector<Sp<Node>>& nodes,
             std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, TransId tid);
+    void sendListenConfirmation(const SockAddr& addr, Tid tid);
     /* answer to put request */
-    void sendValueAnnounced(const SockAddr& addr, TransId, Value::Id);
+    void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */
     void sendError(const SockAddr& addr,
-            TransId tid,
+            Tid tid,
             uint16_t code,
             const std::string& message,
             bool include_id=false);
@@ -519,8 +519,8 @@ private:
     size_t limiter_maintenance {0};
 
     // requests handling
-    std::map<TransId, Sp<Request>> requests {};
-    std::map<TransId, PartialMessage> partial_messages;
+    std::map<Tid, Sp<Request>> requests {};
+    std::map<Tid, PartialMessage> partial_messages;
 
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};

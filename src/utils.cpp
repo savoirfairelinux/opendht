@@ -19,7 +19,6 @@
 #include "utils.h"
 #include "sockaddr.h"
 #include "default_types.h"
-#include "net.h"
 
 /* An IPv4 equivalent to IN6_IS_ADDR_UNSPECIFIED */
 #ifndef IN_IS_ADDR_UNSPECIFIED
@@ -159,20 +158,6 @@ findMapValue(msgpack::object& map, const std::string& key) {
             return &o.val;
     }
     return nullptr;
-}
-
-namespace net {
-
-TransId
-unpackTid(msgpack::object& o) {
-    switch (o.type) {
-    case msgpack::type::POSITIVE_INTEGER:
-        return o.as<uint32_t>();
-    default:
-        return o.as<std::array<char, 4>>();
-    }
-}
-
 }
 
 }

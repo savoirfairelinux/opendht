@@ -59,18 +59,19 @@ struct Request {
     State getState() const { return state_; }
 
     Request(State state = State::PENDING) : state_(state) {}
-    Request(const TransId& tid,
+    Request(MessageType type, Tid tid,
             Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<void(const Request&, bool)> on_expired,
-            uint32_t socket = 0) :
-        node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), socket(socket) { }
+            Tid socket = 0) :
+        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)), socket(socket) { }
 
-    TransId getTid() const { return tid; }
+    Tid getTid() const { return tid; }
+    MessageType getType() const { return type; }
 
-    uint32_t getSocket() { return socket; }
-    uint32_t closeSocket() { auto ret = socket; socket = 0; return ret; }
+    Tid getSocket() { return socket; }
+    Tid closeSocket() { auto ret = socket; socket = 0; return ret; }
 
     void setExpired() {
         if (pending()) {
@@ -107,6 +108,8 @@ private:
         msg.clear();
     }
 
+    const Tid tid {0}; /* the request id. */
+    const MessageType type {};
     State state_ {State::PENDING};
 
     unsigned attempt_count {0};                /* number of attempt to process the request. */
@@ -116,9 +119,8 @@ private:
     std::function<void(const Request&, ParsedMessage&&)> on_done {};
     std::function<void(const Request&, bool)> on_expired {};
 
-    const TransId tid; /* the request id. */
     Blob msg {};                      /* the serialized message. */
-    uint32_t socket;   /* the socket used for further reponses. */
+    Tid socket;   /* the socket used for further reponses. */
 };
 
 } /* namespace net  */
