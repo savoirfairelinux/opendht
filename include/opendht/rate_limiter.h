@@ -23,12 +23,12 @@
 
 namespace dht {
 
-template<size_t Quota, unsigned long Perdiod=1>
+template<size_t Quota, unsigned long Period=1>
 class RateLimiter {
 public:
     /** Clear outdated records and return current quota usage */
     size_t maintain(const time_point& now) {
-        auto limit = now - std::chrono::seconds(Perdiod);
+        auto limit = now - std::chrono::seconds(Period);
         while (not records.empty() and records.front() < limit)
             records.pop();
         return records.size();
