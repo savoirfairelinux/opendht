@@ -1291,9 +1291,16 @@ Dht::expireStore()
                 DHT_LOG.w("Discarded %ld bytes, still %ld used", largest->first.toString().c_str(), total_store_size);
                 if (ret.values_diff)
                     break;
-            } else
-                std::cout << "exp_value not found " << exp_value.first << std::endl;
+            }
         }
+    }
+
+    // remove unused quota entires
+    for (auto i = store_quota.begin(); i != store_quota.end();) {
+        if (i->second.size() == 0)
+            i = store_quota.erase(i);
+        else
+            ++i;
     }
 }
 
