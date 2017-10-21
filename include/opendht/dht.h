@@ -428,7 +428,6 @@ private:
 
     void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
     std::string printStorageLog(const decltype(store)::value_type&) const;
-    void printStorageQuota(std::ostream& out, const decltype(store_quota)::value_type& ip) const;
 
     /**
      * For a given storage, if values don't belong there anymore because this

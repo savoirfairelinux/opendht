@@ -1256,8 +1256,7 @@ void
 Dht::expireStore()
 {
     // removing expired values
-    auto i = store.begin();
-    while (i != store.end()) {
+    for (auto i = store.begin(); i != store.end();) {
         expireStore(i);
 
         if (i->second.empty() && i->second.listeners.empty() && i->second.local_listeners.empty()) {
@@ -1541,12 +1540,6 @@ Dht::dumpTables() const
     DHT_LOG.d("%s", out.str().c_str());
 }
 
-void
-Dht::printStorageQuota(std::ostream& out, const decltype(store_quota)::value_type& ip) const
-{
-    out << "IP " << ip.first.toString() << " uses " << ip.second.size() << " bytes" << std::endl;
-}
-
 std::string
 Dht::getStorageLog() const
 {
@@ -1559,9 +1552,12 @@ Dht::getStorageLog() const
     else
         out << (total_store_size/1024) << " KB)";
     out << std::endl << std::endl;
-    for (const auto& ip : store_quota) {
-        printStorageQuota(out, ip);
-    }
+    std::multimap<size_t, const SockAddr*> q_map;
+    for (const auto& ip : store_quota)
+        if (ip.second.size())
+            q_map.emplace(ip.second.size(), &ip.first);
+    for (auto ip = q_map.rbegin(); ip != q_map.rend(); ++ip)
+        out << "IP " << ip->second->toString() << " uses " << ip->first << " bytes" << std::endl;
     out << std::endl;
     return out.str();
 }
@@ -1593,12 +1589,7 @@ Dht::printStorageLog(const decltype(store)::value_type& s) const
     const auto& now = scheduler.time();
     for (const auto& node_listeners : st.listeners) {
         const auto& node = node_listeners.first;
-        for (const auto& l : node_listeners.second) {
-            out << "   " << "Listener " << node->toString();
-            auto since = duration_cast<seconds>(now - l.second.time);
-            auto expires = duration_cast<seconds>(l.second.time + Node::NODE_EXPIRE_TIME - now);
-            out << " (since " << since.count() << "s, exp in " << expires.count() << "s)" << std::endl;
-        }
+        out << "   " << "Listener " << node->toString() << " : " << node_listeners.second.size() << " entries" << std::endl;
     }
     return out.str();
 }
@@ -2214,7 +2205,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
             net::DhtProtocolException::LISTEN_NO_INFOHASH
         };
     }
-    if (!tokenMatch(token, node->getAddr())) {
+    if (not tokenMatch(token, node->getAddr())) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'listen'", node->toString().c_str(), hash.toString().c_str());
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
