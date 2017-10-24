@@ -48,6 +48,11 @@ Makefile.in
 
 # Python
 *.pyc
+python/opendht.cpp
+python/setup.py
+
+# Doxygen
+doc/Doxyfile
 
 # git backup files
 *.orig

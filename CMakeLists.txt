@@ -104,6 +104,7 @@ list (APPEND opendht_SOURCES
     src/node.cpp
     src/value.cpp
     src/dht.cpp
+    src/dhtproxyserver.cpp
     src/storage.h
     src/listener.h
     src/search.h
@@ -131,6 +132,7 @@ list (APPEND opendht_HEADERS
     include/opendht/node.h
     include/opendht/value.h
     include/opendht/dht.h
+    include/opendht/dhtproxyserver.h
     include/opendht/callbacks.h
     include/opendht/routing_table.h
     include/opendht/node_cache.h
@@ -177,7 +179,8 @@ if (OPENDHT_STATIC)
         target_link_libraries(opendht-static ${argon2_LIBRARIES})
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
+    # TODO clean RESTBED link
+    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} -lrestbed)
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -198,7 +201,8 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
+    # TODO clean RESTBED link
+    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} -lrestbed)
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
