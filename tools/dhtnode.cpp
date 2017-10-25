@@ -165,7 +165,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         if (op.empty())
             continue;
 
-        static const std::set<std::string> VALID_OPS {"g", "l", "il", "ii", "p", "s", "e", "a"};
+        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "s", "e", "a"};
         if (VALID_OPS.find(op) == VALID_OPS.cend()) {
             std::cout << "Unknown command: " << op << std::endl;
             std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
@@ -236,11 +236,19 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         else if (op == "l") {
             std::string rem;
             std::getline(iss, rem);
-            dht->listen(id, [](std::shared_ptr<Value> value) {
+            auto token = dht->listen(id, [](std::shared_ptr<Value> value) {
                 std::cout << "Listen: found value:" << std::endl;
                 std::cout << "\t" << *value << std::endl;
                 return true;
             }, {}, dht::Where {std::move(rem)});
+            std::cout << "Listening, token: " << token.get() << std::endl;
+        }
+        else if (op == "cl") {
+            std::string rem;
+            iss >> rem;
+            size_t token = std::stoul(rem);
+            std::cout << "Cancel listen, token: " << token << " " << rem << std::endl;
+            dht->cancelListen(id, token);
         }
         else if (op == "p") {
             std::string v;

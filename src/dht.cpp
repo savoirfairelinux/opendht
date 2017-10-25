@@ -1586,7 +1586,6 @@ Dht::printStorageLog(const decltype(store)::value_type& s) const
                       << st.totalSize() << " bytes)" << std::endl;
     if (not st.local_listeners.empty())
         out << "   " << st.local_listeners.size() << " local listeners" << std::endl;
-    const auto& now = scheduler.time();
     for (const auto& node_listeners : st.listeners) {
         const auto& node = node_listeners.first;
         out << "   " << "Listener " << node->toString() << " : " << node_listeners.second.size() << " entries" << std::endl;
@@ -1966,7 +1965,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                 throw msgpack::type_error();
             for (unsigned i = 0; i < valarr.via.array.size; i++) {
                 auto& valel = valarr.via.array.ptr[i];
-                if (valel.via.array.size < 2)
+                if (valel.type != msgpack::type::ARRAY or valel.via.array.size < 2)
                     throw msgpack::type_error();
                 time_point val_time;
                 Value tmp_val;
