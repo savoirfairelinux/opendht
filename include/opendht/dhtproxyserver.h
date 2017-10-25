@@ -28,6 +28,7 @@ public:
 private:
     void getId(const std::shared_ptr<restbed::Session>& session) const;
     void getNodeId(const std::shared_ptr<restbed::Session>& session) const;
+    void putSigned(const std::shared_ptr<restbed::Session>& session) const;
 
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
