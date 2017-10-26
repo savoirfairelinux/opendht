@@ -20,6 +20,12 @@
 
 namespace dht {
 
+NodeCache::~NodeCache()
+{
+    cache_4.setExpired();
+    cache_6.setExpired();
+}
+
 Sp<Node>
 NodeCache::getNode(const InfoHash& id, sa_family_t family) {
     return cache(family).getNode(id);
@@ -114,6 +120,14 @@ NodeCache::NodeMap::clearBadNodes() {
             erase(it++);
         }
     }
+}
+
+void
+NodeCache::NodeMap::setExpired() {
+    for (auto& wn : *this)
+        if (auto n = wn.second.lock())
+            n->setExpired();
+    clear();
 }
 
 }

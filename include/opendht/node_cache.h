@@ -37,12 +37,15 @@ struct NodeCache {
      */
     void clearBadNodes(sa_family_t family = 0);
 
+    ~NodeCache();
+
 private:
     class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
     public:
         Sp<Node> getNode(const InfoHash& id);
         Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
         void clearBadNodes();
+        void setExpired();
     };
 
     const NodeMap& cache(sa_family_t af) const { return af == AF_INET ? cache_4 : cache_6; }
