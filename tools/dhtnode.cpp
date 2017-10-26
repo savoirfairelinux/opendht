@@ -62,6 +62,7 @@ void print_help() {
               << "  g <key>               Get values at <key>." << std::endl
               << "  l <key>               Listen for value changes at <key>." << std::endl
               << "  p <key> <str>         Put string value at <key>." << std::endl
+              << "  pp <key> <str>        Put string value at <key> (persistent version)." << std::endl
               << "  s <key> <str>         Put string value at <key>, signed with our generated private key." << std::endl
               << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl;
     std::cout << std::endl << "Indexation operations on the DHT:" << std::endl
@@ -165,7 +166,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         if (op.empty())
             continue;
 
-        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "s", "e", "a"};
+        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "pp", "cpp", "s", "e", "a"};
         if (VALID_OPS.find(op) == VALID_OPS.cend()) {
             std::cout << "Unknown command: " << op << std::endl;
             std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
@@ -246,9 +247,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         else if (op == "cl") {
             std::string rem;
             iss >> rem;
-            size_t token = std::stoul(rem);
-            std::cout << "Cancel listen, token: " << token << " " << rem << std::endl;
-            dht->cancelListen(id, token);
+            dht->cancelListen(id, std::stoul(rem));
         }
         else if (op == "p") {
             std::string v;
@@ -260,6 +259,25 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Put: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
+        }
+        else if (op == "pp") {
+            std::string v;
+            iss >> v;
+            auto value = std::make_shared<dht::Value>(
+                dht::ValueType::USER_DATA.id,
+                std::vector<uint8_t> {v.begin(), v.end()}
+            );
+            dht->put(id, value, [start,value](bool ok) {
+                auto end = std::chrono::high_resolution_clock::now();
+                auto flags(std::cout.flags());
+                std::cout << "Put: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s). Value ID: " << std::hex << value->id << std::endl;
+                std::cout.flags(flags);
+            }, time_point::max(), true);
+        }
+        else if (op == "cpp") {
+            std::string rem;
+            iss >> rem;
+            dht->cancelPut(id, std::stoul(rem, nullptr, 16));
         }
         else if (op == "s") {
             if (not params.generate_identity) {
