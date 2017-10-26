@@ -28,6 +28,11 @@ public:
 private:
     /**
      * Method: GET
+     * PathParameter: hash
+     */
+    void get(const std::shared_ptr<restbed::Session>& session) const;
+    /**
+     * Method: GET
      */
     void getId(const std::shared_ptr<restbed::Session>& session) const;
     /**

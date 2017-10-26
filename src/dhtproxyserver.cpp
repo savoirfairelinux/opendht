@@ -16,6 +16,15 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
     service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
 
     auto resource = std::make_shared<restbed::Resource>();
+    resource->set_path("/get/{hash: .*}");
+    resource->set_method_handler("GET",
+        [this](const std::shared_ptr<restbed::Session> session)
+        {
+            this->get(session);
+        }
+    );
+    service_->publish(resource);
+    resource = std::make_shared<restbed::Resource>();
     resource->set_path("/getId");
     resource->set_method_handler("GET",
         [this](const std::shared_ptr<restbed::Session> session)
@@ -81,8 +90,35 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
 
 DhtProxyServer::~DhtProxyServer()
 {
+    service_->stop();
     if (server_thread.joinable())
         server_thread.join();
+}
+
+void
+DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
+{
+    const auto request = session->get_request();
+
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+
+    session->fetch(content_length,
+        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        {
+            if (dht_) {
+                dht_->get(InfoHash(hash), [s](std::shared_ptr<Value> value) {
+                    s->yield(restbed::OK,  value->toString());
+                    return true;
+                }, [s](bool ok) {
+                    auto response = std::to_string(ok);
+                    s->close(restbed::OK, response);//);
+                });
+            } else {
+                s->close(restbed::NOT_FOUND, "");
+            }
+        }
+    );
 }
 
 void
@@ -97,9 +133,9 @@ DhtProxyServer::getId(const std::shared_ptr<restbed::Session>& session) const
         {
             if (dht_) {
                 auto id = dht_->getId().toString();
-                s->close(restbed::OK, id, {{"Content-Length", std::to_string(id.length())}});
+                s->close(restbed::OK, id);
             } else {
-                s->close(restbed::NOT_FOUND, "", {{"Content-Length", "0"}});
+                s->close(restbed::NOT_FOUND, "");
             }
         }
     );
@@ -117,9 +153,9 @@ DhtProxyServer::getNodeId(const std::shared_ptr<restbed::Session>& session) cons
         {
             if (dht_) {
                 auto id = dht_->getNodeId().toString();
-                s->close(restbed::OK, id, {{"Content-Length", std::to_string(id.length())}});
+                s->close(restbed::OK, id);
             } else {
-                s->close(restbed::NOT_FOUND, "", {{"Content-Length", "0"}});
+                s->close(restbed::NOT_FOUND, "");
             }
         }
     );
@@ -138,7 +174,7 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
             if (dht_) {
                 if(b.empty()) {
                     std::string response("Missing parameters");
-                    s->close(restbed::BAD_REQUEST, response, {{"Content-Length", std::to_string(response.size())}});
+                    s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
 
@@ -164,10 +200,10 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                     auto value = std::make_shared<Value>(msg.get());
 
                     dht_->putSigned(hash, value);
-                    s->close(restbed::OK, "", {{"Content-Length", "0"}});
+                    s->close(restbed::OK, "");
                 }
             } else {
-                s->close(restbed::NOT_FOUND, "", {{"Content-Length", "0"}});
+                s->close(restbed::NOT_FOUND, "");
             }
         }
     );
@@ -186,7 +222,7 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
             if (dht_) {
                 if(b.empty()) {
                     std::string response("Missing parameters");
-                    s->close(restbed::BAD_REQUEST, response, {{"Content-Length", std::to_string(response.size())}});
+                    s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
 
@@ -219,10 +255,10 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     auto value = std::make_shared<Value>(msg.get());
 
                     dht_->putEncrypted(hash, to, value);
-                    s->close(restbed::OK, "", {{"Content-Length", "0"}});
+                    s->close(restbed::OK, "");
                 }
             } else {
-                s->close(restbed::NOT_FOUND, "", {{"Content-Length", "0"}});
+                s->close(restbed::NOT_FOUND, "");
             }
         }
     );
@@ -242,7 +278,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
             if (dht_) {
                 if(b.empty()) {
                     std::string response("Missing parameters");
-                    s->close(restbed::BAD_REQUEST, response, {{"Content-Length", std::to_string(response.size())}});
+                    s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
 
@@ -269,10 +305,10 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
 
                     auto response = value->toString();
                     dht_->put(hash, value);
-                    s->close(restbed::OK, response, {{"Content-Length", std::to_string(response.length())}});
+                    s->close(restbed::OK, response);
                 }
             } else {
-                s->close(restbed::NOT_FOUND, "", {{"Content-Length", "0"}});
+                s->close(restbed::NOT_FOUND, "");
             }
         }
     );

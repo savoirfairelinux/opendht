@@ -364,7 +364,9 @@ public:
      */
     void join();
 
-    void startProxyInterface(); // TODO arguments
+    void startProxyInterface(); // TODO arguments and move in the constructor
+    void startProxyClient(const std::string& url);
+    void stopProxyClient();
 
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
@@ -396,6 +398,8 @@ private:
     std::vector<std::pair<Blob, SockAddr>> rcv {};
 
     std::unique_ptr<DhtProxyServer> proxy_server_;
+    std::atomic_bool proxyfing {false};
+
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};
     /* bootstrap nodes given as (host, service) pairs */

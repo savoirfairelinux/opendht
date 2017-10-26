@@ -807,4 +807,17 @@ DhtRunner::startProxyInterface()
     proxy_server_ = std::unique_ptr<DhtProxyServer>(new DhtProxyServer(this));
 }
 
+void
+DhtRunner::startProxyClient(const std::string& url)
+{
+    proxyfing = true;
+    // TODO DhtProxyClient
+}
+
+void
+DhtRunner::stopProxyClient()
+{
+    proxyfing = false;
+}
+
 }
