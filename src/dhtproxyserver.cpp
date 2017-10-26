@@ -2,11 +2,14 @@
 
 #include "dhtproxyserver.h"
 
+#include <chrono>
 #include <functional>
 
 #include "default_types.h"
 #include "dhtrunner.h"
 #include "msgpack.hpp"
+
+#include <iostream>
 
 namespace dht {
 
@@ -43,6 +46,15 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
     );
     service_->publish(resource);
     resource = std::make_shared<restbed::Resource>();
+    resource->set_path("/listen/{hash: .*}");
+    resource->set_method_handler("GET",
+        [this](const std::shared_ptr<restbed::Session> session)
+        {
+            this->listen(session);
+        }
+    );
+    service_->publish(resource);
+    resource = std::make_shared<restbed::Resource>();
     resource->set_path("/putSigned");
     resource->set_method_handler("PUT",
         [this](const std::shared_ptr<restbed::Session> session)
@@ -75,6 +87,8 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
         settings->set_default_header("Connection", "close");
         int port = 1984;
         int started = false;
+        std::chrono::seconds sec(3600);
+        settings->set_connection_timeout(sec); // TODO
         while (!started)
         {
             try {
@@ -154,6 +168,29 @@ DhtProxyServer::getNodeId(const std::shared_ptr<restbed::Session>& session) cons
             if (dht_) {
                 auto id = dht_->getNodeId().toString();
                 s->close(restbed::OK, id);
+            } else {
+                s->close(restbed::NOT_FOUND, "");
+            }
+        }
+    );
+}
+
+void
+DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
+{
+    const auto request = session->get_request();
+
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+
+    session->fetch(content_length,
+        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        {
+            if (dht_) {
+                dht_->listen(InfoHash(hash), [s](std::shared_ptr<Value> value) {
+                    s->yield(restbed::OK,  value->toString());
+                    return true;
+                });
             } else {
                 s->close(restbed::NOT_FOUND, "");
             }

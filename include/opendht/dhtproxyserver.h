@@ -40,6 +40,11 @@ private:
      */
     void getNodeId(const std::shared_ptr<restbed::Session>& session) const;
     /**
+     * Method: GET
+     * PathParameter: hash
+     */
+    void listen(const std::shared_ptr<restbed::Session>& session) const;
+    /**
      * Method: PUT
      * Body: vector of unsigned char
      * first line: InfoHash hash
