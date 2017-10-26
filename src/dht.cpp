@@ -386,11 +386,12 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
     std::weak_ptr<Search> ws = sr;
     const auto& now = scheduler.time();
     for (auto& n : sr->nodes) {
-        auto something_to_announce = std::find_if(sr->announce.cbegin(), sr->announce.cend(),
-            [this,&now,&sr,&n](const Announce& a) {
-                return n.isSynced(now) and n.getAnnounceTime(a.value->id) <= now;
-            }) != sr->announce.cend();
-        if (not something_to_announce)
+        if (not n.isSynced(now))
+            continue;
+        if (std::find_if(sr->announce.cbegin(), sr->announce.cend(),
+            [this,&now,&n](const Announce& a) {
+                return n.getAnnounceTime(a.value->id) <= now;
+            }) == sr->announce.cend())
             continue;
 
         auto onDone = [this,ws](const net::Request& req, net::RequestAnswer&& answer)
@@ -409,62 +410,63 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         auto onSelectDone =
             [this,ws,onDone,onExpired](const net::Request& req, net::RequestAnswer&& answer) mutable
             { /* on probing done */
+                auto sr = ws.lock();
+                if (not sr) return;
+                auto sn = sr->getNode(req.node);
+                if (not sn) return;
+
                 const auto& now = scheduler.time();
-                if (auto sr = ws.lock()) {
-                    if (auto sn = sr->getNode(req.node)) {
-                        for (auto ait = sr->announce.begin(); ait != sr->announce.end();) {
-                            auto& a = *ait;
-                            if (sn->isSynced(now) and sn->getAnnounceTime(a.value->id) <= now) {
-                                bool hasValue {false};
-                                uint16_t seq_no = 0;
-                                try {
-                                    const auto& f = std::find_if(answer.fields.cbegin(), answer.fields.cend(),
-                                            [&a](const Sp<FieldValueIndex>& i){
-                                                return i->index.at(Value::Field::Id).getInt() == a.value->id;
-                                            });
-                                    if (f != answer.fields.cend() and *f) {
-                                        hasValue = true;
-                                        seq_no = static_cast<uint16_t>((*f)->index.at(Value::Field::SeqNum).getInt());
-                                    }
-                                } catch (std::out_of_range&) { }
-
-                                auto next_refresh_time = now + getType(a.value->type).expiration;
-                                /* only put the value if the node doesn't already have it */
-                                if (not hasValue or seq_no < a.value->seq) {
-                                    DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
-                                            sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                                    sn->acked[a.value->id] = std::make_pair(network_engine.sendAnnounceValue(sn->node,
-                                                                    sr->id,
-                                                                    a.value,
-                                                                    a.permanent ? time_point::max() : a.created,
-                                                                    sn->token,
-                                                                    onDone,
-                                                                    onExpired), next_refresh_time);
-                                } else if (hasValue and a.permanent) {
-                                    DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %d)",
-                                            sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                                    sn->acked[a.value->id] = std::make_pair(network_engine.sendRefreshValue(sn->node,
-                                                                    sr->id,
-                                                                    a.value->id,
-                                                                    sn->token,
-                                                                    onDone,
-                                                                    onExpired), next_refresh_time);
-                                } else {
-                                    DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %d). Aborting.",
-                                            sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                                    auto ack_req = std::make_shared<net::Request>(net::Request::State::COMPLETED);
-                                    ack_req->reply_time = now;
-                                    sn->acked[a.value->id] = std::make_pair(std::move(ack_req), next_refresh_time);
-
-                                    /* step to clear announces */
-                                    scheduler.edit(sr->nextSearchStep, now);
-                                }
-                            } else {
-                                /* Search is now unsynced. Let's call searchStep to sync again. */
-                                scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(now));
-                            }
-                            ++ait;
+                if (not sn->isSynced(now)) {
+                    /* Search is now unsynced. Let's call searchStep to sync again. */
+                    scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(now));
+                    return;
+                }
+                for (auto& a : sr->announce) {
+                    if (sn->getAnnounceTime(a.value->id) > now)
+                        continue;
+                    bool hasValue {false};
+                    uint16_t seq_no = 0;
+                    try {
+                        const auto& f = std::find_if(answer.fields.cbegin(), answer.fields.cend(),
+                                [&a](const Sp<FieldValueIndex>& i){
+                                    return i->index.at(Value::Field::Id).getInt() == a.value->id;
+                                });
+                        if (f != answer.fields.cend() and *f) {
+                            hasValue = true;
+                            seq_no = static_cast<uint16_t>((*f)->index.at(Value::Field::SeqNum).getInt());
                         }
+                    } catch (std::out_of_range&) { }
+
+                    auto next_refresh_time = now + getType(a.value->type).expiration;
+                    /* only put the value if the node doesn't already have it */
+                    if (not hasValue or seq_no < a.value->seq) {
+                        DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
+                                sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
+                        sn->acked[a.value->id] = std::make_pair(network_engine.sendAnnounceValue(sn->node,
+                                                        sr->id,
+                                                        a.value,
+                                                        a.permanent ? time_point::max() : a.created,
+                                                        sn->token,
+                                                        onDone,
+                                                        onExpired), next_refresh_time);
+                    } else if (hasValue and a.permanent) {
+                        DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %d)",
+                                sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
+                        sn->acked[a.value->id] = std::make_pair(network_engine.sendRefreshValue(sn->node,
+                                                        sr->id,
+                                                        a.value->id,
+                                                        sn->token,
+                                                        onDone,
+                                                        onExpired), next_refresh_time);
+                    } else {
+                        DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %d). Aborting.",
+                                sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
+                        auto ack_req = std::make_shared<net::Request>(net::Request::State::COMPLETED);
+                        ack_req->reply_time = now;
+                        sn->acked[a.value->id] = std::make_pair(std::move(ack_req), next_refresh_time);
+
+                        /* step to clear announces */
+                        scheduler.edit(sr->nextSearchStep, now);
                     }
                 }
             };
