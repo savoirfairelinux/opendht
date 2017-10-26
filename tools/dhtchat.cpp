@@ -20,8 +20,6 @@
 #include "tools_common.h"
 #include <opendht/rng.h>
 
-#include <iostream>
-
 extern "C" {
 #include <gnutls/gnutls.h>
 }
@@ -133,17 +131,7 @@ main(int argc, char **argv)
                             std::cout << "Message publishing failed !" << std::endl;
                     });
                 } else {
-                    auto value = std::make_shared<Value>( dht::ImMessage(rand_id(rd), std::move(line), now));
-
-                    // TODO TEMP
-                    auto valueStr = packMsg(value);
-                    std::cout << std::endl;
-                    for (const auto& v: valueStr) {
-                        std::cout << "\\x" << std::hex << static_cast<int>(v);
-                    }
-                    std::cout << std::endl;
-
-                    dht.putSigned(room, value, [](bool ok) {
+                    dht.putSigned(room, dht::ImMessage(rand_id(rd), std::move(line), now), [](bool ok) {
                         //dht.cancelPut(room, id);
                         if (not ok)
                             std::cout << "Message publishing failed !" << std::endl;
