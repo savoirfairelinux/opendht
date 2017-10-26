@@ -743,8 +743,9 @@ Dht::announce(const InfoHash& id,
             n.probe_query.reset();
             n.acked[value->id].first.reset();
         }
-    }
-    else {
+    } else {
+        a_sr->permanent = permanent;
+        a_sr->created = created;
         if (a_sr->value != value) {
             a_sr->value = value;
             for (auto& n : sr->nodes) {
@@ -756,9 +757,8 @@ Dht::announce(const InfoHash& id,
             if (a_sr->callback)
                 a_sr->callback(true, {});
             a_sr->callback = {};
-            if (callback) {
+            if (callback)
                 callback(true, {});
-            }
             return;
         } else {
             if (a_sr->callback)
