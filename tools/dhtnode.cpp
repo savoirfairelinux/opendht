@@ -166,7 +166,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         if (op.empty())
             continue;
 
-        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "pp", "cpp", "s", "e", "a"};
+        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "pp", "cpp", "s", "e", "a",  "q"};
         if (VALID_OPS.find(op) == VALID_OPS.cend()) {
             std::cout << "Unknown command: " << op << std::endl;
             std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
