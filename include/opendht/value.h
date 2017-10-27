@@ -37,6 +37,9 @@
 #include <chrono>
 #include <set>
 
+
+#include <json/json.h>
+
 namespace dht {
 
 struct Value;
@@ -416,6 +419,8 @@ struct OPENDHT_PUBLIC Value
         ss << *this;
         return ss.str();
     }
+
+    Json::Value toJson() const;
 
     /** Return the size in bytes used by this value in memory (minimum). */
     size_t size() const;

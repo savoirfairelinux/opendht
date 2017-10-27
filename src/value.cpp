@@ -22,6 +22,10 @@
 #include "default_types.h"
 #include "securedht.h" // print certificate ID
 
+
+#include <json/json.h>
+
+
 namespace dht {
 
 const std::string Query::QUERY_PARSE_ERROR {"Error parsing query."};
@@ -165,6 +169,32 @@ Value::msgpack_unpack_body(const msgpack::object& o)
                 throw msgpack::type_error();
         }
     }
+}
+
+Json::Value
+Value::toJson() const
+{
+    // TODO check
+    Json::Value val;
+    val["id"] = std::to_string(id);
+    if (isEncrypted()) {
+        val["cypher"] = std::string(cypher.begin(), cypher.end());
+    } else {
+        if (isSigned())
+            val["sig"] = std::string(signature.begin(), signature.end());
+        bool has_owner = owner && *owner;
+        if (has_owner) { // isSigned
+            val["seq"] = seq;
+            val["owner"] = owner->toString();
+            if (recipient != InfoHash())
+                val["to"] = recipient.toString();
+        }
+        val["type"] = type;
+        val["data"] = std::string(data.begin(), data.end());
+        if (not user_type.empty())
+            val["utype"] = user_type;
+    }
+    return val;
 }
 
 bool
