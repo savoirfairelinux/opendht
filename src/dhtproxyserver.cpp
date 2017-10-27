@@ -10,6 +10,7 @@
 #include "msgpack.hpp"
 
 #include <iostream>
+#include <limits>
 
 namespace dht {
 
@@ -87,8 +88,8 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
         settings->set_default_header("Connection", "close");
         int port = 1984;
         int started = false;
-        std::chrono::seconds sec(3600);
-        settings->set_connection_timeout(sec); // TODO
+        std::chrono::milliseconds sec(std::numeric_limits<int>::max());
+        settings->set_connection_timeout(sec); // there is a timeout, but really huge
         while (!started)
         {
             try {
