@@ -83,6 +83,7 @@ include_directories (
     include/
     include/opendht/
     ${CMAKE_CURRENT_BINARY_DIR}/include/
+    /usr/include/jsoncpp
 )
 
 # Install dirs
@@ -179,8 +180,8 @@ if (OPENDHT_STATIC)
         target_link_libraries(opendht-static ${argon2_LIBRARIES})
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    # TODO clean RESTBED link
-    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} -lrestbed)
+    # TODO clean RESTBED link and jsoncpp
+    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} -lrestbed -ljsoncpp)
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -201,8 +202,8 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    # TODO clean RESTBED link
-    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} -lrestbed)
+    # TODO clean RESTBED link and jsoncpp
+    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} -lrestbed -ljsoncpp)
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
