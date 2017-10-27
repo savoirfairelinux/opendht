@@ -27,23 +27,38 @@ public:
 
 private:
     /**
-     * Method: GET
-     * PathParameter: hash
+     * Return the PublicKey id, the node id and node stats
+     * Method: GET "/"
+     * Result: HTTP 200, body: {"id":"xxxx", "node_id":"xxxx", "ipv4":"xxxxxx", "ipv6": "xxxxx"}
+     * On error: HTTP 404, body: {"err":"xxxx"}
+     */
+    void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
+    /**
+     * Return Values of a InfoHash
+     * Method: GET "/{InfoHash: .*}"
+     * Return: Multiple JSON object in parts. For 2 values, you will have 3 parts:
+     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * {"ok": 1}
+     *
+     * On error: HTTP 404, body: {"err":"xxxx"}
      */
     void get(const std::shared_ptr<restbed::Session>& session) const;
+
     /**
-     * Method: GET
-     */
-    void getId(const std::shared_ptr<restbed::Session>& session) const;
-    /**
-     * Method: GET
-     */
-    void getNodeId(const std::shared_ptr<restbed::Session>& session) const;
-    /**
-     * Method: GET
-     * PathParameter: hash
+     * Listen incoming Values of a InfoHash.
+     * Method: LISTEN "/{InfoHash: .*}"
+     * Return: Multiple JSON object in parts. For 2 values, you will have 2 parts:
+     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     *
+     * On error: HTTP 404, body: {"err":"xxxx"}
      */
     void listen(const std::shared_ptr<restbed::Session>& session) const;
+
+
+
+
     /**
      * Method: PUT
      * Body: vector of unsigned char
