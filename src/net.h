@@ -30,7 +30,8 @@ enum class MessageType {
     AnnounceValue,
     Refresh,
     Listen,
-    ValueData
+    ValueData,
+    ValueUpdate
 };
 
 } /* namespace net */

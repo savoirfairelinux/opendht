@@ -125,6 +125,7 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
 {
     auto y = findMapValue(msg, "y");
     auto r = findMapValue(msg, "r");
+    auto u = findMapValue(msg, "u");
     auto e = findMapValue(msg, "e");
     auto v = findMapValue(msg, "p");
 
@@ -153,6 +154,8 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         type = MessageType::Reply;
     else if (v)
         type = MessageType::ValueData;
+    else if (u)
+        type = MessageType::ValueUpdate;
     else if (y and y->as<std::string>() != "q")
         throw msgpack::type_error();
     else if (q == "ping")
@@ -185,9 +188,9 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
     }
 
     auto a = findMapValue(msg, "a");
-    if (!a && !r && !e)
+    if (!a && !r && !e && !u)
         throw msgpack::type_error();
-    auto& req = a ? *a : (r ? *r : *e);
+    auto& req = a ? *a : (r ? *r : (u ? *u : *e));
 
     if (e) {
         if (e->type != msgpack::type::ARRAY)

@@ -410,7 +410,16 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
     const auto& now = scheduler.time();
     auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
 
-    if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
+    if (msg->type == MessageType::ValueUpdate) {
+        auto rsocket = node->getSocket(msg->tid);
+        if (not rsocket)
+            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find socket", msg->id};
+        node->received(now, {});
+        onNewNode(node, 2);
+        deserializeNodes(*msg, from);
+        rsocket->on_receive(node, std::move(*msg));
+    }
+    else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         auto rsocket = node->getSocket(msg->tid);
         auto req = node->getRequest(msg->tid);
 
