@@ -105,6 +105,7 @@ list (APPEND opendht_SOURCES
     src/node.cpp
     src/value.cpp
     src/dht.cpp
+    src/base64.cpp
     src/dhtproxyserver.cpp
     src/storage.h
     src/listener.h
@@ -133,6 +134,7 @@ list (APPEND opendht_HEADERS
     include/opendht/node.h
     include/opendht/value.h
     include/opendht/dht.h
+    include/opendht/base64.h
     include/opendht/dhtproxyserver.h
     include/opendht/callbacks.h
     include/opendht/routing_table.h

@@ -33,6 +33,7 @@ private:
      * On error: HTTP 404, body: {"err":"xxxx"}
      */
     void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
+
     /**
      * Return Values of a InfoHash
      * Method: GET "/{InfoHash: .*}"
@@ -56,34 +57,35 @@ private:
      */
     void listen(const std::shared_ptr<restbed::Session>& session) const;
 
-
-
-
     /**
-     * Method: PUT
-     * Body: vector of unsigned char
-     * first line: InfoHash hash
-     * second line: Value value to sign and put
-     * @param session
-     */
-    void putSigned(const std::shared_ptr<restbed::Session>& session) const;
-    /**
-     * Method: PUT
-     * Body: vector of unsigned char
-     * first line: InfoHash hash
-     * second line: InfoHash to
-     * third line: Value value to encrypt and put
-     * @param session
-     */
-    void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
-    /**
-     * Method: PUT
-     * Body: vector of unsigned char
-     * first line: InfoHash hash
-     * second line: Value value to put
-     * @param session
+     * Put a value on the DHT
+     * Method: POST "/{InfoHash: .*}"
+     * body = Value to put in JSON
+     * Return: {"ok":"1"}
+     * On error: HTTP 404, body: {"err":"xxxx"} if no dht
+     * HTTP 400, body: {"err":"xxxx"} if bad json
      */
     void put(const std::shared_ptr<restbed::Session>& session) const;
+
+    /**
+     * Put a value to sign by the proxy on the DHT
+     * Method: SIGN "/{InfoHash: .*}"
+     * body = Value to put in JSON
+     * Return: {"ok":"1"}
+     * On error: HTTP 404, body: {"err":"xxxx"} if no dht
+     * HTTP 400, body: {"err":"xxxx"} if bad json
+     */
+    void putSigned(const std::shared_ptr<restbed::Session>& session) const;
+
+    /**
+     * Put a value to encrypt by the proxy on the DHT
+     * Method: ENCRYPT "/{InfoHash: .*}"
+     * body = Value to put in JSON
+     * Return: {"ok":"1"}
+     * On error: HTTP 404, body: {"err":"xxxx"} if no dht
+     * HTTP 400, body: {"err":"xxxx"} if bad json
+     */
+    void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
 
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;

@@ -24,6 +24,7 @@
 
 
 #include <json/json.h>
+#include <base64.h>
 
 
 namespace dht {
@@ -178,10 +179,10 @@ Value::toJson() const
     Json::Value val;
     val["id"] = std::to_string(id);
     if (isEncrypted()) {
-        val["cypher"] = std::string(cypher.begin(), cypher.end());
+        val["cypher"] = base64_encode(cypher.data(), cypher.size());
     } else {
         if (isSigned())
-            val["sig"] = std::string(signature.begin(), signature.end());
+            val["sig"] = base64_encode(signature.data(), signature.size());
         bool has_owner = owner && *owner;
         if (has_owner) { // isSigned
             val["seq"] = seq;
@@ -190,7 +191,7 @@ Value::toJson() const
                 val["to"] = recipient.toString();
         }
         val["type"] = type;
-        val["data"] = std::string(data.begin(), data.end());
+        val["data"] = base64_encode(data.data(), data.size());
         if (not user_type.empty())
             val["utype"] = user_type;
     }

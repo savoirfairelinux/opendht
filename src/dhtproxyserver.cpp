@@ -12,6 +12,8 @@
 #include <json/json.h>
 #include <limits>
 
+#include <iostream>
+
 namespace dht {
 
 DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
@@ -44,6 +46,27 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
                 this->listen(session);
             }
         );
+        resource->set_method_handler("POST",
+            [this](const std::shared_ptr<restbed::Session> session)
+            {
+                this->put(session);
+            }
+        );
+        resource->set_method_handler("SIGN",
+            [this](const std::shared_ptr<restbed::Session> session)
+            {
+                this->putSigned(session);
+            }
+        );
+        service_->publish(resource);
+        resource = std::make_shared<restbed::Resource>();
+        resource->set_path("/{hash: .*}/{hash: .*}");
+        resource->set_method_handler("ENCRYPT",
+            [this](const std::shared_ptr<restbed::Session> session)
+            {
+                this->putEncrypted(session);
+            }
+        );
         service_->publish(resource);
 
         // Start server
@@ -51,7 +74,8 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
         settings->set_default_header("Content-Type", "application/json");
         int port = 1984;
         int started = false;
-        std::chrono::milliseconds sec(std::numeric_limits<int>::max());
+        std::chrono::seconds sec(3600);
+        //std::chrono::milliseconds sec(std::numeric_limits<int>::max());
         settings->set_connection_timeout(sec); // there is a timeout, but really huge
         while (!started)
         {
@@ -153,20 +177,21 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
             }
         }
     );
-
     // TODO cancel listen at the end
 }
 
 
-
-
-
 void
-DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) const
+DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
 {
+    // TODO test with encrypted and signed value to send
+    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
-
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+    InfoHash infoHash(hash);
+    if (infoHash == INVALID_ID)
+        infoHash = InfoHash::get(hash);
 
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
@@ -177,30 +202,60 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
+                    Json::Value root;
+                    Json::Reader reader;
+                    std::string strJson(buf.begin(), buf.end());
+                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
+                    if (parsingSuccessful) {
+                        auto value = std::make_shared<Value>(root);
 
-                    unsigned char delimiter = static_cast<unsigned char>('\n');
-                    // Retrieve hash
-                    unsigned int idx = 0;
-                    std::vector<unsigned char> hashBuf;
-                    while(idx < buf.size() && buf[idx] != delimiter) {
-                        hashBuf.emplace_back(buf[idx]);
-                        ++idx;
+                        auto response = value->toString();
+                        dht_->put(infoHash, value);
+                        s->close(restbed::OK, response);
+                    } else {
+                        s->close(restbed::BAD_REQUEST, "Incorrect JSON");
                     }
-                    ++idx;
-                    // Retrieve value
-                    std::vector<unsigned char> valueBuf;
-                    while(idx < buf.size()) {
-                        valueBuf.emplace_back(buf[idx]);
-                        ++idx;
-                    }
-                    // Build parameters
-                    InfoHash hash(hashBuf.data(), hashBuf.size());
-                    msgpack::unpacked msg;
-                    msgpack::unpack(msg, reinterpret_cast<const char*>(valueBuf.data()), valueBuf.size());
-                    auto value = std::make_shared<Value>(msg.get());
+                }
+            } else {
+                s->close(restbed::NOT_FOUND, "");
+            }
+        }
+    );
+}
 
-                    dht_->putSigned(hash, value);
-                    s->close(restbed::OK, "");
+void
+DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) const
+{
+    static constexpr dht::InfoHash INVALID_ID {};
+    const auto request = session->get_request();
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+    InfoHash infoHash(hash);
+    if (infoHash == INVALID_ID)
+        infoHash = InfoHash::get(hash);
+
+    session->fetch(content_length,
+        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        {
+            if (dht_) {
+                if(b.empty()) {
+                    std::string response("Missing parameters");
+                    s->close(restbed::BAD_REQUEST, response);
+                } else {
+                    restbed::Bytes buf(b);
+                    Json::Value root;
+                    Json::Reader reader;
+                    std::string strJson(buf.begin(), buf.end());
+                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
+                    if (parsingSuccessful) {
+                        auto value = std::make_shared<Value>(root);
+
+                        auto response = value->toString();
+                        dht_->putSigned(infoHash, value);
+                        s->close(restbed::OK, response);
+                    } else {
+                        s->close(restbed::BAD_REQUEST, "Incorrect JSON" + strJson);
+                    }
                 }
             } else {
                 s->close(restbed::NOT_FOUND, "");
@@ -212,9 +267,17 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
 void
 DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) const
 {
+    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
-
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+    InfoHash infoHash(hash);
+    if (infoHash == INVALID_ID)
+        infoHash = InfoHash::get(hash);
+    auto toHash = request->get_path_parameter("to");
+    InfoHash toInfoHash(toHash);
+    if (toInfoHash == INVALID_ID)
+        toInfoHash = InfoHash::get(toHash);
 
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
@@ -225,87 +288,19 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
+                    Json::Value root;
+                    Json::Reader reader;
+                    std::string strJson(buf.begin(), buf.end());
+                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
+                    if (parsingSuccessful) {
+                        auto value = std::make_shared<Value>(root);
 
-                    unsigned char delimiter = static_cast<unsigned char>('\n');
-                    // Retrieve hash
-                    unsigned int idx = 0;
-                    std::vector<unsigned char> hashBuf;
-                    while(idx < buf.size() && buf[idx] != delimiter) {
-                        hashBuf.emplace_back(buf[idx]);
-                        ++idx;
+                        auto response = value->toString();
+                        dht_->putEncrypted(infoHash, toInfoHash, value);
+                        s->close(restbed::OK, response);
+                    } else {
+                        s->close(restbed::BAD_REQUEST, "Incorrect JSON");
                     }
-                    ++idx;
-                    // Retrieve to
-                    std::vector<unsigned char> toBuf;
-                    while(idx < buf.size() && buf[idx] != delimiter) {
-                        toBuf.emplace_back(buf[idx]);
-                        ++idx;
-                    }
-                    ++idx;
-                    // Retrieve value
-                    std::vector<unsigned char> valueBuf;
-                    while(idx < buf.size()) {
-                        valueBuf.emplace_back(buf[idx]);
-                        ++idx;
-                    }
-                    InfoHash hash(hashBuf.data(), hashBuf.size());
-                    InfoHash to(toBuf.data(), toBuf.size());
-                    msgpack::unpacked msg;
-                    msgpack::unpack(msg, reinterpret_cast<const char*>(valueBuf.data()), valueBuf.size());
-                    auto value = std::make_shared<Value>(msg.get());
-
-                    dht_->putEncrypted(hash, to, value);
-                    s->close(restbed::OK, "");
-                }
-            } else {
-                s->close(restbed::NOT_FOUND, "");
-            }
-        }
-    );
-}
-
-void
-DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
-{
-    // TODO test with encrypted and signed value to send
-    const auto request = session->get_request();
-
-    int content_length = std::stoi(request->get_header("Content-Length", "0"));
-
-    session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
-        {
-            if (dht_) {
-                if(b.empty()) {
-                    std::string response("Missing parameters");
-                    s->close(restbed::BAD_REQUEST, response);
-                } else {
-                    restbed::Bytes buf(b);
-
-                    unsigned char delimiter = static_cast<unsigned char>('\n');
-                    // Retrieve hash
-                    unsigned int idx = 0;
-                    std::vector<unsigned char> hashBuf;
-                    while(idx < buf.size() && buf[idx] != delimiter) {
-                        hashBuf.emplace_back(buf[idx]);
-                        ++idx;
-                    }
-                    ++idx;
-                    // Retrieve value
-                    std::vector<unsigned char> valueBuf;
-                    while(idx < buf.size()) {
-                        valueBuf.emplace_back(buf[idx]);
-                        ++idx;
-                    }
-                    // Build parameters
-                    InfoHash hash(hashBuf.data(), hashBuf.size());
-                    msgpack::unpacked msg;
-                    msgpack::unpack(msg, reinterpret_cast<const char*>(valueBuf.data()), valueBuf.size());
-                    auto value = std::make_shared<Value>(msg.get());
-
-                    auto response = value->toString();
-                    dht_->put(hash, value);
-                    s->close(restbed::OK, response);
                 }
             } else {
                 s->close(restbed::NOT_FOUND, "");
