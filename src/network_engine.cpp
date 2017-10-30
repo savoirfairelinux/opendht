@@ -93,8 +93,6 @@ set_nonblocking(int fd, int nonblocking)
  * host order.
  */
 struct TransId final : public std::array<uint8_t, 4> {
-    static const constexpr uint16_t INVALID {0};
-
     TransId() { std::fill(begin(), end(), 0); }
     TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
     TransId(uint32_t id) {
@@ -105,7 +103,6 @@ struct TransId final : public std::array<uint8_t, 4> {
         return ntohl(*reinterpret_cast<const uint32_t*>(&(*this)[0]));
     }
 };
-
 
 
 struct NetworkEngine::PartialMessage {
