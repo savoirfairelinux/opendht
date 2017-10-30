@@ -93,6 +93,10 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
 DhtProxyServer::~DhtProxyServer()
 {
     service_->stop();
+    // listenThreads_ will stop because there is no more sessions
+    for (auto& listenThread: listenThreads_)
+        if (listenThread->joinable())
+            listenThread->join();
     if (server_thread.joinable())
         server_thread.join();
 }
@@ -169,15 +173,24 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                 Json::FastWriter writer;
                 token = dht_->listen(infoHash, [s, &writer](std::shared_ptr<Value> value) {
                     Json::Value result;
-                    s->yield(restbed::OK,  writer.write(value->toJson()));
-                    return true;
+                    if (!s->is_closed())
+                        s->yield(restbed::OK,  writer.write(value->toJson()));
+                    return !s->is_closed();
                 }).get();
+                // Handle client deconnection
+                listenThreads_.emplace_back(std::shared_ptr<std::thread>(
+                    new std::thread([&]() {
+                        while(!s->is_closed())
+                            std::this_thread::sleep_for(std::chrono::seconds(2));
+                        if (dht_)
+                            dht_->cancelListen(infoHash, token);
+                    }))
+                );
             } else {
                 s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
-    // TODO cancel listen at the end
 }
 
 
