@@ -229,13 +229,11 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         if (l == sizeof(in_addr)) {
             addr.setFamily(AF_INET);
             auto& a = addr.getIPv4();
-            std::fill_n((uint8_t*)&a, sizeof(a), 0);
             a.sin_port = 0;
             std::copy_n(sa->via.bin.ptr, l, (char*)&a.sin_addr);
         } else if (l == sizeof(in6_addr)) {
             addr.setFamily(AF_INET6);
             auto& a = addr.getIPv6();
-            std::fill_n((uint8_t*)&a, sizeof(a), 0);
             a.sin6_port = 0;
             std::copy_n(sa->via.bin.ptr, l, (char*)&a.sin6_addr);
         }
