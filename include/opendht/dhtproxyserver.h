@@ -90,6 +90,7 @@ private:
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
     DhtRunner* dht_;
+    mutable std::vector<std::shared_ptr<std::thread>> listenThreads_;
 };
 
 }
