@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "base64.h"
 #include "infohash.h"
 #include "crypto.h"
 #include "utils.h"
@@ -36,7 +37,6 @@
 #include <memory>
 #include <chrono>
 #include <set>
-
 
 #include <json/json.h>
 
@@ -348,6 +348,44 @@ struct OPENDHT_PUBLIC Value
      : id(id), type(t), data(std::move(data)) {}
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
+
+    Value(Json::Value& json) {
+
+        try {
+            if (json.isMember("id"))
+                id = ValueType::Id(json["id"].asInt());
+        } catch (...) { }
+        if (json.isMember("cypher")) {
+            auto cypherStr = json["cypher"].asString();
+            cypherStr = base64_decode(cypherStr);
+            cypher = std::vector<unsigned char>(cypherStr.begin(), cypherStr.end());
+        }
+        if (json.isMember("sig")) {
+            auto sigStr = json["sig"].asString();
+            sigStr = base64_decode(sigStr);
+            signature = std::vector<unsigned char>(sigStr.begin(), sigStr.end());
+        }
+        if (json.isMember("seq"))
+            seq = json["seq"].asInt();
+        if (json.isMember("owner")) {
+            auto ownerStr = json["owner"].asString();
+            auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
+            owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
+        }
+        if (json.isMember("to")) {
+            auto toStr = json["to"].asString();
+            recipient = InfoHash(toStr);
+        }
+        if (json.isMember("type"))
+            type = json["type"].asInt();
+        if (json.isMember("data")){
+            auto dataStr = json["data"].asString();
+            dataStr = base64_decode(dataStr);
+            data = std::vector<unsigned char>(dataStr.begin(), dataStr.end());
+        }
+        if (json.isMember("utype"))
+            user_type = json["utype"].asString();
+    }
 
     template <typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
