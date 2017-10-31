@@ -79,13 +79,25 @@ private:
 
     /**
      * Put a value to encrypt by the proxy on the DHT
-     * Method: ENCRYPT "/{InfoHash: .*}"
-     * body = Value to put in JSON
+     * Method: ENCRYPT "/{hash: .*}"
+     * body = Value to put in JSON + "to":"infoHash"
      * Return: {"ok":"1"}
      * On error: HTTP 404, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
      */
     void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
+
+    /**
+     * Return Values of a InfoHash filtered by a value id
+     * Method: GET "/{InfoHash: .*}/{ValueId: .*}"
+     * Return: Multiple JSON object in parts. For 2 values, you will have 3 parts:
+     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * {"ok": 1}
+     *
+     * On error: HTTP 404, body: {"err":"xxxx"}
+     */
+    void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
 
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;

@@ -52,19 +52,26 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
                 this->put(session);
             }
         );
+        // NOTE/TODO ENCRYPT AND SIGN must be optionnal
         resource->set_method_handler("SIGN",
             [this](const std::shared_ptr<restbed::Session> session)
             {
                 this->putSigned(session);
             }
         );
-        service_->publish(resource);
-        resource = std::make_shared<restbed::Resource>();
-        resource->set_path("/{hash: .*}/{hash: .*}");
         resource->set_method_handler("ENCRYPT",
             [this](const std::shared_ptr<restbed::Session> session)
             {
                 this->putEncrypted(session);
+            }
+        );
+        service_->publish(resource);
+        resource = std::make_shared<restbed::Resource>();
+        resource->set_path("/{hash: .*}/{value: .*}");
+        resource->set_method_handler("GET",
+            [this](const std::shared_ptr<restbed::Session> session)
+            {
+                this->getFiltered(session);
             }
         );
         service_->publish(resource);
@@ -287,10 +294,6 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
     InfoHash infoHash(hash);
     if (infoHash == INVALID_ID)
         infoHash = InfoHash::get(hash);
-    auto toHash = request->get_path_parameter("to");
-    InfoHash toInfoHash(toHash);
-    if (toInfoHash == INVALID_ID)
-        toInfoHash = InfoHash::get(toHash);
 
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
@@ -305,18 +308,58 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
                     bool parsingSuccessful = reader.parse(strJson.c_str(), root);
-                    if (parsingSuccessful) {
+                    auto toHash = root["to"].asString();
+                    if (parsingSuccessful && !toHash.empty()) {
                         auto value = std::make_shared<Value>(root);
+                        auto toHash = request->get_path_parameter("to");
+                        InfoHash toInfoHash(toHash);
+                        if (toInfoHash == INVALID_ID)
+                            toInfoHash = InfoHash::get(toHash);
 
                         auto response = value->toString();
                         dht_->putEncrypted(infoHash, toInfoHash, value);
                         s->close(restbed::OK, response);
                     } else {
-                        s->close(restbed::BAD_REQUEST, "Incorrect JSON");
+                        if(!parsingSuccessful)
+                            s->close(restbed::BAD_REQUEST, "Incorrect JSON");
+                        else
+                            s->close(restbed::BAD_REQUEST, "No destination found");
                     }
                 }
             } else {
                 s->close(restbed::NOT_FOUND, "");
+            }
+        }
+    );
+}
+
+void
+DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) const
+{
+    static constexpr dht::InfoHash INVALID_ID {};
+    const auto request = session->get_request();
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+    auto value = request->get_path_parameter("value");
+    session->fetch(content_length,
+        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        {
+            if (dht_) {
+                InfoHash infoHash(hash);
+                if (infoHash == INVALID_ID) {
+                    infoHash = InfoHash::get(hash);
+                }
+                Json::FastWriter writer;
+                dht_->get(infoHash, [s, &writer](std::shared_ptr<Value> value) {
+                    Json::Value result;
+                    s->yield(restbed::OK,  writer.write(value->toJson()));
+                    return true;
+                }, [s, &writer](bool ok) {
+                    auto response = std::to_string(ok);
+                    s->close(restbed::OK, "{\"ok\": " + response + "}");
+                }, {}, value);
+            } else {
+                s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
