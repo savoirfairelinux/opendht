@@ -1,7 +1,7 @@
 <img src="https://raw.githubusercontent.com/savoirfairelinux/opendht/master/resources/opendht_logo_512.png" width="100" align="right">
 <br>
 <h1 style="margin-top:10px">
-    <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT 
+    <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
 A lightweight C++11 Distributed Hash Table implementation originally based on https://github.com/jech/dht by Juliusz Chroboczek.
@@ -18,7 +18,7 @@ See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
 #### How-to build and install
 
-Build instructions : <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
+Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
 
 #### How-to build a simple client app
 ```bash
@@ -93,6 +93,10 @@ for r in results:
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, macOS).
 - Build tested with Microsoft Visual Studio 2015
+
+### Optional dependencies
+- restbed 4.0+, used for the REST API.
+- jsoncpp 1.7.4-3+, used for the REST API.
 
 ## Contact
 

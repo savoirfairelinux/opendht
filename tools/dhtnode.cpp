@@ -59,8 +59,8 @@ void print_help() {
 
 #if OPENDHT_PROXY_SERVER
     std::cout << std::endl << "Operations with the proxy:" << std::endl
-              << "  psr [port]            Start the proxy interface on port." << std::endl
-              << "  pst                   Stop the proxy interface." << std::endl;
+              << "  pst [port]            Start the proxy interface on port." << std::endl
+              << "  psp                   Stop the proxy interface." << std::endl;
 #endif //OPENDHT_PROXY_SERVER
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
@@ -170,7 +170,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             continue;
         }
 #if OPENDHT_PROXY_SERVER
-        else if (op == "psr") {
+        else if (op == "pst") {
             iss >> idstr;
             try {
                 unsigned int port = std::stoi(idstr);
@@ -179,7 +179,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
                 dht->startProxyServer();
             }
             continue;
-        } else if (op == "pst") {
+        } else if (op == "psp") {
             dht->stopProxyServer();
             continue;
         }
