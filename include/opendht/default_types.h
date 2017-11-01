@@ -93,7 +93,7 @@ public:
     static Value::Filter getFilter() {
         return Value::Filter::chain(
             BaseClass::getFilter(),
-            [](const Value& v){ return v.recipient != InfoHash(); }
+            [](const Value& v) { return static_cast<bool>(v.recipient); }
         );
     }
 

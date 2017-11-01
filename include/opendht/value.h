@@ -424,11 +424,11 @@ struct OPENDHT_PUBLIC Value
     void msgpack_pack_to_sign(Packer& pk) const
     {
         bool has_owner = owner && *owner;
-        pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient == InfoHash() ? 4 : 5):2));
+        pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient ? 5 : 4):2));
         if (has_owner) { // isSigned
             pk.pack(std::string("seq"));   pk.pack(seq);
             pk.pack(std::string("owner")); owner->msgpack_pack(pk);
-            if (recipient != InfoHash()) {
+            if (recipient) {
                 pk.pack(std::string("to")); pk.pack(recipient);
             }
         }

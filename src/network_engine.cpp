@@ -206,7 +206,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     if (req.isExpired(now)) {
         DHT_LOG.e(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
-        if (node.id == zeroes)
+        if (not node.id)
             requests.erase(req.tid);
         return;
     } else if (req.attempt_count == 1) {
@@ -221,7 +221,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         err == EAFNOSUPPORT)
     {
         node.setExpired();
-        if (node.id == zeroes)
+        if (not node.id)
             requests.erase(req.tid);
     } else {
         if (err != EAGAIN) {
@@ -244,7 +244,7 @@ void
 NetworkEngine::sendRequest(const Sp<Request>& request)
 {
     auto& node = request->node;
-    if (node->id == zeroes)
+    if (not node->id)
         requests.emplace(request->tid, request);
     request->start = scheduler.time();
     node->requested(request);
@@ -373,7 +373,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         return;
     }
 
-    if (msg->id == myid || msg->id == zeroes) {
+    if (msg->id == myid or not msg->id) {
         DHT_LOG.d("Received message from self");
         return;
     }
@@ -426,7 +426,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         /* either response for a request or data for an opened socket */
         if (not req and not rsocket) {
             auto req_it = requests.find(msg->tid);
-            if (req_it != requests.end() and req_it->second->node->id == zeroes) {
+            if (req_it != requests.end() and not req_it->second->node->id) {
                 req = req_it->second;
                 req->node = node;
                 requests.erase(req_it);
@@ -451,7 +451,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 
         switch (msg->type) {
         case MessageType::Error: {
-            if (msg->id != zeroes and req and (
+            if (msg->id and req and (
                 (msg->error_code == DhtProtocolException::NOT_FOUND    and req->getType() == MessageType::Refresh) or
                 (msg->error_code == DhtProtocolException::UNAUTHORIZED and (req->getType() == MessageType::AnnounceValue
                                                                          or req->getType() == MessageType::Listen))))

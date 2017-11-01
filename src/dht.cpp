@@ -1655,7 +1655,7 @@ Dht::~Dht()
 Dht::Dht() : store(), scheduler(DHT_LOG), network_engine(DHT_LOG, scheduler) {}
 
 Dht::Dht(int s, int s6, Config config)
-    : myid(config.node_id != zeroes ? config.node_id : InfoHash::getRandom()),
+    : myid(config.node_id ? config.node_id : InfoHash::getRandom()),
     is_bootstrap(config.is_bootstrap),
     maintain_storage(config.maintain_storage), store(), store_quota(),
     scheduler(DHT_LOG),
@@ -2102,7 +2102,7 @@ Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
 net::RequestAnswer
 Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query)
 {
-    if (hash == zeroes) {
+    if (not hash) {
         DHT_LOG.w("[node %s] Eek! Got get_values with no info_hash", node->toString().c_str());
         throw net::DhtProtocolException {
             net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
@@ -2199,7 +2199,7 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
 net::RequestAnswer
 Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query)
 {
-    if (hash == zeroes) {
+    if (not hash) {
         DHT_LOG.w(node->id, "[node %s] listen with no info_hash", node->toString().c_str());
         throw net::DhtProtocolException {
             net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
@@ -2238,7 +2238,7 @@ Dht::onAnnounce(Sp<Node> n,
         const time_point& creation_date)
 {
     auto& node = *n;
-    if (hash == zeroes) {
+    if (not hash) {
         DHT_LOG.w(node.id, "put with no info_hash");
         throw net::DhtProtocolException {
             net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,

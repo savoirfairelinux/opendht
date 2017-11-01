@@ -33,7 +33,7 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 
 Sp<Node>
 NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client) {
-    if (id == zeroes)
+    if (not id)
         return std::make_shared<Node>(id, addr);
     return cache(addr.getFamily()).getNode(id, addr, now, confirm, client);
 }

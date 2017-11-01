@@ -35,7 +35,7 @@ namespace dht {
 Config& getConfig(SecureDht::Config& conf)
 {
     auto& c = conf.node_config;
-    if (c.node_id == InfoHash() and conf.id.second)
+    if (not c.node_id and conf.id.second)
         c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
     return c;
 }

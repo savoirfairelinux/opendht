@@ -138,7 +138,7 @@ using PkId = h256;
  */
 class OPENDHT_PUBLIC InfoHash final : public std::array<uint8_t, HASH_LEN> {
 public:
-    constexpr InfoHash() : std::array<uint8_t, HASH_LEN>() {}
+    constexpr InfoHash() : std::array<uint8_t, HASH_LEN>({{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}}) {}
     constexpr InfoHash(const std::array<uint8_t, HASH_LEN>& h) : std::array<uint8_t, HASH_LEN>(h) {}
     InfoHash(const uint8_t* h, size_t h_len) : std::array<uint8_t, HASH_LEN>() {
         if (h_len < HASH_LEN)
@@ -263,6 +263,16 @@ public:
         for(unsigned i = 0; i < HASH_LEN; i++) {
             if((*this)[i] != o[i])
                 return (*this)[i] < o[i];
+        }
+        return false;
+    }
+
+    explicit operator bool() const {
+        auto a = reinterpret_cast<const uint32_t*>(data());
+        auto b = reinterpret_cast<const uint32_t*>(data() + size());
+        for (; a != b; a++) {
+            if (*a)
+                return true;
         }
         return false;
     }

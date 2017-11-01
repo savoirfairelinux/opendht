@@ -41,7 +41,7 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
         s << "encrypted ";
     else if (v.isSigned()) {
         s << "signed (v" << v.seq << ") ";
-        if (v.recipient != InfoHash())
+        if (v.recipient)
             s << "decrypted ";
     }
     if (not v.isEncrypted()) {
