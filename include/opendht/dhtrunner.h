@@ -367,8 +367,15 @@ public:
     void join();
 
 #if OPENDHT_PROXY_SERVER
-    void startProxyInterface(unsigned int port=8000);
-    void stopProxyInterface();
+    /**
+     * Start the proxy server
+     * @param port used for the server
+     */
+    void startProxyServer(unsigned int port=8000);
+    /**
+     * Stop the proxy server
+     */
+    void stopProxyServer();
 #endif //OPENDHT_PROXY_SERVER
 
 private:

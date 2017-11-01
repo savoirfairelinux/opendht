@@ -176,14 +176,13 @@ Value::msgpack_unpack_body(const msgpack::object& o)
 Json::Value
 Value::toJson() const
 {
-    // TODO check
     Json::Value val;
     val["id"] = std::to_string(id);
     if (isEncrypted()) {
-        val["cypher"] = base64_encode(cypher.data(), cypher.size());
+        val["cypher"] = base64_encode(cypher);
     } else {
         if (isSigned())
-            val["sig"] = base64_encode(signature.data(), signature.size());
+            val["sig"] = base64_encode(signature);
         bool has_owner = owner && *owner;
         if (has_owner) { // isSigned
             val["seq"] = seq;
@@ -192,7 +191,7 @@ Value::toJson() const
                 val["to"] = recipient.toString();
         }
         val["type"] = type;
-        val["data"] = base64_encode(data.data(), data.size());
+        val["data"] = base64_encode(data);
         if (not user_type.empty())
             val["utype"] = user_type;
     }

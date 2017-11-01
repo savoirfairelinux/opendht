@@ -802,14 +802,14 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_p
 
 #if OPENDHT_PROXY_SERVER
 void
-DhtRunner::startProxyInterface(unsigned int port)
+DhtRunner::startProxyServer(unsigned int port)
 {
     // NOTE in c++14, use make_unique
     proxy_server_ = std::unique_ptr<DhtProxyServer>(new DhtProxyServer(this, port));
 }
 
 void
-DhtRunner::stopProxyInterface()
+DhtRunner::stopProxyServer()
 {
     if (proxy_server_)
         proxy_server_.reset(nullptr);

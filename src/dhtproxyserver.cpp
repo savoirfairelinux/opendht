@@ -1,4 +1,20 @@
-// TODO GPL
+/*
+ *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Author : Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 
 #if OPENDHT_PROXY_SERVER
 #include "dhtproxyserver.h"
@@ -117,6 +133,7 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
+            (void)b;
             if (dht_) {
                 Json::Value result;
                 result["id"] = dht_->getId().toString();
@@ -142,6 +159,7 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
+            (void)b;
             if (dht_) {
                 InfoHash infoHash(hash);
                 if (infoHash == INVALID_ID) {
@@ -149,10 +167,12 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                 }
                 Json::FastWriter writer;
                 dht_->get(infoHash, [s, &writer](std::shared_ptr<Value> value) {
+                    // Send values as soon as we get them
                     Json::Value result;
                     s->yield(restbed::OK,  writer.write(value->toJson()));
                     return true;
                 }, [s, &writer](bool ok) {
+                    // Communication is finished
                     auto response = std::to_string(ok);
                     s->close(restbed::OK, "{\"ok\": " + response + "}");
                 });
@@ -177,15 +197,17 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
+            (void)b;
             if (dht_) {
                 Json::FastWriter writer;
                 token = dht_->listen(infoHash, [s, &writer](std::shared_ptr<Value> value) {
-                    Json::Value result;
+                    // Send values as soon as we get them
                     if (!s->is_closed())
                         s->yield(restbed::OK,  writer.write(value->toJson()));
                     return !s->is_closed();
                 }).get();
                 // Handle client deconnection
+                // NOTE: for now, there is no handler, so we test the session in a thread
                 listenThreads_.emplace_back(std::shared_ptr<std::thread>(
                     new std::thread([&]() {
                         while(!s->is_closed())
@@ -205,7 +227,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
 void
 DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
 {
-    // TODO test with encrypted and signed value to send
+    // TODO test with the proxy client
     static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
@@ -228,6 +250,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                     std::string strJson(buf.begin(), buf.end());
                     bool parsingSuccessful = reader.parse(strJson.c_str(), root);
                     if (parsingSuccessful) {
+                        // Build the Value from json
                         auto value = std::make_shared<Value>(root);
 
                         auto response = value->toString();
@@ -347,6 +370,7 @@ DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) co
     session->fetch(content_length,
         [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
+            (void)b;
             if (dht_) {
                 InfoHash infoHash(hash);
                 if (infoHash == INVALID_ID) {

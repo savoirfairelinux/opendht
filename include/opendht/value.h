@@ -352,8 +352,11 @@ struct OPENDHT_PUBLIC Value
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
 
 #if OPENDHT_PROXY_SERVER
+    /**
+     * Build a value from a json object
+     * @param json
+     */
     Value(Json::Value& json) {
-
         try {
             if (json.isMember("id"))
                 id = ValueType::Id(json["id"].asInt());
@@ -463,6 +466,14 @@ struct OPENDHT_PUBLIC Value
     }
 
 #if OPENDHT_PROXY_SERVER
+    /**
+     * Build a json object from a value
+     * Example:
+     * {
+     *  "data":"base64ofdata",
+     *   id":"0", "seq":0,"type":3
+     * }
+     */
     Json::Value toJson() const;
 #endif //OPENDHT_PROXY_SERVER
 

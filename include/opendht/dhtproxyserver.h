@@ -1,4 +1,20 @@
-// TODO gpl
+/*
+ *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Author : Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 
 #if OPENDHT_PROXY_SERVER
 
@@ -14,9 +30,19 @@ namespace dht {
 
 class DhtRunner;
 
+/**
+ * Describes the REST API
+ */
 class OPENDHT_PUBLIC DhtProxyServer
 {
 public:
+    /**
+     * Start the Http server for OpenDHT
+     * @param dht the DhtRunner linked to this proxy server
+     * @param port to listen
+     * @note if the server fails to start (if port is already used or reserved),
+     * it will fails silently
+     */
     DhtProxyServer(DhtRunner* dht, unsigned int port = 8000);
     virtual ~DhtProxyServer();
 
@@ -25,13 +51,16 @@ public:
     DhtProxyServer& operator=(const DhtProxyServer& other) = default;
     DhtProxyServer& operator=(DhtProxyServer&& other) = default;
 
+    /**
+     * Stop the DhtProxyServer
+     */
     void stop();
 
 private:
     /**
      * Return the PublicKey id, the node id and node stats
      * Method: GET "/"
-     * Result: HTTP 200, body: {"id":"xxxx", "node_id":"xxxx", "ipv4":"xxxxxx", "ipv6": "xxxxx"}
+     * Result: HTTP 200, body: Value in JSON format (one part = one value)
      * On error: HTTP 404, body: {"err":"xxxx"}
      */
     void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
@@ -40,8 +69,8 @@ private:
      * Return Values of a InfoHash
      * Method: GET "/{InfoHash: .*}"
      * Return: Multiple JSON object in parts. For 2 values, you will have 3 parts:
-     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
-     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
+     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
      * {"ok": 1}
      *
      * On error: HTTP 404, body: {"err":"xxxx"}
@@ -52,8 +81,8 @@ private:
      * Listen incoming Values of a InfoHash.
      * Method: LISTEN "/{InfoHash: .*}"
      * Return: Multiple JSON object in parts. For 2 values, you will have 2 parts:
-     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
-     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
+     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
      *
      * On error: HTTP 404, body: {"err":"xxxx"}
      */
@@ -95,8 +124,8 @@ private:
      * Return Values of a InfoHash filtered by a value id
      * Method: GET "/{InfoHash: .*}/{ValueId: .*}"
      * Return: Multiple JSON object in parts. For 2 values, you will have 3 parts:
-     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
-     * {"data":"xxxx" (...) "type":3} (HTTP/1.1 200 OK Content-Type: application/json)
+     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
+     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
      * {"ok": 1}
      *
      * On error: HTTP 404, body: {"err":"xxxx"}
