@@ -17,13 +17,15 @@ class DhtRunner;
 class OPENDHT_PUBLIC DhtProxyServer
 {
 public:
-    DhtProxyServer(DhtRunner* dht);
+    DhtProxyServer(DhtRunner* dht, unsigned int port = 8000);
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = default;
     DhtProxyServer(DhtProxyServer&& other) = default;
     DhtProxyServer& operator=(const DhtProxyServer& other) = default;
     DhtProxyServer& operator=(DhtProxyServer&& other) = default;
+
+    void stop();
 
 private:
     /**
@@ -67,6 +69,7 @@ private:
      */
     void put(const std::shared_ptr<restbed::Session>& session) const;
 
+#if OPENDHT_PROXY_SERVER_OPTIONAL
     /**
      * Put a value to sign by the proxy on the DHT
      * Method: SIGN "/{InfoHash: .*}"
@@ -86,6 +89,7 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      */
     void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
+#endif // OPENDHT_PROXY_SERVER_OPTIONAL
 
     /**
      * Return Values of a InfoHash filtered by a value id

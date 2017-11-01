@@ -160,6 +160,11 @@ list (APPEND opendht_HEADERS
 
 if (OPENDHT_PROXY_SERVER)
   add_definitions(-DOPENDHT_PROXY_SERVER=true)
+  if (OPENDHT_PROXY_SERVER_OPTIONAL)
+    add_definitions(-DOPENDHT_PROXY_SERVER_OPTIONAL=true)
+  else ()
+    add_definitions(-DOPENDHT_PROXY_SERVER_OPTIONAL=false)
+  endif()
   list (APPEND opendht_HEADERS
     include/opendht/dhtproxyserver.h
     include/opendht/base64.h

@@ -17,12 +17,12 @@
 
 namespace dht {
 
-DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
+DhtProxyServer::DhtProxyServer(DhtRunner* dht, unsigned int port) : dht_(dht)
 {
     // NOTE in c++14, use make_unique
     service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
 
-    server_thread = std::thread([this]() {
+    server_thread = std::thread([this, port]() {
         // Create endpoints
         auto resource = std::make_shared<restbed::Resource>();
         resource->set_path("/");
@@ -53,7 +53,7 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
                 this->put(session);
             }
         );
-        // NOTE/TODO ENCRYPT AND SIGN must be optionnal
+#if OPENDHT_PROXY_SERVER_OPTIONAL
         resource->set_method_handler("SIGN",
             [this](const std::shared_ptr<restbed::Session> session)
             {
@@ -66,6 +66,7 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
                 this->putEncrypted(session);
             }
         );
+#endif // OPENDHT_PROXY_SERVER_OPTIONAL
         service_->publish(resource);
         resource = std::make_shared<restbed::Resource>();
         resource->set_path("/{hash: .*}/{value: .*}");
@@ -80,25 +81,24 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht) : dht_(dht)
         // Start server
         auto settings = std::make_shared<restbed::Settings>();
         settings->set_default_header("Content-Type", "application/json");
-        int port = 1984;
-        int started = false;
-        std::chrono::seconds sec(3600);
-        //std::chrono::milliseconds sec(std::numeric_limits<int>::max());
-        settings->set_connection_timeout(sec); // there is a timeout, but really huge
-        while (!started)
-        {
-            try {
-                settings->set_port(port); // TODO add argument and move this
-                service_->start(settings);
-                started = true;
-            } catch (std::system_error& e) {
-                port += 1;
-            }
+        std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
+        settings->set_connection_timeout(timeout); // there is a timeout, but really huge
+        settings->set_port(port);
+        try {
+            service_->start(settings);
+        } catch(std::system_error& e) {
+            // Fail silently for now.
         }
     });
 }
 
 DhtProxyServer::~DhtProxyServer()
+{
+    stop();
+}
+
+void
+DhtProxyServer::stop()
 {
     service_->stop();
     // listenThreads_ will stop because there is no more sessions
@@ -244,6 +244,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
     );
 }
 
+#if OPENDHT_PROXY_SERVER_OPTIONAL
 void
 DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) const
 {
@@ -333,6 +334,7 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
         }
     );
 }
+#endif // OPENDHT_PROXY_SERVER_OPTIONAL
 
 void
 DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) const

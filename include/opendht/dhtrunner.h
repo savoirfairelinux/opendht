@@ -367,7 +367,8 @@ public:
     void join();
 
 #if OPENDHT_PROXY_SERVER
-    void startProxyInterface(); // TODO arguments and move in the constructor
+    void startProxyInterface(unsigned int port=8000);
+    void stopProxyInterface();
 #endif //OPENDHT_PROXY_SERVER
 
 private:
