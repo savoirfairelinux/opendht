@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include "base64.h"
 #include "infohash.h"
 #include "crypto.h"
 #include "utils.h"
@@ -38,7 +37,10 @@
 #include <chrono>
 #include <set>
 
+#if OPENDHT_PROXY_SERVER
 #include <json/json.h>
+#include "base64.h"
+#endif //OPENDHT_PROXY_SERVER
 
 namespace dht {
 
@@ -349,6 +351,7 @@ struct OPENDHT_PUBLIC Value
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
 
+#if OPENDHT_PROXY_SERVER
     Value(Json::Value& json) {
 
         try {
@@ -386,6 +389,7 @@ struct OPENDHT_PUBLIC Value
         if (json.isMember("utype"))
             user_type = json["utype"].asString();
     }
+#endif //OPENDHT_PROXY_SERVER
 
     template <typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
@@ -458,7 +462,9 @@ struct OPENDHT_PUBLIC Value
         return ss.str();
     }
 
+#if OPENDHT_PROXY_SERVER
     Json::Value toJson() const;
+#endif //OPENDHT_PROXY_SERVER
 
     /** Return the size in bytes used by this value in memory (minimum). */
     size_t size() const;

@@ -800,24 +800,13 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_p
     cv.notify_all();
 }
 
+#if OPENDHT_PROXY_SERVER
 void
 DhtRunner::startProxyInterface()
 {
     // NOTE in c++14, use make_unique
     proxy_server_ = std::unique_ptr<DhtProxyServer>(new DhtProxyServer(this));
 }
-
-void
-DhtRunner::startProxyClient(const std::string& url)
-{
-    proxyfing = true;
-    // TODO DhtProxyClient
-}
-
-void
-DhtRunner::stopProxyClient()
-{
-    proxyfing = false;
-}
+#endif //OPENDHT_PROXY_SERVER
 
 }

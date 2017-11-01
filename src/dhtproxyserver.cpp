@@ -1,5 +1,6 @@
 // TODO GPL
 
+#if OPENDHT_PROXY_SERVER
 #include "dhtproxyserver.h"
 
 #include <chrono>
@@ -366,3 +367,4 @@ DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) co
 }
 
 }
+#endif //OPENDHT_PROXY_SERVER

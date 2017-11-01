@@ -1,3 +1,4 @@
+#if OPENDHT_PROXY_SERVER
 #include "base64.h"
 
 static const std::string base64_chars =
@@ -93,3 +94,4 @@ std::string base64_decode(std::string const& encoded_string) {
 
   return ret;
 }
+#endif // OPENDHT_PROXY_SERVER

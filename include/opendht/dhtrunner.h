@@ -36,7 +36,9 @@
 #include <queue>
 #include <chrono>
 
+#if OPENDHT_PROXY_SERVER
 #include "dhtproxyserver.h"
+#endif
 
 namespace dht {
 
@@ -364,9 +366,9 @@ public:
      */
     void join();
 
+#if OPENDHT_PROXY_SERVER
     void startProxyInterface(); // TODO arguments and move in the constructor
-    void startProxyClient(const std::string& url);
-    void stopProxyClient();
+#endif //OPENDHT_PROXY_SERVER
 
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
@@ -397,8 +399,9 @@ private:
     std::mutex sock_mtx {};
     std::vector<std::pair<Blob, SockAddr>> rcv {};
 
+#if OPENDHT_PROXY_SERVER
     std::unique_ptr<DhtProxyServer> proxy_server_;
-    std::atomic_bool proxyfing {false};
+#endif //OPENDHT_PROXY_SERVER
 
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};

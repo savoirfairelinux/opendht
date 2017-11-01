@@ -1,13 +1,13 @@
 // TODO gpl
 
+#if OPENDHT_PROXY_SERVER
+
 #pragma once
 
 #include "def.h"
 
 #include <thread>
 #include <memory>
-
-// TODO add ifdef RESTBED
 #include <restbed>
 
 namespace dht {
@@ -106,3 +106,5 @@ private:
 };
 
 }
+
+#endif //OPENDHT_PROXY_SERVER
