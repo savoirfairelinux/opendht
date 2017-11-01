@@ -88,8 +88,6 @@ main(int argc, char **argv)
             if (line.empty())
                 continue;
 
-            static constexpr dht::InfoHash INVALID_ID {};
-
             std::istringstream iss(line);
             std::string op, idstr;
             iss >> op;
@@ -99,7 +97,7 @@ main(int argc, char **argv)
                 else if (op == "c") {
                     iss >> idstr;
                     room = InfoHash(idstr);
-                    if (room == INVALID_ID) {
+                    if (not room) {
                         room = InfoHash::get(idstr);
                         std::cout << "Joining h(" << idstr << ") = " << room << std::endl;
                     }

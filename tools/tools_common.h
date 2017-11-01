@@ -98,10 +98,8 @@ dht::indexation::Pht::Key createPhtKey(std::map<std::string, std::string> pht_ke
     return pht_key;
 }
 
-bool isInfoHash(dht::InfoHash& h) {
-    static constexpr dht::InfoHash INVALID_ID {};
-
-    if (h == INVALID_ID) {
+bool isInfoHash(const dht::InfoHash& h) {
+    if (not h) {
         std::cout << "Syntax error: invalid InfoHash." << std::endl;
         return false;
     }

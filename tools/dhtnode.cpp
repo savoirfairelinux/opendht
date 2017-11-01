@@ -116,20 +116,18 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         } else if (op == "ld") {
             iss >> idstr;
             InfoHash filter(idstr);
-            if (filter == InfoHash{})
-                std::cout << dht->getStorageLog() << std::endl;
-            else
+            if (filter)
                 std::cout << dht->getStorageLog(filter) << std::endl;
+            else
+                std::cout << dht->getStorageLog() << std::endl;
             continue;
         } else if (op == "ls") {
             iss >> idstr;
             InfoHash filter(idstr);
-            if (filter == InfoHash{}) {
-                std::cout << "Searches:" << std::endl;
-                std::cout << dht->getSearchesLog() << std::endl;
-            } else {
+            if (filter)
                 std::cout << dht->getSearchLog(filter) << std::endl;
-            }
+            else
+                std::cout << dht->getSearchesLog() << std::endl;
             continue;
         } else if (op == "la")  {
             std::cout << "Reported public addresses:" << std::endl;
