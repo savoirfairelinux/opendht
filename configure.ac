@@ -128,6 +128,26 @@ AM_COND_IF([ENABLE_TOOLS], [
   ])
 ])
 
+AC_ARG_ENABLE([proxy_server], AS_HELP_STRING([--enable-proxy-server], [Enable proxy server ability]), proxy_server=yes, proxy_server=no)
+AM_CONDITIONAL(ENABLE_PROXY_SERVER, test x$proxy_server == xyes)
+AM_COND_IF([ENABLE_PROXY_SERVER], [
+	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
+	PKG_CHECK_MODULES([Jsoncpp], [jsoncpp >= 1.7.4])
+	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=true -ljsoncpp -lrestbed"
+
+	AC_ARG_ENABLE([proxy_server_optionals], AS_HELP_STRING([--enable-proxy-server-optionals],
+		[Enable proxy server ability]), proxy_server_optionals=yes, proxy_server_optionals=no)
+	AM_CONDITIONAL(ENABLE_PROXY_SERVER_OPTIONALS, test x$proxy_server_optionals == xyes)
+	AM_COND_IF([ENABLE_PROXY_SERVER_OPTIONALS], [
+		CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_OPTIONAL=true"
+	], [
+		CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_OPTIONAL=false"
+	])
+], [
+	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"
+])
+
+
 AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
 
 dnl Configure setup.py if we build the python module

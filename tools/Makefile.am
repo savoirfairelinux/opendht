@@ -11,3 +11,9 @@ dhtchat_LDFLAGS = -lopendht -lreadline -L@top_builddir@/src/.libs @Argon2_LDFLAG
 
 dhtscanner_SOURCES = dhtscanner.cpp
 dhtscanner_LDFLAGS = -lopendht -lreadline -L@top_builddir@/src/.libs @Argon2_LDFLAGS@ @GnuTLS_LIBS@
+
+if ENABLE_PROXY_SERVER
+dhtnode_LDFLAGS += -lrestbed -ljsoncpp
+dhtchat_LDFLAGS += -lrestbed -ljsoncpp
+dhtscanner_LDFLAGS += -lrestbed -ljsoncpp
+endif

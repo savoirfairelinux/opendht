@@ -54,6 +54,11 @@ nobase_include_HEADERS = \
         ../include/opendht/rng.h \
         ../include/opendht/indexation/pht.h
 
+if ENABLE_PROXY_SERVER
+libopendht_la_SOURCES += base64.cpp dhtproxyserver.cpp
+nobase_include_HEADERS += ../include/opendht/base64.h ../include/opendht/dhtproxyserver.h
+endif
+
 clean-local:
 	rm -rf libargon2.la
 
