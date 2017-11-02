@@ -76,7 +76,7 @@ RoutingTable::randomId(const RoutingTable::const_iterator& it) const
 
     int b = bit/8;
     InfoHash id_return;
-    std::copy_n(it->first.begin(), b, id_return.begin());
+    std::copy_n(it->first.cbegin(), b, id_return.begin());
     id_return[b] = it->first[b] & (0xFF00 >> (bit % 8));
     id_return[b] |= rand_byte(rd) >> (bit % 8);
     for (unsigned i = b + 1; i < HASH_LEN; i++)
