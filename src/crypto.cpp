@@ -84,7 +84,7 @@ static constexpr size_t PASSWORD_SALT_LENGTH {16};
 
 constexpr gnutls_digest_algorithm_t gnutlsHashAlgo(size_t min_res) {
     return (min_res > 256/8) ? GNUTLS_DIG_SHA512 : (
-           (min_res > 128/8) ? GNUTLS_DIG_SHA256 : (
+           (min_res > 160/8) ? GNUTLS_DIG_SHA256 : (
                                GNUTLS_DIG_SHA1));
 }
 
@@ -212,10 +212,19 @@ Blob hash(const Blob& data, size_t hash_len)
     Blob res;
     res.resize(res_size);
     const gnutls_datum_t gdat {(uint8_t*)data.data(), (unsigned)data.size()};
-    if (gnutls_fingerprint(algo, &gdat, res.data(), &res_size))
-        throw CryptoException("Can't compute hash !");
+    if (auto err = gnutls_fingerprint(algo, &gdat, res.data(), &res_size))
+        throw CryptoException(std::string("Can't compute hash: ") + gnutls_strerror(err));
     res.resize(std::min(hash_len, res_size));
     return res;
+}
+
+void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length)
+{
+    auto algo = gnutlsHashAlgo(hash_length);
+    size_t res_size = hash_length;
+    const gnutls_datum_t gdat {(uint8_t*)data, (unsigned)data_length};
+    if (auto err = gnutls_fingerprint(algo, &gdat, hash, &res_size))
+        throw CryptoException(std::string("Can't compute hash: ") + gnutls_strerror(err));
 }
 
 PrivateKey::PrivateKey()

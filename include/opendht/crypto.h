@@ -601,6 +601,8 @@ OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", 
  */
 OPENDHT_PUBLIC Blob hash(const Blob& data, size_t hash_length = 512/8);
 
+OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length);
+
 /**
  * Generates an encryption key from a text password,
  * making the key longer to bruteforce.
