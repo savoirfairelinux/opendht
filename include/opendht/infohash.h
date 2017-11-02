@@ -79,18 +79,7 @@ public:
      * hex must be at least 2.HASH_LEN characters long.
      * If too long, only the first 2.HASH_LEN characters are read.
      */
-    explicit Hash(const std::string& hex) {
-        if (hex.size() < 2*N) {
-            data_.fill(0);
-            return;
-        }
-        const auto p = (const char*)hex.data();
-        for (size_t i = 0; i < N; i++) {
-            unsigned res = 0;
-            sscanf(p + 2*i, "%02x", &res);
-            data_[i] = res;
-        }
-    }
+    explicit Hash(const std::string& hex);
 
     Hash(const msgpack::object& o) {
         msgpack_unpack(o);
@@ -272,6 +261,7 @@ public:
     }
 private:
     T data_;
+    void fromString(const char*);
 };
 
 #define HASH_LEN 20u
@@ -292,12 +282,29 @@ std::istream& operator>> (std::istream& s, Hash<N>& h)
     std::array<char, h.size()*2> dat;
     s.exceptions(std::istream::eofbit | std::istream::failbit);
     s.read(&(*dat.begin()), dat.size());
-    for (size_t i = 0; i < h.size(); i++) {
-        unsigned res = 0;
-        sscanf(dat.data() + 2*i, "%02x", &res);
-        h[i] = res;
+    fromString(dat.data());
+}
+
+template <size_t N>
+Hash<N>::Hash(const std::string& hex) {
+    if (hex.size() < 2*N) {
+        data_.fill(0);
+        return;
     }
-    return s;
+    fromString(hex.c_str());
+}
+
+template <size_t N>
+void
+Hash<N>::fromString(const char* in) {
+    auto hex2bin = [](char c) -> uint8_t {
+        if      (c >= 'a') return 10 + c - 'a';
+        else if (c >= 'A') return 10 + c - 'A';
+        else               return c - '0';
+    };
+    for (size_t i=0; i<N; i++) {
+        data_[i] = (hex2bin(in[2*i]) << 4) | hex2bin(in[2*i+1]);
+    }
 }
 
 template <size_t N>
