@@ -32,20 +32,10 @@ extern "C" {
 
 namespace dht {
 
-Config& getConfig(SecureDht::Config& conf)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
+: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second)
 {
-    auto& c = conf.node_config;
-    if (not c.node_id and conf.id.second)
-        c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
-    return c;
-}
-
-SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
-: Dht(s, s6, getConfig(conf)), key_(conf.id.first), certificate_(conf.id.second)
-{
-    if (s < 0 && s6 < 0)
-        return;
-
+    if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
         registerType(type);
 
@@ -59,7 +49,7 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
         if (key_ and certId != key_->getPublicKey().getId())
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
-        Dht::put(certId, Value {
+        dht_->put(certId, Value {
             CERTIFICATE_TYPE,
             *certificate_,
             1
@@ -190,7 +180,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<cry
     }
 
     auto found = std::make_shared<bool>(false);
-    Dht::get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
+    dht_->get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
         if (*found)
             return false;
         for (const auto& v : vals) {
@@ -277,13 +267,13 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 void
 SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
-    Dht::get(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), donecb, {}, std::forward<Where>(w));
+    dht_->get(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), donecb, {}, std::forward<Where>(w));
 }
 
 size_t
 SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& w)
 {
-    return Dht::listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
+    return dht_->listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
 }
 
 void
@@ -295,7 +285,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
     }
 
     // Check if we are already announcing a value
-    auto p = getPut(hash, val->id);
+    auto p = dht_->getPut(hash, val->id);
     if (p && val->seq <= p->seq) {
         DHT_LOG.DEBUG("Found previous value being announced.");
         val->seq = p->seq + 1;
@@ -317,7 +307,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
         },
         [hash,val,this,callback,permanent] (bool /* ok */) {
             sign(*val);
-            put(hash, val, callback, time_point::max(), permanent);
+            dht_->put(hash, val, callback, time_point::max(), permanent);
         },
         Value::IdFilter(val->id)
     );
@@ -334,7 +324,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
         }
         DHT_LOG.WARN("Encrypting data for PK: %s", pk->getId().toString().c_str());
         try {
-            put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
+            dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
         } catch (const std::exception& e) {
             DHT_LOG.ERR("Error putting encrypted data: %s", e.what());
             if (callback)

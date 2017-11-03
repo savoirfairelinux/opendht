@@ -39,14 +39,6 @@ constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
 
-void
-Dht::setLoggers(LogMethod error, LogMethod warn, LogMethod debug)
-{
-    DHT_LOG.DEBUG = debug;
-    DHT_LOG.WARN = warn;
-    DHT_LOG.ERR = error;
-}
-
 NodeStatus
 Dht::getStatus(sa_family_t af) const
 {

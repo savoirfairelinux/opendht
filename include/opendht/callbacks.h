@@ -44,11 +44,11 @@ enum class NodeStatus {
 };
 
 struct OPENDHT_PUBLIC NodeStats {
-    unsigned good_nodes,
-             dubious_nodes,
-             cached_nodes,
-             incoming_nodes;
-    unsigned table_depth;
+    unsigned good_nodes {0},
+             dubious_nodes {0},
+             cached_nodes {0},
+             incoming_nodes {0};
+    unsigned table_depth {0};
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
     std::string toString() const;
 #if OPENDHT_PROXY_SERVER
@@ -56,6 +56,8 @@ struct OPENDHT_PUBLIC NodeStats {
      * Build a json object from a NodeStats
      */
     Json::Value toJson() const;
+    NodeStats() {};
+    explicit NodeStats(const Json::Value& v);
 #endif //OPENDHT_PROXY_SERVER
 };
 
