@@ -65,8 +65,9 @@ cdef extern from "opendht/infohash.h" namespace "dht":
         InfoHash get(string s)
         @staticmethod
         InfoHash getRandom()
-        bool operator==(InfoHash)
-        bool operator<(InfoHash)
+        bool operator==(InfoHash) const
+        bool operator<(InfoHash) const
+        bool operator bool() const
 
 cdef extern from "opendht/sockaddr.h" namespace "dht":
     cdef cppclass SockAddr:
@@ -259,4 +260,3 @@ cdef extern from "opendht/indexation/pht.h" namespace "dht::indexation":
         void insert(IndexKey k, IndexValue v, DoneCallbackSimple cb)
         @staticmethod
         LookupCallback bindLookupCb(LookupCallbackRaw cb, void *user_data)
-

@@ -94,7 +94,7 @@ cdef class InfoHash(_WithID):
     def __cinit__(self, bytes str=b''):
         self._infohash = cpp.InfoHash(str)
     def __bool__(InfoHash self):
-        return not (self._infohash == cpp.InfoHash())
+        return <bool>self._infohash
     def __richcmp__(InfoHash self, InfoHash other, int op):
         if op == 0:
             return self._infohash < other._infohash
