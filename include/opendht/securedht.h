@@ -29,12 +29,20 @@
 
 namespace dht {
 
-class OPENDHT_PUBLIC SecureDht : public Dht {
+class OPENDHT_PUBLIC SecureDht : public DhtInterface {
 public:
 
     typedef std::function<void(bool)> SignatureCheckCallback;
 
     using Config = SecureDhtConfig;
+
+    static dht::Config& getConfig(SecureDht::Config& conf)
+    {
+        auto& c = conf.node_config;
+        if (not c.node_id and conf.id.second)
+            c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
+        return c;
+    }
 
     SecureDht() {}
 
@@ -44,7 +52,7 @@ public:
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(int s, int s6, Config config);
+    SecureDht(std::unique_ptr<DhtInterface> dht, Config config);
 
     virtual ~SecureDht();
 
@@ -62,14 +70,17 @@ public:
         return secureType(std::move(tmp_type));
     }
 
-    virtual void registerType(const ValueType& type) override {
-        Dht::registerType(secureType(type));
+    void registerType(const ValueType& type) {
+        if (dht_)
+            dht_->registerType(secureType(type));
     }
-    virtual void registerType(ValueType&& type) {
-        Dht::registerType(secureType(std::forward<ValueType>(type)));
+    void registerType(ValueType&& type) {
+        if (dht_)
+            dht_->registerType(secureType(std::forward<ValueType>(type)));
     }
-    virtual void registerInsecureType(const ValueType& type) {
-        Dht::registerType(type);
+    void registerInsecureType(const ValueType& type) {
+        if (dht_)
+            dht_->registerType(type);
     }
 
     /**
@@ -77,18 +88,18 @@ public:
      * If the signature can't be checked, or if the data can't be decrypted, it is not returned.
      * Public, non-signed & non-encrypted data is retransmitted as-is.
      */
-    virtual void get(const InfoHash& id, GetCallback cb, DoneCallback donecb={}, Value::Filter&& = {}, Where&& w = {}) override;
-    virtual void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f = {}, Where&& w = {}) override {
+    void get(const InfoHash& id, GetCallback cb, DoneCallback donecb={}, Value::Filter&& = {}, Where&& w = {});
+    void get(const InfoHash& id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f = {}, Where&& w = {}) {
         get(id, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) {
         get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) override {
+    void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
-    virtual size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {}, Where&& w = {}) override;
+    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {}, Where&& w = {});
 
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
@@ -135,7 +146,160 @@ public:
         localQueryMethod_ = std::move(query_method);
     }
 
+    /**
+     * SecureDht to Dht proxy
+     */
+    void shutdown(ShutdownCallback cb) {
+        dht_->shutdown(cb);
+    }
+    void dumpTables() const {
+        dht_->dumpTables();
+    }
+    inline const InfoHash& getNodeId() const { return dht_->getNodeId(); }
+    std::pair<size_t, size_t> getStoreSize() const {
+        return dht_->getStoreSize();
+    }
+    std::string getStorageLog() const {
+        return dht_->getStorageLog();
+    }
+    std::string getStorageLog(const InfoHash& h) const {
+        return dht_->getStorageLog(h);
+    }
+    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) {
+        dht_->setStorageLimit(limit);
+    }
+    std::vector<NodeExport> exportNodes() {
+        return dht_->exportNodes();
+    }
+    std::vector<ValuesExport> exportValues() const {
+        return dht_->exportValues();
+    }
+    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG) {
+        dht_->setLoggers(error, warn, debug);
+    }
+    void setLogFilter(const InfoHash& f) {
+        dht_->setLogFilter(f);
+    }
+    void importValues(const std::vector<ValuesExport>& v) {
+        dht_->importValues(v);
+    }
+    NodeStats getNodesStats(sa_family_t af) const {
+        return dht_->getNodesStats(af);
+    }
+    std::vector<unsigned> getNodeMessageStats(bool in = false) {
+        return dht_->getNodeMessageStats(in);
+    }
+    std::string getRoutingTablesLog(sa_family_t af) const {
+        return dht_->getRoutingTablesLog(af);
+    }
+    std::string getSearchesLog(sa_family_t af) const {
+        return dht_->getSearchesLog(af);
+    }
+    std::string getSearchLog(const InfoHash& h, sa_family_t af = AF_UNSPEC) const {
+        return dht_->getSearchLog(h, af);
+    }
+    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) {
+        return dht_->getPublicAddress(family);
+    }
+    time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr& sa) {
+        return dht_->periodic(buf, buflen, sa);
+    }
+    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
+        return dht_->periodic(buf, buflen, from, fromlen);
+    }
+    NodeStatus getStatus(sa_family_t af) const {
+        return dht_->getStatus(af);
+    }
+    NodeStatus getStatus() const {
+        return dht_->getStatus();
+    }
+    bool isRunning(sa_family_t af = 0) const {
+        return dht_->isRunning(af);
+    }
+    const ValueType& getType(ValueType::Id type_id) const {
+        return dht_->getType(type_id);
+    }
+    void insertNode(const InfoHash& id, const SockAddr& sa) {
+        dht_->insertNode(id, sa);
+    }
+    void insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen) {
+        dht_->insertNode(id, sa, salen);
+    }
+    void insertNode(const NodeExport& n) {
+        dht_->insertNode(n);
+    }
+    void pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb={}) {
+        dht_->pingNode(sa, salen, std::move(cb));
+    }
+    void query(const InfoHash& key, QueryCallback cb, DoneCallback done_cb = {}, Query&& q = {}) {
+        dht_->query(key, cb, done_cb, std::move(q));
+    }
+    void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) {
+        dht_->query(key, cb, done_cb, std::move(q));
+    }
+    std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const {
+        return dht_->getLocal(key, f);
+    }
+    Sp<Value> getLocalById(const InfoHash& key, Value::Id vid) const {
+        return dht_->getLocalById(key, vid);
+    }
+    void put(const InfoHash& key,
+            Sp<Value> v,
+            DoneCallback cb=nullptr,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        dht_->put(key, v, cb, created, permanent);
+    }
+    void put(const InfoHash& key,
+            const Sp<Value>& v,
+            DoneCallbackSimple cb,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        dht_->put(key, v, cb, created, permanent);
+    }
+
+    void put(const InfoHash& key,
+            Value&& v,
+            DoneCallback cb=nullptr,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        dht_->put(key, std::move(v), cb, created, permanent);
+    }
+    void put(const InfoHash& key,
+            Value&& v,
+            DoneCallbackSimple cb,
+            time_point created=time_point::max(),
+            bool permanent = false)
+    {
+        dht_->put(key, std::move(v), cb, created, permanent);
+    }
+    std::vector<Sp<Value>> getPut(const InfoHash& h) {
+        return dht_->getPut(h);
+    }
+    Sp<Value> getPut(const InfoHash& h, const Value::Id& vid) {
+        return dht_->getPut(h, vid);
+    }
+    bool cancelPut(const InfoHash& h, const Value::Id& vid) {
+        return dht_->cancelPut(h, vid);
+    }
+    size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
+        return dht_->listen(key, cb, f, w);
+    }
+    bool cancelListen(const InfoHash& h, size_t token) {
+        return dht_->cancelListen(h, token);
+    }
+    void connectivityChanged(sa_family_t af) {
+        dht_->connectivityChanged(af);
+    }
+    void connectivityChanged() {
+        dht_->connectivityChanged();
+    }
+
 private:
+    std::unique_ptr<DhtInterface> dht_;
     // prevent copy
     SecureDht(const SecureDht&) = delete;
     SecureDht& operator=(const SecureDht&) = delete;

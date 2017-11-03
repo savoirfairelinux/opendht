@@ -26,7 +26,7 @@
 #include "scheduler.h"
 #include "routing_table.h"
 #include "callbacks.h"
-#include "log_enable.h"
+#include "dht_interface.h"
 
 #include <string>
 #include <array>
@@ -58,14 +58,8 @@ struct LocalListener;
  * Must be given open UDP sockets and ::periodic must be
  * called regularly.
  */
-class OPENDHT_PUBLIC Dht {
+class OPENDHT_PUBLIC Dht : public DhtInterface {
 public:
-
-    // [[deprecated]]
-    using NodeExport = dht::NodeExport;
-
-    // [[deprecated]]
-    using Status = NodeStatus;
 
     Dht();
 
@@ -102,18 +96,6 @@ public:
      *      is running for the provided family.
      */
     bool isRunning(sa_family_t af = 0) const;
-
-    /**
-     * Enable or disable logging of DHT internal messages
-     */
-    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
-
-    /**
-     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
-     */
-    void setLogFilter(const InfoHash& f) {
-        DHT_LOG.setFilter(f);
-    }
 
     virtual void registerType(const ValueType& type) {
         types[type.id] = type;
@@ -306,11 +288,6 @@ public:
     }
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
-
-protected:
-    Logger DHT_LOG;
-    bool logFilerEnable_ {};
-    InfoHash logFiler_ {};
 
 private:
 

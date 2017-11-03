@@ -145,6 +145,7 @@ list (APPEND opendht_HEADERS
     include/opendht/node.h
     include/opendht/value.h
     include/opendht/dht.h
+    include/opendht/dht_interface.h
     include/opendht/callbacks.h
     include/opendht/routing_table.h
     include/opendht/node_cache.h
@@ -170,12 +171,30 @@ if (OPENDHT_PROXY_SERVER)
   )
   list (APPEND opendht_SOURCES
     src/dht_proxy_server.cpp
-    src/base64.h
-    src/base64.cpp
   )
 else ()
     add_definitions(-DENABLE_PROXY_SERVER=false)
 endif ()
+
+if (OPENDHT_PROXY_CLIENT)
+  add_definitions(-DOPENDHT_PROXY_CLIENT=true)
+  list (APPEND opendht_HEADERS
+    include/opendht/dht_proxy_client.h
+  )
+  list (APPEND opendht_SOURCES
+    src/dht_proxy_client.cpp
+  )
+else ()
+  add_definitions(-DOPENDHT_PROXY_CLIENT=false)
+endif ()
+
+if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+  list (APPEND opendht_SOURCES
+    src/base64.h
+    src/base64.cpp
+  )
+endif ()
+
 
 if(OPENDHT_ARGON2)
     # make sure argon2 submodule is up to date and initialized
