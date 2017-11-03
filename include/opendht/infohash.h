@@ -283,6 +283,7 @@ std::istream& operator>> (std::istream& s, Hash<N>& h)
     s.exceptions(std::istream::eofbit | std::istream::failbit);
     s.read(&(*dat.begin()), dat.size());
     fromString(dat.data());
+    return s;
 }
 
 template <size_t N>
