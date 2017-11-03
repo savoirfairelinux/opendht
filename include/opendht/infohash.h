@@ -288,20 +288,22 @@ std::istream& operator>> (std::istream& s, Hash<N>& h)
 
 template <size_t N>
 Hash<N>::Hash(const std::string& hex) {
-    if (hex.size() < 2*N) {
+    if (hex.empty())
         data_.fill(0);
-        return;
-    }
-    fromString(hex.c_str());
+    else if (hex.size() < 2*N)
+        throw std::invalid_argument("string not long enough");
+    else
+        fromString(hex.c_str());
 }
 
 template <size_t N>
 void
 Hash<N>::fromString(const char* in) {
     auto hex2bin = [](char c) -> uint8_t {
-        if      (c >= 'a') return 10 + c - 'a';
-        else if (c >= 'A') return 10 + c - 'A';
-        else               return c - '0';
+        if      (c >= 'a' and c <= 'f') return 10 + c - 'a';
+        else if (c >= 'A' and c <= 'F') return 10 + c - 'A';
+        else if (c >= '0' and c <= '9') return c - '0';
+        else throw std::domain_error("not an hex character");
     };
     for (size_t i=0; i<N; i++) {
         data_[i] = (hex2bin(in[2*i]) << 4) | hex2bin(in[2*i+1]);

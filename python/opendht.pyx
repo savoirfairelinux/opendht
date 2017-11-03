@@ -92,7 +92,7 @@ cdef class _WithID(object):
 cdef class InfoHash(_WithID):
     cdef cpp.InfoHash _infohash
     def __cinit__(self, bytes str=b''):
-        self._infohash = cpp.InfoHash(str)
+        self._infohash = cpp.InfoHash(str) if str else cpp.InfoHash()
     def __bool__(InfoHash self):
         return <bool>self._infohash
     def __richcmp__(InfoHash self, InfoHash other, int op):
