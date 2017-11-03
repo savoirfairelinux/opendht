@@ -55,8 +55,8 @@ nobase_include_HEADERS = \
         ../include/opendht/indexation/pht.h
 
 if ENABLE_PROXY_SERVER
-libopendht_la_SOURCES += base64.cpp dhtproxyserver.cpp
-nobase_include_HEADERS += ../include/opendht/base64.h ../include/opendht/dhtproxyserver.h
+libopendht_la_SOURCES += base64.h base64.cpp dht_proxy_server.cpp
+nobase_include_HEADERS += ../include/opendht/dht_proxy_server.h
 endif
 
 clean-local:

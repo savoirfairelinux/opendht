@@ -21,6 +21,8 @@
 #pragma once
 
 #include "def.h"
+#include "sockaddr.h"
+#include "infohash.h"
 
 #include <thread>
 #include <memory>
@@ -29,6 +31,7 @@
 namespace dht {
 
 class DhtRunner;
+class InfoHash;
 
 /**
  * Describes the REST API
@@ -43,13 +46,13 @@ public:
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(DhtRunner* dht, unsigned int port = 8000);
+    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000);
     virtual ~DhtProxyServer();
 
-    DhtProxyServer(const DhtProxyServer& other) = default;
-    DhtProxyServer(DhtProxyServer&& other) = default;
-    DhtProxyServer& operator=(const DhtProxyServer& other) = default;
-    DhtProxyServer& operator=(DhtProxyServer&& other) = default;
+    DhtProxyServer(const DhtProxyServer& other) = delete;
+    DhtProxyServer(DhtProxyServer&& other) = delete;
+    DhtProxyServer& operator=(const DhtProxyServer& other) = delete;
+    DhtProxyServer& operator=(DhtProxyServer&& other) = delete;
 
     /**
      * Stop the DhtProxyServer
@@ -62,6 +65,7 @@ private:
      * Method: GET "/"
      * Result: HTTP 200, body: Value in JSON format (one part = one value)
      * On error: HTTP 404, body: {"err":"xxxx"}
+     * @param session
      */
     void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
 
@@ -74,6 +78,7 @@ private:
      * {"ok": 1}
      *
      * On error: HTTP 404, body: {"err":"xxxx"}
+     * @param session
      */
     void get(const std::shared_ptr<restbed::Session>& session) const;
 
@@ -85,6 +90,7 @@ private:
      * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
      *
      * On error: HTTP 404, body: {"err":"xxxx"}
+     * @param session
      */
     void listen(const std::shared_ptr<restbed::Session>& session) const;
 
@@ -95,10 +101,11 @@ private:
      * Return: {"ok":"1"}
      * On error: HTTP 404, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
+     * @param session
      */
     void put(const std::shared_ptr<restbed::Session>& session) const;
 
-#if OPENDHT_PROXY_SERVER_OPTIONAL
+#if OPENDHT_PROXY_SERVER_IDENTITY
     /**
      * Put a value to sign by the proxy on the DHT
      * Method: SIGN "/{InfoHash: .*}"
@@ -106,6 +113,7 @@ private:
      * Return: {"ok":"1"}
      * On error: HTTP 404, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
+     * @param session
      */
     void putSigned(const std::shared_ptr<restbed::Session>& session) const;
 
@@ -116,9 +124,10 @@ private:
      * Return: {"ok":"1"}
      * On error: HTTP 404, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
+     * @param session
      */
     void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
-#endif // OPENDHT_PROXY_SERVER_OPTIONAL
+#endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     /**
      * Return Values of a InfoHash filtered by a value id
@@ -129,13 +138,24 @@ private:
      * {"ok": 1}
      *
      * On error: HTTP 404, body: {"err":"xxxx"}
+     * @param session
      */
     void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
 
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
-    DhtRunner* dht_;
-    mutable std::vector<std::shared_ptr<std::thread>> listenThreads_;
+    std::shared_ptr<DhtRunner> dht_;
+
+    // Handle client quit for listen.
+    // NOTE: can be simplified when we will supports restbed 5.0
+    std::thread listenThread_;
+    struct SessionToHashToken {
+        std::shared_ptr<restbed::Session> session;
+        InfoHash hash;
+        size_t token;
+    };
+    mutable std::vector<SessionToHashToken> currentListeners_;
+    std::atomic_bool stopListeners {false};
 };
 
 }

@@ -60,7 +60,7 @@ void print_help() {
 #if OPENDHT_PROXY_SERVER
     std::cout << std::endl << "Operations with the proxy:" << std::endl
               << "  pst [port]            Start the proxy interface on port." << std::endl
-              << "  psp                   Stop the proxy interface." << std::endl;
+              << "  psp [port]            Stop the proxy interface on port." << std::endl;
 #endif //OPENDHT_PROXY_SERVER
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
@@ -90,6 +90,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
 #endif
 
     std::map<std::string, indexation::Pht> indexes;
+#if OPENDHT_PROXY_SERVER
+    std::map<std::string, std::unique_ptr<DhtProxyServer>> proxies;
+#endif //OPENDHT_PROXY_SERVER
 
     while (true)
     {
@@ -174,13 +177,18 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             iss >> idstr;
             try {
                 unsigned int port = std::stoi(idstr);
-                dht->startProxyServer(port);
-            } catch (...) {
-                dht->startProxyServer();
-            }
+                auto proxyServer = std::unique_ptr<DhtProxyServer>(
+                    new DhtProxyServer(dht, port)
+                );
+                proxies.emplace(idstr, std::move(proxyServer));
+            } catch (...) { }
             continue;
         } else if (op == "psp") {
-            dht->stopProxyServer();
+            iss >> idstr;
+            auto it = proxies.find(idstr);
+            if (it != proxies.end()) {
+                it->second.reset(nullptr);
+            }
             continue;
         }
 #endif //OPENDHT_PROXY_SERVER

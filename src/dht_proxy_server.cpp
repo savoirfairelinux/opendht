@@ -17,7 +17,7 @@
  */
 
 #if OPENDHT_PROXY_SERVER
-#include "dhtproxyserver.h"
+#include "dht_proxy_server.h"
 
 #include <chrono>
 #include <functional>
@@ -29,11 +29,10 @@
 #include <json/json.h>
 #include <limits>
 
-#include <iostream>
-
 namespace dht {
 
-DhtProxyServer::DhtProxyServer(DhtRunner* dht, unsigned int port) : dht_(dht)
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
+: dht_(dht)
 {
     // NOTE in c++14, use make_unique
     service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
@@ -69,7 +68,7 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht, unsigned int port) : dht_(dht)
                 this->put(session);
             }
         );
-#if OPENDHT_PROXY_SERVER_OPTIONAL
+#if OPENDHT_PROXY_SERVER_IDENTITY
         resource->set_method_handler("SIGN",
             [this](const std::shared_ptr<restbed::Session> session)
             {
@@ -82,7 +81,7 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht, unsigned int port) : dht_(dht)
                 this->putEncrypted(session);
             }
         );
-#endif // OPENDHT_PROXY_SERVER_OPTIONAL
+#endif // OPENDHT_PROXY_SERVER_IDENTITY
         service_->publish(resource);
         resource = std::make_shared<restbed::Resource>();
         resource->set_path("/{hash: .*}/{value: .*}");
@@ -106,6 +105,26 @@ DhtProxyServer::DhtProxyServer(DhtRunner* dht, unsigned int port) : dht_(dht)
             // Fail silently for now.
         }
     });
+
+    listenThread_ = std::thread([this]() {
+        auto stop = false;
+        while (!stop) {
+            auto listener = currentListeners_.begin();
+            while (listener != currentListeners_.end()) {
+                if (listener->session->is_closed() && dht_) {
+                    dht_->cancelListen(listener->hash, listener->token);
+                    // Remove listener if unused
+                    listener = currentListeners_.erase(listener);
+                } else {
+                     ++listener;
+                }
+            }
+            //NOTE: When supports restbed 5.0: service_->is_up() and remove stopListeners
+            stop = stopListeners;
+            if (!stop)
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    });
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -117,10 +136,10 @@ void
 DhtProxyServer::stop()
 {
     service_->stop();
+    stopListeners = true;
     // listenThreads_ will stop because there is no more sessions
-    for (auto& listenThread: listenThreads_)
-        if (listenThread->joinable())
-            listenThread->join();
+    if (listenThread_.joinable())
+        listenThread_.join();
     if (server_thread.joinable())
         server_thread.join();
 }
@@ -131,7 +150,7 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             (void)b;
             if (dht_) {
@@ -152,17 +171,16 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
 void
 DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
 {
-    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             (void)b;
             if (dht_) {
                 InfoHash infoHash(hash);
-                if (infoHash == INVALID_ID) {
+                if (!infoHash) {
                     infoHash = InfoHash::get(hash);
                 }
                 Json::FastWriter writer;
@@ -186,21 +204,20 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
 void
 DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
 {
-    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     InfoHash infoHash(hash);
-    if (infoHash == INVALID_ID)
+    if (!infoHash)
         infoHash = InfoHash::get(hash);
-    size_t token;
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             (void)b;
             if (dht_) {
+                s->yield(restbed::OK,  ""); // Open the connection
                 Json::FastWriter writer;
-                token = dht_->listen(infoHash, [s, &writer](std::shared_ptr<Value> value) {
+                size_t token = dht_->listen(infoHash, [s, &writer](std::shared_ptr<Value> value) {
                     // Send values as soon as we get them
                     if (!s->is_closed())
                         s->yield(restbed::OK,  writer.write(value->toJson()));
@@ -208,14 +225,12 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                 }).get();
                 // Handle client deconnection
                 // NOTE: for now, there is no handler, so we test the session in a thread
-                listenThreads_.emplace_back(std::shared_ptr<std::thread>(
-                    new std::thread([&]() {
-                        while(!s->is_closed())
-                            std::this_thread::sleep_for(std::chrono::seconds(2));
-                        if (dht_)
-                            dht_->cancelListen(infoHash, token);
-                    }))
-                );
+                // will be the case in restbed 5.0
+                SessionToHashToken listener;
+                listener.session = s;
+                listener.hash = infoHash;
+                listener.token = token;
+                currentListeners_.emplace_back(listener);
             } else {
                 s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
             }
@@ -228,16 +243,15 @@ void
 DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
 {
     // TODO test with the proxy client
-    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     InfoHash infoHash(hash);
-    if (infoHash == INVALID_ID)
+    if (!infoHash)
         infoHash = InfoHash::get(hash);
 
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             if (dht_) {
                 if(b.empty()) {
@@ -267,20 +281,19 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
     );
 }
 
-#if OPENDHT_PROXY_SERVER_OPTIONAL
+#if OPENDHT_PROXY_SERVER_IDENTITY
 void
 DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) const
 {
-    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     InfoHash infoHash(hash);
-    if (infoHash == INVALID_ID)
+    if (!infoHash)
         infoHash = InfoHash::get(hash);
 
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             if (dht_) {
                 if(b.empty()) {
@@ -312,16 +325,15 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
 void
 DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) const
 {
-    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     InfoHash infoHash(hash);
-    if (infoHash == INVALID_ID)
+    if (!infoHash)
         infoHash = InfoHash::get(hash);
 
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             if (dht_) {
                 if(b.empty()) {
@@ -338,7 +350,7 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                         auto value = std::make_shared<Value>(root);
                         auto toHash = request->get_path_parameter("to");
                         InfoHash toInfoHash(toHash);
-                        if (toInfoHash == INVALID_ID)
+                        if (toinfoHash)
                             toInfoHash = InfoHash::get(toHash);
 
                         auto response = value->toString();
@@ -357,23 +369,22 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
         }
     );
 }
-#endif // OPENDHT_PROXY_SERVER_OPTIONAL
+#endif // OPENDHT_PROXY_SERVER_IDENTITY
 
 void
 DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) const
 {
-    static constexpr dht::InfoHash INVALID_ID {};
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     auto value = request->get_path_parameter("value");
     session->fetch(content_length,
-        [&](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             (void)b;
             if (dht_) {
                 InfoHash infoHash(hash);
-                if (infoHash == INVALID_ID) {
+                if (!infoHash) {
                     infoHash = InfoHash::get(hash);
                 }
                 Json::FastWriter writer;

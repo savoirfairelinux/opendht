@@ -135,13 +135,13 @@ AM_COND_IF([ENABLE_PROXY_SERVER], [
 	PKG_CHECK_MODULES([Jsoncpp], [jsoncpp >= 1.7.4])
 	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=true -ljsoncpp -lrestbed"
 
-	AC_ARG_ENABLE([proxy_server_optionals], AS_HELP_STRING([--enable-proxy-server-optionals],
-		[Enable proxy server ability]), proxy_server_optionals=yes, proxy_server_optionals=no)
-	AM_CONDITIONAL(ENABLE_PROXY_SERVER_OPTIONALS, test x$proxy_server_optionals == xyes)
-	AM_COND_IF([ENABLE_PROXY_SERVER_OPTIONALS], [
-		CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_OPTIONAL=true"
+	AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
+		[Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
+	AM_CONDITIONAL(ENABLE_PROXY_SERVER_IDENTITY, test x$proxy_server_identity == xyes)
+	AM_COND_IF([ENABLE_PROXY_SERVER_IDENTITY], [
+		CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=true"
 	], [
-		CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_OPTIONAL=false"
+		CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=false"
 	])
 ], [
 	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"

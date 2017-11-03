@@ -23,7 +23,7 @@
 #include "securedht.h" // print certificate ID
 
 #if OPENDHT_PROXY_SERVER
-#include <base64.h>
+#include "base64.h"
 #endif //OPENDHT_PROXY_SERVER
 
 
@@ -173,6 +173,44 @@ Value::msgpack_unpack_body(const msgpack::object& o)
 }
 
 #if OPENDHT_PROXY_SERVER
+Value::Value(Json::Value& json)
+{
+   try {
+       if (json.isMember("id"))
+           id = ValueType::Id(json["id"].asInt());
+   } catch (...) { }
+   if (json.isMember("cypher")) {
+       auto cypherStr = json["cypher"].asString();
+       cypherStr = base64_decode(cypherStr);
+       cypher = std::vector<unsigned char>(cypherStr.begin(), cypherStr.end());
+   }
+   if (json.isMember("sig")) {
+       auto sigStr = json["sig"].asString();
+       sigStr = base64_decode(sigStr);
+       signature = std::vector<unsigned char>(sigStr.begin(), sigStr.end());
+   }
+   if (json.isMember("seq"))
+       seq = json["seq"].asInt();
+   if (json.isMember("owner")) {
+       auto ownerStr = json["owner"].asString();
+       auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
+       owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
+   }
+   if (json.isMember("to")) {
+       auto toStr = json["to"].asString();
+       recipient = InfoHash(toStr);
+   }
+   if (json.isMember("type"))
+       type = json["type"].asInt();
+   if (json.isMember("data")){
+       auto dataStr = json["data"].asString();
+       dataStr = base64_decode(dataStr);
+       data = std::vector<unsigned char>(dataStr.begin(), dataStr.end());
+   }
+   if (json.isMember("utype"))
+       user_type = json["utype"].asString();
+}
+
 Json::Value
 Value::toJson() const
 {

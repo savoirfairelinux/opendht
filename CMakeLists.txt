@@ -17,7 +17,7 @@ option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
 option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" OFF)
-option (OPENDHT_PROXY_SERVER_OPTIONAL "Enable sign and encrypt endpoints" OFF)
+option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
 
 find_package(Doxygen)
@@ -93,7 +93,6 @@ include_directories (
     include/
     include/opendht/
     ${CMAKE_CURRENT_BINARY_DIR}/include/
-    /usr/include/jsoncpp
 )
 
 # Install dirs
@@ -157,17 +156,17 @@ list (APPEND opendht_HEADERS
 
 if (OPENDHT_PROXY_SERVER)
   add_definitions(-DOPENDHT_PROXY_SERVER=true)
-  if (OPENDHT_PROXY_SERVER_OPTIONAL)
-    add_definitions(-DOPENDHT_PROXY_SERVER_OPTIONAL=true)
+  if (OPENDHT_PROXY_SERVER_IDENTITY)
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=true)
   else ()
-    add_definitions(-DOPENDHT_PROXY_SERVER_OPTIONAL=false)
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=false)
   endif()
   list (APPEND opendht_HEADERS
-    include/opendht/dhtproxyserver.h
-    include/opendht/base64.h
+    include/opendht/dht_proxy_server.h
   )
   list (APPEND opendht_SOURCES
-    src/dhtproxyserver.cpp
+    src/dht_proxy_server.cpp
+    src/base64.h
     src/base64.cpp
   )
 else ()

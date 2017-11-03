@@ -19,6 +19,9 @@
 #pragma once
 
 #include "opendht/dhtrunner.h"
+#if OPENDHT_PROXY_SERVER
+#include "opendht/dht_proxy_server.h"
+#endif
 #include "opendht/log.h"
 #include "opendht/default_types.h"
 #include "opendht/indexation/pht.h"
