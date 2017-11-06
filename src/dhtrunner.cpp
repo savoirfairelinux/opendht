@@ -58,15 +58,13 @@ DhtRunner::~DhtRunner()
 void
 DhtRunner::run(in_port_t port, DhtRunner::Config config)
 {
-    sockaddr_in sin4;
-    std::fill_n((uint8_t*)&sin4, sizeof(sin4), 0);
-    sin4.sin_family = AF_INET;
-    sin4.sin_port = htons(port);
-    sockaddr_in6 sin6;
-    std::fill_n((uint8_t*)&sin6, sizeof(sin6), 0);
-    sin6.sin6_family = AF_INET6;
-    sin6.sin6_port = htons(port);
-    run(&sin4, &sin6, config);
+    SockAddr sin4;
+    sin4.setFamily(AF_INET);
+    sin4.setPort(port);
+    SockAddr sin6;
+    sin6.setFamily(AF_INET6);
+    sin6.setPort(port);
+    run(sin4, sin6, config);
 }
 
 void
@@ -74,12 +72,12 @@ DhtRunner::run(const char* ip4, const char* ip6, const char* service, DhtRunner:
 {
     auto res4 = getAddrInfo(ip4, service);
     auto res6 = getAddrInfo(ip6, service);
-    run(res4.empty() ? nullptr : (sockaddr_in*) &res4.front().first,
-        res6.empty() ? nullptr : (sockaddr_in6*)&res6.front().first, config);
+    run(res4.empty() ? SockAddr() : res4.front(),
+        res6.empty() ? SockAddr() : res6.front(), config);
 }
 
 void
-DhtRunner::run(const sockaddr_in* local4, const sockaddr_in6* local6, DhtRunner::Config config)
+DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config config)
 {
     if (running)
         return;
@@ -375,8 +373,34 @@ DhtRunner::loop_()
     return wakeup;
 }
 
+
+int bindSocket(const SockAddr& addr, SockAddr& bound)
+{
+    bool is_ipv6 = addr.getFamily() == AF_INET6;
+    int sock = socket(is_ipv6 ? PF_INET6 : PF_INET, SOCK_DGRAM, 0);
+    if (sock >= 0) {
+        int set = 1;
+#ifdef SO_NOSIGPIPE
+        setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(set));
+#endif
+        if (is_ipv6)
+            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&set, sizeof(set));
+        int rc = bind(sock, addr.get(), addr.getLength());
+        if(rc < 0)
+            throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
+        sockaddr_storage ss;
+        socklen_t ss_len = sizeof(ss);
+        getsockname(sock, (sockaddr*)&ss, &ss_len);
+        bound = {ss, ss_len};
+        return sock;
+    } else {
+        throw DhtException(std::string("Can't open socket: ") + strerror(sock));
+    }
+    return -1;
+}
+
 void
-DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::Config config)
+DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config config)
 {
     dht_.reset();
 
@@ -384,39 +408,18 @@ DhtRunner::doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDht::C
         s6 = -1;
 
     bound4 = {};
-    if (sin4) {
-        s4 = socket(PF_INET, SOCK_DGRAM, 0);
-        if(s4 >= 0) {
-            int rc = bind(s4, (sockaddr*)sin4, sizeof(sockaddr_in));
-            if(rc < 0)
-                throw DhtException("Can't bind IPv4 socket on " + dht::print_addr((sockaddr*)sin4, sizeof(sockaddr_in)));
-            sockaddr_storage ss;
-            socklen_t ss_len = sizeof(ss);
-            getsockname(s4, (sockaddr*)&ss, &ss_len);
-            bound4 = {ss, ss_len};
-        }
-    }
+    if (sin4)
+        s4 = bindSocket(sin4, bound4);
 
 #if 1
     bound6 = {};
-    if (sin6) {
-        s6 = socket(PF_INET6, SOCK_DGRAM, 0);
-        if(s6 >= 0) {
-            int val = 1;
-            int rc = setsockopt(s6, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&val, sizeof(val));
-            if(rc < 0)
-                throw DhtException("Can't set IPV6_V6ONLY");
-
-            rc = bind(s6, (sockaddr*)sin6, sizeof(sockaddr_in6));
-            if(rc < 0)
-                throw DhtException("Can't bind IPv6 socket on " + dht::print_addr((sockaddr*)sin6, sizeof(sockaddr_in6)));
-            sockaddr_storage ss;
-            socklen_t ss_len = sizeof(ss);
-            getsockname(s6, (sockaddr*)&ss, &ss_len);
-            bound6 = {ss, ss_len};
-        }
-    }
+    if (sin6)
+        s6 = bindSocket(sin6, bound6);
 #endif
+
+    std::cerr << "s4: " << s4 << " bound on " << bound4.toString() << std::endl;
+    std::cerr << "s6: " << s6 << " bound on " << bound6.toString() << std::endl;
+
 
     dht_ = std::unique_ptr<SecureDht>(new SecureDht {s4, s6, config});
 
@@ -490,7 +493,8 @@ DhtRunner::get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb, 
 {
     get(InfoHash::get(key), vcb, dcb, f, w);
 }
-void DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Query q) {
+void
+DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Query q) {
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) mutable {
@@ -695,10 +699,10 @@ DhtRunner::tryBootstrapContinuously()
     });
 }
 
-std::vector<std::pair<sockaddr_storage, socklen_t>>
+std::vector<SockAddr>
 DhtRunner::getAddrInfo(const std::string& host, const std::string& service)
 {
-    std::vector<std::pair<sockaddr_storage, socklen_t>> ips {};
+    std::vector<SockAddr> ips {};
     if (host.empty())
         return ips;
 
@@ -712,8 +716,7 @@ DhtRunner::getAddrInfo(const std::string& host, const std::string& service)
 
     addrinfo* infop = info;
     while (infop) {
-        ips.emplace_back(sockaddr_storage(), infop->ai_addrlen);
-        std::copy_n((uint8_t*)infop->ai_addr, infop->ai_addrlen, (uint8_t*)&ips.back().first);
+        ips.emplace_back(infop->ai_addr, infop->ai_addrlen);
         infop = infop->ai_next;
     }
     freeaddrinfo(info);
@@ -737,13 +740,13 @@ DhtRunner::clearBootstrap()
 }
 
 void
-DhtRunner::bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb)
+DhtRunner::bootstrap(const std::vector<SockAddr>& nodes, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
         auto rem = cb ? std::make_shared<std::pair<size_t, bool>>(nodes.size(), false) : nullptr;
-        for (auto& node : nodes)
-            dht.pingNode((sockaddr*)&node.first, node.second, cb ? [rem,cb](bool ok) {
+        for (const auto& node : nodes)
+            dht.pingNode(node.get(), node.getLength(), cb ? [rem,cb](bool ok) {
                 auto& r = *rem;
                 r.first--;
                 r.second |= ok;

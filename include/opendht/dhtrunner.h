@@ -202,7 +202,7 @@ public:
      * Insert known nodes to the routing table, without necessarly ping them.
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
-    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb={});
+    void bootstrap(const std::vector<SockAddr>& nodes, DoneCallbackSimple&& cb={});
     void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
 
     /**
@@ -329,7 +329,7 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const sockaddr_in* local4, const sockaddr_in6* local6, Config config);
+    void run(const SockAddr& local4, const SockAddr& local6, Config config);
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
@@ -373,10 +373,10 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
+    void doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDhtConfig config);
     time_point loop_();
 
-    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const std::string& host, const std::string& service);
+    static std::vector<SockAddr> getAddrInfo(const std::string& host, const std::string& service);
 
     NodeStatus getStatus() const {
         return std::max(status4, status6);
