@@ -91,7 +91,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
 
     std::map<std::string, indexation::Pht> indexes;
 #if OPENDHT_PROXY_SERVER
-    std::map<std::string, std::unique_ptr<DhtProxyServer>> proxies;
+    std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
 #endif //OPENDHT_PROXY_SERVER
 
     while (true)
@@ -177,18 +177,16 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             iss >> idstr;
             try {
                 unsigned int port = std::stoi(idstr);
-                auto proxyServer = std::unique_ptr<DhtProxyServer>(
-                    new DhtProxyServer(dht, port)
-                );
-                proxies.emplace(idstr, std::move(proxyServer));
+                proxies.emplace(port, new DhtProxyServer(dht, port));
             } catch (...) { }
             continue;
         } else if (op == "psp") {
             iss >> idstr;
-            auto it = proxies.find(idstr);
-            if (it != proxies.end()) {
-                it->second.reset(nullptr);
-            }
+            try {
+                auto it = proxies.find(std::stoi(idstr));
+                if (it != proxies.end())
+                    proxies.erase(it);
+            } catch (...) { }
             continue;
         }
 #endif //OPENDHT_PROXY_SERVER
