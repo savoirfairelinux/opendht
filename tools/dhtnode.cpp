@@ -29,7 +29,7 @@ extern "C" {
 using namespace dht;
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port]" << std::endl << std::endl;
     std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
     std::cout << "Report bugs to: http://opendht.net" << std::endl;
 }
@@ -92,6 +92,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
     std::map<std::string, indexation::Pht> indexes;
 #if OPENDHT_PROXY_SERVER
     std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
+    if (params.proxyserver != 0) {
+        proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver));
+    }
 #endif //OPENDHT_PROXY_SERVER
 
     while (true)
