@@ -31,7 +31,6 @@
 namespace dht {
 
 class DhtRunner;
-class InfoHash;
 
 /**
  * Describes the REST API
@@ -64,7 +63,7 @@ private:
      * Return the PublicKey id, the node id and node stats
      * Method: GET "/"
      * Result: HTTP 200, body: Value in JSON format (one part = one value)
-     * On error: HTTP 404, body: {"err":"xxxx"}
+     * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
     void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
@@ -72,12 +71,11 @@ private:
     /**
      * Return Values of a InfoHash
      * Method: GET "/{InfoHash: .*}"
-     * Return: Multiple JSON object in parts. For 2 values, you will have 3 parts:
-     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
-     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
-     * {"ok": 1}
+     * Return: Multiple JSON object in parts. Example:
+     * Value in JSON format\n
+     * Value in JSON format
      *
-     * On error: HTTP 404, body: {"err":"xxxx"}
+     * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
     void get(const std::shared_ptr<restbed::Session>& session) const;
@@ -85,11 +83,11 @@ private:
     /**
      * Listen incoming Values of a InfoHash.
      * Method: LISTEN "/{InfoHash: .*}"
-     * Return: Multiple JSON object in parts. For 2 values, you will have 2 parts:
-     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
-     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
+     * Return: Multiple JSON object in parts. Example:
+     * Value in JSON format\n
+     * Value in JSON format
      *
-     * On error: HTTP 404, body: {"err":"xxxx"}
+     * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
     void listen(const std::shared_ptr<restbed::Session>& session) const;
@@ -98,8 +96,8 @@ private:
      * Put a value on the DHT
      * Method: POST "/{InfoHash: .*}"
      * body = Value to put in JSON
-     * Return: {"ok":"1"}
-     * On error: HTTP 404, body: {"err":"xxxx"} if no dht
+     * Return: HTTP 200 if success and the value put in JSON
+     * On error: HTTP 503, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
@@ -110,8 +108,8 @@ private:
      * Put a value to sign by the proxy on the DHT
      * Method: SIGN "/{InfoHash: .*}"
      * body = Value to put in JSON
-     * Return: {"ok":"1"}
-     * On error: HTTP 404, body: {"err":"xxxx"} if no dht
+     * Return: HTTP 200 if success and the value put in JSON
+     * On error: HTTP 503, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
@@ -121,8 +119,8 @@ private:
      * Put a value to encrypt by the proxy on the DHT
      * Method: ENCRYPT "/{hash: .*}"
      * body = Value to put in JSON + "to":"infoHash"
-     * Return: {"ok":"1"}
-     * On error: HTTP 404, body: {"err":"xxxx"} if no dht
+     * Return: HTTP 200 if success and the value put in JSON
+     * On error: HTTP 503, body: {"err":"xxxx"} if no dht
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
@@ -132,12 +130,11 @@ private:
     /**
      * Return Values of a InfoHash filtered by a value id
      * Method: GET "/{InfoHash: .*}/{ValueId: .*}"
-     * Return: Multiple JSON object in parts. For 2 values, you will have 3 parts:
-     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
-     * Value in JSON format (HTTP/1.1 200 OK Content-Type: application/json)
-     * {"ok": 1}
+     * Return: Multiple JSON object in parts. Example:
+     * Value in JSON format\n
+     * Value in JSON format
      *
-     * On error: HTTP 404, body: {"err":"xxxx"}
+     * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
     void getFiltered(const std::shared_ptr<restbed::Session>& session) const;

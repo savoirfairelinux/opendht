@@ -19,13 +19,12 @@
 #if OPENDHT_PROXY_SERVER
 #include "dht_proxy_server.h"
 
-#include <chrono>
-#include <functional>
-
 #include "default_types.h"
 #include "dhtrunner.h"
 #include "msgpack.hpp"
 
+#include <chrono>
+#include <functional>
 #include <json/json.h>
 #include <limits>
 
@@ -96,13 +95,14 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
         // Start server
         auto settings = std::make_shared<restbed::Settings>();
         settings->set_default_header("Content-Type", "application/json");
+        settings->set_default_header("Connection", "keep-alive");
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // there is a timeout, but really huge
         settings->set_port(port);
         try {
             service_->start(settings);
         } catch(std::system_error& e) {
-            // Fail silently for now.
+            std::cerr << "Error running server on port " << port << ": " << e.what() << std::endl;
         }
     });
 
@@ -150,20 +150,21 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b*/)
         {
-            (void)b;
             if (dht_) {
                 Json::Value result;
-                result["id"] = dht_->getId().toString();
+                auto id = dht_->getId();
+                if (id)
+                    result["id"] = id.toString();
                 result["node_id"] = dht_->getNodeId().toString();
-                result["ipv4"] = dht_->getNodesStats(AF_INET).toString();
-                result["ipv6"] = dht_->getNodesStats(AF_INET6).toString();
+                result["ipv4"] = dht_->getNodesStats(AF_INET).toJson();
+                result["ipv6"] = dht_->getNodesStats(AF_INET6).toJson();
                 Json::FastWriter writer;
                 s->close(restbed::OK, writer.write(result));
             }
             else
-                s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
         }
     );
 }
@@ -175,35 +176,36 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
         {
-            (void)b;
             if (dht_) {
                 InfoHash infoHash(hash);
                 if (!infoHash) {
                     infoHash = InfoHash::get(hash);
                 }
-                Json::FastWriter writer;
-                dht_->get(infoHash, [s, &writer](std::shared_ptr<Value> value) {
-                    // Send values as soon as we get them
-                    Json::Value result;
-                    s->yield(restbed::OK,  writer.write(value->toJson()));
-                    return true;
-                }, [s, &writer](bool ok) {
-                    // Communication is finished
-                    auto response = std::to_string(ok);
-                    s->close(restbed::OK, "{\"ok\": " + response + "}");
+                s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
+                    dht_->get(infoHash, [s](std::shared_ptr<Value> value) {
+                        // Send values as soon as we get them
+                        Json::FastWriter writer;
+                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        return true;
+                    }, [s](bool /*ok* */) {
+                        // Communication is finished
+                        s->close();
+                    });
                 });
             } else {
-                s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
+
 }
 
 void
 DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
 {
+
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
@@ -211,28 +213,33 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
     if (!infoHash)
         infoHash = InfoHash::get(hash);
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
         {
-            (void)b;
             if (dht_) {
-                s->yield(restbed::OK,  ""); // Open the connection
-                Json::FastWriter writer;
-                size_t token = dht_->listen(infoHash, [s, &writer](std::shared_ptr<Value> value) {
-                    // Send values as soon as we get them
-                    if (!s->is_closed())
-                        s->yield(restbed::OK,  writer.write(value->toJson()));
-                    return !s->is_closed();
-                }).get();
-                // Handle client deconnection
-                // NOTE: for now, there is no handler, so we test the session in a thread
-                // will be the case in restbed 5.0
-                SessionToHashToken listener;
-                listener.session = s;
-                listener.hash = infoHash;
-                listener.token = token;
-                currentListeners_.emplace_back(listener);
+                InfoHash infoHash(hash);
+                if (!infoHash) {
+                    infoHash = InfoHash::get(hash);
+                }
+                s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
+                    size_t token = dht_->listen(infoHash, [s](std::shared_ptr<Value> value) {
+                        // Send values as soon as we get them
+                        if (!s->is_closed()) {
+                            Json::FastWriter writer;
+                            s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        }
+                        return !s->is_closed();
+                    }).get();
+                    // Handle client deconnection
+                    // NOTE: for now, there is no handler, so we test the session in a thread
+                    // will be the case in restbed 5.0
+                    SessionToHashToken listener;
+                    listener.session = s;
+                    listener.hash = infoHash;
+                    listener.token = token;
+                    currentListeners_.emplace_back(listener);
+                });
             } else {
-                s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
@@ -267,15 +274,15 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                         // Build the Value from json
                         auto value = std::make_shared<Value>(root);
 
-                        auto response = value->toString();
+                        Json::FastWriter writer;
                         dht_->put(infoHash, value);
-                        s->close(restbed::OK, response);
+                        s->close(restbed::OK, writer.write(value->toJson()));
                     } else {
                         s->close(restbed::BAD_REQUEST, "Incorrect JSON");
                     }
                 }
             } else {
-                s->close(restbed::NOT_FOUND, "");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
@@ -308,15 +315,15 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                     if (parsingSuccessful) {
                         auto value = std::make_shared<Value>(root);
 
-                        auto response = value->toString();
+                        Json::FastWriter writer;
                         dht_->putSigned(infoHash, value);
-                        s->close(restbed::OK, response);
+                        s->close(restbed::OK, writer.write(value->toJson()));
                     } else {
                         s->close(restbed::BAD_REQUEST, "Incorrect JSON" + strJson);
                     }
                 }
             } else {
-                s->close(restbed::NOT_FOUND, "");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
@@ -353,9 +360,9 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                         if (toinfoHash)
                             toInfoHash = InfoHash::get(toHash);
 
-                        auto response = value->toString();
+                        Json::FastWriter writer;
                         dht_->putEncrypted(infoHash, toInfoHash, value);
-                        s->close(restbed::OK, response);
+                        s->close(restbed::OK, writer.write(value->toJson()));
                     } else {
                         if(!parsingSuccessful)
                             s->close(restbed::BAD_REQUEST, "Incorrect JSON");
@@ -364,7 +371,7 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     }
                 }
             } else {
-                s->close(restbed::NOT_FOUND, "");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
@@ -379,25 +386,26 @@ DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) co
     auto hash = request->get_path_parameter("hash");
     auto value = request->get_path_parameter("value");
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
         {
-            (void)b;
             if (dht_) {
                 InfoHash infoHash(hash);
                 if (!infoHash) {
                     infoHash = InfoHash::get(hash);
                 }
-                Json::FastWriter writer;
-                dht_->get(infoHash, [s, &writer](std::shared_ptr<Value> value) {
-                    Json::Value result;
-                    s->yield(restbed::OK,  writer.write(value->toJson()));
-                    return true;
-                }, [s, &writer](bool ok) {
-                    auto response = std::to_string(ok);
-                    s->close(restbed::OK, "{\"ok\": " + response + "}");
-                }, {}, value);
+                s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
+                    dht_->get(infoHash, [s](std::shared_ptr<Value> v) {
+                        // Send values as soon as we get them
+                        Json::FastWriter writer;
+                        s->yield(writer.write(v->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        return true;
+                    }, [s](bool /*ok* */) {
+                        // Communication is finished
+                        s->close();
+                    }, {}, value);
+                });
             } else {
-                s->close(restbed::NOT_FOUND, "{\"err\":\"Incorrect DhtRunner\"}");
+                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
