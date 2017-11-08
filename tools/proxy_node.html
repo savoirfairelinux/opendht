@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+		<title>OpenDHT tester</title>
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+		<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+		<script type="text/javascript">"use strict";
+var onGet;
+var onPut;
+const valueGetElement = function(o) {
+    const d = window.atob(o.data);
+    return d;
+};
+$(function() {
+    const getBtn = $("#getBtn");
+    const putBtn = $("#putBtn");
+    const result = $("#dhtResult");
+    const group = $('<ul class="list-group"/>').appendTo(result);
+    onGet = function ( ) {
+        const input = $("#getKey").val();
+        const req = new XMLHttpRequest();
+        req.onreadystatechange = function(event) {
+            if (this.readyState >= XMLHttpRequest.LOADING) {
+                if (this.readyState == XMLHttpRequest.DONE)
+                    getBtn.button('reset');
+                group.empty();
+                if (this.status === 200) {
+                    const elements = this.responseText.split("\n");
+                    elements.forEach(function(element) {
+                        if (!element || element.length == 0)
+                            return;
+                        const o = JSON.parse(element);
+                        const d = window.atob(o.data);
+                        $('<li class="list-group-item"/>').append(valueGetElement(o)).appendTo(group);
+                    });
+                } else {
+                    group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content: " + this.statusText));
+                }
+            }
+        };
+        req.onerror = function(event) {
+            getBtn.button('reset');
+            group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content."));
+        };
+        req.open('GET', "http://127.0.0.1:8080/" + input, true);
+        req.send(null);
+        getBtn.button('loading');
+        return false;
+    };
+
+    onPut = function( ) {
+        const key = $("#getKey").val();
+        const value = $("#putValue").val();
+        $.ajax({
+            url: 'http://127.0.0.1:8080/' + key,
+            type: 'POST',
+            data: JSON.stringify({
+                data:window.btoa(value)
+            }),
+            contentType: 'application/json; charset=utf-8',
+            dataType: 'json',
+            success: function( result ) {
+                putBtn.button('reset');
+                $('<li class="list-group-item list-group-item-success"/>').append(valueGetElement(result)).appendTo(group.empty());
+            },
+            error: function(result) {
+                putBtn.button('reset');
+                group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text(result.statusText));
+            }
+        });
+        putBtn.button('loading');
+        return false;
+    };
+
+});
+	</script>
+</head>
+<body>
+    <div class="container">
+        <header class="page-header"><h1>OpenDHT tester</h1></header>
+        <div class="row">
+        <div class="col-sm-8">
+            <div class="panel panel-default" id="dhtResult">
+                <div class="panel-heading">
+                    <div class="row">
+                    <div class="col-sm-6">
+                        <form class="form-inline" onsubmit="return onGet();">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="getKey" placeholder="Key" aria-label="Key" />
+                                <span class="input-group-btn">
+                                    <button id="getBtn" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i> Loading" type="submit">Get</button>
+                                </span>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="col-sm-6">
+                        <form class="form-inline" onsubmit="return onPut();">
+                            <div class="input-group">
+                                <input type="text" class="form-control input-group-input" id="putValue" placeholder="Value" />
+                                <span class="input-group-btn">
+                                    <button id="putBtn" type="submit" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i> Loading">Put</button>
+                                </span>
+                            </div>
+                        </form>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+</body>
+</html>
