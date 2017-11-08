@@ -64,6 +64,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
         auto settings = std::make_shared<restbed::Settings>();
         settings->set_default_header("Content-Type", "application/json");
         settings->set_default_header("Connection", "keep-alive");
+        settings->set_default_header("Access-Control-Allow-Origin", "*");
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // there is a timeout, but really huge
         settings->set_port(port);
