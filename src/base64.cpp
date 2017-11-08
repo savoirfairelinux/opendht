@@ -72,7 +72,7 @@ uint8_t *base64_decode(const char *input, size_t input_length,
     for (c = 0; c < 64; c++)
         decoding_table[static_cast<int>(encoding_table[c])] = c;
 
-    if (input_length % 4 != 0)
+    if (input_length % 4 != 0 || input_length < 2)
         return nullptr;
 
     size_t out_sz = *output_length;

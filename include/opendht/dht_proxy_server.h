@@ -62,7 +62,7 @@ private:
     /**
      * Return the PublicKey id, the node id and node stats
      * Method: GET "/"
-     * Result: HTTP 200, body: Value in JSON format (one part = one value)
+     * Result: HTTP 200, body: Node infos in JSON format
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
@@ -98,7 +98,7 @@ private:
      * body = Value to put in JSON
      * Return: HTTP 200 if success and the value put in JSON
      * On error: HTTP 503, body: {"err":"xxxx"} if no dht
-     * HTTP 400, body: {"err":"xxxx"} if bad json
+     * HTTP 400, body: {"err":"xxxx"} if bad json or HTTP 502 if put fails
      * @param session
      */
     void put(const std::shared_ptr<restbed::Session>& session) const;
@@ -157,7 +157,7 @@ private:
     struct SessionToHashToken {
         std::shared_ptr<restbed::Session> session;
         InfoHash hash;
-        size_t token;
+        std::future<size_t> token;
     };
     mutable std::vector<SessionToHashToken> currentListeners_;
     std::atomic_bool stopListeners {false};

@@ -28,6 +28,8 @@
 #include <json/json.h>
 #include <limits>
 
+using namespace std::placeholders;
+
 namespace dht {
 
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
@@ -40,62 +42,22 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
         // Create endpoints
         auto resource = std::make_shared<restbed::Resource>();
         resource->set_path("/");
-        resource->set_method_handler("GET",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->getNodeInfo(session);
-            }
-        );
+        resource->set_method_handler("GET", std::bind(&DhtProxyServer::getNodeInfo, this, _1));
         service_->publish(resource);
         resource = std::make_shared<restbed::Resource>();
         resource->set_path("/{hash: .*}");
-        resource->set_method_handler("GET",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->get(session);
-            }
-        );
-        resource->set_method_handler("LISTEN",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->listen(session);
-            }
-        );
-        resource->set_method_handler("POST",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->put(session);
-            }
-        );
+        resource->set_method_handler("GET", std::bind(&DhtProxyServer::get, this, _1));
+        resource->set_method_handler("LISTEN", std::bind(&DhtProxyServer::listen, this, _1));
+        resource->set_method_handler("POST", std::bind(&DhtProxyServer::put, this, _1));
 #if OPENDHT_PROXY_SERVER_IDENTITY
-        resource->set_method_handler("SIGN",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->putSigned(session);
-            }
-        );
-        resource->set_method_handler("ENCRYPT",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->putEncrypted(session);
-            }
-        );
+        resource->set_method_handler("SIGN", std::bind(&DhtProxyServer::putSigned, this, _1));
+        resource->set_method_handler("ENCRYPT", std::bind(&DhtProxyServer::putEncrypted, this, _1));
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
-        resource->set_method_handler("OPTIONS",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->handleOptionsMethod(session);
-            }
-        );
+        resource->set_method_handler("OPTIONS", std::bind(&DhtProxyServer::handleOptionsMethod, this, _1));
         service_->publish(resource);
         resource = std::make_shared<restbed::Resource>();
         resource->set_path("/{hash: .*}/{value: .*}");
-        resource->set_method_handler("GET",
-            [this](const std::shared_ptr<restbed::Session> session)
-            {
-                this->getFiltered(session);
-            }
-        );
+        resource->set_method_handler("GET", std::bind(&DhtProxyServer::getFiltered, this, _1));
         service_->publish(resource);
 
         // Start server
@@ -118,7 +80,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
             auto listener = currentListeners_.begin();
             while (listener != currentListeners_.end()) {
                 if (listener->session->is_closed() && dht_) {
-                    dht_->cancelListen(listener->hash, listener->token);
+                    dht_->cancelListen(listener->hash, std::move(listener->token));
                     // Remove listener if unused
                     listener = currentListeners_.erase(listener);
                 } else {
@@ -226,36 +188,32 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                 if (!infoHash) {
                     infoHash = InfoHash::get(hash);
                 }
-                s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
-                    size_t token = dht_->listen(infoHash, [s](std::shared_ptr<Value> value) {
-                        // Send values as soon as we get them
-                        if (!s->is_closed()) {
-                            Json::FastWriter writer;
-                            s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
-                        }
-                        return !s->is_closed();
-                    }).get();
+                s->yield(restbed::OK);
                     // Handle client deconnection
                     // NOTE: for now, there is no handler, so we test the session in a thread
                     // will be the case in restbed 5.0
-                    SessionToHashToken listener;
-                    listener.session = s;
-                    listener.hash = infoHash;
-                    listener.token = token;
-                    currentListeners_.emplace_back(listener);
+                SessionToHashToken listener;
+                listener.session = session;
+                listener.hash = infoHash;
+                listener.token = dht_->listen(infoHash, [s](std::shared_ptr<Value> value) {
+                    // Send values as soon as we get them
+                    if (!s->is_closed()) {
+                        Json::FastWriter writer;
+                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                    }
+                    return !s->is_closed();
                 });
+                currentListeners_.emplace_back(std::move(listener));
             } else {
-                s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
+                session->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
         }
     );
 }
 
-
 void
 DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
 {
-    // TODO test with the proxy client
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
@@ -268,7 +226,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
         {
             if (dht_) {
                 if(b.empty()) {
-                    std::string response("Missing parameters");
+                    std::string response("{\"err\":\"Missing parameters\"}");
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
@@ -280,11 +238,16 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                         // Build the Value from json
                         auto value = std::make_shared<Value>(root);
 
-                        Json::FastWriter writer;
-                        dht_->put(infoHash, value);
-                        s->close(restbed::OK, writer.write(value->toJson()));
+                        dht_->put(infoHash, value, [s, value](bool ok) {
+                            if (ok) {
+                                Json::FastWriter writer;
+                                s->close(restbed::OK, writer.write(value->toJson()));
+                            } else {
+                                s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
+                            }
+                        });
                     } else {
-                        s->close(restbed::BAD_REQUEST, "Incorrect JSON");
+                        s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     }
                 }
             } else {
@@ -310,7 +273,7 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
         {
             if (dht_) {
                 if(b.empty()) {
-                    std::string response("Missing parameters");
+                    std::string response("{\"err\":\"Missing parameters\"}");
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
@@ -325,7 +288,7 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                         dht_->putSigned(infoHash, value);
                         s->close(restbed::OK, writer.write(value->toJson()));
                     } else {
-                        s->close(restbed::BAD_REQUEST, "Incorrect JSON" + strJson);
+                        s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     }
                 }
             } else {
@@ -341,16 +304,16 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
-    InfoHash infoHash(hash);
-    if (!infoHash)
-        infoHash = InfoHash::get(hash);
+    InfoHash key(hash);
+    if (!key)
+        key = InfoHash::get(hash);
 
     session->fetch(content_length,
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             if (dht_) {
                 if(b.empty()) {
-                    std::string response("Missing parameters");
+                    std::string response("{\"err\":\"Missing parameters\"}");
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
@@ -358,22 +321,17 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
                     bool parsingSuccessful = reader.parse(strJson.c_str(), root);
-                    auto toHash = root["to"].asString();
-                    if (parsingSuccessful && !toHash.empty()) {
+                    InfoHash to(root["to"].asString());
+                    if (parsingSuccessful && toInfoHash) {
                         auto value = std::make_shared<Value>(root);
-                        auto toHash = request->get_path_parameter("to");
-                        InfoHash toInfoHash(toHash);
-                        if (toInfoHash)
-                            toInfoHash = InfoHash::get(toHash);
-
                         Json::FastWriter writer;
-                        dht_->putEncrypted(infoHash, toInfoHash, value);
+                        dht_->putEncrypted(key, to, value);
                         s->close(restbed::OK, writer.write(value->toJson()));
                     } else {
                         if(!parsingSuccessful)
-                            s->close(restbed::BAD_REQUEST, "Incorrect JSON");
+                            s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                         else
-                            s->close(restbed::BAD_REQUEST, "No destination found");
+                            s->close(restbed::BAD_REQUEST, "{\"err\":\"No destination found\"}");
                     }
                 }
             } else {
