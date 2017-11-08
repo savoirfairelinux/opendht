@@ -46,7 +46,7 @@ if (NOT OPENDHT_ARGON2)
 endif ()
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
     find_package(Restbed REQUIRED)
-    find_package(Jsoncpp REQUIRED)
+    pkg_search_module(Jsoncpp jsoncpp)
 endif()
 
 # Build flags
@@ -84,10 +84,14 @@ endif ()
 if (Nettle_INCLUDE_DIRS)
     include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
 endif ()
+if (RESTBED_INCLUDE)
+    include_directories (SYSTEM "${RESTBED_INCLUDE}")
+endif ()
 if (Jsoncpp_INCLUDE_DIRS)
     include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
+link_directories (${Jsoncpp_LIBRARY_DIRS})
 include_directories (
     ./
     include/
