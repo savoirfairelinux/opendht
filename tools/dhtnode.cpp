@@ -29,7 +29,7 @@ extern "C" {
 using namespace dht;
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port]" << std::endl << std::endl;
     std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
     std::cout << "Report bugs to: http://opendht.net" << std::endl;
 }
@@ -55,16 +55,23 @@ void print_help() {
               << "  ll         Print basic information and stats about the current node." << std::endl
               << "  ls [key]   Print basic information about current search(es)." << std::endl
               << "  ld [key]   Print basic information about currenty stored values on this node (or key)." << std::endl
-              << "  lr         Print the full current routing table of this node" << std::endl;
+              << "  lr         Print the full current routing table of this node." << std::endl;
+
+#if OPENDHT_PROXY_SERVER
+    std::cout << std::endl << "Operations with the proxy:" << std::endl
+              << "  pst [port]            Start the proxy interface on port." << std::endl
+              << "  psp [port]            Stop the proxy interface on port." << std::endl;
+#endif //OPENDHT_PROXY_SERVER
 
     std::cout << std::endl << "Operations on the DHT:" << std::endl
-              << "  b <ip:port>             Ping potential node at given IP address/port." << std::endl
+              << "  b <ip:port>           Ping potential node at given IP address/port." << std::endl
               << "  g <key>               Get values at <key>." << std::endl
               << "  l <key>               Listen for value changes at <key>." << std::endl
               << "  p <key> <str>         Put string value at <key>." << std::endl
               << "  pp <key> <str>        Put string value at <key> (persistent version)." << std::endl
               << "  s <key> <str>         Put string value at <key>, signed with our generated private key." << std::endl
               << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl;
+
     std::cout << std::endl << "Indexation operations on the DHT:" << std::endl
               << "  il <name> <key> [exact match]   Lookup the index named <name> with the key <key>." << std::endl
               << "                                  Set [exact match] to 'false' for inexact match lookup." << std::endl
@@ -83,6 +90,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
 #endif
 
     std::map<std::string, indexation::Pht> indexes;
+#if OPENDHT_PROXY_SERVER
+    std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
+    if (params.proxyserver != 0) {
+        proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver));
+    }
+#endif //OPENDHT_PROXY_SERVER
 
     while (true)
     {
@@ -160,11 +173,29 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             dht->setLogFilter(filter);
             continue;
         }
+#if OPENDHT_PROXY_SERVER
+        else if (op == "pst") {
+            iss >> idstr;
+            try {
+                unsigned int port = std::stoi(idstr);
+                proxies.emplace(port, new DhtProxyServer(dht, port));
+            } catch (...) { }
+            continue;
+        } else if (op == "psp") {
+            iss >> idstr;
+            try {
+                auto it = proxies.find(std::stoi(idstr));
+                if (it != proxies.end())
+                    proxies.erase(it);
+            } catch (...) { }
+            continue;
+        }
+#endif //OPENDHT_PROXY_SERVER
 
         if (op.empty())
             continue;
 
-        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "pp", "cpp", "s", "e", "a"};
+        static const std::set<std::string> VALID_OPS {"g", "l", "cl", "il", "ii", "p", "pp", "cpp", "s", "e", "a",  "q"};
         if (VALID_OPS.find(op) == VALID_OPS.cend()) {
             std::cout << "Unknown command: " << op << std::endl;
             std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;

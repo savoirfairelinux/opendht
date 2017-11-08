@@ -16,6 +16,9 @@ option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
+option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" OFF)
+option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
+option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -41,6 +44,10 @@ if (NOT OPENDHT_ARGON2)
         set(OPENDHT_ARGON2 ON)
     endif()
 endif ()
+if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+    find_package(Restbed REQUIRED)
+    find_package(Jsoncpp REQUIRED)
+endif()
 
 # Build flags
 set (CMAKE_CXX_STANDARD 11)
@@ -76,6 +83,9 @@ if (GNUTLS_INCLUDE_DIRS)
 endif ()
 if (Nettle_INCLUDE_DIRS)
     include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
+endif ()
+if (Jsoncpp_INCLUDE_DIRS)
+    include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 include_directories (
@@ -144,6 +154,25 @@ list (APPEND opendht_HEADERS
     include/opendht/indexation/pht.h
 )
 
+if (OPENDHT_PROXY_SERVER)
+  add_definitions(-DOPENDHT_PROXY_SERVER=true)
+  if (OPENDHT_PROXY_SERVER_IDENTITY)
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=true)
+  else ()
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=false)
+  endif()
+  list (APPEND opendht_HEADERS
+    include/opendht/dht_proxy_server.h
+  )
+  list (APPEND opendht_SOURCES
+    src/dht_proxy_server.cpp
+    src/base64.h
+    src/base64.cpp
+  )
+else ()
+    add_definitions(-DENABLE_PROXY_SERVER=false)
+endif ()
+
 if(OPENDHT_ARGON2)
     # make sure argon2 submodule is up to date and initialized
     message("Initializing Argon2 submodule")
@@ -177,7 +206,7 @@ if (OPENDHT_STATIC)
         target_link_libraries(opendht-static ${argon2_LIBRARIES})
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
+    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARIES} ${Jsoncpp_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -198,7 +227,7 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
+    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARIES} ${Jsoncpp_LIBRARIES})
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 

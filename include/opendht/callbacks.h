@@ -26,6 +26,10 @@
 #include <memory>
 #include <functional>
 
+#if OPENDHT_PROXY_SERVER
+#include <json/json.h>
+#endif //OPENDHT_PROXY_SERVER
+
 namespace dht {
 
 struct Node;
@@ -47,6 +51,12 @@ struct OPENDHT_PUBLIC NodeStats {
     unsigned table_depth;
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
     std::string toString() const;
+#if OPENDHT_PROXY_SERVER
+    /**
+     * Build a json object from a NodeStats
+     */
+    Json::Value toJson() const;
+#endif //OPENDHT_PROXY_SERVER
 };
 
 /**
