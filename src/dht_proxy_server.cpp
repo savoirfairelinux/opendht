@@ -81,6 +81,12 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
             }
         );
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
+        resource->set_method_handler("OPTIONS",
+            [this](const std::shared_ptr<restbed::Session> session)
+            {
+                this->handleOptionsMethod(session);
+            }
+        );
         service_->publish(resource);
         resource = std::make_shared<restbed::Resource>();
         resource->set_path("/{hash: .*}/{value: .*}");
@@ -357,7 +363,7 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                         auto value = std::make_shared<Value>(root);
                         auto toHash = request->get_path_parameter("to");
                         InfoHash toInfoHash(toHash);
-                        if (toinfoHash)
+                        if (toInfoHash)
                             toInfoHash = InfoHash::get(toHash);
 
                         Json::FastWriter writer;
@@ -377,6 +383,19 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
     );
 }
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
+
+void
+DhtProxyServer::handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const
+{
+#if OPENDHT_PROXY_SERVER_IDENTITY
+    const auto allowed = "OPTIONS, GET, POST, LISTEN, SIGN, ENCRYPT";
+#else
+    const auto allowed = "OPTIONS, GET, POST, LISTEN";
+#endif //OPENDHT_PROXY_SERVER_IDENTITY
+    session->close(restbed::OK, {{"Access-Control-Allow-Methods", allowed},
+                                 {"Access-Control-Allow-Headers", "content-type"},
+                                 {"Access-Control-Max-Age", "86400"}});
+}
 
 void
 DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) const

@@ -139,6 +139,14 @@ private:
      */
     void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
 
+    /**
+     * Respond allowed Methods
+     * Method: OPTIONS "/{hash: .*}"
+     * Return: HTTP 200 + Allow: allowed methods
+     * See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
+     */
+    void handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const;
+
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
     std::shared_ptr<DhtRunner> dht_;
