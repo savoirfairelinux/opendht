@@ -417,10 +417,6 @@ DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config c
         s6 = bindSocket(sin6, bound6);
 #endif
 
-    std::cerr << "s4: " << s4 << " bound on " << bound4.toString() << std::endl;
-    std::cerr << "s6: " << s6 << " bound on " << bound6.toString() << std::endl;
-
-
     dht_ = std::unique_ptr<SecureDht>(new SecureDht {s4, s6, config});
 
     rcv_thread = std::thread([this,s4,s6]() {
