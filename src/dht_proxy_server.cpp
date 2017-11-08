@@ -322,7 +322,7 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     std::string strJson(buf.begin(), buf.end());
                     bool parsingSuccessful = reader.parse(strJson.c_str(), root);
                     InfoHash to(root["to"].asString());
-                    if (parsingSuccessful && toInfoHash) {
+                    if (parsingSuccessful && to) {
                         auto value = std::make_shared<Value>(root);
                         Json::FastWriter writer;
                         dht_->putEncrypted(key, to, value);
