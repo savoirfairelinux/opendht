@@ -201,6 +201,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl;
             continue;
         }
+        dht::InfoHash id;
 
         if (op == "il" or op == "ii") {
             // Pht syntax
@@ -227,12 +228,17 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         else {
             // Dht syntax
             iss >> idstr;
-            InfoHash h {idstr};
-            if (not isInfoHash(h))
-                continue;
+            id = dht::InfoHash(idstr);
+            if (not id) {
+                if (idstr.empty()) {
+                    std::cerr << "Syntax error: invalid InfoHash." << std::endl;
+                    continue;
+                }
+                id = InfoHash::get(idstr);
+                std::cout << "Using h(" << idstr << ") = " << id << std::endl;
+            }
         }
 
-        dht::InfoHash id {idstr};
         // Dht
         auto start = std::chrono::high_resolution_clock::now();
         if (op == "g") {
