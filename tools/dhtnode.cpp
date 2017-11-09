@@ -63,6 +63,12 @@ void print_help() {
               << "  psp [port]            Stop the proxy interface on port." << std::endl;
 #endif //OPENDHT_PROXY_SERVER
 
+#if OPENDHT_PROXY_CLIENT
+    std::cout << std::endl << "Operations with the proxy:" << std::endl
+              << "  stt [server_address]  Start the proxy client." << std::endl
+              << "  stp                   Stop the proxy client." << std::endl;
+#endif //OPENDHT_PROXY_CLIENT
+
     std::cout << std::endl << "Operations on the DHT:" << std::endl
               << "  b <ip:port>           Ping potential node at given IP address/port." << std::endl
               << "  g <key>               Get values at <key>." << std::endl
@@ -96,6 +102,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver));
     }
 #endif //OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_CLIENT
+    if (!params.proxyclient.empty()) {
+        dht->setProxyServer(params.proxyclient);
+        dht->enableProxy(true);
+    }
+#endif //OPENDHT_PROXY_CLIENT
 
     while (true)
     {
@@ -191,6 +203,17 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             continue;
         }
 #endif //OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_CLIENT
+        else if (op == "stt") {
+            iss >> idstr;
+            dht->setProxyServer(idstr);
+            dht->enableProxy(true);
+            continue;
+        } else if (op == "stp") {
+            dht->enableProxy(false);
+            continue;
+        }
+#endif //OPENDHT_PROXY_CLIENT
 
         if (op.empty())
             continue;

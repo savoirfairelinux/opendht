@@ -36,6 +36,10 @@
 #include <queue>
 #include <chrono>
 
+#if OPENDHT_PROXY_CLIENT
+#include "dht_proxy_client.h"
+#endif // OPENDHT_PROXY_CLIENT
+
 namespace dht {
 
 struct Node;
@@ -297,6 +301,9 @@ public:
     struct Config {
         SecureDhtConfig dht_config;
         bool threaded;
+#if OPENDHT_PROXY_CLIENT
+        std::string proxy_server;
+#endif //OPENDHT_PROXY_CLIENT
     };
 
     /**
@@ -305,7 +312,11 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0) {
+    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0
+#if OPENDHT_PROXY_CLIENT
+    , const std::string& proxy_server = "127.0.0.1:8000"
+#endif //OPENDHT_PROXY_CLIENT
+) {
         run(port, {
             /*.dht_config = */{
                 /*.node_config = */{
@@ -316,7 +327,10 @@ public:
                 },
                 /*.id = */identity
             },
-            /*.threaded = */threaded
+            /*.threaded = */threaded,
+#if OPENDHT_PROXY_CLIENT
+            /*.proxy_server = */proxy_server
+#endif //OPENDHT_PROXY_CLIENT
         });
     }
     void run(in_port_t port, Config config);
@@ -362,6 +376,14 @@ public:
      */
     void join();
 
+#if OPENDHT_PROXY_CLIENT
+    void setProxyServer(const std::string& url = "127.0.0.1:8000") {
+        config_.proxy_server = url;
+    }
+    void enableProxy(bool proxify);
+#endif // OPENDHT_PROXY_CLIENT
+
+    static std::vector<SockAddr> getAddrInfo(const std::string& host, const std::string& service);
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
@@ -376,13 +398,19 @@ private:
     void doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDhtConfig config);
     time_point loop_();
 
-    static std::vector<SockAddr> getAddrInfo(const std::string& host, const std::string& service);
 
     NodeStatus getStatus() const {
         return std::max(status4, status6);
     }
 
     std::unique_ptr<SecureDht> dht_;
+    void resetDht();
+    SecureDht* activeDht() const;
+#if OPENDHT_PROXY_CLIENT
+    std::atomic_bool use_proxy {false};
+    std::unique_ptr<SecureDht> dht_via_proxy_;
+    Config config_;
+#endif // OPENDHT_PROXY_CLIENT
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};

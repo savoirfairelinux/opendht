@@ -56,6 +56,8 @@ struct OPENDHT_PUBLIC NodeStats {
      * Build a json object from a NodeStats
      */
     Json::Value toJson() const;
+    NodeStats() {};
+    NodeStats(const Json::Value& v);
 #endif //OPENDHT_PROXY_SERVER
 };
 

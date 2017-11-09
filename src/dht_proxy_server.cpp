@@ -28,6 +28,8 @@
 #include <json/json.h>
 #include <limits>
 
+#include <iostream>
+
 using namespace std::placeholders;
 
 namespace dht {
@@ -129,6 +131,7 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
                 result["node_id"] = dht_->getNodeId().toString();
                 result["ipv4"] = dht_->getNodesStats(AF_INET).toJson();
                 result["ipv6"] = dht_->getNodesStats(AF_INET6).toJson();
+                result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
                 Json::FastWriter writer;
                 s->close(restbed::OK, writer.write(result));
             }
@@ -238,6 +241,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                     if (parsingSuccessful) {
                         // Build the Value from json
                         auto value = std::make_shared<Value>(root);
+                        auto permanent = root.isMember("permanent") ? root["permanent"].asBool() : false;
 
                         dht_->put(infoHash, value, [s, value](bool ok) {
                             if (ok) {
@@ -246,7 +250,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                             } else {
                                 s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
                             }
-                        });
+                        }, {}, permanent);
                     } else {
                         s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     }
