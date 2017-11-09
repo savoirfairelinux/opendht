@@ -16,19 +16,37 @@ const valueGetElement = function(o) {
     return d;
 };
 $(function() {
+    var request = undefined;
+    const getTools = $("#getTools");
     const getBtn = $("#getBtn");
+    const getDropdown = $("#getDropdown");
+    const listenBtn = $("#listenBtn").click(function(){onGet('LISTEN');});
+    const getStopBtn = $("#getStopBtn").detach().click(function(){
+        if (request === undefined)
+            return;
+        request.abort();
+        getStopBtn.detach();
+        getDropdown.show();
+        request = undefined;
+    });
     const putBtn = $("#putBtn");
     const result = $("#dhtResult");
     const group = $('<ul class="list-group"/>').appendTo(result);
-    onGet = function ( ) {
+    onGet = function (method) {
+        if (request !== undefined)
+            return false;
         const input = $("#getKey").val();
-        const req = new XMLHttpRequest();
-        req.onreadystatechange = function(event) {
+        request = new XMLHttpRequest();
+        request.onreadystatechange = function(event) {
             if (this.readyState >= XMLHttpRequest.LOADING) {
-                if (this.readyState == XMLHttpRequest.DONE)
+                if (this.readyState == XMLHttpRequest.DONE) {
                     getBtn.button('reset');
-                group.empty();
+                    getStopBtn.detach();
+                    getDropdown.show();
+                    request = undefined;
+                }
                 if (this.status === 200) {
+                    group.empty();
                     const elements = this.responseText.split("\n");
                     elements.forEach(function(element) {
                         if (!element || element.length == 0)
@@ -37,18 +55,23 @@ $(function() {
                         const d = window.atob(o.data);
                         $('<li class="list-group-item"/>').append(valueGetElement(o)).appendTo(group);
                     });
-                } else {
+                } else if (this.status !== 0) {
                     group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content: " + this.statusText));
                 }
             }
         };
-        req.onerror = function(event) {
+        request.onerror = function(event) {
             getBtn.button('reset');
+            getStopBtn.detach();
+            getDropdown.show();
             group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content."));
+            request = undefined;
         };
-        req.open('GET', "http://127.0.0.1:8080/" + input, true);
-        req.send(null);
+        request.open(method, "http://127.0.0.1:8080/" + input, true);
+        request.send(null);
         getBtn.button('loading');
+        getStopBtn.appendTo(getTools);
+        getDropdown.hide();
         return false;
     };
 
@@ -65,7 +88,7 @@ $(function() {
             dataType: 'json',
             success: function( result ) {
                 putBtn.button('reset');
-                $('<li class="list-group-item list-group-item-success"/>').append(valueGetElement(result)).appendTo(group.empty());
+                //$('<li class="list-group-item list-group-item-success"/>').append(valueGetElement(result)).appendTo(group.empty());
             },
             error: function(result) {
                 putBtn.button('reset');
@@ -88,11 +111,18 @@ $(function() {
                 <div class="panel-heading">
                     <div class="row">
                     <div class="col-sm-6">
-                        <form class="form-inline" onsubmit="return onGet();">
+                        <form class="form-inline" onsubmit="return onGet('GET');">
                             <div class="input-group">
                                 <input type="text" class="form-control" id="getKey" placeholder="Key" aria-label="Key" />
-                                <span class="input-group-btn">
-                                    <button id="getBtn" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i> Loading" type="submit">Get</button>
+                                <!--<span class="input-group-addon" id="getStatus"><i class='fa fa-circle-o-notch fa-spin'></i></span>-->
+                                <span class="input-group-btn" id="getTools">
+                                    <button id="getBtn" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i>" type="submit">Get</button>
+                                    <button id="getDropdown"type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"> <span class="caret"></span> <span class="sr-only">Toggle Dropdown</span> </button>
+                                    <ul class="dropdown-menu">
+                                        <li><a id="getDropBtn" href="#">Get</a></li>
+                                        <li><a id="listenBtn" href="#">Listen</a></li>
+                                    </ul>
+                                    <button id="getStopBtn" class="btn btn-default" type="submit"><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></button>
                                 </span>
                             </div>
                         </form>
