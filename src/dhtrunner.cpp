@@ -70,8 +70,8 @@ DhtRunner::run(in_port_t port, DhtRunner::Config config)
 void
 DhtRunner::run(const char* ip4, const char* ip6, const char* service, DhtRunner::Config config)
 {
-    auto res4 = getAddrInfo(ip4, service);
-    auto res6 = getAddrInfo(ip6, service);
+    auto res4 = SockAddr::resolve(ip4, service);
+    auto res6 = SockAddr::resolve(ip6, service);
     run(res4.empty() ? SockAddr() : res4.front(),
         res6.empty() ? SockAddr() : res6.front(), config);
 }
@@ -664,7 +664,7 @@ DhtRunner::tryBootstrapContinuously()
                 for (auto it = nodes.rbegin(); it != nodes.rend(); it++) {
                     ++ping_count;
                     try {
-                        bootstrap(getAddrInfo(it->first, it->second), [&](bool) {
+                        bootstrap(SockAddr::resolve(it->first, it->second), [&](bool) {
                             if (not running)
                                 return;
                             {
@@ -693,30 +693,6 @@ DhtRunner::tryBootstrapContinuously()
             }
         } while (bootstraping);
     });
-}
-
-std::vector<SockAddr>
-DhtRunner::getAddrInfo(const std::string& host, const std::string& service)
-{
-    std::vector<SockAddr> ips {};
-    if (host.empty())
-        return ips;
-
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = SOCK_DGRAM;
-    addrinfo* info = nullptr;
-    int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &info);
-    if(rc != 0)
-        throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
-
-    addrinfo* infop = info;
-    while (infop) {
-        ips.emplace_back(infop->ai_addr, infop->ai_addrlen);
-        infop = infop->ai_next;
-    }
-    freeaddrinfo(info);
-    return ips;
 }
 
 void

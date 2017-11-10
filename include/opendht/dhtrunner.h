@@ -376,8 +376,6 @@ private:
     void doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDhtConfig config);
     time_point loop_();
 
-    static std::vector<SockAddr> getAddrInfo(const std::string& host, const std::string& service);
-
     NodeStatus getStatus() const {
         return std::max(status4, status6);
     }
