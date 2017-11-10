@@ -32,7 +32,7 @@ using namespace dht;
 void print_usage() {
     std::cout << "Usage: dhtscanner [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
     std::cout << "dhtscanner, a simple OpenDHT command line utility generating scan result the network." << std::endl;
-    std::cout << "Report bugs to: http://opendht.net" << std::endl;
+    std::cout << "Report bugs to: https://opendht.net" << std::endl;
 }
 
 struct snode_compare {

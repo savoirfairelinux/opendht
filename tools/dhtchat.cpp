@@ -45,7 +45,7 @@ void print_node_info(const DhtRunner& dht, const dht_params&) {
 void print_usage() {
     std::cout << "Usage: dhtchat [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
     std::cout << "dhtchat, a simple OpenDHT command line chat client." << std::endl;
-    std::cout << "Report bugs to: http://opendht.net" << std::endl;
+    std::cout << "Report bugs to: https://opendht.net" << std::endl;
 }
 
 int

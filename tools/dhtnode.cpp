@@ -31,7 +31,7 @@ using namespace dht;
 void print_usage() {
     std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port]" << std::endl << std::endl;
     std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
-    std::cout << "Report bugs to: http://opendht.net" << std::endl;
+    std::cout << "Report bugs to: https://opendht.net" << std::endl;
 }
 
 void print_id_req() {
