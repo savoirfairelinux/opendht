@@ -36,6 +36,7 @@ typedef uint16_t in_port_t;
 
 #include <string>
 #include <memory>
+#include <vector>
 
 #include <cstring>
 #include <cstddef>
@@ -70,6 +71,8 @@ public:
      * Build from an existing sockaddr_storage structure.
      */
     SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
+
+    static std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {});
 
     bool operator<(const SockAddr& o) const {
         if (len != o.len)
