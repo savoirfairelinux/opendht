@@ -122,6 +122,10 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
 
 void
 DhtRunner::shutdown(ShutdownCallback cb) {
+#if OPENDHT_PROXY_CLIENT
+    if (dht_via_proxy_)
+        dht_via_proxy_->shutdown(cb);
+#endif
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
         dht.shutdown(cb);
@@ -513,8 +517,29 @@ DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f, Where w)
     auto ret_token = std::make_shared<std::promise<size_t>>();
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
+#if OPENDHT_PROXY_CLIENT
+        pending_ops.emplace([=](SecureDht&) mutable {
+            auto tokenProxy = 0, tokenClassic = 0;
+            if (!use_proxy)
+                tokenClassic = dht_->listen(hash, vcb, std::move(f), std::move(w));
+            else if (dht_via_proxy_)
+                tokenProxy = dht_via_proxy_->listen(hash, vcb, std::move(f), std::move(w));
+#else
         pending_ops.emplace([=](SecureDht& dht) mutable {
-            ret_token->set_value(dht.listen(hash, vcb, std::move(f), std::move(w)));
+            auto tokenClassic = dht.listen(hash, vcb, std::move(f), std::move(w));
+            auto tokenProxy = 0;
+#endif
+            auto listener = std::unique_ptr<Listener>(new Listener());
+            listener->globalToken = listener_token_;
+            listener->tokenClassicDht = tokenClassic;
+            listener->tokenProxyDht = tokenProxy;
+            listener->gcb = vcb;
+            listener->hash = hash;
+            listener->f = f;
+            listener->w = w;
+            this->listeners_.emplace_back(std::move(listener));
+            ret_token->set_value(listener_token_);
+            listener_token_++;
         });
     }
     cv.notify_all();
@@ -531,9 +556,30 @@ void
 DhtRunner::cancelListen(InfoHash h, size_t token)
 {
     {
+#if OPENDHT_PROXY_CLIENT
+        auto it = listeners_.begin();
+        for (; it != listeners_.end(); ++it) {
+            auto& listener = *it;
+            if (listener->globalToken == token) {
+                break;
+            }
+        }
+        if (it == listeners_.end()) return;
+#endif // OPENDHT_PROXY_CLIENT
         std::lock_guard<std::mutex> lck(storage_mtx);
+#if OPENDHT_PROXY_CLIENT
+        pending_ops.emplace([=](SecureDht&) {
+            auto& listener = *it;
+            if (listener->tokenClassicDht != 0) {
+                dht_->cancelListen(h, listener->tokenClassicDht);
+            }
+            if (dht_via_proxy_ && listener->tokenProxyDht > 0) {
+                dht_via_proxy_->cancelListen(h, listener->tokenProxyDht);
+            }
+#else
         pending_ops.emplace([=](SecureDht& dht) {
             dht.cancelListen(h, token);
+#endif // OPENDHT_PROXY_CLIENT
         });
     }
     cv.notify_all();
@@ -702,6 +748,30 @@ DhtRunner::tryBootstrapContinuously()
     });
 }
 
+std::vector<SockAddr>
+DhtRunner::getAddrInfo(const std::string& host, const std::string& service)
+{
+    std::vector<SockAddr> ips {};
+    if (host.empty())
+        return ips;
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_socktype = SOCK_DGRAM;
+    addrinfo* info = nullptr;
+    int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &info);
+    if(rc != 0)
+        throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
+
+    addrinfo* infop = info;
+    while (infop) {
+        ips.emplace_back(infop->ai_addr, infop->ai_addrlen);
+        infop = infop->ai_next;
+    }
+    freeaddrinfo(info);
+    return ips;
+}
+
 void
 DhtRunner::bootstrap(const std::string& host, const std::string& service)
 {
@@ -812,15 +882,33 @@ DhtRunner::enableProxy(bool proxify) {
             new DhtProxyClient(serverHost)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
+        // add current listeners
+        for (auto& listener: listeners_) {
+            auto tokenProxy = dht_via_proxy_->listen(listener->hash, listener->gcb, std::move(listener->f), std::move(listener->w));
+            listener->tokenProxyDht = tokenProxy;
+        }
         // and use it
         use_proxy = proxify;
     } else {
         use_proxy = proxify;
+        loop_(); // Restart the classic DHT.
         // We doesn't need to maintain the connection with the proxy.
         // Delete it
         dht_via_proxy_.reset(nullptr);
+        // update all proxyToken for all proxyListener
+        auto it = listeners_.begin();
+        for (; it != listeners_.end(); ++it) {
+            auto& listener = *it;
+            if (listener->tokenClassicDht == 0) {
+                pending_ops.emplace([it](SecureDht& dht) mutable {
+                    auto& listener = *it;
+                    auto token = dht.listen(listener->hash, listener->gcb, std::move(listener->f), std::move(listener->w));
+                    listener->tokenClassicDht = token;
+                });
+            }
+            listener->tokenProxyDht = 0;
+        }
     }
 }
 #endif // OPENDHT_PROXY_CLIENT
-
 }

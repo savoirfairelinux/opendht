@@ -131,16 +131,17 @@ public:
         put(key, std::forward<Value>(v), bindDoneCb(cb), created, permanent);
     }
 
+    /**
+     * @param  af the socket family
+     * @return node stats from the proxy
+     */
     NodeStats getNodesStats(sa_family_t af) const;
 
-    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
-
-
     /**
-     * TODO
-     * NOTE: For now, there is no endpoint in the DhtProxyServer to do the following methods.
-     * It will come in another version.
+     * @param  family the socket family
+     * @return public address
      */
+    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
 
     /**
      * Listen on the network for any changes involving a specified hash.
@@ -149,11 +150,18 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={}, Where&&={}) { return 0; };
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={}, Where&&={});
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual bool cancelListen(const InfoHash&, size_t /*token*/) { return false; }
+
+
+    /**
+     * TODO
+     * NOTE: For now, there is no endpoint in the DhtProxyServer to do the following methods.
+     * It will come in another version. (with push_notifications support)
+     */
+    virtual bool cancelListen(const InfoHash&, size_t token);
 
     /**
      * Similar to Dht::get, but sends a Query to filter data remotely.
@@ -257,6 +265,7 @@ public:
     }
 
     time_point periodic(const uint8_t*, size_t, const SockAddr&) {
+        // The DhtProxyClient doesn't use NetworkEngine, so here, we have nothing to do for now.
         scheduler.syncTime();
         return scheduler.run();
     }
@@ -265,11 +274,19 @@ public:
     }
 
 private:
+    /**
+     * Get informations from the proxy node
+     * @return the JSON returned by the proxy
+     */
     Json::Value getProxyInfos() const;
     /**
      * Initialize statusIpvX_
      */
     void getConnectivityStatus();
+    /**
+     * cancel all Listeners
+     */
+    void cancelAllListeners();
     /**
      * cancel all Operations
      */
@@ -279,6 +296,24 @@ private:
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
 
     InfoHash myid {};
+
+    /**
+     * Store listen requests.
+     */
+    struct Listener
+    {
+        size_t token;
+        std::shared_ptr<restbed::Request> req;
+        std::string key;
+        GetCallback cb;
+        Value::Filter filterChain;
+        std::unique_ptr<std::thread> thread;
+    };
+    std::vector<Listener> listeners_;
+    size_t listener_token_ {0};
+    /**
+     * Store current put and get requests.
+     */
     struct Operation
     {
         std::shared_ptr<restbed::Request> req;
@@ -287,8 +322,20 @@ private:
     std::vector<Operation> operations_;
 
     Scheduler scheduler;
-    Sp<Scheduler::Job> nextNodesConfirmation {};
+    /**
+     * Retrieve if we can connect to the proxy (update statusIpvX_)
+     */
     void confirmProxy();
+    Sp<Scheduler::Job> nextProxyConfirmation {};
+    /**
+     * Verify if we are still connected.
+     */
+    void confirmConnectivity();
+    Sp<Scheduler::Job> nextConnectivityConfirmation {};
+    /**
+     * Relaunch LISTEN requests if the client disconnect/reconnect.
+     */
+    void restartListeners();
 };
 
 }

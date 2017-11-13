@@ -24,21 +24,21 @@
 #include <json/json.h>
 #include <restbed>
 #include <vector>
+#include <signal.h>
 
 #include "dhtrunner.h"
 
 constexpr const char* const HTTP_PROTO {"http://"};
-
-// TODO connectivity changed
-// TODO follow listen between non proxified and proxified
 
 namespace dht {
 
 DhtProxyClient::DhtProxyClient(const std::string& serverHost)
 : serverHost_(serverHost), scheduler(DHT_LOG)
 {
-    auto confirm_nodes_time = scheduler.time() + std::chrono::seconds(5);
-    nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&DhtProxyClient::confirmProxy, this));
+    auto confirm_proxy_time = scheduler.time() + std::chrono::seconds(5);
+    nextProxyConfirmation = scheduler.add(confirm_proxy_time, std::bind(&DhtProxyClient::confirmProxy, this));
+    auto confirm_connectivity = scheduler.time() + std::chrono::seconds(5);
+    nextConnectivityConfirmation = scheduler.add(confirm_connectivity, std::bind(&DhtProxyClient::confirmConnectivity, this));
 
     getConnectivityStatus();
 }
@@ -46,16 +46,30 @@ DhtProxyClient::DhtProxyClient(const std::string& serverHost)
 void
 DhtProxyClient::confirmProxy()
 {
+    // Retrieve the connectivity each hours if connected, else every 5 seconds.
+    auto disconnected_old_status =  statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected;
     getConnectivityStatus();
-    auto disconnected = statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected;
-    auto time = disconnected ? std::chrono::seconds(5) : std::chrono::seconds(600);
-    auto confirm_nodes_time = scheduler.time() + time;
-    scheduler.edit(nextNodesConfirmation, confirm_nodes_time);
+    auto disconnected_new_status = statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected;
+    auto time = disconnected_new_status ? std::chrono::seconds(5) : std::chrono::hours(1);
+    if (disconnected_old_status && !disconnected_new_status) {
+        restartListeners();
+    }
+    auto confirm_proxy_time = scheduler.time() + time;
+    scheduler.edit(nextProxyConfirmation, confirm_proxy_time);
+}
+
+void
+DhtProxyClient::confirmConnectivity()
+{
+    // The scheduler must get if the proxy is disconnected
+    auto confirm_connectivity = scheduler.time() + std::chrono::seconds(3);
+    scheduler.edit(nextConnectivityConfirmation, confirm_connectivity);
 }
 
 DhtProxyClient::~DhtProxyClient()
 {
     cancelAllOperations();
+    cancelAllListeners();
 }
 
 void
@@ -71,9 +85,22 @@ DhtProxyClient::cancelAllOperations()
 }
 
 void
+DhtProxyClient::cancelAllListeners()
+{
+    for (auto& listener: listeners_) {
+        if (listener.thread && listener.thread->joinable()) {
+            // Close connection to stop listener?
+            restbed::Http::close(listener.req);
+            listener.thread->join();
+        }
+    }
+}
+
+void
 DhtProxyClient::shutdown(ShutdownCallback cb)
 {
     cancelAllOperations();
+    cancelAllListeners();
     cb();
 }
 
@@ -293,6 +320,84 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
     }
 }
 
+size_t
+DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filter, Where&& where)
+{
+    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+    auto req = std::make_shared<restbed::Request>(uri);
+    req->set_method("LISTEN");
+
+    Query query {{}, where};
+    auto filterChain = filter.chain(query.where.getFilter());
+
+    Listener l;
+    ++listener_token_;
+    l.key = key.toString();
+    l.token = listener_token_;
+    l.req = req;
+    l.cb = cb;
+    l.filterChain = std::move(filterChain);
+    l.thread = std::move(std::unique_ptr<std::thread>(new std::thread([=]()
+        {
+            auto settings = std::make_shared<restbed::Settings>();
+            std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
+            settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
+
+            restbed::Http::async(req,
+                [this, filterChain, cb](const std::shared_ptr<restbed::Request>& req,
+                                        const std::shared_ptr<restbed::Response>& reply) {
+                auto code = reply->get_status_code();
+
+                if (code == 200) {
+                    try {
+                        while (restbed::Http::is_open(req)) {
+                            restbed::Http::fetch("\n", reply);
+                            std::string body;
+                            reply->get_body(body);
+                            reply->set_body(""); // Reset the body for the next fetch
+
+                            Json::Value json;
+                            Json::Reader reader;
+                            if (reader.parse(body, json)) {
+                                auto value = std::make_shared<Value>(json);
+                                if (not filterChain or filterChain(*value))
+                                    cb({value});
+                            }
+                        }
+                    } catch (std::runtime_error&) {
+                        // NOTE: Http::close() can occurs here. Ignore this.
+                    }
+
+                } else {
+                    this->statusIpv4_ = NodeStatus::Disconnected;
+                    this->statusIpv6_ = NodeStatus::Disconnected;
+                }
+            }, settings).get();
+            getConnectivityStatus();
+        })
+    ));
+    listeners_.emplace_back(std::move(l));
+    return listener_token_;
+}
+
+bool
+DhtProxyClient::cancelListen(const InfoHash&, size_t token)
+{
+    for (auto it = listeners_.begin(); it != listeners_.end(); ++it) {
+        auto& listener = *it;
+        if (listener.token == token) {
+            if (listener.thread->joinable()) {
+                // Close connection to stop listener?
+                restbed::Http::close(listener.req);
+                listener.thread->join();
+                listeners_.erase(it);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void
 DhtProxyClient::getConnectivityStatus()
 {
@@ -303,20 +408,83 @@ DhtProxyClient::getConnectivityStatus()
         auto dubiousIpv4 = static_cast<long>(proxyInfos["ipv4"]["dubious"].asLargestUInt());
         if (goodIpv4 + dubiousIpv4 > 0) {
             statusIpv4_ = NodeStatus::Connected;
+        } else {
+            statusIpv4_ = NodeStatus::Disconnected;
         }
         auto goodIpv6 = static_cast<long>(proxyInfos["ipv6"]["good"].asLargestUInt());
         auto dubiousIpv6 = static_cast<long>(proxyInfos["ipv6"]["dubious"].asLargestUInt());
         if (goodIpv6 + dubiousIpv6 > 0) {
             statusIpv6_ = NodeStatus::Connected;
+        } else {
+            statusIpv6_ = NodeStatus::Disconnected;
         }
         myid = InfoHash(proxyInfos["node_id"].asString());
+        if (statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected) {
+            const auto& now = scheduler.time();
+            scheduler.edit(nextProxyConfirmation, now);
+        }
     } catch (...) {
         statusIpv4_ = NodeStatus::Disconnected;
         statusIpv6_ = NodeStatus::Disconnected;
+        const auto& now = scheduler.time();
+        scheduler.edit(nextProxyConfirmation, now);
     }
-
-    // TODO for now, we don't handle connectivity issues. (when the proxy is down, we don't try to reconnect)
 }
+
+void
+DhtProxyClient::restartListeners()
+{
+    for (auto& listener: listeners_) {
+        if (listener.thread && listener.thread->joinable())
+            listener.thread->join();
+        // Redo listen
+        auto filterChain = listener.filterChain;
+        auto cb = listener.cb;
+        restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
+        auto req = std::make_shared<restbed::Request>(uri);
+        req->set_method("LISTEN");
+        listener.thread = std::move(std::unique_ptr<std::thread>(new std::thread([this, filterChain, cb, req]()
+            {
+                auto settings = std::make_shared<restbed::Settings>();
+                std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
+                settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
+
+                restbed::Http::async(req,
+                    [this, filterChain, cb](const std::shared_ptr<restbed::Request>& req,
+                                     const std::shared_ptr<restbed::Response>& reply) {
+                    auto code = reply->get_status_code();
+
+                    if (code == 200) {
+                        try {
+                            while (restbed::Http::is_open(req)) {
+                                restbed::Http::fetch("\n", reply);
+                                std::string body;
+                                reply->get_body(body);
+                                reply->set_body(""); // Reset the body for the next fetch
+
+                                Json::Value json;
+                                Json::Reader reader;
+                                if (reader.parse(body, json)) {
+                                    auto value = std::make_shared<Value>(json);
+                                    if (not filterChain or filterChain(*value))
+                                        cb({value});
+                                }
+                            }
+                        } catch (std::runtime_error&) {
+                            // NOTE: Http::close() can occurs here. Ignore this.
+                        }
+
+                    } else {
+                        this->statusIpv4_ = NodeStatus::Disconnected;
+                        this->statusIpv6_ = NodeStatus::Disconnected;
+                    }
+                }, settings).get();
+                getConnectivityStatus();
+            })
+        ));
+    }
+}
+
 
 } // namespace dht
 

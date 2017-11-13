@@ -403,13 +403,40 @@ private:
     }
 
     std::unique_ptr<SecureDht> dht_;
+    /**
+     * reset dht clients
+     */
     void resetDht();
+    /**
+     * @return the current active DHT
+     */
     SecureDht* activeDht() const;
 #if OPENDHT_PROXY_CLIENT
+    /**
+     * true if we are currently using a proxy
+     */
     std::atomic_bool use_proxy {false};
+    /**
+     * The current proxy client
+     */
     std::unique_ptr<SecureDht> dht_via_proxy_;
     Config config_;
 #endif // OPENDHT_PROXY_CLIENT
+    /**
+     * Store current listeners and translates global tokens for each client.
+     */
+    struct Listener {
+        size_t globalToken;
+        size_t tokenClassicDht;
+        size_t tokenProxyDht;
+        GetCallback gcb;
+        InfoHash hash;
+        Value::Filter f;
+        Where w;
+    };
+    std::vector<std::unique_ptr<Listener>> listeners_ {};
+    size_t listener_token_ {1};
+
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};

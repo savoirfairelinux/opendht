@@ -70,6 +70,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // there is a timeout, but really huge
         settings->set_port(port);
+        auto maxThreads = std::thread::hardware_concurrency() - 1;
+        settings->set_worker_limit(maxThreads > 1 ? maxThreads : 1);
         try {
             service_->start(settings);
         } catch(std::system_error& e) {
@@ -78,11 +80,13 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
     });
 
     listenThread_ = std::thread([this]() {
-        auto stop = false;
-        while (!stop) {
+        while (!service_->is_up() && !stopListeners) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        while (service_->is_up()  && !stopListeners) {
             auto listener = currentListeners_.begin();
             while (listener != currentListeners_.end()) {
-                if (listener->session->is_closed() && dht_) {
+                if (dht_ && listener->session->is_closed()) {
                     dht_->cancelListen(listener->hash, std::move(listener->token));
                     // Remove listener if unused
                     listener = currentListeners_.erase(listener);
@@ -90,10 +94,18 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
                      ++listener;
                 }
             }
-            //NOTE: When supports restbed 5.0: service_->is_up() and remove stopListeners
-            stop = stopListeners;
-            if (!stop)
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        // Remove last listeners
+        auto listener = currentListeners_.begin();
+        while (listener != currentListeners_.end()) {
+            if (dht_) {
+                dht_->cancelListen(listener->hash, std::move(listener->token));
+                // Remove listener if unused
+                listener = currentListeners_.erase(listener);
+            } else {
+                 ++listener;
+            }
         }
     });
 }
@@ -107,6 +119,11 @@ void
 DhtProxyServer::stop()
 {
     service_->stop();
+    auto listener = currentListeners_.begin();
+    while (listener != currentListeners_.end()) {
+        listener->session->close();
+        ++ listener;
+    }
     stopListeners = true;
     // listenThreads_ will stop because there is no more sessions
     if (listenThread_.joinable())
@@ -193,20 +210,25 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                     infoHash = InfoHash::get(hash);
                 }
                 s->yield(restbed::OK);
-                    // Handle client deconnection
-                    // NOTE: for now, there is no handler, so we test the session in a thread
-                    // will be the case in restbed 5.0
+                // Handle client deconnection
+                // NOTE: for now, there is no handler, so we test the session in a thread
+                // will be the case in restbed 5.0
                 SessionToHashToken listener;
                 listener.session = session;
                 listener.hash = infoHash;
-                listener.token = dht_->listen(infoHash, [s](std::shared_ptr<Value> value) {
+                // cache the session to avoid an incrementation of the shared_ptr's counter
+                // else, the session->close() will not close the socket.
+                auto cacheSession = std::weak_ptr<restbed::Session>(s);
+                listener.token = std::move(dht_->listen(infoHash, [cacheSession](std::shared_ptr<Value> value) {
+                    auto s = cacheSession.lock();
+                    if (!s) return false;
                     // Send values as soon as we get them
                     if (!s->is_closed()) {
                         Json::FastWriter writer;
-                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session>){ });
                     }
                     return !s->is_closed();
-                });
+                }));
                 currentListeners_.emplace_back(std::move(listener));
             } else {
                 session->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
