@@ -11,12 +11,14 @@
 		<script type="text/javascript">"use strict";
 var onGet;
 var onPut;
+var setServer;
 const valueGetElement = function(o) {
     const d = window.atob(o.data);
     return d;
 };
 $(function() {
     var request = undefined;
+    var server;
     const getTools = $("#getTools");
     const getBtn = $("#getBtn");
     const getDropdown = $("#getDropdown");
@@ -69,7 +71,7 @@ $(function() {
             clearGetRequest();
             group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content."));
         };
-        request.open(method, "http://127.0.0.1:8080/" + input, true);
+        request.open(method, server + input, true);
         request.send(null);
         setGetRequest();
         return false;
@@ -79,7 +81,7 @@ $(function() {
         const key = $("#getKey").val();
         const value = $("#putValue").val();
         $.ajax({
-            url: 'http://127.0.0.1:8080/' + key,
+            url: server + key,
             type: 'POST',
             data: JSON.stringify({
                 data:window.btoa(value)
@@ -99,22 +101,55 @@ $(function() {
         return false;
     };
 
+    const serverValue = $("#serverValue");
+    const serverStatus = $("#serverStatus");
+    const serverBtn = $("#serverBtn");
+    setServer = function(event) {
+        server = 'http://'+serverValue.val() + '/';
+        serverStatus.empty();
+        serverBtn.button('loading');
+        $.getJSON(server, function(data){
+            serverStatus.append('<b>Node</b> ').append(data.node_id);
+        }).fail(function(error) {
+            serverStatus.html("<div class='alert alert-danger' style='margin-bottom: 0px;'><span class='glyphicon glyphicon-remove' aria-hidden='true'></span> Can't access node</div>");
+        }).always(function(error) {
+            serverBtn.button('reset');
+        });
+        return false;
+    };
+    setServer();
 });
 	</script>
 </head>
 <body>
-    <div class="container">
-        <header class="page-header"><h1>OpenDHT tester</h1></header>
-        <div class="row">
-        <div class="col-sm-8">
-            <div class="panel panel-default" id="dhtResult">
+    <div class="container" style="max-width: 730px;">
+        <header class="page-header">
+            <div class="row">
+                <div class="col-sm-5">
+                    <h1>OpenDHT tester</h1>
+                </div>
+                <div class="col-sm-7">
+                    <div class="well well-sm" style="margin-top:10px; margin-bottom:0px;">
+                        <form id="serverForm" class="form-inline" onsubmit="return setServer();" style="margin-bottom:4px;">
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="serverValue" placeholder="Proxy server" value="127.0.0.1:8080"/>
+                                <span class="input-group-btn">
+                                    <button id="serverBtn" type="submit" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i>"><span class="glyphicon glyphicon-refresh" aria-hidden="true"></span></button>
+                                </span>
+                            </div>
+                        </form>
+                        <div id="serverStatus"><i class='fa fa-circle-o-notch fa-spin'></i></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <div class="panel panel-default" id="dhtResult">
                 <div class="panel-heading">
                     <div class="row">
-                    <div class="col-sm-6">
+                    <div class="col-xs-6">
                         <form class="form-inline" onsubmit="return onGet('GET');">
                             <div class="input-group">
                                 <input type="text" class="form-control" id="getKey" placeholder="Key" aria-label="Key" />
-                                <!--<span class="input-group-addon" id="getStatus"><i class='fa fa-circle-o-notch fa-spin'></i></span>-->
                                 <span class="input-group-btn" id="getTools">
                                     <button id="getBtn" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i>" type="submit">Get</button>
                                     <button id="getDropdown"type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"> <span class="caret"></span> <span class="sr-only">Toggle Dropdown</span> </button>
@@ -127,7 +162,7 @@ $(function() {
                             </div>
                         </form>
                     </div>
-                    <div class="col-sm-6">
+                    <div class="col-xs-6">
                         <form class="form-inline" onsubmit="return onPut();">
                             <div class="input-group">
                                 <input type="text" class="form-control input-group-input" id="putValue" placeholder="Value" />
@@ -137,10 +172,8 @@ $(function() {
                             </div>
                         </form>
                     </div>
-                    </div>
                 </div>
             </div>
-        </div>
         </div>
     </div>
 </body>
