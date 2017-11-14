@@ -21,14 +21,21 @@ $(function() {
     const getBtn = $("#getBtn");
     const getDropdown = $("#getDropdown");
     const listenBtn = $("#listenBtn").click(function(){onGet('LISTEN');});
-    const getStopBtn = $("#getStopBtn").detach().click(function(){
+    const setGetRequest = function() {
+        getBtn.button('loading');
+        getStopBtn.appendTo(getTools);
+        getDropdown.hide();
+    }
+    const clearGetRequest = function() {
         if (request === undefined)
             return;
         request.abort();
+        request = undefined;
         getStopBtn.detach();
         getDropdown.show();
-        request = undefined;
-    });
+        getBtn.button('reset');
+    }
+    const getStopBtn = $("#getStopBtn").detach().click(clearGetRequest);
     const putBtn = $("#putBtn");
     const result = $("#dhtResult");
     const group = $('<ul class="list-group"/>').appendTo(result);
@@ -36,14 +43,12 @@ $(function() {
         if (request !== undefined)
             return false;
         const input = $("#getKey").val();
+        group.empty();
         request = new XMLHttpRequest();
         request.onreadystatechange = function(event) {
             if (this.readyState >= XMLHttpRequest.LOADING) {
                 if (this.readyState == XMLHttpRequest.DONE) {
-                    getBtn.button('reset');
-                    getStopBtn.detach();
-                    getDropdown.show();
-                    request = undefined;
+                    clearGetRequest();
                 }
                 if (this.status === 200) {
                     group.empty();
@@ -61,17 +66,12 @@ $(function() {
             }
         };
         request.onerror = function(event) {
-            getBtn.button('reset');
-            getStopBtn.detach();
-            getDropdown.show();
+            clearGetRequest();
             group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content."));
-            request = undefined;
         };
         request.open(method, "http://127.0.0.1:8080/" + input, true);
         request.send(null);
-        getBtn.button('loading');
-        getStopBtn.appendTo(getTools);
-        getDropdown.hide();
+        setGetRequest();
         return false;
     };
 
