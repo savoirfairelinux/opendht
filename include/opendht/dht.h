@@ -339,7 +339,7 @@ private:
     static constexpr unsigned MAX_HASHES {16384};
 
     /* The maximum number of searches we keep data about. */
-    static constexpr unsigned MAX_SEARCHES {2048};
+    static constexpr unsigned MAX_SEARCHES {16384};
 
     static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
 
