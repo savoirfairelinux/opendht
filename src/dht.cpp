@@ -672,8 +672,10 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
                     break;
                 }
             }
-            if (not sr)
-                throw DhtException("Can't create search");
+            if (not sr) {
+                DHT_LOG.e(id, "[search %s IPv%c] maximum number of searches reached !", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+                return {};
+            }
         }
         sr->af = af;
         sr->tid = search_id++;
