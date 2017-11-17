@@ -218,7 +218,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             node.getAddr());
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
-        err == EAFNOSUPPORT)
+        err == EAFNOSUPPORT ||
+        err == EPIPE)
     {
         node.setExpired();
         if (not node.id)
@@ -582,6 +583,9 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 
     if (s < 0)
         return EAFNOSUPPORT;
+#ifdef MSG_NOSIGNAL
+    flags &= MSG_NOSIGNAL;
+#endif
     if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
         DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
