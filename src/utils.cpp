@@ -38,7 +38,7 @@ SockAddr::resolve(const std::string& host, const std::string& service)
     memset(&hints, 0, sizeof(hints));
     hints.ai_socktype = SOCK_DGRAM;
     addrinfo* info = nullptr;
-    int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &info);
+    int rc = getaddrinfo(host.c_str(), service.empty() ? nullptr : service.c_str(), &hints, &info);
     if(rc != 0)
         throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
 
