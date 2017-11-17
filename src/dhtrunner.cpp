@@ -382,10 +382,10 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
         throw DhtException(std::string("Can't open socket: ") + strerror(sock));
     int set = 1;
 #ifdef SO_NOSIGPIPE
-    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(set));
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (const char*)&set, sizeof(set));
 #endif
     if (is_ipv6)
-        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&set, sizeof(set));
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&set, sizeof(set));
     int rc = bind(sock, addr.get(), addr.getLength());
     if(rc < 0)
         throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
