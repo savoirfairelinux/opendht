@@ -55,9 +55,15 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
 }
 
 class OPENDHT_PUBLIC DhtException : public std::runtime_error {
-    public:
-        DhtException(const std::string &str = "") :
-            std::runtime_error("DhtException occurred: " + str) {}
+public:
+    DhtException(const std::string &str = "") :
+        std::runtime_error("DhtException occurred: " + str) {}
+};
+
+class OPENDHT_PUBLIC SocketException : public DhtException {
+public:
+    SocketException(int err) :
+        DhtException(strerror(err)) {}
 };
 
 // Time related definitions and utility functions

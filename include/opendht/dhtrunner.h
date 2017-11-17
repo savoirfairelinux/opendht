@@ -362,7 +362,13 @@ public:
      */
     time_point loop() {
         std::lock_guard<std::mutex> lck(dht_mtx);
-        return loop_();
+        time_point wakeup = time_point::min();
+        try {
+            wakeup = loop_();
+        } catch (const dht::SocketException& e) {
+            startNetwork(bound4, bound6);
+        }
+        return wakeup;
     }
 
     /**
@@ -398,7 +404,7 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDhtConfig config);
+    void startNetwork(const SockAddr& sin4, const SockAddr& sin6);
     time_point loop_();
 
     NodeStatus getStatus() const {
@@ -462,12 +468,14 @@ private:
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
-    std::atomic<bool> running {false};
+    std::atomic_bool running {false};
+    std::atomic_bool running_network {false};
 
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
+    int s4 {-1}, s6 {-1};
     SockAddr bound4 {};
     SockAddr bound6 {};
 };

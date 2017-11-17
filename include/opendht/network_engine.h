@@ -202,8 +202,8 @@ public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(Logger& log, Scheduler& scheduler);
-    NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
+    NetworkEngine(Logger& log, Scheduler& scheduler, const int& s = -1, const int& s6 = -1);
+    NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -505,8 +505,8 @@ private:
     /* DHT info */
     const InfoHash& myid;
     const NetId network {0};
-    const int dht_socket {-1};
-    const int dht_socket6 {-1};
+    const int& dht_socket;
+    const int& dht_socket6;
     const Logger& DHT_LOG;
 
     NodeCache cache {};
