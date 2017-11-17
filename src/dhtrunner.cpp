@@ -378,25 +378,22 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
 {
     bool is_ipv6 = addr.getFamily() == AF_INET6;
     int sock = socket(is_ipv6 ? PF_INET6 : PF_INET, SOCK_DGRAM, 0);
-    if (sock >= 0) {
-        int set = 1;
-#ifdef SO_NOSIGPIPE
-        setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(set));
-#endif
-        if (is_ipv6)
-            setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&set, sizeof(set));
-        int rc = bind(sock, addr.get(), addr.getLength());
-        if(rc < 0)
-            throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
-        sockaddr_storage ss;
-        socklen_t ss_len = sizeof(ss);
-        getsockname(sock, (sockaddr*)&ss, &ss_len);
-        bound = {ss, ss_len};
-        return sock;
-    } else {
+    if (sock < 0)
         throw DhtException(std::string("Can't open socket: ") + strerror(sock));
-    }
-    return -1;
+    int set = 1;
+#ifdef SO_NOSIGPIPE
+    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (void *)&set, sizeof(set));
+#endif
+    if (is_ipv6)
+        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&set, sizeof(set));
+    int rc = bind(sock, addr.get(), addr.getLength());
+    if(rc < 0)
+        throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
+    sockaddr_storage ss;
+    socklen_t ss_len = sizeof(ss);
+    getsockname(sock, (sockaddr*)&ss, &ss_len);
+    bound = {ss, ss_len};
+    return sock;
 }
 
 void
