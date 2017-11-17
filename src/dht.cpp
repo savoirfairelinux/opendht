@@ -1649,7 +1649,7 @@ Dht::~Dht()
 
 Dht::Dht() : store(), scheduler(DHT_LOG), network_engine(DHT_LOG, scheduler) {}
 
-Dht::Dht(int s, int s6, Config config)
+Dht::Dht(const int& s, const int& s6, Config config)
     : myid(config.node_id ? config.node_id : InfoHash::getRandom()),
     is_bootstrap(config.is_bootstrap),
     maintain_storage(config.maintain_storage), store(), store_quota(),

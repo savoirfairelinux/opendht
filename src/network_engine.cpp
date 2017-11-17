@@ -126,8 +126,10 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
  : ntoken(std::move(msg.token)), values(std::move(msg.values)), fields(std::move(msg.fields)),
     nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 
-NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
-NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
+    : myid(zeroes), DHT_LOG(log), scheduler(scheduler), dht_socket(s), dht_socket6(s6)
+{}
+NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError) onError,
         decltype(NetworkEngine::onNewNode) onNewNode,
         decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -589,6 +591,9 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
     if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
         DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
+        if (err == EPIPE) {
+            throw SocketException(EPIPE);
+        }
         return err;
     }
     return 0;

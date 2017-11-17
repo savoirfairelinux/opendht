@@ -85,24 +85,30 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
 {
     if (running)
         return;
-    if (rcv_thread.joinable())
-        rcv_thread.join();
+    startNetwork(local4, local6);
+
+    auto dht = std::unique_ptr<DhtInterface>(new Dht(s4, s6, SecureDht::getConfig(config.dht_config)));
+    dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
+
+#if OPENDHT_PROXY_CLIENT
+    if (!dht_via_proxy_) {
+        config_ = config;
+        enableProxy(use_proxy);
+    }
+#endif
+
     running = true;
-#if OPENDHT_PROXY_CLIENT
-    config_ = config;
-#endif //OPENDHT_PROXY_CLIENT
-
-    doRun(local4, local6, config.dht_config);
-
-#if OPENDHT_PROXY_CLIENT
-    enableProxy(not config.proxy_server.empty());
-#endif //OPENDHT_PROXY_CLIENT
     if (not config.threaded)
         return;
-    dht_thread = std::thread([this]() {
+    dht_thread = std::thread([this, local4, local6]() {
         while (running) {
             std::unique_lock<std::mutex> lk(dht_mtx);
-            auto wakeup = loop_();
+            time_point wakeup;
+            try {
+                wakeup = loop_();
+            } catch (const dht::SocketException& e) {
+                startNetwork(local4, local6);
+            }
             cv.wait_until(lk, wakeup, [this]() {
                 if (not running)
                     return true;
@@ -141,15 +147,16 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 void
 DhtRunner::join()
 {
+    running_network = false;
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
     if (dht_thread.joinable())
         dht_thread.join();
-    if (rcv_thread.joinable())
-        rcv_thread.join();
     if (bootstrap_thread.joinable())
         bootstrap_thread.join();
+    if (rcv_thread.joinable())
+        rcv_thread.join();
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
@@ -161,8 +168,6 @@ DhtRunner::join()
         resetDht();
         status4 = NodeStatus::Disconnected;
         status6 = NodeStatus::Disconnected;
-        bound4 = {};
-        bound6 = {};
     }
 }
 
@@ -430,12 +435,13 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
 }
 
 void
-DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config config)
+DhtRunner::startNetwork(const SockAddr& sin4, const SockAddr& sin6)
 {
-    resetDht();
-
-    int s4 = -1,
-        s6 = -1;
+    running_network = false;
+    if (rcv_thread.joinable())
+        rcv_thread.join();
+    s4 = -1;
+    s6 = -1;
 
     bound4 = {};
     if (sin4)
@@ -447,18 +453,10 @@ DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config c
         s6 = bindSocket(sin6, bound6);
 #endif
 
-    auto dht = std::unique_ptr<DhtInterface>(
-        new Dht(s4, s6, SecureDht::getConfig(config))
-    );
-    dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config));
-
-#if OPENDHT_PROXY_CLIENT
-    enableProxy(use_proxy);
-#endif
-
-    rcv_thread = std::thread([this,s4,s6]() {
+    running_network = true;
+    rcv_thread = std::thread([this]() {
         try {
-            while (true) {
+            while (running_network) {
                 struct timeval tv {/*.tv_sec = */0, /*.tv_usec = */250000};
                 fd_set readfds;
 
@@ -476,7 +474,7 @@ DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config c
                     }
                 }
 
-                if(!running)
+                if (not running_network)
                     break;
 
                 if(rc > 0) {
@@ -506,6 +504,10 @@ DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config c
             close(s4);
         if (s6 >= 0)
             close(s6);
+        s4 = -1;
+        s6 = -1;
+        bound4 = {};
+        bound6 = {};
     });
 }
 

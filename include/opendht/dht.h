@@ -68,7 +68,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(int s, int s6, Config config);
+    Dht(const int& s, const int& s6, Config config);
     virtual ~Dht();
 
     /**
