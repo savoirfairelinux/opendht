@@ -115,6 +115,7 @@ Dht::getPublicAddress(sa_family_t family)
         return a.first > b.first;
     });
     std::vector<SockAddr> ret;
+    ret.reserve(!family ? reported_addr.size() : reported_addr.size()/2);
     for (const auto& addr : reported_addr)
         if (!family || family == addr.second.getFamily())
             ret.emplace_back(addr.second);
