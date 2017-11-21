@@ -28,8 +28,6 @@
 #include <json/json.h>
 #include <limits>
 
-#include <iostream>
-
 using namespace std::placeholders;
 
 namespace dht {
@@ -108,6 +106,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
             }
         }
     });
+
+    dht->forwardAllMessages(true);
 }
 
 DhtProxyServer::~DhtProxyServer()

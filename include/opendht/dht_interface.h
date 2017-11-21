@@ -28,6 +28,8 @@ public:
     DhtInterface() = default;
     virtual ~DhtInterface() = default;
 
+    virtual void start(const std::string& host) = 0;
+
     // [[deprecated]]
     using Status = NodeStatus;
     // [[deprecated]]

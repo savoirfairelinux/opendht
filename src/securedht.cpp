@@ -228,8 +228,11 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
         for (const auto& v : values) {
             // Decrypt encrypted values
             if (v->isEncrypted()) {
-                if (not key_)
+                if (not key_) {
+                    if (force_forward_)
+                        tmpvals.push_back(v);
                     continue;
+                }
                 try {
                     Value decrypted_val (decrypt(*v));
                     if (decrypted_val.recipient == getId()) {

@@ -298,6 +298,16 @@ public:
         dht_->connectivityChanged();
     }
 
+    void start(const std::string& host) {
+        dht_->start(host);
+    }
+
+#if OPENDHT_PROXY_SERVER
+    void forwardAllMessages(bool forward) {
+        force_forward_ = forward;
+    }
+#endif //OPENDHT_PROXY_SERVER
+
 private:
     std::unique_ptr<DhtInterface> dht_;
     // prevent copy
@@ -317,6 +327,10 @@ private:
     std::map<InfoHash, Sp<const crypto::PublicKey>> nodesPubKeys_ {};
 
     std::uniform_int_distribution<Value::Id> rand_id {};
+
+#if OPENDHT_PROXY_SERVER
+    std::atomic_bool force_forward_ {false};
+#endif //OPENDHT_PROXY_SERVER
 };
 
 const ValueType CERTIFICATE_TYPE = {

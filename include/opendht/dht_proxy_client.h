@@ -44,6 +44,7 @@ public:
      * and an ID for the node.
      */
     explicit DhtProxyClient(const std::string& serverHost);
+    void start(const std::string& serverHost);
     virtual ~DhtProxyClient();
 
     /**

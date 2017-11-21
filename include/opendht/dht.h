@@ -70,6 +70,9 @@ public:
     Dht(int s, int s6, Config config);
     virtual ~Dht();
 
+
+    virtual void start(const std::string& ) {};
+
     /**
      * Get the ID of the node.
      */

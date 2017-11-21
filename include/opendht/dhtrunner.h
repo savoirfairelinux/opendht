@@ -382,6 +382,9 @@ public:
     }
     void enableProxy(bool proxify);
 #endif // OPENDHT_PROXY_CLIENT
+#if OPENDHT_PROXY_SERVER
+    void forwardAllMessages(bool forward);
+#endif // OPENDHT_PROXY_SERVER
 
     static std::vector<SockAddr> getAddrInfo(const std::string& host, const std::string& service);
 private:
