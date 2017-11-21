@@ -317,7 +317,7 @@ private:
     struct Operation
     {
         std::shared_ptr<restbed::Request> req;
-        std::unique_ptr<std::thread> thread;
+        std::thread thread;
     };
     std::vector<Operation> operations_;
 
@@ -336,6 +336,8 @@ private:
      * Relaunch LISTEN requests if the client disconnect/reconnect.
      */
     void restartListeners();
+
+    std::shared_ptr<Json::Value> currentProxyInfos_;
 };
 
 }

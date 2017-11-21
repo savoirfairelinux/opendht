@@ -33,7 +33,7 @@ constexpr const char* const HTTP_PROTO {"http://"};
 namespace dht {
 
 DhtProxyClient::DhtProxyClient(const std::string& serverHost)
-: serverHost_(serverHost), scheduler(DHT_LOG)
+: serverHost_(serverHost), scheduler(DHT_LOG), currentProxyInfos_(new Json::Value())
 {
     auto confirm_proxy_time = scheduler.time() + std::chrono::seconds(5);
     nextProxyConfirmation = scheduler.add(confirm_proxy_time, std::bind(&DhtProxyClient::confirmProxy, this));
@@ -76,10 +76,10 @@ void
 DhtProxyClient::cancelAllOperations()
 {
     for (auto& operation: operations_) {
-        if (operation.thread && operation.thread->joinable()) {
+        if (operation.thread.joinable()) {
             // Close connection to stop operation?
             restbed::Http::close(operation.req);
-            operation.thread->join();
+            operation.thread.join();
         }
     }
 }
@@ -144,12 +144,11 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
 
     Operation o;
     o.req = req;
-    o.thread = std::move(std::unique_ptr<std::thread>(
-    new std::thread([=](){
+    o.thread = std::move(std::thread([=](){
         // Try to contact the proxy and set the status to connected when done.
         // will change the connectivity status
         auto ok = std::make_shared<bool>(true);
-        auto future = restbed::Http::async(req,
+        restbed::Http::async(req,
             [=](const std::shared_ptr<restbed::Request>& req,
                 const std::shared_ptr<restbed::Response>& reply) {
             auto code = reply->get_status_code();
@@ -176,14 +175,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             } else {
                 *ok = false;
             }
-        });
-        future.wait();
+        }).wait();
         donecb(*ok, {});
         if (!ok) {
             // Connection failed, update connectivity
             getConnectivityStatus();
         }
-    })));
+    }));
     operations_.emplace_back(std::move(o));
 }
 
@@ -203,10 +201,9 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
 
     Operation o;
     o.req = req;
-    o.thread = std::move(std::unique_ptr<std::thread>(
-    new std::thread([=](){
+    o.thread = std::move(std::thread([=](){
         auto ok = std::make_shared<bool>(true);
-        auto future = restbed::Http::async(req,
+        restbed::Http::async(req,
             [this, val, ok](const std::shared_ptr<restbed::Request>& /*req*/,
                         const std::shared_ptr<restbed::Response>& reply) {
             auto code = reply->get_status_code();
@@ -227,21 +224,20 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
             } else {
                 *ok = false;
             }
-        });
-        future.wait();
+        }).wait();
         cb(*ok, {});
         if (!ok) {
             // Connection failed, update connectivity
             getConnectivityStatus();
         }
-    })));
+    }));
     operations_.emplace_back(std::move(o));
 }
 
 NodeStats
 DhtProxyClient::getNodesStats(sa_family_t af) const
 {
-    auto proxyInfos = getProxyInfos();
+    auto proxyInfos = *currentProxyInfos_;
     NodeStats stats {};
     auto identifier = af == AF_INET6 ? "ipv6" : "ipv4";
     try {
@@ -253,14 +249,13 @@ DhtProxyClient::getNodesStats(sa_family_t af) const
 Json::Value
 DhtProxyClient::getProxyInfos() const
 {
-    auto result = std::make_shared<Json::Value>();
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/");
     auto req = std::make_shared<restbed::Request>(uri);
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    auto future = restbed::Http::async(req,
-        [this, result](const std::shared_ptr<restbed::Request>&,
+    restbed::Http::async(req,
+        [this](const std::shared_ptr<restbed::Request>&,
                        const std::shared_ptr<restbed::Response>& reply) {
         auto code = reply->get_status_code();
 
@@ -270,25 +265,28 @@ DhtProxyClient::getProxyInfos() const
             reply->get_body(body);
 
             Json::Reader reader;
-            reader.parse(body, *result);
+            try {
+                reader.parse(body, *currentProxyInfos_);
+            } catch (...) {
+                *currentProxyInfos_ = Json::Value();
+            }
+        } else {
+            *currentProxyInfos_ = Json::Value();
         }
-    });
-    future.wait();
-    return *result;
+    }).wait();
+    return *currentProxyInfos_;
 }
 
 std::vector<SockAddr>
 DhtProxyClient::getPublicAddress(sa_family_t family)
 {
-    auto proxyInfos = getProxyInfos();
+    auto proxyInfos = *currentProxyInfos_;
     // json["public_ip"] contains [ipv6:ipv4]:port or ipv4:port
     if (!proxyInfos.isMember("public_ip")) {
-        getConnectivityStatus();
         return {};
     }
     auto public_ip = proxyInfos["public_ip"].asString();
     if (public_ip.length() < 2) {
-        getConnectivityStatus();
         return {};
     }
     std::string ipv4Address = "";
