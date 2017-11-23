@@ -28,7 +28,9 @@ public:
     DhtInterface() = default;
     virtual ~DhtInterface() = default;
 
-    virtual void start(const std::string& host) = 0;
+#if OPENDHT_PROXY_CLIENT
+    virtual void startProxy(const std::string& host) = 0;
+#endif
 
     // [[deprecated]]
     using Status = NodeStatus;

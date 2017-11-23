@@ -229,8 +229,10 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
             // Decrypt encrypted values
             if (v->isEncrypted()) {
                 if (not key_) {
-                    if (force_forward_)
+#if OPENDHT_PROXY_SERVER
+                    if (forward_all_) // We are currently a proxy, send messages to clients.
                         tmpvals.push_back(v);
+#endif
                     continue;
                 }
                 try {

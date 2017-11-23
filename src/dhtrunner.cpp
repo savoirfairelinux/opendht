@@ -164,7 +164,7 @@ void
 DhtRunner::dumpTables() const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->dumpTables(); // NOTE: NOT USED by RingAccount
+    activeDht()->dumpTables();
 }
 
 InfoHash
@@ -180,7 +180,7 @@ DhtRunner::getNodeId() const
 {
     if (!activeDht())
         return {};
-    return activeDht()->getNodeId(); // NOTE: This is OK, return the SecureDht id
+    return activeDht()->getNodeId();
 }
 
 
@@ -189,7 +189,7 @@ DhtRunner::getStoreSize() const {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (!activeDht())
         return {};
-    return activeDht()->getStoreSize(); // NOTE: NOT USED by RingAccount
+    return activeDht()->getStoreSize();
 }
 
 void
@@ -197,7 +197,7 @@ DhtRunner::setStorageLimit(size_t limit) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (!activeDht())
         throw std::runtime_error("dht is not running");
-    return activeDht()->setStorageLimit(limit); // NOTE: NOT USED by RingAccount
+    return activeDht()->setStorageLimit(limit);
 }
 
 std::vector<NodeExport>
@@ -205,7 +205,7 @@ DhtRunner::exportNodes() const {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (!dht_)
         return {};
-    return activeDht()->exportNodes(); // NOTE: TBD Should be OK
+    return activeDht()->exportNodes();
 }
 
 std::vector<ValuesExport>
@@ -213,38 +213,38 @@ DhtRunner::exportValues() const {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (!activeDht())
         return {};
-    return activeDht()->exportValues(); // NOTE: TBD Should be OK
+    return activeDht()->exportValues();
 }
 
 void
 DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug)); // NOTE: TBD Should be OK
+    activeDht()->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
 }
 
 void
 DhtRunner::setLogFilter(const InfoHash& f) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->setLogFilter(f); // NOTE: NOT USED by RingAccount
+    activeDht()->setLogFilter(f);
 }
 
 void
 DhtRunner::registerType(const ValueType& type) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->registerType(type); // NOTE: NOT USED by RingAccount
+    activeDht()->registerType(type);
 }
 
 void
 DhtRunner::importValues(const std::vector<ValuesExport>& values) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->importValues(values); // NOTE: TBD Should be OK
+    activeDht()->importValues(values);
 }
 
 unsigned
 DhtRunner::getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    const auto stats = activeDht()->getNodesStats(af); // NOTE: TBD Should be OK
+    const auto stats = activeDht()->getNodesStats(af);
     if (good_return)
         *good_return = stats.good_nodes;
     if (dubious_return)
@@ -260,51 +260,51 @@ NodeStats
 DhtRunner::getNodesStats(sa_family_t af) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getNodesStats(af); // NOTE: TBD Should be OK
+    return activeDht()->getNodesStats(af);
 }
 
 std::vector<unsigned>
 DhtRunner::getNodeMessageStats(bool in) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getNodeMessageStats(in); // NOTE: NOT USED by RingAccount
+    return activeDht()->getNodeMessageStats(in);
 }
 
 std::string
 DhtRunner::getStorageLog() const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getStorageLog(); // NOTE: NOT USED by RingAccount
+    return activeDht()->getStorageLog();
 }
 std::string
 DhtRunner::getStorageLog(const InfoHash& f) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getStorageLog(f); // NOTE: NOT USED by RingAccount
+    return activeDht()->getStorageLog(f);
 }
 std::string
 DhtRunner::getRoutingTablesLog(sa_family_t af) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getRoutingTablesLog(af); // NOTE: NOT USED by RingAccount
+    return activeDht()->getRoutingTablesLog(af);
 }
 std::string
 DhtRunner::getSearchesLog(sa_family_t af) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getSearchesLog(af); // NOTE: NOT USED by RingAccount
+    return activeDht()->getSearchesLog(af);
 }
 std::string
 DhtRunner::getSearchLog(const InfoHash& f, sa_family_t af) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getSearchLog(f, af); // NOTE: NOT USED by RingAccount
+    return activeDht()->getSearchLog(f, af);
 }
 std::vector<SockAddr>
 DhtRunner::getPublicAddress(sa_family_t af)
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getPublicAddress(af); // NOTE: TBD Should be OK
+    return activeDht()->getPublicAddress(af);
 }
 std::vector<std::string>
 DhtRunner::getPublicAddressStr(sa_family_t af)
@@ -318,12 +318,14 @@ DhtRunner::getPublicAddressStr(sa_family_t af)
 void
 DhtRunner::registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->registerCertificate(cert); // NOTE: NOT USED by RingAccount
+    activeDht()->registerCertificate(cert);
 }
 void
 DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method) {
     std::lock_guard<std::mutex> lck(dht_mtx);
+#if OPENDHT_PROXY_CLIENT
     dht_via_proxy_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
+#endif
     dht_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
 }
 
@@ -891,7 +893,7 @@ DhtRunner::enableProxy(bool proxify) {
     }
     if (proxify) {
         // Init the proxy client
-        dht_via_proxy_->start(config_.proxy_server);
+        dht_via_proxy_->startProxy(config_.proxy_server);
         // add current listeners
         for (auto& listener: listeners_) {
             auto tokenProxy = dht_via_proxy_->listen(listener->hash, listener->gcb, std::move(listener->f), std::move(listener->w));

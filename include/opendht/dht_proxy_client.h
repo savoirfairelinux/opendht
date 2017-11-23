@@ -16,11 +16,13 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_CLIENT
 
 #pragma once
 
+#include <functional>
 #include <thread>
+#include <mutex>
 
 #include "callbacks.h"
 #include "def.h"
@@ -34,7 +36,7 @@ namespace restbed
 
 namespace dht {
 
-class OPENDHT_PUBLIC DhtProxyClient : public DhtInterface {
+class OPENDHT_PUBLIC DhtProxyClient final : public DhtInterface {
 public:
 
     DhtProxyClient() : scheduler(DHT_LOG) {}
@@ -44,7 +46,12 @@ public:
      * and an ID for the node.
      */
     explicit DhtProxyClient(const std::string& serverHost);
-    void start(const std::string& serverHost);
+    /**
+     * Start the connection with a server.
+     * @param serverHost the server address
+     */
+    void startProxy(const std::string& serverHost);
+
     virtual ~DhtProxyClient();
 
     /**
@@ -156,6 +163,10 @@ public:
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
+    time_point periodic(const uint8_t*, size_t, const SockAddr&);
+    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
+        return periodic(buf, buflen, SockAddr(from, fromlen));
+    }
 
     /**
      * TODO
@@ -201,78 +212,27 @@ public:
      * NOTE: The following methods will not be implemented because the
      * DhtProxyClient doesn't have any storage nor synchronization process
      */
-
-    /**
-     * Insert a node in the main routing table.
-     * The node is not pinged, so this should be
-     * used to bootstrap efficiently from previously known nodes.
-     */
     void insertNode(const InfoHash&, const SockAddr&) { }
     void insertNode(const InfoHash&, const sockaddr*, socklen_t) { }
     void insertNode(const NodeExport&) { }
-
-    /**
-     * Returns the total memory usage of stored values and the number
-     * of stored values.
-     */
     std::pair<size_t, size_t> getStoreSize() const { return {}; }
-
     virtual void registerType(const ValueType&) { }
     const ValueType& getType(ValueType::Id) const { }
-
-    /**
-     * Get locally stored data for the given hash.
-     */
     std::vector<Sp<Value>> getLocal(const InfoHash&, Value::Filter) const { return {}; }
-
-    /**
-     * Get locally stored data for the given key and value id.
-     */
     Sp<Value> getLocalById(const InfoHash&, Value::Id) const { return {}; }
-
-    /**
-     * Get the list of good nodes for local storage saving purposes
-     * The list is ordered to minimize the back-to-work delay.
-     */
     std::vector<NodeExport> exportNodes() { return {}; }
-
     std::vector<ValuesExport> exportValues() const { return {}; }
     void importValues(const std::vector<ValuesExport>&) {}
-
     std::string getStorageLog() const { return {}; }
     std::string getStorageLog(const InfoHash&) const { return {}; }
-
     std::string getRoutingTablesLog(sa_family_t) const { return {}; }
     std::string getSearchesLog(sa_family_t) const { return {}; }
     std::string getSearchLog(const InfoHash&, sa_family_t) const { return {}; }
-
     void dumpTables() const {}
     std::vector<unsigned> getNodeMessageStats(bool) { return {}; }
-
-    /**
-     * Set the in-memory storage limit in bytes
-     */
     void setStorageLimit(size_t) {}
-
-    /**
-     * Inform the DHT of lower-layer connectivity changes.
-     * This will cause the DHT to assume a public IP address change.
-     * The DHT will recontact neighbor nodes, re-register for listen ops etc.
-     */
     void connectivityChanged(sa_family_t) {}
-    void connectivityChanged() {
-        connectivityChanged(AF_INET);
-        connectivityChanged(AF_INET6);
-    }
-
-    time_point periodic(const uint8_t*, size_t, const SockAddr&) {
-        // The DhtProxyClient doesn't use NetworkEngine, so here, we have nothing to do for now.
-        scheduler.syncTime();
-        return scheduler.run();
-    }
-    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
-        return periodic(buf, buflen, SockAddr(from, fromlen));
-    }
+    void connectivityChanged() { }
 
 private:
     /**
@@ -308,10 +268,12 @@ private:
         std::string key;
         GetCallback cb;
         Value::Filter filterChain;
-        std::unique_ptr<std::thread> thread;
+        std::thread thread;
     };
     std::vector<Listener> listeners_;
     size_t listener_token_ {0};
+    std::mutex lockListener_;
+
     /**
      * Store current put and get requests.
      */
@@ -321,6 +283,12 @@ private:
         std::thread thread;
     };
     std::vector<Operation> operations_;
+    /**
+     * Callbacks should be executed in the main thread.
+     */
+    std::vector<std::function<void()>> callbacks_;
+    std::mutex lockCallbacks;
+    std::unique_ptr<std::mutex> lockCurrentProxyInfos_;
 
     Scheduler scheduler;
     /**
@@ -338,7 +306,10 @@ private:
      */
     void restartListeners();
 
-    std::shared_ptr<Json::Value> currentProxyInfos_;
+    /**
+     * Store the current proxy status
+     */
+    std::unique_ptr<Json::Value> currentProxyInfos_;
 };
 
 }

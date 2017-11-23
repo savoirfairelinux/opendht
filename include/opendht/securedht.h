@@ -29,7 +29,7 @@
 
 namespace dht {
 
-class OPENDHT_PUBLIC SecureDht : public DhtInterface {
+class OPENDHT_PUBLIC SecureDht final : public DhtInterface {
 public:
 
     typedef std::function<void(bool)> SignatureCheckCallback;
@@ -174,12 +174,6 @@ public:
     std::vector<ValuesExport> exportValues() const {
         return dht_->exportValues();
     }
-    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG) {
-        dht_->setLoggers(error, warn, debug);
-    }
-    void setLogFilter(const InfoHash& f) {
-        dht_->setLogFilter(f);
-    }
     void importValues(const std::vector<ValuesExport>& v) {
         dht_->importValues(v);
     }
@@ -298,13 +292,15 @@ public:
         dht_->connectivityChanged();
     }
 
-    void start(const std::string& host) {
-        dht_->start(host);
+#if OPENDHT_PROXY_CLIENT
+    void startProxy(const std::string& host) {
+        dht_->startProxy(host);
     }
+#endif
 
 #if OPENDHT_PROXY_SERVER
     void forwardAllMessages(bool forward) {
-        force_forward_ = forward;
+        forward_all_ = forward;
     }
 #endif //OPENDHT_PROXY_SERVER
 
@@ -329,7 +325,7 @@ private:
     std::uniform_int_distribution<Value::Id> rand_id {};
 
 #if OPENDHT_PROXY_SERVER
-    std::atomic_bool force_forward_ {false};
+    std::atomic_bool forward_all_ {false};
 #endif //OPENDHT_PROXY_SERVER
 };
 

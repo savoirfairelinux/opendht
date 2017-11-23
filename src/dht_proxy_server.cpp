@@ -82,6 +82,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         while (service_->is_up()  && !stopListeners) {
+            lockListener_.lock();
             auto listener = currentListeners_.begin();
             while (listener != currentListeners_.end()) {
                 if (dht_ && listener->session->is_closed()) {
@@ -92,19 +93,22 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
                      ++listener;
                 }
             }
+            lockListener_.unlock();
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         // Remove last listeners
+        lockListener_.lock();
         auto listener = currentListeners_.begin();
         while (listener != currentListeners_.end()) {
             if (dht_) {
-                dht_->cancelListen(listener->hash, std::move(listener->token));
+                dht_->cancelListen(listener->hash, std::move(listener->token.get()));
                 // Remove listener if unused
                 listener = currentListeners_.erase(listener);
             } else {
                  ++listener;
             }
         }
+        lockListener_.unlock();
     });
 
     dht->forwardAllMessages(true);
@@ -119,11 +123,13 @@ void
 DhtProxyServer::stop()
 {
     service_->stop();
+    lockListener_.lock();
     auto listener = currentListeners_.begin();
     while (listener != currentListeners_.end()) {
         listener->session->close();
         ++ listener;
     }
+    lockListener_.unlock();
     stopListeners = true;
     // listenThreads_ will stop because there is no more sessions
     if (listenThread_.joinable())
@@ -173,7 +179,11 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                     infoHash = InfoHash::get(hash);
                 }
                 s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
-                    dht_->get(infoHash, [s](std::shared_ptr<Value> value) {
+                    auto cacheSession = std::weak_ptr<restbed::Session>(s);
+
+                    dht_->get(infoHash, [cacheSession](std::shared_ptr<Value> value) {
+                        auto s = cacheSession.lock();
+                        if (!s) return false;
                         // Send values as soon as we get them
                         Json::FastWriter writer;
                         s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
@@ -229,7 +239,9 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                     }
                     return !s->is_closed();
                 }));
+                lockListener_.lock();
                 currentListeners_.emplace_back(std::move(listener));
+                lockListener_.unlock();
             } else {
                 session->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
@@ -268,9 +280,11 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                         dht_->put(infoHash, value, [s, value](bool ok) {
                             if (ok) {
                                 Json::FastWriter writer;
-                                s->close(restbed::OK, writer.write(value->toJson()));
+                                if (s->is_open())
+                                    s->close(restbed::OK, writer.write(value->toJson()));
                             } else {
-                                s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
+                                if (s->is_open())
+                                    s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
                             }
                         }, time_point::max(), permanent);
                     } else {

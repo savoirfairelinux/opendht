@@ -26,6 +26,7 @@
 
 #include <thread>
 #include <memory>
+#include <mutex>
 #include <restbed>
 
 namespace dht {
@@ -160,6 +161,7 @@ private:
         std::future<size_t> token;
     };
     mutable std::vector<SessionToHashToken> currentListeners_;
+    mutable std::mutex lockListener_;
     std::atomic_bool stopListeners {false};
 };
 

@@ -58,7 +58,7 @@ struct LocalListener;
  * Must be given open UDP sockets and ::periodic must be
  * called regularly.
  */
-class OPENDHT_PUBLIC Dht : public DhtInterface {
+class OPENDHT_PUBLIC Dht final : public DhtInterface {
 public:
 
     Dht();
@@ -71,7 +71,9 @@ public:
     virtual ~Dht();
 
 
-    virtual void start(const std::string& ) {};
+#if OPENDHT_PROXY_CLIENT
+    void startProxy(const std::string&) {};
+#endif
 
     /**
      * Get the ID of the node.

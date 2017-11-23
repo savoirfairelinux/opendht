@@ -16,7 +16,7 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_CLIENT
 
 #include "dht_proxy_client.h"
 
@@ -24,19 +24,21 @@
 #include <json/json.h>
 #include <restbed>
 #include <vector>
-#include <signal.h>
 
 #include "dhtrunner.h"
+
+#include <iostream>
 
 constexpr const char* const HTTP_PROTO {"http://"};
 
 namespace dht {
 
 DhtProxyClient::DhtProxyClient(const std::string& serverHost)
-: serverHost_(serverHost), scheduler(DHT_LOG), currentProxyInfos_(new Json::Value())
+: serverHost_(serverHost), lockCurrentProxyInfos_(new std::mutex()),
+  scheduler(DHT_LOG), currentProxyInfos_(new Json::Value())
 {
     if (!serverHost_.empty())
-        start(serverHost_);
+        startProxy(serverHost_);
 }
 
 void
@@ -56,7 +58,7 @@ DhtProxyClient::confirmProxy()
 }
 
 void
-DhtProxyClient::start(const std::string& serverHost)
+DhtProxyClient::startProxy(const std::string& serverHost)
 {
     serverHost_ = serverHost;
     if (serverHost_.empty()) return;
@@ -97,14 +99,16 @@ DhtProxyClient::cancelAllOperations()
 void
 DhtProxyClient::cancelAllListeners()
 {
+    lockListener_.lock();
     for (auto& listener: listeners_) {
-        if (listener.thread && listener.thread->joinable()) {
+        if (listener.thread.joinable()) {
             // Close connection to stop listener?
             if (listener.req)
                 restbed::Http::close(listener.req);
-            listener.thread->join();
+            listener.thread.join();
         }
     }
+    lockListener_.unlock();
 }
 
 void
@@ -144,6 +148,20 @@ DhtProxyClient::isRunning(sa_family_t af) const
     }
 }
 
+time_point
+DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
+{
+    // Exec all currently stored callbacks
+    scheduler.syncTime();
+    if (!callbacks_.empty()) {
+        lockCallbacks.lock();
+        for (auto& callback : callbacks_)
+            callback();
+        callbacks_.clear();
+        lockCallbacks.unlock();
+    }
+    return scheduler.run();
+}
 
 void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
@@ -177,8 +195,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
                         Json::Reader reader;
                         if (reader.parse(body, json)) {
                             auto value = std::make_shared<Value>(json);
-                            if ((not filterChain or filterChain(*value)) && cb)
-                                cb({value});
+                            if ((not filterChain or filterChain(*value)) && cb) {
+                                lockCallbacks.lock();
+                                callbacks_.emplace_back([=](){
+                                    cb({value});
+                                });
+                                lockCallbacks.unlock();
+                            }
                         } else {
                             *ok = false;
                         }
@@ -188,8 +211,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
                 *ok = false;
             }
         }).wait();
-        if (donecb)
-            donecb(*ok, {});
+        if (donecb) {
+            lockCallbacks.lock();
+            callbacks_.emplace_back([=](){
+                donecb(*ok, {});
+            });
+            lockCallbacks.unlock();
+        }
         if (!ok) {
             // Connection failed, update connectivity
             getConnectivityStatus();
@@ -217,7 +245,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
     o.thread = std::move(std::thread([=](){
         auto ok = std::make_shared<bool>(true);
         restbed::Http::async(req,
-            [this, val, ok](const std::shared_ptr<restbed::Request>& /*req*/,
+            [this, ok](const std::shared_ptr<restbed::Request>& /*req*/,
                         const std::shared_ptr<restbed::Response>& reply) {
             auto code = reply->get_status_code();
 
@@ -229,17 +257,23 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
 
                 Json::Value json;
                 Json::Reader reader;
-                if (reader.parse(body, json)) {
-                    auto value = std::make_shared<Value>(json);
-                } else {
+                try {
+                    if (!reader.parse(body, json))
+                        *ok = false;
+                } catch (...) {
                     *ok = false;
                 }
             } else {
                 *ok = false;
             }
         }).wait();
-        if (cb)
-            cb(*ok, {});
+        if (cb) {
+            lockCallbacks.lock();
+            callbacks_.emplace_back([=](){
+                cb(*ok, {});
+            });
+            lockCallbacks.unlock();
+        }
         if (!ok) {
             // Connection failed, update connectivity
             getConnectivityStatus();
@@ -251,7 +285,9 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
 NodeStats
 DhtProxyClient::getNodesStats(sa_family_t af) const
 {
+    lockCurrentProxyInfos_->lock();
     auto proxyInfos = *currentProxyInfos_;
+    lockCurrentProxyInfos_->unlock();
     NodeStats stats {};
     auto identifier = af == AF_INET6 ? "ipv6" : "ipv4";
     try {
@@ -279,33 +315,35 @@ DhtProxyClient::getProxyInfos() const
             reply->get_body(body);
 
             Json::Reader reader;
+            lockCurrentProxyInfos_->lock();
             try {
                 reader.parse(body, *currentProxyInfos_);
             } catch (...) {
                 *currentProxyInfos_ = Json::Value();
             }
+            lockCurrentProxyInfos_->unlock();
         } else {
+            lockCurrentProxyInfos_->lock();
             *currentProxyInfos_ = Json::Value();
+            lockCurrentProxyInfos_->unlock();
         }
     }).wait();
-    return *currentProxyInfos_;
+    lockCurrentProxyInfos_->lock();
+    auto result = *currentProxyInfos_;
+    lockCurrentProxyInfos_->unlock();
+    return result;
 }
 
 std::vector<SockAddr>
 DhtProxyClient::getPublicAddress(sa_family_t family)
 {
+    lockCurrentProxyInfos_->lock();
     auto proxyInfos = *currentProxyInfos_;
+    lockCurrentProxyInfos_->unlock();
     // json["public_ip"] contains [ipv6:ipv4]:port or ipv4:port
-    if (!proxyInfos.isMember("public_ip")) {
-        return {};
-    }
     auto public_ip = proxyInfos["public_ip"].asString();
-    if (public_ip.length() < 2) {
-        return {};
-    }
-    std::string ipv4Address = "";
-    std::string ipv6Address = "";
-    std::string port = "";
+    if (!proxyInfos.isMember("public_ip") || (public_ip.length() < 2)) return {};
+    std::string ipv4Address = "", ipv6Address = "", port = "";
     if (public_ip[0] == '[') {
         // ipv6 complient
         auto endIp = public_ip.find(']');
@@ -349,7 +387,7 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
     l.req = req;
     l.cb = cb;
     l.filterChain = std::move(filterChain);
-    l.thread = std::move(std::unique_ptr<std::thread>(new std::thread([=]()
+    l.thread = std::move(std::thread([=]()
         {
             auto settings = std::make_shared<restbed::Settings>();
             std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
@@ -372,8 +410,13 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
                             Json::Reader reader;
                             if (reader.parse(body, json)) {
                                 auto value = std::make_shared<Value>(json);
-                                if ((not filterChain or filterChain(*value)) && cb)
-                                    cb({value});
+                                if ((not filterChain or filterChain(*value)) && cb)  {
+                                    lockCallbacks.lock();
+                                    callbacks_.emplace_back([=](){
+                                        cb({value});
+                                    });
+                                    lockCallbacks.unlock();
+                                }
                             }
                         }
                     } catch (std::runtime_error&) {
@@ -387,28 +430,32 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
             }, settings).get();
             getConnectivityStatus();
         })
-    ));
+    );
+    lockListener_.lock();
     listeners_.emplace_back(std::move(l));
+    lockListener_.unlock();
     return listener_token_;
 }
 
 bool
 DhtProxyClient::cancelListen(const InfoHash&, size_t token)
 {
+    lockListener_.lock();
     for (auto it = listeners_.begin(); it != listeners_.end(); ++it) {
         auto& listener = *it;
         if (listener.token == token) {
-            if (listener.thread->joinable()) {
+            if (listener.thread.joinable()) {
                 // Close connection to stop listener?
                 if (listener.req)
                     restbed::Http::close(listener.req);
-                if (listener.thread->joinable())
-                    listener.thread->join();
+                listener.thread.join();
                 listeners_.erase(it);
+                lockListener_.unlock();
                 return true;
             }
         }
     }
+    lockListener_.unlock();
     return false;
 }
 
@@ -420,18 +467,12 @@ DhtProxyClient::getConnectivityStatus()
     try {
         auto goodIpv4 = static_cast<long>(proxyInfos["ipv4"]["good"].asLargestUInt());
         auto dubiousIpv4 = static_cast<long>(proxyInfos["ipv4"]["dubious"].asLargestUInt());
-        if (goodIpv4 + dubiousIpv4 > 0) {
-            statusIpv4_ = NodeStatus::Connected;
-        } else {
-            statusIpv4_ = NodeStatus::Disconnected;
-        }
+        statusIpv4_ = (goodIpv4 + dubiousIpv4 > 0) ?  NodeStatus::Connected : NodeStatus::Disconnected;
+
         auto goodIpv6 = static_cast<long>(proxyInfos["ipv6"]["good"].asLargestUInt());
         auto dubiousIpv6 = static_cast<long>(proxyInfos["ipv6"]["dubious"].asLargestUInt());
-        if (goodIpv6 + dubiousIpv6 > 0) {
-            statusIpv6_ = NodeStatus::Connected;
-        } else {
-            statusIpv6_ = NodeStatus::Disconnected;
-        }
+        statusIpv6_ = (goodIpv6 + dubiousIpv6 > 0) ?  NodeStatus::Connected : NodeStatus::Disconnected;
+
         myid = InfoHash(proxyInfos["node_id"].asString());
         if (statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected) {
             const auto& now = scheduler.time();
@@ -448,9 +489,10 @@ DhtProxyClient::getConnectivityStatus()
 void
 DhtProxyClient::restartListeners()
 {
+    lockListener_.lock();
     for (auto& listener: listeners_) {
-        if (listener.thread && listener.thread->joinable())
-            listener.thread->join();
+        if (listener.thread.joinable())
+            listener.thread.join();
         // Redo listen
         auto filterChain = listener.filterChain;
         auto cb = listener.cb;
@@ -458,7 +500,7 @@ DhtProxyClient::restartListeners()
         auto req = std::make_shared<restbed::Request>(uri);
         req->set_method("LISTEN");
         listener.req = req;
-        listener.thread = std::move(std::unique_ptr<std::thread>(new std::thread([this, filterChain, cb, req]()
+        listener.thread = std::move(std::thread([this, filterChain, cb, req]()
             {
                 auto settings = std::make_shared<restbed::Settings>();
                 std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
@@ -481,8 +523,13 @@ DhtProxyClient::restartListeners()
                                 Json::Reader reader;
                                 if (reader.parse(body, json)) {
                                     auto value = std::make_shared<Value>(json);
-                                    if ((not filterChain or filterChain(*value)) && cb)
-                                        cb({value});
+                                    if ((not filterChain or filterChain(*value)) && cb) {
+                                        lockCallbacks.lock();
+                                        callbacks_.emplace_back([=](){
+                                            cb({value});
+                                        });
+                                        lockCallbacks.unlock();
+                                    }
                                 }
                             }
                         } catch (std::runtime_error&) {
@@ -496,8 +543,9 @@ DhtProxyClient::restartListeners()
                 }, settings).get();
                 getConnectivityStatus();
             })
-        ));
+        );
     }
+    lockListener_.unlock();
 }
 
 
