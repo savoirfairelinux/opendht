@@ -420,9 +420,9 @@ DhtProxyServer::handlePushListeners()
             auto callbackId = pushListener->callbackId;
             auto isAndroid = pushListener->isAndroid;
             auto internalToken = std::move(dht_->listen(pushListener->hash,
-                [this, key, callbackId, token, isAndroid](std::shared_ptr<Value> value) {
+                [this, key, callbackId, token, isAndroid](std::shared_ptr<Value> /*value*/) {
                     // Build message content.
-                    auto json = value->toJson();
+                    Json::Value json;
                     if (callbackId > 0) {
                         json["callback_id"] = callbackId;
                     }

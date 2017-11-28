@@ -381,11 +381,29 @@ public:
     void setProxyServer(const std::string& url = "127.0.0.1:8000") {
         config_.proxy_server = url;
     }
-    void enableProxy(bool proxify);
+    /**
+     * Start or stop the proxy
+     * @param proxify if we want to use the proxy
+     * @param deviceKey non empty to enable push notifications
+     */
+    void enableProxy(bool proxify, const std::string& deviceKey = "");
 #endif // OPENDHT_PROXY_CLIENT
 #if OPENDHT_PROXY_SERVER
     void forwardAllMessages(bool forward);
 #endif // OPENDHT_PROXY_SERVER
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Insert a push notification to process for OpenDHT
+     */
+    void pushNotificationReceived(const std::string& notification) const;
+    void pushNotificationReceived(const Json::Value& notification) const;
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(const unsigned token);
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};

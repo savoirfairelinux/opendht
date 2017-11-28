@@ -29,7 +29,7 @@ public:
     virtual ~DhtInterface() = default;
 
 #if OPENDHT_PROXY_CLIENT
-    virtual void startProxy(const std::string& host) = 0;
+    virtual void startProxy(const std::string& host, const std::string& deviceKey = "") = 0;
 #endif
 
     // [[deprecated]]
@@ -231,6 +231,19 @@ public:
     virtual void setLogFilter(const InfoHash& f) {
         DHT_LOG.setFilter(f);
     }
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Call linked callback with a push notification
+     * @param notification to process
+     */
+    virtual void pushNotificationReceived(const Json::Value& notification) = 0;
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    virtual void resubscribe(const unsigned token) = 0;
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 protected:
     bool logFilerEnable_ {};
     InfoHash logFiler_ {};

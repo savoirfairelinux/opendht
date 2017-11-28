@@ -73,7 +73,7 @@ public:
 
 
 #if OPENDHT_PROXY_CLIENT
-    void startProxy(const std::string&) {};
+    void startProxy(const std::string&, const std::string&) {};
 #endif
 
     /**
@@ -294,6 +294,17 @@ public:
     }
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Call linked callback with a push notification
+     * @param notification to process
+     */
+    void pushNotificationReceived(const Json::Value&) {
+        // Ignore this
+    }
+    void resubscribe(const unsigned) {}
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
 private:
 

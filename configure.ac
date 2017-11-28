@@ -140,7 +140,7 @@ AM_CONDITIONAL(ENABLE_PROXY_CLIENT, test x$proxy_client == xyes)
 
 AM_COND_IF([ENABLE_PROXY_SERVER], [
 	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
-	PKG_CHECK_MODULES([Jsoncpp], [jsoncpp >= 1.7.4])
+	PKG_CHECK_MODULES([Jsoncpp], [jsoncpp >= 1.7.2])
 	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=true -ljsoncpp -lrestbed"
 ], [
 	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"

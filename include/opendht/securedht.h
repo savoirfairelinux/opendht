@@ -294,8 +294,8 @@ public:
     }
 
 #if OPENDHT_PROXY_CLIENT
-    void startProxy(const std::string& host) {
-        dht_->startProxy(host);
+    void startProxy(const std::string& host, const std::string& deviceKey = "") {
+        dht_->startProxy(host, deviceKey);
     }
 #endif
 
@@ -304,6 +304,23 @@ public:
         forward_all_ = forward;
     }
 #endif //OPENDHT_PROXY_SERVER
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Call linked callback with push_notification
+     * @param notification to process
+     */
+    void pushNotificationReceived(const Json::Value& notification) {
+        dht_->pushNotificationReceived(notification);
+    }
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(const unsigned token) {
+        dht_->resubscribe(token);
+    }
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
 private:
     std::unique_ptr<DhtInterface> dht_;

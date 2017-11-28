@@ -861,7 +861,7 @@ DhtRunner::activeDht() const
 
 #if OPENDHT_PROXY_CLIENT
 void
-DhtRunner::enableProxy(bool proxify) {
+DhtRunner::enableProxy(bool proxify, const std::string& deviceKey) {
     if (!dht_via_proxy_) {
         auto dht_via_proxy = std::unique_ptr<DhtInterface>(
             new DhtProxyClient(config_.proxy_server)
@@ -870,7 +870,7 @@ DhtRunner::enableProxy(bool proxify) {
     }
     if (proxify) {
         // Init the proxy client
-        dht_via_proxy_->startProxy(config_.proxy_server);
+        dht_via_proxy_->startProxy(config_.proxy_server, deviceKey);
         // add current listeners
         for (auto& listener: listeners_) {
             auto tokenProxy = dht_via_proxy_->listen(listener->hash, listener->gcb, std::move(listener->f), std::move(listener->w));
@@ -911,4 +911,33 @@ DhtRunner::forwardAllMessages(bool forward)
     dht_->forwardAllMessages(forward);
 }
 #endif // OPENDHT_PROXY_SERVER
+
+#if OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
+void
+DhtRunner::pushNotificationReceived(const std::string& notification) const
+{
+    try {
+        std::string err;
+        Json::Value root;
+        Json::CharReaderBuilder rbuilder;
+        auto* char_data = reinterpret_cast<const char*>(&notification[0]);
+        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        if (reader->parse(char_data, char_data + notification.size(), &root, &err))
+            pushNotificationReceived(root);
+    } catch (...) { }
+}
+
+void
+DhtRunner::pushNotificationReceived(const Json::Value& notification) const
+{
+    dht_via_proxy_->pushNotificationReceived(notification);
+}
+
+void
+DhtRunner::resubscribe(const unsigned token)
+{
+    dht_via_proxy_->resubscribe(token);
+}
+
+#endif // OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
 }
