@@ -130,6 +130,8 @@ AM_COND_IF([ENABLE_TOOLS], [
 
 AC_ARG_ENABLE([proxy_server], AS_HELP_STRING([--enable-proxy-server], [Enable proxy server ability]), proxy_server=yes, proxy_server=no)
 AM_CONDITIONAL(ENABLE_PROXY_SERVER, test x$proxy_server == xyes)
+AC_ARG_ENABLE([push_notifications], AS_HELP_STRING([--enable-push-notifications], [Enable push notifications support]), push_notifications=yes, push_notifications=no)
+AM_CONDITIONAL(ENABLE_PUSH_NOTIFICATIONS, test x$push_notifications == xyes)
 AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
 	[Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
 AM_CONDITIONAL(ENABLE_PROXY_SERVER_IDENTITY, test x$proxy_server_identity == xyes)
@@ -143,6 +145,13 @@ AM_COND_IF([ENABLE_PROXY_SERVER], [
 ], [
 	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"
 ])
+
+AM_COND_IF([ENABLE_PUSH_NOTIFICATIONS], [
+	CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=true"
+], [
+	CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=false"
+])
+
 AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
     [Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
 AM_CONDITIONAL(ENABLE_PROXY_SERVER_IDENTITY, test x$proxy_server_identity == xyes -a x$proxy_server == xyes)

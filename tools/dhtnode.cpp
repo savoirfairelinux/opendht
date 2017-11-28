@@ -60,8 +60,12 @@ void print_help() {
 
 #if OPENDHT_PROXY_SERVER
     std::cout << std::endl << "Operations with the proxy:" << std::endl
-              << "  pst [port]            Start the proxy interface on port." << std::endl
-              << "  psp [port]            Stop the proxy interface on port." << std::endl;
+#if OPENDHT_PUSH_NOTIFICATIONS
+              << "  pst [port] <pushServer> Start the proxy interface on port." << std::endl
+#else
+              << "  pst [port]              Start the proxy interface on port." << std::endl
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+              << "  psp [port]              Stop the proxy interface on port." << std::endl;
 #endif //OPENDHT_PROXY_SERVER
 
 #if OPENDHT_PROXY_CLIENT
@@ -101,7 +105,11 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
 #if OPENDHT_PROXY_SERVER
     std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
     if (params.proxyserver != 0) {
-        proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver));
+        proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver
+#if OPENDHT_PUSH_NOTIFICATIONS
+        , params.pushserver
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+        ));
     }
 #endif //OPENDHT_PROXY_SERVER
 #if OPENDHT_PROXY_CLIENT
@@ -119,7 +127,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
             break;
 
         std::istringstream iss(line);
-        std::string op, idstr, value, index, keystr;
+        std::string op, idstr, value, index, keystr, pushServer;
         iss >> op;
 
         if (op == "x" || op == "exit" || op == "quit") {
@@ -189,10 +197,18 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params)
         }
 #if OPENDHT_PROXY_SERVER
         else if (op == "pst") {
-            iss >> idstr;
+#if OPENDHT_PUSH_NOTIFICATIONS
+                iss >> idstr >> pushServer;
+#else
+                iss >> idstr;
+#endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
                 unsigned int port = std::stoi(idstr);
+#if OPENDHT_PUSH_NOTIFICATIONS
+                proxies.emplace(port, new DhtProxyServer(dht, port, pushServer));
+#else
                 proxies.emplace(port, new DhtProxyServer(dht, port));
+#endif // OPENDHT_PUSH_NOTIFICATIONS
             } catch (...) { }
             continue;
         } else if (op == "psp") {

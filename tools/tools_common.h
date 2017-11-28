@@ -122,6 +122,7 @@ struct dht_params {
     std::pair<std::string, std::string> bootstrap {};
     in_port_t proxyserver {0};
     std::string proxyclient {};
+    std::string pushserver {};
 };
 
 static const constexpr struct option long_options[] = {
@@ -137,6 +138,7 @@ static const constexpr struct option long_options[] = {
    {"syslog",     no_argument      , nullptr, 'L'},
    {"proxyserver",required_argument, nullptr, 'S'},
    {"proxyclient",required_argument, nullptr, 'C'},
+   {"pushserver", required_argument, nullptr, 'P'},
    {nullptr,      0                , nullptr,  0}
 };
 
@@ -161,6 +163,9 @@ parseArgs(int argc, char **argv) {
                 else
                     std::cout << "Invalid port: " << port_arg << std::endl;
             }
+            break;
+        case 'P':
+            params.pushserver = optarg;
             break;
         case 'C':
             params.proxyclient = optarg;
