@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2016 Savoir-faire Linux Inc.
- *  Author : Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -281,8 +281,10 @@ private:
     {
         std::shared_ptr<restbed::Request> req;
         std::thread thread;
+        std::shared_ptr<bool> finished;
     };
     std::vector<Operation> operations_;
+    std::mutex lockOperations_;
     /**
      * Callbacks should be executed in the main thread.
      */
