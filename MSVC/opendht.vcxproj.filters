@@ -31,9 +31,6 @@
     <ClCompile Include="..\src\node_cache.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\indexation\pht.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\routing_table.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -46,79 +43,101 @@
     <ClCompile Include="..\src\value.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\opendht-old\MSVC\wingetopt.c" />
+    <ClCompile Include="..\src\base64.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dht_proxy_server.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\indexation\pht.cpp">
+      <Filter>Source Files\indexation</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\opendht\callbacks.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\crypto.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\default_types.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\dht.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\dhtrunner.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\infohash.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\include\opendht\def.h" />
+    <ClInclude Include="..\include\opendht\sockaddr.h" />
+    <ClInclude Include="..\src\net.h" />
+    <ClInclude Include="..\src\parsed_message.h" />
+    <ClInclude Include="..\..\opendht-old\MSVC\unistd.h" />
+    <ClInclude Include="..\..\opendht-old\MSVC\wingetopt.h" />
+    <ClInclude Include="..\src\base64.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\listener.h">
-      <Filter>Header Files</Filter>
+      <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\opendht\log.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\src\request.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\opendht\log_enable.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\src\search.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\opendht\network_engine.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\node.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\node_cache.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\src\storage.h">
+      <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\opendht\indexation\pht.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\include\opendht\callbacks.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\crypto.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\default_types.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\dht.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\dht_proxy_server.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\dhtrunner.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\infohash.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\log.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\log_enable.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\network_engine.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\node.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\node_cache.h">
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\rate_limiter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\include\opendht\request.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\rng.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\routing_table.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\scheduler.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\search.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\securedht.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\storage.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\utils.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\include\opendht\value.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\indexation\pht.h">
+      <Filter>Header Files\opendht\indexation</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -127,6 +146,15 @@
     </Filter>
     <Filter Include="Header Files">
       <UniqueIdentifier>{d1ab5bfe-3ab1-45ee-9324-b4b071887668}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\indexation">
+      <UniqueIdentifier>{939134d3-d5a2-4458-bca8-a10ea9042ea2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\opendht">
+      <UniqueIdentifier>{0b46e2d0-4874-404c-bae3-fae8d49b85b8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\opendht\indexation">
+      <UniqueIdentifier>{03bd5139-2ae5-41b0-a77b-944814e1b2b6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
