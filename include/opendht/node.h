@@ -117,7 +117,7 @@ struct Node {
      */
     Tid openSocket(SocketCb&& cb);
 
-    Socket* getSocket(Tid id);
+    Sp<Socket> getSocket(Tid id);
 
     /**
      * Closes a socket so that no further data will be red on that socket.
@@ -167,7 +167,7 @@ private:
     using TransactionDist = std::uniform_int_distribution<decltype(transaction_id)>;
 
     std::map<Tid, Sp<net::Request>> requests_ {};
-    std::map<Tid, Socket> sockets_;
+    std::map<Tid, Sp<Socket>> sockets_;
 };
 
 }

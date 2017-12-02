@@ -134,18 +134,18 @@ Node::openSocket(SocketCb&& cb)
     if (++transaction_id == 0)
         transaction_id = 1;
 
-    auto sock = Socket(std::move(cb));
+    auto sock = std::make_shared<Socket>(std::move(cb));
     auto s = sockets_.emplace(transaction_id, std::move(sock));
     if (not s.second)
         s.first->second = std::move(sock);
     return transaction_id;
 }
 
-Socket*
+Sp<Socket>
 Node::getSocket(Tid id)
 {
     auto it = sockets_.find(id);
-    return it == sockets_.end() ? nullptr : &it->second;
+    return it == sockets_.end() ? nullptr : it->second;
 }
 
 void
