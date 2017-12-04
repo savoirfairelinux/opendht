@@ -229,7 +229,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                 // cache the session to avoid an incrementation of the shared_ptr's counter
                 // else, the session->close() will not close the socket.
                 auto cacheSession = std::weak_ptr<restbed::Session>(s);
-                listener.token = std::move(dht_->listen(infoHash, [cacheSession](std::shared_ptr<Value> value) {
+                listener.token = dht_->listen(infoHash, [cacheSession](std::shared_ptr<Value> value) {
                     auto s = cacheSession.lock();
                     if (!s) return false;
                     // Send values as soon as we get them
@@ -238,7 +238,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                         s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session>){ });
                     }
                     return !s->is_closed();
-                }));
+                });
                 lockListener_.lock();
                 currentListeners_.emplace_back(std::move(listener));
                 lockListener_.unlock();

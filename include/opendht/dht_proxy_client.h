@@ -217,7 +217,7 @@ public:
     void insertNode(const NodeExport&) { }
     std::pair<size_t, size_t> getStoreSize() const { return {}; }
     virtual void registerType(const ValueType&) { }
-    const ValueType& getType(ValueType::Id) const { }
+    const ValueType& getType(ValueType::Id) const { return NO_VALUE; }
     std::vector<Sp<Value>> getLocal(const InfoHash&, Value::Filter) const { return {}; }
     Sp<Value> getLocalById(const InfoHash&, Value::Id) const { return {}; }
     std::vector<NodeExport> exportNodes() { return {}; }
@@ -235,6 +235,7 @@ public:
     void connectivityChanged() { }
 
 private:
+    const ValueType NO_VALUE;
     /**
      * Get informations from the proxy node
      * @return the JSON returned by the proxy
