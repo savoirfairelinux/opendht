@@ -282,7 +282,7 @@ private:
     {
         std::shared_ptr<restbed::Request> req;
         std::thread thread;
-        std::shared_ptr<bool> finished;
+        std::shared_ptr<std::atomic_bool> finished;
     };
     std::vector<Operation> operations_;
     std::mutex lockOperations_;

@@ -192,14 +192,14 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
     Query query {{}, where};
     auto filterChain = filter.chain(query.where.getFilter());
 
-    auto finished = std::make_shared<bool>(false);
+    auto finished = std::make_shared<std::atomic_bool>(false);
     Operation o;
     o.req = req;
     o.finished = finished;
     o.thread = std::thread([=](){
         // Try to contact the proxy and set the status to connected when done.
         // will change the connectivity status
-        auto ok = std::make_shared<bool>(true);
+        auto ok = std::make_shared<std::atomic_bool>(true);
         restbed::Http::async(req,
             [=](const std::shared_ptr<restbed::Request>& req,
                 const std::shared_ptr<restbed::Response>& reply) {
@@ -267,12 +267,12 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
     req->set_body(body);
     req->set_header("Content-Length", std::to_string(body.size()));
 
-    auto finished = std::make_shared<bool>(false);
+    auto finished = std::make_shared<std::atomic_bool>(false);
     Operation o;
     o.req = req;
     o.finished = finished;
     o.thread = std::thread([=](){
-        auto ok = std::make_shared<bool>(true);
+        auto ok = std::make_shared<std::atomic_bool>(true);
         restbed::Http::async(req,
             [this, ok](const std::shared_ptr<restbed::Request>& /*req*/,
                         const std::shared_ptr<restbed::Response>& reply) {
@@ -426,8 +426,8 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
             settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
 
             struct State {
-                bool ok {true};
-                bool cancel {false};
+                std::atomic_bool ok {true};
+                std::atomic_bool cancel {false};
             };
             auto state = std::make_shared<State>();
             restbed::Http::async(req,
