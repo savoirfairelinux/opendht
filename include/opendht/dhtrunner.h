@@ -386,7 +386,6 @@ public:
     void forwardAllMessages(bool forward);
 #endif // OPENDHT_PROXY_SERVER
 
-    static std::vector<SockAddr> getAddrInfo(const std::string& host, const std::string& service);
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 

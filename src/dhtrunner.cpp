@@ -759,30 +759,6 @@ DhtRunner::tryBootstrapContinuously()
     });
 }
 
-std::vector<SockAddr>
-DhtRunner::getAddrInfo(const std::string& host, const std::string& service)
-{
-    std::vector<SockAddr> ips {};
-    if (host.empty())
-        return ips;
-
-    addrinfo hints;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_socktype = SOCK_DGRAM;
-    addrinfo* info = nullptr;
-    int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &info);
-    if(rc != 0)
-        throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
-
-    addrinfo* infop = info;
-    while (infop) {
-        ips.emplace_back(infop->ai_addr, infop->ai_addrlen);
-        infop = infop->ai_next;
-    }
-    freeaddrinfo(info);
-    return ips;
-}
-
 void
 DhtRunner::bootstrap(const std::string& host, const std::string& service)
 {
