@@ -27,8 +27,6 @@
 
 #include "dhtrunner.h"
 
-#include <iostream>
-
 constexpr const char* const HTTP_PROTO {"http://"};
 
 namespace dht {

@@ -82,33 +82,35 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         while (service_->is_up()  && !stopListeners) {
-            lockListener_.lock();
-            auto listener = currentListeners_.begin();
-            while (listener != currentListeners_.end()) {
-                if (dht_ && listener->session->is_closed()) {
-                    dht_->cancelListen(listener->hash, std::move(listener->token));
-                    // Remove listener if unused
-                    listener = currentListeners_.erase(listener);
-                } else {
-                     ++listener;
+            {
+                std::lock_guard<std::mutex> lock(lockListener_);
+                auto listener = currentListeners_.begin();
+                while (listener != currentListeners_.end()) {
+                    if (dht_ && listener->session->is_closed()) {
+                        dht_->cancelListen(listener->hash, std::move(listener->token));
+                        // Remove listener if unused
+                        listener = currentListeners_.erase(listener);
+                    } else {
+                        ++listener;
+                    }
                 }
             }
-            lockListener_.unlock();
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         // Remove last listeners
-        lockListener_.lock();
-        auto listener = currentListeners_.begin();
-        while (listener != currentListeners_.end()) {
-            if (dht_) {
-                dht_->cancelListen(listener->hash, std::move(listener->token.get()));
-                // Remove listener if unused
-                listener = currentListeners_.erase(listener);
-            } else {
-                 ++listener;
+        {
+            std::lock_guard<std::mutex> lock(lockListener_);
+            auto listener = currentListeners_.begin();
+            while (listener != currentListeners_.end()) {
+                if (dht_) {
+                    dht_->cancelListen(listener->hash, std::move(listener->token.get()));
+                    // Remove listener if unused
+                    listener = currentListeners_.erase(listener);
+                } else {
+                    ++listener;
+                }
             }
         }
-        lockListener_.unlock();
     });
 
     dht->forwardAllMessages(true);
@@ -123,13 +125,14 @@ void
 DhtProxyServer::stop()
 {
     service_->stop();
-    lockListener_.lock();
-    auto listener = currentListeners_.begin();
-    while (listener != currentListeners_.end()) {
-        listener->session->close();
-        ++ listener;
+    {
+        std::lock_guard<std::mutex> lock(lockListener_);
+        auto listener = currentListeners_.begin();
+        while (listener != currentListeners_.end()) {
+            listener->session->close();
+            ++ listener;
+        }
     }
-    lockListener_.unlock();
     stopListeners = true;
     // listenThreads_ will stop because there is no more sessions
     if (listenThread_.joinable())
@@ -248,9 +251,10 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                     }
                     return !s->is_closed();
                 });
-                lockListener_.lock();
-                currentListeners_.emplace_back(std::move(listener));
-                lockListener_.unlock();
+                {
+                    std::lock_guard<std::mutex> lock(lockListener_);
+                    currentListeners_.emplace_back(std::move(listener));
+                }
             } else {
                 session->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
