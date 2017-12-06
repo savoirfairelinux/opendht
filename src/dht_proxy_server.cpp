@@ -155,8 +155,11 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
                 result["ipv4"] = dht_->getNodesStats(AF_INET).toJson();
                 result["ipv6"] = dht_->getNodesStats(AF_INET6).toJson();
                 result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
-                Json::FastWriter writer;
-                s->close(restbed::OK, writer.write(result));
+                Json::StreamWriterBuilder wbuilder;
+                wbuilder["commentStyle"] = "None";
+                wbuilder["indentation"] = "";
+                auto output = Json::writeString(wbuilder, result) + "\n";
+                s->close(restbed::OK, output);
             }
             else
                 s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
@@ -185,8 +188,11 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                         auto s = cacheSession.lock();
                         if (!s) return false;
                         // Send values as soon as we get them
-                        Json::FastWriter writer;
-                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
                         // Communication is finished
@@ -234,8 +240,11 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                     if (!s) return false;
                     // Send values as soon as we get them
                     if (!s->is_closed()) {
-                        Json::FastWriter writer;
-                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session>){ });
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session>){ });
                     }
                     return !s->is_closed();
                 });
@@ -268,20 +277,25 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
-                    Json::Value root;
-                    Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
-                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
-                    if (parsingSuccessful) {
+
+                    std::string err;
+                    Json::Value root;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
                         // Build the Value from json
                         auto value = std::make_shared<Value>(root);
                         auto permanent = root.isMember("permanent") ? root["permanent"].asBool() : false;
 
                         dht_->put(infoHash, value, [s, value](bool ok) {
                             if (ok) {
-                                Json::FastWriter writer;
+                                Json::StreamWriterBuilder wbuilder;
+                                wbuilder["commentStyle"] = "None";
+                                wbuilder["indentation"] = "";
                                 if (s->is_open())
-                                    s->close(restbed::OK, writer.write(value->toJson()));
+                                    s->close(restbed::OK, Json::writeString(wbuilder, value->toJson()) + "\n");
                             } else {
                                 if (s->is_open())
                                     s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
@@ -318,16 +332,22 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
-                    Json::Value root;
-                    Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
-                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
-                    if (parsingSuccessful) {
+
+                    std::string err;
+                    Json::Value root;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
                         auto value = std::make_shared<Value>(root);
 
-                        Json::FastWriter writer;
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
                         dht_->putSigned(infoHash, value);
-                        s->close(restbed::OK, writer.write(value->toJson()));
+                        s->close(restbed::OK, output);
                     } else {
                         s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     }
@@ -358,16 +378,23 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
-                    Json::Value root;
-                    Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
-                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
+
+                    std::string err;
+                    Json::Value root;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    bool parsingSuccessful = reader->parse(char_data, char_data + strJson.size(), &root, &err);
                     InfoHash to(root["to"].asString());
                     if (parsingSuccessful && to) {
                         auto value = std::make_shared<Value>(root);
-                        Json::FastWriter writer;
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
                         dht_->putEncrypted(key, to, value);
-                        s->close(restbed::OK, writer.write(value->toJson()));
+                        s->close(restbed::OK, output);
                     } else {
                         if(!parsingSuccessful)
                             s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
@@ -414,8 +441,11 @@ DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) co
                 s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
                     dht_->get(infoHash, [s](std::shared_ptr<Value> v) {
                         // Send values as soon as we get them
-                        Json::FastWriter writer;
-                        s->yield(writer.write(v->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, v->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
                         // Communication is finished

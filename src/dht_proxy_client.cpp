@@ -215,9 +215,12 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
                         reply->get_body(body);
                         reply->set_body(""); // Reset the body for the next fetch
 
+                        std::string err;
                         Json::Value json;
-                        Json::Reader reader;
-                        if (reader.parse(body, json)) {
+                        Json::CharReaderBuilder rbuilder;
+                        auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                             auto value = std::make_shared<Value>(json);
                             if ((not filterChain or filterChain(*value)) && cb) {
                                 std::lock_guard<std::mutex> lock(lockCallbacks);
@@ -259,11 +262,13 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
-    Json::FastWriter writer;
     auto json = val->toJson();
     if (permanent)
         json["permanent"] = true;
-    auto body = writer.write(json);
+    Json::StreamWriterBuilder wbuilder;
+    wbuilder["commentStyle"] = "None";
+    wbuilder["indentation"] = "";
+    auto body = Json::writeString(wbuilder, json) + "\n";
     req->set_body(body);
     req->set_header("Content-Length", std::to_string(body.size()));
 
@@ -284,10 +289,13 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
                 reply->get_body(body);
                 reply->set_body(""); // Reset the body for the next fetch
 
-                Json::Value json;
-                Json::Reader reader;
                 try {
-                    if (!reader.parse(body, json))
+                    std::string err;
+                    Json::Value json;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (not reader->parse(char_data, char_data + body.size(), &json, &err))
                         *ok = false;
                 } catch (...) {
                     *ok = false;
@@ -346,10 +354,13 @@ DhtProxyClient::getProxyInfos() const
             std::string body;
             reply->get_body(body);
 
-            Json::Reader reader;
+            std::string err;
+            Json::CharReaderBuilder rbuilder;
+            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             lockCurrentProxyInfos_->lock();
             try {
-                reader.parse(body, *currentProxyInfos_);
+                reader->parse(char_data, char_data + body.size(), &*currentProxyInfos_, &err);
             } catch (...) {
                 *currentProxyInfos_ = Json::Value();
             }
@@ -446,8 +457,11 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
                             reply->set_body(""); // Reset the body for the next fetch
 
                             Json::Value json;
-                            Json::Reader reader;
-                            if (reader.parse(body, json)) {
+                            std::string err;
+                            Json::CharReaderBuilder rbuilder;
+                            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                            if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                                 auto value = std::make_shared<Value>(json);
                                 if ((not filterChain or filterChain(*value)) && cb)  {
                                     std::lock_guard<std::mutex> lock(lockCallbacks);
@@ -561,8 +575,11 @@ DhtProxyClient::restartListeners()
                                 reply->set_body(""); // Reset the body for the next fetch
 
                                 Json::Value json;
-                                Json::Reader reader;
-                                if (reader.parse(body, json)) {
+                                std::string err;
+                                Json::CharReaderBuilder rbuilder;
+                                auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                                if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                                     auto value = std::make_shared<Value>(json);
                                     if ((not filterChain or filterChain(*value)) && cb) {
                                         auto okCb = std::make_shared<std::promise<bool>>();
