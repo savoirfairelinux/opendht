@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2017 Savoir-faire Linux Inc.
- *  Author : Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -68,6 +68,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // there is a timeout, but really huge
         settings->set_port(port);
+        auto maxThreads = std::thread::hardware_concurrency() - 1;
+        settings->set_worker_limit(maxThreads > 1 ? maxThreads : 1);
         try {
             service_->start(settings);
         } catch(std::system_error& e) {
@@ -76,24 +78,42 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
     });
 
     listenThread_ = std::thread([this]() {
-        auto stop = false;
-        while (!stop) {
+        while (!service_->is_up() && !stopListeners) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        while (service_->is_up()  && !stopListeners) {
+            {
+                std::lock_guard<std::mutex> lock(lockListener_);
+                auto listener = currentListeners_.begin();
+                while (listener != currentListeners_.end()) {
+                    if (dht_ && listener->session->is_closed()) {
+                        dht_->cancelListen(listener->hash, std::move(listener->token));
+                        // Remove listener if unused
+                        listener = currentListeners_.erase(listener);
+                    } else {
+                        ++listener;
+                    }
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+        // Remove last listeners
+        {
+            std::lock_guard<std::mutex> lock(lockListener_);
             auto listener = currentListeners_.begin();
             while (listener != currentListeners_.end()) {
-                if (listener->session->is_closed() && dht_) {
-                    dht_->cancelListen(listener->hash, std::move(listener->token));
+                if (dht_) {
+                    dht_->cancelListen(listener->hash, std::move(listener->token.get()));
                     // Remove listener if unused
                     listener = currentListeners_.erase(listener);
                 } else {
-                     ++listener;
+                    ++listener;
                 }
             }
-            //NOTE: When supports restbed 5.0: service_->is_up() and remove stopListeners
-            stop = stopListeners;
-            if (!stop)
-                std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     });
+
+    dht->forwardAllMessages(true);
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -105,6 +125,14 @@ void
 DhtProxyServer::stop()
 {
     service_->stop();
+    {
+        std::lock_guard<std::mutex> lock(lockListener_);
+        auto listener = currentListeners_.begin();
+        while (listener != currentListeners_.end()) {
+            listener->session->close();
+            ++ listener;
+        }
+    }
     stopListeners = true;
     // listenThreads_ will stop because there is no more sessions
     if (listenThread_.joinable())
@@ -129,8 +157,12 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
                 result["node_id"] = dht_->getNodeId().toString();
                 result["ipv4"] = dht_->getNodesStats(AF_INET).toJson();
                 result["ipv6"] = dht_->getNodesStats(AF_INET6).toJson();
-                Json::FastWriter writer;
-                s->close(restbed::OK, writer.write(result));
+                result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
+                Json::StreamWriterBuilder wbuilder;
+                wbuilder["commentStyle"] = "None";
+                wbuilder["indentation"] = "";
+                auto output = Json::writeString(wbuilder, result) + "\n";
+                s->close(restbed::OK, output);
             }
             else
                 s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
@@ -153,10 +185,17 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                     infoHash = InfoHash::get(hash);
                 }
                 s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
-                    dht_->get(infoHash, [s](std::shared_ptr<Value> value) {
+                    auto cacheSession = std::weak_ptr<restbed::Session>(s);
+
+                    dht_->get(infoHash, [cacheSession](std::shared_ptr<Value> value) {
+                        auto s = cacheSession.lock();
+                        if (!s) return false;
                         // Send values as soon as we get them
-                        Json::FastWriter writer;
-                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
                         // Communication is finished
@@ -190,21 +229,32 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
                     infoHash = InfoHash::get(hash);
                 }
                 s->yield(restbed::OK);
-                    // Handle client deconnection
-                    // NOTE: for now, there is no handler, so we test the session in a thread
-                    // will be the case in restbed 5.0
+                // Handle client deconnection
+                // NOTE: for now, there is no handler, so we test the session in a thread
+                // will be the case in restbed 5.0
                 SessionToHashToken listener;
                 listener.session = session;
                 listener.hash = infoHash;
-                listener.token = dht_->listen(infoHash, [s](std::shared_ptr<Value> value) {
+                // cache the session to avoid an incrementation of the shared_ptr's counter
+                // else, the session->close() will not close the socket.
+                auto cacheSession = std::weak_ptr<restbed::Session>(s);
+                listener.token = dht_->listen(infoHash, [cacheSession](std::shared_ptr<Value> value) {
+                    auto s = cacheSession.lock();
+                    if (!s) return false;
                     // Send values as soon as we get them
                     if (!s->is_closed()) {
-                        Json::FastWriter writer;
-                        s->yield(writer.write(value->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session>){ });
                     }
                     return !s->is_closed();
                 });
-                currentListeners_.emplace_back(std::move(listener));
+                {
+                    std::lock_guard<std::mutex> lock(lockListener_);
+                    currentListeners_.emplace_back(std::move(listener));
+                }
             } else {
                 session->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
             }
@@ -231,22 +281,30 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
-                    Json::Value root;
-                    Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
-                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
-                    if (parsingSuccessful) {
+
+                    std::string err;
+                    Json::Value root;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
                         // Build the Value from json
                         auto value = std::make_shared<Value>(root);
+                        auto permanent = root.isMember("permanent") ? root["permanent"].asBool() : false;
 
                         dht_->put(infoHash, value, [s, value](bool ok) {
                             if (ok) {
-                                Json::FastWriter writer;
-                                s->close(restbed::OK, writer.write(value->toJson()));
+                                Json::StreamWriterBuilder wbuilder;
+                                wbuilder["commentStyle"] = "None";
+                                wbuilder["indentation"] = "";
+                                if (s->is_open())
+                                    s->close(restbed::OK, Json::writeString(wbuilder, value->toJson()) + "\n");
                             } else {
-                                s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
+                                if (s->is_open())
+                                    s->close(restbed::BAD_GATEWAY, "{\"err\":\"put failed\"}");
                             }
-                        });
+                        }, time_point::max(), permanent);
                     } else {
                         s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     }
@@ -278,16 +336,22 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
-                    Json::Value root;
-                    Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
-                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
-                    if (parsingSuccessful) {
+
+                    std::string err;
+                    Json::Value root;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
                         auto value = std::make_shared<Value>(root);
 
-                        Json::FastWriter writer;
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
                         dht_->putSigned(infoHash, value);
-                        s->close(restbed::OK, writer.write(value->toJson()));
+                        s->close(restbed::OK, output);
                     } else {
                         s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     }
@@ -318,16 +382,23 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                     s->close(restbed::BAD_REQUEST, response);
                 } else {
                     restbed::Bytes buf(b);
-                    Json::Value root;
-                    Json::Reader reader;
                     std::string strJson(buf.begin(), buf.end());
-                    bool parsingSuccessful = reader.parse(strJson.c_str(), root);
+
+                    std::string err;
+                    Json::Value root;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    bool parsingSuccessful = reader->parse(char_data, char_data + strJson.size(), &root, &err);
                     InfoHash to(root["to"].asString());
                     if (parsingSuccessful && to) {
                         auto value = std::make_shared<Value>(root);
-                        Json::FastWriter writer;
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
                         dht_->putEncrypted(key, to, value);
-                        s->close(restbed::OK, writer.write(value->toJson()));
+                        s->close(restbed::OK, output);
                     } else {
                         if(!parsingSuccessful)
                             s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
@@ -374,8 +445,11 @@ DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) co
                 s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
                     dht_->get(infoHash, [s](std::shared_ptr<Value> v) {
                         // Send values as soon as we get them
-                        Json::FastWriter writer;
-                        s->yield(writer.write(v->toJson()), [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, v->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
                         // Communication is finished

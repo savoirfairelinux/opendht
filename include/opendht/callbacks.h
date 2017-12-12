@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,11 +45,11 @@ enum class NodeStatus {
 };
 
 struct OPENDHT_PUBLIC NodeStats {
-    unsigned good_nodes,
-             dubious_nodes,
-             cached_nodes,
-             incoming_nodes;
-    unsigned table_depth;
+    unsigned good_nodes {0},
+             dubious_nodes {0},
+             cached_nodes {0},
+             incoming_nodes {0};
+    unsigned table_depth {0};
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
     std::string toString() const;
 #if OPENDHT_PROXY_SERVER
@@ -56,6 +57,8 @@ struct OPENDHT_PUBLIC NodeStats {
      * Build a json object from a NodeStats
      */
     Json::Value toJson() const;
+    NodeStats() {};
+    explicit NodeStats(const Json::Value& v);
 #endif //OPENDHT_PROXY_SERVER
 };
 

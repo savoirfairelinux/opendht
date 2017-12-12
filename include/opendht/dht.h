@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,7 +27,7 @@
 #include "scheduler.h"
 #include "routing_table.h"
 #include "callbacks.h"
-#include "log_enable.h"
+#include "dht_interface.h"
 
 #include <string>
 #include <array>
@@ -58,14 +59,8 @@ struct LocalListener;
  * Must be given open UDP sockets and ::periodic must be
  * called regularly.
  */
-class OPENDHT_PUBLIC Dht {
+class OPENDHT_PUBLIC Dht final : public DhtInterface {
 public:
-
-    // [[deprecated]]
-    using NodeExport = dht::NodeExport;
-
-    // [[deprecated]]
-    using Status = NodeStatus;
 
     Dht();
 
@@ -75,6 +70,11 @@ public:
      */
     Dht(int s, int s6, Config config);
     virtual ~Dht();
+
+
+#if OPENDHT_PROXY_CLIENT
+    void startProxy(const std::string&) {};
+#endif
 
     /**
      * Get the ID of the node.
@@ -102,18 +102,6 @@ public:
      *      is running for the provided family.
      */
     bool isRunning(sa_family_t af = 0) const;
-
-    /**
-     * Enable or disable logging of DHT internal messages
-     */
-    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
-
-    /**
-     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
-     */
-    void setLogFilter(const InfoHash& f) {
-        DHT_LOG.setFilter(f);
-    }
 
     virtual void registerType(const ValueType& type) {
         types[type.id] = type;
@@ -306,11 +294,6 @@ public:
     }
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
-
-protected:
-    Logger DHT_LOG;
-    bool logFilerEnable_ {};
-    InfoHash logFiler_ {};
 
 private:
 

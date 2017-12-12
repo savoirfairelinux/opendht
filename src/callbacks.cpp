@@ -86,6 +86,18 @@ NodeStats::toJson() const
     }
     return val;
 }
+
+NodeStats::NodeStats(const Json::Value& val)
+{
+    if (val.isMember("good"))
+        good_nodes = static_cast<unsigned>(val["good"].asLargestUInt());
+    if (val.isMember("dubious"))
+        dubious_nodes = static_cast<unsigned>(val["dubious"].asLargestUInt());
+    if (val.isMember("incoming"))
+        incoming_nodes = static_cast<unsigned>(val["incoming"].asLargestUInt());
+    if (val.isMember("table_depth"))
+        table_depth = static_cast<unsigned>(val["table_depth"].asLargestUInt());
+}
 #endif //OPENDHT_PROXY_SERVER
 
 }

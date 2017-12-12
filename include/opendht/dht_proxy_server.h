@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2017 Savoir-faire Linux Inc.
- *  Author : Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 
 #include <thread>
 #include <memory>
+#include <mutex>
 #include <restbed>
 
 namespace dht {
@@ -160,6 +161,7 @@ private:
         std::future<size_t> token;
     };
     mutable std::vector<SessionToHashToken> currentListeners_;
+    mutable std::mutex lockListener_;
     std::atomic_bool stopListeners {false};
 };
 

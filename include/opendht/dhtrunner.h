@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -35,6 +36,10 @@
 #include <exception>
 #include <queue>
 #include <chrono>
+
+#if OPENDHT_PROXY_CLIENT
+#include "dht_proxy_client.h"
+#endif // OPENDHT_PROXY_CLIENT
 
 namespace dht {
 
@@ -297,6 +302,9 @@ public:
     struct Config {
         SecureDhtConfig dht_config;
         bool threaded;
+#if OPENDHT_PROXY_CLIENT
+        std::string proxy_server;
+#endif //OPENDHT_PROXY_CLIENT
     };
 
     /**
@@ -305,7 +313,11 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0) {
+    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0
+#if OPENDHT_PROXY_CLIENT
+    , const std::string& proxy_server = "127.0.0.1:8000"
+#endif //OPENDHT_PROXY_CLIENT
+) {
         run(port, {
             /*.dht_config = */{
                 /*.node_config = */{
@@ -316,7 +328,10 @@ public:
                 },
                 /*.id = */identity
             },
-            /*.threaded = */threaded
+            /*.threaded = */threaded,
+#if OPENDHT_PROXY_CLIENT
+            /*.proxy_server = */proxy_server
+#endif //OPENDHT_PROXY_CLIENT
         });
     }
     void run(in_port_t port, Config config);
@@ -362,6 +377,16 @@ public:
      */
     void join();
 
+#if OPENDHT_PROXY_CLIENT
+    void setProxyServer(const std::string& url = "127.0.0.1:8000") {
+        config_.proxy_server = url;
+    }
+    void enableProxy(bool proxify);
+#endif // OPENDHT_PROXY_CLIENT
+#if OPENDHT_PROXY_SERVER
+    void forwardAllMessages(bool forward);
+#endif // OPENDHT_PROXY_SERVER
+
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
@@ -381,6 +406,40 @@ private:
     }
 
     std::unique_ptr<SecureDht> dht_;
+    /**
+     * reset dht clients
+     */
+    void resetDht();
+    /**
+     * @return the current active DHT
+     */
+    SecureDht* activeDht() const;
+#if OPENDHT_PROXY_CLIENT
+    /**
+     * true if we are currently using a proxy
+     */
+    std::atomic_bool use_proxy {false};
+    /**
+     * The current proxy client
+     */
+    std::unique_ptr<SecureDht> dht_via_proxy_;
+    Config config_;
+#endif // OPENDHT_PROXY_CLIENT
+    /**
+     * Store current listeners and translates global tokens for each client.
+     */
+    struct Listener {
+        size_t globalToken;
+        size_t tokenClassicDht;
+        size_t tokenProxyDht;
+        GetCallback gcb;
+        InfoHash hash;
+        Value::Filter f;
+        Where w;
+    };
+    std::vector<std::unique_ptr<Listener>> listeners_ {};
+    size_t listener_token_ {1};
+
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
