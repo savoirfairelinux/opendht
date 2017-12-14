@@ -305,6 +305,23 @@ public:
     }
 #endif //OPENDHT_PROXY_SERVER
 
+    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG)
+    {
+        DHT_LOG.DEBUG = debug;
+        DHT_LOG.WARN = warn;
+        DHT_LOG.ERR = error;
+        dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+    }
+
+    /**
+     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
+     */
+    void setLogFilter(const InfoHash& f) {
+        DHT_LOG.setFilter(f);
+        dht_->setLogFilter(f);
+    }
+
+
 private:
     std::unique_ptr<DhtInterface> dht_;
     // prevent copy
