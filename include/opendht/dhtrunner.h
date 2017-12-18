@@ -426,7 +426,7 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void startNetwork(const SockAddr& sin4, const SockAddr& sin6);
+    void startNetwork(const SockAddr sin4, const SockAddr sin6);
     time_point loop_();
 
     NodeStatus getStatus() const {
