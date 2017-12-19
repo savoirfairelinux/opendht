@@ -435,7 +435,7 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
 }
 
 void
-DhtRunner::startNetwork(const SockAddr& sin4, const SockAddr& sin6)
+DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
 {
     running_network = false;
     if (rcv_thread.joinable())
