@@ -214,7 +214,6 @@ public:
 
     virtual std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) = 0;
 
-    Logger DHT_LOG;
     /**
      * Enable or disable logging of DHT internal messages
      */
@@ -228,7 +227,8 @@ public:
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
      */
-    virtual void setLogFilter(const InfoHash& f) {
+    virtual void setLogFilter(const InfoHash& f)
+    {
         DHT_LOG.setFilter(f);
     }
 
@@ -244,9 +244,11 @@ public:
      */
     virtual void resubscribe(const unsigned token) = 0;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
+
 protected:
     bool logFilerEnable_ {};
     InfoHash logFiler_ {};
+    Logger DHT_LOG;
 };
 
 } // namespace dht
