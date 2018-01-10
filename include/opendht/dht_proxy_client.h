@@ -46,13 +46,13 @@ public:
      * and an ID for the node.
      * @param serverHost the proxy address
      */
-    explicit DhtProxyClient(const std::string& serverHost);
-    /**
-     * Start the connection with a server.
-     * @param serverHost the server address
-     * @param deviceKey if we use push notifications
-     */
-    void startProxy(const std::string& serverHost, const std::string& deviceKey = "");
+    explicit DhtProxyClient(const std::string& serverHost, const std::string& pushClientId = "");
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    virtual void setPushNotificationToken(const std::string& token) {
+        deviceKey_ = token;
+    }
+#endif
 
     virtual ~DhtProxyClient();
 
@@ -248,6 +248,12 @@ public:
 
 private:
     const ValueType NO_VALUE;
+
+    /**
+     * Start the connection with a server.
+     */
+    void startProxy();
+
     /**
      * Get informations from the proxy node
      * @return the JSON returned by the proxy
@@ -266,6 +272,7 @@ private:
      */
     void cancelAllOperations();
     std::string serverHost_;
+    std::string pushClientId_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
 

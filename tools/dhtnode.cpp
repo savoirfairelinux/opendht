@@ -220,8 +220,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #if OPENDHT_PROXY_CLIENT
         else if (op == "stt") {
             iss >> idstr >> deviceKey;
+            if (not deviceKey.empty())
+                dht->setPushNotificationToken(deviceKey);
             dht->setProxyServer(idstr);
-            dht->enableProxy(true, deviceKey);
+            dht->enableProxy(true);
             continue;
         } else if (op == "stp") {
             dht->enableProxy(false);
@@ -483,6 +485,13 @@ main(int argc, char **argv)
         }
 
         dht->run(params.port, crt, true, params.network);
+#if OPENDHT_PROXY_CLIENT
+        if (!params.proxyclient.empty()) {
+            dht->setPushNotificationToken(params.devicekey);
+            dht->setProxyServer(params.proxyclient, "dhtnode");
+            dht->enableProxy(true);
+        }
+#endif //OPENDHT_PROXY_CLIENT
 
         if (params.log) {
             if (params.syslog or (params.daemonize and params.logfile.empty()))
@@ -498,22 +507,16 @@ main(int argc, char **argv)
             dht->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
         }
 
-        #if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_SERVER
             std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
             if (params.proxyserver != 0) {
                 proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver
-        #if OPENDHT_PUSH_NOTIFICATIONS
+#if OPENDHT_PUSH_NOTIFICATIONS
                 , params.pushserver
-        #endif // OPENDHT_PUSH_NOTIFICATIONS
+#endif // OPENDHT_PUSH_NOTIFICATIONS
                 ));
             }
-        #endif //OPENDHT_PROXY_SERVER
-        #if OPENDHT_PROXY_CLIENT
-            if (!params.proxyclient.empty()) {
-                dht->setProxyServer(params.proxyclient);
-                dht->enableProxy(true, params.devicekey);
-            }
-        #endif //OPENDHT_PROXY_CLIENT
+#endif //OPENDHT_PROXY_SERVER
 
         if (params.daemonize or params.service)
             while (runner.wait());

@@ -284,17 +284,19 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session) cons
                     s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     return;
                 }
-                auto userKey = root["key"].asString();
-                if (userKey.empty()) return;
+                auto pushToken = root["key"].asString();
+                if (pushToken.empty()) return;
                 auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
-                auto isAndroid = root.isMember("isAndroid") ? root["isAndroid"].asBool() : true;
+                auto platform = root["platform"].asString();
+                auto isAndroid = platform == "android";
+                auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
                 auto token = 0;
                 {
                     std::lock_guard<std::mutex> lock(lockListener_);
                     // Check if listener is already present and refresh timeout if launched
                     for(auto& listener: pushListeners_) {
-                        if (listener.key == userKey && listener.hash == infoHash
+                        if (listener.pushToken == pushToken && listener.hash == infoHash
                         && listener.callbackId == callbackId) {
                             if (listener.started)
                                 listener.deadline = std::chrono::steady_clock::now()
@@ -307,11 +309,12 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session) cons
                     ++tokenPushNotif_;
                     token = tokenPushNotif_;
                     PushListener listener;
-                    listener.key = userKey;
+                    listener.pushToken = pushToken;
                     listener.hash = std::move(infoHash);
                     listener.token = token;
                     listener.started = false;
                     listener.callbackId = callbackId;
+                    listener.clientId = clientId;
                     listener.isAndroid = isAndroid;
                     pushListeners_.emplace_back(std::move(listener));
                 }
@@ -348,8 +351,8 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session) co
                     s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     return;
                 }
-                auto userKey = root["key"].asString();
-                if (userKey.empty()) return;
+                auto pushToken = root["key"].asString();
+                if (pushToken.empty()) return;
                 auto token = root["token"].asLargestUInt();
                 if (token == 0) return;
                 auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
@@ -358,7 +361,7 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session) co
                 // Check if listener is already present and refresh timeout if launched
                 auto listener = pushListeners_.begin();
                 while (listener != pushListeners_.end()) {
-                    if (listener->key == userKey && listener->token == token
+                    if (listener->pushToken == pushToken && listener->token == token
                     && listener->hash == infoHash && listener->callbackId == callbackId) {
                         if (dht_ && listener->started)
                             dht_->cancelListen(listener->hash, std::move(listener->internalToken.get()));
@@ -415,23 +418,24 @@ DhtProxyServer::handlePushListeners()
     while (pushListener != pushListeners_.end()) {
         if (dht_ && !pushListener->started) {
             // Try to start unstarted listeners
-            auto key = pushListener->key;
+            auto key = pushListener->pushToken;
             auto token = pushListener->token;
             auto callbackId = pushListener->callbackId;
             auto isAndroid = pushListener->isAndroid;
-            auto internalToken = std::move(dht_->listen(pushListener->hash,
-                [this, key, callbackId, token, isAndroid](std::shared_ptr<Value> /*value*/) {
+            auto clientId = pushListener->clientId;
+            pushListener->internalToken = dht_->listen(pushListener->hash,
+                [this, key, callbackId, token, isAndroid, clientId](std::shared_ptr<Value> /*value*/) {
                     // Build message content.
                     Json::Value json;
                     if (callbackId > 0) {
                         json["callback_id"] = callbackId;
                     }
+                    json["to"] = clientId;
                     json["token"] = token;
                     sendPushNotification(key, json, isAndroid);
                     return true;
                 }
-            ));
-            pushListener->internalToken = std::move(internalToken);
+            );
             pushListener->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(TIMEOUT);
             pushListener->started = true;
             pushListener++;
@@ -444,8 +448,9 @@ DhtProxyServer::handlePushListeners()
             if (pushListener->callbackId > 0) {
                 json["callback_id"] = pushListener->callbackId;
             }
+            json["to"] = pushListener->clientId;
             json["token"] = pushListener->token;
-            sendPushNotification(pushListener->key, json, pushListener->isAndroid);
+            sendPushNotification(pushListener->pushToken, json, pushListener->isAndroid);
             pushListener = pushListeners_.erase(pushListener);
         } else {
             pushListener++;

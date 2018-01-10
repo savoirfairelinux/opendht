@@ -31,12 +31,12 @@ constexpr const char* const HTTP_PROTO {"http://"};
 
 namespace dht {
 
-DhtProxyClient::DhtProxyClient(const std::string& serverHost)
-: serverHost_(serverHost), lockCurrentProxyInfos_(new std::mutex()),
+DhtProxyClient::DhtProxyClient(const std::string& serverHost, const std::string& pushClientId)
+: serverHost_(serverHost), pushClientId_(pushClientId), lockCurrentProxyInfos_(new std::mutex()),
   scheduler(DHT_LOG), currentProxyInfos_(new Json::Value())
 {
     if (!serverHost_.empty())
-        startProxy(serverHost_);
+        startProxy();
 }
 
 void
@@ -56,11 +56,9 @@ DhtProxyClient::confirmProxy()
 }
 
 void
-DhtProxyClient::startProxy(const std::string& serverHost, const std::string& deviceKey)
+DhtProxyClient::startProxy()
 {
-    serverHost_ = serverHost;
     if (serverHost_.empty()) return;
-    deviceKey_ = deviceKey;
     auto confirm_proxy_time = scheduler.time() + std::chrono::seconds(5);
     nextProxyConfirmation = scheduler.add(confirm_proxy_time, std::bind(&DhtProxyClient::confirmProxy, this));
     auto confirm_connectivity = scheduler.time() + std::chrono::seconds(5);
@@ -753,16 +751,17 @@ DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req)
     // }
     Json::Value body;
     body["key"] = deviceKey_;
+    body["client_id"] = pushClientId_;
     {
         std::lock_guard<std::mutex> lock(lockCallback_);
         callbackId_ += 1;
         body["callback_id"] = callbackId_;
     }
 #ifdef __ANDROID__
-    body["isAndroid"] = true;
+    body["platform"] = "android";
 #endif
 #ifdef __APPLE__
-    body["isAndroid"] = false;
+    body["platform"] = "apple";
 #endif
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";

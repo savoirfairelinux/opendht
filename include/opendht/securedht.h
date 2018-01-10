@@ -294,9 +294,11 @@ public:
     }
 
 #if OPENDHT_PROXY_CLIENT
-    void startProxy(const std::string& host, const std::string& deviceKey = "") {
-        dht_->startProxy(host, deviceKey);
+#if OPENDHT_PUSH_NOTIFICATIONS
+    void setPushNotificationToken(const std::string& token = "") {
+        dht_->setPushNotificationToken(token);
     }
+#endif
 #endif
 
 #if OPENDHT_PROXY_SERVER

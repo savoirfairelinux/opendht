@@ -210,13 +210,14 @@ private:
 
 #if OPENDHT_PUSH_NOTIFICATIONS
     struct PushListener {
-        std::string key;
+        std::string pushToken;
         InfoHash hash;
         unsigned token;
         std::future<size_t> internalToken;
         std::chrono::steady_clock::time_point deadline;
         bool started {false};
         unsigned callbackId {0};
+        std::string clientId {};
         bool isAndroid {true};
     };
     mutable std::mutex lockPushListeners_;

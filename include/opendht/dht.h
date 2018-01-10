@@ -71,11 +71,6 @@ public:
     Dht(int s, int s6, Config config);
     virtual ~Dht();
 
-
-#if OPENDHT_PROXY_CLIENT
-    void startProxy(const std::string&, const std::string&) {};
-#endif
-
     /**
      * Get the ID of the node.
      */

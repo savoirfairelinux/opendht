@@ -29,7 +29,10 @@ public:
     virtual ~DhtInterface() = default;
 
 #if OPENDHT_PROXY_CLIENT
-    virtual void startProxy(const std::string& host, const std::string& deviceKey = "") = 0;
+    //virtual void startProxy() {};
+#if OPENDHT_PUSH_NOTIFICATIONS
+    virtual void setPushNotificationToken(const std::string& token) {};
+#endif
 #endif
 
     // [[deprecated]]
