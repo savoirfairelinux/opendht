@@ -1,6 +1,7 @@
 /*
- *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2016-2018 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -258,7 +259,12 @@ private:
      * Get informations from the proxy node
      * @return the JSON returned by the proxy
      */
-    Json::Value getProxyInfos() const;
+    void getProxyInfos();
+    void onProxyInfos(const Json::Value& val);
+    SockAddr parsePublicAddress(const Json::Value& val);
+
+    void opFailed();
+
     /**
      * Initialize statusIpvX_
      */
@@ -273,8 +279,13 @@ private:
     void cancelAllOperations();
     std::string serverHost_;
     std::string pushClientId_;
+
+    std::atomic_flag ongoingStatusUpdate_ = ATOMIC_FLAG_INIT;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
+    NodeStats stats4_ {};
+    NodeStats stats6_ {};
+    SockAddr publicAddress_;
 
     InfoHash myid {};
 
@@ -311,7 +322,9 @@ private:
      */
     std::vector<std::function<void()>> callbacks_;
     std::mutex lockCallbacks;
-    std::unique_ptr<std::mutex> lockCurrentProxyInfos_;
+
+    std::thread statusThread_;
+    std::mutex lockCurrentProxyInfos_;
 
     Scheduler scheduler;
     /**
@@ -320,19 +333,9 @@ private:
     void confirmProxy();
     Sp<Scheduler::Job> nextProxyConfirmation {};
     /**
-     * Verify if we are still connected.
-     */
-    void confirmConnectivity();
-    Sp<Scheduler::Job> nextConnectivityConfirmation {};
-    /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
      */
     void restartListeners();
-
-    /**
-     * Store the current proxy status
-     */
-    std::unique_ptr<Json::Value> currentProxyInfos_;
 
     /**
      * If we want to use push notifications by default.

@@ -1,6 +1,7 @@
 /*
- *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2016-2018 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,8 +33,7 @@ constexpr const char* const HTTP_PROTO {"http://"};
 namespace dht {
 
 DhtProxyClient::DhtProxyClient(const std::string& serverHost, const std::string& pushClientId)
-: serverHost_(serverHost), pushClientId_(pushClientId), lockCurrentProxyInfos_(new std::mutex()),
-  scheduler(DHT_LOG), currentProxyInfos_(new Json::Value())
+: serverHost_(serverHost), pushClientId_(pushClientId), scheduler(DHT_LOG)
 {
     if (!serverHost_.empty())
         startProxy();
@@ -42,37 +42,16 @@ DhtProxyClient::DhtProxyClient(const std::string& serverHost, const std::string&
 void
 DhtProxyClient::confirmProxy()
 {
+    std::cout << "confirmProxy" << std::endl;
     if (serverHost_.empty()) return;
-    // Retrieve the connectivity each hours if connected, else every 5 seconds.
-    auto disconnected_old_status =  statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected;
     getConnectivityStatus();
-    auto disconnected_new_status = statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected;
-    auto time = disconnected_new_status ? std::chrono::seconds(5) : std::chrono::hours(1);
-    if (disconnected_old_status && !disconnected_new_status) {
-        restartListeners();
-    }
-    auto confirm_proxy_time = scheduler.time() + time;
-    scheduler.edit(nextProxyConfirmation, confirm_proxy_time);
 }
 
 void
 DhtProxyClient::startProxy()
 {
     if (serverHost_.empty()) return;
-    auto confirm_proxy_time = scheduler.time() + std::chrono::seconds(5);
-    nextProxyConfirmation = scheduler.add(confirm_proxy_time, std::bind(&DhtProxyClient::confirmProxy, this));
-    auto confirm_connectivity = scheduler.time() + std::chrono::seconds(5);
-    nextConnectivityConfirmation = scheduler.add(confirm_connectivity, std::bind(&DhtProxyClient::confirmConnectivity, this));
-
-    getConnectivityStatus();
-}
-
-void
-DhtProxyClient::confirmConnectivity()
-{
-    // The scheduler must get if the proxy is disconnected
-    auto confirm_connectivity = scheduler.time() + std::chrono::seconds(3);
-    scheduler.edit(nextConnectivityConfirmation, confirm_connectivity);
+    nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
 }
 
 DhtProxyClient::~DhtProxyClient()
@@ -141,9 +120,9 @@ DhtProxyClient::isRunning(sa_family_t af) const
     switch (af)
     {
     case AF_INET:
-        return statusIpv4_ == NodeStatus::Connected;
+        return statusIpv4_ != NodeStatus::Disconnected;
     case AF_INET6:
-        return statusIpv6_ == NodeStatus::Connected;
+        return statusIpv6_ != NodeStatus::Disconnected;
     default:
         return false;
     }
@@ -240,7 +219,7 @@ DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback don
         }
         if (!ok) {
             // Connection failed, update connectivity
-            getConnectivityStatus();
+            opFailed();
         }
         *finished = true;
     });
@@ -315,7 +294,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         }
         if (!ok) {
             // Connection failed, update connectivity
-            getConnectivityStatus();
+            opFailed();
         }
         *finished = true;
     });
@@ -328,107 +307,114 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
 NodeStats
 DhtProxyClient::getNodesStats(sa_family_t af) const
 {
-    lockCurrentProxyInfos_->lock();
-    auto proxyInfos = *currentProxyInfos_;
-    lockCurrentProxyInfos_->unlock();
-    NodeStats stats {};
-    auto identifier = af == AF_INET6 ? "ipv6" : "ipv4";
-    try {
-        stats = NodeStats(proxyInfos[identifier]);
-    } catch (...) { }
-    return stats;
+    return af == AF_INET ? stats4_ : stats6_;
 }
 
-Json::Value
-DhtProxyClient::getProxyInfos() const
+void
+DhtProxyClient::getProxyInfos()
 {
+    scheduler.add(scheduler.time() + std::chrono::milliseconds(500), []{});
+
+    if (ongoingStatusUpdate_.test_and_set())
+        return;
+
+    if (statusIpv4_ == NodeStatus::Disconnected)
+        statusIpv4_ = NodeStatus::Connecting;
+    if (statusIpv6_ == NodeStatus::Disconnected)
+        statusIpv6_ = NodeStatus::Connecting;
+
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/");
     auto req = std::make_shared<restbed::Request>(uri);
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    restbed::Http::async(req,
-        [this](const std::shared_ptr<restbed::Request>&,
-                       const std::shared_ptr<restbed::Response>& reply) {
-        auto code = reply->get_status_code();
+    statusThread_ = std::thread([this, req]{
+        restbed::Http::async(req,
+            [this](const std::shared_ptr<restbed::Request>&,
+                           const std::shared_ptr<restbed::Response>& reply) {
+            auto code = reply->get_status_code();
+            Json::Value proxyInfos;
+            if (code == 200) {
+                restbed::Http::fetch("\n", reply);
+                std::string body;
+                reply->get_body(body);
 
-        if (code == 200) {
-            restbed::Http::fetch("\n", reply);
-            std::string body;
-            reply->get_body(body);
-
-            std::string err;
-            Json::CharReaderBuilder rbuilder;
-            auto* char_data = reinterpret_cast<const char*>(&body[0]);
-            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-            lockCurrentProxyInfos_->lock();
-            try {
-                reader->parse(char_data, char_data + body.size(), &*currentProxyInfos_, &err);
-            } catch (...) {
-                *currentProxyInfos_ = Json::Value();
+                std::string err;
+                Json::CharReaderBuilder rbuilder;
+                //auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                try {
+                    reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
+                } catch (...) {
+                }
             }
-            lockCurrentProxyInfos_->unlock();
-        } else {
-            lockCurrentProxyInfos_->lock();
-            *currentProxyInfos_ = Json::Value();
-            lockCurrentProxyInfos_->unlock();
+            onProxyInfos(proxyInfos);
+            ongoingStatusUpdate_.clear();
+        });
+    });
+    statusThread_.detach();
+}
+
+void
+DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos)
+{
+    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+
+    auto oldStatus = std::max(statusIpv4_, statusIpv6_);
+
+    try {
+        myid = InfoHash(proxyInfos["node_id"].asString());
+
+        stats4_ = NodeStats(proxyInfos["ipv4"]);
+        if (stats4_.good_nodes)
+            statusIpv4_ = NodeStatus::Connected;
+        else if (stats4_.dubious_nodes)
+            statusIpv4_ = NodeStatus::Connecting;
+        else
+            statusIpv4_ = NodeStatus::Disconnected;
+
+        stats6_ = NodeStats(proxyInfos["ipv6"]);
+        if (stats6_.good_nodes)
+            statusIpv6_ = NodeStatus::Connected;
+        else if (stats6_.dubious_nodes)
+            statusIpv6_ = NodeStatus::Connecting;
+        else
+            statusIpv6_ = NodeStatus::Disconnected;
+
+        publicAddress_ = parsePublicAddress(proxyInfos["public_ip"]);
+    } catch (...) {}
+
+    auto newStatus = std::max(statusIpv4_, statusIpv6_);
+
+    if (newStatus == NodeStatus::Connecting || newStatus == NodeStatus::Connected) {
+        if (oldStatus == NodeStatus::Disconnected) {
+            restartListeners();
         }
-    }).wait();
-    lockCurrentProxyInfos_->lock();
-    auto result = *currentProxyInfos_;
-    lockCurrentProxyInfos_->unlock();
-    return result;
+        scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(15));
+    }
+    else if (newStatus == NodeStatus::Disconnected) {
+        scheduler.edit(nextProxyConfirmation, scheduler.time());
+    }
+}
+
+SockAddr
+DhtProxyClient::parsePublicAddress(const Json::Value& val)
+{
+    auto public_ip = val.asString();
+    auto endIp = public_ip.find_last_of(':');
+    std::string service = public_ip.substr(endIp + 1);
+    std::string address = public_ip.substr(0, endIp - 1);
+    auto sa = SockAddr::resolve(address, service);
+    if (sa.empty()) return {};
+    return sa.front().getMappedIPv4();
 }
 
 std::vector<SockAddr>
 DhtProxyClient::getPublicAddress(sa_family_t family)
 {
-    lockCurrentProxyInfos_->lock();
-    auto proxyInfos = *currentProxyInfos_;
-    lockCurrentProxyInfos_->unlock();
-    // json["public_ip"] contains [ipv6:ipv4]:port or ipv4:port
-    auto public_ip = proxyInfos["public_ip"].asString();
-    if (!proxyInfos.isMember("public_ip") || (public_ip.length() < 2)) return {};
-    std::string ipv4Address = "", ipv6Address = "", port = "";
-    if (public_ip[0] == '[') {
-        // ipv6 complient
-        auto endIp = public_ip.find(']');
-        if (public_ip.length() > endIp + 2) {
-            port = public_ip.substr(endIp + 2);
-            auto ips = public_ip.substr(1, endIp - 1);
-            if (ips.find(".") != std::string::npos) {
-                // Format: [ipv6:ipv4]:service
-                auto ipv4And6Separator = ips.find_last_of(':');
-                ipv4Address = ips.substr(ipv4And6Separator + 1);
-                ipv6Address = ips.substr(0, ipv4And6Separator - 1);
-            } else {
-                // Format: [ipv6]:service
-                ipv6Address = ips;
-            }
-        }
-    } else {
-        // Format: ipv4:service
-        auto endIp = public_ip.find_last_of(':');
-        port = public_ip.substr(endIp + 1);
-        ipv4Address = public_ip.substr(0, endIp - 1);
-    }
-    try {
-        switch (family)
-        {
-        case AF_INET: {
-            auto result = SockAddr::resolve(ipv4Address, port);
-            return result;
-        }
-        case AF_INET6: {
-            auto result = SockAddr::resolve(ipv6Address, port);
-            return result;
-        }
-        default:
-            return {};
-        }
-    } catch (std::invalid_argument& e) {
-        return {};
-    }
+    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+    if (not publicAddress_) return {};
+    return publicAddress_.getFamily() == family ? std::vector<SockAddr>{publicAddress_} : std::vector<SockAddr>{};
 }
 
 size_t
@@ -521,7 +507,7 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
                 }
             }, settings).get();
             if (not state->ok) {
-                getConnectivityStatus();
+                opFailed();
             }
         }
     );
@@ -572,30 +558,17 @@ DhtProxyClient::cancelListen(const InfoHash&, size_t token)
 }
 
 void
+DhtProxyClient::opFailed()
+{
+    statusIpv4_ = NodeStatus::Disconnected;
+    statusIpv6_ = NodeStatus::Disconnected;
+    getConnectivityStatus();
+}
+
+void
 DhtProxyClient::getConnectivityStatus()
 {
-    auto proxyInfos = getProxyInfos();
-    // NOTE: json["ipvX"] contains NodeStats::toJson()
-    try {
-        auto goodIpv4 = static_cast<long>(proxyInfos["ipv4"]["good"].asLargestUInt());
-        auto dubiousIpv4 = static_cast<long>(proxyInfos["ipv4"]["dubious"].asLargestUInt());
-        statusIpv4_ = (goodIpv4 + dubiousIpv4 > 0) ?  NodeStatus::Connected : NodeStatus::Disconnected;
-
-        auto goodIpv6 = static_cast<long>(proxyInfos["ipv6"]["good"].asLargestUInt());
-        auto dubiousIpv6 = static_cast<long>(proxyInfos["ipv6"]["dubious"].asLargestUInt());
-        statusIpv6_ = (goodIpv6 + dubiousIpv6 > 0) ?  NodeStatus::Connected : NodeStatus::Disconnected;
-
-        myid = InfoHash(proxyInfos["node_id"].asString());
-        if (statusIpv4_ == NodeStatus::Disconnected && statusIpv6_ == NodeStatus::Disconnected) {
-            const auto& now = scheduler.time();
-            scheduler.edit(nextProxyConfirmation, now);
-        }
-    } catch (...) {
-        statusIpv4_ = NodeStatus::Disconnected;
-        statusIpv6_ = NodeStatus::Disconnected;
-        const auto& now = scheduler.time();
-        scheduler.edit(nextProxyConfirmation, now);
-    }
+    getProxyInfos();
 }
 
 void
@@ -662,7 +635,7 @@ DhtProxyClient::restartListeners()
                         *ok = false;
                     }
                 }, settings).get();
-                if (!ok) getConnectivityStatus();
+                if (!ok) opFailed();
             }
         );
     }
@@ -735,7 +708,7 @@ DhtProxyClient::resubscribe(const unsigned token)
                         *ok = false;
                     }
                 }, settings).get();
-                if (!ok) getConnectivityStatus();
+                if (!ok) opFailed();
             });
         }
     }
