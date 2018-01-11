@@ -378,34 +378,36 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session) co
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const
+DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value& json, bool isAndroid) const
 {
     restbed::Uri uri(HTTP_PROTO + pushServer_ + "/api/push");
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
 
+    // NOTE: see https://github.com/appleboy/gorush
+    Json::Value notification(Json::objectValue);
+    Json::Value tokens(Json::arrayValue);
+    tokens[0] = token;
+    notification["tokens"] = tokens;
+    notification["platform"] = isAndroid ? 2 : 1;
+    notification["data"] = json;
+
+    Json::Value notifications(Json::arrayValue);
+    notifications[0] = notification;
+
+    Json::Value content;
+    content["notifications"] = notifications;
+
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
-    auto valueStr = Json::writeString(wbuilder, json);
-    // Escape JSON
-    std::string::size_type n = 0;
-    while ((n = valueStr.find( "\"", n)) != std::string::npos) {
-        valueStr.replace( n, 1, "\\\"" );
-        n += 2;
-    }
-    std::replace(valueStr.begin(), valueStr.end(), '\n', ' ');
+    auto valueStr = Json::writeString(wbuilder, content);
 
-    // NOTE: see https://github.com/appleboy/gorush
-    auto platform = isAndroid ? 2 : 1;
-    auto content = std::string("{\"notifications\": [{\"tokens\": [\""
-    + key + "\"], \"platform\":  " + std::to_string(platform)
-    + ",\"message\": \"" + valueStr + "\"}]}");
     req->set_header("Content-Type", "application/json");
     req->set_header("Accept", "*/*");
     req->set_header("Host", pushServer_);
-    req->set_header("Content-Length", std::to_string(content.length()));
-    req->set_body(content);
+    req->set_header("Content-Length", std::to_string(valueStr.length()));
+    req->set_body(valueStr);
     // Send request.
     restbed::Http::async(req, {});
 }
