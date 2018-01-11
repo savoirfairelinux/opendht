@@ -294,9 +294,11 @@ public:
     }
 
 #if OPENDHT_PROXY_CLIENT
-    void startProxy(const std::string& host) {
-        dht_->startProxy(host);
+#if OPENDHT_PUSH_NOTIFICATIONS
+    void setPushNotificationToken(const std::string& token = "") {
+        dht_->setPushNotificationToken(token);
     }
+#endif
 #endif
 
 #if OPENDHT_PROXY_SERVER
@@ -304,6 +306,23 @@ public:
         forward_all_ = forward;
     }
 #endif //OPENDHT_PROXY_SERVER
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Call linked callback with push_notification
+     * @param notification to process
+     */
+    void pushNotificationReceived(const Json::Value& notification) {
+        dht_->pushNotificationReceived(notification);
+    }
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(const unsigned token) {
+        dht_->resubscribe(token);
+    }
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
     void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG)
     {
@@ -320,7 +339,6 @@ public:
         DHT_LOG.setFilter(f);
         dht_->setLogFilter(f);
     }
-
 
 private:
     std::unique_ptr<DhtInterface> dht_;

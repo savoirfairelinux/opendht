@@ -304,6 +304,7 @@ public:
         bool threaded;
 #if OPENDHT_PROXY_CLIENT
         std::string proxy_server;
+        std::string push_node_id;
 #endif //OPENDHT_PROXY_CLIENT
     };
 
@@ -313,11 +314,7 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0
-#if OPENDHT_PROXY_CLIENT
-    , const std::string& proxy_server = "127.0.0.1:8000"
-#endif //OPENDHT_PROXY_CLIENT
-) {
+    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0) {
         run(port, {
             /*.dht_config = */{
                 /*.node_config = */{
@@ -330,7 +327,8 @@ public:
             },
             /*.threaded = */threaded,
 #if OPENDHT_PROXY_CLIENT
-            /*.proxy_server = */proxy_server
+            /*.proxy_server = */"",
+            /*.push_node_id = */""
 #endif //OPENDHT_PROXY_CLIENT
         });
     }
@@ -378,14 +376,40 @@ public:
     void join();
 
 #if OPENDHT_PROXY_CLIENT
-    void setProxyServer(const std::string& url = "127.0.0.1:8000") {
+    void setProxyServer(const std::string& url = "127.0.0.1:8000", const std::string& pushNodeId = "") {
         config_.proxy_server = url;
+        config_.push_node_id = pushNodeId;
     }
+
+    /**
+     * Start or stop the proxy
+     * @param proxify if we want to use the proxy
+     * @param deviceKey non empty to enable push notifications
+     */
     void enableProxy(bool proxify);
+
 #endif // OPENDHT_PROXY_CLIENT
 #if OPENDHT_PROXY_SERVER
     void forwardAllMessages(bool forward);
 #endif // OPENDHT_PROXY_SERVER
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Updates the push notification device token
+     */
+    void setPushNotificationToken(const std::string& token);
+
+    /**
+     * Insert a push notification to process for OpenDHT
+     */
+    void pushNotificationReceived(const std::string& notification) const;
+    void pushNotificationReceived(const Json::Value& notification) const;
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(const unsigned token);
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
@@ -424,6 +448,10 @@ private:
      */
     std::unique_ptr<SecureDht> dht_via_proxy_;
     Config config_;
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    std::string pushToken_;
+#endif
 #endif // OPENDHT_PROXY_CLIENT
     /**
      * Store current listeners and translates global tokens for each client.

@@ -71,11 +71,6 @@ public:
     Dht(int s, int s6, Config config);
     virtual ~Dht();
 
-
-#if OPENDHT_PROXY_CLIENT
-    void startProxy(const std::string&) {};
-#endif
-
     /**
      * Get the ID of the node.
      */
@@ -294,6 +289,17 @@ public:
     }
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Call linked callback with a push notification
+     * @param notification to process
+     */
+    void pushNotificationReceived(const Json::Value&) {
+        // Ignore this
+    }
+    void resubscribe(const unsigned) {}
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
 private:
 

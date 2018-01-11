@@ -29,6 +29,10 @@
 #include <mutex>
 #include <restbed>
 
+namespace Json {
+    class Value;
+}
+
 namespace dht {
 
 class DhtRunner;
@@ -43,10 +47,16 @@ public:
      * Start the Http server for OpenDHT
      * @param dht the DhtRunner linked to this proxy server
      * @param port to listen
+     * @param pushServer where to push notifications
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000);
+    DhtProxyServer(std::shared_ptr<DhtRunner> dht,
+                   in_port_t port = 8000.
+#if OPENDHT_PUSH_NOTIFICATIONS
+                   , const std::string& pushServer = ""
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+                   );
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;
@@ -70,7 +80,7 @@ private:
     void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
 
     /**
-     * Return Values of a InfoHash
+     * Return Values of an infoHash
      * Method: GET "/{InfoHash: .*}"
      * Return: Multiple JSON object in parts. Example:
      * Value in JSON format\n
@@ -82,7 +92,7 @@ private:
     void get(const std::shared_ptr<restbed::Session>& session) const;
 
     /**
-     * Listen incoming Values of a InfoHash.
+     * Listen incoming Values of an infoHash.
      * Method: LISTEN "/{InfoHash: .*}"
      * Return: Multiple JSON object in parts. Example:
      * Value in JSON format\n
@@ -129,7 +139,7 @@ private:
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     /**
-     * Return Values of a InfoHash filtered by a value id
+     * Return Values of an infoHash filtered by a value id
      * Method: GET "/{InfoHash: .*}/{ValueId: .*}"
      * Return: Multiple JSON object in parts. Example:
      * Value in JSON format\n
@@ -145,8 +155,42 @@ private:
      * Method: OPTIONS "/{hash: .*}"
      * Return: HTTP 200 + Allow: allowed methods
      * See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
+     * @param session
      */
     void handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const;
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Subscribe to push notifications for an iOS or Android device.
+     * Method: SUBSCRIBE "/{InfoHash: .*}"
+     * Body: {"key": "device_key", (optional)"callback_id":y,
+     * (optional)"isAndroid":false (default true)}"
+     * Return: {"token": x}" where x if a token to save
+     * @note: the listen will timeout after six hours (and send a push notification).
+     * so you need to refresh the operation each six hours.
+     * @note: callback_id is used to add the possibility to have multiple listen
+     * on same hash for same device and must be > 0
+     * @param session
+     */
+    void subscribe(const std::shared_ptr<restbed::Session>& session) const;
+    /**
+     * Unsubscribe to push notifications for an iOS or Android device.
+     * Method: UNSUBSCRIBE "/{InfoHash: .*}"
+     * Body: {"key": "device_key", "token": x, (optional)"callback_id":y"
+     * where x if the token to cancel
+     * Return: nothing
+     * @note: callback id is used to add the possibility to have multiple listen
+     * on same hash for same device
+     * @param session
+     */
+    void unsubscribe(const std::shared_ptr<restbed::Session>& session) const;
+    /**
+     * Send a push notification via a gorush push gateway
+     * @param key of the device
+     * @param json, the content to send
+     */
+    void sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const;
+#endif //OPENDHT_PUSH_NOTIFICATIONS
 
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
@@ -163,6 +207,34 @@ private:
     mutable std::vector<SessionToHashToken> currentListeners_;
     mutable std::mutex lockListener_;
     std::atomic_bool stopListeners {false};
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    struct PushListener {
+        std::string pushToken;
+        InfoHash hash;
+        unsigned token;
+        std::future<size_t> internalToken;
+        std::chrono::steady_clock::time_point deadline;
+        bool started {false};
+        unsigned callbackId {0};
+        std::string clientId {};
+        bool isAndroid {true};
+    };
+    mutable std::mutex lockPushListeners_;
+    mutable std::vector<PushListener> pushListeners_;
+    mutable unsigned tokenPushNotif_ {0};
+    const std::string pushServer_;
+#endif //OPENDHT_PUSH_NOTIFICATIONS
+
+    /**
+     * Remove finished listeners
+     * @param testSession if we remove the listener only if the session is closed
+     */
+    void removeClosedListeners(bool testSession = true);
+    /**
+     * Launch or remove push listeners if needed
+     */
+    void handlePushListeners();
 };
 
 }

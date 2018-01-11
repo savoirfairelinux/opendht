@@ -44,13 +44,15 @@ public:
     /**
      * Initialise the DhtProxyClient with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
+     * @param serverHost the proxy address
      */
-    explicit DhtProxyClient(const std::string& serverHost);
-    /**
-     * Start the connection with a server.
-     * @param serverHost the server address
-     */
-    void startProxy(const std::string& serverHost);
+    explicit DhtProxyClient(const std::string& serverHost, const std::string& pushClientId = "");
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    virtual void setPushNotificationToken(const std::string& token) {
+        deviceKey_ = token;
+    }
+#endif
 
     virtual ~DhtProxyClient();
 
@@ -100,6 +102,8 @@ public:
     virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
+
+    void get(const InfoHash& key, const GetCallback& cb, DoneCallback donecb, const Value::Filter& filterChain);
 
     /**
      * Announce a value on all available protocols (IPv4, IPv6).
@@ -162,18 +166,26 @@ public:
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
+    virtual bool cancelListen(const InfoHash&, size_t token);
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    /**
+     * Call linked callback with a push notification
+     * @param notification to process
+     */
+    void pushNotificationReceived(const Json::Value& notification);
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(const unsigned token);
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
     time_point periodic(const uint8_t*, size_t, const SockAddr&);
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }
 
-    /**
-     * TODO
-     * NOTE: For now, there is no endpoint in the DhtProxyServer to do the following methods.
-     * It will come in another version. (with push_notifications support)
-     */
-    virtual bool cancelListen(const InfoHash&, size_t token);
 
     /**
      * Similar to Dht::get, but sends a Query to filter data remotely.
@@ -236,6 +248,12 @@ public:
 
 private:
     const ValueType NO_VALUE;
+
+    /**
+     * Start the connection with a server.
+     */
+    void startProxy();
+
     /**
      * Get informations from the proxy node
      * @return the JSON returned by the proxy
@@ -254,6 +272,7 @@ private:
      */
     void cancelAllOperations();
     std::string serverHost_;
+    std::string pushClientId_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
 
@@ -270,6 +289,7 @@ private:
         GetCallback cb;
         Value::Filter filterChain;
         std::thread thread;
+        std::shared_ptr<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
     };
     std::vector<Listener> listeners_;
     size_t listener_token_ {0};
@@ -313,6 +333,19 @@ private:
      * Store the current proxy status
      */
     std::unique_ptr<Json::Value> currentProxyInfos_;
+
+    /**
+     * If we want to use push notifications by default.
+     * NOTE: empty by default to avoid to use services like FCM or APN.
+     */
+    std::string deviceKey_ {};
+    unsigned callbackId_ {0};
+    std::mutex lockCallback_;
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+    void fillBodyToGetToken(std::shared_ptr<restbed::Request> request);
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+
 };
 
 }

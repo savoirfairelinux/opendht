@@ -31,12 +31,12 @@ constexpr const char* const HTTP_PROTO {"http://"};
 
 namespace dht {
 
-DhtProxyClient::DhtProxyClient(const std::string& serverHost)
-: serverHost_(serverHost), lockCurrentProxyInfos_(new std::mutex()),
+DhtProxyClient::DhtProxyClient(const std::string& serverHost, const std::string& pushClientId)
+: serverHost_(serverHost), pushClientId_(pushClientId), lockCurrentProxyInfos_(new std::mutex()),
   scheduler(DHT_LOG), currentProxyInfos_(new Json::Value())
 {
     if (!serverHost_.empty())
-        startProxy(serverHost_);
+        startProxy();
 }
 
 void
@@ -56,9 +56,8 @@ DhtProxyClient::confirmProxy()
 }
 
 void
-DhtProxyClient::startProxy(const std::string& serverHost)
+DhtProxyClient::startProxy()
 {
-    serverHost_ = serverHost;
     if (serverHost_.empty()) return;
     auto confirm_proxy_time = scheduler.time() + std::chrono::seconds(5);
     nextProxyConfirmation = scheduler.add(confirm_proxy_time, std::bind(&DhtProxyClient::confirmProxy, this));
@@ -182,13 +181,10 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 }
 
 void
-DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
-                    Value::Filter&& filter, Where&& where)
+DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback donecb, const Value::Filter& filterChain)
 {
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
-    Query query {{}, where};
-    auto filterChain = filter.chain(query.where.getFilter());
 
     auto finished = std::make_shared<std::atomic_bool>(false);
     Operation o;
@@ -223,7 +219,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
                             if ((not filterChain or filterChain(*value)) && cb) {
                                 std::lock_guard<std::mutex> lock(lockCallbacks);
                                 callbacks_.emplace_back([cb, value, finished]() {
-                                    if (not *finished and not cb({value}))
+                                    if (not cb({value}))
                                         *finished = true;
                                 });
                             }
@@ -252,6 +248,15 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         std::lock_guard<std::mutex> lock(lockOperations_);
         operations_.emplace_back(std::move(o));
     }
+}
+
+void
+DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
+                    Value::Filter&& filter, Where&& where)
+{
+    Query query {{}, where};
+    auto filterChain = filter.chain(query.where.getFilter());
+    get(key, cb, donecb, filterChain);
 }
 
 void
@@ -391,22 +396,37 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
         if (public_ip.length() > endIp + 2) {
             port = public_ip.substr(endIp + 2);
             auto ips = public_ip.substr(1, endIp - 1);
-            auto ipv4And6Separator = ips.find_last_of(':');
-            ipv4Address = ips.substr(ipv4And6Separator + 1);
-            ipv6Address = ips.substr(0, ipv4And6Separator - 1);
+            if (ips.find(".") != std::string::npos) {
+                // Format: [ipv6:ipv4]:service
+                auto ipv4And6Separator = ips.find_last_of(':');
+                ipv4Address = ips.substr(ipv4And6Separator + 1);
+                ipv6Address = ips.substr(0, ipv4And6Separator - 1);
+            } else {
+                // Format: [ipv6]:service
+                ipv6Address = ips;
+            }
         }
     } else {
+        // Format: ipv4:service
         auto endIp = public_ip.find_last_of(':');
         port = public_ip.substr(endIp + 1);
         ipv4Address = public_ip.substr(0, endIp - 1);
     }
-    switch (family)
-    {
-    case AF_INET:
-        return SockAddr::resolve(ipv4Address, port);
-    case AF_INET6:
-        return SockAddr::resolve(ipv6Address, port);
-    default:
+    try {
+        switch (family)
+        {
+        case AF_INET: {
+            auto result = SockAddr::resolve(ipv4Address, port);
+            return result;
+        }
+        case AF_INET6: {
+            auto result = SockAddr::resolve(ipv6Address, port);
+            return result;
+        }
+        default:
+            return {};
+        }
+    } catch (std::invalid_argument& e) {
         return {};
     }
 }
@@ -416,10 +436,11 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
 {
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
-    req->set_method("LISTEN");
+    req->set_method(deviceKey_.empty() ? "LISTEN" : "SUBSCRIBE");
 
     Query query {{}, where};
     auto filterChain = filter.chain(query.where.getFilter());
+    auto pushNotifToken = std::make_shared<unsigned>(0);
 
     Listener l;
     ++listener_token_;
@@ -427,12 +448,16 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
     l.token = listener_token_;
     l.req = req;
     l.cb = cb;
+    l.pushNotifToken = pushNotifToken;
     l.filterChain = std::move(filterChain);
     l.thread = std::thread([=]()
         {
             auto settings = std::make_shared<restbed::Settings>();
-            std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
-            settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
+            if (deviceKey_.empty()) {
+                std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
+                settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
+            } else
+                fillBodyToGetToken(req);
 
             struct State {
                 std::atomic_bool ok {true};
@@ -440,37 +465,52 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
             };
             auto state = std::make_shared<State>();
             restbed::Http::async(req,
-                [this, filterChain, cb, state](const std::shared_ptr<restbed::Request>& req,
-                                            const std::shared_ptr<restbed::Response>& reply) {
+                [this, filterChain, cb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
+                                                               const std::shared_ptr<restbed::Response>& reply) {
                 auto code = reply->get_status_code();
-
                 if (code == 200) {
                     try {
-                        while (restbed::Http::is_open(req) and not state->cancel) {
+                        std::string err;
+                        Json::Value json;
+                        Json::CharReaderBuilder rbuilder;
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        if (!deviceKey_.empty()) {
                             restbed::Http::fetch("\n", reply);
                             if (state->cancel)
-                                break;
+                                return;
                             std::string body;
                             reply->get_body(body);
-                            reply->set_body(""); // Reset the body for the next fetch
 
-                            Json::Value json;
-                            std::string err;
-                            Json::CharReaderBuilder rbuilder;
                             auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                             if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
-                                auto value = std::make_shared<Value>(json);
-                                if ((not filterChain or filterChain(*value)) && cb)  {
-                                    std::lock_guard<std::mutex> lock(lockCallbacks);
-                                    callbacks_.emplace_back([cb, value, state]() {
-                                        if (not state->cancel and not cb({value})) {
-                                            state->cancel = true;
-                                        }
-                                    });
-                                }
+                                if (!json.isMember("token")) return;
+                                *pushNotifToken = json["token"].asLargestUInt();
                             } else {
                                 state->ok = false;
+                            }
+                        } else {
+                            while (restbed::Http::is_open(req) and not state->cancel) {
+                                restbed::Http::fetch("\n", reply);
+                                if (state->cancel)
+                                    break;
+                                std::string body;
+                                reply->get_body(body);
+                                reply->set_body(""); // Reset the body for the next fetch
+
+                                auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                                if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
+                                    auto value = std::make_shared<Value>(json);
+                                    if ((not filterChain or filterChain(*value)) && cb)  {
+                                        std::lock_guard<std::mutex> lock(lockCallbacks);
+                                        callbacks_.emplace_back([cb, value, state]() {
+                                            if (not state->cancel and not cb({value})) {
+                                                state->cancel = true;
+                                            }
+                                        });
+                                    }
+                                } else {
+                                    state->ok = false;
+                                }
                             }
                         }
                     } catch (std::runtime_error&) {
@@ -499,13 +539,32 @@ DhtProxyClient::cancelListen(const InfoHash&, size_t token)
     for (auto it = listeners_.begin(); it != listeners_.end(); ++it) {
         auto& listener = *it;
         if (listener.token == token) {
-            if (listener.thread.joinable()) {
-                // Close connection to stop listener?
-                if (listener.req)
-                    restbed::Http::close(listener.req);
-                listener.thread.join();
+            if (!deviceKey_.empty()) {
+                // First, be sure to have a token
+                if (listener.thread.joinable()) {
+                    listener.thread.join();
+                }
+                // UNSUBSCRIBE
+                restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
+                auto req = std::make_shared<restbed::Request>(uri);
+                req->set_method("UNSUBSCRIBE");
+                restbed::Http::async(req,
+                    [](const std::shared_ptr<restbed::Request>&,
+                       const std::shared_ptr<restbed::Response>&){}
+                );
+                // And remove
                 listeners_.erase(it);
                 return true;
+            } else {
+                // Just stop the request
+                if (listener.thread.joinable()) {
+                    // Close connection to stop listener?
+                    if (listener.req)
+                        restbed::Http::close(listener.req);
+                    listener.thread.join();
+                    listeners_.erase(it);
+                    return true;
+                }
             }
         }
     }
@@ -559,9 +618,10 @@ DhtProxyClient::restartListeners()
                 std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
                 settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
 
+                auto ok = std::make_shared<std::atomic_bool>(true);
                 restbed::Http::async(req,
-                    [this, filterChain, cb](const std::shared_ptr<restbed::Request>& req,
-                                     const std::shared_ptr<restbed::Response>& reply) {
+                    [this, filterChain, cb, ok](const std::shared_ptr<restbed::Request>& req,
+                                                const std::shared_ptr<restbed::Response>& reply) {
                     auto code = reply->get_status_code();
 
                     if (code == 200) {
@@ -598,18 +658,120 @@ DhtProxyClient::restartListeners()
                         } catch (std::runtime_error&) {
                             // NOTE: Http::close() can occurs here. Ignore this.
                         }
-
                     } else {
-                        this->statusIpv4_ = NodeStatus::Disconnected;
-                        this->statusIpv6_ = NodeStatus::Disconnected;
+                        *ok = false;
                     }
                 }, settings).get();
-                getConnectivityStatus();
+                if (!ok) getConnectivityStatus();
             }
         );
     }
 }
 
+#if OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyClient::pushNotificationReceived(const Json::Value& notification)
+{
+    if (!notification.isMember("token")) return;
+    auto token = notification["token"].asLargestUInt();
+    // Find listener
+    for (const auto& listener: listeners_)
+        if (*(listener.pushNotifToken) == token) {
+            if (notification.isMember("timeout")) {
+                // A timeout has occured, we need to relaunch the listener
+                resubscribe(token);
+            } else {
+                // Wake up daemon and get values
+                get(InfoHash(listener.key), listener.cb, {}, listener.filterChain);
+            }
+        }
+}
+
+void
+DhtProxyClient::resubscribe(const unsigned token)
+{
+    if (deviceKey_.empty()) return;
+    for (auto& listener: listeners_) {
+        if (*(listener.pushNotifToken) == token) {
+            // Subscribe
+            restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
+            auto req = std::make_shared<restbed::Request>(uri);
+            req->set_method("SUBSCRIBE");
+
+            auto pushNotifToken = std::make_shared<unsigned>(0);
+
+            if (listener.thread.joinable())
+                listener.thread.join();
+            listener.req = req;
+            listener.pushNotifToken = pushNotifToken;
+            listener.thread = std::thread([=]()
+            {
+                fillBodyToGetToken(req);
+                auto settings = std::make_shared<restbed::Settings>();
+                auto ok = std::make_shared<std::atomic_bool>(true);
+                restbed::Http::async(req,
+                    [this, pushNotifToken, ok](const std::shared_ptr<restbed::Request>&,
+                                               const std::shared_ptr<restbed::Response>& reply) {
+                    auto code = reply->get_status_code();
+                    if (code == 200) {
+                        try {
+                            restbed::Http::fetch("\n", reply);
+                            std::string body;
+                            reply->get_body(body);
+
+                            std::string err;
+                            Json::Value json;
+                            Json::CharReaderBuilder rbuilder;
+                            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                            if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
+                                if (!json.isMember("token")) return;
+                                *pushNotifToken = json["token"].asLargestUInt();
+                            }
+                        } catch (std::runtime_error&) {
+                            // NOTE: Http::close() can occurs here. Ignore this.
+                        }
+                    } else {
+                        *ok = false;
+                    }
+                }, settings).get();
+                if (!ok) getConnectivityStatus();
+            });
+        }
+    }
+}
+
+void
+DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req)
+{
+    // Fill body with
+    // {
+    //   "key":"device_key",
+    //   "callback_id": xxx
+    // }
+    Json::Value body;
+    body["key"] = deviceKey_;
+    body["client_id"] = pushClientId_;
+    {
+        std::lock_guard<std::mutex> lock(lockCallback_);
+        callbackId_ += 1;
+        body["callback_id"] = callbackId_;
+    }
+#ifdef __ANDROID__
+    body["platform"] = "android";
+#endif
+#ifdef __APPLE__
+    body["platform"] = "apple";
+#endif
+    Json::StreamWriterBuilder wbuilder;
+    wbuilder["commentStyle"] = "None";
+    wbuilder["indentation"] = "";
+    auto content = Json::writeString(wbuilder, body) + "\n";
+    std::replace(content.begin(), content.end(), '\n', ' ');
+    req->set_body(content);
+    req->set_header("Content-Length", std::to_string(content.size()));
+}
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 
 } // namespace dht
 

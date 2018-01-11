@@ -28,6 +28,8 @@ typedef uint16_t in_port_t;
 #endif
 #else
 #include <iso646.h>
+#include <stdint.h>
+#include <winsock2.h>
 #include <ws2def.h>
 #include <ws2tcpip.h>
 typedef uint16_t sa_family_t;
@@ -37,6 +39,7 @@ typedef uint16_t in_port_t;
 #include <string>
 #include <memory>
 #include <vector>
+#include <stdlib.h>
 
 #include <cstring>
 #include <cstddef>
@@ -123,7 +126,7 @@ public:
         }
         if (new_length != len) {
             len = new_length;
-            if (len) addr.reset((sockaddr*)std::calloc(len, 1));
+            if (len) addr.reset((sockaddr*)::calloc(len, 1));
             else     addr.reset();
         }
         if (len > sizeof(sa_family_t))
@@ -239,13 +242,13 @@ public:
     };
 private:
     socklen_t len {0};
-    struct free_delete { void operator()(void* p) { std::free(p); } };
+    struct free_delete { void operator()(void* p) { ::free(p); } };
     std::unique_ptr<sockaddr, free_delete> addr {};
 
     void set(const sockaddr* sa, socklen_t length) {
         if (len != length) {
             len = length;
-            if (len) addr.reset((sockaddr*)std::malloc(len));
+            if (len) addr.reset((sockaddr*)::malloc(len));
             else     addr.reset();
         }
         if (len)

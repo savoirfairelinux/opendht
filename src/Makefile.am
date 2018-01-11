@@ -59,6 +59,11 @@ libopendht_la_SOURCES += base64.h base64.cpp dht_proxy_server.cpp
 nobase_include_HEADERS += ../include/opendht/dht_proxy_server.h
 endif
 
+if ENABLE_PROXY_CLIENT
+libopendht_la_SOURCES += dht_proxy_client.cpp
+nobase_include_HEADERS += ../include/opendht/dht_proxy_client.h ../include/opendht/dht_interface.h
+endif
+
 clean-local:
 	rm -rf libargon2.la
 

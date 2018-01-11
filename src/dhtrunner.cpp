@@ -89,8 +89,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
         rcv_thread.join();
     running = true;
 #if OPENDHT_PROXY_CLIENT
-    config_.dht_config = config.dht_config;
-    config_.threaded = config.threaded;
+    config_ = config;
 #endif //OPENDHT_PROXY_CLIENT
     doRun(local4, local6, config.dht_config);
     if (not config.threaded)
@@ -436,7 +435,7 @@ DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config c
 #if OPENDHT_PROXY_CLIENT
     if (!dht_via_proxy_) {
         auto dht_via_proxy = std::unique_ptr<DhtInterface>(
-            new DhtProxyClient(config_.proxy_server)
+            new DhtProxyClient(config_.proxy_server, config_.push_node_id)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
     }
@@ -861,16 +860,20 @@ DhtRunner::activeDht() const
 
 #if OPENDHT_PROXY_CLIENT
 void
-DhtRunner::enableProxy(bool proxify) {
-    if (!dht_via_proxy_) {
-        auto dht_via_proxy = std::unique_ptr<DhtInterface>(
-            new DhtProxyClient(config_.proxy_server)
-        );
-        dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
+DhtRunner::enableProxy(bool proxify)
+{
+    if (dht_via_proxy_) {
+        dht_via_proxy_->shutdown({});
     }
     if (proxify) {
         // Init the proxy client
-        dht_via_proxy_->startProxy(config_.proxy_server);
+        auto dht_via_proxy = std::unique_ptr<DhtInterface>(
+            new DhtProxyClient(config_.proxy_server, config_.push_node_id)
+        );
+        dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
+        if (not pushToken_.empty())
+            dht_via_proxy_->setPushNotificationToken(pushToken_);
+        //dht_via_proxy_->startProxy();
         // add current listeners
         for (auto& listener: listeners_) {
             auto tokenProxy = dht_via_proxy_->listen(listener->hash, listener->gcb, std::move(listener->f), std::move(listener->w));
@@ -881,9 +884,6 @@ DhtRunner::enableProxy(bool proxify) {
     } else {
         use_proxy = proxify;
         loop_(); // Restart the classic DHT.
-        // We doesn't need to maintain the connection with the proxy.
-        // Delete it
-        dht_via_proxy_->shutdown({});
         // update all proxyToken for all proxyListener
         auto it = listeners_.begin();
         for (; it != listeners_.end(); ++it) {
@@ -899,6 +899,17 @@ DhtRunner::enableProxy(bool proxify) {
         }
     }
 }
+
+/**
+ * Updates the push notification device token
+ */
+void
+DhtRunner::setPushNotificationToken(const std::string& token) {
+    pushToken_ = token;
+    if (dht_via_proxy_)
+        dht_via_proxy_->setPushNotificationToken(token);
+}
+
 #endif // OPENDHT_PROXY_CLIENT
 
 #if OPENDHT_PROXY_SERVER
@@ -911,4 +922,33 @@ DhtRunner::forwardAllMessages(bool forward)
     dht_->forwardAllMessages(forward);
 }
 #endif // OPENDHT_PROXY_SERVER
+
+#if OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
+void
+DhtRunner::pushNotificationReceived(const std::string& notification) const
+{
+    try {
+        std::string err;
+        Json::Value root;
+        Json::CharReaderBuilder rbuilder;
+        auto* char_data = reinterpret_cast<const char*>(&notification[0]);
+        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        if (reader->parse(char_data, char_data + notification.size(), &root, &err))
+            pushNotificationReceived(root);
+    } catch (...) { }
+}
+
+void
+DhtRunner::pushNotificationReceived(const Json::Value& notification) const
+{
+    dht_via_proxy_->pushNotificationReceived(notification);
+}
+
+void
+DhtRunner::resubscribe(const unsigned token)
+{
+    dht_via_proxy_->resubscribe(token);
+}
+
+#endif // OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
 }

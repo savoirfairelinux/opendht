@@ -28,12 +28,24 @@
 #include <json/json.h>
 #include <limits>
 
+#if OPENDHT_PUSH_NOTIFICATIONS
+constexpr int const TIMEOUT {6 * 60 * 60}; // in seconds (so six hours)
+constexpr const char* const HTTP_PROTO {"http://"}; // TODO, https for prod
+#endif //OPENDHT_PUSH_NOTIFICATIONS
+
 using namespace std::placeholders;
 
 namespace dht {
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port
+#if OPENDHT_PUSH_NOTIFICATIONS
+                   , const std::string& pushServer
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+)
 : dht_(dht)
+#if OPENDHT_PUSH_NOTIFICATIONS
+, pushServer_(pushServer)
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 {
     // NOTE in c++14, use make_unique
     service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
@@ -48,6 +60,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
         resource->set_path("/{hash: .*}");
         resource->set_method_handler("GET", std::bind(&DhtProxyServer::get, this, _1));
         resource->set_method_handler("LISTEN", std::bind(&DhtProxyServer::listen, this, _1));
+#if OPENDHT_PUSH_NOTIFICATIONS
+        resource->set_method_handler("SUBSCRIBE", std::bind(&DhtProxyServer::subscribe, this, _1));
+        resource->set_method_handler("UNSUBSCRIBE", std::bind(&DhtProxyServer::unsubscribe, this, _1));
+#endif //OPENDHT_PUSH_NOTIFICATIONS
         resource->set_method_handler("POST", std::bind(&DhtProxyServer::put, this, _1));
 #if OPENDHT_PROXY_SERVER_IDENTITY
         resource->set_method_handler("SIGN", std::bind(&DhtProxyServer::putSigned, this, _1));
@@ -82,35 +98,15 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port)
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         while (service_->is_up()  && !stopListeners) {
-            {
-                std::lock_guard<std::mutex> lock(lockListener_);
-                auto listener = currentListeners_.begin();
-                while (listener != currentListeners_.end()) {
-                    if (dht_ && listener->session->is_closed()) {
-                        dht_->cancelListen(listener->hash, std::move(listener->token));
-                        // Remove listener if unused
-                        listener = currentListeners_.erase(listener);
-                    } else {
-                        ++listener;
-                    }
-                }
-            }
+            removeClosedListeners();
+            // add listener from push notifs
+#if OPENDHT_PUSH_NOTIFICATIONS
+            handlePushListeners();
+#endif //OPENDHT_PUSH_NOTIFICATIONS
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
         // Remove last listeners
-        {
-            std::lock_guard<std::mutex> lock(lockListener_);
-            auto listener = currentListeners_.begin();
-            while (listener != currentListeners_.end()) {
-                if (dht_) {
-                    dht_->cancelListen(listener->hash, std::move(listener->token.get()));
-                    // Remove listener if unused
-                    listener = currentListeners_.erase(listener);
-                } else {
-                    ++listener;
-                }
-            }
-        }
+        removeClosedListeners(false);
     });
 
     dht->forwardAllMessages(true);
@@ -261,6 +257,207 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session) const
         }
     );
 }
+
+#if OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session) const
+{
+    const auto request = session->get_request();
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+    InfoHash infoHash(hash);
+    if (!infoHash)
+        infoHash = InfoHash::get(hash);
+    session->fetch(content_length,
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        {
+            try {
+                restbed::Bytes buf(b);
+                std::string strJson(buf.begin(), buf.end());
+
+                std::string err;
+                Json::Value root;
+                Json::CharReaderBuilder rbuilder;
+                auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                if (!reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
+                    s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
+                    return;
+                }
+                auto pushToken = root["key"].asString();
+                if (pushToken.empty()) return;
+                auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
+                auto platform = root["platform"].asString();
+                auto isAndroid = platform == "android";
+                auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
+
+                auto token = 0;
+                {
+                    std::lock_guard<std::mutex> lock(lockListener_);
+                    // Check if listener is already present and refresh timeout if launched
+                    for(auto& listener: pushListeners_) {
+                        if (listener.pushToken == pushToken && listener.hash == infoHash
+                        && listener.callbackId == callbackId) {
+                            if (listener.started)
+                                listener.deadline = std::chrono::steady_clock::now()
+                                                  + std::chrono::seconds(TIMEOUT);
+                            s->close(restbed::OK, "{\"token\": " + std::to_string(listener.token) + "}\n");
+                            return;
+                        }
+                    }
+                    // The listener is not found, so add it.
+                    ++tokenPushNotif_;
+                    token = tokenPushNotif_;
+                    PushListener listener;
+                    listener.pushToken = pushToken;
+                    listener.hash = std::move(infoHash);
+                    listener.token = token;
+                    listener.started = false;
+                    listener.callbackId = callbackId;
+                    listener.clientId = clientId;
+                    listener.isAndroid = isAndroid;
+                    pushListeners_.emplace_back(std::move(listener));
+                }
+                s->close(restbed::OK, "{\"token\": " + std::to_string(token) + "}\n");
+            } catch (...) {
+                // do nothing
+            }
+        }
+    );
+}
+
+void
+DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session) const
+{
+    const auto request = session->get_request();
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    auto hash = request->get_path_parameter("hash");
+    InfoHash infoHash(hash);
+    if (!infoHash)
+        infoHash = InfoHash::get(hash);
+    session->fetch(content_length,
+        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
+        {
+            try {
+                restbed::Bytes buf(b);
+                std::string strJson(buf.begin(), buf.end());
+
+                std::string err;
+                Json::Value root;
+                Json::CharReaderBuilder rbuilder;
+                auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                if (!reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
+                    s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
+                    return;
+                }
+                auto pushToken = root["key"].asString();
+                if (pushToken.empty()) return;
+                auto token = root["token"].asLargestUInt();
+                if (token == 0) return;
+                auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
+
+                std::lock_guard<std::mutex> lock(lockListener_);
+                // Check if listener is already present and refresh timeout if launched
+                auto listener = pushListeners_.begin();
+                while (listener != pushListeners_.end()) {
+                    if (listener->pushToken == pushToken && listener->token == token
+                    && listener->hash == infoHash && listener->callbackId == callbackId) {
+                        if (dht_ && listener->started)
+                            dht_->cancelListen(listener->hash, std::move(listener->internalToken.get()));
+                        listener = pushListeners_.erase(listener);
+                    } else {
+                        ++listener;
+                    }
+                }
+            } catch (...) {
+                // do nothing
+            }
+        }
+    );
+}
+
+void
+DhtProxyServer::sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const
+{
+    restbed::Uri uri(HTTP_PROTO + pushServer_ + "/api/push");
+    auto req = std::make_shared<restbed::Request>(uri);
+    req->set_method("POST");
+
+    Json::StreamWriterBuilder wbuilder;
+    wbuilder["commentStyle"] = "None";
+    wbuilder["indentation"] = "";
+    auto valueStr = Json::writeString(wbuilder, json);
+    // Escape JSON
+    std::string::size_type n = 0;
+    while ((n = valueStr.find( "\"", n)) != std::string::npos) {
+        valueStr.replace( n, 1, "\\\"" );
+        n += 2;
+    }
+    std::replace(valueStr.begin(), valueStr.end(), '\n', ' ');
+
+    // NOTE: see https://github.com/appleboy/gorush
+    auto platform = isAndroid ? 2 : 1;
+    auto content = std::string("{\"notifications\": [{\"tokens\": [\""
+    + key + "\"], \"platform\":  " + std::to_string(platform)
+    + ",\"message\": \"" + valueStr + "\"}]}");
+    req->set_header("Content-Type", "application/json");
+    req->set_header("Accept", "*/*");
+    req->set_header("Host", pushServer_);
+    req->set_header("Content-Length", std::to_string(content.length()));
+    req->set_body(content);
+    // Send request.
+    restbed::Http::async(req, {});
+}
+
+void
+DhtProxyServer::handlePushListeners()
+{
+    std::lock_guard<std::mutex> lock(lockListener_);
+    auto pushListener = pushListeners_.begin();
+    while (pushListener != pushListeners_.end()) {
+        if (dht_ && !pushListener->started) {
+            // Try to start unstarted listeners
+            auto key = pushListener->pushToken;
+            auto token = pushListener->token;
+            auto callbackId = pushListener->callbackId;
+            auto isAndroid = pushListener->isAndroid;
+            auto clientId = pushListener->clientId;
+            pushListener->internalToken = dht_->listen(pushListener->hash,
+                [this, key, callbackId, token, isAndroid, clientId](std::shared_ptr<Value> /*value*/) {
+                    // Build message content.
+                    Json::Value json;
+                    if (callbackId > 0) {
+                        json["callback_id"] = callbackId;
+                    }
+                    json["to"] = clientId;
+                    json["token"] = token;
+                    sendPushNotification(key, json, isAndroid);
+                    return true;
+                }
+            );
+            pushListener->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(TIMEOUT);
+            pushListener->started = true;
+            pushListener++;
+        } else if (dht_ && pushListener->started && pushListener->deadline < std::chrono::steady_clock::now()) {
+            // Cancel listen if deadline has been reached
+            dht_->cancelListen(pushListener->hash, std::move(pushListener->internalToken.get()));
+            // Send a push notification to inform the client that this listen has timeout
+            Json::Value json;
+            json["timeout"] = pushListener->hash.toString();
+            if (pushListener->callbackId > 0) {
+                json["callback_id"] = pushListener->callbackId;
+            }
+            json["to"] = pushListener->clientId;
+            json["token"] = pushListener->token;
+            sendPushNotification(pushListener->pushToken, json, pushListener->isAndroid);
+            pushListener = pushListeners_.erase(pushListener);
+        } else {
+            pushListener++;
+        }
+    }
+}
+#endif //OPENDHT_PUSH_NOTIFICATIONS
 
 void
 DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session) const
@@ -461,6 +658,24 @@ DhtProxyServer::getFiltered(const std::shared_ptr<restbed::Session>& session) co
             }
         }
     );
+}
+
+void
+DhtProxyServer::removeClosedListeners(bool testSession)
+{
+    // clean useless listeners
+    std::lock_guard<std::mutex> lock(lockListener_);
+    auto listener = currentListeners_.begin();
+    while (listener != currentListeners_.end()) {
+        auto cancel = testSession ? dht_ && listener->session->is_closed() : static_cast<bool>(dht_);
+        if (cancel) {
+            dht_->cancelListen(listener->hash, std::move(listener->token.get()));
+            // Remove listener if unused
+            listener = currentListeners_.erase(listener);
+        } else {
+             ++listener;
+        }
+    }
 }
 
 }
