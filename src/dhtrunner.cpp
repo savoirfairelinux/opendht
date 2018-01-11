@@ -92,6 +92,9 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
     config_ = config;
 #endif //OPENDHT_PROXY_CLIENT
     doRun(local4, local6, config.dht_config);
+    if (not config_.proxy_server.empty()) {
+        enableProxy(true);
+    }
     if (not config.threaded)
         return;
     dht_thread = std::thread([this]() {
@@ -187,17 +190,17 @@ DhtRunner::getNodeId() const
 std::pair<size_t, size_t>
 DhtRunner::getStoreSize() const {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    if (!activeDht())
+    if (!dht_)
         return {};
-    return activeDht()->getStoreSize();
+    return dht_->getStoreSize();
 }
 
 void
 DhtRunner::setStorageLimit(size_t limit) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    if (!activeDht())
+    if (!dht_)
         throw std::runtime_error("dht is not running");
-    return activeDht()->setStorageLimit(limit);
+    return dht_->setStorageLimit(limit);
 }
 
 std::vector<NodeExport>
@@ -205,15 +208,15 @@ DhtRunner::exportNodes() const {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (!dht_)
         return {};
-    return activeDht()->exportNodes();
+    return dht_->exportNodes();
 }
 
 std::vector<ValuesExport>
 DhtRunner::exportValues() const {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    if (!activeDht())
+    if (!dht_)
         return {};
-    return activeDht()->exportValues();
+    return dht_->exportValues();
 }
 
 void
@@ -237,7 +240,7 @@ DhtRunner::registerType(const ValueType& type) {
 void
 DhtRunner::importValues(const std::vector<ValuesExport>& values) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->importValues(values);
+    dht_->importValues(values);
 }
 
 unsigned
@@ -332,7 +335,8 @@ DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method) {
 time_point
 DhtRunner::loop_()
 {
-    if (!activeDht())
+    auto dht = activeDht();
+    if (not dht)
         return {};
 
     decltype(pending_ops) ops {};
@@ -343,7 +347,7 @@ DhtRunner::loop_()
                std::move(pending_ops) : std::move(pending_ops_prio);
     }
     while (not ops.empty()) {
-        ops.front()(*activeDht());
+        ops.front()(*dht);
         ops.pop();
     }
 
@@ -358,15 +362,15 @@ DhtRunner::loop_()
         for (const auto& pck : received) {
             auto& buf = pck.first;
             auto& from = pck.second;
-            wakeup = activeDht()->periodic(buf.data(), buf.size()-1, from);
+            wakeup = dht->periodic(buf.data(), buf.size()-1, from);
         }
         received.clear();
     } else {
-        wakeup = activeDht()->periodic(nullptr, 0, nullptr, 0);
+        wakeup = dht->periodic(nullptr, 0, nullptr, 0);
     }
 
-    NodeStatus nstatus4 = activeDht()->getStatus(AF_INET);
-    NodeStatus nstatus6 = activeDht()->getStatus(AF_INET6);
+    NodeStatus nstatus4 = dht->getStatus(AF_INET);
+    NodeStatus nstatus6 = dht->getStatus(AF_INET6);
     if (nstatus4 != status4 || nstatus6 != status6) {
         status4 = nstatus4;
         status6 = nstatus6;

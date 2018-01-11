@@ -484,14 +484,18 @@ main(int argc, char **argv)
             crt = dht::crypto::generateEcIdentity("DHT Node", ca_tmp);
         }
 
-        dht->run(params.port, crt, true, params.network);
+        dht::DhtRunner::Config config;
+        config.dht_config.node_config.network = params.network;
+        config.dht_config.id = crt;
+        config.threaded = true;
 #if OPENDHT_PROXY_CLIENT
-        if (!params.proxyclient.empty()) {
+        config.proxy_server = params.proxyclient;
+        config.push_node_id = "dhtnode";
+        if (not params.proxyclient.empty())
             dht->setPushNotificationToken(params.devicekey);
-            dht->setProxyServer(params.proxyclient, "dhtnode");
-            dht->enableProxy(true);
-        }
 #endif //OPENDHT_PROXY_CLIENT
+
+        dht->run(params.port, config);
 
         if (params.log) {
             if (params.syslog or (params.daemonize and params.logfile.empty()))
