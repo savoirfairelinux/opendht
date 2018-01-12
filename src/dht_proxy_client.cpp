@@ -42,7 +42,6 @@ DhtProxyClient::DhtProxyClient(const std::string& serverHost, const std::string&
 void
 DhtProxyClient::confirmProxy()
 {
-    std::cout << "confirmProxy" << std::endl;
     if (serverHost_.empty()) return;
     getConnectivityStatus();
 }
@@ -643,21 +642,25 @@ DhtProxyClient::restartListeners()
 
 #if OPENDHT_PUSH_NOTIFICATIONS
 void
-DhtProxyClient::pushNotificationReceived(const Json::Value& notification)
+DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string>& notification)
 {
-    if (!notification.isMember("token")) return;
-    auto token = notification["token"].asLargestUInt();
-    // Find listener
-    for (const auto& listener: listeners_)
-        if (*(listener.pushNotifToken) == token) {
-            if (notification.isMember("timeout")) {
-                // A timeout has occured, we need to relaunch the listener
-                resubscribe(token);
-            } else {
+    try {
+        auto token = std::stoul(notification.at("token"));
+        for (const auto& listener: listeners_) {
+            if (*(listener.pushNotifToken) != token)
+                continue;
+            if (notification.find("timeout") == notification.cend()) {
                 // Wake up daemon and get values
                 get(InfoHash(listener.key), listener.cb, {}, listener.filterChain);
+            } else {
+                // A timeout has occured, we need to relaunch the listener
+                resubscribe(token);
             }
+
         }
+    } catch (...) {
+
+    }
 }
 
 void

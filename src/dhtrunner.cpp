@@ -928,30 +928,19 @@ DhtRunner::forwardAllMessages(bool forward)
 #endif // OPENDHT_PROXY_SERVER
 
 #if OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
-void
-DhtRunner::pushNotificationReceived(const std::string& notification) const
-{
-    try {
-        std::string err;
-        Json::Value root;
-        Json::CharReaderBuilder rbuilder;
-        auto* char_data = reinterpret_cast<const char*>(&notification[0]);
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-        if (reader->parse(char_data, char_data + notification.size(), &root, &err))
-            pushNotificationReceived(root);
-    } catch (...) { }
-}
 
 void
-DhtRunner::pushNotificationReceived(const Json::Value& notification) const
+DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& data) const
 {
-    dht_via_proxy_->pushNotificationReceived(notification);
+    if (dht_via_proxy_)
+        dht_via_proxy_->pushNotificationReceived(data);
 }
 
 void
 DhtRunner::resubscribe(const unsigned token)
 {
-    dht_via_proxy_->resubscribe(token);
+    if (dht_via_proxy_)
+        dht_via_proxy_->resubscribe(token);
 }
 
 #endif // OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT

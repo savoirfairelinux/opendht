@@ -28,13 +28,6 @@ public:
     DhtInterface() = default;
     virtual ~DhtInterface() = default;
 
-#if OPENDHT_PROXY_CLIENT
-    //virtual void startProxy() {};
-#if OPENDHT_PUSH_NOTIFICATIONS
-    virtual void setPushNotificationToken(const std::string& token) {};
-#endif
-#endif
-
     // [[deprecated]]
     using Status = NodeStatus;
     // [[deprecated]]
@@ -236,11 +229,13 @@ public:
     }
 
 #if OPENDHT_PUSH_NOTIFICATIONS
+    virtual void setPushNotificationToken(const std::string&) {};
+
     /**
      * Call linked callback with a push notification
      * @param notification to process
      */
-    virtual void pushNotificationReceived(const Json::Value& notification) = 0;
+    virtual void pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
     /**
      * Refresh a listen via a token
      * @param token

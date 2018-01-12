@@ -312,7 +312,7 @@ public:
      * Call linked callback with push_notification
      * @param notification to process
      */
-    void pushNotificationReceived(const Json::Value& notification) {
+    void pushNotificationReceived(const std::map<std::string, std::string>& notification) {
         dht_->pushNotificationReceived(notification);
     }
     /**

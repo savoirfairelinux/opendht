@@ -291,13 +291,7 @@ public:
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
 
 #if OPENDHT_PUSH_NOTIFICATIONS
-    /**
-     * Call linked callback with a push notification
-     * @param notification to process
-     */
-    void pushNotificationReceived(const Json::Value&) {
-        // Ignore this
-    }
+    void pushNotificationReceived(const std::map<std::string, std::string>&) {}
     void resubscribe(const unsigned) {}
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 

@@ -174,7 +174,7 @@ public:
      * Call linked callback with a push notification
      * @param notification to process
      */
-    void pushNotificationReceived(const Json::Value& notification);
+    void pushNotificationReceived(const std::map<std::string, std::string>& notification);
     /**
      * Refresh a listen via a token
      * @param token

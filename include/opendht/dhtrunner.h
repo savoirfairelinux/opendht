@@ -402,8 +402,7 @@ public:
     /**
      * Insert a push notification to process for OpenDHT
      */
-    void pushNotificationReceived(const std::string& notification) const;
-    void pushNotificationReceived(const Json::Value& notification) const;
+    void pushNotificationReceived(const std::map<std::string, std::string>& data) const;
     /**
      * Refresh a listen via a token
      * @param token

@@ -232,7 +232,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #if OPENDHT_PUSH_NOTIFICATIONS
         else if (op == "rp") {
             iss >> value;
-            dht->pushNotificationReceived(value);
+            dht->pushNotificationReceived({{"token", value}});
             continue;
         } else if (op == "re") {
             iss >> value;
