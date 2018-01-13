@@ -220,8 +220,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #if OPENDHT_PROXY_CLIENT
         else if (op == "stt") {
             iss >> idstr >> deviceKey;
+#if OPENDHT_PUSH_NOTIFICATIONS
             if (not deviceKey.empty())
                 dht->setPushNotificationToken(deviceKey);
+#endif // OPENDHT_PUSH_NOTIFICATIONS
             dht->setProxyServer(idstr);
             dht->enableProxy(true);
             continue;
@@ -491,8 +493,10 @@ main(int argc, char **argv)
 #if OPENDHT_PROXY_CLIENT
         config.proxy_server = params.proxyclient;
         config.push_node_id = "dhtnode";
+#if OPENDHT_PUSH_NOTIFICATIONS
         if (not params.proxyclient.empty())
             dht->setPushNotificationToken(params.devicekey);
+#endif
 #endif //OPENDHT_PROXY_CLIENT
 
         dht->run(params.port, config);

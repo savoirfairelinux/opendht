@@ -68,7 +68,7 @@ NodeStats::toString() const
     return ss.str();
 }
 
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
 /**
  * Build a json object from a NodeStats
  */

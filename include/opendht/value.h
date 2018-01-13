@@ -37,7 +37,7 @@
 #include <chrono>
 #include <set>
 
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
 #include <json/json.h>
 #endif //OPENDHT_PROXY_SERVER
 
@@ -350,7 +350,7 @@ struct OPENDHT_PUBLIC Value
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
 
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
     /**
      * Build a value from a json object
      * @param json
@@ -429,7 +429,7 @@ struct OPENDHT_PUBLIC Value
         return ss.str();
     }
 
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
     /**
      * Build a json object from a value
      * Example:

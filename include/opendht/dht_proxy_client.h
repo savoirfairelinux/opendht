@@ -30,9 +30,12 @@
 #include "dht_interface.h"
 #include "scheduler.h"
 
-namespace restbed
-{
+namespace restbed {
     class Request;
+}
+
+namespace Json {
+    class Value;
 }
 
 namespace dht {

@@ -441,8 +441,11 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filt
             if (deviceKey_.empty()) {
                 std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
                 settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
-            } else
+            }
+#if OPENDHT_PUSH_NOTIFICATIONS
+            else
                 fillBodyToGetToken(req);
+#endif
 
             struct State {
                 std::atomic_bool ok {true};

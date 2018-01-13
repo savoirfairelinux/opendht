@@ -91,10 +91,14 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
 #if OPENDHT_PROXY_CLIENT
     config_ = config;
 #endif //OPENDHT_PROXY_CLIENT
+
     doRun(local4, local6, config.dht_config);
-    if (not config_.proxy_server.empty()) {
+
+#if OPENDHT_PROXY_CLIENT
+    if (not config.proxy_server.empty()) {
         enableProxy(true);
     }
+#endif //OPENDHT_PROXY_CLIENT
     if (not config.threaded)
         return;
     dht_thread = std::thread([this]() {
@@ -875,8 +879,10 @@ DhtRunner::enableProxy(bool proxify)
             new DhtProxyClient(config_.proxy_server, config_.push_node_id)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
+#if OPENDHT_PUSH_NOTIFICATIONS
         if (not pushToken_.empty())
             dht_via_proxy_->setPushNotificationToken(pushToken_);
+#endif
         //dht_via_proxy_->startProxy();
         // add current listeners
         for (auto& listener: listeners_) {
@@ -904,6 +910,8 @@ DhtRunner::enableProxy(bool proxify)
     }
 }
 
+#if OPENDHT_PUSH_NOTIFICATIONS
+
 /**
  * Updates the push notification device token
  */
@@ -914,6 +922,7 @@ DhtRunner::setPushNotificationToken(const std::string& token) {
         dht_via_proxy_->setPushNotificationToken(token);
 }
 
+#endif // OPENDHT_PUSH_NOTIFICATIONS
 #endif // OPENDHT_PROXY_CLIENT
 
 #if OPENDHT_PROXY_SERVER

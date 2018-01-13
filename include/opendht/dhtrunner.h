@@ -302,10 +302,8 @@ public:
     struct Config {
         SecureDhtConfig dht_config;
         bool threaded;
-#if OPENDHT_PROXY_CLIENT
         std::string proxy_server;
         std::string push_node_id;
-#endif //OPENDHT_PROXY_CLIENT
     };
 
     /**
@@ -326,10 +324,8 @@ public:
                 /*.id = */identity
             },
             /*.threaded = */threaded,
-#if OPENDHT_PROXY_CLIENT
             /*.proxy_server = */"",
             /*.push_node_id = */""
-#endif //OPENDHT_PROXY_CLIENT
         });
     }
     void run(in_port_t port, Config config);

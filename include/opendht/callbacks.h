@@ -52,7 +52,7 @@ struct OPENDHT_PUBLIC NodeStats {
     unsigned table_depth {0};
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
     std::string toString() const;
-#if OPENDHT_PROXY_SERVER
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
     /**
      * Build a json object from a NodeStats
      */
