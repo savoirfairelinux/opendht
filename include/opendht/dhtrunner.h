@@ -452,7 +452,6 @@ private:
      * Store current listeners and translates global tokens for each client.
      */
     struct Listener {
-        size_t globalToken;
         size_t tokenClassicDht;
         size_t tokenProxyDht;
         GetCallback gcb;
@@ -460,7 +459,7 @@ private:
         Value::Filter f;
         Where w;
     };
-    std::vector<std::unique_ptr<Listener>> listeners_ {};
+    std::map<size_t, Listener> listeners_ {};
     size_t listener_token_ {1};
 
     mutable std::mutex dht_mtx {};
