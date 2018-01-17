@@ -100,7 +100,7 @@ public:
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
-    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter&& = {}, Where&& w = {});
+    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter = {}, Where w = {});
 
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.

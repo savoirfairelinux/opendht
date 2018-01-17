@@ -417,7 +417,7 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 }
 
 size_t
-DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter&& filter, Where&& where)
+DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter, Where where)
 {
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);

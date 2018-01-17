@@ -787,7 +787,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
 }
 
 size_t
-Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& where)
+Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
 {
     scheduler.syncTime();
 

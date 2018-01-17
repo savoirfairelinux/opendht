@@ -277,7 +277,7 @@ SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::F
 }
 
 size_t
-SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& w)
+SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)
 {
     return dht_->listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
 }
