@@ -327,7 +327,7 @@ private:
     std::mutex lockCallbacks;
 
     std::thread statusThread_;
-    std::mutex lockCurrentProxyInfos_;
+    mutable std::mutex lockCurrentProxyInfos_;
 
     Scheduler scheduler;
     /**

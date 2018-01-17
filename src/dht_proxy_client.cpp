@@ -102,6 +102,7 @@ DhtProxyClient::shutdown(ShutdownCallback cb)
 NodeStatus
 DhtProxyClient::getStatus(sa_family_t af) const
 {
+    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
     switch (af)
     {
     case AF_INET:
@@ -116,6 +117,7 @@ DhtProxyClient::getStatus(sa_family_t af) const
 bool
 DhtProxyClient::isRunning(sa_family_t af) const
 {
+    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
     switch (af)
     {
     case AF_INET:
@@ -317,10 +319,13 @@ DhtProxyClient::getProxyInfos()
     if (ongoingStatusUpdate_.test_and_set())
         return;
 
-    if (statusIpv4_ == NodeStatus::Disconnected)
-        statusIpv4_ = NodeStatus::Connecting;
-    if (statusIpv6_ == NodeStatus::Disconnected)
-        statusIpv6_ = NodeStatus::Connecting;
+    {
+        std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+        if (statusIpv4_ == NodeStatus::Disconnected)
+            statusIpv4_ = NodeStatus::Connecting;
+        if (statusIpv6_ == NodeStatus::Disconnected)
+            statusIpv6_ = NodeStatus::Connecting;
+    }
 
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/");
     auto req = std::make_shared<restbed::Request>(uri);
@@ -392,7 +397,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos)
         scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(15));
     }
     else if (newStatus == NodeStatus::Disconnected) {
-        scheduler.edit(nextProxyConfirmation, scheduler.time());
+        scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(1));
     }
 }
 
@@ -562,8 +567,11 @@ DhtProxyClient::cancelListen(const InfoHash&, size_t token)
 void
 DhtProxyClient::opFailed()
 {
-    statusIpv4_ = NodeStatus::Disconnected;
-    statusIpv6_ = NodeStatus::Disconnected;
+    {
+        std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+        statusIpv4_ = NodeStatus::Disconnected;
+        statusIpv6_ = NodeStatus::Disconnected;
+    }
     getConnectivityStatus();
 }
 
