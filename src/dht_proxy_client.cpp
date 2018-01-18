@@ -32,8 +32,8 @@ constexpr const char* const HTTP_PROTO {"http://"};
 
 namespace dht {
 
-DhtProxyClient::DhtProxyClient(const std::string& serverHost, const std::string& pushClientId)
-: serverHost_(serverHost), pushClientId_(pushClientId), scheduler(DHT_LOG)
+DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
+: serverHost_(serverHost), pushClientId_(pushClientId), scheduler(DHT_LOG), loopSignal_(signal)
 {
     if (!serverHost_.empty())
         startProxy();
@@ -50,6 +50,7 @@ void
 DhtProxyClient::startProxy()
 {
     if (serverHost_.empty()) return;
+    DHT_LOG.WARN("Staring proxy client to %s", serverHost_.c_str());
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
 }
 
@@ -202,6 +203,7 @@ DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback don
                                     if (not cb({value}))
                                         *finished = true;
                                 });
+                                loopSignal_();
                             }
                         } else {
                             *ok = false;
@@ -217,6 +219,7 @@ DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback don
             callbacks_.emplace_back([=](){
                 donecb(*ok, {});
             });
+            loopSignal_();
         }
         if (!ok) {
             // Connection failed, update connectivity
@@ -292,6 +295,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
             callbacks_.emplace_back([=](){
                 cb(*ok, {});
             });
+            loopSignal_();
         }
         if (!ok) {
             // Connection failed, update connectivity
@@ -314,7 +318,7 @@ DhtProxyClient::getNodesStats(sa_family_t af) const
 void
 DhtProxyClient::getProxyInfos()
 {
-    scheduler.add(scheduler.time() + std::chrono::milliseconds(500), []{});
+    DHT_LOG.DEBUG("Requesting proxy server node information");
 
     if (ongoingStatusUpdate_.test_and_set())
         return;
@@ -345,7 +349,6 @@ DhtProxyClient::getProxyInfos()
 
                 std::string err;
                 Json::CharReaderBuilder rbuilder;
-                //auto* char_data = reinterpret_cast<const char*>(&body[0]);
                 auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                 try {
                     reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
@@ -399,6 +402,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos)
     else if (newStatus == NodeStatus::Disconnected) {
         scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(1));
     }
+    loopSignal_();
 }
 
 SockAddr
@@ -500,6 +504,7 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
                                                 state->cancel = true;
                                             }
                                         });
+                                        loopSignal_();
                                     }
                                 } else {
                                     state->ok = false;
@@ -567,12 +572,14 @@ DhtProxyClient::cancelListen(const InfoHash&, size_t token)
 void
 DhtProxyClient::opFailed()
 {
+    DHT_LOG.ERR("Proxy request failed");
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         statusIpv4_ = NodeStatus::Disconnected;
         statusIpv6_ = NodeStatus::Disconnected;
     }
     getConnectivityStatus();
+    loopSignal_();
 }
 
 void
@@ -630,6 +637,7 @@ DhtProxyClient::restartListeners()
                                             callbacks_.emplace_back([cb, value, okCb](){
                                                 okCb->set_value(cb({value}));
                                             });
+                                            loopSignal_();
                                         }
                                         futureCb.wait();
                                         if (!futureCb.get()) {

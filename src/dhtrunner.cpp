@@ -95,9 +95,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
     doRun(local4, local6, config.dht_config);
 
 #if OPENDHT_PROXY_CLIENT
-    if (not config.proxy_server.empty()) {
-        enableProxy(true);
-    }
+    enableProxy(not config.proxy_server.empty());
 #endif //OPENDHT_PROXY_CLIENT
     if (not config.threaded)
         return;
@@ -130,7 +128,8 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
 void
 DhtRunner::shutdown(ShutdownCallback cb) {
 #if OPENDHT_PROXY_CLIENT
-    dht_via_proxy_->shutdown(cb);
+    if (dht_via_proxy_)
+        dht_via_proxy_->shutdown(cb);
 #endif
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
@@ -226,13 +225,24 @@ DhtRunner::exportValues() const {
 void
 DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+    if (dht_)
+        dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+#if OPENDHT_PROXY_CLIENT
+    if (dht_via_proxy_)
+        dht_via_proxy_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+#endif
 }
 
 void
 DhtRunner::setLogFilter(const InfoHash& f) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     activeDht()->setLogFilter(f);
+    if (dht_)
+        dht_->setLogFilter(f);
+#if OPENDHT_PROXY_CLIENT
+    if (dht_via_proxy_)
+        dht_via_proxy_->setLogFilter(f);
+#endif
 }
 
 void
@@ -441,12 +451,7 @@ DhtRunner::doRun(const SockAddr& sin4, const SockAddr& sin6, SecureDht::Config c
     dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config));
 
 #if OPENDHT_PROXY_CLIENT
-    if (!dht_via_proxy_) {
-        auto dht_via_proxy = std::unique_ptr<DhtInterface>(
-            new DhtProxyClient(config_.proxy_server, config_.push_node_id)
-        );
-        dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
-    }
+    enableProxy(use_proxy);
 #endif
 
     rcv_thread = std::thread([this,s4,s6]() {
@@ -538,7 +543,7 @@ DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f, Where w)
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) mutable {
             auto tokenbGlobal = listener_token_++;
-            Listener listener;
+            Listener listener {};
             listener.hash = hash;
             listener.f = std::move(f);
             listener.w = std::move(w);
@@ -581,8 +586,8 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
         if (it == listeners_.end()) return;
         if (it->second.tokenClassicDht)
             dht_->cancelListen(h, it->second.tokenClassicDht);
-        if (it->second.tokenClassicDht and dht_via_proxy_)
-            dht_via_proxy_->cancelListen(h, it->second.tokenClassicDht);
+        if (it->second.tokenProxyDht and dht_via_proxy_)
+            dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
         listeners_.erase(it);
     });
 #else
@@ -866,7 +871,15 @@ DhtRunner::enableProxy(bool proxify)
     if (proxify) {
         // Init the proxy client
         auto dht_via_proxy = std::unique_ptr<DhtInterface>(
-            new DhtProxyClient(config_.proxy_server, config_.push_node_id)
+            new DhtProxyClient([this]{
+                if (config_.threaded) {
+                    {
+                        std::lock_guard<std::mutex> lck(storage_mtx);
+                        pending_ops_prio.emplace([=](SecureDht&) mutable {});
+                    }
+                    cv.notify_all();
+                }
+            }, config_.proxy_server, config_.push_node_id)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
 #if OPENDHT_PUSH_NOTIFICATIONS
@@ -880,14 +893,16 @@ DhtRunner::enableProxy(bool proxify)
         use_proxy = proxify;
     } else {
         use_proxy = proxify;
-        loop_(); // Restart the classic DHT.
         // update all proxyToken for all proxyListener
+        std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([this](SecureDht& /*dht*/) mutable {
             if (not dht_)
                 return;
-            for (auto& l : listeners_)
-                if (not l.second.tokenClassicDht)
+            for (auto& l : listeners_) {
+                if (not l.second.tokenClassicDht) {
                     l.second.tokenClassicDht = dht_->listen(l.second.hash, l.second.gcb, l.second.f, l.second.w);
+                }
+            }
         });
     }
 }
@@ -912,9 +927,11 @@ void
 DhtRunner::forwardAllMessages(bool forward)
 {
 #if OPENDHT_PROXY_CLIENT
-    dht_via_proxy_->forwardAllMessages(forward);
+    if (dht_via_proxy_)
+        dht_via_proxy_->forwardAllMessages(forward);
 #endif // OPENDHT_PROXY_CLIENT
-    dht_->forwardAllMessages(forward);
+    if (dht_)
+        dht_->forwardAllMessages(forward);
 }
 #endif // OPENDHT_PROXY_SERVER
 

@@ -372,9 +372,12 @@ public:
     void join();
 
 #if OPENDHT_PROXY_CLIENT
-    void setProxyServer(const std::string& url = "127.0.0.1:8000", const std::string& pushNodeId = "") {
-        config_.proxy_server = url;
+    void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "") {
+        if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
+            return;
+        config_.proxy_server = proxy;
         config_.push_node_id = pushNodeId;
+        enableProxy(use_proxy);
     }
 
     /**

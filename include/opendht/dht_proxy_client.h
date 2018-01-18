@@ -45,12 +45,7 @@ public:
 
     DhtProxyClient() : scheduler(DHT_LOG) {}
 
-    /**
-     * Initialise the DhtProxyClient with two open sockets (for IPv4 and IP6)
-     * and an ID for the node.
-     * @param serverHost the proxy address
-     */
-    explicit DhtProxyClient(const std::string& serverHost, const std::string& pushClientId = "");
+    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "");
 
 #if OPENDHT_PUSH_NOTIFICATIONS
     virtual void setPushNotificationToken(const std::string& token) {
@@ -347,6 +342,8 @@ private:
     std::string deviceKey_ {};
     unsigned callbackId_ {0};
     std::mutex lockCallback_;
+
+    const std::function<void()> loopSignal_;
 
 #if OPENDHT_PUSH_NOTIFICATIONS
     void fillBodyToGetToken(std::shared_ptr<restbed::Request> request);

@@ -219,12 +219,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #endif //OPENDHT_PROXY_SERVER
 #if OPENDHT_PROXY_CLIENT
         else if (op == "stt") {
-            iss >> idstr >> deviceKey;
+            /*iss >> idstr >> deviceKey;
 #if OPENDHT_PUSH_NOTIFICATIONS
             if (not deviceKey.empty())
                 dht->setPushNotificationToken(deviceKey);
 #endif // OPENDHT_PUSH_NOTIFICATIONS
-            dht->setProxyServer(idstr);
+            dht->setProxyServer(idstr);*/
             dht->enableProxy(true);
             continue;
         } else if (op == "stp") {
@@ -332,7 +332,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 std::cout << "\t" << *value << std::endl;
                 return true;
             }, {}, dht::Where {std::move(rem)});
-            std::cout << "Listening, token: " << token.get() << std::endl;
+            auto t = token.get();
+            std::cout << "Listening, token: " << t << std::endl;
         }
         else if (op == "cl") {
             std::string rem;
