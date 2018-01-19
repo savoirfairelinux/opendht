@@ -341,9 +341,11 @@ void
 DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method) {
     std::lock_guard<std::mutex> lck(dht_mtx);
 #if OPENDHT_PROXY_CLIENT
-    dht_via_proxy_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
+    if (dht_via_proxy_)
+        dht_via_proxy_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
 #endif
-    dht_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
+    if (dht_)
+        dht_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
 }
 
 time_point
