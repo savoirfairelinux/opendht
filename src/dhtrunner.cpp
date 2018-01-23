@@ -91,10 +91,8 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
     dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
 
 #if OPENDHT_PROXY_CLIENT
-    if (!dht_via_proxy_) {
-        config_ = config;
-        enableProxy(use_proxy);
-    }
+    config_ = config;
+    enableProxy(not config_.proxy_server.empty());
 #endif
 
     running = true;

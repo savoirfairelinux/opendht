@@ -383,7 +383,7 @@ public:
             return;
         config_.proxy_server = proxy;
         config_.push_node_id = pushNodeId;
-        enableProxy(use_proxy);
+        enableProxy(use_proxy and not config_.proxy_server.empty());
     }
 
     /**
