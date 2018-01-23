@@ -895,17 +895,18 @@ DhtRunner::enableProxy(bool proxify)
         use_proxy = proxify;
     } else {
         use_proxy = proxify;
-        // update all proxyToken for all proxyListener
         std::lock_guard<std::mutex> lck(storage_mtx);
-        pending_ops.emplace([this](SecureDht& /*dht*/) mutable {
-            if (not dht_)
-                return;
-            for (auto& l : listeners_) {
-                if (not l.second.tokenClassicDht) {
-                    l.second.tokenClassicDht = dht_->listen(l.second.hash, l.second.gcb, l.second.f, l.second.w);
+        if (not listeners_.empty()) {
+            pending_ops.emplace([this](SecureDht& /*dht*/) mutable {
+                if (not dht_)
+                    return;
+                for (auto& l : listeners_) {
+                    if (not l.second.tokenClassicDht) {
+                        l.second.tokenClassicDht = dht_->listen(l.second.hash, l.second.gcb, l.second.f, l.second.w);
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 }
 
