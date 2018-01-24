@@ -43,7 +43,6 @@
     <ClCompile Include="..\src\value.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\opendht-old\MSVC\wingetopt.c" />
     <ClCompile Include="..\src\base64.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -53,14 +52,13 @@
     <ClCompile Include="..\src\indexation\pht.cpp">
       <Filter>Source Files\indexation</Filter>
     </ClCompile>
+    <ClCompile Include="wingetopt.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\opendht\def.h" />
     <ClInclude Include="..\include\opendht\sockaddr.h" />
     <ClInclude Include="..\src\net.h" />
     <ClInclude Include="..\src\parsed_message.h" />
-    <ClInclude Include="..\..\opendht-old\MSVC\unistd.h" />
-    <ClInclude Include="..\..\opendht-old\MSVC\wingetopt.h" />
     <ClInclude Include="..\src\base64.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -139,6 +137,8 @@
     <ClInclude Include="..\include\opendht\indexation\pht.h">
       <Filter>Header Files\opendht\indexation</Filter>
     </ClInclude>
+    <ClInclude Include="unistd.h" />
+    <ClInclude Include="wingetopt.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Source Files">
