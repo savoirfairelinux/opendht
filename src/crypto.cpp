@@ -538,7 +538,11 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
+#if GNUTLS_VERSION_NUMBER < 0x030401
+    const int flags = 0;
+#else
     const int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
+#endif
     if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
@@ -1287,8 +1291,10 @@ std::ostream& operator<< (std::ostream& o, const TrustList::VerifyResult& h)
             o << "* Certificate has expired" << std::endl;
         if (h.result & GNUTLS_CERT_UNEXPECTED_OWNER)
             o << "* The owner is not the expected one" << std::endl;
+#if GNUTLS_VERSION_NUMBER >= 0x030401
         if (h.result & GNUTLS_CERT_PURPOSE_MISMATCH)
             o << "* Certificate or an intermediate does not match the intended purpose" << std::endl;
+#endif
         if (h.result & GNUTLS_CERT_MISMATCH)
             o << "* Certificate presented isn't the expected one" << std::endl;
     } else {
