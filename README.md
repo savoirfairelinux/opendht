@@ -93,7 +93,7 @@ for r in results:
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - (optional) restbed used for the REST API. commit fb84213e170bc171fecd825a8e47ed9f881a12cd (https://github.com/AmarOk1412/restbed/tree/async_read_until)
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
-- Build tested with GCC 4.8+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, macOS).
+- Build tested with GCC 5.2+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, macOS).
 - Build tested with Microsoft Visual Studio 2015
 
 ## Contact
