@@ -290,10 +290,8 @@ public:
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
 
-#if OPENDHT_PUSH_NOTIFICATIONS
     void pushNotificationReceived(const std::map<std::string, std::string>&) {}
-    void resubscribe(const unsigned) {}
-#endif // OPENDHT_PUSH_NOTIFICATIONS
+    void resubscribe(unsigned) {}
 
 private:
 

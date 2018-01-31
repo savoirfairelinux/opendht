@@ -20,7 +20,6 @@
 
 #pragma once
 
-//#include "securedht.h"
 #include "infohash.h"
 #include "value.h"
 #include "callbacks.h"
@@ -36,10 +35,6 @@
 #include <exception>
 #include <queue>
 #include <chrono>
-
-#if OPENDHT_PROXY_CLIENT
-#include "dht_proxy_client.h"
-#endif // OPENDHT_PROXY_CLIENT
 
 namespace dht {
 
@@ -57,6 +52,13 @@ class OPENDHT_PUBLIC DhtRunner {
 
 public:
     typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
+
+    struct Config {
+        SecureDhtConfig dht_config;
+        bool threaded;
+        std::string proxy_server;
+        std::string push_node_id;
+    };
 
     DhtRunner();
     virtual ~DhtRunner();
@@ -299,13 +301,6 @@ public:
     void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
-    struct Config {
-        SecureDhtConfig dht_config;
-        bool threaded;
-        std::string proxy_server;
-        std::string push_node_id;
-    };
-
     /**
      * @param port: Local port to bind. Both IPv4 and IPv6 will be tried (ANY).
      * @param identity: RSA key pair to use for cryptographic operations.
@@ -377,13 +372,14 @@ public:
      */
     void join();
 
-#if OPENDHT_PROXY_CLIENT
     void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "") {
+#if OPENDHT_PROXY_CLIENT
         if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
             return;
         config_.proxy_server = proxy;
         config_.push_node_id = pushNodeId;
         enableProxy(use_proxy and not config_.proxy_server.empty());
+#endif
     }
 
     /**
@@ -393,12 +389,8 @@ public:
      */
     void enableProxy(bool proxify);
 
-#endif // OPENDHT_PROXY_CLIENT
-#if OPENDHT_PROXY_SERVER
-    void forwardAllMessages(bool forward);
-#endif // OPENDHT_PROXY_SERVER
+    /* Push notification methods */
 
-#if OPENDHT_PUSH_NOTIFICATIONS
     /**
      * Updates the push notification device token
      */
@@ -412,8 +404,10 @@ public:
      * Refresh a listen via a token
      * @param token
      */
-    void resubscribe(const unsigned token);
-#endif // OPENDHT_PUSH_NOTIFICATIONS
+    void resubscribe(unsigned token);
+
+    /* Proxy server mothods */
+    void forwardAllMessages(bool forward);
 
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
@@ -433,7 +427,18 @@ private:
         return std::max(status4, status6);
     }
 
+    /** Local DHT instance */
     std::unique_ptr<SecureDht> dht_;
+
+    /** Proxy client instance */
+    std::unique_ptr<SecureDht> dht_via_proxy_;
+
+    /** true if we are currently using a proxy */
+    std::atomic_bool use_proxy {false};
+
+    /** Current configuration */
+    Config config_;
+
     /**
      * reset dht clients
      */
@@ -442,21 +447,7 @@ private:
      * @return the current active DHT
      */
     SecureDht* activeDht() const;
-#if OPENDHT_PROXY_CLIENT
-    /**
-     * true if we are currently using a proxy
-     */
-    std::atomic_bool use_proxy {false};
-    /**
-     * The current proxy client
-     */
-    std::unique_ptr<SecureDht> dht_via_proxy_;
-    Config config_;
 
-#if OPENDHT_PUSH_NOTIFICATIONS
-    std::string pushToken_;
-#endif
-#endif // OPENDHT_PROXY_CLIENT
     /**
      * Store current listeners and translates global tokens for each client.
      */
@@ -503,6 +494,9 @@ private:
     int s4 {-1}, s6 {-1};
     SockAddr bound4 {};
     SockAddr bound6 {};
+
+    /** Push notification token */
+    std::string pushToken_;
 };
 
 }

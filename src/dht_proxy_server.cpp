@@ -37,18 +37,16 @@ using namespace std::placeholders;
 
 namespace dht {
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port
-#if OPENDHT_PUSH_NOTIFICATIONS
-                   , const std::string& pushServer
-#endif // OPENDHT_PUSH_NOTIFICATIONS
-)
-: dht_(dht)
-#if OPENDHT_PUSH_NOTIFICATIONS
-, pushServer_(pushServer)
-#endif // OPENDHT_PUSH_NOTIFICATIONS
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer)
+: dht_(dht) , pushServer_(pushServer)
 {
     // NOTE in c++14, use make_unique
     service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
+
+#if !OPENDHT_PUSH_NOTIFICATIONS
+    if (not pushServer.empty())
+        std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
+#endif
 
     server_thread = std::thread([this, port]() {
         // Create endpoints

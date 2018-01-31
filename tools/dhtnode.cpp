@@ -491,14 +491,10 @@ main(int argc, char **argv)
         config.dht_config.node_config.network = params.network;
         config.dht_config.id = crt;
         config.threaded = true;
-#if OPENDHT_PROXY_CLIENT
         config.proxy_server = params.proxyclient;
         config.push_node_id = "dhtnode";
-#if OPENDHT_PUSH_NOTIFICATIONS
         if (not params.proxyclient.empty())
             dht->setPushNotificationToken(params.devicekey);
-#endif
-#endif //OPENDHT_PROXY_CLIENT
 
         dht->run(params.port, config);
 
@@ -517,15 +513,16 @@ main(int argc, char **argv)
         }
 
 #if OPENDHT_PROXY_SERVER
-            std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
-            if (params.proxyserver != 0) {
-                proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver
-#if OPENDHT_PUSH_NOTIFICATIONS
-                , params.pushserver
-#endif // OPENDHT_PUSH_NOTIFICATIONS
-                ));
-            }
-#endif //OPENDHT_PROXY_SERVER
+        std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
+#endif
+        if (params.proxyserver != 0) {
+#if OPENDHT_PROXY_SERVER
+            proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver, params.pushserver));
+#else
+            std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
+            exit(EXIT_FAILURE);
+#endif
+        }
 
         if (params.daemonize or params.service)
             while (runner.wait());

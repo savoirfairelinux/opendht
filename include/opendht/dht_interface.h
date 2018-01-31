@@ -228,7 +228,6 @@ public:
         DHT_LOG.setFilter(f);
     }
 
-#if OPENDHT_PUSH_NOTIFICATIONS
     virtual void setPushNotificationToken(const std::string&) {};
 
     /**
@@ -240,8 +239,7 @@ public:
      * Refresh a listen via a token
      * @param token
      */
-    virtual void resubscribe(const unsigned token) = 0;
-#endif // OPENDHT_PUSH_NOTIFICATIONS
+    virtual void resubscribe(unsigned token) = 0;
 
 protected:
     bool logFilerEnable_ {};

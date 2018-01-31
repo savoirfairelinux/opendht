@@ -21,6 +21,10 @@
 #include "dhtrunner.h"
 #include "securedht.h"
 
+#if OPENDHT_PROXY_CLIENT
+#include "dht_proxy_client.h"
+#endif
+
 #ifndef _WIN32
 #include <unistd.h>
 #else
@@ -92,8 +96,8 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
 
 #if OPENDHT_PROXY_CLIENT
     config_ = config;
-    enableProxy(not config_.proxy_server.empty());
 #endif
+    enableProxy(not config.proxy_server.empty());
 
     running = true;
     if (not config.threaded)
@@ -863,10 +867,10 @@ DhtRunner::activeDht() const
 #endif // OPENDHT_PROXY_CLIENT
 }
 
-#if OPENDHT_PROXY_CLIENT
 void
 DhtRunner::enableProxy(bool proxify)
 {
+#if OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_) {
         dht_via_proxy_->shutdown({});
     }
@@ -908,51 +912,54 @@ DhtRunner::enableProxy(bool proxify)
             });
         }
     }
+#else
+    if (proxify)
+        std::cerr << "DHT proxy requested but OpenDHT built without proxy support." << std::endl;
+#endif
 }
 
-#if OPENDHT_PUSH_NOTIFICATIONS
 
 /**
  * Updates the push notification device token
  */
 void
 DhtRunner::setPushNotificationToken(const std::string& token) {
+#if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
     pushToken_ = token;
     if (dht_via_proxy_)
         dht_via_proxy_->setPushNotificationToken(token);
+#endif
 }
 
-#endif // OPENDHT_PUSH_NOTIFICATIONS
-#endif // OPENDHT_PROXY_CLIENT
-
-#if OPENDHT_PROXY_SERVER
 void
 DhtRunner::forwardAllMessages(bool forward)
 {
+#if OPENDHT_PROXY_SERVER
 #if OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
         dht_via_proxy_->forwardAllMessages(forward);
 #endif // OPENDHT_PROXY_CLIENT
     if (dht_)
         dht_->forwardAllMessages(forward);
-}
 #endif // OPENDHT_PROXY_SERVER
-
-#if OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
+}
 
 void
 DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& data) const
 {
+#if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
     if (dht_via_proxy_)
         dht_via_proxy_->pushNotificationReceived(data);
+#endif
 }
 
 void
-DhtRunner::resubscribe(const unsigned token)
+DhtRunner::resubscribe(unsigned token)
 {
+#if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
     if (dht_via_proxy_)
         dht_via_proxy_->resubscribe(token);
+#endif
 }
 
-#endif // OPENDHT_PUSH_NOTIFICATIONS && OPENDHT_PROXY_CLIENT
 }

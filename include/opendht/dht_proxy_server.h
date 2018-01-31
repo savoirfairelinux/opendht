@@ -51,12 +51,7 @@ public:
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(std::shared_ptr<DhtRunner> dht,
-                   in_port_t port = 8000.
-#if OPENDHT_PUSH_NOTIFICATIONS
-                   , const std::string& pushServer = ""
-#endif // OPENDHT_PUSH_NOTIFICATIONS
-                   );
+    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "");
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;

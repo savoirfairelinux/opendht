@@ -293,21 +293,14 @@ public:
         dht_->connectivityChanged();
     }
 
-#if OPENDHT_PROXY_CLIENT
-#if OPENDHT_PUSH_NOTIFICATIONS
     void setPushNotificationToken(const std::string& token = "") {
         dht_->setPushNotificationToken(token);
     }
-#endif
-#endif
 
-#if OPENDHT_PROXY_SERVER
     void forwardAllMessages(bool forward) {
         forward_all_ = forward;
     }
-#endif //OPENDHT_PROXY_SERVER
 
-#if OPENDHT_PUSH_NOTIFICATIONS
     /**
      * Call linked callback with push_notification
      * @param notification to process
@@ -322,7 +315,6 @@ public:
     void resubscribe(const unsigned token) {
         dht_->resubscribe(token);
     }
-#endif // OPENDHT_PUSH_NOTIFICATIONS
 
     void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG)
     {
@@ -360,9 +352,7 @@ private:
 
     std::uniform_int_distribution<Value::Id> rand_id {};
 
-#if OPENDHT_PROXY_SERVER
     std::atomic_bool forward_all_ {false};
-#endif //OPENDHT_PROXY_SERVER
 };
 
 const ValueType CERTIFICATE_TYPE = {
