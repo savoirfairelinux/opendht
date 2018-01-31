@@ -1,6 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Copyright (C) 2004-2017 Savoir-faire Linux Inc.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,10 +17,20 @@
 
 #pragma once
 
-#include "opendht/dhtrunner.h"
-#if OPENDHT_PROXY_SERVER
-#include "opendht/dht_proxy_server.h"
-#endif
-#include "opendht/log.h"
-#include "opendht/default_types.h"
-#include "opendht/indexation/pht.h"
+#include <string>
+#include <vector>
+
+/**
+ * Encode a buffer in base64.
+ *
+ * @param str the input buffer
+ * @return a base64-encoded buffer
+ */
+std::string base64_encode(const std::vector<unsigned char>& str);
+/**
+ * Decode a buffer in base64.
+ *
+ * @param str the input buffer
+ * @return a base64-decoded buffer
+ */
+std::string base64_decode(const std::string& str);

@@ -22,6 +22,11 @@
 #include "default_types.h"
 #include "securedht.h" // print certificate ID
 
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#include "base64.h"
+#endif //OPENDHT_PROXY_SERVER
+
+
 namespace dht {
 
 const std::string Query::QUERY_PARSE_ERROR {"Error parsing query."};
@@ -35,12 +40,13 @@ Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data) {
 
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
+    auto flags(s.flags());
     s << "Value[id:" << std::hex << v.id << std::dec << " ";
     if (v.isEncrypted())
         s << "encrypted ";
     else if (v.isSigned()) {
         s << "signed (v" << v.seq << ") ";
-        if (v.recipient != InfoHash())
+        if (v.recipient)
             s << "decrypted ";
     }
     if (not v.isEncrypted()) {
@@ -63,13 +69,14 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
         }
     }
     s << "]";
+    s.flags(flags);
     return s;
 }
 
 const ValueType ValueType::USER_DATA = {0, "User Data"};
 
 bool
-ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t)
+ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&)
 {
     return v->size() <= MAX_VALUE_SIZE;
 }
@@ -165,6 +172,71 @@ Value::msgpack_unpack_body(const msgpack::object& o)
     }
 }
 
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+Value::Value(Json::Value& json)
+{
+   try {
+       if (json.isMember("id"))
+           id = ValueType::Id(json["id"].asInt());
+   } catch (...) { }
+   if (json.isMember("cypher")) {
+       auto cypherStr = json["cypher"].asString();
+       cypherStr = base64_decode(cypherStr);
+       cypher = std::vector<unsigned char>(cypherStr.begin(), cypherStr.end());
+   }
+   if (json.isMember("sig")) {
+       auto sigStr = json["sig"].asString();
+       sigStr = base64_decode(sigStr);
+       signature = std::vector<unsigned char>(sigStr.begin(), sigStr.end());
+   }
+   if (json.isMember("seq"))
+       seq = json["seq"].asInt();
+   if (json.isMember("owner")) {
+       auto ownerStr = json["owner"].asString();
+       auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
+       owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
+   }
+   if (json.isMember("to")) {
+       auto toStr = json["to"].asString();
+       recipient = InfoHash(toStr);
+   }
+   if (json.isMember("type"))
+       type = json["type"].asInt();
+   if (json.isMember("data")){
+       auto dataStr = json["data"].asString();
+       dataStr = base64_decode(dataStr);
+       data = std::vector<unsigned char>(dataStr.begin(), dataStr.end());
+   }
+   if (json.isMember("utype"))
+       user_type = json["utype"].asString();
+}
+
+Json::Value
+Value::toJson() const
+{
+    Json::Value val;
+    val["id"] = std::to_string(id);
+    if (isEncrypted()) {
+        val["cypher"] = base64_encode(cypher);
+    } else {
+        if (isSigned())
+            val["sig"] = base64_encode(signature);
+        bool has_owner = owner && *owner;
+        if (has_owner) { // isSigned
+            val["seq"] = seq;
+            val["owner"] = owner->toString();
+            if (recipient != InfoHash())
+                val["to"] = recipient.toString();
+        }
+        val["type"] = type;
+        val["data"] = base64_encode(data);
+        if (not user_type.empty())
+            val["utype"] = user_type;
+    }
+    return val;
+}
+#endif //OPENDHT_PROXY_SERVER
+
 bool
 FieldValue::operator==(const FieldValue& vfd) const
 {
@@ -257,9 +329,12 @@ std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi) {
     os << "Index[";
     for (auto v = fvi.index.begin(); v != fvi.index.end(); ++v) {
         switch (v->first) {
-            case Value::Field::Id:
+            case Value::Field::Id: {
+                auto flags(os.flags());
                 os << "Id:" << std::hex << v->second.getInt();
+                os.flags(flags);
                 break;
+            }
             case Value::Field::ValueType:
                 os << "ValueType:" << v->second.getInt();
                 break;
@@ -360,10 +435,10 @@ Where::Where(const std::string& q_str) {
                 std::string s {};
                 std::istringstream convert {value_str};
                 convert >> v;
-                if (convert.failbit
+                if (not convert
                         and value_str.size() > 1
-                        and value_str[0] == '\"'
-                        and value_str[value_str.size()-1] == '\"')
+                        and value_str[0] == '"'
+                        and value_str[value_str.size()-1] == '"')
                     s = value_str.substr(1, value_str.size()-2);
                 else
                     s = value_str;
@@ -490,4 +565,3 @@ std::ostream& operator<<(std::ostream& s, const dht::Where& where) {
 
 
 }
-

@@ -20,44 +20,53 @@
 
 namespace dht {
 
-std::shared_ptr<Node>
+NodeCache::~NodeCache()
+{
+    cache_4.setExpired();
+    cache_6.setExpired();
+}
+
+Sp<Node>
 NodeCache::getNode(const InfoHash& id, sa_family_t family) {
-    return (family == AF_INET ? cache_4 : cache_6).getNode(id);
+    return cache(family).getNode(id);
 }
 
-std::shared_ptr<Node>
-NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm) {
-    if (id == zeroes)
+Sp<Node>
+NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client) {
+    if (not id)
         return std::make_shared<Node>(id, addr);
-    return (addr.getFamily() == AF_INET ? cache_4 : cache_6).getNode(id, addr, now, confirm);
+    return cache(addr.getFamily()).getNode(id, addr, now, confirm, client);
 }
 
-std::vector<std::shared_ptr<Node>>
-NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
-    const auto& c = (sa_f == AF_INET ? cache_4 : cache_6);
-    auto it_p = c.lower_bound(id),
-         it_n = it_p;
+std::vector<Sp<Node>>
+NodeCache::getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) const
+{
+    const auto& c = cache(sa_f);
 
-    std::vector<std::shared_ptr<Node>> nodes;
+    std::vector<Sp<Node>> nodes;
     nodes.reserve(std::min(c.size(), count));
     NodeMap::const_iterator it;
+    auto dec_it = [&c](NodeMap::const_iterator& it) {
+        auto ret = it;
+        it = (it == c.cbegin()) ? c.cend() : std::prev(it);
+        return ret;
+    };
 
-    if (it_p != c.begin()) /* Create 2 separate iterator if we could */
-        --it_p;
+    auto it_p = c.lower_bound(id),
+        it_n = it_p;
+    if (not c.empty())
+        dec_it(it_p); /* Create 2 separate iterator if we could */
 
-    while (nodes.size() < count and (it_n != c.end() or it_p != c.end())) {
+    while (nodes.size() < count and (it_n != c.cend() or it_p != c.cend())) {
         /* If one of the iterator is at the end, then take the other one
            If they are both in middle of somewhere comapre both and take
            the closest to the id. */
-        if (it_p == c.end())       it = it_n++;
-        else if (it_n == c.end())  it = it_p--;
-        else                       it = id.xorCmp(it_p->first, it_n->first) < 0 ? it_p-- : it_n++;
-
-        if (it == c.begin())
-            it_p = c.end();
+        if (it_p == c.cend())       it = it_n++;
+        else if (it_n == c.cend())  it = dec_it(it_p);
+        else                        it = id.xorCmp(it_p->first, it_n->first) < 0 ? dec_it(it_p) : it_n++;
 
         if (auto n = it->second.lock())
-            if ( not n->isExpired() )
+            if ( not n->isExpired() and not n->isClient() )
                 nodes.emplace_back(std::move(n));
     }
 
@@ -71,11 +80,11 @@ NodeCache::clearBadNodes(sa_family_t family)
         clearBadNodes(AF_INET);
         clearBadNodes(AF_INET6);
     } else {
-        (family == AF_INET ? cache_4 : cache_6).clearBadNodes();
+        cache(family).clearBadNodes();
     }
 }
 
-std::shared_ptr<Node>
+Sp<Node>
 NodeCache::NodeMap::getNode(const InfoHash& id)
 {
     auto wn = find(id);
@@ -87,15 +96,15 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
     return {};
 }
 
-std::shared_ptr<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm)
+Sp<Node>
+NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client)
 {
     auto it = emplace(id, std::weak_ptr<Node>{});
     auto node = it.first->second.lock();
     if (not node) {
-        node = std::make_shared<Node>(id, addr);
+        node = std::make_shared<Node>(id, addr, client);
         it.first->second = node;
-    } else if (confirm || node->time < now - Node::NODE_EXPIRE_TIME) {
+    } else if (confirm or node->isOld(now)) {
         node->update(addr);
     }
     return node;
@@ -111,6 +120,14 @@ NodeCache::NodeMap::clearBadNodes() {
             erase(it++);
         }
     }
+}
+
+void
+NodeCache::NodeMap::setExpired() {
+    for (auto& wn : *this)
+        if (auto n = wn.second.lock())
+            n->setExpired();
+    clear();
 }
 
 }

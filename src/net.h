@@ -1,6 +1,6 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Copyright (C) 2017 Savoir-faire Linux Inc.
+ *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,10 +18,21 @@
 
 #pragma once
 
-#include "opendht/dhtrunner.h"
-#if OPENDHT_PROXY_SERVER
-#include "opendht/dht_proxy_server.h"
-#endif
-#include "opendht/log.h"
-#include "opendht/default_types.h"
-#include "opendht/indexation/pht.h"
+namespace dht {
+namespace net {
+
+enum class MessageType {
+    Error = 0,
+    Reply,
+    Ping,
+    FindNode,
+    GetValues,
+    AnnounceValue,
+    Refresh,
+    Listen,
+    ValueData,
+    ValueUpdate
+};
+
+} /* namespace net */
+} /* dht */

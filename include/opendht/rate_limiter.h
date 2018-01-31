@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2017 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -23,13 +23,13 @@
 
 namespace dht {
 
-template<size_t Quota, unsigned long Perdiod=1>
+template<size_t Quota, unsigned long Period=1>
 class RateLimiter {
 public:
-    /** Clear outdated records and return current quota usage */ 
+    /** Clear outdated records and return current quota usage */
     size_t maintain(const time_point& now) {
-        using namespace std::chrono;
-        while (not records.empty() and duration_cast<seconds>(now - records.front()) >= seconds(Perdiod))
+        auto limit = now - std::chrono::seconds(Period);
+        while (not records.empty() and records.front() < limit)
             records.pop();
         return records.size();
     }

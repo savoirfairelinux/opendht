@@ -36,6 +36,10 @@ extern "C" {
 #endif
 
 namespace dht {
+
+/**
+ * Contains all crypto primitives
+ */
 namespace crypto {
 
 class OPENDHT_PUBLIC CryptoException : public std::runtime_error {
@@ -583,6 +587,9 @@ using SecureBlob = secure_vector<uint8_t>;
 OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
 OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
 
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, Identity ca, bool is_ca);
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", Identity ca = {});
+
 
 /**
  * Performs SHA512, SHA256 or SHA1, depending on hash_length.
@@ -593,6 +600,8 @@ OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", Id
  * will use SHA512 for hash_length of 33 bytes and more.
  */
 OPENDHT_PUBLIC Blob hash(const Blob& data, size_t hash_length = 512/8);
+
+OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length);
 
 /**
  * Generates an encryption key from a text password,

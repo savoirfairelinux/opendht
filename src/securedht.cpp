@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,20 +33,10 @@ extern "C" {
 
 namespace dht {
 
-Config& getConfig(SecureDht::Config& conf)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
+: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second)
 {
-    auto& c = conf.node_config;
-    if (c.node_id == InfoHash() and conf.id.second)
-        c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
-    return c;
-}
-
-SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
-: Dht(s, s6, getConfig(conf)), key_(conf.id.first), certificate_(conf.id.second)
-{
-    if (s < 0 && s6 < 0)
-        return;
-
+    if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
         registerType(type);
 
@@ -59,7 +50,7 @@ SecureDht::SecureDht(int s, int s6, SecureDht::Config conf)
         if (key_ and certId != key_->getPublicKey().getId())
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
-        Dht::put(certId, Value {
+        dht_->put(certId, Value {
             CERTIFICATE_TYPE,
             *certificate_,
             1
@@ -76,7 +67,7 @@ SecureDht::~SecureDht()
 ValueType
 SecureDht::secureType(ValueType&& type)
 {
-    type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, InfoHash nid, const sockaddr* a, socklen_t al) {
+    type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
         if (v->isSigned()) {
             if (!v->owner or !v->owner->checkSignature(v->getToSign(), v->signature)) {
                 DHT_LOG.WARN("Signature verification failed");
@@ -85,11 +76,11 @@ SecureDht::secureType(ValueType&& type)
             else
                 DHT_LOG.WARN("Signature verification succeeded");
         }
-        return type.storePolicy(id, v, nid, a, al);
+        return type.storePolicy(id, v, nid, a);
     };
-    type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, InfoHash nid, const sockaddr* a, socklen_t al) {
+    type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
         if (!o->isSigned())
-            return type.editPolicy(id, o, n, nid, a, al);
+            return type.editPolicy(id, o, n, nid, a);
         if (o->owner != n->owner) {
             DHT_LOG.WARN("Edition forbidden: owner changed.");
             return false;
@@ -190,7 +181,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<cry
     }
 
     auto found = std::make_shared<bool>(false);
-    Dht::get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
+    dht_->get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
         if (*found)
             return false;
         for (const auto& v : vals) {
@@ -238,8 +229,13 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
         for (const auto& v : values) {
             // Decrypt encrypted values
             if (v->isEncrypted()) {
-                if (not key_)
+                if (not key_) {
+#if OPENDHT_PROXY_SERVER
+                    if (forward_all_) // We are currently a proxy, send messages to clients.
+                        tmpvals.push_back(v);
+#endif
                     continue;
+                }
                 try {
                     Value decrypted_val (decrypt(*v));
                     if (decrypted_val.recipient == getId()) {
@@ -277,13 +273,13 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 void
 SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
-    Dht::get(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), donecb, {}, std::forward<Where>(w));
+    dht_->get(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), donecb, {}, std::forward<Where>(w));
 }
 
 size_t
-SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter&& f, Where&& w)
+SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)
 {
-    return Dht::listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
+    return dht_->listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
 }
 
 void
@@ -295,7 +291,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
     }
 
     // Check if we are already announcing a value
-    auto p = getPut(hash, val->id);
+    auto p = dht_->getPut(hash, val->id);
     if (p && val->seq <= p->seq) {
         DHT_LOG.DEBUG("Found previous value being announced.");
         val->seq = p->seq + 1;
@@ -317,7 +313,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
         },
         [hash,val,this,callback,permanent] (bool /* ok */) {
             sign(*val);
-            put(hash, val, callback, time_point::max(), permanent);
+            dht_->put(hash, val, callback, time_point::max(), permanent);
         },
         Value::IdFilter(val->id)
     );
@@ -334,7 +330,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
         }
         DHT_LOG.WARN("Encrypting data for PK: %s", pk->getId().toString().c_str());
         try {
-            put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
+            dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
         } catch (const std::exception& e) {
             DHT_LOG.ERR("Error putting encrypted data: %s", e.what());
             if (callback)

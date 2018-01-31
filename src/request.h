@@ -20,33 +20,14 @@
 #pragma once
 
 #include "net.h"
+#include "value.h"
 
 namespace dht {
+struct Node;
 namespace net {
 
 class NetworkEngine;
 struct ParsedMessage;
-
-/*!
- * @class   Socket
- * @brief   Open route to a node for continous incoming packets.
- * @details
- * A socket lets a remote node send us continuous packets treated using a
- * given callback. This is intended to provide an easy management of
- * specific updates nodes can send. For e.g, this is used in the case of the
- * "listen" operation for treating updates a node has for a given storage.
- */
-struct Socket {
-    Socket() {}
-    Socket(std::shared_ptr<Node> node,
-           TransId id,
-           std::function<void(const std::shared_ptr<Node>&, ParsedMessage&&)> on_receive) :
-        node(node), id(id), on_receive(on_receive) {}
-
-    std::shared_ptr<Node> node;
-    TransId id;
-    std::function<void(const std::shared_ptr<Node>&, ParsedMessage&&)> on_receive {};
-};
 
 /*!
  * @class   Request
@@ -59,7 +40,7 @@ struct Socket {
 struct Request {
     friend class dht::net::NetworkEngine;
 
-    std::shared_ptr<Node> node {};             /* the node to whom the request is destined. */
+    Sp<Node> node {};             /* the node to whom the request is destined. */
     time_point reply_time {time_point::min()}; /* time when we received the response to the request. */
 
     enum class State
@@ -78,13 +59,19 @@ struct Request {
     State getState() const { return state_; }
 
     Request(State state = State::PENDING) : state_(state) {}
-    Request(TransId tid,
-            std::shared_ptr<Node> node,
+    Request(MessageType type, Tid tid,
+            Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<void(const Request&, bool)> on_expired,
-            std::shared_ptr<Socket> socket = {}) :
-        node(node), on_done(on_done), on_expired(on_expired), tid(tid), msg(std::move(msg)), socket(socket) { }
+            Tid socket = 0) :
+        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)), socket(socket) { }
+
+    Tid getTid() const { return tid; }
+    MessageType getType() const { return type; }
+
+    Tid getSocket() { return socket; }
+    Tid closeSocket() { auto ret = socket; socket = 0; return ret; }
 
     void setExpired() {
         if (pending()) {
@@ -121,6 +108,8 @@ private:
         msg.clear();
     }
 
+    const Tid tid {0}; /* the request id. */
+    const MessageType type {};
     State state_ {State::PENDING};
 
     unsigned attempt_count {0};                /* number of attempt to process the request. */
@@ -130,9 +119,8 @@ private:
     std::function<void(const Request&, ParsedMessage&&)> on_done {};
     std::function<void(const Request&, bool)> on_expired {};
 
-    const TransId tid; /* the request id. */
     Blob msg {};                      /* the serialized message. */
-    std::shared_ptr<Socket> socket;   /* the socket used for further reponses. */
+    Tid socket;   /* the socket used for further reponses. */
 };
 
 } /* namespace net  */

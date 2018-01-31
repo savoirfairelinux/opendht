@@ -84,7 +84,7 @@ static constexpr size_t PASSWORD_SALT_LENGTH {16};
 
 constexpr gnutls_digest_algorithm_t gnutlsHashAlgo(size_t min_res) {
     return (min_res > 256/8) ? GNUTLS_DIG_SHA512 : (
-           (min_res > 128/8) ? GNUTLS_DIG_SHA256 : (
+           (min_res > 160/8) ? GNUTLS_DIG_SHA256 : (
                                GNUTLS_DIG_SHA1));
 }
 
@@ -212,10 +212,19 @@ Blob hash(const Blob& data, size_t hash_len)
     Blob res;
     res.resize(res_size);
     const gnutls_datum_t gdat {(uint8_t*)data.data(), (unsigned)data.size()};
-    if (gnutls_fingerprint(algo, &gdat, res.data(), &res_size))
-        throw CryptoException("Can't compute hash !");
+    if (auto err = gnutls_fingerprint(algo, &gdat, res.data(), &res_size))
+        throw CryptoException(std::string("Can't compute hash: ") + gnutls_strerror(err));
     res.resize(std::min(hash_len, res_size));
     return res;
+}
+
+void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length)
+{
+    auto algo = gnutlsHashAlgo(hash_length);
+    size_t res_size = hash_length;
+    const gnutls_datum_t gdat {(uint8_t*)data, (unsigned)data_length};
+    if (auto err = gnutls_fingerprint(algo, &gdat, hash, &res_size))
+        throw CryptoException(std::string("Can't compute hash: ") + gnutls_strerror(err));
 }
 
 PrivateKey::PrivateKey()
@@ -529,7 +538,12 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
+#if GNUTLS_VERSION_NUMBER < 0x030401
+    const int flags = 0;
+#else
+    const int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
+#endif
+    if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get public key ID: wrong output length.");
@@ -882,6 +896,19 @@ generateIdentity(const std::string& name, Identity ca, unsigned key_length) {
     return generateIdentity(name, ca, key_length, !ca.first || !ca.second);
 }
 
+Identity
+generateEcIdentity(const std::string& name, crypto::Identity ca, bool is_ca)
+{
+    auto key = std::make_shared<PrivateKey>(PrivateKey::generateEC());
+    auto cert = std::make_shared<Certificate>(Certificate::generate(*key, name, ca, is_ca));
+    return {std::move(key), std::move(cert)};
+}
+
+Identity
+generateEcIdentity(const std::string& name, Identity ca) {
+    return generateEcIdentity(name, ca, !ca.first || !ca.second);
+}
+
 Certificate
 Certificate::generate(const PrivateKey& key, const std::string& name, Identity ca, bool is_ca)
 {
@@ -916,10 +943,12 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
         gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
     }
 
-    unsigned key_usage = GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT;
+    unsigned key_usage = 0;
     if (is_ca) {
         gnutls_x509_crt_set_ca_status(cert, 1);
         key_usage |= GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN;
+    } else {
+        key_usage |= GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT;
     }
     gnutls_x509_crt_set_key_usage(cert, key_usage);
 
@@ -1262,8 +1291,10 @@ std::ostream& operator<< (std::ostream& o, const TrustList::VerifyResult& h)
             o << "* Certificate has expired" << std::endl;
         if (h.result & GNUTLS_CERT_UNEXPECTED_OWNER)
             o << "* The owner is not the expected one" << std::endl;
+#if GNUTLS_VERSION_NUMBER >= 0x030401
         if (h.result & GNUTLS_CERT_PURPOSE_MISMATCH)
             o << "* Certificate or an intermediate does not match the intended purpose" << std::endl;
+#endif
         if (h.result & GNUTLS_CERT_MISMATCH)
             o << "* Certificate presented isn't the expected one" << std::endl;
     } else {

@@ -22,6 +22,7 @@
 #include "request.h"
 #include "default_types.h"
 #include "log_enable.h"
+#include "parsed_message.h"
 
 #include <msgpack.hpp>
 
@@ -52,16 +53,7 @@ constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
 const std::string NetworkEngine::my_v {"RNG1"};
-const constexpr uint16_t TransId::INVALID;
-std::mt19937 NetworkEngine::rd_device {dht::crypto::random_device{}()};
-
-const TransPrefix TransPrefix::PING = {"pn"};
-const TransPrefix TransPrefix::FIND_NODE = {"fn"};
-const TransPrefix TransPrefix::GET_VALUES = {"gt"};
-const TransPrefix TransPrefix::ANNOUNCE_VALUES = {"pt"};
-const TransPrefix TransPrefix::REFRESH = {"rf"};
-const TransPrefix TransPrefix::LISTEN = {"lt"};
-constexpr long unsigned NetworkEngine::MAX_REQUESTS_PER_SEC;
+constexpr size_t NetworkEngine::MAX_REQUESTS_PER_SEC;
 
 static const uint8_t v4prefix[16] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
@@ -95,62 +87,23 @@ set_nonblocking(int fd, int nonblocking)
 
 #endif
 
-enum class MessageType {
-    Error = 0,
-    Reply,
-    Ping,
-    FindNode,
-    GetValues,
-    AnnounceValue,
-    Refresh,
-    Listen,
-    ValueData
+
+/* Transaction-ids are 4-bytes long, with the first two bytes identifying
+ * the kind of request, and the remaining two a sequence number in
+ * host order.
+ */
+struct TransId final : public std::array<uint8_t, 4> {
+    TransId() { std::fill(begin(), end(), 0); }
+    TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
+    TransId(uint32_t id) {
+        *reinterpret_cast<uint32_t*>(data()) = htonl(id);
+    }
+
+    uint32_t toInt() const {
+        return ntohl(*reinterpret_cast<const uint32_t*>(&(*this)[0]));
+    }
 };
 
-struct ParsedMessage {
-    MessageType type;
-    /* Node ID of the sender */
-    InfoHash id;
-    /* Network id */
-    NetId network {0};
-    /* hash for which values are requested */
-    InfoHash info_hash;
-    /* target id around which to find nodes */
-    InfoHash target;
-    /* transaction id */
-    TransId tid;
-    /* tid for packets going through request socket */
-    TransId socket_id;
-    /* security token */
-    Blob token;
-    /* the value id (announce confirmation) */
-    Value::Id value_id;
-    /* time when value was first created */
-    time_point created { time_point::max() };
-    /* IPv4 nodes in response to a 'find' request */
-    Blob nodes4_raw, nodes6_raw;
-    std::vector<Sp<Node>> nodes4, nodes6;
-    /* values to store or retreive request */
-    std::vector<Sp<Value>> values;
-    /* index for fields values */
-    std::vector<Sp<FieldValueIndex>> fields;
-    /** When part of the message header: {index -> (total size, {})}
-     *  When part of partial value data: {index -> (offset, part_data)} */
-    std::map<unsigned, std::pair<unsigned, Blob>> value_parts;
-    /* query describing a filter to apply on values. */
-    Query query;
-    /* states if ipv4 or ipv6 request */
-    want_t want;
-    /* error code in case of error */
-    uint16_t error_code;
-    /* reported address by the distant node */
-    std::string ua;
-    SockAddr addr;
-    void msgpack_unpack(msgpack::object o);
-
-    bool append(const ParsedMessage& block);
-    bool complete();
-};
 
 struct NetworkEngine::PartialMessage {
     SockAddr from;
@@ -169,12 +122,14 @@ serializeValues(const std::vector<Sp<Value>>& st)
     return svals;
 }
 
-NetworkEngine::RequestAnswer::RequestAnswer(ParsedMessage&& msg)
+RequestAnswer::RequestAnswer(ParsedMessage&& msg)
  : ntoken(std::move(msg.token)), values(std::move(msg.values)), fields(std::move(msg.fields)),
     nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
 
-NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler) : myid(zeroes), DHT_LOG(log), scheduler(scheduler) {}
-NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
+    : myid(zeroes), DHT_LOG(log), scheduler(scheduler), dht_socket(s), dht_socket6(s6)
+{}
+NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError) onError,
         decltype(NetworkEngine::onNewNode) onNewNode,
         decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -196,7 +151,6 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& l
         if (!set_nonblocking(dht_socket6, 1))
             throw DhtException("Can't set socket to non-blocking mode");
     }
-    transaction_id = std::uniform_int_distribution<decltype(transaction_id)>{1}(rd_device);
 }
 
 NetworkEngine::~NetworkEngine() {
@@ -204,14 +158,14 @@ NetworkEngine::~NetworkEngine() {
 }
 
 void
-NetworkEngine::tellListener(Sp<Node> node, uint32_t socket_id, const InfoHash& hash, want_t want,
+NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, want_t want,
         const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
         std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
         const Query& query)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(node->addr, TransId((char*)&socket_id, 4), nnodes.first, nnodes.second, values, query, ntoken);
+        sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
     } catch (const std::overflow_error& e) {
         DHT_LOG.e("Can't send value: buffer not large enough !");
     }
@@ -232,40 +186,9 @@ NetworkEngine::isRunning(sa_family_t af) const
     }
 }
 
-Sp<Socket>
-NetworkEngine::openSocket(const Sp<Node>& node, TransPrefix tp, SocketCb&& cb)
-{
-    auto tid = TransId {tp, getNewTid()};
-    auto s = opened_sockets.emplace(tid, std::make_shared<Socket>(node, tid, cb));
-    if (not s.second)
-        DHT_LOG.e(node->id, "[node %s] socket (tid: %d) already opened!", node->id.toString().c_str(), tid.toInt());
-    return s.first->second;
-}
-
-void
-NetworkEngine::closeSocket(Sp<Socket> socket)
-{
-    if (socket)
-        opened_sockets.erase(socket->id);
-}
-
-void
-NetworkEngine::cancelRequest(Sp<Request>& req)
-{
-    if (req) {
-        req->cancel();
-        closeSocket(req->socket);
-        requests.erase(req->tid);
-    }
-}
-
 void
 NetworkEngine::clear()
-{
-    for (auto& req : requests)
-        req.second->setExpired();
-    requests.clear();
-}
+{}
 
 void
 NetworkEngine::connectivityChanged(sa_family_t af)
@@ -277,32 +200,32 @@ void
 NetworkEngine::requestStep(Sp<Request> sreq)
 {
     auto& req = *sreq;
-    if (not req.pending()) {
-        if (req.cancelled())
-            requests.erase(req.tid);
+    if (not req.pending())
         return;
-    }
 
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
         DHT_LOG.e(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
-        requests.erase(req.tid);
+        if (not node.id)
+            requests.erase(req.tid);
         return;
     } else if (req.attempt_count == 1) {
         req.on_expired(req, false);
     }
 
     auto err = send((char*)req.msg.data(), req.msg.size(),
-            (node.reply_time >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            node.addr);
+            (node.getReplyTime() >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
+            node.getAddr());
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
-        err == EAFNOSUPPORT)
+        err == EAFNOSUPPORT ||
+        err == EPIPE)
     {
         node.setExpired();
-        requests.erase(req.tid);
+        if (not node.id)
+            requests.erase(req.tid);
     } else {
         if (err != EAGAIN) {
             ++req.attempt_count;
@@ -321,18 +244,13 @@ NetworkEngine::requestStep(Sp<Request> sreq)
  * be made before the request expires.
  */
 void
-NetworkEngine::sendRequest(Sp<Request>& request)
+NetworkEngine::sendRequest(const Sp<Request>& request)
 {
+    auto& node = request->node;
+    if (not node->id)
+        requests.emplace(request->tid, request);
     request->start = scheduler.time();
-    auto e = requests.emplace(request->tid, request);
-    if (not e.second) {
-        // Should not happen !
-        // Try to handle this scenario as well as we can
-        e.first->second->setExpired();
-        e.first->second = request;
-        DHT_LOG.e(request->node->id, "Request already existed (tid: %d)!", request->tid.getTid());
-    }
-    request->node->requested(request);
+    node->requested(request);
     requestStep(request);
 }
 
@@ -343,15 +261,15 @@ NetworkEngine::rateLimit(const SockAddr& addr)
 {
     const auto& now = scheduler.time();
 
-    // occasional IP limiter maintenance
-    std::bernoulli_distribution rand_trial(1./128.);
-    if (rand_trial(rd_device)) {
+    // occasional IP limiter maintenance (a few times every second at max rate)
+    if (limiter_maintenance++ == MAX_REQUESTS_PER_SEC/8) {
         for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
             if (it->second.maintain(now) == 0)
                 address_rate_limiter.erase(it++);
             else
                 ++it;
         }
+        limiter_maintenance = 0;
     }
 
     auto it = address_rate_limiter.emplace(addr, IpLimiter{});
@@ -372,7 +290,7 @@ NetworkEngine::isMartian(const SockAddr& addr)
               ((address[0] & 0xE0) == 0xE0);
     }
     case AF_INET6: {
-        if (addr.second < sizeof(sockaddr_in6))
+        if (addr.getLength() < sizeof(sockaddr_in6))
             return true;
         const auto& sin6 = addr.getIPv6();
         const uint8_t* address = (const uint8_t*)&sin6.sin6_addr;
@@ -392,15 +310,7 @@ void
 NetworkEngine::blacklistNode(const Sp<Node>& n)
 {
     n->setExpired();
-    for (auto rit = requests.begin(); rit != requests.end();) {
-        if (rit->second->node == n) {
-            //rit->second->cancel();
-            requests.erase(rit++);
-        } else {
-            ++rit;
-        }
-    }
-    blacklist.emplace(n->addr);
+    blacklist.emplace(n->getAddr());
 }
 
 bool
@@ -466,7 +376,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         return;
     }
 
-    if (msg->id == myid || msg->id == zeroes) {
+    if (msg->id == myid or not msg->id) {
         DHT_LOG.d("Received message from self");
         return;
     }
@@ -501,50 +411,53 @@ void
 NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from)
 {
     const auto& now = scheduler.time();
+    auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
 
-    if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
+    if (msg->type == MessageType::ValueUpdate) {
+        auto rsocket = node->getSocket(msg->tid);
+        if (not rsocket)
+            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find socket", msg->id};
+        node->received(now, {});
+        onNewNode(node, 2);
+        deserializeNodes(*msg, from);
+        rsocket->on_receive(node, std::move(*msg));
+    }
+    else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
+        auto rsocket = node->getSocket(msg->tid);
+        auto req = node->getRequest(msg->tid);
+
         /* either response for a request or data for an opened socket */
-        auto req_it = requests.find(msg->tid);
-        auto rsocket_it = opened_sockets.end();
-        if (req_it == requests.end())
-            rsocket_it = opened_sockets.find(msg->tid);
-        if (req_it == requests.end() and rsocket_it == opened_sockets.end())
-            throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
-
-        auto req = req_it != requests.end() ? req_it->second : nullptr;
-        auto rsocket = rsocket_it != opened_sockets.end() ? rsocket_it->second : nullptr;
-
-        auto& node = req ? req->node : rsocket->node;
-        if (node->id != msg->id) {
-            if (node->id == zeroes) // received reply to a message sent when we didn't know the node ID.
-                node = cache.getNode(msg->id, from, now, true);
-            else {
-                // received reply from unexpected node
+        if (not req and not rsocket) {
+            auto req_it = requests.find(msg->tid);
+            if (req_it != requests.end() and not req_it->second->node->id) {
+                req = req_it->second;
+                req->node = node;
+                requests.erase(req_it);
+            } else {
                 node->received(now, req);
-                onNewNode(node, 2);
-                DHT_LOG.w(node->id, "[node %s] message received from unexpected node", node->toString().c_str());
-                return;
+                if (not node->isClient())
+                    onNewNode(node, 1);
+                throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
             }
-        } else
-            node->update(from);
+        }
 
         node->received(now, req);
 
-        onNewNode(node, 2);
+        if (not node->isClient())
+            onNewNode(node, 2);
         onReportedAddr(msg->id, msg->addr);
 
         if (req and (req->cancelled() or req->expired() or req->completed())) {
             DHT_LOG.w(node->id, "[node %s] response to expired, cancelled or completed request", node->toString().c_str());
-            requests.erase(req_it);
             return;
         }
 
         switch (msg->type) {
         case MessageType::Error: {
-            if (msg->id != zeroes and (
-                (msg->error_code == DhtProtocolException::NOT_FOUND    and  msg->tid.matches(TransPrefix::REFRESH)) or
-                (msg->error_code == DhtProtocolException::UNAUTHORIZED and (msg->tid.matches(TransPrefix::ANNOUNCE_VALUES)
-                                                                         or msg->tid.matches(TransPrefix::LISTEN)))))
+            if (msg->id and req and (
+                (msg->error_code == DhtProtocolException::NOT_FOUND    and req->getType() == MessageType::Refresh) or
+                (msg->error_code == DhtProtocolException::UNAUTHORIZED and (req->getType() == MessageType::AnnounceValue
+                                                                         or req->getType() == MessageType::Listen))))
             {
                 req->last_try = time_point::min();
                 req->reply_time = time_point::min();
@@ -556,28 +469,26 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             break;
         }
         case MessageType::Reply:
-         if (req) { /* request reply */
-             if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
-                 req->node->authSuccess();
+            if (req) { /* request reply */
+                if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
+                    req->node->authSuccess();
+                req->reply_time = scheduler.time();
 
-             // erase before calling callback to make sure iterator is still valid
-             requests.erase(req_it);
-             req->reply_time = scheduler.time();
-
-             deserializeNodes(*msg, from);
-             req->setDone(std::move(*msg));
-             break;
-         } else { /* request socket data */
-             deserializeNodes(*msg, from);
-             rsocket->on_receive(rsocket->node, std::move(*msg));
-         }
+                deserializeNodes(*msg, from);
+                req->setDone(std::move(*msg));
+                break;
+            } else { /* request socket data */
+                deserializeNodes(*msg, from);
+                rsocket->on_receive(node, std::move(*msg));
+            }
+            break;
         default:
             break;
         }
     } else {
-        auto node = cache.getNode(msg->id, from, now, true);
         node->received(now, {});
-        onNewNode(node, 1);
+        if (not node->isClient())
+            onNewNode(node, 1);
         try {
             switch (msg->type) {
             case MessageType::Ping:
@@ -624,9 +535,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             case MessageType::Listen: {
                 DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
-                /* TODO: backward compatibility check to remove in a few versions (see ::sendListen doc) */
-                auto socket_id = msg->socket_id.getTid() ? msg->socket_id : TransId { TransPrefix::GET_VALUES, msg->tid.getTid() };
-                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, socket_id.toInt(), std::move(msg->query));
+                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query));
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
@@ -651,10 +560,10 @@ packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
 void
 insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 {
-    size_t addr_len = std::min<size_t>(addr.second,
+    size_t addr_len = std::min<size_t>(addr.getLength(),
                      (addr.getFamily() == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr));
-    void* addr_ptr = (addr.getFamily() == AF_INET) ? (void*)&((sockaddr_in*)&addr.first)->sin_addr
-                                                : (void*)&((sockaddr_in6*)&addr.first)->sin6_addr;
+    void* addr_ptr = (addr.getFamily() == AF_INET) ? (void*)&addr.getIPv4().sin_addr
+                                                : (void*)&addr.getIPv6().sin6_addr;
     pk.pack("sa");
     pk.pack_bin(addr_len);
     pk.pack_bin_body((char*)addr_ptr, addr_len);
@@ -663,7 +572,7 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 int
 NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
 {
-    if (addr.second == 0)
+    if (not addr)
         return EFAULT;
 
     int s;
@@ -676,9 +585,15 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 
     if (s < 0)
         return EAFNOSUPPORT;
-    if (sendto(s, buf, len, flags, (const sockaddr*)&addr.first, addr.second) == -1) {
+#ifdef MSG_NOSIGNAL
+    flags &= MSG_NOSIGNAL;
+#endif
+    if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
         DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
+        if (err == EPIPE) {
+            throw SocketException(EPIPE);
+        }
         return err;
     }
     return 0;
@@ -686,7 +601,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 
 Sp<Request>
 NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    auto tid = TransId {TransPrefix::PING, getNewTid()};
+    TransId tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -703,7 +618,7 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    auto req = std::make_shared<Request>(tid, node,
+    auto req = std::make_shared<Request>(MessageType::Ping, tid.toInt(), node,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&&) {
             DHT_LOG.d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
@@ -723,7 +638,7 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
 }
 
 void
-NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
+NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
@@ -732,8 +647,9 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
       pk.pack(std::string("id")); pk.pack(myid);
       insertAddr(pk, addr);
 
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    TransId t (tid);
+    pk.pack(std::string("t")); pk.pack_bin(t.size());
+                               pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
     if (network) {
@@ -746,7 +662,7 @@ NetworkEngine::sendPong(const SockAddr& addr, TransId tid) {
 Sp<Request>
 NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    auto tid = TransId {TransPrefix::FIND_NODE, getNewTid()};
+    TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -770,7 +686,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    auto req = std::make_shared<Request>(tid, n,
+    auto req = std::make_shared<Request>(MessageType::FindNode, tid.toInt(), n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
@@ -792,7 +708,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
 Sp<Request>
 NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    auto tid = TransId {TransPrefix::GET_VALUES, getNewTid()};
+    TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -819,7 +735,7 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    auto req = std::make_shared<Request>(tid, n,
+    auto req = std::make_shared<Request>(MessageType::GetValues, tid.toInt(), n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
@@ -839,20 +755,18 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
 
 SockAddr deserializeIPv4(const uint8_t* ni) {
     SockAddr addr;
-    auto& sin = addr.getIPv4();
-    std::fill_n((uint8_t*)&sin, sizeof(sockaddr_in), 0);
     addr.setFamily(AF_INET);
-    memcpy(&sin.sin_addr, ni, 4);
-    memcpy(&sin.sin_port, ni + 4, 2);
+    auto& sin = addr.getIPv4();
+    std::memcpy(&sin.sin_addr, ni, 4);
+    std::memcpy(&sin.sin_port, ni + 4, 2);
     return addr;
 }
 SockAddr deserializeIPv6(const uint8_t* ni) {
     SockAddr addr;
-    auto& sin6 = addr.getIPv6();
-    std::fill_n((uint8_t*)&sin6, sizeof(sockaddr_in6), 0);
     addr.setFamily(AF_INET6);
-    memcpy(&sin6.sin6_addr, ni, 16);
-    memcpy(&sin6.sin6_port, ni + 16, 2);
+    auto& sin6 = addr.getIPv6();
+    std::memcpy(&sin6.sin6_addr, ni, 16);
+    std::memcpy(&sin6.sin6_port, ni + 16, 2);
     return addr;
 }
 
@@ -860,41 +774,40 @@ void
 NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
     if (msg.nodes4_raw.size() % NODE4_INFO_BUF_LEN != 0 || msg.nodes6_raw.size() % NODE6_INFO_BUF_LEN != 0) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
-    } else {
-        // deserialize nodes
-        const auto& now = scheduler.time();
-        for (unsigned i = 0; i < msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i++) {
-            uint8_t *ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
-            const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
-            if (ni_id == myid)
-                continue;
-            SockAddr addr = deserializeIPv4(ni + ni_id.size());
-            if (addr.isLoopback() and from.getFamily() == AF_INET) {
-                auto port = addr.getPort();
-                addr = from;
-                addr.setPort(port);
-            }
-            if (isMartian(addr) || isNodeBlacklisted(addr))
-                continue;
-            msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
-            onNewNode(msg.nodes4.back(), 0);
+    }
+    // deserialize nodes
+    const auto& now = scheduler.time();
+    for (unsigned i = 0, n = msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i < n; i++) {
+        const uint8_t* ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
+        const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
+        if (ni_id == myid)
+            continue;
+        SockAddr addr = deserializeIPv4(ni + ni_id.size());
+        if (addr.isLoopback() and from.getFamily() == AF_INET) {
+            auto port = addr.getPort();
+            addr = from;
+            addr.setPort(port);
         }
-        for (unsigned i = 0; i < msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i++) {
-            uint8_t *ni = msg.nodes6_raw.data() + i * NODE6_INFO_BUF_LEN;
-            const InfoHash& ni_id = *reinterpret_cast<InfoHash*>(ni);
-            if (ni_id == myid)
-                continue;
-            SockAddr addr = deserializeIPv6(ni + ni_id.size());
-            if (addr.isLoopback() and from.getFamily() == AF_INET6) {
-                auto port = addr.getPort();
-                addr = from;
-                addr.setPort(port);
-            }
-            if (isMartian(addr) || isNodeBlacklisted(addr))
-                continue;
-            msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
-            onNewNode(msg.nodes6.back(), 0);
+        if (isMartian(addr) || isNodeBlacklisted(addr))
+            continue;
+        msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
+        onNewNode(msg.nodes4.back(), 0);
+    }
+    for (unsigned i = 0, n = msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i < n; i++) {
+        const uint8_t* ni = msg.nodes6_raw.data() + i * NODE6_INFO_BUF_LEN;
+        const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
+        if (ni_id == myid)
+            continue;
+        SockAddr addr = deserializeIPv6(ni + ni_id.size());
+        if (addr.isLoopback() and from.getFamily() == AF_INET6) {
+            auto port = addr.getPort();
+            addr = from;
+            addr.setPort(port);
         }
+        if (isMartian(addr) || isNodeBlacklisted(addr))
+            continue;
+        msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
+        onNewNode(msg.nodes6.back(), 0);
     }
 }
 
@@ -923,7 +836,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
 }
 
 void
-NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr)
+NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr)
 {
     msgpack::sbuffer buffer;
     unsigned i=0;
@@ -953,7 +866,7 @@ NetworkEngine::sendValueParts(TransId tid, const std::vector<Blob>& svals, const
 }
 
 void
-NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& nodes, const Blob& nodes6,
+NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes, const Blob& nodes6,
         const std::vector<Sp<Value>>& st, const Query& query, const Blob& token)
 {
     msgpack::sbuffer buffer;
@@ -994,8 +907,9 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, TransId tid, const Blob& no
         }
     }
 
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    TransId t (tid);
+    pk.pack(std::string("t")); pk.pack_bin(t.size());
+                               pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
     if (network) {
@@ -1022,21 +936,21 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
         bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            sockaddr_in *sin = (sockaddr_in*)&n.addr.first;
+            const auto& sin = n.getAddr().getIPv4();
             auto dest = bnodes.data() + NODE4_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
-            memcpy(dest + HASH_LEN, &sin->sin_addr, sizeof(in_addr));
-            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin->sin_port, sizeof(in_port_t));
+            memcpy(dest + HASH_LEN, &sin.sin_addr, sizeof(in_addr));
+            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin.sin_port, sizeof(in_port_t));
         }
     } else if (af == AF_INET6) {
         bnodes.resize(NODE6_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            sockaddr_in6 *sin6 = (sockaddr_in6*)&n.addr.first;
+            const auto& sin6 = n.getAddr().getIPv6();
             auto dest = bnodes.data() + NODE6_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
-            memcpy(dest + HASH_LEN, &sin6->sin6_addr, sizeof(in6_addr));
-            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6->sin6_port, sizeof(in_port_t));
+            memcpy(dest + HASH_LEN, &sin6.sin6_addr, sizeof(in6_addr));
+            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6.sin6_port, sizeof(in_port_t));
         }
     }
     return bnodes;
@@ -1070,25 +984,21 @@ NetworkEngine::sendListen(Sp<Node> n,
         RequestExpiredCb&& on_expired,
         SocketCb&& socket_cb)
 {
-    Sp<Socket> socket;
-    auto tid = TransId { TransPrefix::LISTEN, previous ? previous->tid.getTid() : getNewTid() };
+    Tid socket;
+    TransId tid (n->getNewTid());
     if (previous and previous->node == n) {
-        socket = previous->socket;
+        socket = previous->getSocket();
     } else {
         if (previous)
             DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
-        /* TODO: Manually creating a socket for "listen" backward compatibility.
-         * As soon as this is not an issue anymore, switch to using
-         * ::createSocket function! */
-        auto sid = TransId {TransPrefix::GET_VALUES, tid.getTid()};
-        socket = std::make_shared<Socket>(n, sid, socket_cb);
-        opened_sockets.emplace(sid, socket);
+        socket = n->openSocket(std::move(socket_cb));
     }
 
     if (not socket) {
         DHT_LOG.e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
         return {};
     }
+    TransId sid(socket);
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -1099,8 +1009,8 @@ NetworkEngine::sendListen(Sp<Node> n,
       pk.pack(std::string("id"));    pk.pack(myid);
       pk.pack(std::string("h"));     pk.pack(hash);
       pk.pack(std::string("token")); packToken(pk, token);
-      pk.pack(std::string("sid"));  pk.pack_bin(socket->id.size());
-                                     pk.pack_bin_body((const char*)socket->id.data(), socket->id.size());
+      pk.pack(std::string("sid"));  pk.pack_bin(sid.size());
+                                     pk.pack_bin_body((const char*)sid.data(), sid.size());
       if (has_query) {
           pk.pack(std::string("q")); pk.pack(query);
       }
@@ -1114,7 +1024,7 @@ NetworkEngine::sendListen(Sp<Node> n,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    auto req = std::make_shared<Request>(tid, n,
+    auto req = std::make_shared<Request>(MessageType::Listen, tid.toInt(), n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
@@ -1132,7 +1042,7 @@ NetworkEngine::sendListen(Sp<Node> n,
 }
 
 void
-NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
+NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
@@ -1141,8 +1051,9 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, TransId tid) {
       pk.pack(std::string("id")); pk.pack(myid);
       insertAddr(pk, addr);
 
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    TransId t (tid);
+    pk.pack(std::string("t")); pk.pack_bin(t.size());
+                               pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
     if (network) {
@@ -1161,7 +1072,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
         RequestCb&& on_done,
         RequestExpiredCb&& on_expired)
 {
-    auto tid = TransId {TransPrefix::ANNOUNCE_VALUES, getNewTid()};
+    TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -1185,7 +1096,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    auto req = std::make_shared<Request>(tid, n,
+    auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid.toInt(), n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
@@ -1206,7 +1117,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     );
     sendRequest(req);
     if (not v.empty())
-        sendValueParts(tid, v, n->addr);
+        sendValueParts(tid, v, n->getAddr());
     ++out_stats.put;
     return req;
 }
@@ -1219,7 +1130,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                 RequestCb&& on_done,
                 RequestExpiredCb&& on_expired)
 {
-    auto tid = TransId {TransPrefix::REFRESH, getNewTid()};
+    TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
@@ -1239,7 +1150,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
         pk.pack(std::string("n")); pk.pack(network);
     }
 
-    auto req = std::make_shared<Request>(tid, n,
+    auto req = std::make_shared<Request>(MessageType::Refresh, tid.toInt(), n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
@@ -1264,7 +1175,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
 }
 
 void
-NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id vid) {
+NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
@@ -1274,8 +1185,9 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id v
       pk.pack(std::string("vid")); pk.pack(vid);
       insertAddr(pk, addr);
 
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    TransId t(tid);
+    pk.pack(std::string("t")); pk.pack_bin(t.size());
+                               pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(std::string("y")); pk.pack(std::string("r"));
     pk.pack(std::string("v")); pk.pack(my_v);
     if (network) {
@@ -1287,7 +1199,7 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, TransId tid, Value::Id v
 
 void
 NetworkEngine::sendError(const SockAddr& addr,
-        TransId tid,
+        Tid tid,
         uint16_t code,
         const std::string& message,
         bool include_id)
@@ -1305,8 +1217,9 @@ NetworkEngine::sendError(const SockAddr& addr,
           pk.pack(std::string("id")); pk.pack(myid);
     }
 
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    TransId t(tid);
+    pk.pack(std::string("t")); pk.pack_bin(t.size());
+                               pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(std::string("y")); pk.pack(std::string("e"));
     pk.pack(std::string("v")); pk.pack(my_v);
     if (network) {
@@ -1317,188 +1230,7 @@ NetworkEngine::sendError(const SockAddr& addr,
 }
 
 void
-ParsedMessage::msgpack_unpack(msgpack::object msg)
-{
-    auto y = findMapValue(msg, "y");
-    auto r = findMapValue(msg, "r");
-    auto e = findMapValue(msg, "e");
-    auto v = findMapValue(msg, "p");
-
-    if (auto t = findMapValue(msg, "t"))
-        tid = {t->as<std::array<char, 4>>()};
-
-    if (auto rv = findMapValue(msg, "v"))
-        ua = rv->as<std::string>();
-
-    if (auto netid = findMapValue(msg, "n"))
-        network = netid->as<NetId>();
-
-    std::string q;
-    if (auto rq = findMapValue(msg, "q")) {
-        if (rq->type != msgpack::type::STR)
-            throw msgpack::type_error();
-        q = rq->as<std::string>();
-    }
-
-    if (e)
-        type = MessageType::Error;
-    else if (r)
-        type = MessageType::Reply;
-    else if (v)
-        type = MessageType::ValueData;
-    else if (y and y->as<std::string>() != "q")
-        throw msgpack::type_error();
-    else if (q == "ping")
-        type = MessageType::Ping;
-    else if (q == "find")
-        type = MessageType::FindNode;
-    else if (q == "get")
-        type = MessageType::GetValues;
-    else if (q == "listen")
-        type = MessageType::Listen;
-    else if (q == "put")
-        type = MessageType::AnnounceValue;
-    else if (q == "refresh")
-        type = MessageType::Refresh;
-    else
-        throw msgpack::type_error();
-
-    if (type == MessageType::ValueData) {
-        if (v->type != msgpack::type::MAP)
-            throw msgpack::type_error();
-        for (size_t i = 0; i < v->via.map.size; ++i) {
-            auto& vdat = v->via.map.ptr[i];
-            auto o = findMapValue(vdat.val, "o");
-            auto d = findMapValue(vdat.val, "d");
-            if (not o or not d)
-                continue;
-            value_parts.emplace(vdat.key.as<unsigned>(), std::pair<size_t, Blob>(o->as<size_t>(), unpackBlob(*d)));
-        }
-        return;
-    }
-
-    auto a = findMapValue(msg, "a");
-    if (!a && !r && !e)
-        throw msgpack::type_error();
-    auto& req = a ? *a : (r ? *r : *e);
-
-    if (e) {
-        if (e->type != msgpack::type::ARRAY)
-            throw msgpack::type_error();
-        error_code = e->via.array.ptr[0].as<uint16_t>();
-    }
-
-    if (auto t = findMapValue(req, "sid"))
-        socket_id = {t->as<std::array<char, 4>>()};
-
-    if (auto rid = findMapValue(req, "id"))
-        id = {*rid};
-
-    if (auto rh = findMapValue(req, "h"))
-        info_hash = {*rh};
-
-    if (auto rtarget = findMapValue(req, "target"))
-        target = {*rtarget};
-
-    if (auto rquery = findMapValue(req, "q"))
-        query.msgpack_unpack(*rquery);
-
-    if (auto otoken = findMapValue(req, "token"))
-        token = unpackBlob(*otoken);
-
-    if (auto vid = findMapValue(req, "vid"))
-        value_id = vid->as<Value::Id>();
-
-    if (auto rnodes4 = findMapValue(req, "n4"))
-        nodes4_raw = unpackBlob(*rnodes4);
-
-    if (auto rnodes6 = findMapValue(req, "n6"))
-        nodes6_raw = unpackBlob(*rnodes6);
-
-    if (auto sa = findMapValue(req, "sa")) {
-        if (sa->type != msgpack::type::BIN)
-            throw msgpack::type_error();
-        auto l = sa->via.bin.size;
-        if (l == sizeof(in_addr)) {
-            auto a = (sockaddr_in*)&addr.first;
-            std::fill_n((uint8_t*)a, sizeof(sockaddr_in), 0);
-            a->sin_family = AF_INET;
-            a->sin_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin_addr);
-            addr.second = sizeof(sockaddr_in);
-        } else if (l == sizeof(in6_addr)) {
-            auto a = (sockaddr_in6*)&addr.first;
-            std::fill_n((uint8_t*)a, sizeof(sockaddr_in6), 0);
-            a->sin6_family = AF_INET6;
-            a->sin6_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a->sin6_addr);
-            addr.second = sizeof(sockaddr_in6);
-        }
-    } else
-        addr.second = 0;
-
-    if (auto rcreated = findMapValue(req, "c"))
-        created = from_time_t(rcreated->as<std::time_t>());
-
-    if (auto rvalues = findMapValue(req, "values")) {
-        if (rvalues->type != msgpack::type::ARRAY)
-            throw msgpack::type_error();
-        for (size_t i = 0; i < rvalues->via.array.size; i++) {
-            auto& packed_v = rvalues->via.array.ptr[i];
-            if (packed_v.type == msgpack::type::POSITIVE_INTEGER) {
-                // Skip oversize values with a small margin for header overhead
-                if (packed_v.via.u64 > MAX_VALUE_SIZE + 32)
-                    continue;
-                value_parts.emplace(i, std::make_pair(packed_v.via.u64, Blob{}));
-            } else {
-                try {
-                    values.emplace_back(std::make_shared<Value>(rvalues->via.array.ptr[i]));
-                } catch (const std::exception& e) {
-                    //DHT_LOG_WARN("Error reading value: %s", e.what());
-                }
-            }
-        }
-    } else if (auto raw_fields = findMapValue(req, "fields")) {
-        if (auto rfields = findMapValue(*raw_fields, "f")) {
-            auto vfields = rfields->as<std::set<Value::Field>>();
-            if (auto rvalues = findMapValue(*raw_fields, "v")) {
-                if (rvalues->type != msgpack::type::ARRAY)
-                    throw msgpack::type_error();
-                size_t val_num = rvalues->via.array.size / vfields.size();
-                for (size_t i = 0; i < val_num; ++i) {
-                    try {
-                        auto v = std::make_shared<FieldValueIndex>();
-                        v->msgpack_unpack_fields(vfields, *rvalues, i*vfields.size());
-                        fields.emplace_back(std::move(v));
-                    } catch (const std::exception& e) { }
-                }
-            }
-        } else {
-            throw msgpack::type_error();
-        }
-    }
-
-    if (auto w = findMapValue(req, "w")) {
-        if (w->type != msgpack::type::ARRAY)
-            throw msgpack::type_error();
-        want = 0;
-        for (unsigned i=0; i<w->via.array.size; i++) {
-            auto& val = w->via.array.ptr[i];
-            try {
-                auto w = val.as<sa_family_t>();
-                if (w == AF_INET)
-                    want |= WANT4;
-                else if(w == AF_INET6)
-                    want |= WANT6;
-            } catch (const std::exception& e) {};
-        }
-    } else {
-        want = -1;
-    }
-}
-
-void
-NetworkEngine::maintainRxBuffer(const TransId& tid)
+NetworkEngine::maintainRxBuffer(Tid tid)
 {
     auto msg = partial_messages.find(tid);
     if (msg != partial_messages.end()) {
@@ -1509,44 +1241,6 @@ NetworkEngine::maintainRxBuffer(const TransId& tid)
             partial_messages.erase(msg);
         }
     }
-}
-
-bool
-ParsedMessage::append(const ParsedMessage& block)
-{
-    bool ret(false);
-    for (const auto& ve : block.value_parts) {
-        auto part_val = value_parts.find(ve.first);
-        if (part_val == value_parts.end()
-            || part_val->second.second.size() >= part_val->second.first)
-            continue;
-        // TODO: handle out-of-order packets
-        if (ve.second.first != part_val->second.second.size()) {
-            //std::cout << "skipping out-of-order packet" << std::endl;
-            continue;
-        }
-        ret = true;
-        part_val->second.second.insert(part_val->second.second.end(),
-                                       ve.second.second.begin(),
-                                       ve.second.second.end());
-    }
-    return ret;
-}
-
-bool
-ParsedMessage::complete()
-{
-    for (auto& e : value_parts) {
-        //std::cout << "part " << e.first << ": " << e.second.second.size() << "/" << e.second.first << std::endl;
-        if (e.second.first > e.second.second.size())
-            return false;
-    }
-    for (auto& e : value_parts) {
-        msgpack::unpacked msg;
-        msgpack::unpack(msg, (const char*)e.second.second.data(), e.second.second.size());
-        values.emplace_back(std::make_shared<Value>(msg.get()));
-    }
-    return true;
 }
 
 

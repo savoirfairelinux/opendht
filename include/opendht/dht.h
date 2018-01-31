@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,7 +27,7 @@
 #include "scheduler.h"
 #include "routing_table.h"
 #include "callbacks.h"
-#include "log_enable.h"
+#include "dht_interface.h"
 
 #include <string>
 #include <array>
@@ -58,14 +59,8 @@ struct LocalListener;
  * Must be given open UDP sockets and ::periodic must be
  * called regularly.
  */
-class OPENDHT_PUBLIC Dht {
+class OPENDHT_PUBLIC Dht final : public DhtInterface {
 public:
-
-    // [[deprecated]]
-    using NodeExport = dht::NodeExport;
-
-    // [[deprecated]]
-    using Status = NodeStatus;
 
     Dht();
 
@@ -73,7 +68,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(int s, int s6, Config config);
+    Dht(const int& s, const int& s6, Config config);
     virtual ~Dht();
 
     /**
@@ -102,18 +97,6 @@ public:
      *      is running for the provided family.
      */
     bool isRunning(sa_family_t af = 0) const;
-
-    /**
-     * Enable or disable logging of DHT internal messages
-     */
-    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
-
-    /**
-     * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
-     */
-    void setLogFilter(const InfoHash& f) {
-        DHT_LOG.setFilter(f);
-    }
 
     virtual void registerType(const ValueType& type) {
         types[type.id] = type;
@@ -168,8 +151,8 @@ public:
      * @param key the key for which to query data for.
      * @param cb a function called when new values are found on the network.
      *           It should return false to stop the operation.
-     * @param donecb a function called when the operation is complete.
-                     cb and donecb won't be called again afterward.
+     * @param done_cb a function called when the operation is complete.
+                     cb and done_cb won't be called again afterward.
      * @param q a query used to filter values on the remotes before they send a
      *          response.
      */
@@ -248,7 +231,7 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter&&={}, Where&& w = {});
+    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter={}, Where w = {});
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
@@ -307,10 +290,8 @@ public:
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
 
-protected:
-    Logger DHT_LOG;
-    bool logFilerEnable_ {};
-    InfoHash logFiler_ {};
+    void pushNotificationReceived(const std::map<std::string, std::string>&) {}
+    void resubscribe(unsigned) {}
 
 private:
 
@@ -339,7 +320,7 @@ private:
     static constexpr unsigned MAX_HASHES {16384};
 
     /* The maximum number of searches we keep data about. */
-    static constexpr unsigned MAX_SEARCHES {2048};
+    static constexpr unsigned MAX_SEARCHES {16384};
 
     static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
 
@@ -402,7 +383,6 @@ private:
     Scheduler scheduler;
     Sp<Scheduler::Job> nextNodesConfirmation {};
     Sp<Scheduler::Job> nextStorageMaintenance {};
-    time_point mybucket_grow_time {time_point::min()}, mybucket6_grow_time {time_point::min()};
 
     net::NetworkEngine network_engine;
     unsigned pending_pings4 {0};
@@ -422,14 +402,13 @@ private:
 
     // Storage
     void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {});
-    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr* sa = nullptr);
+    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {});
     void expireStore();
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);
 
     void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
     std::string printStorageLog(const decltype(store)::value_type&) const;
-    void printStorageQuota(std::ostream& out, const decltype(store_quota)::value_type& ip) const;
 
     /**
      * For a given storage, if values don't belong there anymore because this
@@ -505,7 +484,7 @@ private:
      * @param query   The query sent to the node.
      */
     void searchNodeGetDone(const net::Request& status,
-            net::NetworkEngine::RequestAnswer&& answer,
+            net::RequestAnswer&& answer,
             std::weak_ptr<Search> ws,
             Sp<Query> query);
 
@@ -554,48 +533,46 @@ private:
 
     bool neighbourhoodMaintenance(RoutingTable&);
 
-    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr&);
-
     void onError(Sp<net::Request> node, net::DhtProtocolException e);
     /* when our address is reported by a distant peer. */
     void onReportedAddr(const InfoHash& id, const SockAddr&);
     /* when we receive a ping request */
-    net::NetworkEngine::RequestAnswer onPing(Sp<Node> node);
+    net::RequestAnswer onPing(Sp<Node> node);
     /* when we receive a "find node" request */
-    net::NetworkEngine::RequestAnswer onFindNode(Sp<Node> node, const InfoHash& hash, want_t want);
+    net::RequestAnswer onFindNode(Sp<Node> node, const InfoHash& hash, want_t want);
     void onFindNodeDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search> sr);
     /* when we receive a "get values" request */
-    net::NetworkEngine::RequestAnswer onGetValues(Sp<Node> node,
+    net::RequestAnswer onGetValues(Sp<Node> node,
             const InfoHash& hash,
             want_t want,
             const Query& q);
     void onGetValuesDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search>& sr,
             const Sp<Query>& orig_query);
     /* when we receive a listen request */
-    net::NetworkEngine::RequestAnswer onListen(Sp<Node> node,
+    net::RequestAnswer onListen(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             size_t socket_id,
             const Query& query);
     void onListenDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search>& sr);
     /* when we receive an announce request */
-    net::NetworkEngine::RequestAnswer onAnnounce(Sp<Node> node,
+    net::RequestAnswer onAnnounce(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const std::vector<Sp<Value>>& v,
             const time_point& created);
-    net::NetworkEngine::RequestAnswer onRefresh(Sp<Node> node,
+    net::RequestAnswer onRefresh(Sp<Node> node,
             const InfoHash& hash,
             const Blob& token,
             const Value::Id& vid);
     void onAnnounceDone(const Sp<Node>& status,
-            net::NetworkEngine::RequestAnswer& a,
+            net::RequestAnswer& a,
             Sp<Search>& sr);
 };
 

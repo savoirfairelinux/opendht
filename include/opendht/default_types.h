@@ -19,6 +19,7 @@
 #pragma once
 
 #include "value.h"
+#include "sockaddr.h"
 
 namespace dht {
 enum class ImStatus : uint8_t {
@@ -45,7 +46,7 @@ public:
 
     static Value::Filter getFilter() { return {}; }
 
-    static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len);
+    static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr&);
 
     static Value::Filter ServiceFilter(std::string s);
 
@@ -92,7 +93,7 @@ public:
     static Value::Filter getFilter() {
         return Value::Filter::chain(
             BaseClass::getFilter(),
-            [](const Value& v){ return v.recipient != InfoHash(); }
+            [](const Value& v) { return static_cast<bool>(v.recipient); }
         );
     }
 
@@ -204,16 +205,12 @@ private:
 public:
     static const ValueType TYPE;
 
-    IpServiceAnnouncement(in_port_t p = 0) {
-        ss.ss_family = 0;
-        setPort(p);
+    IpServiceAnnouncement(sa_family_t family = AF_UNSPEC, in_port_t p = 0) {
+        addr.setFamily(family);
+        addr.setPort(p);
     }
 
-    IpServiceAnnouncement(const sockaddr* sa, socklen_t sa_len) {
-        ss.ss_family = 0;
-        if (sa)
-            std::copy_n((const uint8_t*)sa, sa_len, (uint8_t*)&ss);
-    }
+    IpServiceAnnouncement(const SockAddr& sa) : addr(sa) {}
 
     IpServiceAnnouncement(const Blob& b) {
         msgpack_unpack(unpackMsg(b).get());
@@ -222,53 +219,40 @@ public:
     template <typename Packer>
     void msgpack_pack(Packer& pk) const
     {
-        pk.pack_array(2);
-        pk.pack(reinterpret_cast<const sockaddr_in*>(&ss)->sin_port);
-        if (ss.ss_family == AF_INET) {
-            pk.pack_bin(sizeof(in_addr));
-            pk.pack_bin_body((const char*)&reinterpret_cast<const sockaddr_in*>(&ss)->sin_addr, sizeof(in_addr));
-        } else if (ss.ss_family == AF_INET6) {
-            pk.pack_bin(sizeof(in6_addr));
-            pk.pack_bin_body((const char*)&reinterpret_cast<const sockaddr_in6*>(&ss)->sin6_addr, sizeof(in6_addr));
-        }
+        pk.pack_bin(addr.getLength());
+        pk.pack_bin_body((const char*)addr.get(), addr.getLength());
     }
 
     virtual void msgpack_unpack(msgpack::object o)
     {
-        if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
-        if (o.via.array.size < 2) throw msgpack::type_error();
-        reinterpret_cast<sockaddr_in*>(&ss)->sin_port = o.via.array.ptr[0].as<in_port_t>();
-        auto ip_dat = o.via.array.ptr[1].as<Blob>();
-        if (ip_dat.size() == sizeof(in_addr))
-            std::copy(ip_dat.begin(), ip_dat.end(), (char*)&reinterpret_cast<sockaddr_in*>(&ss)->sin_addr);
-        else if (ip_dat.size() == sizeof(in6_addr))
-            std::copy(ip_dat.begin(), ip_dat.end(), (char*)&reinterpret_cast<sockaddr_in6*>(&ss)->sin6_addr);
+        if (o.type == msgpack::type::BIN)
+            addr = {(sockaddr*)o.via.bin.ptr, (socklen_t)o.via.bin.size};
         else
             throw msgpack::type_error();
     }
 
     in_port_t getPort() const {
-        return ntohs(reinterpret_cast<const sockaddr_in*>(&ss)->sin_port);
+        return addr.getPort();
     }
     void setPort(in_port_t p) {
-        reinterpret_cast<sockaddr_in*>(&ss)->sin_port = htons(p);
+        addr.setPort(p);
     }
 
-    sockaddr_storage getPeerAddr() const {
-        return ss;
+    const SockAddr& getPeerAddr() const {
+        return addr;
     }
 
     virtual const ValueType& getType() const {
         return TYPE;
     }
 
-    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t);
+    static bool storePolicy(InfoHash, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&);
 
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream&, const IpServiceAnnouncement&);
 
 private:
-    sockaddr_storage ss;
+    SockAddr addr;
 };
 
 

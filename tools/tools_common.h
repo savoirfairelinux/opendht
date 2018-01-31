@@ -2,6 +2,7 @@
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -98,10 +99,8 @@ dht::indexation::Pht::Key createPhtKey(std::map<std::string, std::string> pht_ke
     return pht_key;
 }
 
-bool isInfoHash(dht::InfoHash& h) {
-    static constexpr dht::InfoHash INVALID_ID {};
-
-    if (h == INVALID_ID) {
+bool isInfoHash(const dht::InfoHash& h) {
+    if (not h) {
         std::cout << "Syntax error: invalid InfoHash." << std::endl;
         return false;
     }
@@ -121,6 +120,10 @@ struct dht_params {
     bool daemonize {false};
     bool service {false};
     std::pair<std::string, std::string> bootstrap {};
+    in_port_t proxyserver {0};
+    std::string proxyclient {};
+    std::string pushserver {};
+    std::string devicekey {};
 };
 
 static const constexpr struct option long_options[] = {
@@ -134,6 +137,10 @@ static const constexpr struct option long_options[] = {
    {"service",    no_argument      , nullptr, 's'},
    {"logfile",    required_argument, nullptr, 'l'},
    {"syslog",     no_argument      , nullptr, 'L'},
+   {"proxyserver",required_argument, nullptr, 'S'},
+   {"proxyclient",required_argument, nullptr, 'C'},
+   {"pushserver", required_argument, nullptr, 'P'},
+   {"devicekey",  required_argument, nullptr, 'D'},
    {nullptr,      0                , nullptr,  0}
 };
 
@@ -150,6 +157,23 @@ parseArgs(int argc, char **argv) {
                 else
                     std::cout << "Invalid port: " << port_arg << std::endl;
             }
+            break;
+        case 'S': {
+                int port_arg = atoi(optarg);
+                if (port_arg >= 0 && port_arg < 0x10000)
+                    params.proxyserver = port_arg;
+                else
+                    std::cout << "Invalid port: " << port_arg << std::endl;
+            }
+            break;
+        case 'P':
+            params.pushserver = optarg;
+            break;
+        case 'C':
+            params.proxyclient = optarg;
+            break;
+        case 'D':
+            params.devicekey = optarg;
             break;
         case 'n':
             params.network = strtoul(optarg, nullptr, 0);

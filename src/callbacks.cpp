@@ -68,4 +68,36 @@ NodeStats::toString() const
     return ss.str();
 }
 
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+/**
+ * Build a json object from a NodeStats
+ */
+Json::Value
+NodeStats::toJson() const
+{
+    Json::Value val;
+    val["good"] = static_cast<Json::LargestUInt>(good_nodes);
+    val["dubious"] = static_cast<Json::LargestUInt>(dubious_nodes);
+    val["incoming"] = static_cast<Json::LargestUInt>(incoming_nodes);
+    if (table_depth > 1) {
+        val["table_depth"] = static_cast<Json::LargestUInt>(table_depth);
+        unsigned long tot_nodes = 8 * std::exp2(table_depth);
+        val["network_size_estimation"] = static_cast<Json::LargestUInt>(tot_nodes);
+    }
+    return val;
+}
+
+NodeStats::NodeStats(const Json::Value& val)
+{
+    if (val.isMember("good"))
+        good_nodes = static_cast<unsigned>(val["good"].asLargestUInt());
+    if (val.isMember("dubious"))
+        dubious_nodes = static_cast<unsigned>(val["dubious"].asLargestUInt());
+    if (val.isMember("incoming"))
+        incoming_nodes = static_cast<unsigned>(val["incoming"].asLargestUInt());
+    if (val.isMember("table_depth"))
+        table_depth = static_cast<unsigned>(val["table_depth"].asLargestUInt());
+}
+#endif //OPENDHT_PROXY_SERVER
+
 }

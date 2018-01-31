@@ -9,6 +9,8 @@ libopendht_la_SOURCES  = \
         listener.h \
         request.h \
         search.h \
+        net.h \
+        parsed_message.h \
         node_cache.cpp \
         callbacks.cpp \
         routing_table.cpp \
@@ -36,7 +38,6 @@ nobase_include_HEADERS = \
         ../include/opendht/node_cache.h \
         ../include/opendht/routing_table.h \
         ../include/opendht/network_engine.h \
-        ../include/opendht/net.h \
         ../include/opendht/scheduler.h \
         ../include/opendht/rate_limiter.h \
         ../include/opendht/utils.h \
@@ -52,6 +53,16 @@ nobase_include_HEADERS = \
         ../include/opendht/log_enable.h \
         ../include/opendht/rng.h \
         ../include/opendht/indexation/pht.h
+
+if ENABLE_PROXY_SERVER
+libopendht_la_SOURCES += base64.h base64.cpp dht_proxy_server.cpp
+nobase_include_HEADERS += ../include/opendht/dht_proxy_server.h
+endif
+
+if ENABLE_PROXY_CLIENT
+libopendht_la_SOURCES += dht_proxy_client.cpp
+nobase_include_HEADERS += ../include/opendht/dht_proxy_client.h ../include/opendht/dht_interface.h
+endif
 
 clean-local:
 	rm -rf libargon2.la
@@ -82,4 +93,3 @@ noinst_HEADERS = \
         @top_builddir@/argon2/src/encoding.h \
         @top_builddir@/argon2/src/thread.h
 endif
-

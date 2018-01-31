@@ -27,14 +27,14 @@ std::ostream& operator<< (std::ostream& s, const DhtMessage& v)
 }
 
 bool
-DhtMessage::storePolicy(InfoHash h, std::shared_ptr<Value>& v, InfoHash f, const sockaddr* fa, socklen_t fas)
+DhtMessage::storePolicy(InfoHash h, std::shared_ptr<Value>& v, const InfoHash& f, const SockAddr& sa)
 {
     try {
         auto msg = unpackMsg<DhtMessage>(v->data);
         if (msg.service.empty())
             return false;
     } catch (const std::exception& e) {}
-    return ValueType::DEFAULT_STORE_POLICY(h, v, f, fa, fas);
+    return ValueType::DEFAULT_STORE_POLICY(h, v, f, sa);
 }
 
 Value::Filter
@@ -54,12 +54,11 @@ DhtMessage::ServiceFilter(std::string s)
 
 std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
 {
-    s << "Peer: ";
-    s << "port " << v.getPort();
-
-    if (v.ss.ss_family == AF_INET || v.ss.ss_family == AF_INET6) {
+    if (v.addr) {
+        s << "Peer: ";
+        s << "port " << v.getPort();
         char hbuf[NI_MAXHOST];
-        if (getnameinfo((sockaddr*)&v.ss, sizeof(v.ss), hbuf, sizeof(hbuf), nullptr, 0, NI_NUMERICHOST) == 0) {
+        if (getnameinfo(v.addr.get(), v.addr.getLength(), hbuf, sizeof(hbuf), nullptr, 0, NI_NUMERICHOST) == 0) {
             s << " addr " << std::string(hbuf, strlen(hbuf));
         }
     }
@@ -67,17 +66,17 @@ std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
 }
 
 bool
-IpServiceAnnouncement::storePolicy(InfoHash h, std::shared_ptr<Value>& v, InfoHash f, const sockaddr* from, socklen_t fromlen)
+IpServiceAnnouncement::storePolicy(InfoHash h, std::shared_ptr<Value>& v, const InfoHash& f, const SockAddr& sa)
 {
     try {
         auto msg = unpackMsg<IpServiceAnnouncement>(v->data);
         if (msg.getPort() == 0)
             return false;
-        IpServiceAnnouncement sa_addr {from, fromlen};
+        IpServiceAnnouncement sa_addr {sa};
         sa_addr.setPort(msg.getPort());
         // argument v is modified (not the value).
         v = std::make_shared<Value>(IpServiceAnnouncement::TYPE, sa_addr, v->id);
-        return ValueType::DEFAULT_STORE_POLICY(h, v, f, from, fromlen);
+        return ValueType::DEFAULT_STORE_POLICY(h, v, f, sa);
     } catch (const std::exception& e) {}
     return false;
 }

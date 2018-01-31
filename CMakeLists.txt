@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.1)
 project (opendht)
 set (opendht_VERSION_MAJOR 1)
-set (opendht_VERSION_MINOR 3.5)
+set (opendht_VERSION_MINOR 6.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -15,9 +15,18 @@ option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
+option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
+option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" OFF)
+option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
+option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
+option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
+
+find_package(Doxygen)
+option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
 
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+find_package (Threads)
 find_package (PkgConfig)
 find_package (GnuTLS 3.3 REQUIRED)
 pkg_search_module (Nettle nettle)
@@ -36,11 +45,18 @@ if (NOT OPENDHT_ARGON2)
         set(OPENDHT_ARGON2 ON)
     endif()
 endif ()
+if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+    find_package(Restbed REQUIRED)
+    pkg_search_module(Jsoncpp jsoncpp)
+endif()
 
 # Build flags
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+if (OPENDHT_SANITIZE)
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
+endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -69,7 +85,14 @@ endif ()
 if (Nettle_INCLUDE_DIRS)
     include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
 endif ()
+if (RESTBED_INCLUDE)
+    include_directories (SYSTEM "${RESTBED_INCLUDE}")
+endif ()
+if (Jsoncpp_INCLUDE_DIRS)
+    include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
+endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
+link_directories (${Jsoncpp_LIBRARY_DIRS})
 include_directories (
     ./
     include/
@@ -85,6 +108,7 @@ set (libdir "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
 set (includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 set (bindir "${CMAKE_INSTALL_FULL_BINDIR}")
 set (sysconfdir "${CMAKE_INSTALL_FULL_SYSCONFDIR}")
+set (top_srcdir "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Sources
 list (APPEND opendht_SOURCES
@@ -98,6 +122,8 @@ list (APPEND opendht_SOURCES
     src/storage.h
     src/listener.h
     src/search.h
+    src/net.h
+    src/parsed_message.h
     src/request.h
     src/callbacks.cpp
     src/routing_table.cpp
@@ -120,11 +146,11 @@ list (APPEND opendht_HEADERS
     include/opendht/node.h
     include/opendht/value.h
     include/opendht/dht.h
+    include/opendht/dht_interface.h
     include/opendht/callbacks.h
     include/opendht/routing_table.h
     include/opendht/node_cache.h
     include/opendht/network_engine.h
-    include/opendht/net.h
     include/opendht/scheduler.h
     include/opendht/rate_limiter.h
     include/opendht/securedht.h
@@ -133,6 +159,48 @@ list (APPEND opendht_HEADERS
     include/opendht.h
     include/opendht/indexation/pht.h
 )
+
+if (OPENDHT_PROXY_SERVER)
+  add_definitions(-DOPENDHT_PROXY_SERVER=true)
+  if (OPENDHT_PROXY_SERVER_IDENTITY)
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=true)
+  else ()
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=false)
+  endif()
+  list (APPEND opendht_HEADERS
+    include/opendht/dht_proxy_server.h
+  )
+  list (APPEND opendht_SOURCES
+    src/dht_proxy_server.cpp
+  )
+  if (OPENDHT_PUSH_NOTIFICATIONS)
+    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=true)
+  else ()
+    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=false)
+  endif ()
+else ()
+    add_definitions(-DENABLE_PROXY_SERVER=false)
+endif ()
+
+if (OPENDHT_PROXY_CLIENT)
+  add_definitions(-DOPENDHT_PROXY_CLIENT=true)
+  list (APPEND opendht_HEADERS
+    include/opendht/dht_proxy_client.h
+  )
+  list (APPEND opendht_SOURCES
+    src/dht_proxy_client.cpp
+  )
+else ()
+  add_definitions(-DOPENDHT_PROXY_CLIENT=false)
+endif ()
+
+if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+  list (APPEND opendht_SOURCES
+    src/base64.h
+    src/base64.cpp
+  )
+endif ()
+
 
 if(OPENDHT_ARGON2)
     # make sure argon2 submodule is up to date and initialized
@@ -167,7 +235,7 @@ if (OPENDHT_STATIC)
         target_link_libraries(opendht-static ${argon2_LIBRARIES})
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht-static ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
+    target_link_libraries(opendht-static ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARIES} ${Jsoncpp_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -180,15 +248,15 @@ if (OPENDHT_SHARED)
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
     if (OPENDHT_LTO)
-        target_link_libraries(opendht -flto -fuse-linker-plugin)
+        target_link_libraries(opendht PRIVATE -flto -fuse-linker-plugin)
     endif ()
     if (OPENDHT_ARGON2)
         target_include_directories(opendht SYSTEM PRIVATE argon2)
     else ()
-        target_link_libraries(opendht ${argon2_LIBRARIES})
+        target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht  ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES})
+    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARIES} ${Jsoncpp_LIBRARIES})
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 

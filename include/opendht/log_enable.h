@@ -75,7 +75,7 @@ struct Logger {
     LogMethod ERR = NOLOG;
     void setFilter(const InfoHash& f) {
         filter_ = f;
-        filterEnable_ = filter_ != InfoHash{};
+        filterEnable_ = static_cast<bool>(filter_);
     }
     inline void log0(const LogMethod& logger, char const* format, va_list args) const {
 #if OPENDHT_LOG

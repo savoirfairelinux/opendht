@@ -1,7 +1,8 @@
 /*
  *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
- *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
+ *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,7 +20,6 @@
 
 #pragma once
 
-//#include "securedht.h"
 #include "infohash.h"
 #include "value.h"
 #include "callbacks.h"
@@ -52,6 +52,13 @@ class OPENDHT_PUBLIC DhtRunner {
 
 public:
     typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
+
+    struct Config {
+        SecureDhtConfig dht_config;
+        bool threaded;
+        std::string proxy_server;
+        std::string push_node_id;
+    };
 
     DhtRunner();
     virtual ~DhtRunner();
@@ -202,7 +209,7 @@ public:
      * Insert known nodes to the routing table, without necessarly ping them.
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
-    void bootstrap(const std::vector<std::pair<sockaddr_storage, socklen_t>>& nodes, DoneCallbackSimple&& cb={});
+    void bootstrap(const std::vector<SockAddr>& nodes, DoneCallbackSimple&& cb={});
     void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
 
     /**
@@ -250,7 +257,7 @@ public:
      * @param f: address family of the bound port to retreive.
      */
     in_port_t getBoundPort(sa_family_t f = AF_INET) const {
-        return ntohs(((sockaddr_in*)&getBound(f).first)->sin_port);
+        return getBound(f).getPort();
     }
 
     std::pair<size_t, size_t> getStoreSize() const;
@@ -294,11 +301,6 @@ public:
     void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
-    struct Config {
-        SecureDhtConfig dht_config;
-        bool threaded;
-    };
-
     /**
      * @param port: Local port to bind. Both IPv4 and IPv6 will be tried (ANY).
      * @param identity: RSA key pair to use for cryptographic operations.
@@ -316,7 +318,9 @@ public:
                 },
                 /*.id = */identity
             },
-            /*.threaded = */threaded
+            /*.threaded = */threaded,
+            /*.proxy_server = */"",
+            /*.push_node_id = */""
         });
     }
     void run(in_port_t port, Config config);
@@ -329,7 +333,7 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const sockaddr_in* local4, const sockaddr_in6* local6, Config config);
+    void run(const SockAddr& local4, const SockAddr& local6, Config config);
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
@@ -347,7 +351,13 @@ public:
      */
     time_point loop() {
         std::lock_guard<std::mutex> lck(dht_mtx);
-        return loop_();
+        time_point wakeup = time_point::min();
+        try {
+            wakeup = loop_();
+        } catch (const dht::SocketException& e) {
+            startNetwork(bound4, bound6);
+        }
+        return wakeup;
     }
 
     /**
@@ -362,6 +372,43 @@ public:
      */
     void join();
 
+    void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "") {
+#if OPENDHT_PROXY_CLIENT
+        if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
+            return;
+        config_.proxy_server = proxy;
+        config_.push_node_id = pushNodeId;
+        enableProxy(use_proxy and not config_.proxy_server.empty());
+#endif
+    }
+
+    /**
+     * Start or stop the proxy
+     * @param proxify if we want to use the proxy
+     * @param deviceKey non empty to enable push notifications
+     */
+    void enableProxy(bool proxify);
+
+    /* Push notification methods */
+
+    /**
+     * Updates the push notification device token
+     */
+    void setPushNotificationToken(const std::string& token);
+
+    /**
+     * Insert a push notification to process for OpenDHT
+     */
+    void pushNotificationReceived(const std::map<std::string, std::string>& data) const;
+    /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(unsigned token);
+
+    /* Proxy server mothods */
+    void forwardAllMessages(bool forward);
+
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
@@ -373,16 +420,48 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void doRun(const sockaddr_in* sin4, const sockaddr_in6* sin6, SecureDhtConfig config);
+    void startNetwork(const SockAddr sin4, const SockAddr sin6);
     time_point loop_();
-
-    static std::vector<std::pair<sockaddr_storage, socklen_t>> getAddrInfo(const std::string& host, const std::string& service);
 
     NodeStatus getStatus() const {
         return std::max(status4, status6);
     }
 
+    /** Local DHT instance */
     std::unique_ptr<SecureDht> dht_;
+
+    /** Proxy client instance */
+    std::unique_ptr<SecureDht> dht_via_proxy_;
+
+    /** true if we are currently using a proxy */
+    std::atomic_bool use_proxy {false};
+
+    /** Current configuration */
+    Config config_;
+
+    /**
+     * reset dht clients
+     */
+    void resetDht();
+    /**
+     * @return the current active DHT
+     */
+    SecureDht* activeDht() const;
+
+    /**
+     * Store current listeners and translates global tokens for each client.
+     */
+    struct Listener {
+        size_t tokenClassicDht;
+        size_t tokenProxyDht;
+        GetCallback gcb;
+        InfoHash hash;
+        Value::Filter f;
+        Where w;
+    };
+    std::map<size_t, Listener> listeners_ {};
+    size_t listener_token_ {1};
+
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
@@ -405,14 +484,19 @@ private:
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
-    std::atomic<bool> running {false};
+    std::atomic_bool running {false};
+    std::atomic_bool running_network {false};
 
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
+    int s4 {-1}, s6 {-1};
     SockAddr bound4 {};
     SockAddr bound6 {};
+
+    /** Push notification token */
+    std::string pushToken_;
 };
 
 }

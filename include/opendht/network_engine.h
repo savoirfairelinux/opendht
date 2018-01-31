@@ -27,14 +27,12 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
-#include "net.h"
 
 #include <vector>
 #include <string>
 #include <functional>
 #include <algorithm>
 #include <memory>
-#include <random>
 #include <queue>
 
 namespace dht {
@@ -42,6 +40,7 @@ namespace net {
 
 struct Request;
 struct Socket;
+struct TransId;
 
 #ifndef MSG_CONFIRM
 #define MSG_CONFIRM 0
@@ -81,6 +80,20 @@ private:
 
 struct ParsedMessage;
 
+/**
+ * Answer for a request.
+ */
+struct RequestAnswer {
+    Blob ntoken {};
+    Value::Id vid {};
+    std::vector<Sp<Value>> values {};
+    std::vector<Sp<FieldValueIndex>> fields {};
+    std::vector<Sp<Node>> nodes4 {};
+    std::vector<Sp<Node>> nodes6 {};
+    RequestAnswer() {}
+    RequestAnswer(ParsedMessage&& msg);
+};
+
 /*!
  * @class   NetworkEngine
  * @brief   An abstraction of communication protocol on the network.
@@ -101,26 +114,6 @@ struct ParsedMessage;
  */
 class NetworkEngine final
 {
-public:
-    /*!
-     * @class   RequestAnswer
-     * @brief   Answer for a request.
-     * @details
-     * Answer for a request to be (de)serialized. Used for reponding to a node
-     * and looking up the response from a node.
-     */
-    struct RequestAnswer {
-        Blob ntoken {};
-        Value::Id vid {};
-        std::vector<Sp<Value>> values {};
-        std::vector<Sp<FieldValueIndex>> fields {};
-        std::vector<Sp<Node>> nodes4 {};
-        std::vector<Sp<Node>> nodes6 {};
-        RequestAnswer() {}
-        RequestAnswer(ParsedMessage&& msg);
-    };
-
-
 private:
     /**
      * Called when we receive an error message.
@@ -137,7 +130,7 @@ private:
     /**
      * Called when an addres is reported from a requested node.
      *
-     * @param h: id 
+     * @param h: id
      * @param saddr_len (type: socklen_t) lenght of the sockaddr struct.
      */
     std::function<void(const InfoHash&, const SockAddr&)> onReportedAddr;
@@ -176,7 +169,7 @@ private:
     std::function<RequestAnswer(Sp<Node>,
             const InfoHash&,
             const Blob&,
-            uint32_t,
+            Tid,
             const Query&)> onListen {};
     /**
      * Called on announce request.
@@ -206,12 +199,11 @@ private:
             const Value::Id&)> onRefresh {};
 
 public:
-    using SocketCb = std::function<void(const Sp<Node>&, RequestAnswer&&)>;
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(Logger& log, Scheduler& scheduler);
-    NetworkEngine(InfoHash& myid, NetId net, int s, int s6, Logger& log, Scheduler& scheduler,
+    NetworkEngine(Logger& log, Scheduler& scheduler, const int& s = -1, const int& s6 = -1);
+    NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError) onError,
             decltype(NetworkEngine::onNewNode) onNewNode,
             decltype(NetworkEngine::onReportedAddr) onReportedAddr,
@@ -239,18 +231,12 @@ public:
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
      */
-    void tellListener(Sp<Node> n, uint32_t socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
+    void tellListener(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
             std::vector<Sp<Value>>&& values, const Query& q);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
-
-    /**
-     * Cancel a request. Setting req->cancelled = true is not enough in the case
-     * a request is "persistent".
-     */
-    void cancelRequest(Sp<Request>& req);
 
     void connectivityChanged(sa_family_t);
 
@@ -392,23 +378,6 @@ public:
                                  const Blob& token,
                                  RequestCb&& on_done,
                                  RequestExpiredCb&& on_expired);
-    /**
-     * Opens a socket on which a node will be able allowed to write for further
-     * additionnal updates following the response to a previous request.
-     *
-     * @param node  The node which will be allowed to write on this socket.
-     * @param cb    The callback to execute once updates arrive on the socket.
-     *
-     * @return the socket.
-     */
-    Sp<Socket> openSocket(const Sp<Node>& node, TransPrefix tp, SocketCb&& cb);
-
-    /**
-     * Closes a socket so that no further data will be red on that socket.
-     *
-     * @param socket  The socket to close.
-     */
-    void closeSocket(Sp<Socket> socket);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -447,7 +416,7 @@ private:
     /***************
      *  Constants  *
      ***************/
-    static constexpr long unsigned MAX_REQUESTS_PER_SEC {1600};
+    static constexpr size_t MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
     static const constexpr size_t NODE4_INFO_BUF_LEN {HASH_LEN + sizeof(in_addr) + sizeof(in_port_t)};
     /* the length of a node info buffer in ipv6 format */
@@ -467,7 +436,6 @@ private:
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
 
     static const std::string my_v;
-    static std::mt19937 rd_device;
 
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
 
@@ -482,17 +450,7 @@ private:
      * Sends a request to a node. Request::MAX_ATTEMPT_COUNT attempts will
      * be made before the request expires.
      */
-    void sendRequest(Sp<Request>& request);
-
-    /**
-     * Generates a new request id, skipping the invalid id.
-     *
-     * @return the new id.
-     */
-    uint16_t getNewTid() {
-        ++transaction_id;
-        return transaction_id == TransId::INVALID ? ++transaction_id : transaction_id;
-    }
+    void sendRequest(const Sp<Request>& request);
 
     struct MessageStats {
         unsigned ping    {0};
@@ -507,18 +465,18 @@ private:
     // basic wrapper for socket sendto function
     int send(const char *buf, size_t len, int flags, const SockAddr& addr);
 
-    void sendValueParts(TransId tid, const std::vector<Blob>& svals, const SockAddr& addr);
+    void sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
-    void maintainRxBuffer(const TransId& tid);
+    void maintainRxBuffer(Tid tid);
 
     /*************
      *  Answers  *
      *************/
     /* answer to a ping  request */
-    void sendPong(const SockAddr& addr, TransId tid);
+    void sendPong(const SockAddr& addr, Tid tid);
     /* answer to findnodes/getvalues request */
     void sendNodesValues(const SockAddr& addr,
-            TransId tid,
+            Tid tid,
             const Blob& nodes,
             const Blob& nodes6,
             const std::vector<Sp<Value>>& st,
@@ -532,12 +490,12 @@ private:
             std::vector<Sp<Node>>& nodes,
             std::vector<Sp<Node>>& nodes6);
     /* answer to a listen request */
-    void sendListenConfirmation(const SockAddr& addr, TransId tid);
+    void sendListenConfirmation(const SockAddr& addr, Tid tid);
     /* answer to put request */
-    void sendValueAnnounced(const SockAddr& addr, TransId, Value::Id);
+    void sendValueAnnounced(const SockAddr& addr, Tid, Value::Id);
     /* answer in case of error */
     void sendError(const SockAddr& addr,
-            TransId tid,
+            Tid tid,
             uint16_t code,
             const std::string& message,
             bool include_id=false);
@@ -547,51 +505,22 @@ private:
     /* DHT info */
     const InfoHash& myid;
     const NetId network {0};
-    const int dht_socket {-1};
-    const int dht_socket6 {-1};
+    const int& dht_socket;
+    const int& dht_socket6;
     const Logger& DHT_LOG;
 
     NodeCache cache {};
 
-    /**
-     * A comparator to classify IP addresses, only considering the
-     * first 64 bits in IPv6.
-     */
-    struct cmpSockAddr {
-        bool operator()(const SockAddr& a, const SockAddr& b) const {
-            if (a.second != b.second)
-                return a.second < b.second;
-            socklen_t start, len;
-            switch(a.getFamily()) {
-                case AF_INET:
-                    start = offsetof(sockaddr_in, sin_addr);
-                    len = sizeof(in_addr);
-                    break;
-                case AF_INET6:
-                    start = offsetof(sockaddr_in6, sin6_addr);
-                    // don't consider more than 64 bits (IPv6)
-                    len = 8;
-                    break;
-                default:
-                    start = 0;
-                    len = a.second;
-                    break;
-            }
-
-            return std::memcmp((uint8_t*)&a.first+start, (uint8_t*)&b.first+start, len) < 0;
-        }
-    };
     // global limiting should be triggered by at least 8 different IPs
     using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
     IpLimiterMap address_rate_limiter {};
     RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
+    size_t limiter_maintenance {0};
 
     // requests handling
-    uint16_t transaction_id {1};
-    std::map<TransId, Sp<Request>> requests {};
-    std::map<TransId, PartialMessage> partial_messages;
-    std::map<TransId, Sp<Socket>> opened_sockets {};
+    std::map<Tid, Sp<Request>> requests {};
+    std::map<Tid, PartialMessage> partial_messages;
 
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};

@@ -27,6 +27,33 @@
 
 namespace dht {
 
+static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
+
+std::vector<SockAddr>
+SockAddr::resolve(const std::string& host, const std::string& service)
+{
+    std::vector<SockAddr> ips {};
+    if (host.empty())
+        return ips;
+
+    addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_socktype = SOCK_DGRAM;
+    addrinfo* info = nullptr;
+    int rc = getaddrinfo(host.c_str(), service.empty() ? nullptr : service.c_str(), &hints, &info);
+    if(rc != 0)
+        throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
+
+    addrinfo* infop = info;
+    while (infop) {
+        ips.emplace_back(infop->ai_addr, infop->ai_addrlen);
+        infop = infop->ai_next;
+    }
+    freeaddrinfo(info);
+    return ips;
+}
+
+
 std::string
 print_addr(const sockaddr* sa, socklen_t slen)
 {
@@ -38,7 +65,7 @@ print_addr(const sockaddr* sa, socklen_t slen)
             out << "[" << hbuf << "]";
         else
             out << hbuf;
-        if (strcmp(sbuf, "0"))
+        if (std::strcmp(sbuf, "0"))
             out << ":" << sbuf;
     } else
         out << "[invalid address]";
@@ -49,11 +76,6 @@ std::string
 print_addr(const sockaddr_storage& ss, socklen_t sslen)
 {
     return print_addr((const sockaddr*)&ss, sslen);
-}
-
-std::string
-printAddr(const SockAddr& addr) {
-    return print_addr((const sockaddr*)&addr.first, addr.second);
 }
 
 bool
@@ -74,7 +96,8 @@ SockAddr::isLoopback() const
 {
     switch (getFamily()) {
     case AF_INET: {
-        uint8_t b1 = (uint8_t)(getIPv4().sin_addr.s_addr >> 24);
+        auto addr_host = ntohl(getIPv4().sin_addr.s_addr);
+        uint8_t b1 = (uint8_t)(addr_host >> 24);
         return b1 == 127;
     }
     case AF_INET6:
@@ -91,10 +114,11 @@ SockAddr::isPrivate() const
         return true;
     }
     switch (getFamily()) {
-    case AF_INET:
+    case AF_INET: {
+        auto addr_host = ntohl(getIPv4().sin_addr.s_addr);
         uint8_t b1, b2;
-        b1 = (uint8_t)(getIPv4().sin_addr.s_addr >> 24);
-        b2 = (uint8_t)((getIPv4().sin_addr.s_addr >> 16) & 0x0ff);
+        b1 = (uint8_t)(addr_host >> 24);
+        b2 = (uint8_t)((addr_host >> 16) & 0x0ff);
         // 10.x.y.z
         if (b1 == 10)
             return true;
@@ -105,6 +129,7 @@ SockAddr::isPrivate() const
         if ((b1 == 192) && (b2 == 168))
             return true;
         return false;
+    }
     case AF_INET6: {
         const uint8_t* addr6 = reinterpret_cast<const uint8_t*>(&getIPv6().sin6_addr);
         if (addr6[0] == 0xfc)
@@ -114,6 +139,30 @@ SockAddr::isPrivate() const
     default:
         return false;
     }
+}
+
+bool
+SockAddr::isMappedIPv4() const
+{
+    if (getFamily() != AF_INET6)
+        return false;
+    const uint8_t* addr6 = reinterpret_cast<const uint8_t*>(&getIPv6().sin6_addr);
+    return std::equal(MAPPED_IPV4_PREFIX.begin(), MAPPED_IPV4_PREFIX.end(), addr6);
+}
+
+SockAddr
+SockAddr::getMappedIPv4() const
+{
+    if (not isMappedIPv4())
+        return *this;
+    SockAddr ret;
+    ret.setFamily(AF_INET);
+    ret.setPort(getPort());
+    auto addr6 = reinterpret_cast<const uint8_t*>(&getIPv6().sin6_addr);
+    auto addr4 = reinterpret_cast<uint8_t*>(&ret.getIPv4().sin_addr);
+    addr6 += MAPPED_IPV4_PREFIX.size();
+    std::copy_n(addr6, sizeof(in_addr), addr4);
+    return ret;
 }
 
 bool operator==(const SockAddr& a, const SockAddr& b) {

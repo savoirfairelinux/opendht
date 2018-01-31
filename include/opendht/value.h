@@ -22,6 +22,7 @@
 #include "infohash.h"
 #include "crypto.h"
 #include "utils.h"
+#include "sockaddr.h"
 
 #include <msgpack.hpp>
 
@@ -35,6 +36,10 @@
 #include <memory>
 #include <chrono>
 #include <set>
+
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#include <json/json.h>
+#endif //OPENDHT_PROXY_SERVER
 
 namespace dht {
 
@@ -51,7 +56,7 @@ struct Query;
  * @param form_addr: network address of the incoming request.
  * @param from_len: network address lendth of the incoming request.
  */
-using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
+using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr& addr)>;
 
 /**
  * An edition policy is applied once to every incoming value storage requests,
@@ -67,15 +72,15 @@ using StorePolicy = std::function<bool(InfoHash key, std::shared_ptr<Value>& val
  * @param form_addr: network address of the incoming request.
  * @param from_len: network address lendth of the incoming request.
  */
-using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, InfoHash from, const sockaddr* from_addr, socklen_t from_len)>;
+using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>& old_val, std::shared_ptr<Value>& new_val, const InfoHash& from, const SockAddr& addr)>;
 
 static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 
 struct OPENDHT_PUBLIC ValueType {
     typedef uint16_t Id;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, InfoHash, const sockaddr*, socklen_t);
-    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, InfoHash, const sockaddr*, socklen_t) {
+    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
+    static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
         return false;
     }
 
@@ -345,6 +350,14 @@ struct OPENDHT_PUBLIC Value
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
 
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+    /**
+     * Build a value from a json object
+     * @param json
+     */
+    Value(Json::Value& json);
+#endif //OPENDHT_PROXY_SERVER
+
     template <typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
      : id(id), type(t), data(packMsg(d)) {}
@@ -416,6 +429,18 @@ struct OPENDHT_PUBLIC Value
         return ss.str();
     }
 
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+    /**
+     * Build a json object from a value
+     * Example:
+     * {
+     *  "data":"base64ofdata",
+     *   id":"0", "seq":0,"type":3
+     * }
+     */
+    Json::Value toJson() const;
+#endif //OPENDHT_PROXY_SERVER
+
     /** Return the size in bytes used by this value in memory (minimum). */
     size_t size() const;
 
@@ -423,11 +448,11 @@ struct OPENDHT_PUBLIC Value
     void msgpack_pack_to_sign(Packer& pk) const
     {
         bool has_owner = owner && *owner;
-        pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient == InfoHash() ? 4 : 5):2));
+        pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient ? 5 : 4):2));
         if (has_owner) { // isSigned
             pk.pack(std::string("seq"));   pk.pack(seq);
             pk.pack(std::string("owner")); owner->msgpack_pack(pk);
-            if (recipient != InfoHash()) {
+            if (recipient) {
                 pk.pack(std::string("to")); pk.pack(recipient);
             }
         }

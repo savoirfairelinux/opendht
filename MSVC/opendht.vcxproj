@@ -19,11 +19,14 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="wingetopt.c" />
+    <ClCompile Include="..\src\base64.cpp" />
     <ClCompile Include="..\src\callbacks.cpp" />
     <ClCompile Include="..\src\crypto.cpp" />
     <ClCompile Include="..\src\default_types.cpp" />
     <ClCompile Include="..\src\dht.cpp" />
     <ClCompile Include="..\src\dhtrunner.cpp" />
+    <ClCompile Include="..\src\dht_proxy_server.cpp" />
     <ClCompile Include="..\src\indexation\pht.cpp" />
     <ClCompile Include="..\src\infohash.cpp" />
     <ClCompile Include="..\src\log.cpp" />
@@ -36,12 +39,16 @@
     <ClCompile Include="..\src\value.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="unistd.h" />
+    <ClInclude Include="wingetopt.h" />
     <ClInclude Include="..\include\opendht.h" />
     <ClInclude Include="..\include\opendht\callbacks.h" />
     <ClInclude Include="..\include\opendht\crypto.h" />
+    <ClInclude Include="..\include\opendht\def.h" />
     <ClInclude Include="..\include\opendht\default_types.h" />
     <ClInclude Include="..\include\opendht\dht.h" />
     <ClInclude Include="..\include\opendht\dhtrunner.h" />
+    <ClInclude Include="..\include\opendht\dht_proxy_server.h" />
     <ClInclude Include="..\include\opendht\indexation\pht.h" />
     <ClInclude Include="..\include\opendht\infohash.h" />
     <ClInclude Include="..\include\opendht\log.h" />
@@ -50,14 +57,18 @@
     <ClInclude Include="..\include\opendht\node.h" />
     <ClInclude Include="..\include\opendht\node_cache.h" />
     <ClInclude Include="..\include\opendht\rate_limiter.h" />
-    <ClInclude Include="..\include\opendht\request.h" />
     <ClInclude Include="..\include\opendht\rng.h" />
     <ClInclude Include="..\include\opendht\routing_table.h" />
     <ClInclude Include="..\include\opendht\scheduler.h" />
     <ClInclude Include="..\include\opendht\securedht.h" />
+    <ClInclude Include="..\include\opendht\sockaddr.h" />
     <ClInclude Include="..\include\opendht\utils.h" />
     <ClInclude Include="..\include\opendht\value.h" />
+    <ClInclude Include="..\src\base64.h" />
     <ClInclude Include="..\src\listener.h" />
+    <ClInclude Include="..\src\net.h" />
+    <ClInclude Include="..\src\parsed_message.h" />
+    <ClInclude Include="..\src\request.h" />
     <ClInclude Include="..\src\search.h" />
     <ClInclude Include="..\src\storage.h" />
   </ItemGroup>
@@ -211,9 +222,9 @@ copy ..\include\opendht.h $(OutDir)\include\</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)contrib\build\include;$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)contrib\build\msgpack-c\include;$(ProjectDir)contrib\build\argon2\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)contrib\build\include;$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)contrib\build\msgpack-c\include;$(ProjectDir)contrib\build\argon2\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;4273;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS %(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(OutDir)\lib\x64\$(TargetName).pdb</ProgramDataBaseFileName>
     </ClCompile>

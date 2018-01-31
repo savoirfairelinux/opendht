@@ -24,33 +24,46 @@
 #include "sockaddr.h"
 
 #include <list>
+#include <map>
 
 namespace dht {
 
+struct Node;
 namespace net {
 struct Request;
+struct Socket;
+struct RequestAnswer;
 } /* namespace net */
 
+using Tid = uint32_t;
+using SocketCb = std::function<void(const Sp<Node>&, net::RequestAnswer&&)>;
+struct Socket {
+    Socket() {}
+    Socket(SocketCb&& on_receive) :
+        on_receive(std::move(on_receive)) {}
+    SocketCb on_receive {};
+};
+
 struct Node {
-    InfoHash id;
-    SockAddr addr;
+    const InfoHash id;
 
-    time_point time {time_point::min()};            /* last time eared about */
-    time_point reply_time {time_point::min()};      /* time of last correct reply received */
-
+    Node(const InfoHash& id, const SockAddr& addr, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : id(id), addr(sa, salen) {}
-    Node(const InfoHash& id, const SockAddr& addr) : id(id), addr(addr) {}
+        : Node(id, SockAddr(sa, salen)) {}
 
     InfoHash getId() const {
         return id;
     }
-    std::pair<const sockaddr*, socklen_t> getAddr() const {
-        return {(const sockaddr*)&addr.first, addr.second};
-    }
+    const SockAddr& getAddr() const { return addr; }
     std::string getAddrStr() const {
         return addr.toString();
     }
+    bool isClient() const { return is_client; }
+    bool isIncoming() { return time > reply_time; }
+
+    const time_point& getTime() const { return time; }
+    const time_point& getReplyTime() const { return reply_time; }
+    void setTime(const time_point& t) { time = t; }
 
     /**
      * Makes notice about an additionnal authentication error with this node. Up
@@ -68,20 +81,65 @@ struct Node {
     bool isPendingMessage() const;
     size_t getPendingMessageCount() const;
 
-    NodeExport exportNode() const { return NodeExport {id, addr.first, addr.second}; }
+    bool isOld(const time_point& now) const {
+        return time + NODE_EXPIRE_TIME < now;
+    }
+    bool isRemovable(const time_point& now) const {
+        return isExpired() and isOld(now);
+    }
+
+    NodeExport exportNode() const {
+        NodeExport ne;
+        ne.id = id;
+        ne.sslen = addr.getLength();
+        std::memcpy(&ne.ss, addr.get(), ne.sslen);
+        return ne;
+    }
     sa_family_t getFamily() const { return addr.getFamily(); }
 
     void update(const SockAddr&);
 
-    void requested(std::shared_ptr<net::Request>& req);
-    void received(time_point now, std::shared_ptr<net::Request> req);
+    void requested(const Sp<net::Request>& req);
+    void received(time_point now, const Sp<net::Request>& req);
+    Sp<net::Request> getRequest(Tid tid);
+    void cancelRequest(const Sp<net::Request>& req);
 
     void setExpired();
+
+    /**
+     * Opens a socket on which a node will be able allowed to write for further
+     * additionnal updates following the response to a previous request.
+     *
+     * @param node  The node which will be allowed to write on this socket.
+     * @param cb    The callback to execute once updates arrive on the socket.
+     *
+     * @return the socket.
+     */
+    Tid openSocket(SocketCb&& cb);
+
+    Sp<Socket> getSocket(Tid id);
+
+    /**
+     * Closes a socket so that no further data will be red on that socket.
+     *
+     * @param socket  The socket to close.
+     */
+    void closeSocket(Tid id);
 
     /**
      * Resets the state of the node so it's not expired anymore.
      */
     void reset() { expired_ = false; reply_time = time_point::min(); }
+
+    /**
+     * Generates a new request id, skipping the invalid id.
+     *
+     * @return the new id.
+     */
+    Tid getNewTid() {
+        ++transaction_id;
+        return transaction_id ? ++transaction_id : transaction_id;
+    }
 
     std::string toString() const;
 
@@ -99,15 +157,17 @@ private:
     /* Number of times we accept authentication errors from this node. */
     static const constexpr unsigned MAX_AUTH_ERRORS {3};
 
-    std::list<std::weak_ptr<net::Request>> requests_ {};
+    SockAddr addr;
+    bool is_client {false};
+    time_point time {time_point::min()};            /* last time eared about */
+    time_point reply_time {time_point::min()};      /* time of last correct reply received */
     unsigned auth_errors {0};
     bool expired_ {false};
+    Tid transaction_id;
+    using TransactionDist = std::uniform_int_distribution<decltype(transaction_id)>;
 
-    void clearPendingQueue() {
-        requests_.remove_if([](std::weak_ptr<net::Request>& w) {
-            return w.expired();
-        });
-    }
+    std::map<Tid, Sp<net::Request>> requests_ {};
+    std::map<Tid, Sp<Socket>> sockets_;
 };
 
 }
