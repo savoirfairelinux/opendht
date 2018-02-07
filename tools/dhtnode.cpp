@@ -201,9 +201,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             try {
                 unsigned int port = std::stoi(idstr);
 #if OPENDHT_PUSH_NOTIFICATIONS
-                proxies.emplace(port, new DhtProxyServer(dht, port, pushServer));
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, port, pushServer)));
 #else
-                proxies.emplace(port, new DhtProxyServer(dht, port));
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, port)));
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             } catch (...) { }
             continue;
@@ -517,7 +517,7 @@ main(int argc, char **argv)
 #endif
         if (params.proxyserver != 0) {
 #if OPENDHT_PROXY_SERVER
-            proxies.emplace(params.proxyserver, new DhtProxyServer(dht, params.proxyserver, params.pushserver));
+            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, params.proxyserver, params.pushserver)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);
