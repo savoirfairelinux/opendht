@@ -846,6 +846,15 @@ Certificate::addRevocationList(std::shared_ptr<RevocationList> list)
 }
 
 std::chrono::system_clock::time_point
+Certificate::getActivation() const
+{
+    auto t = gnutls_x509_crt_get_activation_time(cert);
+    if (t == (time_t)-1)
+        return std::chrono::system_clock::time_point::min();
+    return std::chrono::system_clock::from_time_t(t);
+}
+
+std::chrono::system_clock::time_point
 Certificate::getExpiration() const
 {
     auto t = gnutls_x509_crt_get_expiration_time(cert);
@@ -917,8 +926,9 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
         return {};
     Certificate ret {cert};
 
-    gnutls_x509_crt_set_activation_time(cert, time(NULL));
-    gnutls_x509_crt_set_expiration_time(cert, time(NULL) + (20 * 365 * 24 * 60 * 60));
+    std::time_t now = time(NULL);
+    gnutls_x509_crt_set_activation_time(cert, now);
+    gnutls_x509_crt_set_expiration_time(cert, now + (20 * 365 * 24 * 60 * 60));
     if (gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
         std::cerr << "Error when setting certificate key" << std::endl;
         return {};
