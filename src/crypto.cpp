@@ -928,7 +928,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, Identity c
 
     std::time_t now = time(NULL);
     gnutls_x509_crt_set_activation_time(cert, now);
-    gnutls_x509_crt_set_expiration_time(cert, now + (20 * 365 * 24 * 60 * 60));
+    gnutls_x509_crt_set_expiration_time(cert, now + (10 * 365 * 24 * 60 * 60));
     if (gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
         std::cerr << "Error when setting certificate key" << std::endl;
         return {};
