@@ -43,10 +43,14 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
     // NOTE in c++14, use make_unique
     service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
 
+    std::cout << "Running DHT proxy server on port " << port << std::endl;
+    if (not pushServer.empty()) {
 #if !OPENDHT_PUSH_NOTIFICATIONS
-    if (not pushServer.empty())
         std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
+#else
+        std::cout << "Using push notification server: " << pushServer << std::endl;
 #endif
+    }
 
     server_thread = std::thread([this, port]() {
         // Create endpoints
