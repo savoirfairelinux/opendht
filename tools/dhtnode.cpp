@@ -279,6 +279,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                     indexes.emplace(index, Pht {index, std::move(ks), dht});
                 } catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
             }
+        } else if (op == "cl") {
+            std::string rem;
+            iss >> rem;
+            dht->cancelListen(id, std::stoul(rem));
         }
         else {
             // Dht syntax
@@ -334,11 +338,6 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             }, {}, dht::Where {std::move(rem)});
             auto t = token.get();
             std::cout << "Listening, token: " << t << std::endl;
-        }
-        else if (op == "cl") {
-            std::string rem;
-            iss >> rem;
-            dht->cancelListen(id, std::stoul(rem));
         }
         else if (op == "p") {
             std::string v;
