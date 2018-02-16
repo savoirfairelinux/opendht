@@ -393,6 +393,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
     notification["tokens"] = tokens;
     notification["platform"] = isAndroid ? 2 : 1;
     notification["data"] = json;
+    notification["priority"] = "high";
 
     Json::Value notifications(Json::arrayValue);
     notifications[0] = notification;
