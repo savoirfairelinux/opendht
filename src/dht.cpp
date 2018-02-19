@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2018 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -130,7 +130,7 @@ Dht::trySearchInsert(const Sp<Node>& node)
         auto& s = *it->second;
         if (s.insertNode(node, now)) {
             inserted = true;
-            scheduler.edit(s.nextSearchStep, s.getNextStepTime(now));
+            scheduler.edit(s.nextSearchStep, now);
         } else if (not s.expired and not s.done)
             break;
         ++it;
@@ -142,7 +142,7 @@ Dht::trySearchInsert(const Sp<Node>& node)
         auto& s = *it->second;
         if (s.insertNode(node, now)) {
             inserted = true;
-            scheduler.edit(s.nextSearchStep, s.getNextStepTime(now));
+            scheduler.edit(s.nextSearchStep, now);
         } else if (not s.expired and not s.done)
             break;
     }
@@ -217,6 +217,7 @@ Dht::searchNodeGetDone(const net::Request& req,
 {
     const auto& now = scheduler.time();
     if (auto sr = ws.lock()) {
+        sr->insertNode(req.node, now, answer.ntoken);
         if (auto srn = sr->getNode(req.node)) {
             /* all other get requests which are satisfied by this answer
                should not be sent anymore */
@@ -228,8 +229,12 @@ Dht::searchNodeGetDone(const net::Request& req,
                     srn->getStatus[q] = std::move(dummy_req);
                 }
             }
+            auto syncTime = srn->getSyncTime(scheduler.time());
+            if (srn->syncJob)
+                scheduler.edit(srn->syncJob, syncTime);
+            else
+                srn->syncJob = scheduler.add(syncTime, std::bind(&Dht::searchStep, this, sr));
         }
-        sr->insertNode(req.node, now, answer.ntoken);
         onGetValuesDone(req.node, answer, sr, query);
     }
 }
@@ -411,7 +416,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                 const auto& now = scheduler.time();
                 if (not sn->isSynced(now)) {
                     /* Search is now unsynced. Let's call searchStep to sync again. */
-                    scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(now));
+                    scheduler.edit(sr->nextSearchStep, now);
                     return;
                 }
                 for (auto& a : sr->announce) {
@@ -549,6 +554,8 @@ Dht::searchStep(Sp<Search> sr)
                         { /* on done */
                             if (auto sr = ws.lock()) {
                                 scheduler.edit(sr->nextSearchStep, scheduler.time());
+                                if (auto sn = sr->getNode(req.node))
+                                    scheduler.add(sn->getListenTime(query), std::bind(&Dht::searchStep, this, sr));
                                 onListenDone(req.node, answer, sr);
                             }
                         },
@@ -606,8 +613,8 @@ Dht::searchStep(Sp<Search> sr)
     /* dumpSearch(*sr, std::cout); */
 
     /* periodic searchStep scheduling. */
-    if (not sr->done)
-        scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(now));
+    //if (not sr->done)
+    //    scheduler.edit(sr->nextSearchStep, now);
 }
 
 unsigned Dht::refill(Dht::Search& sr) {
@@ -695,7 +702,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
 
     refill(*sr);
     if (sr->nextSearchStep)
-        scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(scheduler.time()));
+        scheduler.edit(sr->nextSearchStep, scheduler.time());
     else
         sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
 
@@ -782,7 +789,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     sr->done = false;
     auto token = ++sr->listener_token;
     sr->listeners.emplace(token, LocalListener{q, f, cb});
-    scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(now));
+    scheduler.edit(sr->nextSearchStep, now);
     return token;
 }
 
@@ -1434,10 +1441,8 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << " [expired]";
     bool synced = sr.isSynced(now);
     out << (synced ? " [synced]" : " [not synced]");
-    if (synced && sr.isListening(now)) {
-        auto lt = sr.getListenTime(now);
-        out << " [listening, next in " << duration_cast<seconds>(lt-now).count() << " s]";
-    }
+    if (synced && sr.isListening(now))
+        out << " [listening]";
     out << std::endl;
 
     /*printing the queries*/
@@ -2059,6 +2064,7 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
                 n.token.clear();
                 n.last_get_reply = time_point::min();
                 searchSendGetValues(sr);
+                scheduler.edit(sr->nextSearchStep, scheduler.time());
                 break;
             }
         }
@@ -2221,7 +2227,7 @@ Dht::onListenDone(const Sp<Node>& node,
     if (not sr->done) {
         const auto& now = scheduler.time();
         searchSendGetValues(sr);
-        scheduler.edit(sr->nextSearchStep, sr->getNextStepTime(now));
+        scheduler.edit(sr->nextSearchStep, now);
     }
 }
 
