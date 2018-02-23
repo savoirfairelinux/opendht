@@ -293,12 +293,12 @@ public:
         dht_->connectivityChanged();
     }
 
-    void setPushNotificationToken(const std::string& token = "") {
-        dht_->setPushNotificationToken(token);
-    }
-
     void forwardAllMessages(bool forward) {
         forward_all_ = forward;
+    }
+
+    void setPushNotificationToken(const std::string& token = "") {
+        dht_->setPushNotificationToken(token);
     }
 
     /**

@@ -1,0 +1,3 @@
+FROM opendht-deps-proxy
+MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+COPY . /root/opendht

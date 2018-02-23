@@ -47,11 +47,11 @@ public:
 
     explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "");
 
-#if OPENDHT_PUSH_NOTIFICATIONS
     virtual void setPushNotificationToken(const std::string& token) {
+#if OPENDHT_PUSH_NOTIFICATIONS
         deviceKey_ = token;
-    }
 #endif
+    }
 
     virtual ~DhtProxyClient();
 
@@ -167,7 +167,6 @@ public:
     }
     virtual bool cancelListen(const InfoHash&, size_t token);
 
-#if OPENDHT_PUSH_NOTIFICATIONS
     /**
      * Call linked callback with a push notification
      * @param notification to process
@@ -178,7 +177,6 @@ public:
      * @param token
      */
     void resubscribe(const unsigned token);
-#endif // OPENDHT_PUSH_NOTIFICATIONS
 
     time_point periodic(const uint8_t*, size_t, const SockAddr&);
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
