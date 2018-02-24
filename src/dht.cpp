@@ -1169,7 +1169,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
             std::vector<Sp<Value>> vals {};
             vals.push_back(v.data);
             Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-            network_engine.tellListener(node_listeners.first, l.second.sid, id, 0, ntoken, {}, {},
+            network_engine.tellListener(node_listeners.first, l.first, id, 0, ntoken, {}, {},
                     std::move(vals), l.second.query);
         }
     }
@@ -1231,10 +1231,10 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
                     buckets4.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
-        node_listeners->second.emplace(socket_id, Listener {socket_id, now, std::forward<Query>(query)});
+        node_listeners->second.emplace(socket_id, Listener {now, std::forward<Query>(query)});
     }
     else
-        l->second.refresh(socket_id, now, std::forward<Query>(query));
+        l->second.refresh(now, std::forward<Query>(query));
 }
 
 void

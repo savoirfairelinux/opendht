@@ -27,14 +27,12 @@ namespace dht {
  * Foreign nodes asking for updates about an InfoHash.
  */
 struct Listener {
-    size_t sid;
     time_point time;
     Query query;
 
-    Listener(size_t sid, time_point t, Query&& q) : sid(sid), time(t), query(std::move(q)) {}
+    Listener(time_point t, Query&& q) : time(t), query(std::move(q)) {}
 
-    void refresh(size_t s, time_point t, Query&& q) {
-        sid = s;
+    void refresh(time_point t, Query&& q) {
         time = t;
         query = std::move(q);
     }
