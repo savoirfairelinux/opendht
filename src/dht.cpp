@@ -341,8 +341,8 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
             if (not n)
                 return nullptr;
 
-            DHT_LOG.w(sr->id, n->node->id, "[search %s] [node %s] sending 'find_node'",
-                    sr->id.toString().c_str(), n->node->toString().c_str());
+            /*DHT_LOG.d(sr->id, n->node->id, "[search %s] [node %s] sending 'find_node'",
+                    sr->id.toString().c_str(), n->node->toString().c_str());*/
             n->getStatus[query] = network_engine.sendFindNode(n->node,
                     sr->id,
                     -1,
@@ -355,8 +355,8 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
 
             if (query and not query->select.getSelection().empty()) {
                 /* The request contains a select. No need to paginate... */
-                DHT_LOG.w(sr->id, n->node->id, "[search %s] [node %s] sending 'get'",
-                        sr->id.toString().c_str(), n->node->toString().c_str());
+                /*DHT_LOG.d(sr->id, n->node->id, "[search %s] [node %s] sending 'get'",
+                        sr->id.toString().c_str(), n->node->toString().c_str());*/
                 n->getStatus[query] = network_engine.sendGetValues(n->node,
                         sr->id,
                         *query,
@@ -1137,7 +1137,6 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 void
 Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
 {
-    DHT_LOG.d(id, "[store %s] changed", id.toString().c_str());
     if (not st.local_listeners.empty()) {
         DHT_LOG.d(id, "[store %s] %lu local listeners", id.toString().c_str(), st.local_listeners.size());
         std::vector<std::pair<GetCallback, std::vector<Sp<Value>>>> cbs;
@@ -1157,20 +1156,22 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
             cb.first(cb.second);
     }
 
-    DHT_LOG.d(id, "[store %s] %lu remote listeners", id.toString().c_str(), st.listeners.size());
-    for (const auto& node_listeners : st.listeners) {
-        for (const auto& l : node_listeners.second) {
-            auto f = l.second.query.where.getFilter();
-            if (f and not f(*v.data))
-                continue;
-            DHT_LOG.w(id, node_listeners.first->id, "[store %s] [node %s] sending update",
-                    id.toString().c_str(),
-                    node_listeners.first->toString().c_str());
-            std::vector<Sp<Value>> vals {};
-            vals.push_back(v.data);
-            Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-            network_engine.tellListener(node_listeners.first, l.first, id, 0, ntoken, {}, {},
-                    std::move(vals), l.second.query);
+    if (not st.listeners.empty()) {
+        DHT_LOG.d(id, "[store %s] %lu remote listeners", id.toString().c_str(), st.listeners.size());
+        for (const auto& node_listeners : st.listeners) {
+            for (const auto& l : node_listeners.second) {
+                auto f = l.second.query.where.getFilter();
+                if (f and not f(*v.data))
+                    continue;
+                DHT_LOG.w(id, node_listeners.first->id, "[store %s] [node %s] sending update",
+                        id.toString().c_str(),
+                        node_listeners.first->toString().c_str());
+                std::vector<Sp<Value>> vals {};
+                vals.push_back(v.data);
+                Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
+                network_engine.tellListener(node_listeners.first, l.first, id, 0, ntoken, {}, {},
+                        std::move(vals), l.second.query);
+            }
         }
     }
 }
@@ -2119,8 +2120,6 @@ Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query
     if (st != store.end() && not st->second.empty()) {
         answer.values = st->second.get(query.where.getFilter());
         DHT_LOG.d(hash, "[node %s] sending %u values", node->toString().c_str(), answer.values.size());
-    } else {
-        DHT_LOG.d(hash, "[node %s] sending nodes", node->toString().c_str());
     }
     return answer;
 }
@@ -2135,14 +2134,13 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
         return;
     }
 
-    DHT_LOG.d(sr->id, "[search %s] [node %s] got reply to 'get' with %u nodes",
-            sr->id.toString().c_str(), node->toString().c_str(), a.nodes4.size()+a.nodes6.size());
+    /*DHT_LOG.d(sr->id, "[search %s] [node %s] got reply to 'get' with %u nodes",
+            sr->id.toString().c_str(), node->toString().c_str(), a.nodes4.size()+a.nodes6.size());*/
 
     if (not a.ntoken.empty()) {
         if (not a.values.empty() or not a.fields.empty()) {
-            DHT_LOG.d(sr->id, "[search %s IPv%c] found %u values",
-                    sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6',
-                    a.values.size());
+            DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] found %u values",
+                      sr->id.toString().c_str(), node->toString().c_str(), a.values.size());
             for (auto& getp : sr->callbacks) { /* call all callbacks for this search */
                 auto& get = getp.second;
                 if (not (get.get_cb or get.query_cb) or
