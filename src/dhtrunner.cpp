@@ -918,19 +918,6 @@ DhtRunner::enableProxy(bool proxify)
 #endif
 }
 
-
-/**
- * Updates the push notification device token
- */
-void
-DhtRunner::setPushNotificationToken(const std::string& token) {
-#if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
-    pushToken_ = token;
-    if (dht_via_proxy_)
-        dht_via_proxy_->setPushNotificationToken(token);
-#endif
-}
-
 void
 DhtRunner::forwardAllMessages(bool forward)
 {
@@ -942,6 +929,18 @@ DhtRunner::forwardAllMessages(bool forward)
     if (dht_)
         dht_->forwardAllMessages(forward);
 #endif // OPENDHT_PROXY_SERVER
+}
+
+/**
+ * Updates the push notification device token
+ */
+void
+DhtRunner::setPushNotificationToken(const std::string& token) {
+#if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
+    pushToken_ = token;
+    if (dht_via_proxy_)
+        dht_via_proxy_->setPushNotificationToken(token);
+#endif
 }
 
 void

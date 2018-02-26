@@ -659,10 +659,10 @@ DhtProxyClient::restartListeners()
     }
 }
 
-#if OPENDHT_PUSH_NOTIFICATIONS
 void
 DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string>& notification)
 {
+#if OPENDHT_PUSH_NOTIFICATIONS
     try {
         auto token = std::stoul(notification.at("token"));
         for (const auto& listener: listeners_) {
@@ -680,11 +680,13 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
     } catch (...) {
 
     }
+#endif
 }
 
 void
 DhtProxyClient::resubscribe(const unsigned token)
 {
+#if OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty()) return;
     for (auto& listener: listeners_) {
         if (*(listener.pushNotifToken) == token) {
@@ -734,8 +736,10 @@ DhtProxyClient::resubscribe(const unsigned token)
             });
         }
     }
+#endif
 }
 
+#if OPENDHT_PUSH_NOTIFICATIONS
 void
 DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req)
 {

@@ -218,8 +218,8 @@ private:
     mutable std::mutex lockPushListeners_;
     mutable std::vector<PushListener> pushListeners_;
     mutable unsigned tokenPushNotif_ {0};
-    const std::string pushServer_;
 #endif //OPENDHT_PUSH_NOTIFICATIONS
+    const std::string pushServer_;
 
     /**
      * Remove finished listeners
