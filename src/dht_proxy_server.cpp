@@ -343,7 +343,6 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session) co
             try {
                 restbed::Bytes buf(b);
                 std::string strJson(buf.begin(), buf.end());
-
                 std::string err;
                 Json::Value root;
                 Json::CharReaderBuilder rbuilder;
@@ -355,7 +354,7 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session) co
                 }
                 auto pushToken = root["key"].asString();
                 if (pushToken.empty()) return;
-                auto token = root["token"].asLargestUInt();
+                auto token = std::stoull(root["token"].asString());
                 if (token == 0) return;
                 auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
 
@@ -430,7 +429,7 @@ DhtProxyServer::handlePushListeners()
             auto isAndroid = pushListener->isAndroid;
             auto clientId = pushListener->clientId;
             pushListener->internalToken = dht_->listen(pushListener->hash,
-                [this, key, callbackId, token, isAndroid, clientId](std::shared_ptr<Value> /*value*/) {
+                [this, key, callbackId, token, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
                     // Build message content.
                     Json::Value json;
                     if (callbackId > 0) {
