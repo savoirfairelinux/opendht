@@ -436,12 +436,20 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
     auto filterChain = filter.chain(query.where.getFilter());
     auto pushNotifToken = std::make_shared<unsigned>(0);
 
+    unsigned callbackId = 0;
+    {
+        std::lock_guard<std::mutex> lock(lockCallback_);
+        callbackId_ += 1;
+        callbackId = callbackId_;
+    }
+
     Listener l;
     ++listener_token_;
     l.key = key.toString();
     l.token = listener_token_;
     l.req = req;
     l.cb = cb;
+    l.callbackId = callbackId;
     l.pushNotifToken = pushNotifToken;
     l.filterChain = std::move(filterChain);
     l.thread = std::thread([=]()
@@ -453,7 +461,7 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
             }
 #if OPENDHT_PUSH_NOTIFICATIONS
             else
-                fillBodyToGetToken(req);
+                fillBodyToGetToken(req, callbackId);
 #endif
 
             struct State {
@@ -546,6 +554,20 @@ DhtProxyClient::cancelListen(const InfoHash&, size_t token)
                 restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
                 auto req = std::make_shared<restbed::Request>(uri);
                 req->set_method("UNSUBSCRIBE");
+                // fill request body
+                Json::Value body;
+                body["key"] = deviceKey_;
+                body["client_id"] = pushClientId_;
+                body["token"] = std::to_string(token);
+                body["callback_id"] = listener.callbackId;
+                Json::StreamWriterBuilder wbuilder;
+                wbuilder["commentStyle"] = "None";
+                wbuilder["indentation"] = "";
+                auto content = Json::writeString(wbuilder, body) + "\n";
+                std::replace(content.begin(), content.end(), '\n', ' ');
+                req->set_body(content);
+                req->set_header("Content-Length", std::to_string(content.size()));
+
                 restbed::Http::async(req,
                     [](const std::shared_ptr<restbed::Request>&,
                        const std::shared_ptr<restbed::Response>&){}
@@ -701,9 +723,10 @@ DhtProxyClient::resubscribe(const unsigned token)
                 listener.thread.join();
             listener.req = req;
             listener.pushNotifToken = pushNotifToken;
+            auto callbackId = listener.callbackId;
             listener.thread = std::thread([=]()
             {
-                fillBodyToGetToken(req);
+                fillBodyToGetToken(req, callbackId);
                 auto settings = std::make_shared<restbed::Settings>();
                 auto ok = std::make_shared<std::atomic_bool>(true);
                 restbed::Http::async(req,
@@ -741,7 +764,7 @@ DhtProxyClient::resubscribe(const unsigned token)
 
 #if OPENDHT_PUSH_NOTIFICATIONS
 void
-DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req)
+DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req, unsigned callbackId)
 {
     // Fill body with
     // {
@@ -751,11 +774,7 @@ DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req)
     Json::Value body;
     body["key"] = deviceKey_;
     body["client_id"] = pushClientId_;
-    {
-        std::lock_guard<std::mutex> lock(lockCallback_);
-        callbackId_ += 1;
-        body["callback_id"] = callbackId_;
-    }
+    body["callback_id"] = callbackId;
 #ifdef __ANDROID__
     body["platform"] = "android";
 #endif

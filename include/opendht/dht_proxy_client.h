@@ -296,6 +296,7 @@ private:
         GetCallback cb;
         Value::Filter filterChain;
         std::thread thread;
+        unsigned callbackId;
         std::shared_ptr<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
     };
     std::vector<Listener> listeners_;
@@ -344,7 +345,7 @@ private:
     const std::function<void()> loopSignal_;
 
 #if OPENDHT_PUSH_NOTIFICATIONS
-    void fillBodyToGetToken(std::shared_ptr<restbed::Request> request);
+    void fillBodyToGetToken(std::shared_ptr<restbed::Request> request, unsigned callbackId);
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
 };

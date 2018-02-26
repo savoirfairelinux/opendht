@@ -274,9 +274,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 } catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
             }
         } else if (op == "cl") {
-            std::string rem;
-            iss >> rem;
-            dht->cancelListen(id, std::stoul(rem));
+            std::string hash, rem;
+            iss >> hash >> rem;
+            dht->cancelListen(dht::InfoHash(hash), std::stoul(rem));
         }
         else {
             // Dht syntax
