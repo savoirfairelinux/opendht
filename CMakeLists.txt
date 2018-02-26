@@ -20,6 +20,7 @@ option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" 
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
+option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -131,7 +132,6 @@ list (APPEND opendht_SOURCES
     src/network_engine.cpp
     src/securedht.cpp
     src/dhtrunner.cpp
-    src/indexation/pht.cpp
     src/log.cpp
 )
 
@@ -157,8 +157,13 @@ list (APPEND opendht_HEADERS
     include/opendht/log.h
     include/opendht/log_enable.h
     include/opendht.h
-    include/opendht/indexation/pht.h
 )
+
+if (OPENDHT_INDEX)
+    list (APPEND opendht_SOURCES src/indexation/pht.cpp)
+    list (APPEND opendht_HEADERS include/opendht/indexation/pht.h)
+    add_definitions(-DOPENDHT_INDEXATION)
+endif()
 
 if (OPENDHT_PROXY_SERVER)
   add_definitions(-DOPENDHT_PROXY_SERVER=true)

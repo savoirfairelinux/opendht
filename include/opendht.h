@@ -24,4 +24,6 @@
 #endif
 #include "opendht/log.h"
 #include "opendht/default_types.h"
+#ifdef OPENDHT_INDEXATION
 #include "opendht/indexation/pht.h"
+#endif

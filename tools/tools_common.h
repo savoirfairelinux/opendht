@@ -90,6 +90,7 @@ std::map<std::string, std::string> parseStringMap(std::string mapString) {
     return map;
 }
 
+#ifdef OPENDHT_INDEXATION
 dht::indexation::Pht::Key createPhtKey(std::map<std::string, std::string> pht_key_str_map) {
     dht::indexation::Pht::Key pht_key;
     for (auto f : pht_key_str_map) {
@@ -98,6 +99,7 @@ dht::indexation::Pht::Key createPhtKey(std::map<std::string, std::string> pht_ke
     }
     return pht_key;
 }
+#endif
 
 bool isInfoHash(const dht::InfoHash& h) {
     if (not h) {
