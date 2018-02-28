@@ -90,11 +90,13 @@ void print_help() {
               << "  s <key> <str>         Put string value at <key>, signed with our generated private key." << std::endl
               << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl;
 
+#ifdef OPENDHT_INDEXATION
     std::cout << std::endl << "Indexation operations on the DHT:" << std::endl
               << "  il <name> <key> [exact match]   Lookup the index named <name> with the key <key>." << std::endl
               << "                                  Set [exact match] to 'false' for inexact match lookup." << std::endl
               << "  ii <name> <key> <value>         Inserts the value <value> under the key <key> in the index named <name>." << std::endl
               << std::endl;
+#endif
 }
 
 void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
@@ -111,7 +113,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
     using_history();
 #endif
 
+#ifdef OPENDHT_INDEXATION
     std::map<std::string, indexation::Pht> indexes;
+#endif
 
     while (true)
     {
@@ -250,7 +254,13 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         }
         dht::InfoHash id;
 
-        if (op == "il" or op == "ii") {
+        if (op == "cl") {
+            std::string hash, rem;
+            iss >> hash >> rem;
+            dht->cancelListen(dht::InfoHash(hash), std::stoul(rem));
+        }
+#ifdef OPENDHT_INDEXATION
+        else if (op == "il" or op == "ii") {
             // Pht syntax
             iss >> index >> keystr;
             auto new_index = std::find_if(indexes.begin(), indexes.end(),
@@ -271,11 +281,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                     indexes.emplace(index, Pht {index, std::move(ks), dht});
                 } catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
             }
-        } else if (op == "cl") {
-            std::string hash, rem;
-            iss >> hash >> rem;
-            dht->cancelListen(dht::InfoHash(hash), std::stoul(rem));
         }
+#endif
         else {
             // Dht syntax
             iss >> idstr;
@@ -400,6 +407,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 std::cout << "Announce: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
             });
         }
+#ifdef OPENDHT_INDEXATION
         else if (op == "il") {
             std::string exact_match;
             iss >> exact_match;
@@ -445,6 +453,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
             catch (std::out_of_range& e) { }
         }
+#endif
     }
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;

@@ -32,6 +32,13 @@ AS_IF([test "x$enable_logs" != "xno"], [
 	AC_DEFINE([OPENDHT_LOG], [false], [Define if DHT logs are enabled])
 ])
 
+dnl Check for indexation
+AC_ARG_ENABLE([indexation], [AS_HELP_STRING([--enable-indexation], [Enable DHT indexation])])
+AM_CONDITIONAL(ENABLE_INDEXATION, test x$enable_indexation == xyes)
+AS_IF([test "x$enable_indexation" = "xyes"], [
+	AC_DEFINE([OPENDHT_INDEXATION], [1], [Define if DHT indexation is enabled])
+])
+
 dnl Check for Doxygen
 AC_ARG_ENABLE([doc], AS_HELP_STRING([--enable-doc], [Enable documentation generation (doxygen)]))
 AS_IF([test "x$enable_doc" = "xyes"], [
