@@ -72,12 +72,10 @@ void print_help() {
     std::cout << std::endl << "Operations with the proxy:" << std::endl
 #if OPENDHT_PUSH_NOTIFICATIONS
               << "  stt [server_address] <device_key> Start the proxy client." << std::endl
-#else
-              << "  stt [server_address]              Start the proxy client." << std::endl
-#endif // OPENDHT_PUSH_NOTIFICATIONS
-#if OPENDHT_PUSH_NOTIFICATIONS
               << "  rs  [token]                       Resubscribe to opendht." << std::endl
               << "  rp  [push_notification]           Inject a push notification in Opendht." << std::endl
+#else
+              << "  stt [server_address]              Start the proxy client." << std::endl
 #endif // OPENDHT_PUSH_NOTIFICATIONS
               << "  stp                               Stop the proxy client." << std::endl;
 #endif //OPENDHT_PROXY_CLIENT
