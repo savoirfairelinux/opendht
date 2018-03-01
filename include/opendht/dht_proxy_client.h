@@ -297,6 +297,7 @@ private:
         Value::Filter filterChain;
         std::thread thread;
         unsigned callbackId;
+        std::shared_ptr<bool> isCanceledViaClose; // NOTE: unused if using push notifications
         std::shared_ptr<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
     };
     std::vector<Listener> listeners_;
