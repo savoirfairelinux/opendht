@@ -452,6 +452,8 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
     l.callbackId = callbackId;
     l.pushNotifToken = pushNotifToken;
     l.filterChain = std::move(filterChain);
+    l.isCanceledViaClose = std::make_shared<bool>(false);
+    std::weak_ptr<bool> isCanceledViaClose(l.isCanceledViaClose);
     l.thread = std::thread([=]()
         {
             auto settings = std::make_shared<restbed::Settings>();
@@ -526,7 +528,8 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
                     state->ok = false;
                 }
             }, settings).get();
-            if (not state->ok) {
+            auto isCanceledNormally = isCanceledViaClose.lock();
+            if (not state->ok and isCanceledNormally and not *isCanceledNormally) {
                 opFailed();
             }
         }
@@ -579,6 +582,7 @@ DhtProxyClient::cancelListen(const InfoHash&, size_t token)
                 // Just stop the request
                 if (listener.thread.joinable()) {
                     // Close connection to stop listener?
+                    *(listener.isCanceledViaClose) = true;
                     if (listener.req)
                         restbed::Http::close(listener.req);
                     listener.thread.join();
