@@ -4,14 +4,14 @@
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
-A lightweight C++11 Distributed Hash Table implementation originally based on https://github.com/jech/dht by Juliusz Chroboczek.
+A lightweight C++11 Distributed Hash Table implementation.
 
- * Light and fast C++11 Kademlia DHT library.
+ * Light and fast C++11 Kademlia DHT library
  * Distributed shared key->value data-store
- * Clean and powerful distributed map API with storage of arbitrary binary values of up to 56 KB.
- * Optional public key cryptography layer providing data signature and encryption (using GnuTLS).
- * IPv4 and IPv6 support.
- * Python binding.
+ * Clean and powerful distributed map API with storage of arbitrary binary values of up to 56 KB
+ * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
+ * IPv4 and IPv6 support
+ * Python binding
 
 ## Documentation
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
@@ -93,7 +93,7 @@ for r in results:
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - (optional) restbed used for the REST API. commit fb84213e170bc171fecd825a8e47ed9f881a12cd (https://github.com/AmarOk1412/restbed/tree/async_read_until)
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
-- Build tested with GCC 5.2+ (GNU/Linux, Android, Windows with MinGW), Clang/LLVM (Linux, macOS).
+- Build tested with GCC 5.2+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
 - Build tested with Microsoft Visual Studio 2015
 
 ## Contact
@@ -101,7 +101,7 @@ for r in results:
 IRC: join us on Freenode at [`#opendht`](https://webchat.freenode.net/?channels=%23opendht).
 
 ## Licence
-Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+Copyright (C) 2014-2018 Savoir-faire Linux Inc.
 
 OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 
@@ -109,7 +109,9 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 
 See COPYING or https://www.gnu.org/licenses/gpl-3.0.en.html for the full GPLv3 licence.
 
-This project is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
+## Acknowledgements
+This project was originally based on https://github.com/jech/dht by Juliusz Chroboczek.
+It is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
 
 ## Donations
 We gratefully accept Bitcoin donations to support OpenDHT development at: `bitcoin:3EykSd1An888efq4Bq3KaV3hJ3JQ4FPnwm`.
