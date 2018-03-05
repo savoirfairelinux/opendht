@@ -109,6 +109,19 @@ struct OPENDHT_PUBLIC ValueType {
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
 
+class TypeStore {
+public:
+    void registerType(const ValueType& type) {
+        types[type.id] = type;
+    }
+    const ValueType& getType(ValueType::Id type_id) const {
+        const auto& t_it = types.find(type_id);
+        return (t_it == types.end()) ? ValueType::USER_DATA : t_it->second;
+    }
+private:
+    std::map<ValueType::Id, ValueType> types {};
+};
+
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.
  *

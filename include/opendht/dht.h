@@ -99,11 +99,10 @@ public:
     bool isRunning(sa_family_t af = 0) const;
 
     virtual void registerType(const ValueType& type) {
-        types[type.id] = type;
+        types.registerType(type);
     }
     const ValueType& getType(ValueType::Id type_id) const {
-        const auto& t_it = types.find(type_id);
-        return (t_it == types.end()) ? ValueType::USER_DATA : t_it->second;
+        return types.getType(type_id);
     }
 
     /**
@@ -350,7 +349,7 @@ private:
     uint64_t oldsecret {};
 
     // registred types
-    std::map<ValueType::Id, ValueType> types;
+    TypeStore types;
 
     // are we a bootstrap node ?
     // note: Any running node can be used as a bootstrap node.
