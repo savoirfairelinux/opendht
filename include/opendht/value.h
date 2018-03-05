@@ -187,6 +187,15 @@ struct OPENDHT_PUBLIC Value
                 return f1(v) or f2(v);
             };
         }
+        std::vector<Sp<Value>> filter(const std::vector<Sp<Value>>& values) {
+            if (not (*this))
+                return values;
+            std::vector<Sp<Value>> ret;
+            for (const auto& v : values)
+                if ((*this)(v))
+                    ret.emplace_back(v);
+            return ret;
+        }
     };
 
     /* Sneaky functions disguised in classes */
