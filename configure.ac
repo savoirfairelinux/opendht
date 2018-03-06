@@ -25,7 +25,7 @@ AC_PROG_CXX
 AM_PROG_AR
 
 dnl Check for logs
-AC_ARG_ENABLE([logs], [AS_HELP_STRING([--disable-logs], [Disble DHT logs])])
+AC_ARG_ENABLE([logs], [AS_HELP_STRING([--disable-logs], [Disable DHT logs])])
 AS_IF([test "x$enable_logs" != "xno"], [
 	AC_DEFINE([OPENDHT_LOG], [true], [Define if DHT logs are enabled])
 ], [
@@ -33,9 +33,9 @@ AS_IF([test "x$enable_logs" != "xno"], [
 ])
 
 dnl Check for indexation
-AC_ARG_ENABLE([indexation], [AS_HELP_STRING([--enable-indexation], [Enable DHT indexation])])
-AM_CONDITIONAL(ENABLE_INDEXATION, test x$enable_indexation == xyes)
-AS_IF([test "x$enable_indexation" = "xyes"], [
+AC_ARG_ENABLE([indexation], [AS_HELP_STRING([--disable-indexation], [Disable DHT indexation])])
+AM_CONDITIONAL(ENABLE_INDEXATION, test x$enable_indexation != "xno")
+AS_IF([test "x$enable_indexation" != "xno"], [
 	AC_DEFINE([OPENDHT_INDEXATION], [1], [Define if DHT indexation is enabled])
 ])
 

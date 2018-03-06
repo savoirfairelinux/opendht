@@ -20,7 +20,7 @@ option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" 
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
-option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
+option (OPENDHT_INDEX "Build DHT indexation feature" ON)
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
