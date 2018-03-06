@@ -811,6 +811,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
         }
         if (!newvals.empty()) {
             if (!cb(newvals)) {
+                // cancelListen is useful here, because we need to cancel on IPv4 and 6
                 cancelListen(id, token);
                 return false;
             }

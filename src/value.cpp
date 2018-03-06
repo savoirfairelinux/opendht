@@ -176,8 +176,13 @@ Value::msgpack_unpack_body(const msgpack::object& o)
 Value::Value(Json::Value& json)
 {
    try {
-       if (json.isMember("id"))
-           id = ValueType::Id(json["id"].asInt());
+       if (json.isMember("id")) {
+           if (json["id"].isString()) {
+               id = Value::Id(std::stoull(json["id"].asString()));
+           } else {
+               id = Value::Id(json["id"].asLargestUInt());
+           }
+       }
    } catch (...) { }
    if (json.isMember("cypher")) {
        auto cypherStr = json["cypher"].asString();

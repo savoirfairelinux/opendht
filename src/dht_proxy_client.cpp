@@ -200,7 +200,7 @@ DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback don
                             if ((not filterChain or filterChain(*value)) && cb) {
                                 std::lock_guard<std::mutex> lock(lockCallbacks);
                                 callbacks_.emplace_back([cb, value, finished]() {
-                                    if (not cb({value}))
+                                    if (not *finished and not cb({value}))
                                         *finished = true;
                                 });
                                 loopSignal_();
@@ -445,14 +445,40 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
 
     Listener l;
     ++listener_token_;
+    auto isCanceled = std::make_shared<bool>(false);
+
+    // Wrap cb in another callback to avoid value duplication.
+    auto vals = std::make_shared<std::map<Value::Id, Sp<Value>>>();
+    auto gcb = [=](const std::vector<Sp<Value>>& values) {
+        std::vector<Sp<Value>> newvals;
+        for (const auto& v : values) {
+            auto it = vals->find(v->id);
+            if (it == vals->cend() || !(*it->second == *v))
+                newvals.push_back(v);
+        }
+        if (!newvals.empty()) {
+            if (not *isCanceled and !cb(newvals)) {
+                *isCanceled = true;
+                cancelListen(key, listener_token_);
+                return false;
+            }
+            for (const auto& v : newvals) {
+                auto it = vals->emplace(v->id, v);
+                if (not it.second)
+                    it.first->second = v;
+            }
+        }
+        return true;
+    };
+
     l.key = key.toString();
     l.token = listener_token_;
     l.req = req;
-    l.cb = cb;
+    l.cb = gcb;
     l.callbackId = callbackId;
     l.pushNotifToken = pushNotifToken;
     l.filterChain = std::move(filterChain);
-    l.isCanceledViaClose = std::make_shared<bool>(false);
+    l.isCanceledViaClose = isCanceled;
     std::weak_ptr<bool> isCanceledViaClose(l.isCanceledViaClose);
     l.thread = std::thread([=]()
         {
@@ -472,7 +498,7 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
             };
             auto state = std::make_shared<State>();
             restbed::Http::async(req,
-                [this, filterChain, cb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
+                [this, filterChain, gcb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
                                                                const std::shared_ptr<restbed::Response>& reply) {
                 auto code = reply->get_status_code();
                 if (code == 200) {
@@ -507,12 +533,11 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
                                 auto* char_data = reinterpret_cast<const char*>(&body[0]);
                                 if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                                     auto value = std::make_shared<Value>(json);
-                                    if ((not filterChain or filterChain(*value)) && cb)  {
+                                    if (not filterChain or filterChain(*value))  {
                                         std::lock_guard<std::mutex> lock(lockCallbacks);
-                                        callbacks_.emplace_back([cb, value, state]() {
-                                            if (not state->cancel and not cb({value})) {
+                                        callbacks_.emplace_back([gcb, value, state]() {
+                                            if (not state->cancel and not gcb({value}))
                                                 state->cancel = true;
-                                            }
                                         });
                                         loopSignal_();
                                     }
