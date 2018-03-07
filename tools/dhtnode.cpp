@@ -254,11 +254,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         }
         dht::InfoHash id;
 
-        if (op == "cl") {
-            std::string hash, rem;
-            iss >> hash >> rem;
-            dht->cancelListen(dht::InfoHash(hash), std::stoul(rem));
-        }
+        if (false) {}
 #ifdef OPENDHT_INDEXATION
         else if (op == "il" or op == "ii") {
             // Pht syntax
@@ -268,7 +264,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                         return i.first == index;
                     }) == indexes.end();
             if (not index.size()) {
-                std::cout << "You must enter the index name." << std::endl;
+                std::cerr << "You must enter the index name." << std::endl;
                 continue;
             } else if (new_index) {
                 using namespace dht::indexation;
@@ -337,6 +333,18 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             }, {}, dht::Where {std::move(rem)});
             auto t = token.get();
             std::cout << "Listening, token: " << t << std::endl;
+        }
+        if (op == "cl") {
+            std::string rem;
+            iss >> rem;
+            size_t token;
+            try {
+                token = std::stoul(rem);
+            } catch(...) {
+                std::cerr << "Syntax: cl [key] [token]" << std::endl;
+                continue;
+            }
+            dht->cancelListen(id, token);
         }
         else if (op == "p") {
             std::string v;
