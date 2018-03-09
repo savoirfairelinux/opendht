@@ -308,13 +308,6 @@ public:
     void pushNotificationReceived(const std::map<std::string, std::string>& notification) {
         dht_->pushNotificationReceived(notification);
     }
-    /**
-     * Refresh a listen via a token
-     * @param token
-     */
-    void resubscribe(const unsigned token) {
-        dht_->resubscribe(token);
-    }
 
     void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG)
     {

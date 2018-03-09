@@ -952,13 +952,4 @@ DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& da
 #endif
 }
 
-void
-DhtRunner::resubscribe(unsigned token)
-{
-#if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
-    if (dht_via_proxy_)
-        dht_via_proxy_->resubscribe(token);
-#endif
-}
-
 }

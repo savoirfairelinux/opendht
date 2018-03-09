@@ -235,11 +235,6 @@ public:
      * @param notification to process
      */
     virtual void pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
-    /**
-     * Refresh a listen via a token
-     * @param token
-     */
-    virtual void resubscribe(unsigned token) = 0;
 
 protected:
     bool logFilerEnable_ {};

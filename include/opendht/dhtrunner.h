@@ -400,11 +400,6 @@ public:
      * Insert a push notification to process for OpenDHT
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& data) const;
-    /**
-     * Refresh a listen via a token
-     * @param token
-     */
-    void resubscribe(unsigned token);
 
     /* Proxy server mothods */
     void forwardAllMessages(bool forward);

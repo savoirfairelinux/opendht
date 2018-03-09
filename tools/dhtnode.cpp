@@ -232,13 +232,6 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             iss >> value;
             dht->pushNotificationReceived({{"token", value}});
             continue;
-        } else if (op == "re") {
-            iss >> value;
-            try {
-                unsigned token = std::stoul(value);
-                dht->resubscribe(token);
-            } catch (...) { }
-            continue;
         }
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 #endif //OPENDHT_PROXY_CLIENT
