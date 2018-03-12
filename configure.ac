@@ -182,6 +182,11 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
 	LDFLAGS="${LDFLAGS} ${Jsoncpp_LIBS} -lrestbed"
 ], [])
 
+AC_ARG_ENABLE([tests], AS_HELP_STRING([--enable-tests], [Enable tests]), build_tests=yes, build_tests=no)
+AM_CONDITIONAL(OPENDHT_TESTS, test x$build_tests == xyes)
+AM_COND_IF([OPENDHT_TESTS], [
+	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
+])
 
 AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
 
@@ -197,5 +202,6 @@ AM_COND_IF([USE_CYTHON], [
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  tools/Makefile
+								 tests/Makefile
                  opendht.pc])
 AC_OUTPUT

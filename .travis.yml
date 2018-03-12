@@ -58,7 +58,7 @@ script:
       else
         options+='-DOPENDHT_PUSH_NOTIFICATIONS=OFF ';
       fi
-      docker run opendht-proxy /bin/sh -c "cd /root/opendht && mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=/usr -DOPENDHT_PYTHON=ON -DOPENDHT_LTO=ON $options .. && make -j8 && make install";
+      docker run opendht-proxy /bin/sh -c "cd /root/opendht && mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=/usr -DOPENDHT_PYTHON=ON -DOPENDHT_LTO=ON -DOPENDHT_TESTS=ON $options .. && make -j8 && ./opendht_unit_tests && make install";
     fi
 
   - |

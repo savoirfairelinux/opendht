@@ -1,5 +1,9 @@
 FROM aberaud/opendht-deps
 MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+
+RUN apt-get install -y libcppunit-dev # temp while aberaud/opendht-deps doesn't have this
+
 COPY . /root/opendht
 RUN cd /root/opendht && mkdir build && cd build \
-	&& cmake -DCMAKE_INSTALL_PREFIX=/usr -DOPENDHT_PYTHON=On -DOPENDHT_LTO=On .. && make -j8 && make install
+	&& cmake -DCMAKE_INSTALL_PREFIX=/usr -DOPENDHT_PYTHON=On -DOPENDHT_LTO=On -DOPENDHT_TESTS=ON ..  \
+	&& make -j8 && ./opendht_unit_tests && make install

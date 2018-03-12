@@ -129,7 +129,7 @@ public:
      * Find the lowest 1 bit in an id.
      * Result will allways be lower than 8*N
      */
-    inline unsigned lowbit() const {
+    inline int lowbit() const {
         int i, j;
         for(i = N-1; i >= 0; i--)
             if(data_[i] != 0)
