@@ -62,6 +62,8 @@ struct ParsedMessage {
     std::vector<Sp<Node>> nodes4, nodes6;
     /* values to store or retreive request */
     std::vector<Sp<Value>> values;
+    std::vector<Value::Id> refreshed_values {};
+    std::vector<Value::Id> expired_values {};
     /* index for fields values */
     std::vector<Sp<FieldValueIndex>> fields;
     /** When part of the message header: {index -> (total size, {})}
@@ -282,6 +284,10 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         } else {
             throw msgpack::type_error();
         }
+    } else if (auto raw_fields = findMapValue(req, "exp")) {
+        expired_values = raw_fields->as<decltype(expired_values)>();
+    } else if (auto raw_fields = findMapValue(req, "re")) {
+        refreshed_values = raw_fields->as<decltype(refreshed_values)>();
     }
 
     if (auto w = findMapValue(req, "w")) {

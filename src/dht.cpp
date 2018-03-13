@@ -1242,11 +1242,33 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
 void
 Dht::expireStore(decltype(store)::iterator i)
 {
-    auto stats = i->second.expire(i->first, scheduler.time());
-    total_store_size += stats.size_diff;
-    total_values += stats.values_diff;
-    if (stats.values_diff) {
-        DHT_LOG.d(i->first, "[store %s] discarded %ld expired values (%ld bytes)", i->first.toString().c_str(), -stats.values_diff, -stats.size_diff);
+    const auto& id = i->first;
+    auto& st = i->second;
+    auto stats = st.expire(id, scheduler.time());
+    total_store_size += stats.first;
+    total_values -= stats.second.size();
+    if (not stats.second.empty()) {
+        DHT_LOG.d(id, "[store %s] discarded %ld expired values (%ld bytes)",
+            id.toString().c_str(), stats.second.size(), -stats.first);
+
+        if (not st.listeners.empty()) {
+            DHT_LOG.d(id, "[store %s] %lu remote listeners", id.toString().c_str(), st.listeners.size());
+
+            std::vector<Value::Id> ids;
+            ids.reserve(stats.second.size());
+            for (const auto& v : stats.second)
+                ids.emplace_back(v->id);
+
+            for (const auto& node_listeners : st.listeners) {
+                for (const auto& l : node_listeners.second) {
+                    DHT_LOG.w(id, node_listeners.first->id, "[store %s] [node %s] sending expired",
+                            id.toString().c_str(),
+                            node_listeners.first->toString().c_str());
+                    Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
+                    network_engine.tellListenerExpired(node_listeners.first, l.first, id, ntoken, ids);
+                }
+            }
+        }
     }
 }
 
@@ -1872,7 +1894,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
         try {
             network_engine.processMessage(buf, buflen, from);
         } catch (const std::exception& e) {
-            DHT_LOG.e("Can't parse message from %s: %s", from.toString().c_str(), e.what());
+            DHT_LOG.e("Can't process message from %s: %s", from.toString().c_str(), e.what());
         }
     }
     return scheduler.run();
@@ -2182,6 +2204,9 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
             }
             for (auto& l : tmp_lists)
                 l.first(l.second);
+        } else if (not a.expired_values.empty()) {
+            DHT_LOG.w(sr->id, node->id, "[search %s] [node %s] %u expired values",
+                      sr->id.toString().c_str(), node->toString().c_str(), a.expired_values.size());
         }
     } else {
         DHT_LOG.w(sr->id, "[node %s] no token provided. Ignoring response content.", node->toString().c_str());
