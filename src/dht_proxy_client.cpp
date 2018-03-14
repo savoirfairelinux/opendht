@@ -56,6 +56,7 @@ DhtProxyClient::startProxy()
 
 DhtProxyClient::~DhtProxyClient()
 {
+    isDestroying_ = true;
     cancelAllOperations();
     cancelAllListeners();
 }
@@ -636,7 +637,7 @@ DhtProxyClient::opFailed()
 void
 DhtProxyClient::getConnectivityStatus()
 {
-    getProxyInfos();
+    if (!isDestroying_) getProxyInfos();
 }
 
 void

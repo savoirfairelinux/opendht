@@ -349,6 +349,7 @@ private:
     void fillBodyToGetToken(std::shared_ptr<restbed::Request> request, unsigned callbackId);
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
+    bool isDestroying_ {false};
 };
 
 }
