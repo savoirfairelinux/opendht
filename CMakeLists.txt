@@ -20,7 +20,9 @@ option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" 
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
-option (OPENDHT_INDEX "Build DHT indexation feature" ON)
+option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
+option (OPENDHT_TESTS "Add unit tests executable" OFF)
+
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -292,3 +294,26 @@ install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtConfig.cmake)
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
+
+# Unit tests
+IF(OPENDHT_TESTS)
+  FIND_PACKAGE(Cppunit REQUIRED)
+  # unit testing
+    add_executable(opendht_unit_tests
+      tests/tests_runner.cpp
+      tests/infohashtester.h
+      tests/infohashtester.cpp
+    )
+    if (OPENDHT_SHARED)
+      TARGET_LINK_LIBRARIES(opendht_unit_tests opendht)
+    else ()
+    	TARGET_LINK_LIBRARIES(opendht_unit_tests opendht-static)
+    endif ()
+    TARGET_LINK_LIBRARIES(opendht_unit_tests
+       ${CMAKE_THREAD_LIBS_INIT}
+       ${CPPUNIT_LIBRARIES}
+       ${GNUTLS_LIBRARIES}
+    )
+    enable_testing()
+    add_test(TEST opendht_unit_tests)
+ENDIF()

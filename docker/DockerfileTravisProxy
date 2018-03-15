@@ -1,3 +1,6 @@
 FROM opendht-deps-proxy
 MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+
+RUN apt-get install -y libcppunit-dev # temp while aberaud/opendht-deps doesn't have this
+
 COPY . /root/opendht
