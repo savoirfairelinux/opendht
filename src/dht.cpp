@@ -786,7 +786,7 @@ Dht::announce(const InfoHash& id,
 }
 
 size_t
-Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, const Sp<Query>& q)
+Dht::listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f, const Sp<Query>& q)
 {
     if (!isRunning(af))
         return 0;
@@ -803,7 +803,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
 }
 
 size_t
-Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
+Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
 {
     scheduler.syncTime();
 
@@ -811,27 +811,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
     auto vals = std::make_shared<std::map<Value::Id, Sp<Value>>>();
     auto token = ++listener_token;
 
-    auto gcb = [=](const std::vector<Sp<Value>>& values) {
-        std::vector<Sp<Value>> newvals;
-        for (const auto& v : values) {
-            auto it = vals->find(v->id);
-            if (it == vals->cend() || !(*it->second == *v))
-                newvals.push_back(v);
-        }
-        if (!newvals.empty()) {
-            if (!cb(newvals)) {
-                // cancelListen is useful here, because we need to cancel on IPv4 and 6
-                cancelListen(id, token);
-                return false;
-            }
-            for (const auto& v : newvals) {
-                auto it = vals->emplace(v->id, v);
-                if (not it.second)
-                    it.first->second = v;
-            }
-        }
-        return true;
-    };
+    auto gcb = OpValueCache::cacheCallback(std::move(cb));
 
     auto query = std::make_shared<Query>(q);
     auto filter = f.chain(q.where.getFilter());
@@ -843,7 +823,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
         if (not st->second.empty()) {
             std::vector<Sp<Value>> newvals = st->second.get(filter);
             if (not newvals.empty()) {
-                if (!cb(newvals))
+                if (!gcb(newvals, false))
                     return 0;
                 for (const auto& v : newvals) {
                     auto it = vals->emplace(v->id, v);
@@ -1149,7 +1129,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
 {
     if (not st.local_listeners.empty()) {
         DHT_LOG.d(id, "[store %s] %lu local listeners", id.toString().c_str(), st.local_listeners.size());
-        std::vector<std::pair<GetCallback, std::vector<Sp<Value>>>> cbs;
+        std::vector<std::pair<ValueCallback, std::vector<Sp<Value>>>> cbs;
         for (const auto& l : st.local_listeners) {
             std::vector<Sp<Value>> vals;
             if (not l.second.filter or l.second.filter(*v.data))
@@ -1163,7 +1143,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
         }
         // listeners are copied: they may be deleted by the callback
         for (auto& cb : cbs)
-            cb.first(cb.second);
+            cb.first(cb.second, false);
     }
 
     if (not st.listeners.empty()) {

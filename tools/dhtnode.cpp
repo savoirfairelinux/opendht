@@ -319,9 +319,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         else if (op == "l") {
             std::string rem;
             std::getline(iss, rem);
-            auto token = dht->listen(id, [](std::shared_ptr<Value> value) {
-                std::cout << "Listen: found value:" << std::endl;
-                std::cout << "\t" << *value << std::endl;
+            auto token = dht->listen(id, [](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << std::endl;
+                for (const auto& value : values)
+                    std::cout << "\t" << *value << std::endl;
                 return true;
             }, {}, dht::Where {std::move(rem)});
             auto t = token.get();

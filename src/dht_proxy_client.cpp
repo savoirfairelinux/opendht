@@ -443,7 +443,7 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 }
 
 size_t
-DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter, Where where) {
+DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
     auto it = listeners_.find(key);
     if (it == listeners_.end()) {
         it = listeners_.emplace(key, ProxySearch{}).first;

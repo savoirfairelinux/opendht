@@ -100,8 +100,6 @@ public:
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
-    size_t listen(const InfoHash& id, GetCallback cb, Value::Filter = {}, Where w = {});
-
     /**
      * Will take ownership of the value, sign it using our private key and put it in the DHT.
      */
@@ -280,8 +278,11 @@ public:
     bool cancelPut(const InfoHash& h, const Value::Id& vid) {
         return dht_->cancelPut(h, vid);
     }
+
+    size_t listen(const InfoHash& key, ValueCallback, Value::Filter={}, Where={});
+    size_t listen(const InfoHash& key, GetCallback cb, Value::Filter = {}, Where w = {});
     size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
-        return dht_->listen(key, cb, f, w);
+        return listen(key, bindGetCb(cb), f, w);
     }
     bool cancelListen(const InfoHash& h, size_t token) {
         return dht_->cancelListen(h, token);
@@ -331,6 +332,8 @@ private:
     SecureDht(const SecureDht&) = delete;
     SecureDht& operator=(const SecureDht&) = delete;
 
+    Sp<Value> checkValue(const Sp<Value>& v);
+    ValueCallback getCallbackFilter(ValueCallback, Value::Filter&&);
     GetCallback getCallbackFilter(GetCallback, Value::Filter&&);
 
     Sp<crypto::PrivateKey> key_ {};

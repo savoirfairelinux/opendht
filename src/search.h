@@ -462,7 +462,7 @@ struct Dht::Search {
     bool isAnnounced(Value::Id id) const;
     bool isListening(time_point now) const;
 
-    size_t listen(GetCallback cb, Value::Filter f, const Sp<Query>& q, Scheduler& scheduler) {
+    size_t listen(ValueCallback cb, Value::Filter f, const Sp<Query>& q, Scheduler& scheduler) {
         //DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         return cache.listen(cb, q, f, [&](const Sp<Query>& q, ValueCallback vcb){
             done = false;

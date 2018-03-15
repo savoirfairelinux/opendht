@@ -30,6 +30,56 @@ struct OpCacheValueStorage
     OpCacheValueStorage(Sp<Value> val = {}) : data(val) {}
 };
 
+class OpValueCache {
+public:
+    OpValueCache(ValueCallback&& cb) : callback(std::forward<ValueCallback>(cb)) {}
+
+    static ValueCallback cacheCallback(ValueCallback&& cb) {
+        auto cache = std::make_shared<OpValueCache>(std::forward<ValueCallback>(cb));
+        return [cache](const std::vector<Sp<Value>>& vals, bool expired){
+            return cache->onValue(vals, expired);
+        };
+    }
+
+    bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
+        if (expired)
+            return onValuesExpired(vals);
+        else
+            return onValuesAdded(vals);
+    }
+
+    bool onValuesAdded(const std::vector<Sp<Value>>& vals) {
+        std::vector<Sp<Value>> newValues;
+        for (const auto& v : vals) {
+            auto viop = values.emplace(v->id, OpCacheValueStorage{v});
+            if (viop.second) {
+                newValues.emplace_back(v);
+                //std::cout << "onValuesAdded: new value " << v->id << std::endl;
+            } else {
+                viop.first->second.refCount++;
+                //std::cout << "onValuesAdded: " << viop.first->second.refCount << " refs for value " << v->id << std::endl;
+            }
+        }
+        return callback(newValues, false);
+    }
+    bool onValuesExpired(const std::vector<Sp<Value>>& vals) {
+        std::vector<Sp<Value>> expiredValues;
+        for (const auto& v : vals) {
+            auto vit = values.find(v->id);
+            if (vit != values.end()) {
+                vit->second.refCount--;
+                //std::cout << "onValuesExpired: " << vit->second.refCount << " refs remaining for value " << v->id << std::endl;
+                if (not vit->second.refCount)
+                    values.erase(vit);
+            }
+        }
+        return callback(expiredValues, true);
+    }
+private:
+    std::map<Value::Id, OpCacheValueStorage> values {};
+    ValueCallback callback;
+};
+
 class OpCache {
 public:
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
@@ -53,11 +103,11 @@ public:
             }
         }
         auto list = listeners;
-        for (auto& l : list) {
-            l.second.get_cb(newValues);
-        }
+        for (auto& l : list)
+            l.second.get_cb(l.second.filter.filter(newValues), false);
     }
     void onValuesExpired(const std::vector<Sp<Value>>& vals) {
+        std::vector<Sp<Value>> expiredValues;
         for (const auto& v : vals) {
             auto vit = values.find(v->id);
             if (vit != values.end()) {
@@ -67,15 +117,18 @@ public:
                     values.erase(vit);
             }
         }
+        auto list = listeners;
+        for (auto& l : list)
+            l.second.get_cb(l.second.filter.filter(expiredValues), true);
     }
 
-    void addListener(size_t token, GetCallback get_cb, Sp<Query> q, Value::Filter filter) {
-        listeners.emplace(token, LocalListener{q, filter, get_cb});
+    void addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
+        listeners.emplace(token, LocalListener{q, filter, cb});
         std::vector<Sp<Value>> newValues;
         newValues.reserve(values.size());
         for (const auto& v : values)
             newValues.emplace_back(v.second.data);
-        get_cb(newValues);
+        cb(newValues, false);
     }
 
     bool removeListener(size_t token) {
@@ -94,7 +147,7 @@ private:
 
 class SearchCache {
 public:
-    size_t listen(GetCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback)> onListen) {
+    size_t listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback)> onListen) {
         // find exact match
         auto op = ops.find(q);
         if (op == ops.end()) {

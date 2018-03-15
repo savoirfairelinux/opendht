@@ -43,6 +43,15 @@ namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 
+struct DhtRunner::Listener {
+    size_t tokenClassicDht;
+    size_t tokenProxyDht;
+    ValueCallback gcb;
+    InfoHash hash;
+    Value::Filter f;
+    Where w;
+};
+
 DhtRunner::DhtRunner() : dht_()
 #if OPENDHT_PROXY_CLIENT
 , dht_via_proxy_()
@@ -542,7 +551,7 @@ DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Q
 }
 
 std::future<size_t>
-DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f, Where w)
+DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
 {
     auto ret_token = std::make_shared<std::promise<size_t>>();
     {
@@ -553,8 +562,8 @@ DhtRunner::listen(InfoHash hash, GetCallback vcb, Value::Filter f, Where w)
             listener.hash = hash;
             listener.f = std::move(f);
             listener.w = std::move(w);
-            listener.gcb = [hash,vcb,tokenbGlobal,this](const std::vector<Sp<Value>>& vals){
-                if (not vcb(vals)) {
+            listener.gcb = [hash,vcb,tokenbGlobal,this](const std::vector<Sp<Value>>& vals, bool expired){
+                if (not vcb(vals, expired)) {
 #if OPENDHT_PROXY_CLIENT
                     cancelListen(hash, tokenbGlobal);
 #endif

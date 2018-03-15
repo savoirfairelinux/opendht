@@ -136,7 +136,15 @@ public:
         query(hash, cb, bindDoneCb(done_cb), q);
     }
 
-    std::future<size_t> listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
+    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
+
+    std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f={}, Where w={}) {
+        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
+            if (not expired)
+                return cb(vals);
+            return true;
+        }, std::forward<Value::Filter>(f), std::forward<Where>(w));
+    }
     std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
     std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter(), Where w = {}) {
         return listen(key, bindGetCb(cb), f, w);
@@ -446,15 +454,8 @@ private:
     /**
      * Store current listeners and translates global tokens for each client.
      */
-    struct Listener {
-        size_t tokenClassicDht;
-        size_t tokenProxyDht;
-        GetCallback gcb;
-        InfoHash hash;
-        Value::Filter f;
-        Where w;
-    };
-    std::map<size_t, Listener> listeners_ {};
+    struct Listener;
+    std::map<size_t, Listener> listeners_;
     size_t listener_token_ {1};
 
     mutable std::mutex dht_mtx {};

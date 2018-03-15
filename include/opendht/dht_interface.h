@@ -165,6 +165,7 @@ public:
      */
     virtual size_t listen(const InfoHash&, GetCallback, Value::Filter={}, Where w = {}) = 0;
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) = 0;
+    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where w = {}) = 0;
 
     virtual bool cancelListen(const InfoHash&, size_t token) = 0;
 

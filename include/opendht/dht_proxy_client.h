@@ -161,8 +161,16 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, GetCallback, Value::Filter={}, Where={});
-    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
+    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where={});
+
+    virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f={}, Where w={}) {
+        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
+            if (not expired)
+                return cb(vals);
+            return true;
+        }, std::forward<Value::Filter>(f), std::forward<Where>(w));
+    }
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     virtual bool cancelListen(const InfoHash& key, size_t token);
