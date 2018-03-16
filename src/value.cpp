@@ -230,7 +230,7 @@ Value::toJson() const
         if (has_owner) { // isSigned
             val["seq"] = seq;
             val["owner"] = owner->toString();
-            if (recipient != InfoHash())
+            if (recipient)
                 val["to"] = recipient.toString();
         }
         val["type"] = type;

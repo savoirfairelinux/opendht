@@ -136,7 +136,15 @@ public:
         query(hash, cb, bindDoneCb(done_cb), q);
     }
 
-    std::future<size_t> listen(InfoHash key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
+    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
+
+    std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f={}, Where w={}) {
+        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
+            if (not expired)
+                return cb(vals);
+            return true;
+        }, std::forward<Value::Filter>(f), std::forward<Where>(w));
+    }
     std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
     std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter(), Where w = {}) {
         return listen(key, bindGetCb(cb), f, w);
@@ -307,7 +315,7 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port, const crypto::Identity identity, bool threaded = false, NetId network = 0) {
+    void run(in_port_t port = 4222, const crypto::Identity identity = {}, bool threaded = false, NetId network = 0) {
         run(port, {
             /*.dht_config = */{
                 /*.node_config = */{
@@ -400,11 +408,6 @@ public:
      * Insert a push notification to process for OpenDHT
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& data) const;
-    /**
-     * Refresh a listen via a token
-     * @param token
-     */
-    void resubscribe(unsigned token);
 
     /* Proxy server mothods */
     void forwardAllMessages(bool forward);
@@ -451,15 +454,8 @@ private:
     /**
      * Store current listeners and translates global tokens for each client.
      */
-    struct Listener {
-        size_t tokenClassicDht;
-        size_t tokenProxyDht;
-        GetCallback gcb;
-        InfoHash hash;
-        Value::Filter f;
-        Where w;
-    };
-    std::map<size_t, Listener> listeners_ {};
+    struct Listener;
+    std::map<size_t, Listener> listeners_;
     size_t listener_token_ {1};
 
     mutable std::mutex dht_mtx {};

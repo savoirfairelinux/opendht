@@ -27,10 +27,33 @@
 #include <vector>
 
 #include "dhtrunner.h"
+#include "op_cache.h"
 
 constexpr const char* const HTTP_PROTO {"http://"};
 
 namespace dht {
+
+struct DhtProxyClient::Listener
+{
+    ValueCache cache;
+    ValueCallback cb;
+    Value::Filter filter;
+    Sp<restbed::Request> req;
+    std::thread thread;
+    unsigned callbackId;
+    Sp<bool> isCanceledViaClose;
+    Sp<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
+    Listener(ValueCache&& c, const Sp<restbed::Request>& r, Value::Filter&& f, unsigned cid)
+        : cache(std::move(c)), filter(std::move(f)), req(r), callbackId(cid), isCanceledViaClose(std::make_shared<bool>(false))
+    {}
+};
+
+struct DhtProxyClient::ProxySearch {
+    SearchCache ops {};
+    std::map<size_t, Listener> listeners {};
+};
+
+DhtProxyClient::DhtProxyClient() : scheduler(DHT_LOG) {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
 : serverHost_(serverHost), pushClientId_(pushClientId), scheduler(DHT_LOG), loopSignal_(signal)
@@ -61,6 +84,22 @@ DhtProxyClient::~DhtProxyClient()
     cancelAllListeners();
 }
 
+std::vector<Sp<Value>>
+DhtProxyClient::getLocal(const InfoHash& k, Value::Filter filter) const {
+    auto s = listeners_.find(k);
+    if (s == listeners_.end())
+        return {};
+    return s->second.ops.get(filter);
+}
+
+Sp<Value>
+DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
+    auto s = listeners_.find(k);
+    if (s == listeners_.end())
+        return {};
+    return s->second.ops.get(id);
+}
+
 void
 DhtProxyClient::cancelAllOperations()
 {
@@ -82,13 +121,14 @@ void
 DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(lockListener_);
-    for (auto& listener: listeners_) {
-        if (listener.thread.joinable()) {
-            // Close connection to stop listener?
-            if (listener.req)
-                restbed::Http::close(listener.req);
-            listener.thread.join();
-        }
+    for (auto& s: listeners_) {
+        for (auto& l : s.second.listeners)
+            if (l.second.thread.joinable()) {
+                // Close connection to stop listener?
+                if (l.second.req)
+                    restbed::Http::close(l.second.req);
+                l.second.thread.join();
+            }
     }
 }
 
@@ -163,10 +203,11 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 }
 
 void
-DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback donecb, const Value::Filter& filterChain)
+DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
+    Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
 
     auto finished = std::make_shared<std::atomic_bool>(false);
     Operation o;
@@ -198,7 +239,7 @@ DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback don
                         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                         if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                             auto value = std::make_shared<Value>(json);
-                            if ((not filterChain or filterChain(*value)) && cb) {
+                            if ((not filter or filter(*value)) && cb) {
                                 std::lock_guard<std::mutex> lock(lockCallbacks);
                                 callbacks_.emplace_back([cb, value, finished]() {
                                     if (not *finished and not cb({value}))
@@ -232,15 +273,6 @@ DhtProxyClient::get(const InfoHash& key, const GetCallback& cb, DoneCallback don
         std::lock_guard<std::mutex> lock(lockOperations_);
         operations_.emplace_back(std::move(o));
     }
-}
-
-void
-DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
-                    Value::Filter&& filter, Where&& where)
-{
-    Query query {{}, where};
-    auto filterChain = filter.chain(query.where.getFilter());
-    get(key, cb, donecb, filterChain);
 }
 
 void
@@ -427,61 +459,64 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 }
 
 size_t
-DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter, Where where)
+DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
+    auto it = listeners_.find(key);
+    if (it == listeners_.end()) {
+        it = listeners_.emplace(key, ProxySearch{}).first;
+    }
+    auto query = std::make_shared<Query>(Select{}, where);
+    auto token = it->second.ops.listen(cb, query, filter, [&](Sp<Query> q, ValueCallback vcb){
+        return doListen(key, vcb, filter);
+    });
+    return token;
+}
+
+bool
+DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
+    auto it = listeners_.find(key);
+    if (it == listeners_.end())
+        return false;
+    return it->second.ops.cancelListen(gtoken, [&](size_t ltoken){
+        doCancelListen(key, ltoken);
+    });
+}
+
+size_t
+DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter filter/*, Where where*/)
 {
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method(deviceKey_.empty() ? "LISTEN" : "SUBSCRIBE");
 
-    Query query {{}, where};
-    auto filterChain = filter.chain(query.where.getFilter());
-    auto pushNotifToken = std::make_shared<unsigned>(0);
-
-    unsigned callbackId = 0;
-    {
-        std::lock_guard<std::mutex> lock(lockCallback_);
-        callbackId_ += 1;
-        callbackId = callbackId_;
+    std::lock_guard<std::mutex> lock(lockListener_);
+    auto search = listeners_.find(key);
+    if (search == listeners_.end()) {
+        std::cerr << "doListen: search not found" << std::endl;
+        return 0;
     }
 
-    Listener l;
-    ++listener_token_;
-    auto isCanceled = std::make_shared<bool>(false);
+    auto token = ++listener_token_;
+    auto callbackId = ++callbackId_;
+    auto l = search->second.listeners.emplace(token, Listener{
+        ValueCache(cb), req, std::move(filter), callbackId
+    }).first;
 
-    // Wrap cb in another callback to avoid value duplication.
-    auto vals = std::make_shared<std::map<Value::Id, Sp<Value>>>();
-    auto gcb = [=](const std::vector<Sp<Value>>& values) {
-        std::vector<Sp<Value>> newvals;
-        for (const auto& v : values) {
-            auto it = vals->find(v->id);
-            if (it == vals->cend() || !(*it->second == *v))
-                newvals.push_back(v);
+    ValueCache& cache = l->second.cache;
+    l->second.cb = [this,&cache](const std::vector<Sp<Value>>& values, bool expired) {
+        const std::vector<Sp<Value>> new_values_empty;
+        std::vector<Value::Id> expired_ids;
+        if (expired) {
+            expired_ids.reserve(values.size());
+            for (const auto& v : values)
+                expired_ids.emplace_back(v->id);
         }
-        if (!newvals.empty()) {
-            if (not *isCanceled and !cb(newvals)) {
-                *isCanceled = true;
-                cancelListen(key, listener_token_);
-                return false;
-            }
-            for (const auto& v : newvals) {
-                auto it = vals->emplace(v->id, v);
-                if (not it.second)
-                    it.first->second = v;
-            }
-        }
+        cache.onValues(expired ? new_values_empty : values, std::vector<Value::Id>{}, expired_ids, types, scheduler.time());
         return true;
     };
-
-    l.key = key.toString();
-    l.token = listener_token_;
-    l.req = req;
-    l.cb = gcb;
-    l.callbackId = callbackId;
-    l.pushNotifToken = pushNotifToken;
-    l.filterChain = std::move(filterChain);
-    l.isCanceledViaClose = isCanceled;
-    std::weak_ptr<bool> isCanceledViaClose(l.isCanceledViaClose);
-    l.thread = std::thread([=]()
+    std::weak_ptr<bool> isCanceledViaClose(l->second.isCanceledViaClose);
+    auto pushNotifToken = std::make_shared<unsigned>(0);
+    l->second.pushNotifToken = pushNotifToken;
+    l->second.thread = std::thread([=]()
         {
             auto settings = std::make_shared<restbed::Settings>();
             if (deviceKey_.empty()) {
@@ -499,7 +534,7 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
             };
             auto state = std::make_shared<State>();
             restbed::Http::async(req,
-                [this, filterChain, gcb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
+                [this, filter, cb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
                                                                const std::shared_ptr<restbed::Response>& reply) {
                 auto code = reply->get_status_code();
                 if (code == 200) {
@@ -534,10 +569,10 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
                                 auto* char_data = reinterpret_cast<const char*>(&body[0]);
                                 if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                                     auto value = std::make_shared<Value>(json);
-                                    if (not filterChain or filterChain(*value))  {
+                                    if (not filter or filter(*value))  {
                                         std::lock_guard<std::mutex> lock(lockCallbacks);
-                                        callbacks_.emplace_back([gcb, value, state]() {
-                                            if (not state->cancel and not gcb({value}))
+                                        callbacks_.emplace_back([cb, value, state]() {
+                                            if (not state->cancel and not cb({value}, false))
                                                 state->cancel = true;
                                         });
                                         loopSignal_();
@@ -560,65 +595,63 @@ DhtProxyClient::listen(const InfoHash& key, GetCallback cb, Value::Filter filter
             }
         }
     );
-    {
-        std::lock_guard<std::mutex> lock(lockListener_);
-        listeners_.emplace_back(std::move(l));
-    }
-    return listener_token_;
+    return token;
 }
 
 bool
-DhtProxyClient::cancelListen(const InfoHash&, size_t token)
+DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
 {
     std::lock_guard<std::mutex> lock(lockListener_);
-    for (auto it = listeners_.begin(); it != listeners_.end(); ++it) {
-        auto& listener = *it;
-        if (listener.token == token) {
-            if (!deviceKey_.empty()) {
-                // First, be sure to have a token
-                if (listener.thread.joinable()) {
-                    listener.thread.join();
-                }
-                // UNSUBSCRIBE
-                restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
-                auto req = std::make_shared<restbed::Request>(uri);
-                req->set_method("UNSUBSCRIBE");
-                // fill request body
-                Json::Value body;
-                body["key"] = deviceKey_;
-                body["client_id"] = pushClientId_;
-                body["token"] = std::to_string(token);
-                body["callback_id"] = listener.callbackId;
-                Json::StreamWriterBuilder wbuilder;
-                wbuilder["commentStyle"] = "None";
-                wbuilder["indentation"] = "";
-                auto content = Json::writeString(wbuilder, body) + "\n";
-                std::replace(content.begin(), content.end(), '\n', ' ');
-                req->set_body(content);
-                req->set_header("Content-Length", std::to_string(content.size()));
 
-                restbed::Http::async(req,
-                    [](const std::shared_ptr<restbed::Request>&,
-                       const std::shared_ptr<restbed::Response>&){}
-                );
-                // And remove
-                listeners_.erase(it);
-                return true;
-            } else {
-                // Just stop the request
-                if (listener.thread.joinable()) {
-                    // Close connection to stop listener?
-                    *(listener.isCanceledViaClose) = true;
-                    if (listener.req)
-                        restbed::Http::close(listener.req);
-                    listener.thread.join();
-                    listeners_.erase(it);
-                    return true;
-                }
-            }
+    auto search = listeners_.find(key);
+    if (search == listeners_.end())
+        return false;
+
+    auto it = search->second.listeners.find(ltoken);
+    if (it == search->second.listeners.end())
+        return false;
+
+    auto& listener = it->second;
+    if (!deviceKey_.empty()) {
+        // First, be sure to have a token
+        if (listener.thread.joinable()) {
+            listener.thread.join();
+        }
+        // UNSUBSCRIBE
+        restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+        auto req = std::make_shared<restbed::Request>(uri);
+        req->set_method("UNSUBSCRIBE");
+        // fill request body
+        Json::Value body;
+        body["key"] = deviceKey_;
+        body["client_id"] = pushClientId_;
+        body["token"] = std::to_string(ltoken);
+        body["callback_id"] = listener.callbackId;
+        Json::StreamWriterBuilder wbuilder;
+        wbuilder["commentStyle"] = "None";
+        wbuilder["indentation"] = "";
+        auto content = Json::writeString(wbuilder, body) + "\n";
+        std::replace(content.begin(), content.end(), '\n', ' ');
+        req->set_body(content);
+        req->set_header("Content-Length", std::to_string(content.size()));
+
+        restbed::Http::async(req, [](const std::shared_ptr<restbed::Request>&, const std::shared_ptr<restbed::Response>&){});
+    } else {
+        // Just stop the request
+        if (listener.thread.joinable()) {
+            // Close connection to stop listener?
+            *(listener.isCanceledViaClose) = true;
+            if (listener.req)
+                restbed::Http::close(listener.req);
+            listener.thread.join();
         }
     }
-    return false;
+    search->second.listeners.erase(it);
+    if (search->second.listeners.empty()) {
+        listeners_.erase(search);
+    }
+
+    return true;
 }
 
 void
@@ -644,17 +677,19 @@ void
 DhtProxyClient::restartListeners()
 {
     std::lock_guard<std::mutex> lock(lockListener_);
-    for (auto& listener: listeners_) {
+    for (auto& search: listeners_) {
+    for (auto& l: search.second.listeners) {
+        auto& listener = l.second;
         if (listener.thread.joinable())
             listener.thread.join();
         // Redo listen
-        auto filterChain = listener.filterChain;
+        auto filter = listener.filter;
         auto cb = listener.cb;
-        restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
+        restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + search.first.toString());
         auto req = std::make_shared<restbed::Request>(uri);
         req->set_method("LISTEN");
         listener.req = req;
-        listener.thread = std::thread([this, filterChain, cb, req]()
+        listener.thread = std::thread([this, filter, cb, req]()
             {
                 auto settings = std::make_shared<restbed::Settings>();
                 std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
@@ -662,7 +697,7 @@ DhtProxyClient::restartListeners()
 
                 auto ok = std::make_shared<std::atomic_bool>(true);
                 restbed::Http::async(req,
-                    [this, filterChain, cb, ok](const std::shared_ptr<restbed::Request>& req,
+                    [this, filter, cb, ok](const std::shared_ptr<restbed::Request>& req,
                                                 const std::shared_ptr<restbed::Response>& reply) {
                     auto code = reply->get_status_code();
 
@@ -681,13 +716,13 @@ DhtProxyClient::restartListeners()
                                 auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                                 if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                                     auto value = std::make_shared<Value>(json);
-                                    if ((not filterChain or filterChain(*value)) && cb) {
+                                    if ((not filter or filter(*value)) && cb) {
                                         auto okCb = std::make_shared<std::promise<bool>>();
                                         auto futureCb = okCb->get_future();
                                         {
                                             std::lock_guard<std::mutex> lock(lockCallbacks);
                                             callbacks_.emplace_back([cb, value, okCb](){
-                                                okCb->set_value(cb({value}));
+                                                okCb->set_value(cb({value}, false));
                                             });
                                             loopSignal_();
                                         }
@@ -709,6 +744,7 @@ DhtProxyClient::restartListeners()
             }
         );
     }
+    }
 }
 
 void
@@ -717,78 +753,81 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
 #if OPENDHT_PUSH_NOTIFICATIONS
     try {
         auto token = std::stoul(notification.at("token"));
-        for (const auto& listener: listeners_) {
-            if (*(listener.pushNotifToken) != token)
-                continue;
-            if (notification.find("timeout") == notification.cend()) {
-                // Wake up daemon and get values
-                get(InfoHash(listener.key), listener.cb, {}, listener.filterChain);
-            } else {
-                // A timeout has occured, we need to relaunch the listener
-                resubscribe(token);
+        for (auto& search: listeners_) {
+            for (auto& list : search.second.listeners) {
+                auto& listener = list.second;
+                if (*listener.pushNotifToken!= token)
+                    continue;
+                if (notification.find("timeout") == notification.cend()) {
+                    // Wake up daemon and get values
+                    auto cb = listener.cb;
+                    auto filter = listener.filter;
+                    get(search.first, [cb](const std::vector<Sp<Value>>& vals){
+                        cb(vals, false);
+                        return true;
+                    }, DoneCallbackSimple{}, std::move(filter));
+                } else {
+                    // A timeout has occured, we need to relaunch the listener
+                    resubscribe(search.first, listener);
+                }
             }
-
         }
-    } catch (...) {
-
+    } catch (const std::exception& e) {
+        std::cerr << "pushNotificationReceived: error " << e.what() << std::endl;
     }
 #endif
 }
 
 void
-DhtProxyClient::resubscribe(const unsigned token)
+DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty()) return;
-    for (auto& listener: listeners_) {
-        if (*(listener.pushNotifToken) == token) {
-            // Subscribe
-            restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + listener.key);
-            auto req = std::make_shared<restbed::Request>(uri);
-            req->set_method("SUBSCRIBE");
+    // Subscribe
+    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+    auto req = std::make_shared<restbed::Request>(uri);
+    req->set_method("SUBSCRIBE");
 
-            auto pushNotifToken = std::make_shared<unsigned>(0);
+    auto pushNotifToken = std::make_shared<unsigned>(0);
 
-            if (listener.thread.joinable())
-                listener.thread.join();
-            listener.req = req;
-            listener.pushNotifToken = pushNotifToken;
-            auto callbackId = listener.callbackId;
-            listener.thread = std::thread([=]()
-            {
-                fillBodyToGetToken(req, callbackId);
-                auto settings = std::make_shared<restbed::Settings>();
-                auto ok = std::make_shared<std::atomic_bool>(true);
-                restbed::Http::async(req,
-                    [this, pushNotifToken, ok](const std::shared_ptr<restbed::Request>&,
-                                               const std::shared_ptr<restbed::Response>& reply) {
-                    auto code = reply->get_status_code();
-                    if (code == 200) {
-                        try {
-                            restbed::Http::fetch("\n", reply);
-                            std::string body;
-                            reply->get_body(body);
+    if (listener.thread.joinable())
+        listener.thread.join();
+    listener.req = req;
+    listener.pushNotifToken = pushNotifToken;
+    auto callbackId = listener.callbackId;
+    listener.thread = std::thread([=]()
+    {
+        fillBodyToGetToken(req, callbackId);
+        auto settings = std::make_shared<restbed::Settings>();
+        auto ok = std::make_shared<std::atomic_bool>(true);
+        restbed::Http::async(req,
+            [this, pushNotifToken, ok](const std::shared_ptr<restbed::Request>&,
+                                       const std::shared_ptr<restbed::Response>& reply) {
+            auto code = reply->get_status_code();
+            if (code == 200) {
+                try {
+                    restbed::Http::fetch("\n", reply);
+                    std::string body;
+                    reply->get_body(body);
 
-                            std::string err;
-                            Json::Value json;
-                            Json::CharReaderBuilder rbuilder;
-                            auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                            if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
-                                if (!json.isMember("token")) return;
-                                *pushNotifToken = json["token"].asLargestUInt();
-                            }
-                        } catch (std::runtime_error&) {
-                            // NOTE: Http::close() can occurs here. Ignore this.
-                        }
-                    } else {
-                        *ok = false;
+                    std::string err;
+                    Json::Value json;
+                    Json::CharReaderBuilder rbuilder;
+                    auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
+                        if (!json.isMember("token")) return;
+                        *pushNotifToken = json["token"].asLargestUInt();
                     }
-                }, settings).get();
-                if (!ok) opFailed();
-            });
-        }
-    }
+                } catch (std::runtime_error&) {
+                    // NOTE: Http::close() can occurs here. Ignore this.
+                }
+            } else {
+                *ok = false;
+            }
+        }, settings).get();
+        if (!ok) opFailed();
+    });
 #endif
 }
 

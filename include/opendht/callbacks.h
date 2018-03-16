@@ -98,6 +98,7 @@ using ValuesExport = std::pair<InfoHash, Blob>;
 
 using QueryCallback = std::function<bool(const std::vector<std::shared_ptr<FieldValueIndex>>& fields)>;
 using GetCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values)>;
+using ValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired)>;
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;
 

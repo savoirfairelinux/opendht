@@ -9,6 +9,8 @@ libopendht_la_SOURCES  = \
         listener.h \
         request.h \
         search.h \
+        value_cache.h \
+        op_cache.h \
         net.h \
         parsed_message.h \
         node_cache.cpp \

@@ -232,13 +232,6 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             iss >> value;
             dht->pushNotificationReceived({{"token", value}});
             continue;
-        } else if (op == "re") {
-            iss >> value;
-            try {
-                unsigned token = std::stoul(value);
-                dht->resubscribe(token);
-            } catch (...) { }
-            continue;
         }
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 #endif //OPENDHT_PROXY_CLIENT
@@ -254,11 +247,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         }
         dht::InfoHash id;
 
-        if (op == "cl") {
-            std::string hash, rem;
-            iss >> hash >> rem;
-            dht->cancelListen(dht::InfoHash(hash), std::stoul(rem));
-        }
+        if (false) {}
 #ifdef OPENDHT_INDEXATION
         else if (op == "il" or op == "ii") {
             // Pht syntax
@@ -268,7 +257,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                         return i.first == index;
                     }) == indexes.end();
             if (not index.size()) {
-                std::cout << "You must enter the index name." << std::endl;
+                std::cerr << "You must enter the index name." << std::endl;
                 continue;
             } else if (new_index) {
                 using namespace dht::indexation;
@@ -330,13 +319,26 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         else if (op == "l") {
             std::string rem;
             std::getline(iss, rem);
-            auto token = dht->listen(id, [](std::shared_ptr<Value> value) {
-                std::cout << "Listen: found value:" << std::endl;
-                std::cout << "\t" << *value << std::endl;
+            auto token = dht->listen(id, [](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << std::endl;
+                for (const auto& value : values)
+                    std::cout << "\t" << *value << std::endl;
                 return true;
             }, {}, dht::Where {std::move(rem)});
             auto t = token.get();
             std::cout << "Listening, token: " << t << std::endl;
+        }
+        if (op == "cl") {
+            std::string rem;
+            iss >> rem;
+            size_t token;
+            try {
+                token = std::stoul(rem);
+            } catch(...) {
+                std::cerr << "Syntax: cl [key] [token]" << std::endl;
+                continue;
+            }
+            dht->cancelListen(id, token);
         }
         else if (op == "p") {
             std::string v;

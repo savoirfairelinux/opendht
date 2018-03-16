@@ -44,7 +44,14 @@ struct Listener {
 struct LocalListener {
     Sp<Query> query;
     Value::Filter filter;
-    GetCallback get_cb;
+    ValueCallback get_cb;
+};
+
+
+struct SearchListener {
+    Sp<Query> query;
+    Value::Filter filter;
+    ValueCallback get_cb;
 };
 
 }

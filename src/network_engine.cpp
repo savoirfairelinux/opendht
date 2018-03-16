@@ -122,9 +122,22 @@ serializeValues(const std::vector<Sp<Value>>& st)
     return svals;
 }
 
+void
+packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
+{
+    pk.pack_bin(token.size());
+    pk.pack_bin_body((char*)token.data(), token.size());
+}
+
 RequestAnswer::RequestAnswer(ParsedMessage&& msg)
- : ntoken(std::move(msg.token)), values(std::move(msg.values)), fields(std::move(msg.fields)),
-    nodes4(std::move(msg.nodes4)), nodes6(std::move(msg.nodes6)) {}
+ : ntoken(std::move(msg.token)),
+   values(std::move(msg.values)),
+   refreshed_values(std::move(msg.refreshed_values)),
+   expired_values(std::move(msg.expired_values)),
+   fields(std::move(msg.fields)),
+   nodes4(std::move(msg.nodes4)),
+   nodes6(std::move(msg.nodes6))
+{}
 
 NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
     : myid(zeroes), DHT_LOG(log), scheduler(scheduler), dht_socket(s), dht_socket6(s6)
@@ -170,6 +183,67 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
         DHT_LOG.e("Can't send value: buffer not large enough !");
     }
 }
+
+void
+NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& token, const std::vector<Value::Id>& values)
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4+(network?1:0));
+
+    pk.pack(std::string("u"));
+    pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
+    pk.pack(std::string("id")); pk.pack(myid);
+    if (not token.empty()) {
+        pk.pack(std::string("token")); packToken(pk, token);
+    }
+    if (not values.empty()) {
+        pk.pack(std::string("re"));
+        pk.pack(values);
+        DHT_LOG.d(n->id, "[node %s] sending %zu refreshed values", n->toString().c_str(), values.size());
+    }
+
+    pk.pack(std::string("t")); pk.pack(socket_id);
+    pk.pack(std::string("y")); pk.pack(std::string("r"));
+    pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
+
+    // send response
+    send(buffer.data(), buffer.size(), 0, n->getAddr());
+}
+
+void
+NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& token, const std::vector<Value::Id>& values)
+{
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(4+(network?1:0));
+
+    pk.pack(std::string("u"));
+    pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
+    pk.pack(std::string("id")); pk.pack(myid);
+    if (not token.empty()) {
+        pk.pack(std::string("token")); packToken(pk, token);
+    }
+    if (not values.empty()) {
+        pk.pack(std::string("exp"));
+        pk.pack(values);
+        DHT_LOG.d(n->id, "[node %s] sending %zu expired values", n->toString().c_str(), values.size());
+    }
+
+    pk.pack(std::string("t")); pk.pack(socket_id);
+    pk.pack(std::string("y")); pk.pack(std::string("r"));
+    pk.pack(std::string("v")); pk.pack(my_v);
+    if (network) {
+        pk.pack(std::string("n")); pk.pack(network);
+    }
+
+    // send response
+    send(buffer.data(), buffer.size(), 0, n->getAddr());
+}
+
 
 bool
 NetworkEngine::isRunning(sa_family_t af) const
@@ -337,7 +411,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
         msg->msgpack_unpack(msg_res.get());
     } catch (const std::exception& e) {
-        DHT_LOG.w("Can't process message of size %lu: %s", buflen, e.what());
+        DHT_LOG.w("Can't parse message of size %lu: %s", buflen, e.what());
         DHT_LOG.DEBUG.logPrintable(buf, buflen);
         return;
     }
@@ -548,13 +622,6 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
     }
-}
-
-void
-packToken(msgpack::packer<msgpack::sbuffer>& pk, const Blob& token)
-{
-    pk.pack_bin(token.size());
-    pk.pack_bin_body((char*)token.data(), token.size());
 }
 
 void

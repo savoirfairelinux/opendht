@@ -221,50 +221,73 @@ SecureDht::findPublicKey(const InfoHash& node, std::function<void(const Sp<const
     });
 }
 
+Sp<Value>
+SecureDht::checkValue(const Sp<Value>& v)
+{
+    // Decrypt encrypted values
+    if (v->isEncrypted()) {
+        if (not key_) {
+#if OPENDHT_PROXY_SERVER
+            if (forward_all_) // We are currently a proxy, send messages to clients.
+                return v;
+#endif
+            return {};
+        }
+        try {
+            Value decrypted_val (decrypt(*v));
+            if (decrypted_val.recipient == getId()) {
+                nodesPubKeys_[decrypted_val.owner->getId()] = decrypted_val.owner;
+                return std::make_shared<Value>(std::move(decrypted_val));
+            }
+            // Ignore values belonging to other people
+        } catch (const std::exception& e) {
+            DHT_LOG.WARN("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
+        }
+    }
+    // Check signed values
+    else if (v->isSigned()) {
+        if (v->owner and v->owner->checkSignature(v->getToSign(), v->signature)) {
+            nodesPubKeys_[v->owner->getId()] = v->owner;
+            return v;
+        }
+        else
+            DHT_LOG.WARN("Signature verification failed for %s", v->toString().c_str());
+    }
+    // Forward normal values
+    else {
+        return v;
+    }
+    return {};
+}
+
+ValueCallback
+SecureDht::getCallbackFilter(ValueCallback cb, Value::Filter&& filter)
+{
+    return [=](const std::vector<Sp<Value>>& values, bool expired) {
+        std::vector<Sp<Value>> tmpvals {};
+        for (const auto& v : values) {
+            if (auto nv = checkValue(v))
+                if (not filter or filter(*nv))
+                    tmpvals.emplace_back(std::move(nv));
+        }
+        if (cb and not tmpvals.empty())
+            return cb(tmpvals, expired);
+        return true;
+    };
+}
+
+
 GetCallback
 SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 {
     return [=](const std::vector<Sp<Value>>& values) {
         std::vector<Sp<Value>> tmpvals {};
         for (const auto& v : values) {
-            // Decrypt encrypted values
-            if (v->isEncrypted()) {
-                if (not key_) {
-#if OPENDHT_PROXY_SERVER
-                    if (forward_all_) // We are currently a proxy, send messages to clients.
-                        tmpvals.push_back(v);
-#endif
-                    continue;
-                }
-                try {
-                    Value decrypted_val (decrypt(*v));
-                    if (decrypted_val.recipient == getId()) {
-                        nodesPubKeys_[decrypted_val.owner->getId()] = decrypted_val.owner;
-                        if (not filter or filter(decrypted_val))
-                            tmpvals.push_back(std::make_shared<Value>(std::move(decrypted_val)));
-                    }
-                    // Ignore values belonging to other people
-                } catch (const std::exception& e) {
-                    DHT_LOG.WARN("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
-                }
-            }
-            // Check signed values
-            else if (v->isSigned()) {
-                if (v->owner and v->owner->checkSignature(v->getToSign(), v->signature)) {
-                    nodesPubKeys_[v->owner->getId()] = v->owner;
-                    if (not filter  or filter(*v))
-                        tmpvals.push_back(v);
-                }
-                else
-                    DHT_LOG.WARN("Signature verification failed for %s", v->toString().c_str());
-            }
-            // Forward normal values
-            else {
-                if (not filter or filter(*v))
-                    tmpvals.push_back(v);
-            }
+            if (auto nv = checkValue(v))
+                if (not filter or filter(*nv))
+                    tmpvals.emplace_back(std::move(nv));
         }
-        if (cb && not tmpvals.empty())
+        if (cb and not tmpvals.empty())
             return cb(tmpvals);
         return true;
     };
@@ -275,6 +298,13 @@ SecureDht::get(const InfoHash& id, GetCallback cb, DoneCallback donecb, Value::F
 {
     dht_->get(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), donecb, {}, std::forward<Where>(w));
 }
+
+size_t
+SecureDht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where w)
+{
+    return dht_->listen(id, getCallbackFilter(cb, std::forward<Value::Filter>(f)), {}, std::forward<Where>(w));
+}
+
 
 size_t
 SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)

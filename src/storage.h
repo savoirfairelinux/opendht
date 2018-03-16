@@ -167,7 +167,7 @@ struct Storage {
 
     StoreDiff remove(const InfoHash& id, Value::Id);
 
-    StoreDiff expire(const InfoHash& id, time_point now);
+    std::pair<ssize_t, std::vector<Sp<Value>>> expire(const InfoHash& id, time_point now);
 
 private:
     Storage(const Storage&) = delete;
@@ -245,7 +245,7 @@ Storage::clear()
     return {-tot_size, -num_values, 0};
 }
 
-Storage::StoreDiff
+std::pair<ssize_t, std::vector<Sp<Value>>>
 Storage::expire(const InfoHash& id, time_point now)
 {
     // expire listeners
@@ -271,16 +271,18 @@ Storage::expire(const InfoHash& id, time_point now)
     auto r = std::partition(values.begin(), values.end(), [&](const ValueStorage& v) {
         return v.expiration > now;
     });
-    ssize_t del_num = -std::distance(r, values.end());
+    std::vector<Sp<Value>> ret;
+    ret.reserve(std::distance(r, values.end()));
     ssize_t size_diff {};
     std::for_each(r, values.end(), [&](const ValueStorage& v) {
         size_diff -= v.data->size();
         if (v.store_bucket)
             v.store_bucket->erase(id, *v.data, v.expiration);
+        ret.emplace_back(std::move(v.data));
     });
     total_size += size_diff;
     values.erase(r, values.end());
-    return {size_diff, del_num, del_listen};
+    return {size_diff, std::move(ret)};
 }
 
 }

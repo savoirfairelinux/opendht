@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2018 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -87,6 +87,8 @@ struct RequestAnswer {
     Blob ntoken {};
     Value::Id vid {};
     std::vector<Sp<Value>> values {};
+    std::vector<Value::Id> refreshed_values {};
+    std::vector<Value::Id> expired_values {};
     std::vector<Sp<FieldValueIndex>> fields {};
     std::vector<Sp<Node>> nodes4 {};
     std::vector<Sp<Node>> nodes6 {};
@@ -234,6 +236,9 @@ public:
     void tellListener(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
             std::vector<Sp<Value>>&& values, const Query& q);
+
+    void tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
+    void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }

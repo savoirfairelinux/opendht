@@ -538,18 +538,30 @@ Dht::searchStep(Sp<Search> sr)
             for (auto& n : sr->nodes) {
                 if (not n.isSynced(now))
                     continue;
+                std::weak_ptr<Search> ws = sr;
                 for (const auto& l : sr->listeners) {
                     const auto& query = l.second.query;
+                    auto list_token = l.first;
                     if (n.getListenTime(query) > now)
                         continue;
                     DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
                             sr->id.toString().c_str(), n.node->toString().c_str());
 
-                    const auto& r = n.listenStatus.find(query);
-                    auto prev_req = r != n.listenStatus.end() ? r->second : nullptr;
-
-                    std::weak_ptr<Search> ws = sr;
-                    n.listenStatus[query] = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
+                    auto r = n.listenStatus.find(query);
+                    if (r == n.listenStatus.end()) {
+                        r = n.listenStatus.emplace(query, SearchNode::CachedListenStatus{
+                            [this,ws,list_token](const std::vector<Sp<Value>>& values, bool expired){
+                                if (auto sr = ws.lock()) {
+                                    auto l = sr->listeners.find(list_token);
+                                    if (l != sr->listeners.end()) {
+                                        l->second.get_cb(l->second.filter.filter(values), expired);
+                                    }
+                                }
+                            }
+                        }).first;
+                    }
+                    auto prev_req = r != n.listenStatus.end() ? r->second.req : nullptr;
+                    r->second.req = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
                         [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
                         { /* on done */
                             if (auto sr = ws.lock()) {
@@ -572,7 +584,9 @@ Dht::searchStep(Sp<Search> sr)
                         { /* on new values */
                             if (auto sr = ws.lock()) {
                                 scheduler.edit(sr->nextSearchStep, scheduler.time());
-                                onGetValuesDone(node, answer, sr, query);
+                                if (auto sn = sr->getNode(node))
+                                    sn->onValues(query, std::move(answer), types, scheduler.time());
+                                    //onGetValuesDone(node, answer, sr, query);
                             }
                         }
                     );
@@ -772,9 +786,8 @@ Dht::announce(const InfoHash& id,
 }
 
 size_t
-Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter f, const Sp<Query>& q)
+Dht::listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f, const Sp<Query>& q)
 {
-    const auto& now = scheduler.time();
     if (!isRunning(af))
         return 0;
        // DHT_LOG_ERR("[search %s IPv%c] search_time is now in %lfs", sr->id.toString().c_str(), (sr->af == AF_INET) ? '4' : '6', print_dt(tm-clock::now()));
@@ -786,15 +799,11 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, GetCallback cb, Value::Filter 
     if (!sr)
         throw DhtException("Can't create search");
     DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
-    sr->done = false;
-    auto token = ++sr->listener_token;
-    sr->listeners.emplace(token, LocalListener{q, f, cb});
-    scheduler.edit(sr->nextSearchStep, now);
-    return token;
+    return sr->listen(cb, f, q, scheduler);
 }
 
 size_t
-Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
+Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
 {
     scheduler.syncTime();
 
@@ -802,27 +811,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
     auto vals = std::make_shared<std::map<Value::Id, Sp<Value>>>();
     auto token = ++listener_token;
 
-    auto gcb = [=](const std::vector<Sp<Value>>& values) {
-        std::vector<Sp<Value>> newvals;
-        for (const auto& v : values) {
-            auto it = vals->find(v->id);
-            if (it == vals->cend() || !(*it->second == *v))
-                newvals.push_back(v);
-        }
-        if (!newvals.empty()) {
-            if (!cb(newvals)) {
-                // cancelListen is useful here, because we need to cancel on IPv4 and 6
-                cancelListen(id, token);
-                return false;
-            }
-            for (const auto& v : newvals) {
-                auto it = vals->emplace(v->id, v);
-                if (not it.second)
-                    it.first->second = v;
-            }
-        }
-        return true;
-    };
+    auto gcb = OpValueCache::cacheCallback(std::move(cb));
 
     auto query = std::make_shared<Query>(q);
     auto filter = f.chain(q.where.getFilter());
@@ -834,7 +823,7 @@ Dht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where where)
         if (not st->second.empty()) {
             std::vector<Sp<Value>> newvals = st->second.get(filter);
             if (not newvals.empty()) {
-                if (!cb(newvals))
+                if (!gcb(newvals, false))
                     return 0;
                 for (const auto& v : newvals) {
                     auto it = vals->emplace(v->id, v);
@@ -1140,7 +1129,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
 {
     if (not st.local_listeners.empty()) {
         DHT_LOG.d(id, "[store %s] %lu local listeners", id.toString().c_str(), st.local_listeners.size());
-        std::vector<std::pair<GetCallback, std::vector<Sp<Value>>>> cbs;
+        std::vector<std::pair<ValueCallback, std::vector<Sp<Value>>>> cbs;
         for (const auto& l : st.local_listeners) {
             std::vector<Sp<Value>> vals;
             if (not l.second.filter or l.second.filter(*v.data))
@@ -1154,7 +1143,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v)
         }
         // listeners are copied: they may be deleted by the callback
         for (auto& cb : cbs)
-            cb.first(cb.second);
+            cb.first(cb.second, false);
     }
 
     if (not st.listeners.empty()) {
@@ -1242,11 +1231,33 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
 void
 Dht::expireStore(decltype(store)::iterator i)
 {
-    auto stats = i->second.expire(i->first, scheduler.time());
-    total_store_size += stats.size_diff;
-    total_values += stats.values_diff;
-    if (stats.values_diff) {
-        DHT_LOG.d(i->first, "[store %s] discarded %ld expired values (%ld bytes)", i->first.toString().c_str(), -stats.values_diff, -stats.size_diff);
+    const auto& id = i->first;
+    auto& st = i->second;
+    auto stats = st.expire(id, scheduler.time());
+    total_store_size += stats.first;
+    total_values -= stats.second.size();
+    if (not stats.second.empty()) {
+        DHT_LOG.d(id, "[store %s] discarded %ld expired values (%ld bytes)",
+            id.toString().c_str(), stats.second.size(), -stats.first);
+
+        if (not st.listeners.empty()) {
+            DHT_LOG.d(id, "[store %s] %lu remote listeners", id.toString().c_str(), st.listeners.size());
+
+            std::vector<Value::Id> ids;
+            ids.reserve(stats.second.size());
+            for (const auto& v : stats.second)
+                ids.emplace_back(v->id);
+
+            for (const auto& node_listeners : st.listeners) {
+                for (const auto& l : node_listeners.second) {
+                    DHT_LOG.w(id, node_listeners.first->id, "[store %s] [node %s] sending expired",
+                            id.toString().c_str(),
+                            node_listeners.first->toString().c_str());
+                    Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
+                    network_engine.tellListenerExpired(node_listeners.first, l.first, id, ntoken, ids);
+                }
+            }
+        }
     }
 }
 
@@ -1319,7 +1330,7 @@ Dht::connectivityChanged(sa_family_t af)
     for (auto& sp : searches(af))
         for (auto& sn : sp.second->nodes) {
             for (auto& ls : sn.listenStatus)
-                sn.node->cancelRequest(ls.second);
+                sn.node->cancelRequest(ls.second.req);
             sn.listenStatus.clear();
         }
     reported_addr.erase(std::remove_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& addr){
@@ -1872,7 +1883,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
         try {
             network_engine.processMessage(buf, buflen, from);
         } catch (const std::exception& e) {
-            DHT_LOG.e("Can't parse message from %s: %s", from.toString().c_str(), e.what());
+            DHT_LOG.e("Can't process message from %s: %s", from.toString().c_str(), e.what());
         }
     }
     return scheduler.run();
@@ -2169,7 +2180,7 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
             }
 
             /* callbacks for local search listeners */
-            std::vector<std::pair<GetCallback, std::vector<Sp<Value>>>> tmp_lists;
+            /*std::vector<std::pair<ValueCallback, std::vector<Sp<Value>>>> tmp_lists;
             for (auto& l : sr->listeners) {
                 if (!l.second.get_cb or (orig_query and l.second.query and not l.second.query->isSatisfiedBy(*orig_query)))
                     continue;
@@ -2181,7 +2192,10 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
                     tmp_lists.emplace_back(l.second.get_cb, std::move(tmp));
             }
             for (auto& l : tmp_lists)
-                l.first(l.second);
+                l.first(l.second, false);*/
+        } else if (not a.expired_values.empty()) {
+            DHT_LOG.w(sr->id, node->id, "[search %s] [node %s] %u expired values",
+                      sr->id.toString().c_str(), node->toString().c_str(), a.expired_values.size());
         }
     } else {
         DHT_LOG.w(sr->id, "[node %s] no token provided. Ignoring response content.", node->toString().c_str());
