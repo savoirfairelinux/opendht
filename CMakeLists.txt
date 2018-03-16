@@ -125,6 +125,8 @@ list (APPEND opendht_SOURCES
     src/storage.h
     src/listener.h
     src/search.h
+    src/value_cache.h
+    src/op_cache.h
     src/net.h
     src/parsed_message.h
     src/request.h

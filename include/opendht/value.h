@@ -842,6 +842,10 @@ struct OPENDHT_PUBLIC Where
         return ss.str();
     }
 
+    bool empty() const {
+        return filters_.empty();
+    }
+
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Where& q);
 
 private:
