@@ -40,10 +40,12 @@ namespace Json {
 
 namespace dht {
 
+class SearchCache;
+
 class OPENDHT_PUBLIC DhtProxyClient final : public DhtInterface {
 public:
 
-    DhtProxyClient() : scheduler(DHT_LOG) {}
+    DhtProxyClient();
 
     explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "");
 
@@ -101,8 +103,6 @@ public:
     virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-
-    void get(const InfoHash& key, const GetCallback& cb, DoneCallback donecb, const Value::Filter& filterChain);
 
     /**
      * Announce a value on all available protocols (IPv4, IPv6).
@@ -165,18 +165,13 @@ public:
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w = {}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual bool cancelListen(const InfoHash&, size_t token);
+    virtual bool cancelListen(const InfoHash& key, size_t token);
 
     /**
      * Call linked callback with a push notification
      * @param notification to process
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& notification);
-    /**
-     * Refresh a listen via a token
-     * @param token
-     */
-    void resubscribe(const unsigned token);
 
     time_point periodic(const uint8_t*, size_t, const SockAddr&);
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
@@ -217,6 +212,21 @@ public:
 
     void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& /*cb*/={}) { }
 
+    virtual void registerType(const ValueType& type) {
+        types.registerType(type);
+    }
+    const ValueType& getType(ValueType::Id type_id) const {
+        return types.getType(type_id);
+    }
+
+    std::vector<Sp<Value>> getLocal(const InfoHash&, Value::Filter) const {
+        return {};
+    }
+
+    Sp<Value> getLocalById(const InfoHash&, Value::Id) const {
+        return {};
+    }
+
     /**
      * NOTE: The following methods will not be implemented because the
      * DhtProxyClient doesn't have any storage nor synchronization process
@@ -225,10 +235,6 @@ public:
     void insertNode(const InfoHash&, const sockaddr*, socklen_t) { }
     void insertNode(const NodeExport&) { }
     std::pair<size_t, size_t> getStoreSize() const { return {}; }
-    virtual void registerType(const ValueType&) { }
-    const ValueType& getType(ValueType::Id) const { return NO_VALUE; }
-    std::vector<Sp<Value>> getLocal(const InfoHash&, Value::Filter) const { return {}; }
-    Sp<Value> getLocalById(const InfoHash&, Value::Id) const { return {}; }
     std::vector<NodeExport> exportNodes() { return {}; }
     std::vector<ValuesExport> exportValues() const { return {}; }
     void importValues(const std::vector<ValuesExport>&) {}
@@ -244,8 +250,6 @@ public:
     void connectivityChanged() { }
 
 private:
-    const ValueType NO_VALUE;
-
     /**
      * Start the connection with a server.
      */
@@ -261,6 +265,9 @@ private:
 
     void opFailed();
 
+    size_t doListen(const InfoHash& key, ValueCallback, Value::Filter);
+    bool doCancelListen(const InfoHash& key, size_t token);
+
     /**
      * Initialize statusIpvX_
      */
@@ -273,6 +280,7 @@ private:
      * cancel all Operations
      */
     void cancelAllOperations();
+
     std::string serverHost_;
     std::string pushClientId_;
 
@@ -285,22 +293,16 @@ private:
 
     InfoHash myid {};
 
+    // registred types
+    TypeStore types;
+
     /**
      * Store listen requests.
      */
-    struct Listener
-    {
-        size_t token;
-        std::shared_ptr<restbed::Request> req;
-        std::string key;
-        GetCallback cb;
-        Value::Filter filterChain;
-        std::thread thread;
-        unsigned callbackId;
-        std::shared_ptr<bool> isCanceledViaClose; // NOTE: unused if using push notifications
-        std::shared_ptr<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
-    };
-    std::vector<Listener> listeners_;
+    struct Listener;
+    struct ProxySearch;
+    std::map<InfoHash, ProxySearch> listeners_;
+
     size_t listener_token_ {0};
     std::mutex lockListener_;
 
@@ -336,12 +338,17 @@ private:
     void restartListeners();
 
     /**
+     * Refresh a listen via a token
+     * @param token
+     */
+    void resubscribe(const InfoHash& key, Listener& listener);
+
+    /**
      * If we want to use push notifications by default.
      * NOTE: empty by default to avoid to use services like FCM or APN.
      */
     std::string deviceKey_ {};
-    unsigned callbackId_ {0};
-    std::mutex lockCallback_;
+    std::atomic_uint callbackId_ {0};
 
     const std::function<void()> loopSignal_;
 
