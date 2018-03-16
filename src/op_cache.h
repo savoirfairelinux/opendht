@@ -139,6 +139,23 @@ public:
         return listeners.empty();
     }
 
+    std::vector<Sp<Value>> get(Value::Filter& filter) const {
+        std::vector<Sp<Value>> ret;
+        if (not filter)
+            ret.reserve(values.size());
+        for (const auto& v : values)
+            if (not filter or filter(*v.second.data))
+                ret.emplace_back(v.second.data);
+        return ret;
+    }
+
+    Sp<Value> get(Value::Id id) const {
+        auto v = values.find(id);
+        if (v == values.end())
+            return {};
+        return v->second.data;
+    }
+
     size_t searchToken;
 private:
     std::map<size_t, LocalListener> listeners;
@@ -186,6 +203,28 @@ public:
             }
         }
         return false;
+    }
+
+    std::vector<Sp<Value>> get(Value::Filter& filter) const {
+        if (ops.size() == 1)
+            return ops.begin()->second.get(filter);
+        std::map<Value::Id, Sp<Value>> c;
+        for (const auto& op : ops) {
+            for (const auto& v : op.second.get(filter))
+                c.emplace(v->id, v);
+        }
+        std::vector<Sp<Value>> ret;
+        ret.reserve(c.size());
+        for (auto& v : c)
+            ret.emplace_back(std::move(v.second));
+        return ret;
+    }
+
+    Sp<Value> get(Value::Id id) const {
+        for (const auto& op : ops)
+            if (auto v = op.second.get(id))
+                return v;
+        return {};
     }
 
 private:

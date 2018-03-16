@@ -227,13 +227,8 @@ public:
         return types.getType(type_id);
     }
 
-    std::vector<Sp<Value>> getLocal(const InfoHash&, Value::Filter) const {
-        return {};
-    }
-
-    Sp<Value> getLocalById(const InfoHash&, Value::Id) const {
-        return {};
-    }
+    std::vector<Sp<Value>> getLocal(const InfoHash& k, Value::Filter filter) const;
+    Sp<Value> getLocalById(const InfoHash& k, Value::Id id) const;
 
     /**
      * NOTE: The following methods will not be implemented because the

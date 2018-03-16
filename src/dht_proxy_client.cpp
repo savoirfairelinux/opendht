@@ -84,6 +84,22 @@ DhtProxyClient::~DhtProxyClient()
     cancelAllListeners();
 }
 
+std::vector<Sp<Value>>
+DhtProxyClient::getLocal(const InfoHash& k, Value::Filter filter) const {
+    auto s = listeners_.find(k);
+    if (s == listeners_.end())
+        return {};
+    return s->second.ops.get(filter);
+}
+
+Sp<Value>
+DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
+    auto s = listeners_.find(k);
+    if (s == listeners_.end())
+        return {};
+    return s->second.ops.get(id);
+}
+
 void
 DhtProxyClient::cancelAllOperations()
 {
