@@ -183,8 +183,8 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
 ], [])
 
 AC_ARG_ENABLE([tests], AS_HELP_STRING([--enable-tests], [Enable tests]), build_tests=yes, build_tests=no)
-AM_CONDITIONAL(OPENDHT_TESTS, test x$build_tests == xyes)
-AM_COND_IF([OPENDHT_TESTS], [
+AM_CONDITIONAL(ENABLE_TESTS, test x$build_tests == xyes)
+AM_COND_IF([ENABLE_TESTS], [
 	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
 ])
 

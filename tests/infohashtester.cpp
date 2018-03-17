@@ -25,7 +25,7 @@
 #include <string>
 
 // opendht
-#include "infohash.h"
+#include "opendht/infohash.h"
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(InfoHashTester);

@@ -12,7 +12,11 @@ if USE_CYTHON
 SUBDIRS += python
 endif
 
-SUBDIRS += doc tests
+if ENABLE_TESTS
+SUBDIRS += tests
+endif
+
+SUBDIRS += doc
 
 ACLOCAL_AMFLAGS = -I m4
 
