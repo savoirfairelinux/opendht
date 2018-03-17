@@ -20,9 +20,6 @@ before_install:
     # non llvm builds
     if [[ "$OPENDHT_TEST_JOB" != *"opendht.llvm"* ]]; then
       docker pull aberaud/opendht-deps;
-      if [[ "$OPENDHT_TEST_JOB" != *"opendht.classic"* ]]; then
-        docker build -t opendht-deps-proxy -f docker/DockerfileDepsProxy .;
-      fi
     fi
 
   - |
