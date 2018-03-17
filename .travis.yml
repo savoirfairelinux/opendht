@@ -11,9 +11,7 @@ env:
     - OPENDHT_TEST_JOB="opendht.llvm"
     - OPENDHT_TEST_JOB="opendht.proxyserver"
     - OPENDHT_TEST_JOB="opendht.proxyclient"
-    - OPENDHT_TEST_JOB="opendht.proxyserverpush"
-    - OPENDHT_TEST_JOB="opendht.proxyclientpush"
-    - OPENDHT_TEST_JOB="opendht.all"
+    - OPENDHT_TEST_JOB="opendht.push"
 
 before_install:
   - |
@@ -40,17 +38,17 @@ script:
     if [[ "$OPENDHT_TEST_JOB" != *"opendht.llvm"* ]] && [[ "$OPENDHT_TEST_JOB" != *"opendht.classic"* ]]; then
       docker build -t opendht-proxy -f docker/DockerfileTravisProxy .;
       options='';
-      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserver"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserverpush"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.all"* ]]; then
+      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserver"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
         options+='-DOPENDHT_PROXY_SERVER=ON ';
       else
         options+='-DOPENDHT_PROXY_SERVER=OFF ';
       fi
-      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclient"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclientpush"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.all"* ]]; then
+      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclient"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
         options+='-DOPENDHT_PROXY_CLIENT=ON ';
       else
         options+='-DOPENDHT_PROXY_CLIENT=OFF ';
       fi
-      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserverpush"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclientpush"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.all"* ]]; then
+      if [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
         options+='-DOPENDHT_PUSH_NOTIFICATIONS=ON ';
       else
         options+='-DOPENDHT_PUSH_NOTIFICATIONS=OFF ';
