@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.1)
 project (opendht)
 set (opendht_VERSION_MAJOR 1)
-set (opendht_VERSION_MINOR 6.1)
+set (opendht_VERSION_MINOR 7.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -22,7 +22,6 @@ option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" O
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
-
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -309,7 +308,7 @@ IF(OPENDHT_TESTS)
     if (OPENDHT_SHARED)
       TARGET_LINK_LIBRARIES(opendht_unit_tests opendht)
     else ()
-    	TARGET_LINK_LIBRARIES(opendht_unit_tests opendht-static)
+      TARGET_LINK_LIBRARIES(opendht_unit_tests opendht-static)
     endif ()
     TARGET_LINK_LIBRARIES(opendht_unit_tests
        ${CMAKE_THREAD_LIBS_INIT}
