@@ -102,9 +102,14 @@ public:
                 //std::cout << "onValuesAdded: " << viop.first->second.refCount << " refs for value " << v->id << std::endl;
             }
         }
-        auto list = listeners;
-        for (auto& l : list)
-            l.second.get_cb(l.second.filter.filter(newValues), false);
+        if (not listeners.empty()) {
+            std::vector<LocalListener> list;
+            list.reserve(listeners.size());
+            for (const auto& l : listeners)
+                list.emplace_back(l.second);
+            for (auto& l : list)
+                l.get_cb(l.filter.filter(newValues), false);
+        }
     }
     void onValuesExpired(const std::vector<Sp<Value>>& vals) {
         std::vector<Sp<Value>> expiredValues;
@@ -117,9 +122,14 @@ public:
                     values.erase(vit);
             }
         }
-        auto list = listeners;
-        for (auto& l : list)
-            l.second.get_cb(l.second.filter.filter(expiredValues), true);
+        if (not listeners.empty()) {
+            std::vector<LocalListener> list;
+            list.reserve(listeners.size());
+            for (const auto& l : listeners)
+                list.emplace_back(l.second);
+            for (auto& l : list)
+                l.get_cb(l.filter.filter(expiredValues), true);
+        }
     }
 
     void addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
@@ -178,26 +188,26 @@ public:
         }
         if (op == ops.end()) {
             // New query
-            op = ops.emplace(q, OpCache{}).first;
-            auto& cache = op->second;
+            op = ops.emplace(q, std::unique_ptr<OpCache>(new OpCache)).first;
+            auto& cache = *op->second;
             cache.searchToken = onListen(q, [&](const std::vector<Sp<Value>>& values, bool expired){
                 return cache.onValue(values, expired);
             });
         }
         auto token = nextToken_++;
-        if (token == 0)
-            token++;
-        op->second.addListener(token, get_cb, q, filter);
+        if (nextToken_ == 0)
+            nextToken_++;
+        op->second->addListener(token, get_cb, q, filter);
         return token;
     }
 
     bool cancelListen(size_t gtoken, std::function<void(size_t)> onCancel) {
         for (auto it = ops.begin(); it != ops.end(); it++) {
-            if (it->second.removeListener(gtoken)) {
-                if (it->second.isDone()) {
-                    auto ltoken = it->second.searchToken;
+            if (it->second->removeListener(gtoken)) {
+                if (it->second->isDone()) {
+                    auto cache = std::move(it->second);
                     ops.erase(it);
-                    onCancel(ltoken);
+                    onCancel(cache->searchToken);
                 }
                 return true;
             }
@@ -207,10 +217,10 @@ public:
 
     std::vector<Sp<Value>> get(Value::Filter& filter) const {
         if (ops.size() == 1)
-            return ops.begin()->second.get(filter);
+            return ops.begin()->second->get(filter);
         std::map<Value::Id, Sp<Value>> c;
         for (const auto& op : ops) {
-            for (const auto& v : op.second.get(filter))
+            for (const auto& v : op.second->get(filter))
                 c.emplace(v->id, v);
         }
         std::vector<Sp<Value>> ret;
@@ -222,13 +232,13 @@ public:
 
     Sp<Value> get(Value::Id id) const {
         for (const auto& op : ops)
-            if (auto v = op.second.get(id))
+            if (auto v = op.second->get(id))
                 return v;
         return {};
     }
 
 private:
-    std::map<Sp<Query>, OpCache> ops;
+    std::map<Sp<Query>, std::unique_ptr<OpCache>> ops {};
     size_t nextToken_ {1};
 };
 
