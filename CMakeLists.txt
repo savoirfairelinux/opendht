@@ -304,6 +304,8 @@ IF(OPENDHT_TESTS)
       tests/tests_runner.cpp
       tests/infohashtester.h
       tests/infohashtester.cpp
+      tests/dhtrunnertester.h
+      tests/dhtrunnertester.cpp
     )
     if (OPENDHT_SHARED)
       TARGET_LINK_LIBRARIES(opendht_unit_tests opendht)
