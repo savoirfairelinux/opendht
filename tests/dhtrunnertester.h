@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2018 Savoir-faire Linux Inc.
  *
- *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,17 +23,19 @@
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 
+#include <opendht/dhtrunner.h>
+
 namespace test {
 
-class InfoHashTester : public CppUnit::TestFixture {
-    CPPUNIT_TEST_SUITE(InfoHashTester);
+class DhtRunnerTester : public CppUnit::TestFixture {
+    CPPUNIT_TEST_SUITE(DhtRunnerTester);
     CPPUNIT_TEST(testConstructors);
-    CPPUNIT_TEST(testComperators);
-    CPPUNIT_TEST(testLowBit);
-    CPPUNIT_TEST(testCommonBits);
-    CPPUNIT_TEST(testXorCmp);
+    CPPUNIT_TEST(testGetPut);
+    CPPUNIT_TEST(testListen);
     CPPUNIT_TEST_SUITE_END();
 
+    dht::DhtRunner node1 {};
+    dht::DhtRunner node2 {};
  public:
     /**
      * Method automatically called before each test by CppUnit
@@ -48,22 +50,13 @@ class InfoHashTester : public CppUnit::TestFixture {
      */
     void testConstructors();
     /**
-     * Test compare operators
+     * Test get and put methods
      */
-    void testComperators();
+    void testGetPut();
     /**
-     * Test lowbit method
+     * Test listen method
      */
-    void testLowBit();
-    /**
-     * Test commonBits method
-     */
-    void testCommonBits();
-    /**
-     * Test xorCmp operators
-     */
-    void testXorCmp();
-
+    void testListen();
 };
 
 }  // namespace test
