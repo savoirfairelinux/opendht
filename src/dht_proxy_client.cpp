@@ -364,39 +364,58 @@ DhtProxyClient::getProxyInfos()
             statusIpv6_ = NodeStatus::Connecting;
     }
 
-    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/");
-    auto req = std::make_shared<restbed::Request>(uri);
+    // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
+    std::string host, service;
+    auto serviceMarker = serverHost_.find(':');
+    if (serviceMarker != std::string::npos) {
+        host = serverHost_.substr(0, serviceMarker - 1);
+        service = serverHost_.substr(serviceMarker + 1);
+    } else {
+        host = serverHost_;
+    }
+    auto resolved_proxies = SockAddr::resolve(host, service);
+    auto serverHost = serverHost_;
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    statusThread_ = std::thread([this, req]{
-        restbed::Http::async(req,
-            [this](const std::shared_ptr<restbed::Request>&,
-                           const std::shared_ptr<restbed::Response>& reply) {
-            auto code = reply->get_status_code();
-            Json::Value proxyInfos;
-            if (code == 200) {
-                restbed::Http::fetch("\n", reply);
-                std::string body;
-                reply->get_body(body);
-
-                std::string err;
-                Json::CharReaderBuilder rbuilder;
-                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                try {
-                    reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
-                } catch (...) {
-                }
+    statusThread_ = std::thread([this, resolved_proxies, serverHost]{
+        for (const auto& resolved_proxy: resolved_proxies) {
+            auto server = resolved_proxy.toString();
+            if (resolved_proxy.getFamily() == AF_INET6) {
+                // HACK restbed seems to not correctly handle directly http://[ipv6]
+                // See https://github.com/Corvusoft/restbed/issues/290.
+                server = serverHost;
             }
-            onProxyInfos(proxyInfos);
-            ongoingStatusUpdate_.clear();
-        });
+            restbed::Uri uri(HTTP_PROTO + server + "/");
+            auto req = std::make_shared<restbed::Request>(uri);
+            restbed::Http::async(req,
+            [this, resolved_proxy](const std::shared_ptr<restbed::Request>&,
+            const std::shared_ptr<restbed::Response>& reply) {
+                auto code = reply->get_status_code();
+                Json::Value proxyInfos;
+                if (code == 200) {
+                    restbed::Http::fetch("\n", reply);
+                    std::string body;
+                    reply->get_body(body);
+
+                    std::string err;
+                    Json::CharReaderBuilder rbuilder;
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    try {
+                        reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
+                    } catch (...) {
+                    }
+                    onProxyInfos(proxyInfos, resolved_proxy.getFamily());
+                }
+                ongoingStatusUpdate_.clear();
+            });
+        }
     });
     statusThread_.detach();
 }
 
 void
-DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos)
+DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t& family)
 {
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
 
@@ -421,7 +440,10 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos)
         else
             statusIpv6_ = NodeStatus::Disconnected;
 
-        publicAddress_ = parsePublicAddress(proxyInfos["public_ip"]);
+        if (family == AF_INET)
+            publicAddressV4_ = parsePublicAddress(proxyInfos["public_ip"]);
+        else if (family == AF_INET6)
+            publicAddressV6_ = parsePublicAddress(proxyInfos["public_ip"]);
     } catch (...) {}
 
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
@@ -443,9 +465,9 @@ DhtProxyClient::parsePublicAddress(const Json::Value& val)
 {
     auto public_ip = val.asString();
     auto endIp = public_ip.find_last_of(':');
-    std::string service = public_ip.substr(endIp + 1);
-    std::string address = public_ip.substr(0, endIp - 1);
-    auto sa = SockAddr::resolve(address, service);
+    auto marker = (public_ip.size() > 0 && public_ip[0] == '[') ? 1 : 0;
+    std::string address = public_ip.substr(marker, endIp - marker * 2);
+    auto sa = SockAddr::resolve(address);
     if (sa.empty()) return {};
     return sa.front().getMappedIPv4();
 }
@@ -454,8 +476,10 @@ std::vector<SockAddr>
 DhtProxyClient::getPublicAddress(sa_family_t family)
 {
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
-    if (not publicAddress_) return {};
-    return publicAddress_.getFamily() == family ? std::vector<SockAddr>{publicAddress_} : std::vector<SockAddr>{};
+    std::vector<SockAddr> result;
+    if (publicAddressV6_ && family != AF_INET) result.emplace_back(publicAddressV6_);
+    if (publicAddressV4_ && family != AF_INET6) result.emplace_back(publicAddressV4_);
+    return result;
 }
 
 size_t
