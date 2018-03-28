@@ -263,7 +263,7 @@ private:
      * @return the JSON returned by the proxy
      */
     void getProxyInfos();
-    void onProxyInfos(const Json::Value& val);
+    void onProxyInfos(const Json::Value& val, const sa_family_t& family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
     void opFailed();
@@ -294,7 +294,8 @@ private:
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
     NodeStats stats4_ {};
     NodeStats stats6_ {};
-    SockAddr publicAddress_;
+    SockAddr publicAddressV4_;
+    SockAddr publicAddressV6_;
 
     InfoHash myid {};
 
