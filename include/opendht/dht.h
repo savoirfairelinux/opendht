@@ -414,7 +414,7 @@ private:
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);
 
-    void storageChanged(const InfoHash& id, Storage& st, ValueStorage&);
+    void storageChanged(const InfoHash& id, Storage& st, ValueStorage&, bool newValue);
     std::string printStorageLog(const decltype(store)::value_type&) const;
 
     /**
@@ -535,7 +535,9 @@ private:
      *
      * @param sr  The search to execute its operations.
      */
-    void searchStep(Sp<Search> sr);
+    void searchStep(Sp<Search>);
+    void searchSynchedNodeListen(const Sp<Search>&, SearchNode&);
+
     void dumpSearch(const Search& sr, std::ostream& out) const;
 
     bool neighbourhoodMaintenance(RoutingTable&);

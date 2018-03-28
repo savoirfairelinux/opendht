@@ -63,6 +63,7 @@ struct Dht::SearchNode {
 
     struct CachedListenStatus {
         ValueCache cache;
+        Sp<Scheduler::Job> cacheExpirationJob {};
         Sp<net::Request> req {};
         CachedListenStatus(ValueStateCallback&& cb) : cache(std::forward<ValueStateCallback>(cb)) {}
         CachedListenStatus(CachedListenStatus&&) = default;
@@ -213,13 +214,22 @@ struct Dht::SearchNode {
         getStatus.clear();
     }
 
-    void onValues(const Sp<Query>& q, net::RequestAnswer&& answer, const TypeStore& types, const time_point& now)
+    void onValues(const Sp<Query>& q, net::RequestAnswer&& answer, const TypeStore& types, Scheduler& scheduler)
     {
         auto l = listenStatus.find(q);
         if (l != listenStatus.end()) {
-            l->second.cache.onValues(answer.values,
+            auto next = l->second.cache.onValues(answer.values,
                                      answer.refreshed_values,
-                                     answer.expired_values, types, now);
+                                     answer.expired_values, types, scheduler.time());
+            scheduler.edit(l->second.cacheExpirationJob, next);
+        }
+    }
+
+    void expireValues(const Sp<Query>& q, Scheduler& scheduler) {
+        auto l = listenStatus.find(q);
+        if (l != listenStatus.end()) {
+            auto next = l->second.cache.expireValues(scheduler.time());
+            scheduler.edit(l->second.cacheExpirationJob, next);
         }
     }
 

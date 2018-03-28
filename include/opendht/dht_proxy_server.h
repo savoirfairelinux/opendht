@@ -23,6 +23,8 @@
 #include "def.h"
 #include "sockaddr.h"
 #include "infohash.h"
+#include "scheduler.h"
+#include "value.h"
 
 #include <thread>
 #include <memory>
@@ -58,6 +60,27 @@ public:
     DhtProxyServer(DhtProxyServer&& other) = delete;
     DhtProxyServer& operator=(const DhtProxyServer& other) = delete;
     DhtProxyServer& operator=(DhtProxyServer&& other) = delete;
+
+    struct ServerStats {
+        /** Current number of listen operations */
+        size_t listenCount;
+        /** Current number of permanent put operations */
+        size_t putCount;
+        /** Current number of push tokens with at least one listen operation */
+        size_t pushListenersCount;
+        /** Average requests per second */
+        double requestRate;
+
+        std::string toString() const {
+            std::ostringstream ss;
+            ss << "Listens: " << listenCount << " Puts: " << putCount << " PushListeners: " << pushListenersCount << std::endl;
+            ss << "Requests: " << requestRate << " per second." << std::endl;
+            return ss.str();
+        }
+    };
+    ServerStats getStats() const;
+
+    std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
     /**
      * Stop the DhtProxyServer
@@ -96,7 +119,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void listen(const std::shared_ptr<restbed::Session>& session) const;
+    void listen(const std::shared_ptr<restbed::Session>& session);
 
     /**
      * Put a value on the DHT
@@ -107,7 +130,9 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json or HTTP 502 if put fails
      * @param session
      */
-    void put(const std::shared_ptr<restbed::Session>& session) const;
+    void put(const std::shared_ptr<restbed::Session>& session);
+
+    void cancelPut(const InfoHash& key, Value::Id vid);
 
 #if OPENDHT_PROXY_SERVER_IDENTITY
     /**
@@ -167,7 +192,7 @@ private:
      * on same hash for same device and must be > 0
      * @param session
      */
-    void subscribe(const std::shared_ptr<restbed::Session>& session) const;
+    void subscribe(const std::shared_ptr<restbed::Session>& session);
     /**
      * Unsubscribe to push notifications for an iOS or Android device.
      * Method: UNSUBSCRIBE "/{InfoHash: .*}"
@@ -178,7 +203,7 @@ private:
      * on same hash for same device
      * @param session
      */
-    void unsubscribe(const std::shared_ptr<restbed::Session>& session) const;
+    void unsubscribe(const std::shared_ptr<restbed::Session>& session);
     /**
      * Send a push notification via a gorush push gateway
      * @param key of the device
@@ -187,9 +212,17 @@ private:
     void sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const;
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
+    using clock = std::chrono::steady_clock;
+    using time_point = clock::time_point;
+
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
     std::shared_ptr<DhtRunner> dht_;
+
+    std::mutex schedulerLock_;
+    std::condition_variable schedulerCv_;
+    Scheduler scheduler_;
+    std::thread schedulerThread_;
 
     // Handle client quit for listen.
     // NOTE: can be simplified when we will supports restbed 5.0
@@ -199,37 +232,33 @@ private:
         InfoHash hash;
         std::future<size_t> token;
     };
-    mutable std::vector<SessionToHashToken> currentListeners_;
-    mutable std::mutex lockListener_;
+    std::vector<SessionToHashToken> currentListeners_;
+    std::mutex lockListener_;
     std::atomic_bool stopListeners {false};
 
+    struct PermanentPut;
+    struct SearchPuts;
+    std::map<InfoHash, SearchPuts> puts_;
+
 #if OPENDHT_PUSH_NOTIFICATIONS
-    struct PushListener {
-        std::string pushToken;
-        InfoHash hash;
-        unsigned token;
-        std::future<size_t> internalToken;
-        std::chrono::steady_clock::time_point deadline;
-        bool started {false};
-        unsigned callbackId {0};
-        std::string clientId {};
-        bool isAndroid {true};
-    };
-    mutable std::mutex lockPushListeners_;
-    mutable std::vector<PushListener> pushListeners_;
-    mutable unsigned tokenPushNotif_ {0};
+    struct Listener;
+    struct PushListener;
+    std::mutex lockPushListeners_;
+    std::map<std::string, PushListener> pushListeners_;
+    unsigned tokenPushNotif_ {0};
+
+    void cancelPushListen(const std::string& pushToken, const InfoHash& key, unsigned token, unsigned callbackId);
 #endif //OPENDHT_PUSH_NOTIFICATIONS
     const std::string pushServer_;
+
+    mutable std::atomic<size_t> requestNum_ {0};
+    mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
 
     /**
      * Remove finished listeners
      * @param testSession if we remove the listener only if the session is closed
      */
     void removeClosedListeners(bool testSession = true);
-    /**
-     * Launch or remove push listeners if needed
-     */
-    void handlePushListeners();
 };
 
 }

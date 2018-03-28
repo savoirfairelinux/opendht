@@ -54,14 +54,26 @@ public:
         return ret;
     }
 
-    CallbackQueue expireValues(const time_point& now) {
+    time_point expireValues(const time_point& now) {
+        time_point ret = time_point::max();
+        auto cbs = expireValues(now, ret);
+        while (not cbs.empty()) {
+            cbs.front()();
+            cbs.pop_front();
+        }
+        return ret;
+    }
+
+    CallbackQueue expireValues(const time_point& now, time_point& next) {
         std::vector<Sp<Value>> expired_values;
         for (auto it = values.begin(); it != values.end();) {
             if (it->second.expiration < now) {
                 expired_values.emplace_back(std::move(it->second.data));
                 it = values.erase(it);
-            } else
+            } else {
+                next = std::min(next, it->second.expiration);
                 ++it;
+            }
         }
         while (values.size() >= MAX_VALUES) {
             // too many values, remove oldest values
@@ -88,24 +100,26 @@ public:
         return ret;
     }
 
-    void onValues
+    time_point onValues
         (const std::vector<Sp<Value>>& values,
         const std::vector<Value::Id>& refreshed_values,
         const std::vector<Value::Id>& expired_values,
         const TypeStore& types, const time_point& now)
     {
         CallbackQueue cbs;
+        time_point ret = time_point::max();
         if (not values.empty())
             cbs.splice(cbs.end(), addValues(values, types, now));
         for (const auto& vid : refreshed_values)
             refreshValue(vid, types, now);
         for (const auto& vid : expired_values)
             cbs.splice(cbs.end(), expireValue(vid));
-        cbs.splice(cbs.end(), expireValues(now));
+        cbs.splice(cbs.end(), expireValues(now, ret));
         while (not cbs.empty()) {
             cbs.front()();
             cbs.pop_front();
         }
+        return ret;
     }
 
 private:
@@ -134,10 +148,11 @@ private:
         for (const auto& value : new_values) {
             auto v = values.find(value->id);
             if (v == values.end()) {
-                nvals.emplace_back(value);
                 // new value
+                nvals.emplace_back(value);
                 values.emplace(value->id, CacheValueStorage(value, now, now + types.getType(value->type).expiration));
             } else {
+                // refreshed value
                 v->second.created = now;
                 v->second.expiration = now + types.getType(v->second.data->type).expiration;
             }
@@ -173,6 +188,5 @@ private:
         v->second.expiration = now + types.getType(v->second.data->type).expiration;
     }
 };
-
 
 }

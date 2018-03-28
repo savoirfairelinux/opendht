@@ -87,6 +87,7 @@ void print_help() {
               << "  cl <key> <token>      Cancel listen for <token> and <key>." << std::endl
               << "  p <key> <str>         Put string value at <key>." << std::endl
               << "  pp <key> <str>        Put string value at <key> (persistent version)." << std::endl
+              << "  cpp <key> <id>        Cancel persistent put operation for <key> and value <id>." << std::endl
               << "  s <key> <str>         Put string value at <key>, signed with our generated private key." << std::endl
               << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl;
 
@@ -139,6 +140,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             std::cout << dht->getNodesStats(AF_INET).toString() << std::endl;
             std::cout << "IPv6 stats:" << std::endl;
             std::cout << dht->getNodesStats(AF_INET6).toString() << std::endl;
+#if OPENDHT_PROXY_SERVER
+            for (const auto& proxy : proxies) {
+                std::cout << "Stats for proxy on port " << proxy.first << std::endl;
+                std::cout << "  " << proxy.second->getStats().toString() << std::endl;
+            }
+#endif
             continue;
         } else if (op == "lr") {
             std::cout << "IPv4 routing table:" << std::endl;

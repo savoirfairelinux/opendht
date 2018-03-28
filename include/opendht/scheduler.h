@@ -36,11 +36,10 @@ namespace dht {
  */
 class Scheduler {
 public:
-    Scheduler(const Logger& l) : DHT_LOG(l) {}
-
     struct Job {
         Job(std::function<void()>&& f) : do_(std::move(f)) {}
         std::function<void()> do_;
+        void cancel() { do_ = {}; }
     };
 
     /**
@@ -58,17 +57,19 @@ public:
         return job;
     }
 
+    void add(const Sp<Scheduler::Job>& job, time_point t) {
+        if (t != time_point::max())
+            timers.emplace(std::move(t), job);
+    }
+
     /**
      * Reschedules a job.
      *
-     * @param time  The time at which the job shall be rescheduled.
      * @param job  The job to edit.
-     *
-     * @return pointer to the newly scheduled job.
+     * @param t  The time at which the job shall be rescheduled.
      */
     void edit(Sp<Scheduler::Job>& job, time_point t) {
         if (not job) {
-            DHT_LOG.ERR("editing an empty job");
             return;
         }
         // std::function move doesn't garantee to leave the object empty.
@@ -118,7 +119,6 @@ public:
 private:
     time_point now {clock::now()};
     std::multimap<time_point, Sp<Job>> timers {}; /* the jobs ordered by time */
-    const Logger& DHT_LOG;
 };
 
 }

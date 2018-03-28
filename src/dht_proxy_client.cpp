@@ -21,21 +21,24 @@
 
 #include "dht_proxy_client.h"
 
-#include <chrono>
-#include <json/json.h>
-#include <restbed>
-#include <vector>
-
 #include "dhtrunner.h"
 #include "op_cache.h"
 
+#include <restbed>
+#include <json/json.h>
+
+#include <chrono>
+#include <vector>
+
 constexpr const char* const HTTP_PROTO {"http://"};
+constexpr const std::chrono::seconds OP_TIMEOUT {1 * 60 * 60 - 60}; // one hour minus margin
 
 namespace dht {
 
 struct DhtProxyClient::Listener
 {
     ValueCache cache;
+    Sp<Scheduler::Job> cacheExpirationJob {};
     ValueCallback cb;
     Value::Filter filter;
     Sp<restbed::Request> req;
@@ -43,20 +46,27 @@ struct DhtProxyClient::Listener
     unsigned callbackId;
     Sp<bool> isCanceledViaClose;
     Sp<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
+    Sp<Scheduler::Job> refreshJob;
     Listener(ValueCache&& c, const Sp<restbed::Request>& r, Value::Filter&& f, unsigned cid)
         : cache(std::move(c)), filter(std::move(f)), req(r), callbackId(cid), isCanceledViaClose(std::make_shared<bool>(false))
     {}
 };
 
+struct PermanentPut {
+    Sp<Value> value;
+    Sp<Scheduler::Job> refreshJob;
+};
+
 struct DhtProxyClient::ProxySearch {
     SearchCache ops {};
     std::map<size_t, Listener> listeners {};
+    std::map<Value::Id, PermanentPut> puts {};
 };
 
-DhtProxyClient::DhtProxyClient() : scheduler(DHT_LOG) {}
+DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
-: serverHost_(serverHost), pushClientId_(pushClientId), scheduler(DHT_LOG), loopSignal_(signal)
+: serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
 {
     if (!serverHost_.empty())
         startProxy();
@@ -86,16 +96,16 @@ DhtProxyClient::~DhtProxyClient()
 
 std::vector<Sp<Value>>
 DhtProxyClient::getLocal(const InfoHash& k, Value::Filter filter) const {
-    auto s = listeners_.find(k);
-    if (s == listeners_.end())
+    auto s = searches_.find(k);
+    if (s == searches_.end())
         return {};
     return s->second.ops.get(filter);
 }
 
 Sp<Value>
 DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
-    auto s = listeners_.find(k);
-    if (s == listeners_.end())
+    auto s = searches_.find(k);
+    if (s == searches_.end())
         return {};
     return s->second.ops.get(id);
 }
@@ -121,7 +131,7 @@ void
 DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(lockListener_);
-    for (auto& s: listeners_) {
+    for (auto& s: searches_) {
         for (auto& l : s.second.listeners)
             if (l.second.thread.joinable()) {
                 // Close connection to stop listener?
@@ -276,11 +286,45 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 }
 
 void
-DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point, bool permanent)
+DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
+{
+    scheduler.syncTime();
+    if (not val) {
+        if (cb) cb(false, {});
+        return;
+    }
+    if (val->id == Value::INVALID_ID) {
+        crypto::random_device rdev;
+        std::uniform_int_distribution<Value::Id> rand_id {};
+        val->id = rand_id(rdev);
+    }
+    if (permanent) {
+        auto id = val->id;
+        auto search = searches_.emplace(key, ProxySearch{}).first;
+        auto nextRefresh = scheduler.time() + OP_TIMEOUT;
+        search->second.puts.erase(id);
+        search->second.puts.emplace(id, PermanentPut {val, scheduler.add(nextRefresh, [this, key, id]{
+            auto s = searches_.find(key);
+            if (s == searches_.end())
+                return;
+            auto p = s->second.puts.find(id);
+            if (p == s->second.puts.end())
+                return;
+            const auto& now = scheduler.time();
+            doPut(key, p->second.value, {}, now, true);
+            scheduler.edit(p->second.refreshJob, now + OP_TIMEOUT);
+        })});
+    }
+    doPut(key, val, std::move(cb), created, permanent);
+}
+
+void
+DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
+
     auto json = val->toJson();
     if (permanent)
         json["permanent"] = true;
@@ -340,6 +384,49 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         std::lock_guard<std::mutex> lock(lockOperations_);
         operations_.emplace_back(std::move(o));
     }
+}
+
+/**
+ * Get data currently being put at the given hash.
+ */
+std::vector<Sp<Value>>
+DhtProxyClient::getPut(const InfoHash& key) {
+    std::vector<Sp<Value>> ret;
+    auto search = searches_.find(key);
+    if (search != searches_.end()) {
+        ret.reserve(search->second.puts.size());
+        for (const auto& put : search->second.puts)
+            ret.emplace_back(put.second.value);
+    }
+    return ret;
+}
+
+/**
+ * Get data currently being put at the given hash with the given id.
+ */
+Sp<Value>
+DhtProxyClient::getPut(const InfoHash& key, const Value::Id& id) {
+    auto search = searches_.find(key);
+    if (search == searches_.end())
+        return {};
+    auto val = search->second.puts.find(id);
+    if (val == search->second.puts.end())
+        return {};
+    return val->second.value;
+}
+
+/**
+ * Stop any put/announce operation at the given location,
+ * for the value with the given id.
+ */
+bool
+DhtProxyClient::cancelPut(const InfoHash& key, const Value::Id& id)
+{
+    auto search = searches_.find(key);
+    if (search == searches_.end())
+        return false;
+    std::cout << "cancelPut " << key << " " << id << std::endl;
+    return search->second.puts.erase(id) > 0;
 }
 
 NodeStats
@@ -460,9 +547,9 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 
 size_t
 DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
-    auto it = listeners_.find(key);
-    if (it == listeners_.end()) {
-        it = listeners_.emplace(key, ProxySearch{}).first;
+    auto it = searches_.find(key);
+    if (it == searches_.end()) {
+        it = searches_.emplace(key, ProxySearch{}).first;
     }
     auto query = std::make_shared<Query>(Select{}, where);
     auto token = it->second.ops.listen(cb, query, filter, [&](Sp<Query> q, ValueCallback vcb){
@@ -473,8 +560,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 
 bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
-    auto it = listeners_.find(key);
-    if (it == listeners_.end())
+    auto it = searches_.find(key);
+    if (it == searches_.end())
         return false;
     return it->second.ops.cancelListen(gtoken, [&](size_t ltoken){
         doCancelListen(key, ltoken);
@@ -489,8 +576,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     req->set_method(deviceKey_.empty() ? "LISTEN" : "SUBSCRIBE");
 
     std::lock_guard<std::mutex> lock(lockListener_);
-    auto search = listeners_.find(key);
-    if (search == listeners_.end()) {
+    auto search = searches_.find(key);
+    if (search == searches_.end()) {
         std::cerr << "doListen: search not found" << std::endl;
         return 0;
     }
@@ -500,9 +587,24 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     auto l = search->second.listeners.emplace(token, Listener{
         ValueCache(cb), req, std::move(filter), callbackId
     }).first;
+    if (not l->second.cacheExpirationJob) {
+        l->second.cacheExpirationJob = scheduler.add(time_point::max(), [this, key, token]{
+            auto s = searches_.find(key);
+            if (s == searches_.end()) {
+                return;
+            }
+            auto l = s->second.listeners.find(token);
+            if (l == s->second.listeners.end()) {
+                return;
+            }
+            auto next = l->second.cache.expireValues(scheduler.time());
+            scheduler.edit(l->second.cacheExpirationJob, next);
+        });
+    }
 
     ValueCache& cache = l->second.cache;
-    l->second.cb = [this,&cache](const std::vector<Sp<Value>>& values, bool expired) {
+    auto& job = l->second.cacheExpirationJob;
+    l->second.cb = [this,&cache,&job,key,token](const std::vector<Sp<Value>>& values, bool expired) {
         const std::vector<Sp<Value>> new_values_empty;
         std::vector<Value::Id> expired_ids;
         if (expired) {
@@ -510,11 +612,13 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
             for (const auto& v : values)
                 expired_ids.emplace_back(v->id);
         }
-        cache.onValues(expired ? new_values_empty : values, std::vector<Value::Id>{}, expired_ids, types, scheduler.time());
+        auto next = cache.onValues(expired ? new_values_empty : values, std::vector<Value::Id>{}, expired_ids, types, scheduler.time());
+        scheduler.edit(job, next);
         return true;
     };
     std::weak_ptr<bool> isCanceledViaClose(l->second.isCanceledViaClose);
     auto pushNotifToken = std::make_shared<unsigned>(0);
+    auto vcb = l->second.cb;
     l->second.pushNotifToken = pushNotifToken;
     l->second.thread = std::thread([=]()
         {
@@ -534,7 +638,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
             };
             auto state = std::make_shared<State>();
             restbed::Http::async(req,
-                [this, filter, cb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
+                [this, filter, vcb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
                                                                const std::shared_ptr<restbed::Response>& reply) {
                 auto code = reply->get_status_code();
                 if (code == 200) {
@@ -571,8 +675,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                                     auto value = std::make_shared<Value>(json);
                                     if (not filter or filter(*value))  {
                                         std::lock_guard<std::mutex> lock(lockCallbacks);
-                                        callbacks_.emplace_back([cb, value, state]() {
-                                            if (not state->cancel and not cb({value}, false))
+                                        callbacks_.emplace_back([vcb, value, state]() {
+                                            if (not state->cancel and not vcb({value}, false))
                                                 state->cancel = true;
                                         });
                                         loopSignal_();
@@ -603,8 +707,8 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
 {
     std::lock_guard<std::mutex> lock(lockListener_);
 
-    auto search = listeners_.find(key);
-    if (search == listeners_.end())
+    auto search = searches_.find(key);
+    if (search == searches_.end())
         return false;
 
     auto it = search->second.listeners.find(ltoken);
@@ -648,7 +752,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     }
     search->second.listeners.erase(it);
     if (search->second.listeners.empty()) {
-        listeners_.erase(search);
+        searches_.erase(search);
     }
 
     return true;
@@ -677,7 +781,7 @@ void
 DhtProxyClient::restartListeners()
 {
     std::lock_guard<std::mutex> lock(lockListener_);
-    for (auto& search: listeners_) {
+    for (auto& search: searches_) {
     for (auto& l: search.second.listeners) {
         auto& listener = l.second;
         if (listener.thread.joinable())
@@ -753,7 +857,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
 #if OPENDHT_PUSH_NOTIFICATIONS
     try {
         auto token = std::stoul(notification.at("token"));
-        for (auto& search: listeners_) {
+        for (auto& search: searches_) {
             for (auto& list : search.second.listeners) {
                 auto& listener = list.second;
                 if (*listener.pushNotifToken!= token)
