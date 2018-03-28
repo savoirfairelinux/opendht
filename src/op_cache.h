@@ -54,13 +54,11 @@ public:
             auto viop = values.emplace(v->id, OpCacheValueStorage{v});
             if (viop.second) {
                 newValues.emplace_back(v);
-                //std::cout << "onValuesAdded: new value " << v->id << std::endl;
             } else {
                 viop.first->second.refCount++;
-                //std::cout << "onValuesAdded: " << viop.first->second.refCount << " refs for value " << v->id << std::endl;
             }
         }
-        return callback(newValues, false);
+        return newValues.empty() ? true : callback(newValues, false);
     }
     bool onValuesExpired(const std::vector<Sp<Value>>& vals) {
         std::vector<Sp<Value>> expiredValues;
@@ -68,87 +66,14 @@ public:
             auto vit = values.find(v->id);
             if (vit != values.end()) {
                 vit->second.refCount--;
-                //std::cout << "onValuesExpired: " << vit->second.refCount << " refs remaining for value " << v->id << std::endl;
-                if (not vit->second.refCount)
+                if (not vit->second.refCount) {
+                    expiredValues.emplace_back(std::move(vit->second.data));
                     values.erase(vit);
+                }
             }
         }
-        return callback(expiredValues, true);
+        return expiredValues.empty() ? true : callback(expiredValues, true);
     }
-private:
-    std::map<Value::Id, OpCacheValueStorage> values {};
-    ValueCallback callback;
-};
-
-class OpCache {
-public:
-    bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
-        if (expired)
-            onValuesExpired(vals);
-        else
-            onValuesAdded(vals);
-        return not listeners.empty();
-    }
-
-    void onValuesAdded(const std::vector<Sp<Value>>& vals) {
-        std::vector<Sp<Value>> newValues;
-        for (const auto& v : vals) {
-            auto viop = values.emplace(v->id, OpCacheValueStorage{v});
-            if (viop.second) {
-                newValues.emplace_back(v);
-                //std::cout << "onValuesAdded: new value " << v->id << std::endl;
-            } else {
-                viop.first->second.refCount++;
-                //std::cout << "onValuesAdded: " << viop.first->second.refCount << " refs for value " << v->id << std::endl;
-            }
-        }
-        if (not listeners.empty()) {
-            std::vector<LocalListener> list;
-            list.reserve(listeners.size());
-            for (const auto& l : listeners)
-                list.emplace_back(l.second);
-            for (auto& l : list)
-                l.get_cb(l.filter.filter(newValues), false);
-        }
-    }
-    void onValuesExpired(const std::vector<Sp<Value>>& vals) {
-        std::vector<Sp<Value>> expiredValues;
-        for (const auto& v : vals) {
-            auto vit = values.find(v->id);
-            if (vit != values.end()) {
-                vit->second.refCount--;
-                //std::cout << "onValuesExpired: " << vit->second.refCount << " refs remaining for value " << v->id << std::endl;
-                if (not vit->second.refCount)
-                    values.erase(vit);
-            }
-        }
-        if (not listeners.empty()) {
-            std::vector<LocalListener> list;
-            list.reserve(listeners.size());
-            for (const auto& l : listeners)
-                list.emplace_back(l.second);
-            for (auto& l : list)
-                l.get_cb(l.filter.filter(expiredValues), true);
-        }
-    }
-
-    void addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
-        listeners.emplace(token, LocalListener{q, filter, cb});
-        std::vector<Sp<Value>> newValues;
-        newValues.reserve(values.size());
-        for (const auto& v : values)
-            newValues.emplace_back(v.second.data);
-        cb(newValues, false);
-    }
-
-    bool removeListener(size_t token) {
-        return listeners.erase(token) > 0;
-    }
-
-    bool isDone() {
-        return listeners.empty();
-    }
-
     std::vector<Sp<Value>> get(Value::Filter& filter) const {
         std::vector<Sp<Value>> ret;
         if (not filter)
@@ -166,10 +91,80 @@ public:
         return v->second.data;
     }
 
+    std::vector<Sp<Value>> getValues() const {
+        std::vector<Sp<Value>> ret;
+        ret.reserve(values.size());
+        for (const auto& v : values)
+            ret.emplace_back(v.second.data);
+        return ret;
+    }
+
+private:
+    std::map<Value::Id, OpCacheValueStorage> values {};
+    ValueCallback callback;
+};
+
+class OpCache {
+public:
+    OpCache() : cache([this](const std::vector<Sp<Value>>& vals, bool expired){
+        if (expired)
+            onValuesExpired(vals);
+        else
+            onValuesAdded(vals);
+        return true;
+    }) {}
+
+    bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
+        cache.onValue(vals, expired);
+        return not listeners.empty();
+    }
+
+    void onValuesAdded(const std::vector<Sp<Value>>& vals) {
+        if (not listeners.empty()) {
+            std::vector<LocalListener> list;
+            list.reserve(listeners.size());
+            for (const auto& l : listeners)
+                list.emplace_back(l.second);
+            for (auto& l : list)
+                l.get_cb(l.filter.filter(vals), false);
+        }
+    }
+    void onValuesExpired(const std::vector<Sp<Value>>& vals) {
+        if (not listeners.empty()) {
+            std::vector<LocalListener> list;
+            list.reserve(listeners.size());
+            for (const auto& l : listeners)
+                list.emplace_back(l.second);
+            for (auto& l : list)
+                l.get_cb(l.filter.filter(vals), true);
+        }
+    }
+
+    void addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
+        listeners.emplace(token, LocalListener{q, filter, cb});
+        cb(cache.get(filter), false);
+    }
+
+    bool removeListener(size_t token) {
+        return listeners.erase(token) > 0;
+    }
+
+    bool isDone() {
+        return listeners.empty();
+    }
+
+    std::vector<Sp<Value>> get(Value::Filter& filter) const {
+        return cache.get(filter);
+    }
+
+    Sp<Value> get(Value::Id id) const {
+        return cache.get(id);
+    }
+
     size_t searchToken;
 private:
+    OpValueCache cache;
     std::map<size_t, LocalListener> listeners;
-    std::map<Value::Id, OpCacheValueStorage> values;
 };
 
 class SearchCache {
@@ -241,6 +236,5 @@ private:
     std::map<Sp<Query>, std::unique_ptr<OpCache>> ops {};
     size_t nextToken_ {1};
 };
-
 
 }

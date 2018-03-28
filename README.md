@@ -6,12 +6,17 @@
 
 A lightweight C++11 Distributed Hash Table implementation.
 
- * Light and fast C++11 Kademlia DHT library
- * Distributed shared key->value data-store
- * Clean and powerful distributed map API with storage of arbitrary binary values of up to 56 KB
+OpenDHT provides an easy to use distributed in-memory data store.
+Every node in the network can read and write values to the store.
+Values are distributed over the network, with redundancy.
+
+ * Lightweight and scalable, designed for large networks and small devices
+ * High resilience to network disruption
  * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
  * IPv4 and IPv6 support
- * Python binding
+ * Clean and powerful C++11 map API
+ * Python 3 bindings
+ * REST API
 
 ## Documentation
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>

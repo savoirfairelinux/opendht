@@ -205,18 +205,18 @@ public:
     /**
      * Get data currently being put at the given hash.
      */
-    std::vector<Sp<Value>> getPut(const InfoHash&) { return {}; }
+    std::vector<Sp<Value>> getPut(const InfoHash&);
 
     /**
      * Get data currently being put at the given hash with the given id.
      */
-    Sp<Value> getPut(const InfoHash&, const Value::Id&) { return {}; }
+    Sp<Value> getPut(const InfoHash&, const Value::Id&);
 
     /**
      * Stop any put/announce operation at the given location,
      * for the value with the given id.
      */
-    bool cancelPut(const InfoHash&, const Value::Id&) { return false; }
+    bool cancelPut(const InfoHash&, const Value::Id&);
 
     void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& /*cb*/={}) { }
 
@@ -271,6 +271,8 @@ private:
     size_t doListen(const InfoHash& key, ValueCallback, Value::Filter);
     bool doCancelListen(const InfoHash& key, size_t token);
 
+    void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
+
     /**
      * Initialize statusIpvX_
      */
@@ -304,7 +306,7 @@ private:
      */
     struct Listener;
     struct ProxySearch;
-    std::map<InfoHash, ProxySearch> listeners_;
+    std::map<InfoHash, ProxySearch> searches_;
 
     size_t listener_token_ {0};
     std::mutex lockListener_;
