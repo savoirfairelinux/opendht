@@ -54,6 +54,12 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
     }
 }
 
+/**
+ * Split "[host]:port" or "host:port" to pair<"host", "port">.
+ */
+OPENDHT_PUBLIC std::pair<std::string, std::string>
+splitPort(const std::string& s);
+
 class OPENDHT_PUBLIC DhtException : public std::runtime_error {
 public:
     DhtException(const std::string &str = "") :

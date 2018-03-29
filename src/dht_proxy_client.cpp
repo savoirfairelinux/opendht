@@ -23,6 +23,7 @@
 
 #include "dhtrunner.h"
 #include "op_cache.h"
+#include "utils.h"
 
 #include <restbed>
 #include <json/json.h>
@@ -452,15 +453,8 @@ DhtProxyClient::getProxyInfos()
     }
 
     // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
-    std::string host, service;
-    auto serviceMarker = serverHost_.find(':');
-    if (serviceMarker != std::string::npos) {
-        host = serverHost_.substr(0, serviceMarker - 1);
-        service = serverHost_.substr(serviceMarker + 1);
-    } else {
-        host = serverHost_;
-    }
-    auto resolved_proxies = SockAddr::resolve(host, service);
+    auto hostAndService = splitPort(serverHost_);
+    auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
     auto serverHost = serverHost_;
 
     // Try to contact the proxy and set the status to connected when done.
@@ -551,10 +545,8 @@ SockAddr
 DhtProxyClient::parsePublicAddress(const Json::Value& val)
 {
     auto public_ip = val.asString();
-    auto endIp = public_ip.find_last_of(':');
-    auto marker = (public_ip.size() > 0 && public_ip[0] == '[') ? 1 : 0;
-    std::string address = public_ip.substr(marker, endIp - marker * 2);
-    auto sa = SockAddr::resolve(address);
+    auto hostAndService = splitPort(public_ip);
+    auto sa = SockAddr::resolve(hostAndService.first);
     if (sa.empty()) return {};
     return sa.front().getMappedIPv4();
 }

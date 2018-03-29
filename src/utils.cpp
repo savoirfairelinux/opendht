@@ -29,6 +29,26 @@ namespace dht {
 
 static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
 
+std::pair<std::string, std::string>
+splitPort(const std::string& s) {
+    if (s.empty())
+        return {};
+    if (s[0] == '[') {
+        std::size_t closure = s.find_first_of(']');
+        std::size_t found = s.find_last_of(':');
+        if (closure == std::string::npos)
+            return {s, ""};
+        if (found == std::string::npos or found < closure)
+            return {s.substr(1,closure-1), ""};
+        return {s.substr(1,closure-1), s.substr(found+1)};
+    }
+    std::size_t found = s.find_last_of(':');
+    std::size_t first = s.find_first_of(':');
+    if (found == std::string::npos or found != first)
+        return {s, ""};
+    return {s.substr(0,found), s.substr(found+1)};
+}
+
 std::vector<SockAddr>
 SockAddr::resolve(const std::string& host, const std::string& service)
 {

@@ -45,29 +45,6 @@
 #include <sstream>
 #include <fstream>
 
-/**
- * Split "[host]:port" or "host:port" to pair<"host", "port">.
- */
-std::pair<std::string, std::string>
-splitPort(const std::string& s) {
-    if (s.empty())
-        return {};
-    if (s[0] == '[') {
-        std::size_t closure = s.find_first_of(']');
-        std::size_t found = s.find_last_of(':');
-        if (closure == std::string::npos)
-            return {s, ""};
-        if (found == std::string::npos or found < closure)
-            return {s.substr(1,closure-1), ""};
-        return {s.substr(1,closure-1), s.substr(found+1)};
-    }
-    std::size_t found = s.find_last_of(':');
-    std::size_t first = s.find_first_of(':');
-    if (found == std::string::npos or found != first)
-        return {s, ""};
-    return {s.substr(0,found), s.substr(found+1)};
-}
-
 /*
  * The mapString shall have the following format:
  *
@@ -181,7 +158,7 @@ parseArgs(int argc, char **argv) {
             params.network = strtoul(optarg, nullptr, 0);
             break;
         case 'b':
-            params.bootstrap = splitPort((optarg[0] == '=') ? optarg+1 : optarg);
+            params.bootstrap = dht::splitPort((optarg[0] == '=') ? optarg+1 : optarg);
             if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
                 params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
             }
