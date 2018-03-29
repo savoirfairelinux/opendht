@@ -765,7 +765,11 @@ DhtRunner::tryBootstrapContinuously()
                     }
                 }
                 // wait at least until the next BOOTSTRAP_PERIOD
-                bootstrap_cv.wait_until(blck, next, [&]() { return not running; });
+                auto isRunning = [&]() { return not running; };
+                if (next == time_point::max())
+                    bootstrap_cv.wait(blck, isRunning);
+                else
+                    bootstrap_cv.wait_until(blck, next, isRunning);
                 // wait for bootstrap requests to end.
                 if (running)
                    bootstrap_cv.wait(blck, [&]() { return not running or ping_count == 0; });
