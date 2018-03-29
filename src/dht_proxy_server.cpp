@@ -124,7 +124,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         while (service_->is_up()  and not stopListeners) {
             std::unique_lock<std::mutex> lock(schedulerLock_);
             auto next = scheduler_.run();
-            schedulerCv_.wait_until(lock, next);
+            if (next == time_point::max())
+                schedulerCv_.wait(lock);
+            else
+                schedulerCv_.wait_until(lock, next);
         }
     });
 
