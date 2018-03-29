@@ -120,7 +120,8 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
             } catch (const dht::SocketException& e) {
                 startNetwork(local4, local6);
             }
-            cv.wait_until(lk, wakeup, [this]() {
+
+            auto hasJobToDo = [this]() {
                 if (not running)
                     return true;
                 {
@@ -137,7 +138,11 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config
                         return true;
                 }
                 return false;
-            });
+            };
+            if (wakeup == time_point::max())
+                cv.wait(lk, hasJobToDo);
+            else
+                cv.wait_until(lk, wakeup, hasJobToDo);
         }
     });
 }
