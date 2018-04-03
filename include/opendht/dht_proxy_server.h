@@ -183,24 +183,18 @@ private:
     /**
      * Subscribe to push notifications for an iOS or Android device.
      * Method: SUBSCRIBE "/{InfoHash: .*}"
-     * Body: {"key": "device_key", (optional)"callback_id":y,
-     * (optional)"isAndroid":false (default true)}"
+     * Body: {"key": "device_key", (optional)"isAndroid":false (default true)}"
      * Return: {"token": x}" where x if a token to save
      * @note: the listen will timeout after six hours (and send a push notification).
      * so you need to refresh the operation each six hours.
-     * @note: callback_id is used to add the possibility to have multiple listen
-     * on same hash for same device and must be > 0
      * @param session
      */
     void subscribe(const std::shared_ptr<restbed::Session>& session);
     /**
      * Unsubscribe to push notifications for an iOS or Android device.
      * Method: UNSUBSCRIBE "/{InfoHash: .*}"
-     * Body: {"key": "device_key", "token": x, (optional)"callback_id":y"
-     * where x if the token to cancel
+     * Body: {"key": "device_key", "token": x} where x if the token to cancel
      * Return: nothing
-     * @note: callback id is used to add the possibility to have multiple listen
-     * on same hash for same device
      * @param session
      */
     void unsubscribe(const std::shared_ptr<restbed::Session>& session);
@@ -247,7 +241,7 @@ private:
     std::map<std::string, PushListener> pushListeners_;
     unsigned tokenPushNotif_ {0};
 
-    void cancelPushListen(const std::string& pushToken, const InfoHash& key, unsigned token, unsigned callbackId);
+    void cancelPushListen(const std::string& pushToken, const InfoHash& key, unsigned token);
 #endif //OPENDHT_PUSH_NOTIFICATIONS
     const std::string pushServer_;
 

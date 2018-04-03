@@ -48,8 +48,8 @@ struct DhtProxyClient::Listener
     Sp<bool> isCanceledViaClose;
     Sp<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
     Sp<Scheduler::Job> refreshJob;
-    Listener(ValueCache&& c, const Sp<restbed::Request>& r, Value::Filter&& f, unsigned cid)
-        : cache(std::move(c)), filter(std::move(f)), req(r), callbackId(cid), isCanceledViaClose(std::make_shared<bool>(false))
+    Listener(ValueCache&& c, const Sp<restbed::Request>& r, Value::Filter&& f)
+        : cache(std::move(c)), filter(std::move(f)), req(r), isCanceledViaClose(std::make_shared<bool>(false))
     {}
 };
 
@@ -599,9 +599,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     }
 
     auto token = ++listener_token_;
-    auto callbackId = ++callbackId_;
     auto l = search->second.listeners.emplace(token, Listener{
-        ValueCache(cb), req, std::move(filter), callbackId
+        ValueCache(cb), req, std::move(filter)
     }).first;
     if (not l->second.cacheExpirationJob) {
         l->second.cacheExpirationJob = scheduler.add(time_point::max(), [this, key, token]{
@@ -645,7 +644,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
             }
 #if OPENDHT_PUSH_NOTIFICATIONS
             else
-                fillBodyToGetToken(req, callbackId);
+                fillBodyToGetToken(req);
 #endif
 
             struct State {
@@ -746,7 +745,6 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         body["key"] = deviceKey_;
         body["client_id"] = pushClientId_;
         body["token"] = std::to_string(ltoken);
-        body["callback_id"] = listener.callbackId;
         Json::StreamWriterBuilder wbuilder;
         wbuilder["commentStyle"] = "None";
         wbuilder["indentation"] = "";
@@ -914,10 +912,9 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
         listener.thread.join();
     listener.req = req;
     listener.pushNotifToken = pushNotifToken;
-    auto callbackId = listener.callbackId;
     listener.thread = std::thread([=]()
     {
-        fillBodyToGetToken(req, callbackId);
+        fillBodyToGetToken(req);
         auto settings = std::make_shared<restbed::Settings>();
         auto ok = std::make_shared<std::atomic_bool>(true);
         restbed::Http::async(req,
@@ -953,17 +950,18 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 
 #if OPENDHT_PUSH_NOTIFICATIONS
 void
-DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req, unsigned callbackId)
+DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req, unsigned token)
 {
     // Fill body with
     // {
     //   "key":"device_key",
-    //   "callback_id": xxx
+    //   "token": xxx
     // }
     Json::Value body;
     body["key"] = deviceKey_;
     body["client_id"] = pushClientId_;
-    body["callback_id"] = callbackId;
+    if (token > 0)
+        body["token"] = token;
 #ifdef __ANDROID__
     body["platform"] = "android";
 #endif

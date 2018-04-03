@@ -73,7 +73,7 @@ void print_help() {
 #if OPENDHT_PUSH_NOTIFICATIONS
               << "  stt [server_address] <device_key> Start the proxy client." << std::endl
               << "  rs  [token]                       Resubscribe to opendht." << std::endl
-              << "  rp  [push_notification]           Inject a push notification in Opendht." << std::endl
+              << "  rp  [token]                       Inject a push notification in Opendht." << std::endl
 #else
               << "  stt [server_address]              Start the proxy client." << std::endl
 #endif // OPENDHT_PUSH_NOTIFICATIONS
@@ -237,7 +237,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #if OPENDHT_PUSH_NOTIFICATIONS
         else if (op == "rp") {
             iss >> value;
-            dht->pushNotificationReceived({{"token", value}});
+            dht->pushNotificationReceived({{"to", "dhtnode"}, {"token", value}});
             continue;
         }
 #endif // OPENDHT_PUSH_NOTIFICATIONS

@@ -354,12 +354,11 @@ private:
      * NOTE: empty by default to avoid to use services like FCM or APN.
      */
     std::string deviceKey_ {};
-    std::atomic_uint callbackId_ {0};
 
     const std::function<void()> loopSignal_;
 
 #if OPENDHT_PUSH_NOTIFICATIONS
-    void fillBodyToGetToken(std::shared_ptr<restbed::Request> request, unsigned callbackId);
+    void fillBodyToGetToken(std::shared_ptr<restbed::Request> request, unsigned token = 0);
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
     bool isDestroying_ {false};

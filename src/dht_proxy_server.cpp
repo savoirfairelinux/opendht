@@ -305,7 +305,6 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
 
 struct DhtProxyServer::Listener {
     unsigned token;
-    unsigned callbackId {0};
     std::future<size_t> internalToken;
     Sp<Scheduler::Job> expireJob;
 };
@@ -342,7 +341,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                 }
                 auto pushToken = root["key"].asString();
                 if (pushToken.empty()) return;
-                auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
+                auto tokenFromReq = root.isMember("token") ? root["token"].asLargestUInt() : 0;
                 auto platform = root["platform"].asString();
                 auto isAndroid = platform == "android";
                 auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
@@ -351,10 +350,11 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                 {
                     std::lock_guard<std::mutex> lock(lockListener_);
                     // Check if listener is already present and refresh timeout if launched
+
                     auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
                     auto listeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
                     for (auto& listener: listeners->second) {
-                        if (listener.callbackId == callbackId) {
+                        if (listener.token == tokenFromReq) {
                             {
                                 std::lock_guard<std::mutex> l(schedulerLock_);
                                 scheduler_.edit(listener.expireJob, scheduler_.time() + OP_TIMEOUT);
@@ -371,14 +371,10 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     token = tokenPushNotif_;
                     Listener listener;
                     listener.token = token;
-                    listener.callbackId = callbackId;
                     listener.internalToken = dht_->listen(infoHash,
-                        [this, pushToken, callbackId, token, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
+                        [this, pushToken, token, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
                             // Build message content.
                             Json::Value json;
-                            if (callbackId > 0) {
-                                json["callback_id"] = callbackId;
-                            }
                             json["to"] = clientId;
                             json["token"] = token;
                             sendPushNotification(pushToken, json, isAndroid);
@@ -387,14 +383,11 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     );
                     std::lock_guard<std::mutex> l(schedulerLock_);
                     listener.expireJob = scheduler_.add(scheduler_.time() + OP_TIMEOUT,
-                        [this, pushToken, infoHash, token, callbackId, clientId, isAndroid] {
-                            cancelPushListen(pushToken, infoHash, token, callbackId);
+                        [this, pushToken, infoHash, token, clientId, isAndroid] {
+                            cancelPushListen(pushToken, infoHash, token);
                             // Send a push notification to inform the client that this listen has timeout
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
-                            if (callbackId > 0) {
-                                json["callback_id"] = callbackId;
-                            }
                             json["to"] = clientId;
                             json["token"] = token;
                             sendPushNotification(pushToken, json, isAndroid);
@@ -413,6 +406,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
 void
 DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
 {
+
     requestNum_++;
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
@@ -439,9 +433,8 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
                 if (pushToken.empty()) return;
                 auto token = std::stoull(root["token"].asString());
                 if (token == 0) return;
-                auto callbackId = root.isMember("callback_id") ? root["callback_id"].asLargestUInt() : 0;
 
-                cancelPushListen(pushToken, infoHash, token, callbackId);
+                cancelPushListen(pushToken, infoHash, token);
             } catch (...) {
                 // do nothing
             }
@@ -450,7 +443,7 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
 }
 
 void
-DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, unsigned token, unsigned callbackId)
+DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, unsigned token)
 {
     std::lock_guard<std::mutex> lock(lockListener_);
     auto pushListener = pushListeners_.find(pushToken);
@@ -460,8 +453,7 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
     if (listeners == pushListener->second.listeners.end())
         return;
     for (auto listener = listeners->second.begin(); listener != listeners->second.end();) {
-        if (listener->token == token && listener->callbackId == callbackId) {
-            std::cout << "cancelPushListen " << key << " token:" << token << " cid:" << callbackId << std::endl;
+        if (listener->token == token) {
             if (dht_)
                 dht_->cancelListen(key, std::move(listener->internalToken));
             listener = listeners->second.erase(listener);
@@ -510,6 +502,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
     req->set_header("Host", pushServer_);
     req->set_header("Content-Length", std::to_string(valueStr.length()));
     req->set_body(valueStr);
+
     // Send request.
     restbed::Http::async(req, {});
 }
