@@ -411,6 +411,8 @@ PublicKey::operator=(PublicKey&& o) noexcept
 void
 PublicKey::pack(Blob& b) const
 {
+    if (not pk)
+        throw CryptoException(std::string("Could not export public key: null key"));
     std::vector<uint8_t> tmp(2048);
     size_t sz = tmp.size();
     int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_DER, tmp.data(), &sz);
@@ -437,6 +439,8 @@ PublicKey::unpack(const uint8_t* data, size_t data_size)
 std::string
 PublicKey::toString() const
 {
+    if (not pk)
+        throw CryptoException(std::string("Could not print public key: null key"));
     std::string ret;
     size_t sz = ret.size();
     int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_PEM, (void*)ret.data(), &sz);
