@@ -346,8 +346,6 @@ private:
     std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};
     std::map<InfoHash, Sp<const crypto::PublicKey>> nodesPubKeys_ {};
 
-    std::uniform_int_distribution<Value::Id> rand_id {};
-
     std::atomic_bool forward_all_ {false};
 };
 

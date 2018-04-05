@@ -213,11 +213,13 @@ SecureDht::findPublicKey(const InfoHash& node, std::function<void(const Sp<const
     findCertificate(node, [=](const Sp<crypto::Certificate> crt) {
         if (crt && *crt) {
             auto pk = std::make_shared<crypto::PublicKey>(crt->getPublicKey());
-            nodesPubKeys_[pk->getId()] = pk;
-            if (cb) cb(pk);
-        } else {
-            if (cb) cb(nullptr);
+            if (*pk) {
+                nodesPubKeys_[pk->getId()] = pk;
+                if (cb) cb(pk);
+                return;
+            }
         }
+        if (cb) cb(nullptr);
     });
 }
 
@@ -236,7 +238,8 @@ SecureDht::checkValue(const Sp<Value>& v)
         try {
             Value decrypted_val (decrypt(*v));
             if (decrypted_val.recipient == getId()) {
-                nodesPubKeys_[decrypted_val.owner->getId()] = decrypted_val.owner;
+                if (decrypted_val.owner)
+                    nodesPubKeys_[decrypted_val.owner->getId()] = decrypted_val.owner;
                 return std::make_shared<Value>(std::move(decrypted_val));
             }
             // Ignore values belonging to other people
@@ -317,6 +320,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
 {
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
+        std::uniform_int_distribution<Value::Id> rand_id;
         val->id = rand_id(rdev);
     }
 
