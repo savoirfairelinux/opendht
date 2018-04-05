@@ -26,9 +26,7 @@ using CallbackQueue = std::list<std::function<void()>>;
 
 class ValueCache {
 public:
-    ValueCache(ValueStateCallback&& cb) {
-        callbacks.emplace_back(std::forward<ValueStateCallback>(cb));
-    }
+    ValueCache(ValueStateCallback&& cb) : callback(std::forward<ValueStateCallback>(cb)) {}
     ValueCache(ValueCache&&) = default;
 
     ~ValueCache() {
@@ -44,11 +42,10 @@ public:
             expired_values.emplace_back(std::move(v.second.data));
         values.clear();
         CallbackQueue ret;
-        if (not expired_values.empty() and not callbacks.empty()) {
-            auto cbs = callbacks;
-            ret.emplace_back([expired_values, cbs]{
-                for (auto& cb : cbs)
-                    cb(expired_values, true);
+        if (not expired_values.empty() and callback) {
+            auto cb = callback;
+            ret.emplace_back([expired_values, cb]{
+                cb(expired_values, true);
             });
         }
         return ret;
@@ -90,11 +87,10 @@ public:
             }
         }
         CallbackQueue ret;
-        if (not expired_values.empty()) {
-            auto cbs = callbacks;
-            ret.emplace_back([cbs, expired_values]{
-                for (auto& cb : cbs)
-                    if (cb) cb(expired_values, true);
+        if (not expired_values.empty() and callback) {
+            auto cb = callback;
+            ret.emplace_back([cb, expired_values]{
+                if (cb) cb(expired_values, true);
             });
         }
         return ret;
@@ -141,7 +137,7 @@ private:
     };
 
     std::map<Value::Id, CacheValueStorage> values;
-    std::vector<ValueStateCallback> callbacks;
+    ValueStateCallback callback;
 
     CallbackQueue addValues(const std::vector<Sp<Value>>& new_values, const TypeStore& types, const time_point& now) {
         std::vector<Sp<Value>> nvals;
@@ -157,12 +153,11 @@ private:
                 v->second.expiration = now + types.getType(v->second.data->type).expiration;
             }
         }
-        auto cbs = callbacks;
+        auto cb = callback;
         CallbackQueue ret;
         if (not nvals.empty())
-            ret.emplace_back([cbs, nvals]{
-                for (auto& cb : cbs)
-                    if (cb) cb(nvals, false);
+            ret.emplace_back([cb, nvals]{
+                if (cb) cb(nvals, false);
             });
         return ret;
     }
@@ -172,11 +167,10 @@ private:
             return {};
         const std::vector<Sp<Value>> val {std::move(v->second.data)};
         values.erase(v);
-        auto cbs = callbacks;
+        auto cb = callback;
         CallbackQueue ret;
-        ret.emplace_back([cbs, val]{
-            for (auto& cb : cbs)
-                if (cb) cb(val, true);
+        ret.emplace_back([cb, val]{
+            if (cb) cb(val, true);
         });
         return ret;
     }
