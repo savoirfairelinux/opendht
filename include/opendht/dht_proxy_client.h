@@ -307,10 +307,10 @@ private:
      */
     struct Listener;
     struct ProxySearch;
-    std::map<InfoHash, ProxySearch> searches_;
 
     size_t listener_token_ {0};
-    std::mutex lockListener_;
+    std::map<InfoHash, ProxySearch> searches_;
+    mutable std::mutex searchLock_;
 
     /**
      * Store current put and get requests.
