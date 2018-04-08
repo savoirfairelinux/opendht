@@ -249,8 +249,14 @@ public:
     void dumpTables() const {}
     std::vector<unsigned> getNodeMessageStats(bool) { return {}; }
     void setStorageLimit(size_t) {}
-    void connectivityChanged(sa_family_t) {}
-    void connectivityChanged() { }
+    void connectivityChanged(sa_family_t) {
+        restartListeners();
+    }
+    void connectivityChanged() {
+        getProxyInfos();
+        restartListeners();
+        loopSignal_();
+    }
 
 private:
     /**

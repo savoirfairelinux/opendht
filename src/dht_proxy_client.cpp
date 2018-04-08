@@ -603,6 +603,7 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
 size_t
 DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter filter/*, Where where*/)
 {
+    scheduler.syncTime();
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method(deviceKey_.empty() ? "LISTEN" : "SUBSCRIBE");
@@ -669,7 +670,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     auto pushNotifToken = std::make_shared<unsigned>(0);
     auto vcb = l->second.cb;
     l->second.pushNotifToken = pushNotifToken;
-    l->second.thread = std::thread([=]()
+    l->second.thread = std::thread([this,req,filter,vcb,pushNotifToken,state,isCanceledViaClose]()
         {
             auto settings = std::make_shared<restbed::Settings>();
             if (deviceKey_.empty()) {
@@ -683,7 +684,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
 
             restbed::Http::async(req,
                 [this, filter, vcb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
-                                                               const std::shared_ptr<restbed::Response>& reply) {
+                                                           const std::shared_ptr<restbed::Response>& reply) {
                 auto code = reply->get_status_code();
                 if (code == 200) {
                     try {
