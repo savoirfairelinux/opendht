@@ -269,7 +269,7 @@ private:
      * @return the JSON returned by the proxy
      */
     void getProxyInfos();
-    void onProxyInfos(const Json::Value& val, const sa_family_t& family);
+    void onProxyInfos(const Json::Value& val, sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
     void opFailed();

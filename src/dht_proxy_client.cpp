@@ -38,6 +38,10 @@ namespace dht {
 
 struct DhtProxyClient::Listener
 {
+    struct State {
+        std::atomic_bool ok {true};
+        std::atomic_bool cancel {false};
+    };
     ValueCache cache;
     Sp<Scheduler::Job> cacheExpirationJob {};
     ValueCallback cb;
@@ -45,15 +49,14 @@ struct DhtProxyClient::Listener
     Sp<restbed::Request> req;
     std::thread thread;
     unsigned callbackId;
-    Sp<bool> isCanceledViaClose;
+    Sp<State> state;
     Sp<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
     Sp<Scheduler::Job> refreshJob;
     Listener(ValueCache&& c, Sp<Scheduler::Job>&& j, const Sp<restbed::Request>& r, Value::Filter&& f)
         : cache(std::move(c)),
           cacheExpirationJob(std::move(j)),
           filter(std::move(f)),
-          req(r),
-          isCanceledViaClose(std::make_shared<bool>(false))
+          req(r)
     {}
 };
 
@@ -97,6 +100,8 @@ DhtProxyClient::~DhtProxyClient()
     isDestroying_ = true;
     cancelAllOperations();
     cancelAllListeners();
+    if (statusThread_.joinable())
+        statusThread_.join();
 }
 
 std::vector<Sp<Value>>
@@ -467,6 +472,8 @@ DhtProxyClient::getProxyInfos()
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
+    if (statusThread_.joinable())
+        statusThread_.join();
     statusThread_ = std::thread([this, serverHost]{
         auto hostAndService = splitPort(serverHost);
         auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
@@ -506,7 +513,7 @@ DhtProxyClient::getProxyInfos()
 }
 
 void
-DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t& family)
+DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
 {
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
 
@@ -616,12 +623,6 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     }
     DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
-    struct State {
-        std::atomic_bool ok {true};
-        std::atomic_bool cancel {false};
-    };
-    auto state = std::make_shared<State>();
-
     auto token = ++listener_token_;
     auto l = search->second.listeners.find(token);
     if (l == search->second.listeners.end()) {
@@ -643,6 +644,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         }).first;
     }
 
+    auto state = std::make_shared<Listener::State>();
+    l->second.state = state;
     l->second.cb = [this,key,token,state](const std::vector<Sp<Value>>& values, bool expired) {
         if (state->cancel)
             return false;
@@ -666,11 +669,10 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         scheduler.edit(l->second.cacheExpirationJob, next);
         return true;
     };
-    std::weak_ptr<bool> isCanceledViaClose(l->second.isCanceledViaClose);
     auto pushNotifToken = std::make_shared<unsigned>(0);
     auto vcb = l->second.cb;
     l->second.pushNotifToken = pushNotifToken;
-    l->second.thread = std::thread([this,req,filter,vcb,pushNotifToken,state,isCanceledViaClose]()
+    l->second.thread = std::thread([this,req,filter,vcb,pushNotifToken,state]()
         {
             auto settings = std::make_shared<restbed::Settings>();
             if (deviceKey_.empty()) {
@@ -738,8 +740,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                     state->ok = false;
                 }
             }, settings).get();
-            auto isCanceledNormally = isCanceledViaClose.lock();
-            if (not state->ok and isCanceledNormally and not *isCanceledNormally) {
+            auto& s = *state;
+            if (not s.ok and not s.cancel) {
                 opFailed();
             }
         }
@@ -763,7 +765,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     DHT_LOG.d(key, "[search %s] cancel listen", key.to_c_str());
 
     auto& listener = it->second;
-    if (!deviceKey_.empty()) {
+    if (not deviceKey_.empty()) {
         // First, be sure to have a token
         if (listener.thread.joinable()) {
             listener.thread.join();
@@ -790,13 +792,14 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // Just stop the request
         if (listener.thread.joinable()) {
             // Close connection to stop listener?
-            *(listener.isCanceledViaClose) = true;
+            listener.state->cancel = true;
             if (listener.req)
                 restbed::Http::close(listener.req);
             listener.thread.join();
         }
     }
     search->second.listeners.erase(it);
+    DHT_LOG.d(key, "[search %s] cancelListen: %zu listener remaining", key.to_c_str(), search->second.listeners.size());
     if (search->second.listeners.empty()) {
         searches_.erase(search);
     }
