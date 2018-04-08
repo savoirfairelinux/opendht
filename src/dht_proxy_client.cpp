@@ -88,7 +88,7 @@ void
 DhtProxyClient::startProxy()
 {
     if (serverHost_.empty()) return;
-    DHT_LOG.WARN("Staring proxy client to %s", serverHost_.c_str());
+    DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
 }
 
@@ -222,6 +222,7 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
+    DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
@@ -295,6 +296,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 void
 DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
+    DHT_LOG.d(key, "[search %s]: put", key.to_c_str());
     scheduler.syncTime();
     if (not val) {
         if (cb) cb(false, {});
@@ -329,6 +331,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
 void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
+    DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
@@ -433,7 +436,7 @@ DhtProxyClient::cancelPut(const InfoHash& key, const Value::Id& id)
     auto search = searches_.find(key);
     if (search == searches_.end())
         return false;
-    std::cout << "cancelPut " << key << " " << id << std::endl;
+    DHT_LOG.d(key, "[search %s] cancel put", key.to_c_str());
     return search->second.puts.erase(id) > 0;
 }
 
@@ -446,7 +449,7 @@ DhtProxyClient::getNodesStats(sa_family_t af) const
 void
 DhtProxyClient::getProxyInfos()
 {
-    DHT_LOG.DEBUG("Requesting proxy server node information");
+    DHT_LOG.d("Requesting proxy server node information");
 
     if (ongoingStatusUpdate_.test_and_set())
         return;
@@ -507,6 +510,8 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t& f
 {
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
 
+    DHT_LOG.d("Got proxy infos %s", family == AF_INET ? "IPv4" : "IPv6");
+
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
 
     try {
@@ -532,7 +537,9 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t& f
             publicAddressV4_ = parsePublicAddress(proxyInfos["public_ip"]);
         else if (family == AF_INET6)
             publicAddressV6_ = parsePublicAddress(proxyInfos["public_ip"]);
-    } catch (...) {}
+    } catch (const std::exception& e) {
+        DHT_LOG.w("Error parsing proxy infos: %s", e.what());
+    }
 
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
 
@@ -570,6 +577,7 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 
 size_t
 DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
+    DHT_LOG.d(key, "[search %s]: listen", key.to_c_str());
     auto it = searches_.find(key);
     if (it == searches_.end()) {
         it = searches_.emplace(key, ProxySearch{}).first;
@@ -583,6 +591,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 
 bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
+    DHT_LOG.d(key, "[search %s]: cancelListen %zu", key.to_c_str(), gtoken);
     auto it = searches_.find(key);
     if (it == searches_.end())
         return false;
@@ -601,9 +610,10 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     std::lock_guard<std::mutex> lock(searchLock_);
     auto search = searches_.find(key);
     if (search == searches_.end()) {
-        std::cerr << "doListen: search not found" << std::endl;
+        DHT_LOG.e(key, "[search %s] listen: search not found", key.to_c_str());
         return 0;
     }
+    DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
     struct State {
         std::atomic_bool ok {true};
@@ -749,6 +759,8 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     if (it == search->second.listeners.end())
         return false;
 
+    DHT_LOG.d(key, "[search %s] cancel listen", key.to_c_str());
+
     auto& listener = it->second;
     if (!deviceKey_.empty()) {
         // First, be sure to have a token
@@ -794,7 +806,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
 void
 DhtProxyClient::opFailed()
 {
-    DHT_LOG.ERR("Proxy request failed");
+    DHT_LOG.e("Proxy request failed");
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         statusIpv4_ = NodeStatus::Disconnected;
@@ -813,6 +825,7 @@ DhtProxyClient::getConnectivityStatus()
 void
 DhtProxyClient::restartListeners()
 {
+    DHT_LOG.d("Restarting listeners");
     std::lock_guard<std::mutex> lock(searchLock_);
     for (auto& search: searches_) {
     for (auto& l: search.second.listeners) {
@@ -896,6 +909,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 auto& listener = list.second;
                 if (*listener.pushNotifToken!= token)
                     continue;
+                DHT_LOG.d(search.first, "[search %s] handling push notification", search.first.to_c_str());
                 if (notification.find("timeout") == notification.cend()) {
                     // Wake up daemon and get values
                     auto cb = listener.cb;
@@ -911,7 +925,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             }
         }
     } catch (const std::exception& e) {
-        std::cerr << "pushNotificationReceived: error " << e.what() << std::endl;
+        DHT_LOG.e("Error handling push notification: %s", e.what());
     }
 #endif
 }
@@ -921,6 +935,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty()) return;
+    DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
