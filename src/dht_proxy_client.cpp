@@ -825,6 +825,9 @@ DhtProxyClient::getConnectivityStatus()
 void
 DhtProxyClient::restartListeners()
 {
+    if (not deviceKey_.empty()) {
+        return;
+    }
     DHT_LOG.d("Restarting listeners");
     std::lock_guard<std::mutex> lock(searchLock_);
     for (auto& search: searches_) {
@@ -848,7 +851,7 @@ DhtProxyClient::restartListeners()
                 auto ok = std::make_shared<std::atomic_bool>(true);
                 restbed::Http::async(req,
                     [this, filter, cb, ok](const std::shared_ptr<restbed::Request>& req,
-                                                const std::shared_ptr<restbed::Response>& reply) {
+                                           const std::shared_ptr<restbed::Response>& reply) {
                     auto code = reply->get_status_code();
 
                     if (code == 200) {
@@ -922,6 +925,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                     // A timeout has occured, we need to relaunch the listener
                     resubscribe(search.first, listener);
                 }
+                break;
             }
         }
     } catch (const std::exception& e) {
