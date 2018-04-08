@@ -484,6 +484,10 @@ DhtProxyClient::getProxyInfos()
     statusThread_ = std::thread([this, serverHost]{
         auto hostAndService = splitPort(serverHost);
         auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
+        struct SuccessCount {std::atomic_uint ipv4 {0}, ipv6 {0};};
+        auto successCount = std::make_shared<SuccessCount>();
+        std::vector<std::future<Sp<restbed::Response>>> reqs;
+        reqs.reserve(resolved_proxies.size());
         for (const auto& resolved_proxy: resolved_proxies) {
             auto server = resolved_proxy.toString();
             if (resolved_proxy.getFamily() == AF_INET6) {
@@ -493,9 +497,10 @@ DhtProxyClient::getProxyInfos()
             }
             restbed::Uri uri(HTTP_PROTO + server + "/");
             auto req = std::make_shared<restbed::Request>(uri);
-            restbed::Http::async(req,
-            [this, resolved_proxy](const std::shared_ptr<restbed::Request>&,
-                                   const std::shared_ptr<restbed::Response>& reply)
+            reqs.emplace_back(restbed::Http::async(req,
+            [this, resolved_proxy, successCount](
+                                const std::shared_ptr<restbed::Request>&,
+                                const std::shared_ptr<restbed::Response>& reply)
             {
                 auto code = reply->get_status_code();
                 Json::Value proxyInfos;
@@ -509,56 +514,60 @@ DhtProxyClient::getProxyInfos()
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     try {
                         reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
-                    } catch (...) {
+                    } catch (const std::exception& e) {
+                        DHT_LOG.w("Error parsing proxy infos: %s", e.what());
                     }
-                    onProxyInfos(proxyInfos, resolved_proxy.getFamily());
+                    auto family = resolved_proxy.getFamily();
+                    if      (family == AF_INET)  successCount->ipv4++;
+                    else if (family == AF_INET6) successCount->ipv6++;
+                    onProxyInfos(proxyInfos, family);
                 }
-            });
-            ongoingStatusUpdate_.clear();
+            }));
         }
+        for (auto& r : reqs)
+            r.get();
+        reqs.clear();
+        if (successCount->ipv4 == 0) onProxyInfos(Json::Value{}, AF_INET);
+        if (successCount->ipv6 == 0) onProxyInfos(Json::Value{}, AF_INET6);
+        ongoingStatusUpdate_.clear();
     });
 }
 
 void
 DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
 {
-    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
-
     DHT_LOG.d("Got proxy infos %s", family == AF_INET ? "IPv4" : "IPv6");
-
+    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
+    auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
+    if (not proxyInfos.isMember("node_id")) {
+        status = NodeStatus::Disconnected;
+    } else {
+        try {
+            myid = InfoHash(proxyInfos["node_id"].asString());
+            stats4_ = NodeStats(proxyInfos["ipv4"]);
+            stats6_ = NodeStats(proxyInfos["ipv6"]);
+            if (stats4_.good_nodes + stats6_.good_nodes)
+                status = NodeStatus::Connected;
+            else if (stats4_.dubious_nodes + stats6_.dubious_nodes)
+                status = NodeStatus::Connecting;
+            else
+                status = NodeStatus::Disconnected;
 
-    try {
-        myid = InfoHash(proxyInfos["node_id"].asString());
-
-        stats4_ = NodeStats(proxyInfos["ipv4"]);
-        if (stats4_.good_nodes)
-            statusIpv4_ = NodeStatus::Connected;
-        else if (stats4_.dubious_nodes)
-            statusIpv4_ = NodeStatus::Connecting;
-        else
-            statusIpv4_ = NodeStatus::Disconnected;
-
-        stats6_ = NodeStats(proxyInfos["ipv6"]);
-        if (stats6_.good_nodes)
-            statusIpv6_ = NodeStatus::Connected;
-        else if (stats6_.dubious_nodes)
-            statusIpv6_ = NodeStatus::Connecting;
-        else
-            statusIpv6_ = NodeStatus::Disconnected;
-
-        if (family == AF_INET)
-            publicAddressV4_ = parsePublicAddress(proxyInfos["public_ip"]);
-        else if (family == AF_INET6)
-            publicAddressV6_ = parsePublicAddress(proxyInfos["public_ip"]);
-    } catch (const std::exception& e) {
-        DHT_LOG.w("Error parsing proxy infos: %s", e.what());
+            auto publicIp = parsePublicAddress(proxyInfos["public_ip"]);
+            auto publicFamily = publicIp.getFamily();
+            if (publicFamily == AF_INET)
+                publicAddressV4_ = publicIp;
+            else if (publicFamily == AF_INET6)
+                publicAddressV6_ = publicIp;
+        } catch (const std::exception& e) {
+            DHT_LOG.w("Error processing proxy infos: %s", e.what());
+        }
     }
 
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
-
-    if (newStatus == NodeStatus::Connecting || newStatus == NodeStatus::Connected) {
-        if (oldStatus == NodeStatus::Disconnected) {
+    if (newStatus == NodeStatus::Connected) {
+        if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
             restartListeners();
         }
         scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(15));
