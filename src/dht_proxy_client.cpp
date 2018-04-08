@@ -463,13 +463,13 @@ DhtProxyClient::getProxyInfos()
     }
 
     // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
-    auto hostAndService = splitPort(serverHost_);
-    auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
     auto serverHost = serverHost_;
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    statusThread_ = std::thread([this, resolved_proxies, serverHost]{
+    statusThread_ = std::thread([this, serverHost]{
+        auto hostAndService = splitPort(serverHost);
+        auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
         for (const auto& resolved_proxy: resolved_proxies) {
             auto server = resolved_proxy.toString();
             if (resolved_proxy.getFamily() == AF_INET6) {
@@ -481,7 +481,8 @@ DhtProxyClient::getProxyInfos()
             auto req = std::make_shared<restbed::Request>(uri);
             restbed::Http::async(req,
             [this, resolved_proxy](const std::shared_ptr<restbed::Request>&,
-            const std::shared_ptr<restbed::Response>& reply) {
+                                   const std::shared_ptr<restbed::Response>& reply)
+            {
                 auto code = reply->get_status_code();
                 Json::Value proxyInfos;
                 if (code == 200) {
@@ -498,11 +499,10 @@ DhtProxyClient::getProxyInfos()
                     }
                     onProxyInfos(proxyInfos, resolved_proxy.getFamily());
                 }
-                ongoingStatusUpdate_.clear();
             });
+            ongoingStatusUpdate_.clear();
         }
     });
-    statusThread_.detach();
 }
 
 void
