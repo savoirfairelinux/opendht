@@ -143,14 +143,21 @@ void
 DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
+    DHT_LOG.w("Cancelling all listeners for %zu searches", searches_.size());
     for (auto& s: searches_) {
-        for (auto& l : s.second.listeners)
-            if (l.second.thread.joinable()) {
+        s.second.ops.cancelAll([&](size_t token){
+            auto l = s.second.listeners.find(token);
+            if (l == s.second.listeners.end())
+                return;
+            if (l->second.thread.joinable()) {
                 // Close connection to stop listener?
-                if (l.second.req)
-                    restbed::Http::close(l.second.req);
-                l.second.thread.join();
+                l->second.state->cancel = true;
+                if (l->second.req)
+                    restbed::Http::close(l->second.req);
+                l->second.thread.join();
             }
+            s.second.listeners.erase(token);
+        });
     }
 }
 
