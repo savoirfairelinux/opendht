@@ -180,7 +180,7 @@ Dht::expireBuckets(RoutingTable& list)
 {
     for (auto& b : list) {
         bool changed = false;
-        b.nodes.remove_if([this,&changed](const Sp<Node>& n) {
+        b.nodes.remove_if([&changed](const Sp<Node>& n) {
             if (n->isExpired()) {
                 changed = true;
                 return true;
@@ -387,7 +387,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         if (not n.isSynced(now))
             continue;
         if (std::find_if(sr->announce.cbegin(), sr->announce.cend(),
-            [this,&now,&n](const Announce& a) {
+            [&now,&n](const Announce& a) {
                 return n.getAnnounceTime(a.value->id) <= now;
             }) == sr->announce.cend())
             continue;
@@ -497,7 +497,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
         auto r = n.listenStatus.find(query);
         if (r == n.listenStatus.end()) {
             r = n.listenStatus.emplace(query, SearchNode::CachedListenStatus{
-                [this,ws,list_token](const std::vector<Sp<Value>>& values, bool expired){
+                [ws,list_token](const std::vector<Sp<Value>>& values, bool expired){
                     if (auto sr = ws.lock()) {
                         auto l = sr->listeners.find(list_token);
                         if (l != sr->listeners.end()) {

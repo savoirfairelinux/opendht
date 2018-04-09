@@ -140,7 +140,7 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 {}
 
 NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
-    : myid(zeroes), DHT_LOG(log), dht_socket(s), dht_socket6(s6), scheduler(scheduler)
+    : myid(zeroes), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {}
 NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError) onError,
