@@ -27,7 +27,9 @@ using CallbackQueue = std::list<std::function<void()>>;
 class ValueCache {
 public:
     ValueCache(ValueStateCallback&& cb) : callback(std::forward<ValueStateCallback>(cb)) {}
-    ValueCache(ValueCache&&) = default;
+    ValueCache(ValueCache&& o) : values(std::move(o.values)), callback(std::move(o.callback)) {
+        o.callback = {};
+    }
 
     ~ValueCache() {
         auto q = clear();
@@ -122,6 +124,7 @@ private:
     // prevent copy
     ValueCache(const ValueCache&) = delete;
     ValueCache& operator=(const ValueCache&) = delete;
+    ValueCache& operator=(ValueCache&&) = delete;
 
     /* The maximum number of values we store in the cache. */
     static constexpr unsigned MAX_VALUES {1024};

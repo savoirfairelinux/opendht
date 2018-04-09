@@ -149,6 +149,10 @@ public:
         return listeners.erase(token) > 0;
     }
 
+    void removeAll() {
+        listeners.clear();
+    }
+
     bool isDone() {
         return listeners.empty();
     }
@@ -208,6 +212,15 @@ public:
             }
         }
         return false;
+    }
+
+    void cancelAll(std::function<void(size_t)> onCancel) {
+        for (auto& op : ops) {
+            auto cache = std::move(op.second);
+            cache->removeAll();
+            onCancel(cache->searchToken);
+        }
+        ops.clear();
     }
 
     std::vector<Sp<Value>> get(Value::Filter& filter) const {

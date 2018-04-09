@@ -38,6 +38,10 @@ namespace dht {
 
 struct DhtProxyClient::Listener
 {
+    struct State {
+        std::atomic_bool ok {true};
+        std::atomic_bool cancel {false};
+    };
     ValueCache cache;
     Sp<Scheduler::Job> cacheExpirationJob {};
     ValueCallback cb;
@@ -45,15 +49,14 @@ struct DhtProxyClient::Listener
     Sp<restbed::Request> req;
     std::thread thread;
     unsigned callbackId;
-    Sp<bool> isCanceledViaClose;
+    Sp<State> state;
     Sp<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
     Sp<Scheduler::Job> refreshJob;
     Listener(ValueCache&& c, Sp<Scheduler::Job>&& j, const Sp<restbed::Request>& r, Value::Filter&& f)
         : cache(std::move(c)),
           cacheExpirationJob(std::move(j)),
           filter(std::move(f)),
-          req(r),
-          isCanceledViaClose(std::make_shared<bool>(false))
+          req(r)
     {}
 };
 
@@ -88,7 +91,7 @@ void
 DhtProxyClient::startProxy()
 {
     if (serverHost_.empty()) return;
-    DHT_LOG.WARN("Staring proxy client to %s", serverHost_.c_str());
+    DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
 }
 
@@ -97,6 +100,8 @@ DhtProxyClient::~DhtProxyClient()
     isDestroying_ = true;
     cancelAllOperations();
     cancelAllListeners();
+    if (statusThread_.joinable())
+        statusThread_.join();
 }
 
 std::vector<Sp<Value>>
@@ -138,14 +143,21 @@ void
 DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
+    DHT_LOG.w("Cancelling all listeners for %zu searches", searches_.size());
     for (auto& s: searches_) {
-        for (auto& l : s.second.listeners)
-            if (l.second.thread.joinable()) {
+        s.second.ops.cancelAll([&](size_t token){
+            auto l = s.second.listeners.find(token);
+            if (l == s.second.listeners.end())
+                return;
+            if (l->second.thread.joinable()) {
                 // Close connection to stop listener?
-                if (l.second.req)
-                    restbed::Http::close(l.second.req);
-                l.second.thread.join();
+                l->second.state->cancel = true;
+                if (l->second.req)
+                    restbed::Http::close(l->second.req);
+                l->second.thread.join();
             }
+            s.second.listeners.erase(token);
+        });
     }
 }
 
@@ -222,6 +234,7 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
+    DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
@@ -295,6 +308,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 void
 DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
+    DHT_LOG.d(key, "[search %s]: put", key.to_c_str());
     scheduler.syncTime();
     if (not val) {
         if (cb) cb(false, {});
@@ -329,6 +343,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
 void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
+    DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
@@ -433,7 +448,7 @@ DhtProxyClient::cancelPut(const InfoHash& key, const Value::Id& id)
     auto search = searches_.find(key);
     if (search == searches_.end())
         return false;
-    std::cout << "cancelPut " << key << " " << id << std::endl;
+    DHT_LOG.d(key, "[search %s] cancel put", key.to_c_str());
     return search->second.puts.erase(id) > 0;
 }
 
@@ -446,7 +461,7 @@ DhtProxyClient::getNodesStats(sa_family_t af) const
 void
 DhtProxyClient::getProxyInfos()
 {
-    DHT_LOG.DEBUG("Requesting proxy server node information");
+    DHT_LOG.d("Requesting proxy server node information");
 
     if (ongoingStatusUpdate_.test_and_set())
         return;
@@ -460,13 +475,19 @@ DhtProxyClient::getProxyInfos()
     }
 
     // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
-    auto hostAndService = splitPort(serverHost_);
-    auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
     auto serverHost = serverHost_;
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    statusThread_ = std::thread([this, resolved_proxies, serverHost]{
+    if (statusThread_.joinable())
+        statusThread_.join();
+    statusThread_ = std::thread([this, serverHost]{
+        auto hostAndService = splitPort(serverHost);
+        auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
+        struct SuccessCount {std::atomic_uint ipv4 {0}, ipv6 {0};};
+        auto successCount = std::make_shared<SuccessCount>();
+        std::vector<std::future<Sp<restbed::Response>>> reqs;
+        reqs.reserve(resolved_proxies.size());
         for (const auto& resolved_proxy: resolved_proxies) {
             auto server = resolved_proxy.toString();
             if (resolved_proxy.getFamily() == AF_INET6) {
@@ -476,9 +497,11 @@ DhtProxyClient::getProxyInfos()
             }
             restbed::Uri uri(HTTP_PROTO + server + "/");
             auto req = std::make_shared<restbed::Request>(uri);
-            restbed::Http::async(req,
-            [this, resolved_proxy](const std::shared_ptr<restbed::Request>&,
-            const std::shared_ptr<restbed::Response>& reply) {
+            reqs.emplace_back(restbed::Http::async(req,
+            [this, resolved_proxy, successCount](
+                                const std::shared_ptr<restbed::Request>&,
+                                const std::shared_ptr<restbed::Response>& reply)
+            {
                 auto code = reply->get_status_code();
                 Json::Value proxyInfos;
                 if (code == 200) {
@@ -491,53 +514,60 @@ DhtProxyClient::getProxyInfos()
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     try {
                         reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
-                    } catch (...) {
+                    } catch (const std::exception& e) {
+                        DHT_LOG.w("Error parsing proxy infos: %s", e.what());
                     }
-                    onProxyInfos(proxyInfos, resolved_proxy.getFamily());
+                    auto family = resolved_proxy.getFamily();
+                    if      (family == AF_INET)  successCount->ipv4++;
+                    else if (family == AF_INET6) successCount->ipv6++;
+                    onProxyInfos(proxyInfos, family);
                 }
-                ongoingStatusUpdate_.clear();
-            });
+            }));
         }
+        for (auto& r : reqs)
+            r.get();
+        reqs.clear();
+        if (successCount->ipv4 == 0) onProxyInfos(Json::Value{}, AF_INET);
+        if (successCount->ipv6 == 0) onProxyInfos(Json::Value{}, AF_INET6);
+        ongoingStatusUpdate_.clear();
     });
-    statusThread_.detach();
 }
 
 void
-DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t& family)
+DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
 {
+    DHT_LOG.d("Got proxy infos %s", family == AF_INET ? "IPv4" : "IPv6");
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
-
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
+    auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
+    if (not proxyInfos.isMember("node_id")) {
+        status = NodeStatus::Disconnected;
+    } else {
+        try {
+            myid = InfoHash(proxyInfos["node_id"].asString());
+            stats4_ = NodeStats(proxyInfos["ipv4"]);
+            stats6_ = NodeStats(proxyInfos["ipv6"]);
+            if (stats4_.good_nodes + stats6_.good_nodes)
+                status = NodeStatus::Connected;
+            else if (stats4_.dubious_nodes + stats6_.dubious_nodes)
+                status = NodeStatus::Connecting;
+            else
+                status = NodeStatus::Disconnected;
 
-    try {
-        myid = InfoHash(proxyInfos["node_id"].asString());
-
-        stats4_ = NodeStats(proxyInfos["ipv4"]);
-        if (stats4_.good_nodes)
-            statusIpv4_ = NodeStatus::Connected;
-        else if (stats4_.dubious_nodes)
-            statusIpv4_ = NodeStatus::Connecting;
-        else
-            statusIpv4_ = NodeStatus::Disconnected;
-
-        stats6_ = NodeStats(proxyInfos["ipv6"]);
-        if (stats6_.good_nodes)
-            statusIpv6_ = NodeStatus::Connected;
-        else if (stats6_.dubious_nodes)
-            statusIpv6_ = NodeStatus::Connecting;
-        else
-            statusIpv6_ = NodeStatus::Disconnected;
-
-        if (family == AF_INET)
-            publicAddressV4_ = parsePublicAddress(proxyInfos["public_ip"]);
-        else if (family == AF_INET6)
-            publicAddressV6_ = parsePublicAddress(proxyInfos["public_ip"]);
-    } catch (...) {}
+            auto publicIp = parsePublicAddress(proxyInfos["public_ip"]);
+            auto publicFamily = publicIp.getFamily();
+            if (publicFamily == AF_INET)
+                publicAddressV4_ = publicIp;
+            else if (publicFamily == AF_INET6)
+                publicAddressV6_ = publicIp;
+        } catch (const std::exception& e) {
+            DHT_LOG.w("Error processing proxy infos: %s", e.what());
+        }
+    }
 
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
-
-    if (newStatus == NodeStatus::Connecting || newStatus == NodeStatus::Connected) {
-        if (oldStatus == NodeStatus::Disconnected) {
+    if (newStatus == NodeStatus::Connected) {
+        if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
             restartListeners();
         }
         scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(15));
@@ -570,6 +600,7 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 
 size_t
 DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
+    DHT_LOG.d(key, "[search %s]: listen", key.to_c_str());
     auto it = searches_.find(key);
     if (it == searches_.end()) {
         it = searches_.emplace(key, ProxySearch{}).first;
@@ -583,6 +614,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 
 bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
+    DHT_LOG.d(key, "[search %s]: cancelListen %zu", key.to_c_str(), gtoken);
     auto it = searches_.find(key);
     if (it == searches_.end())
         return false;
@@ -594,6 +626,7 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
 size_t
 DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter filter/*, Where where*/)
 {
+    scheduler.syncTime();
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method(deviceKey_.empty() ? "LISTEN" : "SUBSCRIBE");
@@ -601,15 +634,10 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     std::lock_guard<std::mutex> lock(searchLock_);
     auto search = searches_.find(key);
     if (search == searches_.end()) {
-        std::cerr << "doListen: search not found" << std::endl;
+        DHT_LOG.e(key, "[search %s] listen: search not found", key.to_c_str());
         return 0;
     }
-
-    struct State {
-        std::atomic_bool ok {true};
-        std::atomic_bool cancel {false};
-    };
-    auto state = std::make_shared<State>();
+    DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
     auto token = ++listener_token_;
     auto l = search->second.listeners.find(token);
@@ -632,6 +660,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         }).first;
     }
 
+    auto state = std::make_shared<Listener::State>();
+    l->second.state = state;
     l->second.cb = [this,key,token,state](const std::vector<Sp<Value>>& values, bool expired) {
         if (state->cancel)
             return false;
@@ -655,11 +685,10 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         scheduler.edit(l->second.cacheExpirationJob, next);
         return true;
     };
-    std::weak_ptr<bool> isCanceledViaClose(l->second.isCanceledViaClose);
     auto pushNotifToken = std::make_shared<unsigned>(0);
     auto vcb = l->second.cb;
     l->second.pushNotifToken = pushNotifToken;
-    l->second.thread = std::thread([=]()
+    l->second.thread = std::thread([this,req,filter,vcb,pushNotifToken,state]()
         {
             auto settings = std::make_shared<restbed::Settings>();
             if (deviceKey_.empty()) {
@@ -673,7 +702,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
 
             restbed::Http::async(req,
                 [this, filter, vcb, pushNotifToken, state](const std::shared_ptr<restbed::Request>& req,
-                                                               const std::shared_ptr<restbed::Response>& reply) {
+                                                           const std::shared_ptr<restbed::Response>& reply) {
                 auto code = reply->get_status_code();
                 if (code == 200) {
                     try {
@@ -727,8 +756,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                     state->ok = false;
                 }
             }, settings).get();
-            auto isCanceledNormally = isCanceledViaClose.lock();
-            if (not state->ok and isCanceledNormally and not *isCanceledNormally) {
+            auto& s = *state;
+            if (not s.ok and not s.cancel) {
                 opFailed();
             }
         }
@@ -749,8 +778,10 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     if (it == search->second.listeners.end())
         return false;
 
+    DHT_LOG.d(key, "[search %s] cancel listen", key.to_c_str());
+
     auto& listener = it->second;
-    if (!deviceKey_.empty()) {
+    if (not deviceKey_.empty()) {
         // First, be sure to have a token
         if (listener.thread.joinable()) {
             listener.thread.join();
@@ -777,13 +808,14 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // Just stop the request
         if (listener.thread.joinable()) {
             // Close connection to stop listener?
-            *(listener.isCanceledViaClose) = true;
+            listener.state->cancel = true;
             if (listener.req)
                 restbed::Http::close(listener.req);
             listener.thread.join();
         }
     }
     search->second.listeners.erase(it);
+    DHT_LOG.d(key, "[search %s] cancelListen: %zu listener remaining", key.to_c_str(), search->second.listeners.size());
     if (search->second.listeners.empty()) {
         searches_.erase(search);
     }
@@ -794,7 +826,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
 void
 DhtProxyClient::opFailed()
 {
-    DHT_LOG.ERR("Proxy request failed");
+    DHT_LOG.e("Proxy request failed");
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         statusIpv4_ = NodeStatus::Disconnected;
@@ -813,6 +845,10 @@ DhtProxyClient::getConnectivityStatus()
 void
 DhtProxyClient::restartListeners()
 {
+    if (not deviceKey_.empty()) {
+        return;
+    }
+    DHT_LOG.d("Restarting listeners");
     std::lock_guard<std::mutex> lock(searchLock_);
     for (auto& search: searches_) {
     for (auto& l: search.second.listeners) {
@@ -835,7 +871,7 @@ DhtProxyClient::restartListeners()
                 auto ok = std::make_shared<std::atomic_bool>(true);
                 restbed::Http::async(req,
                     [this, filter, cb, ok](const std::shared_ptr<restbed::Request>& req,
-                                                const std::shared_ptr<restbed::Response>& reply) {
+                                           const std::shared_ptr<restbed::Response>& reply) {
                     auto code = reply->get_status_code();
 
                     if (code == 200) {
@@ -896,6 +932,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 auto& listener = list.second;
                 if (*listener.pushNotifToken!= token)
                     continue;
+                DHT_LOG.d(search.first, "[search %s] handling push notification", search.first.to_c_str());
                 if (notification.find("timeout") == notification.cend()) {
                     // Wake up daemon and get values
                     auto cb = listener.cb;
@@ -908,10 +945,11 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                     // A timeout has occured, we need to relaunch the listener
                     resubscribe(search.first, listener);
                 }
+                break;
             }
         }
     } catch (const std::exception& e) {
-        std::cerr << "pushNotificationReceived: error " << e.what() << std::endl;
+        DHT_LOG.e("Error handling push notification: %s", e.what());
     }
 #endif
 }
@@ -921,6 +959,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty()) return;
+    DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
     restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);

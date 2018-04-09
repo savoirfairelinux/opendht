@@ -249,8 +249,14 @@ public:
     void dumpTables() const {}
     std::vector<unsigned> getNodeMessageStats(bool) { return {}; }
     void setStorageLimit(size_t) {}
-    void connectivityChanged(sa_family_t) {}
-    void connectivityChanged() { }
+    void connectivityChanged(sa_family_t) {
+        restartListeners();
+    }
+    void connectivityChanged() {
+        getProxyInfos();
+        restartListeners();
+        loopSignal_();
+    }
 
 private:
     /**
@@ -263,7 +269,7 @@ private:
      * @return the JSON returned by the proxy
      */
     void getProxyInfos();
-    void onProxyInfos(const Json::Value& val, const sa_family_t& family);
+    void onProxyInfos(const Json::Value& val, sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
     void opFailed();
