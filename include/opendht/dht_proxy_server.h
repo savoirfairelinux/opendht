@@ -1,6 +1,7 @@
 /*
  *  Copyright (C) 2017-2018 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +26,7 @@
 #include "infohash.h"
 #include "scheduler.h"
 #include "value.h"
+#include "proxy.h"
 
 #include <thread>
 #include <memory>
@@ -179,6 +181,12 @@ private:
      */
     void handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const;
 
+    /**
+     * Remove finished listeners
+     * @param testSession if we remove the listener only if the session is closed
+     */
+    void removeClosedListeners(bool testSession = true);
+
 #if OPENDHT_PUSH_NOTIFICATIONS
     /**
      * Subscribe to push notifications for an iOS or Android device.
@@ -204,6 +212,10 @@ private:
      * @param json, the content to send
      */
     void sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const;
+
+    void cancelPushListen(const std::string& pushToken, const InfoHash& key, proxy::ListenToken token);
+
+
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
     using clock = std::chrono::steady_clock;
@@ -234,25 +246,18 @@ private:
     struct SearchPuts;
     std::map<InfoHash, SearchPuts> puts_;
 
+    mutable std::atomic<size_t> requestNum_ {0};
+    mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
+
+    const std::string pushServer_;
+
 #if OPENDHT_PUSH_NOTIFICATIONS
     struct Listener;
     struct PushListener;
     std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
-    uint64_t tokenPushNotif_ {0};
-
-    void cancelPushListen(const std::string& pushToken, const InfoHash& key, unsigned token);
+    proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
-    const std::string pushServer_;
-
-    mutable std::atomic<size_t> requestNum_ {0};
-    mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
-
-    /**
-     * Remove finished listeners
-     * @param testSession if we remove the listener only if the session is closed
-     */
-    void removeClosedListeners(bool testSession = true);
 };
 
 }

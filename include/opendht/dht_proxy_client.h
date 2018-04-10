@@ -29,6 +29,7 @@
 #include "def.h"
 #include "dht_interface.h"
 #include "scheduler.h"
+#include "proxy.h"
 
 namespace restbed {
     class Request;
@@ -365,6 +366,7 @@ private:
 
 #if OPENDHT_PUSH_NOTIFICATIONS
     void fillBodyToGetToken(std::shared_ptr<restbed::Request> request, unsigned token = 0);
+    void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
     bool isDestroying_ {false};

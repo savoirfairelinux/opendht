@@ -1,6 +1,7 @@
 /*
  *  Copyright (C) 2017-2018 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,18 +30,16 @@
 #include <functional>
 #include <limits>
 
-constexpr const std::chrono::seconds OP_TIMEOUT {1 * 60 * 60}; // one hour
-#if OPENDHT_PUSH_NOTIFICATIONS
-constexpr const char* const HTTP_PROTO {"http://"}; // TODO, https for prod
-#endif //OPENDHT_PUSH_NOTIFICATIONS
-
 using namespace std::placeholders;
 
 namespace dht {
 
 struct DhtProxyServer::PermanentPut {
     time_point expiration;
+    std::string pushToken;
+    std::string clientId;
     Sp<Scheduler::Job> expireJob;
+    Sp<Scheduler::Job> expireNotifyJob;
 };
 struct DhtProxyServer::SearchPuts {
     std::map<dht::Value::Id, PermanentPut> puts;
@@ -304,7 +303,8 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
 #if OPENDHT_PUSH_NOTIFICATIONS
 
 struct DhtProxyServer::Listener {
-    unsigned token;
+    std::shared_ptr<proxy::ListenToken> token;
+    std::string clientId;
     std::future<size_t> internalToken;
     Sp<Scheduler::Job> expireJob;
 };
@@ -346,56 +346,58 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                 auto isAndroid = platform == "android";
                 auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
-                uint64_t token = 0;
                 {
                     std::lock_guard<std::mutex> lock(lockListener_);
                     // Check if listener is already present and refresh timeout if launched
-
+                    // One push listener per pushToken.infoHash.clientId
                     auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
                     auto listeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
                     for (auto& listener: listeners->second) {
-                        if (listener.token == tokenFromReq) {
+                        if (listener.clientId == clientId) {
+                            *listener.token = tokenFromReq;
                             {
                                 std::lock_guard<std::mutex> l(schedulerLock_);
-                                scheduler_.edit(listener.expireJob, scheduler_.time() + OP_TIMEOUT);
+                                scheduler_.edit(listener.expireJob, scheduler_.time() + proxy::OP_TIMEOUT);
                             }
-                            s->close(restbed::OK, "{\"token\": " + std::to_string(listener.token) + "}\n");
+                            s->close(restbed::OK, "{\"token\": " + std::to_string(tokenFromReq) + "}\n");
                             schedulerCv_.notify_one();
                             return;
                         }
                     }
+                    listeners->second.emplace_back(Listener{});
+                    auto& listener = listeners->second.back();
+
+                    // New listener
                     pushListener->second.isAndroid = isAndroid;
 
                     // The listener is not found, so add it.
-                    ++tokenPushNotif_;
-                    token = tokenPushNotif_;
-                    Listener listener;
+                    auto token = std::make_shared<proxy::ListenToken>(tokenFromReq);
                     listener.token = token;
                     listener.internalToken = dht_->listen(infoHash,
-                        [this, pushToken, token, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
+                        [this, token, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
                             // Build message content.
                             Json::Value json;
+                            json["key"] = infoHash.toString();
                             json["to"] = clientId;
-                            json["token"] = std::to_string(token);
+                            json["token"] = std::to_string(*token);
                             sendPushNotification(pushToken, json, isAndroid);
                             return true;
                         }
                     );
                     std::lock_guard<std::mutex> l(schedulerLock_);
-                    listener.expireJob = scheduler_.add(scheduler_.time() + OP_TIMEOUT,
-                        [this, pushToken, infoHash, token, clientId, isAndroid] {
-                            cancelPushListen(pushToken, infoHash, token);
+                    listener.expireJob = scheduler_.add(scheduler_.time() + proxy::OP_TIMEOUT,
+                        [this, token, infoHash, pushToken, isAndroid, clientId] {
+                            cancelPushListen(pushToken, infoHash, *token);
                             // Send a push notification to inform the client that this listen has timeout
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
-                            json["token"] = std::to_string(token);
+                            json["token"] = std::to_string(*token);
                             sendPushNotification(pushToken, json, isAndroid);
                         }
                     );
-                    listeners->second.emplace_back(std::move(listener));
                 }
-                s->close(restbed::OK, "{\"token\": " + std::to_string(token) + "}\n");
+                s->close(restbed::OK, "{\"token\": " + std::to_string(tokenFromReq) + "}\n");
             } catch (...) {
                 // do nothing
             }
@@ -443,7 +445,7 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
 }
 
 void
-DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, unsigned token)
+DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, proxy::ListenToken token)
 {
     std::lock_guard<std::mutex> lock(lockListener_);
     auto pushListener = pushListeners_.find(pushToken);
@@ -453,7 +455,7 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
     if (listeners == pushListener->second.listeners.end())
         return;
     for (auto listener = listeners->second.begin(); listener != listeners->second.end();) {
-        if (listener->token == token) {
+        if (*listener->token == token) {
             if (dht_)
                 dht_->cancelListen(key, std::move(listener->internalToken));
             listener = listeners->second.erase(listener);
@@ -472,7 +474,7 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
 void
 DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value& json, bool isAndroid) const
 {
-    restbed::Uri uri(HTTP_PROTO + pushServer_ + "/api/push");
+    restbed::Uri uri(proxy::HTTP_PROTO + pushServer_ + "/api/push");
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
 
@@ -522,6 +524,8 @@ DhtProxyServer::cancelPut(const InfoHash& key, Value::Id vid)
         return;
     if (dht_)
         dht_->cancelPut(key, vid);
+    if (put->second.expireNotifyJob)
+        put->second.expireNotifyJob->cancel();
     sPutsMap.erase(put);
     if (sPutsMap.empty())
         puts_.erase(sPuts);
@@ -557,21 +561,43 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                     if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
                         // Build the Value from json
                         auto value = std::make_shared<Value>(root);
-                        auto permanent = root.isMember("permanent") ? root["permanent"].asBool() : false;
+                        auto permanent = root.isMember("permanent");
 
                         if (permanent) {
+                            std::string pushToken, clientId, platform;
+                            auto& pVal = root["permanent"];
+                            if (pVal.isObject()) {
+                                pushToken = pVal["key"].asString();
+                                clientId = pVal["client_id"].asString();
+                                platform = pVal["platform"].asString();
+                            }
+                            bool isAndroid = platform == "android";
                             std::unique_lock<std::mutex> lock(schedulerLock_);
                             scheduler_.syncTime();
                             auto sPuts = puts_.emplace(infoHash, SearchPuts{}).first;
-                            auto timeout = scheduler_.time() + OP_TIMEOUT;
+                            auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
                             auto vid = value->id;
                             auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
                             if (r.second) {
                                 r.first->second.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
                                     cancelPut(infoHash, vid);
                                 });
+#if OPENDHT_PUSH_NOTIFICATIONS
+                                if (not pushToken.empty())
+                                    r.first->second.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
+                                        [this, infoHash, vid, pushToken, clientId, isAndroid]
+                                    {
+                                        Json::Value json;
+                                        json["timeout"] = infoHash.toString();
+                                        json["to"] = clientId;
+                                        json["vid"] = std::to_string(vid);
+                                        sendPushNotification(pushToken, json, isAndroid);
+                                    });
+#endif
                             } else {
                                 scheduler_.edit(r.first->second.expireJob, timeout);
+                                if (r.first->second.expireNotifyJob)
+                                    scheduler_.edit(r.first->second.expireNotifyJob, timeout - proxy::OP_MARGIN);
                             }
                             lock.unlock();
                             schedulerCv_.notify_one();
