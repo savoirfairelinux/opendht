@@ -498,6 +498,7 @@ main(int argc, char **argv)
 
         dht::DhtRunner::Config config;
         config.dht_config.node_config.network = params.network;
+        config.dht_config.node_config.maintain_storage = false;
         config.dht_config.id = crt;
         config.threaded = true;
         config.proxy_server = params.proxyclient;
