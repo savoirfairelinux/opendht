@@ -239,7 +239,7 @@ private:
     struct PushListener;
     std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
-    unsigned tokenPushNotif_ {0};
+    uint64_t tokenPushNotif_ {0};
 
     void cancelPushListen(const std::string& pushToken, const InfoHash& key, unsigned token);
 #endif //OPENDHT_PUSH_NOTIFICATIONS

@@ -639,7 +639,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     }
     DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
-    auto token = ++listener_token_;
+    auto token = ++listenerToken_;
     auto l = search->second.listeners.find(token);
     if (l == search->second.listeners.end()) {
         auto f = filter;
@@ -719,8 +719,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
 
                             auto* char_data = reinterpret_cast<const char*>(&body[0]);
                             if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
-                                if (!json.isMember("token")) return;
-                                *pushNotifToken = json["token"].asLargestUInt();
+                                *pushNotifToken = unpackId(json, "token");
                             } else {
                                 state->ok = false;
                             }
@@ -926,14 +925,15 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
 #if OPENDHT_PUSH_NOTIFICATIONS
     try {
         std::lock_guard<std::mutex> lock(searchLock_);
-        auto token = std::stoul(notification.at("token"));
+        bool timeout = notification.find("timeout") == notification.cend();
+        uint64_t token = std::stoull(notification.at("token"));
         for (auto& search: searches_) {
             for (auto& list : search.second.listeners) {
                 auto& listener = list.second;
                 if (*listener.pushNotifToken!= token)
                     continue;
                 DHT_LOG.d(search.first, "[search %s] handling push notification", search.first.to_c_str());
-                if (notification.find("timeout") == notification.cend()) {
+                if (timeout) {
                     // Wake up daemon and get values
                     auto cb = listener.cb;
                     auto filter = listener.filter;
@@ -993,7 +993,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                         if (!json.isMember("token")) return;
-                        *pushNotifToken = json["token"].asLargestUInt();
+                        *pushNotifToken = unpackId(json, "token");
                     }
                 } catch (std::runtime_error&) {
                     // NOTE: Http::close() can occurs here. Ignore this.

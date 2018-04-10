@@ -341,12 +341,12 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                 }
                 auto pushToken = root["key"].asString();
                 if (pushToken.empty()) return;
-                auto tokenFromReq = root.isMember("token") ? root["token"].asLargestUInt() : 0;
+                auto tokenFromReq = unpackId(root, "token");
                 auto platform = root["platform"].asString();
                 auto isAndroid = platform == "android";
                 auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
-                auto token = 0;
+                uint64_t token = 0;
                 {
                     std::lock_guard<std::mutex> lock(lockListener_);
                     // Check if listener is already present and refresh timeout if launched
@@ -376,7 +376,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             // Build message content.
                             Json::Value json;
                             json["to"] = clientId;
-                            json["token"] = token;
+                            json["token"] = std::to_string(token);
                             sendPushNotification(pushToken, json, isAndroid);
                             return true;
                         }
@@ -389,7 +389,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
-                            json["token"] = token;
+                            json["token"] = std::to_string(token);
                             sendPushNotification(pushToken, json, isAndroid);
                         }
                     );
@@ -431,7 +431,7 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
                 }
                 auto pushToken = root["key"].asString();
                 if (pushToken.empty()) return;
-                auto token = std::stoull(root["token"].asString());
+                auto token = unpackId(root, "token");
                 if (token == 0) return;
 
                 cancelPushListen(pushToken, infoHash, token);

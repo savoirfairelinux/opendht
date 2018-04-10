@@ -314,7 +314,7 @@ private:
     struct Listener;
     struct ProxySearch;
 
-    size_t listener_token_ {0};
+    size_t listenerToken_ {0};
     std::map<InfoHash, ProxySearch> searches_;
     mutable std::mutex searchLock_;
 

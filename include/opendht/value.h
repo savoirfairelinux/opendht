@@ -996,6 +996,10 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
     return ret;
 }
 
+#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+uint64_t unpackId(const Json::Value& json, const std::string& key);
+#endif
+
 }
 
 MSGPACK_ADD_ENUM(dht::Value::Field)
