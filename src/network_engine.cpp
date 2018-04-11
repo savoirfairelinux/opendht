@@ -292,20 +292,24 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto err = send((char*)req.msg.data(), req.msg.size(),
             (node.getReplyTime() >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
             node.getAddr());
+    std::weak_ptr<Request> wreq = sreq;
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
         err == EAFNOSUPPORT ||
         err == EPIPE)
     {
-        node.setExpired();
-        if (not node.id)
-            requests.erase(req.tid);
+        scheduler.add(now, [this,wreq]() mutable {
+            if (auto req = wreq.lock()) {
+                req->node->setExpired();
+                if (not req->node->id)
+                    requests.erase(req->tid);
+            }
+        });
     } else {
         if (err != EAGAIN) {
             ++req.attempt_count;
         }
         req.last_try = now;
-        std::weak_ptr<Request> wreq = sreq;
         scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
             if (auto req = wreq.lock())
                 requestStep(req);
