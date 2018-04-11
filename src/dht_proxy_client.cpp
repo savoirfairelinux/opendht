@@ -31,9 +31,6 @@
 #include <chrono>
 #include <vector>
 
-constexpr const char* const HTTP_PROTO {"http://"};
-constexpr const std::chrono::seconds OP_TIMEOUT {1 * 60 * 60 - 60}; // one hour minus margin
-
 namespace dht {
 
 struct DhtProxyClient::Listener
@@ -50,7 +47,7 @@ struct DhtProxyClient::Listener
     std::thread thread;
     unsigned callbackId;
     Sp<State> state;
-    Sp<unsigned> pushNotifToken; // NOTE: unused if not using push notifications
+    Sp<proxy::ListenToken> pushNotifToken;
     Sp<Scheduler::Job> refreshJob;
     Listener(ValueCache&& c, Sp<Scheduler::Job>&& j, const Sp<restbed::Request>& r, Value::Filter&& f)
         : cache(std::move(c)),
@@ -235,7 +232,7 @@ void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
     DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
-    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
 
@@ -323,7 +320,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         std::lock_guard<std::mutex> lock(searchLock_);
         auto id = val->id;
         auto search = searches_.emplace(key, ProxySearch{}).first;
-        auto nextRefresh = scheduler.time() + OP_TIMEOUT;
+        auto nextRefresh = scheduler.time() + proxy::OP_TIMEOUT;
         search->second.puts.erase(id);
         search->second.puts.emplace(id, PermanentPut {val, scheduler.add(nextRefresh, [this, key, id]{
             auto s = searches_.find(key);
@@ -334,7 +331,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
                 return;
             const auto& now = scheduler.time();
             doPut(key, p->second.value, {}, now, true);
-            scheduler.edit(p->second.refreshJob, now + OP_TIMEOUT);
+            scheduler.edit(p->second.refreshJob, now + proxy::OP_TIMEOUT);
         })});
     }
     doPut(key, val, std::move(cb), created, permanent);
@@ -344,13 +341,24 @@ void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
     DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
-    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
 
     auto json = val->toJson();
-    if (permanent)
-        json["permanent"] = true;
+    if (permanent) {
+        if (deviceKey_.empty()) {
+            json["permanent"] = true;
+        } else {
+#if OPENDHT_PUSH_NOTIFICATIONS
+            Json::Value refresh;
+            getPushRequest(refresh);
+            json["permanent"] = refresh;
+#else
+            json["permanent"] = true;
+#endif
+        }
+    }
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
@@ -495,7 +503,7 @@ DhtProxyClient::getProxyInfos()
                 // See https://github.com/Corvusoft/restbed/issues/290.
                 server = serverHost;
             }
-            restbed::Uri uri(HTTP_PROTO + server + "/");
+            restbed::Uri uri(proxy::HTTP_PROTO + server + "/");
             auto req = std::make_shared<restbed::Request>(uri);
             reqs.emplace_back(restbed::Http::async(req,
             [this, resolved_proxy, successCount](
@@ -627,7 +635,7 @@ size_t
 DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter filter/*, Where where*/)
 {
     scheduler.syncTime();
-    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method(deviceKey_.empty() ? "LISTEN" : "SUBSCRIBE");
 
@@ -639,7 +647,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     }
     DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
-    auto token = ++listener_token_;
+    auto token = ++listenerToken_;
     auto l = search->second.listeners.find(token);
     if (l == search->second.listeners.end()) {
         auto f = filter;
@@ -685,7 +693,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         scheduler.edit(l->second.cacheExpirationJob, next);
         return true;
     };
-    auto pushNotifToken = std::make_shared<unsigned>(0);
+    auto pushNotifToken = std::make_shared<proxy::ListenToken>(0);
     auto vcb = l->second.cb;
     l->second.pushNotifToken = pushNotifToken;
     l->second.thread = std::thread([this,req,filter,vcb,pushNotifToken,state]()
@@ -719,8 +727,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
 
                             auto* char_data = reinterpret_cast<const char*>(&body[0]);
                             if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
-                                if (!json.isMember("token")) return;
-                                *pushNotifToken = json["token"].asLargestUInt();
+                                *pushNotifToken = unpackId(json, "token");
                             } else {
                                 state->ok = false;
                             }
@@ -787,7 +794,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             listener.thread.join();
         }
         // UNSUBSCRIBE
-        restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+        restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
         auto req = std::make_shared<restbed::Request>(uri);
         req->set_method("UNSUBSCRIBE");
         // fill request body
@@ -858,7 +865,7 @@ DhtProxyClient::restartListeners()
         // Redo listen
         auto filter = listener.filter;
         auto cb = listener.cb;
-        restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + search.first.toString());
+        restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + search.first.toString());
         auto req = std::make_shared<restbed::Request>(uri);
         req->set_method("LISTEN");
         listener.req = req;
@@ -924,28 +931,38 @@ void
 DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string>& notification)
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
+    scheduler.syncTime();
     try {
         std::lock_guard<std::mutex> lock(searchLock_);
-        auto token = std::stoul(notification.at("token"));
-        for (auto& search: searches_) {
-            for (auto& list : search.second.listeners) {
-                auto& listener = list.second;
-                if (*listener.pushNotifToken!= token)
-                    continue;
-                DHT_LOG.d(search.first, "[search %s] handling push notification", search.first.to_c_str());
-                if (notification.find("timeout") == notification.cend()) {
-                    // Wake up daemon and get values
-                    auto cb = listener.cb;
-                    auto filter = listener.filter;
+        auto timeout = notification.find("timeout");
+        if (timeout != notification.cend()) {
+            InfoHash key(timeout->second);
+            auto& search = searches_.at(key);
+            auto vidIt = notification.find("vid");
+            if (vidIt != notification.end()) {
+                // Refresh put
+                auto vid = std::stoull(vidIt->second);
+                auto put = search.puts.at(vid);
+                scheduler.edit(put.refreshJob, scheduler.time() + proxy::OP_TIMEOUT);
+            } else {
+                // Refresh listen
+                for (auto& list : search.listeners)
+                    resubscribe(key, list.second);
+            }
+        } else {
+            auto token = std::stoull(notification.at("token"));
+            for (auto& search: searches_) {
+                for (auto& list : search.second.listeners) {
+                    if (*list.second.pushNotifToken != token)
+                        continue;
+                    DHT_LOG.d(search.first, "[search %s] handling push notification", search.first.to_c_str());
+                    auto cb = list.second.cb;
+                    auto filter = list.second.filter;
                     get(search.first, [cb](const std::vector<Sp<Value>>& vals){
                         cb(vals, false);
                         return true;
                     }, DoneCallbackSimple{}, std::move(filter));
-                } else {
-                    // A timeout has occured, we need to relaunch the listener
-                    resubscribe(search.first, listener);
                 }
-                break;
             }
         }
     } catch (const std::exception& e) {
@@ -961,11 +978,11 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     if (deviceKey_.empty()) return;
     DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
-    restbed::Uri uri(HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("SUBSCRIBE");
 
-    auto pushNotifToken = std::make_shared<unsigned>(0);
+    auto pushNotifToken = std::make_shared<proxy::ListenToken>(0);
 
     if (listener.thread.joinable())
         listener.thread.join();
@@ -993,7 +1010,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                         if (!json.isMember("token")) return;
-                        *pushNotifToken = json["token"].asLargestUInt();
+                        *pushNotifToken = unpackId(json, "token");
                     }
                 } catch (std::runtime_error&) {
                     // NOTE: Http::close() can occurs here. Ignore this.
@@ -1009,6 +1026,19 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 
 #if OPENDHT_PUSH_NOTIFICATIONS
 void
+DhtProxyClient::getPushRequest(Json::Value& body) const
+{
+    body["key"] = deviceKey_;
+    body["client_id"] = pushClientId_;
+#ifdef __ANDROID__
+    body["platform"] = "android";
+#endif
+#ifdef __APPLE__
+    body["platform"] = "apple";
+#endif
+}
+
+void
 DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req, unsigned token)
 {
     // Fill body with
@@ -1017,16 +1047,9 @@ DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req, unsign
     //   "token": xxx
     // }
     Json::Value body;
-    body["key"] = deviceKey_;
-    body["client_id"] = pushClientId_;
+    getPushRequest(body);
     if (token > 0)
         body["token"] = token;
-#ifdef __ANDROID__
-    body["platform"] = "android";
-#endif
-#ifdef __APPLE__
-    body["platform"] = "apple";
-#endif
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
