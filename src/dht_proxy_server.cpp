@@ -360,6 +360,8 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                 auto isAndroid = platform == "android";
                 auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
+                std::cout << "Subscribe " << infoHash << " token:" << tokenFromReq << " client:" << clientId << std::endl;
+
                 {
                     std::lock_guard<std::mutex> lock(lockListener_);
                     // Check if listener is already present and refresh timeout if launched
@@ -578,6 +580,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                             // Build the Value from json
                             auto value = std::make_shared<Value>(root);
                             auto permanent = root.isMember("permanent");
+                            std::cout << "Got put " << infoHash << " " << value << " " << (permanent ? "permanent" : "") << std::endl;
 
                             if (permanent) {
                                 std::string pushToken, clientId, platform;
@@ -596,6 +599,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                 auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
                                 if (r.second) {
                                     r.first->second.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
+                                        std::cout << "Permanent put expired" << infoHash << std::endl;
                                         cancelPut(infoHash, vid);
                                     });
 #if OPENDHT_PUSH_NOTIFICATIONS
@@ -603,6 +607,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                         r.first->second.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
                                         {
+                                            std::cout << "Permanent put refresh" << infoHash << std::endl;
                                             Json::Value json;
                                             json["timeout"] = infoHash.toString();
                                             json["to"] = clientId;
