@@ -490,51 +490,55 @@ DhtProxyClient::getProxyInfos()
     if (statusThread_.joinable())
         statusThread_.join();
     statusThread_ = std::thread([this, serverHost]{
-        auto hostAndService = splitPort(serverHost);
-        auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
         struct SuccessCount {std::atomic_uint ipv4 {0}, ipv6 {0};};
         auto successCount = std::make_shared<SuccessCount>();
-        std::vector<std::future<Sp<restbed::Response>>> reqs;
-        reqs.reserve(resolved_proxies.size());
-        for (const auto& resolved_proxy: resolved_proxies) {
-            auto server = resolved_proxy.toString();
-            if (resolved_proxy.getFamily() == AF_INET6) {
-                // HACK restbed seems to not correctly handle directly http://[ipv6]
-                // See https://github.com/Corvusoft/restbed/issues/290.
-                server = serverHost;
-            }
-            restbed::Uri uri(proxy::HTTP_PROTO + server + "/");
-            auto req = std::make_shared<restbed::Request>(uri);
-            reqs.emplace_back(restbed::Http::async(req,
-            [this, resolved_proxy, successCount](
+        try {
+            auto hostAndService = splitPort(serverHost);
+            auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
+            std::vector<std::future<Sp<restbed::Response>>> reqs;
+            reqs.reserve(resolved_proxies.size());
+            for (const auto& resolved_proxy: resolved_proxies) {
+                auto server = resolved_proxy.toString();
+                if (resolved_proxy.getFamily() == AF_INET6) {
+                    // HACK restbed seems to not correctly handle directly http://[ipv6]
+                    // See https://github.com/Corvusoft/restbed/issues/290.
+                    server = serverHost;
+                }
+                restbed::Uri uri(proxy::HTTP_PROTO + server + "/");
+                auto req = std::make_shared<restbed::Request>(uri);
+                reqs.emplace_back(restbed::Http::async(req,
+                    [this, resolved_proxy, successCount](
                                 const std::shared_ptr<restbed::Request>&,
                                 const std::shared_ptr<restbed::Response>& reply)
-            {
-                auto code = reply->get_status_code();
-                Json::Value proxyInfos;
-                if (code == 200) {
-                    restbed::Http::fetch("\n", reply);
-                    std::string body;
-                    reply->get_body(body);
+                {
+                    auto code = reply->get_status_code();
+                    Json::Value proxyInfos;
+                    if (code == 200) {
+                        restbed::Http::fetch("\n", reply);
+                        std::string body;
+                        reply->get_body(body);
 
-                    std::string err;
-                    Json::CharReaderBuilder rbuilder;
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                    try {
-                        reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
-                    } catch (const std::exception& e) {
-                        DHT_LOG.w("Error parsing proxy infos: %s", e.what());
+                        std::string err;
+                        Json::CharReaderBuilder rbuilder;
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        try {
+                            reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
+                        } catch (const std::exception& e) {
+                            DHT_LOG.w("Error parsing proxy infos: %s", e.what());
+                        }
+                        auto family = resolved_proxy.getFamily();
+                        if      (family == AF_INET)  successCount->ipv4++;
+                        else if (family == AF_INET6) successCount->ipv6++;
+                        onProxyInfos(proxyInfos, family);
                     }
-                    auto family = resolved_proxy.getFamily();
-                    if      (family == AF_INET)  successCount->ipv4++;
-                    else if (family == AF_INET6) successCount->ipv6++;
-                    onProxyInfos(proxyInfos, family);
-                }
-            }));
+                }));
+            }
+            for (auto& r : reqs)
+                r.get();
+            reqs.clear();
+        } catch (const std::exception& e) {
+            DHT_LOG.e("Error sending proxy info request: %s", e.what());
         }
-        for (auto& r : reqs)
-            r.get();
-        reqs.clear();
         if (successCount->ipv4 == 0) onProxyInfos(Json::Value{}, AF_INET);
         if (successCount->ipv6 == 0) onProxyInfos(Json::Value{}, AF_INET6);
         ongoingStatusUpdate_.clear();
