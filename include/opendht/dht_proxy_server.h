@@ -230,6 +230,8 @@ private:
     Scheduler scheduler_;
     std::thread schedulerThread_;
 
+    Sp<Scheduler::Job> printStatsJob_;
+
     // Handle client quit for listen.
     // NOTE: can be simplified when we will supports restbed 5.0
     std::thread listenThread_;

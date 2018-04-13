@@ -45,6 +45,7 @@ struct DhtProxyServer::SearchPuts {
     std::map<dht::Value::Id, PermanentPut> puts;
 };
 
+constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer)
 : dht_(dht) , pushServer_(pushServer)
@@ -122,6 +123,12 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         while (not service_->is_up() and not stopListeners) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
+        printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this]{
+            if (service_->is_up() and not stopListeners) {
+                std::cout << getStats().toString() << std::endl;
+                scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
+            }
+        });
         while (service_->is_up()  and not stopListeners) {
             std::unique_lock<std::mutex> lock(schedulerLock_);
             auto next = scheduler_.run();
@@ -143,6 +150,7 @@ DhtProxyServer::~DhtProxyServer()
 void
 DhtProxyServer::stop()
 {
+    printStatsJob_->cancel();
     service_->stop();
     {
         std::lock_guard<std::mutex> lock(lockListener_);
