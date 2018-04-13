@@ -947,7 +947,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 // Refresh put
                 auto vid = std::stoull(vidIt->second);
                 auto put = search.puts.at(vid);
-                scheduler.edit(put.refreshJob, scheduler.time() + proxy::OP_TIMEOUT);
+                scheduler.edit(put.refreshJob, scheduler.time());
             } else {
                 // Refresh listen
                 for (auto& list : search.listeners)
