@@ -150,7 +150,8 @@ DhtProxyServer::~DhtProxyServer()
 void
 DhtProxyServer::stop()
 {
-    printStatsJob_->cancel();
+    if (printStatsJob_)
+        printStatsJob_->cancel();
     service_->stop();
     {
         std::lock_guard<std::mutex> lock(lockListener_);
