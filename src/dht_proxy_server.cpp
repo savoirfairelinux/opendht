@@ -350,15 +350,12 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b) mutable
         {
             try {
-                restbed::Bytes buf(b);
-                std::string strJson(buf.begin(), buf.end());
-
                 std::string err;
                 Json::Value root;
                 Json::CharReaderBuilder rbuilder;
-                auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                auto* char_data = reinterpret_cast<const char*>(b.data());
                 auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                if (!reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
+                if (!reader->parse(char_data, char_data + b.size(), &root, &err)) {
                     s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     return;
                 }
@@ -444,14 +441,12 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b)
         {
             try {
-                restbed::Bytes buf(b);
-                std::string strJson(buf.begin(), buf.end());
                 std::string err;
                 Json::Value root;
                 Json::CharReaderBuilder rbuilder;
-                auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                auto* char_data = reinterpret_cast<const char*>(b.data());
                 auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                if (!reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
+                if (!reader->parse(char_data, char_data + b.size(), &root, &err)) {
                     s->close(restbed::BAD_REQUEST, "{\"err\":\"Incorrect JSON\"}");
                     return;
                 }
@@ -576,15 +571,12 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                         std::string response("{\"err\":\"Missing parameters\"}");
                         s->close(restbed::BAD_REQUEST, response);
                     } else {
-                        restbed::Bytes buf(b);
-                        std::string strJson(buf.begin(), buf.end());
-
                         std::string err;
                         Json::Value root;
                         Json::CharReaderBuilder rbuilder;
-                        auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                        auto* char_data = reinterpret_cast<const char*>(b.data());
                         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
+                        if (reader->parse(char_data, char_data + b.size(), &root, &err)) {
                             // Build the Value from json
                             auto value = std::make_shared<Value>(root);
                             auto permanent = root.isMember("permanent");
@@ -679,15 +671,12 @@ DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) cons
                         std::string response("{\"err\":\"Missing parameters\"}");
                         s->close(restbed::BAD_REQUEST, response);
                     } else {
-                        restbed::Bytes buf(b);
-                        std::string strJson(buf.begin(), buf.end());
-
                         std::string err;
                         Json::Value root;
                         Json::CharReaderBuilder rbuilder;
-                        auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                        auto* char_data = reinterpret_cast<const char*>(b.data());
                         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        if (reader->parse(char_data, char_data + strJson.size(), &root, &err)) {
+                        if (reader->parse(char_data, char_data + b.size(), &root, &err)) {
                             auto value = std::make_shared<Value>(root);
 
                             Json::StreamWriterBuilder wbuilder;
@@ -730,15 +719,12 @@ DhtProxyServer::putEncrypted(const std::shared_ptr<restbed::Session>& session) c
                         std::string response("{\"err\":\"Missing parameters\"}");
                         s->close(restbed::BAD_REQUEST, response);
                     } else {
-                        restbed::Bytes buf(b);
-                        std::string strJson(buf.begin(), buf.end());
-
                         std::string err;
                         Json::Value root;
                         Json::CharReaderBuilder rbuilder;
-                        auto* char_data = reinterpret_cast<const char*>(&strJson[0]);
+                        auto* char_data = reinterpret_cast<const char*>(b.data());
                         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        bool parsingSuccessful = reader->parse(char_data, char_data + strJson.size(), &root, &err);
+                        bool parsingSuccessful = reader->parse(char_data, char_data + b.size(), &root, &err);
                         InfoHash to(root["to"].asString());
                         if (parsingSuccessful && to) {
                             auto value = std::make_shared<Value>(root);
