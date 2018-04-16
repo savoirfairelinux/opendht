@@ -203,6 +203,9 @@ else ()
 endif ()
 
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+  list (APPEND opendht_HEADERS
+    include/opendht/proxy.h
+  )
   list (APPEND opendht_SOURCES
     src/base64.h
     src/base64.cpp
