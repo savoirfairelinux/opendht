@@ -697,6 +697,21 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         scheduler.edit(l->second.cacheExpirationJob, next);
         return true;
     };
+
+    if (not deviceKey_.empty())
+        l->second.refreshJob = scheduler.add(scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN, [this, key, token, state] {
+            if (state->cancel)
+                return;
+            std::lock_guard<std::mutex> lock(searchLock_);
+            auto s = searches_.find(key);
+            if (s != searches_.end()) {
+                auto l = s->second.listeners.find(token);
+                if (l != s->second.listeners.end()) {
+                    resubscribe(key, l->second);
+                }
+            }
+        });
+
     auto pushNotifToken = std::make_shared<proxy::ListenToken>(0);
     auto vcb = l->second.cb;
     l->second.pushNotifToken = pushNotifToken;
@@ -983,6 +998,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty()) return;
+    scheduler.syncTime();
     DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
     restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
@@ -997,6 +1013,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     state->ok = true;
     listener.req = req;
     listener.pushNotifToken = pushNotifToken;
+    scheduler.edit(listener.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     listener.thread = std::thread([this, req, pushNotifToken, state]() {
         fillBodyToGetToken(req);
         auto settings = std::make_shared<restbed::Settings>();
