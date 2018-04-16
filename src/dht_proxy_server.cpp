@@ -330,6 +330,7 @@ struct DhtProxyServer::Listener {
     std::string clientId;
     std::future<size_t> internalToken;
     Sp<Scheduler::Job> expireJob;
+    Sp<Scheduler::Job> expireNotifyJob;
 };
 struct DhtProxyServer::PushListener {
     std::map<InfoHash, std::vector<Listener>> listeners;
@@ -372,6 +373,8 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     std::lock(schedulerLock_, lockListener_);
                     std::lock_guard<std::mutex> lk1(lockListener_, std::adopt_lock);
                     std::lock_guard<std::mutex> lk2(schedulerLock_, std::adopt_lock);
+                    scheduler_.syncTime();
+                    auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
                     // Check if listener is already present and refresh timeout if launched
                     // One push listener per pushToken.infoHash.clientId
                     auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
@@ -379,7 +382,8 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     for (auto& listener: listeners->second) {
                         if (listener.clientId == clientId) {
                             *listener.token = tokenFromReq;
-                            scheduler_.edit(listener.expireJob, scheduler_.time() + proxy::OP_TIMEOUT);
+                            scheduler_.edit(listener.expireJob, timeout);
+                            scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
                             s->close(restbed::OK, "{\"token\": " + std::to_string(tokenFromReq) + "}\n");
                             schedulerCv_.notify_one();
                             return;
@@ -405,10 +409,14 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             return true;
                         }
                     );
-                    listener.expireJob = scheduler_.add(scheduler_.time() + proxy::OP_TIMEOUT,
-                        [this, token, infoHash, pushToken, isAndroid, clientId] {
+                    listener.expireJob = scheduler_.add(timeout,
+                        [this, token, infoHash, pushToken] {
                             cancelPushListen(pushToken, infoHash, *token);
-                            // Send a push notification to inform the client that this listen has timeout
+                        }
+                    );
+                    listener.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
+                        [this, token, infoHash, pushToken, isAndroid, clientId] {
+                            std::cout << "Listener: sending refresh " << infoHash << std::endl;
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
@@ -467,6 +475,7 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
 void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, proxy::ListenToken token)
 {
+    std::cout << "cancelPushListen: " << key << " token:" << token << std::endl;
     std::lock_guard<std::mutex> lock(lockListener_);
     auto pushListener = pushListeners_.find(pushToken);
     if (pushListener == pushListeners_.end())
