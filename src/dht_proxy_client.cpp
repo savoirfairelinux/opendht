@@ -805,7 +805,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         Json::Value body;
         body["key"] = deviceKey_;
         body["client_id"] = pushClientId_;
-        body["token"] = std::to_string(ltoken);
+        body["token"] = std::to_string(*listener.pushNotifToken);
         Json::StreamWriterBuilder wbuilder;
         wbuilder["commentStyle"] = "None";
         wbuilder["indentation"] = "";
