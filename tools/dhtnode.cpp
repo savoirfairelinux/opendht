@@ -89,7 +89,8 @@ void print_help() {
               << "  pp <key> <str>        Put string value at <key> (persistent version)." << std::endl
               << "  cpp <key> <id>        Cancel persistent put operation for <key> and value <id>." << std::endl
               << "  s <key> <str>         Put string value at <key>, signed with our generated private key." << std::endl
-              << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl;
+              << "  e <key> <dest> <str>  Put string value at <key>, encrypted for <dest> with its public key (if found)." << std::endl
+              << "  cc                    Trigger connectivity changed signal." << std::endl;
 
 #ifdef OPENDHT_INDEXATION
     std::cout << std::endl << "Indexation operations on the DHT:" << std::endl
@@ -179,11 +180,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             iss >> idstr;
             try {
                 auto addr = splitPort(idstr);
-                if (not addr.first.empty() and addr.second.empty()){
-                    std::stringstream ss;
-                    ss << DHT_DEFAULT_PORT;
-                    addr.second = ss.str();
-                }
+                if (not addr.first.empty() and addr.second.empty())
+                    addr.second = std::to_string(DHT_DEFAULT_PORT);
                 dht->bootstrap(addr.first.c_str(), addr.second.c_str());
             } catch (const std::exception& e) {
                 std::cerr << e.what() << std::endl;
@@ -199,6 +197,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 log::disableLogging(*dht);
             dht->setLogFilter(filter);
             continue;
+        } else if (op == "cc") {
+            dht->connectivityChanged();
         }
 #if OPENDHT_PROXY_SERVER
         else if (op == "pst") {
