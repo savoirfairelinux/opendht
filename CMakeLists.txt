@@ -303,12 +303,21 @@ install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATIO
 IF(OPENDHT_TESTS)
   FIND_PACKAGE(Cppunit REQUIRED)
   # unit testing
-    add_executable(opendht_unit_tests
-      tests/tests_runner.cpp
+    list (APPEND test_FILES
       tests/infohashtester.h
       tests/infohashtester.cpp
       tests/dhtrunnertester.h
       tests/dhtrunnertester.cpp
+    )
+    if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
+      list (APPEND test_FILES
+        tests/dhtproxytester.h
+        tests/dhtproxytester.cpp
+      )
+    endif()
+    add_executable(opendht_unit_tests
+      tests/tests_runner.cpp
+      ${test_FILES}
     )
     if (OPENDHT_SHARED)
       TARGET_LINK_LIBRARIES(opendht_unit_tests opendht)
