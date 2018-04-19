@@ -31,6 +31,7 @@ namespace test {
 class DhtProxyTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(DhtProxyTester);
     CPPUNIT_TEST(testGetPut);
+    CPPUNIT_TEST(testListen);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -47,6 +48,10 @@ class DhtProxyTester : public CppUnit::TestFixture {
      * Test get and put methods
      */
     void testGetPut();
+    /**
+     * Test listen
+     */
+    void testListen();
 
  private:
     dht::DhtRunner nodePeer {};
