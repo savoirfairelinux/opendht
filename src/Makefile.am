@@ -11,6 +11,7 @@ libopendht_la_SOURCES  = \
         search.h \
         value_cache.h \
         op_cache.h \
+        op_cache.cpp \
         net.h \
         parsed_message.h \
         node_cache.cpp \

@@ -20,6 +20,7 @@
 
 #include "value.h"
 #include "utils.h"
+#include "callbacks.h"
 
 namespace dht {
 

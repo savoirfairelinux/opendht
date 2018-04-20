@@ -874,10 +874,10 @@ Dht::cancelListen(const InfoHash& id, size_t token)
     if (st != store.end() && tokenlocal)
         st->second.local_listeners.erase(tokenlocal);
 
-    auto searches_cancel_listen = [&id](std::map<InfoHash, Sp<Search>>& srs, size_t token) {
+    auto searches_cancel_listen = [this,&id](std::map<InfoHash, Sp<Search>>& srs, size_t token) {
         auto srp = srs.find(id);
         if (srp != srs.end() and token)
-            srp->second->cancelListen(token);
+            srp->second->cancelListen(token, scheduler);
     };
     searches_cancel_listen(searches4, std::get<1>(it->second));
     searches_cancel_listen(searches6, std::get<2>(it->second));

@@ -121,6 +121,7 @@ list (APPEND opendht_SOURCES
     src/node.cpp
     src/value.cpp
     src/dht.cpp
+    src/op_cache.cpp
     src/storage.h
     src/listener.h
     src/search.h
