@@ -391,6 +391,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     }
                     listeners->second.emplace_back(Listener{});
                     auto& listener = listeners->second.back();
+                    listener.clientId = clientId;
 
                     // New listener
                     pushListener->second.isAndroid = isAndroid;
