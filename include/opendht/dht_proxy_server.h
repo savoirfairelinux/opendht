@@ -213,7 +213,13 @@ private:
      */
     void sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const;
 
-    void cancelPushListen(const std::string& pushToken, const InfoHash& key, proxy::ListenToken token);
+    /**
+     * Remove a push listener between a client and a hash
+     * @param pushToken
+     * @param key
+     * @param clientId
+     */
+    void cancelPushListen(const std::string& pushToken, const InfoHash& key, const std::string& clientId);
 
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
