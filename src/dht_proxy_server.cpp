@@ -461,7 +461,6 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
                 auto pushToken = root["key"].asString();
                 if (pushToken.empty()) return;
                 auto token = unpackId(root, "token");
-                if (token == 0) return;
 
                 cancelPushListen(pushToken, infoHash, token);
                 s->close(restbed::OK);
