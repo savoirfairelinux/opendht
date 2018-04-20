@@ -383,8 +383,11 @@ struct Dht::Search {
 
     /* Cache */
     SearchCache cache;
+    Sp<Scheduler::Job> opExpirationJob;
 
     ~Search() {
+        if (opExpirationJob)
+            opExpirationJob->cancel();
         for (auto& get : callbacks) {
             get.second.done_cb(false, {});
             get.second.done_cb = {};
@@ -483,21 +486,27 @@ struct Dht::Search {
         });
     }
 
-    void cancelListen(size_t token) {
-        cache.cancelListen(token, [&](size_t t){
-            Sp<Query> query;
-            const auto& ll = listeners.find(t);
-            if (ll != listeners.cend()) {
-                query = ll->second.query;
-                listeners.erase(ll);
-            }
-            for (auto& sn : nodes) {
-                if (listeners.empty())
-                    sn.cancelListen();
-                else if (query)
-                    sn.cancelListen(query);
-            }
-        });
+    void cancelListen(size_t token, Scheduler& scheduler) {
+        cache.cancelListen(token, scheduler.time());
+        if (not opExpirationJob)
+            opExpirationJob = scheduler.add(time_point::max(), [this,&scheduler]{
+                auto nextExpire = cache.expire(scheduler.time(), [&](size_t t){
+                    Sp<Query> query;
+                    const auto& ll = listeners.find(t);
+                    if (ll != listeners.cend()) {
+                        query = ll->second.query;
+                        listeners.erase(ll);
+                    }
+                    for (auto& sn : nodes) {
+                        if (listeners.empty())
+                            sn.cancelListen();
+                        else if (query)
+                            sn.cancelListen(query);
+                    }
+                });
+                scheduler.edit(opExpirationJob, nextExpire);
+            });
+        scheduler.edit(opExpirationJob, cache.getExpiration());
     }
 
     /**

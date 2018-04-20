@@ -64,6 +64,7 @@ struct PermanentPut {
 
 struct DhtProxyClient::ProxySearch {
     SearchCache ops {};
+    Sp<Scheduler::Job> opExpirationJob;
     std::map<size_t, Listener> listeners {};
     std::map<Value::Id, PermanentPut> puts {};
 };
@@ -626,13 +627,28 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 
 bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
+    scheduler.syncTime();
     DHT_LOG.d(key, "[search %s]: cancelListen %zu", key.to_c_str(), gtoken);
     auto it = searches_.find(key);
     if (it == searches_.end())
         return false;
-    return it->second.ops.cancelListen(gtoken, [&](size_t ltoken){
-        doCancelListen(key, ltoken);
-    });
+    auto& ops = it->second.ops;
+    bool canceled = ops.cancelListen(gtoken, scheduler.time());
+    if (not it->second.opExpirationJob) {
+        it->second.opExpirationJob = scheduler.add(time_point::max(), [this,key](){
+            auto it = searches_.find(key);
+            if (it != searches_.end()) {
+                auto next = it->second.ops.expire(scheduler.time(), [this,key](size_t ltoken){
+                    doCancelListen(key, ltoken);
+                });
+                if (next != time_point::max()) {
+                    scheduler.edit(it->second.opExpirationJob, next);
+                }
+            }
+        });
+    }
+    scheduler.edit(it->second.opExpirationJob, ops.getExpiration());
+    return canceled;
 }
 
 size_t
