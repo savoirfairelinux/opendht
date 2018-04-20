@@ -600,8 +600,8 @@ void
 DhtRunner::cancelListen(InfoHash h, size_t token)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops.emplace([=](SecureDht& dht) {
 #if OPENDHT_PROXY_CLIENT
-    pending_ops.emplace([=](SecureDht&) {
         auto it = listeners_.find(token);
         if (it == listeners_.end()) return;
         if (it->second.tokenClassicDht)
@@ -609,23 +609,31 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
         if (it->second.tokenProxyDht and dht_via_proxy_)
             dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
         listeners_.erase(it);
-    });
 #else
-    pending_ops.emplace([=](SecureDht& dht) {
         dht.cancelListen(h, token);
-    });
 #endif // OPENDHT_PROXY_CLIENT
+    });
     cv.notify_all();
 }
 
 void
-DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> token)
+DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
 {
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) {
-            auto tk = token.get();
-            dht.cancelListen(h, tk);
+            auto token = ftoken.get();
+#if OPENDHT_PROXY_CLIENT
+            auto it = listeners_.find(token);
+            if (it == listeners_.end()) return;
+            if (it->second.tokenClassicDht)
+                dht_->cancelListen(h, it->second.tokenClassicDht);
+            if (it->second.tokenProxyDht and dht_via_proxy_)
+                dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
+            listeners_.erase(it);
+#else
+            dht.cancelListen(h, token);
+#endif // OPENDHT_PROXY_CLIENT
         });
     }
     cv.notify_all();
