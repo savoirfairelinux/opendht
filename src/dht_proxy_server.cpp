@@ -602,13 +602,13 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                 bool isAndroid = platform == "android";
                                 std::unique_lock<std::mutex> lock(schedulerLock_);
                                 scheduler_.syncTime();
-                                auto sPuts = puts_.emplace(infoHash, SearchPuts{}).first;
                                 auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
                                 auto vid = value->id;
+                                auto sPuts = puts_.emplace(infoHash, SearchPuts{}).first;
                                 auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
                                 if (r.second) {
                                     r.first->second.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
-                                        std::cout << "Permanent put expired" << infoHash << std::endl;
+                                        std::cout << "Permanent put expired: " << infoHash << std::endl;
                                         cancelPut(infoHash, vid);
                                     });
 #if OPENDHT_PUSH_NOTIFICATIONS
@@ -616,7 +616,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                         r.first->second.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
                                         {
-                                            std::cout << "Permanent put refresh" << infoHash << std::endl;
+                                            std::cout << "Permanent put refresh: " << infoHash << std::endl;
                                             Json::Value json;
                                             json["timeout"] = infoHash.toString();
                                             json["to"] = clientId;
