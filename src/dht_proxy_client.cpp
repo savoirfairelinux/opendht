@@ -325,6 +325,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         auto nextRefresh = scheduler.time() + proxy::OP_TIMEOUT;
         search->second.puts.erase(id);
         search->second.puts.emplace(id, PermanentPut {val, scheduler.add(nextRefresh, [this, key, id]{
+            std::lock_guard<std::mutex> lock(searchLock_);
             auto s = searches_.find(key);
             if (s != searches_.end()) {
                 auto p = s->second.puts.find(id);
@@ -967,7 +968,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             if (vidIt != notification.end()) {
                 // Refresh put
                 auto vid = std::stoull(vidIt->second);
-                auto put = search.puts.at(vid);
+                auto& put = search.puts.at(vid);
                 scheduler.edit(put.refreshJob, scheduler.time());
                 loopSignal_();
             } else {
