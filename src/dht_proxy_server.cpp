@@ -588,8 +588,8 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                         if (reader->parse(char_data, char_data + b.size(), &root, &err)) {
                             // Build the Value from json
                             auto value = std::make_shared<Value>(root);
-                            auto permanent = root.isMember("permanent");
-                            std::cout << "Got put " << infoHash << " " << value << " " << (permanent ? "permanent" : "") << std::endl;
+                            bool permanent = root.isMember("permanent");
+                            std::cout << "Got put " << infoHash << " " << *value << " " << (permanent ? "permanent" : "") << std::endl;
 
                             if (permanent) {
                                 std::string pushToken, clientId, platform;
@@ -606,28 +606,30 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                 auto vid = value->id;
                                 auto sPuts = puts_.emplace(infoHash, SearchPuts{}).first;
                                 auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
+                                auto& pput = r.first->second;
                                 if (r.second) {
-                                    r.first->second.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
-                                        std::cout << "Permanent put expired: " << infoHash << std::endl;
+                                    pput.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
+                                        std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
                                         cancelPut(infoHash, vid);
                                     });
 #if OPENDHT_PUSH_NOTIFICATIONS
-                                    if (not pushToken.empty())
-                                        r.first->second.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
+                                    if (not pushToken.empty()) {
+                                        pput.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
                                         {
-                                            std::cout << "Permanent put refresh: " << infoHash << std::endl;
+                                            std::cout << "Permanent put refresh: " << infoHash << " " << vid << std::endl;
                                             Json::Value json;
                                             json["timeout"] = infoHash.toString();
                                             json["to"] = clientId;
                                             json["vid"] = std::to_string(vid);
                                             sendPushNotification(pushToken, json, isAndroid);
                                         });
+                                    }
 #endif
                                 } else {
-                                    scheduler_.edit(r.first->second.expireJob, timeout);
-                                    if (r.first->second.expireNotifyJob)
-                                        scheduler_.edit(r.first->second.expireNotifyJob, timeout - proxy::OP_MARGIN);
+                                    scheduler_.edit(pput.expireJob, timeout);
+                                    if (pput.expireNotifyJob)
+                                        scheduler_.edit(pput.expireNotifyJob, timeout - proxy::OP_MARGIN);
                                 }
                                 lock.unlock();
                                 schedulerCv_.notify_one();
@@ -652,7 +654,8 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                 } else {
                     s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
                 }
-            } catch (...) {
+            } catch (const std::exception& e) {
+                std::cout << "Error performing put: " << e.what() << std::endl;
                 s->close(restbed::INTERNAL_SERVER_ERROR, "{\"err\":\"Internal server error\"}");
             }
         }
