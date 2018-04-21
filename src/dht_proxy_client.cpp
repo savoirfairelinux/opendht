@@ -322,7 +322,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         std::lock_guard<std::mutex> lock(searchLock_);
         auto id = val->id;
         auto search = searches_.emplace(key, ProxySearch{}).first;
-        auto nextRefresh = scheduler.time() + proxy::OP_TIMEOUT;
+        auto nextRefresh = scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN;
         search->second.puts.erase(id);
         search->second.puts.emplace(id, PermanentPut {val, scheduler.add(nextRefresh, [this, key, id]{
             std::lock_guard<std::mutex> lock(searchLock_);
@@ -331,7 +331,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
                 auto p = s->second.puts.find(id);
                 if (p != s->second.puts.end()) {
                     doPut(key, p->second.value, {}, time_point::max(), true);
-                    scheduler.edit(p->second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT);
+                    scheduler.edit(p->second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
                 }
             }
         })});
