@@ -966,11 +966,17 @@ DhtRunner::setPushNotificationToken(const std::string& token) {
 }
 
 void
-DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& data) const
+DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& data)
 {
 #if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
-    if (dht_via_proxy_)
-        dht_via_proxy_->pushNotificationReceived(data);
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops_prio.emplace([=](SecureDht& dht) {
+            if (dht_via_proxy_)
+                dht_via_proxy_->pushNotificationReceived(data);
+        });
+    }
+    cv.notify_all();
 #endif
 }
 

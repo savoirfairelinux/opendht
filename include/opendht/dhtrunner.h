@@ -407,7 +407,7 @@ public:
     /**
      * Insert a push notification to process for OpenDHT
      */
-    void pushNotificationReceived(const std::map<std::string, std::string>& data) const;
+    void pushNotificationReceived(const std::map<std::string, std::string>& data);
 
     /* Proxy server mothods */
     void forwardAllMessages(bool forward);
