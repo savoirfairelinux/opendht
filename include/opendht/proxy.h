@@ -22,8 +22,8 @@
 namespace dht {
 namespace proxy {
 
-constexpr const std::chrono::seconds OP_TIMEOUT {1 * 60 * 60}; // onw hour
-constexpr const std::chrono::seconds OP_MARGIN {5 * 60}; // 5 minutes
+constexpr const std::chrono::minutes OP_TIMEOUT {1 * 10}; // one hour
+constexpr const std::chrono::minutes OP_MARGIN {5}; // 5 minutes
 constexpr const char* const HTTP_PROTO {"http://"};
 using ListenToken = uint64_t;
 

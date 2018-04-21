@@ -325,11 +325,15 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         auto nextRefresh = scheduler.time() + proxy::OP_TIMEOUT;
         search->second.puts.erase(id);
         search->second.puts.emplace(id, PermanentPut {val, scheduler.add(nextRefresh, [this, key, id]{
+            DHT_LOG.w(key, "[search %s]: PermanentPut refresh callback vid %llu", key.to_c_str(), id);
+            std::lock_guard<std::mutex> lock(searchLock_);
             auto s = searches_.find(key);
             if (s != searches_.end()) {
                 auto p = s->second.puts.find(id);
                 if (p != s->second.puts.end()) {
-                    doPut(key, p->second.value, {}, time_point::max(), true);
+                    doPut(key, p->second.value, [this](bool ok, const std::vector<Sp<Node>>&) {
+                        DHT_LOG.w("PermanentPut refresh %s", (ok ? "ok" : "failed"));
+                    }, time_point::max(), true);
                     scheduler.edit(p->second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT);
                 }
             }
@@ -957,6 +961,10 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
     scheduler.syncTime();
+    DHT_LOG.d("Got push notification");
+    for (const auto& n : notification) {
+        DHT_LOG.d("   %s -> %s", n.first.c_str(), n.second.c_str());
+    }
     try {
         std::lock_guard<std::mutex> lock(searchLock_);
         auto timeout = notification.find("timeout");
@@ -967,7 +975,8 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             if (vidIt != notification.end()) {
                 // Refresh put
                 auto vid = std::stoull(vidIt->second);
-                auto put = search.puts.at(vid);
+                auto& put = search.puts.at(vid);
+                DHT_LOG.d("refresh PermanentPut: %s %llx %p %s", key.to_c_str(), vid, put.refreshJob.get(), put.refreshJob ? (put.refreshJob->do_ ? "set":"not set") : "(null job)");
                 scheduler.edit(put.refreshJob, scheduler.time());
                 loopSignal_();
             } else {
