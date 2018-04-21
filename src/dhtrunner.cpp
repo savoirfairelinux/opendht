@@ -599,20 +599,24 @@ DhtRunner::listen(const std::string& key, GetCallback vcb, Value::Filter f, Wher
 void
 DhtRunner::cancelListen(InfoHash h, size_t token)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
 #if OPENDHT_PROXY_CLIENT
-        auto it = listeners_.find(token);
-        if (it == listeners_.end()) return;
-        if (it->second.tokenClassicDht)
-            dht_->cancelListen(h, it->second.tokenClassicDht);
-        if (it->second.tokenProxyDht and dht_via_proxy_)
-            dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
-        listeners_.erase(it);
+        pending_ops.emplace([=](SecureDht&) {
+            auto it = listeners_.find(token);
+            if (it == listeners_.end()) return;
+            if (it->second.tokenClassicDht)
+                dht_->cancelListen(h, it->second.tokenClassicDht);
+            if (it->second.tokenProxyDht and dht_via_proxy_)
+                dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
+            listeners_.erase(it);
+        });
 #else
-        dht.cancelListen(h, token);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.cancelListen(h, token);
+        });
 #endif // OPENDHT_PROXY_CLIENT
-    });
+    }
     cv.notify_all();
 }
 
@@ -621,20 +625,21 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
 {
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
-        pending_ops.emplace([=](SecureDht& dht) {
-            auto token = ftoken.get();
 #if OPENDHT_PROXY_CLIENT
-            auto it = listeners_.find(token);
+        pending_ops.emplace([=](SecureDht&) {
+            auto it = listeners_.find(ftoken.get());
             if (it == listeners_.end()) return;
             if (it->second.tokenClassicDht)
                 dht_->cancelListen(h, it->second.tokenClassicDht);
             if (it->second.tokenProxyDht and dht_via_proxy_)
                 dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
             listeners_.erase(it);
-#else
-            dht.cancelListen(h, token);
-#endif // OPENDHT_PROXY_CLIENT
         });
+#else
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.cancelListen(h, ftoken.get());
+        });
+#endif // OPENDHT_PROXY_CLIENT
     }
     cv.notify_all();
 }
@@ -971,7 +976,7 @@ DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& da
 #if OPENDHT_PROXY_CLIENT && OPENDHT_PUSH_NOTIFICATIONS
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
-        pending_ops_prio.emplace([=](SecureDht& dht) {
+        pending_ops_prio.emplace([=](SecureDht&) {
             if (dht_via_proxy_)
                 dht_via_proxy_->pushNotificationReceived(data);
         });
