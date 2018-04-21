@@ -325,14 +325,13 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
         search->second.puts.erase(id);
         search->second.puts.emplace(id, PermanentPut {val, scheduler.add(nextRefresh, [this, key, id]{
             auto s = searches_.find(key);
-            if (s == searches_.end())
-                return;
-            auto p = s->second.puts.find(id);
-            if (p == s->second.puts.end())
-                return;
-            const auto& now = scheduler.time();
-            doPut(key, p->second.value, {}, now, true);
-            scheduler.edit(p->second.refreshJob, now + proxy::OP_TIMEOUT);
+            if (s != searches_.end()) {
+                auto p = s->second.puts.find(id);
+                if (p != s->second.puts.end()) {
+                    doPut(key, p->second.value, {}, time_point::max(), true);
+                    scheduler.edit(p->second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT);
+                }
+            }
         })});
     }
     doPut(key, val, std::move(cb), created, permanent);
