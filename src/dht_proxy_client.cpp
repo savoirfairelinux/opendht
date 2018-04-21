@@ -91,6 +91,7 @@ DhtProxyClient::startProxy()
     if (serverHost_.empty()) return;
     DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
+    loopSignal_();
 }
 
 DhtProxyClient::~DhtProxyClient()
@@ -647,6 +648,7 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
         });
     }
     scheduler.edit(it->second.opExpirationJob, ops.getExpiration());
+    loopSignal_();
     return canceled;
 }
 
@@ -710,6 +712,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         }
         auto next = l->second.cache.onValues(expired ? new_values_empty : values, std::vector<Value::Id>{}, expired_ids, types, scheduler.time());
         scheduler.edit(l->second.cacheExpirationJob, next);
+        loopSignal_();
         return true;
     };
     auto pushNotifToken = std::make_shared<proxy::ListenToken>(0);
@@ -966,6 +969,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 auto vid = std::stoull(vidIt->second);
                 auto put = search.puts.at(vid);
                 scheduler.edit(put.refreshJob, scheduler.time());
+                loopSignal_();
             } else {
                 // Refresh listen
                 for (auto& list : search.listeners)
