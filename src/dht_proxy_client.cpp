@@ -1045,7 +1045,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
             }
         }, settings).get();
         auto& s = *state;
-        if (s.ok and not s.cancel)
+        if (not s.ok and not s.cancel)
             opFailed();
     });
 #endif
