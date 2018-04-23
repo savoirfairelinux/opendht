@@ -53,7 +53,6 @@ struct DhtProxyClient::Listener
     std::thread thread;
     unsigned callbackId;
     Sp<ListenState> state;
-    Sp<proxy::ListenToken> pushNotifToken;
     Sp<Scheduler::Job> refreshJob;
     Listener(ValueCache&& c, Sp<Scheduler::Job>&& j, const Sp<restbed::Request>& r, Value::Filter&& f)
         : cache(std::move(c)),
@@ -751,31 +750,19 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
 }
 
 void
-DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, const Sp<proxy::ListenToken>& token, const Sp<ListenState>& state) {
+DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, const Sp<ListenState>& state) {
 #if OPENDHT_PUSH_NOTIFICATIONS
     req->set_method("SUBSCRIBE");
     try {
-        fillBodyToGetToken(req);
-        restbed::Http::async(req, [this,state, token](const std::shared_ptr<restbed::Request>&,
+        fillBody(req);
+        restbed::Http::async(req, [this,state](const std::shared_ptr<restbed::Request>&,
                                                 const std::shared_ptr<restbed::Response>& reply) {
             auto code = reply->get_status_code();
             if (code == 200) {
                 try {
                     restbed::Http::fetch("\n", reply);
-                    std::string body;
-                    reply->get_body(body);
-
-                    std::string err;
-                    Json::Value json;
-                    Json::CharReaderBuilder rbuilder;
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                    if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
-                        if (not json.isMember("token")) {
-                            state->ok = false;
-                            return;
-                        }
-                        *token = unpackId(json, "token");
-                    }
+                    auto code = reply->get_status_code();
+                    state->ok = code == 200;
                 } catch (const std::exception& e) {
                     if (not state->cancel) {
                         DHT_LOG.e("sendSubscribe: error: %s", e.what());
@@ -860,9 +847,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
         return true;
     };
 
-    auto pushNotifToken = std::make_shared<proxy::ListenToken>(0);
     auto vcb = l->second.cb;
-    l->second.pushNotifToken = pushNotifToken;
     l->second.req = req;
 
     if (not deviceKey_.empty()) {
@@ -879,8 +864,8 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                 }
             }
         });
-        l->second.thread = std::thread([this, req,pushNotifToken, state](){
-            sendSubscribe(req,pushNotifToken,state);
+        l->second.thread = std::thread([this, req, state](){
+            sendSubscribe(req, state);
         });
     } else {
         l->second.thread = std::thread([this, req, vcb, filter, state]{
@@ -920,7 +905,6 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         Json::Value body;
         body["key"] = deviceKey_;
         body["client_id"] = pushClientId_;
-        body["token"] = std::to_string(*listener.pushNotifToken);
         Json::StreamWriterBuilder wbuilder;
         wbuilder["commentStyle"] = "None";
         wbuilder["indentation"] = "";
@@ -1054,10 +1038,12 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                     resubscribe(key, list.second);
             }
         } else {
-            auto token = std::stoull(notification.at("token"));
+            auto keyidx = notification.find("key");
+            InfoHash key(keyidx->second);
+
             for (auto& search: searches_) {
                 for (auto& list : search.second.listeners) {
-                    if (*list.second.pushNotifToken != token or list.second.state->cancel)
+                    if (search.first != key || list.second.state->cancel)
                         continue;
                     DHT_LOG.d(search.first, "[search %s] handling push notification", search.first.to_c_str());
                     auto cb = list.second.cb;
@@ -1087,17 +1073,15 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("SUBSCRIBE");
 
-    auto pushNotifToken = std::make_shared<proxy::ListenToken>(0);
     auto state = listener.state;
     if (listener.thread.joinable())
         listener.thread.join();
     state->cancel = false;
     state->ok = true;
     listener.req = req;
-    listener.pushNotifToken = pushNotifToken;
     scheduler.edit(listener.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
-    listener.thread = std::thread([this, req, pushNotifToken, state]() {
-        sendSubscribe(req, pushNotifToken, state);
+    listener.thread = std::thread([this, req, state]() {
+        sendSubscribe(req, state);
     });
 #endif
 }
@@ -1117,17 +1101,14 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
 }
 
 void
-DhtProxyClient::fillBodyToGetToken(std::shared_ptr<restbed::Request> req, unsigned token)
+DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req)
 {
     // Fill body with
     // {
     //   "key":"device_key",
-    //   "token": xxx
     // }
     Json::Value body;
     getPushRequest(body);
-    if (token > 0)
-        body["token"] = token;
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";

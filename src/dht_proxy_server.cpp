@@ -370,7 +370,6 @@ DhtProxyServer::listen(const Sp<restbed::Session>& session)
 #if OPENDHT_PUSH_NOTIFICATIONS
 
 struct DhtProxyServer::Listener {
-    std::shared_ptr<proxy::ListenToken> token;
     std::string clientId;
     std::future<size_t> internalToken;
     Sp<Scheduler::Job> expireJob;
@@ -409,12 +408,11 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     s->close(restbed::BAD_REQUEST, "{\"err\":\"No token\"}");
                     return;
                 }
-                auto tokenFromReq = unpackId(root, "token");
                 auto platform = root["platform"].asString();
                 auto isAndroid = platform == "android";
                 auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
-                std::cout << "Subscribe " << infoHash << " token:" << tokenFromReq << " client:" << clientId << std::endl;
+                std::cout << "Subscribe " << infoHash << " client:" << clientId << std::endl;
 
                 {
                     std::lock(schedulerLock_, lockListener_);
@@ -428,10 +426,9 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     auto listeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
                     for (auto& listener: listeners->second) {
                         if (listener.clientId == clientId) {
-                            *listener.token = tokenFromReq;
                             scheduler_.edit(listener.expireJob, timeout);
                             scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
-                            s->close(restbed::OK, "{\"token\": " + std::to_string(tokenFromReq) + "}\n");
+                            s->close(restbed::OK, "{}\n");
                             schedulerCv_.notify_one();
                             return;
                         }
@@ -444,15 +441,12 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     pushListener->second.isAndroid = isAndroid;
 
                     // The listener is not found, so add it.
-                    auto token = std::make_shared<proxy::ListenToken>(tokenFromReq);
-                    listener.token = token;
                     listener.internalToken = dht_->listen(infoHash,
-                        [this, token, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
+                        [this, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
                             // Build message content.
                             Json::Value json;
                             json["key"] = infoHash.toString();
                             json["to"] = clientId;
-                            json["token"] = std::to_string(*token);
                             sendPushNotification(pushToken, json, isAndroid);
                             return true;
                         }
@@ -463,18 +457,17 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                         }
                     );
                     listener.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
-                        [this, token, infoHash, pushToken, isAndroid, clientId] {
+                        [this, infoHash, pushToken, isAndroid, clientId] {
                             std::cout << "Listener: sending refresh " << infoHash << std::endl;
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
-                            json["token"] = std::to_string(*token);
                             sendPushNotification(pushToken, json, isAndroid);
                         }
                     );
                 }
                 schedulerCv_.notify_one();
-                s->close(restbed::OK, "{\"token\": " + std::to_string(tokenFromReq) + "}\n");
+                s->close(restbed::OK, "{}\n");
             } catch (...) {
                 s->close(restbed::INTERNAL_SERVER_ERROR, "{\"err\":\"Internal server error\"}");
             }
