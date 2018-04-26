@@ -780,9 +780,15 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                             }
                         }
                     } catch (std::runtime_error&) {
-                        // NOTE: Http::close() can occurs here. Ignore this.
+                        // NOTE: Http::close() can occurs here. Ignore this if it's a cancelListen
+                        // else, the proxy server is down so we must call opFailed
+                        if (!state->cancel) {
+                            DHT_LOG.w("Listen closed by the proxy server");
+                            state->ok = false;
+                        }
                     }
                 } else {
+                    DHT_LOG.w("Listen operation did not return a code 200.");
                     state->ok = false;
                 }
             }, settings).get();
