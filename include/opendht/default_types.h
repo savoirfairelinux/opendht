@@ -115,7 +115,7 @@ public:
     ImMessage(dht::Value::Id id, std::string&& m, long d = 0)
         : id(id), msg(std::move(m)), date(d) {}
     ImMessage(dht::Value::Id id, std::string&& dt, std::string&& m, long d = 0)
-        : id(id), datatype(std::move(dt)), msg(std::move(m)), date(d) {}
+        : id(id), msg(std::move(m)), datatype(std::move(dt)), date(d) {}
 
     virtual void unpackValue(const Value& v) override {
         to = v.recipient;
