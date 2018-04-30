@@ -699,6 +699,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
     };
 
     if (not deviceKey_.empty())
+        // Relaunch push listeners even if a timeout is not received (if the proxy crash for any reason)
         l->second.refreshJob = scheduler.add(scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN, [this, key, token, state] {
             if (state->cancel)
                 return;
