@@ -516,7 +516,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             });
         }
         auto prev_req = r != n.listenStatus.end() ? r->second.req : nullptr;
-        r->second.req = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
+        auto new_req = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
             [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
             { /* on done */
                 if (auto sr = ws.lock()) {
@@ -545,6 +545,11 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                 }
             }
         );
+        // Here the request may have failed and the CachedListenStatus removed
+        r = n.listenStatus.find(query);
+        if (r != n.listenStatus.end()) {
+            r->second.req = new_req;
+        }
     }
 }
 
