@@ -342,7 +342,9 @@ std::vector<SockAddr>
 DhtRunner::getPublicAddress(sa_family_t af)
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    return activeDht()->getPublicAddress(af);
+    if (auto dht = activeDht())
+        return dht->getPublicAddress(af);
+    return {};
 }
 std::vector<std::string>
 DhtRunner::getPublicAddressStr(sa_family_t af)
