@@ -278,6 +278,10 @@ private:
     size_t doListen(const InfoHash& key, ValueCallback, Value::Filter);
     bool doCancelListen(const InfoHash& key, size_t token);
 
+    struct ListenState;
+    void sendListen(const std::shared_ptr<restbed::Request>& request, const ValueCallback&, const Value::Filter& filter, const Sp<ListenState>& state);
+    void sendSubscribe(const std::shared_ptr<restbed::Request>& request, const Sp<proxy::ListenToken>&, const Sp<ListenState>& state);
+
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 
     /**
