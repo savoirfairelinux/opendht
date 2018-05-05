@@ -199,6 +199,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             continue;
         } else if (op == "cc") {
             dht->connectivityChanged();
+            continue;
         }
 #if OPENDHT_PROXY_SERVER
         else if (op == "pst") {
