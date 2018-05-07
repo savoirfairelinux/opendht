@@ -1540,10 +1540,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                     if (ack == n.acked.end() or not ack->second.first) {
                         out << ' ';
                     } else {
-                        if (ack->second.first->completed())
-                            out << 'a';
-                        else if (ack->second.first->pending())
-                            out << 'f';
+                        out << ack->second.first->getStateChar();
                     }
                 }
                 out << "] ";

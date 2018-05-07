@@ -57,6 +57,15 @@ struct Request {
     bool pending() const { return state_ == State::PENDING; }
     bool over() const { return not pending(); }
     State getState() const { return state_; }
+    char getStateChar() const {
+        switch (state_) {
+            case State::PENDING:   return 'f';
+            case State::CANCELLED: return 'c';
+            case State::EXPIRED:   return 'e';
+            case State::COMPLETED: return 'a';
+            default:               return '?';
+        }
+    }
 
     Request(State state = State::PENDING) : state_(state) {}
     Request(MessageType type, Tid tid,
