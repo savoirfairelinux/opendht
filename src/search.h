@@ -331,7 +331,7 @@ struct Dht::SearchNode {
         return ((gs != getStatus.cend() and gs->second and gs->second->pending())
                 or ack == acked.cend() or not ack->second.first or ack->second.first->pending())
                 ? time_point::max()
-                : ack->second.second - REANNOUNCE_MARGIN;
+                : (ack->second.first->completed() ? ack->second.second - REANNOUNCE_MARGIN : time_point::min());
     }
 
     /**
