@@ -858,7 +858,7 @@ DhtRunner::connectivityChanged()
 {
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
-        pending_ops.emplace([=](SecureDht& dht) {
+        pending_ops_prio.emplace([=](SecureDht& dht) {
             dht.connectivityChanged();
         });
     }
