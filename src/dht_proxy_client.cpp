@@ -956,6 +956,12 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
 {
 #if OPENDHT_PUSH_NOTIFICATIONS
     scheduler.syncTime();
+    {
+        // If a push notification is received, the proxy is up and running
+        std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+        statusIpv4_ = NodeStatus::Connected;
+        statusIpv6_ = NodeStatus::Connected;
+    }
     try {
         std::lock_guard<std::mutex> lock(searchLock_);
         auto timeout = notification.find("timeout");
