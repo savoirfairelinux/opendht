@@ -33,6 +33,11 @@
 
 namespace dht {
 
+struct DhtProxyClient::InfoState {
+    std::atomic_uint ipv4 {0}, ipv6 {0};
+    std::atomic_bool cancel {false};
+};
+
 struct DhtProxyClient::ListenState {
     std::atomic_bool ok {true};
     std::atomic_bool cancel {false};
@@ -473,10 +478,12 @@ void
 DhtProxyClient::getProxyInfos()
 {
     DHT_LOG.d("Requesting proxy server node information");
-
-    if (ongoingStatusUpdate_.test_and_set())
-        return;
-
+    auto infoState = std::make_shared<InfoState>();
+    if (infoState_) {
+        infoState_->cancel = true;
+        DHT_LOG.w("getProxyInfos(): canceling previous request");
+    }
+    infoState_ = infoState;
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         if (statusIpv4_ == NodeStatus::Disconnected)
@@ -490,11 +497,11 @@ DhtProxyClient::getProxyInfos()
 
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    if (statusThread_.joinable())
-        statusThread_.join();
-    statusThread_ = std::thread([this, serverHost]{
-        struct SuccessCount {std::atomic_uint ipv4 {0}, ipv6 {0};};
-        auto successCount = std::make_shared<SuccessCount>();
+    if (statusThread_.joinable()) {
+        statusThread_.detach();
+        statusThread_ = {};
+    }
+    statusThread_ = std::thread([this, serverHost, infoState]{
         try {
             auto hostAndService = splitPort(serverHost);
             auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
@@ -509,8 +516,10 @@ DhtProxyClient::getProxyInfos()
                 }
                 restbed::Uri uri(proxy::HTTP_PROTO + server + "/");
                 auto req = std::make_shared<restbed::Request>(uri);
+                if (infoState->cancel)
+                    return;
                 reqs.emplace_back(restbed::Http::async(req,
-                    [this, resolved_proxy, successCount](
+                    [this, resolved_proxy, infoState](
                                 const std::shared_ptr<restbed::Request>&,
                                 const std::shared_ptr<restbed::Response>& reply)
                 {
@@ -518,6 +527,8 @@ DhtProxyClient::getProxyInfos()
                     Json::Value proxyInfos;
                     if (code == 200) {
                         restbed::Http::fetch("\n", reply);
+                        auto& state = *infoState;
+                        if (state.cancel) return;
                         std::string body;
                         reply->get_body(body);
 
@@ -526,13 +537,14 @@ DhtProxyClient::getProxyInfos()
                         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                         try {
                             reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
-                        } catch (const std::exception& e) {
-                            DHT_LOG.w("Error parsing proxy infos: %s", e.what());
+                        } catch (...) {
+                            return;
                         }
                         auto family = resolved_proxy.getFamily();
-                        if      (family == AF_INET)  successCount->ipv4++;
-                        else if (family == AF_INET6) successCount->ipv6++;
-                        onProxyInfos(proxyInfos, family);
+                        if      (family == AF_INET)  state.ipv4++;
+                        else if (family == AF_INET6) state.ipv6++;
+                        if (not state.cancel)
+                            onProxyInfos(proxyInfos, family);
                     }
                 }));
             }
@@ -542,9 +554,10 @@ DhtProxyClient::getProxyInfos()
         } catch (const std::exception& e) {
             DHT_LOG.e("Error sending proxy info request: %s", e.what());
         }
-        if (successCount->ipv4 == 0) onProxyInfos(Json::Value{}, AF_INET);
-        if (successCount->ipv6 == 0) onProxyInfos(Json::Value{}, AF_INET6);
-        ongoingStatusUpdate_.clear();
+        const auto& state = *infoState;
+        if (state.cancel) return;
+        if (state.ipv4 == 0) onProxyInfos(Json::Value{}, AF_INET);
+        if (state.ipv6 == 0) onProxyInfos(Json::Value{}, AF_INET6);
     });
 }
 
@@ -691,9 +704,9 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
                         }
                     }
                 }
-            } catch (std::runtime_error&) {
+            } catch (const std::exception& e) {
                 if (not state->cancel) {
-                    DHT_LOG.w("Listen closed by the proxy server");
+                    DHT_LOG.w("Listen closed by the proxy server: %s", e.what());
                     state->ok = false;
                 }
             }
@@ -711,8 +724,7 @@ DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, cons
 #if OPENDHT_PUSH_NOTIFICATIONS
     req->set_method("SUBSCRIBE");
     fillBodyToGetToken(req);
-    auto settings = std::make_shared<restbed::Settings>();
-    restbed::Http::async(req, [state, token](const std::shared_ptr<restbed::Request>&,
+    restbed::Http::async(req, [this,state, token](const std::shared_ptr<restbed::Request>&,
                                              const std::shared_ptr<restbed::Response>& reply) {
         auto code = reply->get_status_code();
         if (code == 200) {
@@ -732,13 +744,16 @@ DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, cons
                     }
                     *token = unpackId(json, "token");
                 }
-            } catch (std::runtime_error&) {
-                // NOTE: Http::close() can occurs here. Ignore this.
+            } catch (const std::exception& e) {
+                if (not state->cancel) {
+                    DHT_LOG.e("sendSubscribe: error: %s", e.what());
+                    state->ok = false;
+                }
             }
         } else {
             state->ok = false;
         }
-    }, settings).get();
+    }).get();
     auto& s = *state;
     if (not s.ok and not s.cancel)
         opFailed();
