@@ -361,7 +361,10 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     return;
                 }
                 auto pushToken = root["key"].asString();
-                if (pushToken.empty()) return;
+                if (pushToken.empty()) {
+                    s->close(restbed::BAD_REQUEST, "{\"err\":\"No token\"}");
+                    return;
+                }
                 auto tokenFromReq = unpackId(root, "token");
                 auto platform = root["platform"].asString();
                 auto isAndroid = platform == "android";
