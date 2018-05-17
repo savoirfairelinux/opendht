@@ -105,6 +105,8 @@ DhtProxyClient::~DhtProxyClient()
     isDestroying_ = true;
     cancelAllOperations();
     cancelAllListeners();
+    if (infoState_)
+        infoState_->cancel = true;
     if (statusThread_.joinable())
         statusThread_.join();
 }
@@ -478,12 +480,13 @@ void
 DhtProxyClient::getProxyInfos()
 {
     DHT_LOG.d("Requesting proxy server node information");
+    std::lock_guard<std::mutex> l(statusLock_);
+
     auto infoState = std::make_shared<InfoState>();
-    if (infoState_) {
+    if (infoState_)
         infoState_->cancel = true;
-        DHT_LOG.w("getProxyInfos(): canceling previous request");
-    }
     infoState_ = infoState;
+
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         if (statusIpv4_ == NodeStatus::Disconnected)
@@ -498,8 +501,12 @@ DhtProxyClient::getProxyInfos()
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
     if (statusThread_.joinable()) {
-        statusThread_.detach();
-        statusThread_ = {};
+        try {
+            statusThread_.detach();
+            statusThread_ = {};
+        } catch (const std::exception& e) {
+            DHT_LOG.e("Error detaching thread: %s", e.what());
+        }
     }
     statusThread_ = std::thread([this, serverHost, infoState]{
         try {
