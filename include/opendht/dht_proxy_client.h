@@ -301,6 +301,7 @@ private:
     std::string serverHost_;
     std::string pushClientId_;
 
+    mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
     NodeStats stats4_ {};
@@ -342,7 +343,7 @@ private:
 
     Sp<InfoState> infoState_;
     std::thread statusThread_;
-    mutable std::mutex lockCurrentProxyInfos_;
+    mutable std::mutex statusLock_;
 
     Scheduler scheduler;
     /**
