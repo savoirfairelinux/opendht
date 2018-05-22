@@ -847,6 +847,7 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
             if (s != searches_.end()) {
                 auto l = s->second.listeners.find(token);
                 if (l != s->second.listeners.end()) {
+                    DHT_LOG.e("RESUBSCRIBE from timeout cause NOT RECEIVED");
                     resubscribe(key, l->second);
                 }
             }
@@ -942,7 +943,21 @@ DhtProxyClient::getConnectivityStatus()
 void
 DhtProxyClient::restartListeners()
 {
+    DHT_LOG.d("Refresh permanent puts");
+    for (auto& search: searches_) {
+        for (auto& put : search.second.puts) {
+            doPut(InfoHash{search.first.toString()}, put.second.value, {}, time_point::max(), true);
+            scheduler.edit(put.second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
+        }
+    }
     if (not deviceKey_.empty()) {
+        DHT_LOG.d("Resubscribe (connectibity changed)");
+        // Connectivity changed, refresh all subscribe
+        for (auto& search: searches_) {
+            for (auto& list : search.second.listeners) {
+                resubscribe(InfoHash{search.first.toString()}, list.second);
+            }
+        }
         return;
     }
     DHT_LOG.d("Restarting listeners");
