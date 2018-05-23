@@ -497,7 +497,7 @@ main(int argc, char **argv)
             crt = dht::crypto::generateIdentity("DHT Node", ca_tmp);
         }
 
-        dht::DhtRunner::Config config;
+        dht::DhtRunner::Config config {};
         config.dht_config.node_config.network = params.network;
         config.dht_config.node_config.maintain_storage = false;
         config.dht_config.id = crt;
