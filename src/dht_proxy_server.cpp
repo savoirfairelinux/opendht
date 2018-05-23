@@ -30,6 +30,8 @@
 #include <functional>
 #include <limits>
 
+#include <iostream>
+
 using namespace std::placeholders;
 
 namespace dht {
@@ -277,6 +279,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
     InfoHash infoHash(hash);
     if (!infoHash)
         infoHash = InfoHash::get(hash);
+    std::cout << "LISTEN" << infoHash << std::endl;
     session->fetch(content_length,
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
         {
