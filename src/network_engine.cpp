@@ -301,7 +301,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
         err == EAFNOSUPPORT ||
-        err == EPIPE)
+        err == EPIPE        ||
+        err == EPERM)
     {
         node.setExpired();
         if (not node.id)
