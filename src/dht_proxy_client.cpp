@@ -571,13 +571,14 @@ DhtProxyClient::getProxyInfos()
 void
 DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
 {
-    DHT_LOG.d("Got proxy infos %s", family == AF_INET ? "IPv4" : "IPv6");
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
     if (not proxyInfos.isMember("node_id")) {
+        DHT_LOG.e("Proxy info request failed for %s", family == AF_INET ? "IPv4" : "IPv6");
         status = NodeStatus::Disconnected;
     } else {
+        DHT_LOG.d("Got proxy reply for %s", family == AF_INET ? "IPv4" : "IPv6");
         try {
             myid = InfoHash(proxyInfos["node_id"].asString());
             stats4_ = NodeStats(proxyInfos["ipv4"]);

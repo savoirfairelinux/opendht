@@ -43,8 +43,23 @@ inline void NOLOG(char const*, va_list) {}
 struct LogMethod {
     LogMethod() = default;
 
+    LogMethod(LogMethod&& l) : func(std::move(l.func)) {}
+    LogMethod(const LogMethod& l) : func(l.func) {}
+
+    LogMethod& operator=(dht::LogMethod&& l) {
+        func = std::forward<LogMethod>(l.func);
+        return *this;
+    }
+    LogMethod& operator=(const dht::LogMethod& l) {
+        func = l.func;
+        return *this;
+    }
+
     template<typename T>
-    LogMethod(T&& t) : func(std::forward<T>(t)) {}
+    explicit LogMethod(T&& t) : func(std::forward<T>(t)) {}
+
+    template<typename T>
+    LogMethod(const T& t) : func(t) {}
 
     void operator()(char const* format, ...) const {
         va_list args;

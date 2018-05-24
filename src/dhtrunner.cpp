@@ -247,10 +247,10 @@ void
 DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)
-        dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+        dht_->setLoggers(error, warn, debug);
 #if OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
-        dht_via_proxy_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+        dht_via_proxy_->setLoggers(error, warn, debug);
 #endif
 }
 
