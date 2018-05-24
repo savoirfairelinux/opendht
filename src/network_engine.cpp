@@ -262,7 +262,13 @@ NetworkEngine::isRunning(sa_family_t af) const
 
 void
 NetworkEngine::clear()
-{}
+{
+    for (auto& request : requests) {
+        request.second->cancel();
+        request.second->node->setExpired();
+    }
+    requests.clear();
+}
 
 void
 NetworkEngine::connectivityChanged(sa_family_t af)
