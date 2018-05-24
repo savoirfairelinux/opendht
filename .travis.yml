@@ -37,7 +37,7 @@ script:
     # proxy builds
     if [[ "$OPENDHT_TEST_JOB" != *"opendht.llvm"* ]] && [[ "$OPENDHT_TEST_JOB" != *"opendht.classic"* ]]; then
       docker build -t opendht-proxy -f docker/DockerfileTravisProxy .;
-      options='';
+      options='-DOPENDHT_SANITIZE=On ';
       if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserver"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
         options+='-DOPENDHT_PROXY_SERVER=ON ';
       else
