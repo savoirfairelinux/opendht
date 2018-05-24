@@ -315,7 +315,7 @@ public:
         DHT_LOG.DEBUG = debug;
         DHT_LOG.WARN = warn;
         DHT_LOG.ERR = error;
-        dht_->setLoggers(std::forward<LogMethod>(error), std::forward<LogMethod>(warn), std::forward<LogMethod>(debug));
+        dht_->setLoggers(error, warn, debug);
     }
 
     /**
