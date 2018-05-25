@@ -661,7 +661,7 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
     if (s < 0)
         return EAFNOSUPPORT;
 #ifdef MSG_NOSIGNAL
-    flags &= MSG_NOSIGNAL;
+    flags |= MSG_NOSIGNAL;
 #endif
     if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
