@@ -286,7 +286,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
-        DHT_LOG.e(node.id, "[node %s] expired !", node.toString().c_str());
+        DHT_LOG.d(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
