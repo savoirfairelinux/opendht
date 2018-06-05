@@ -121,19 +121,19 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         // Remove last listeners
         removeClosedListeners(false);
     });
-    schedulerThread_ = std::thread([this]() {
+    schedulerThread_ = std::thread([this, dht]() {
         while (not service_->is_up() and not stopListeners) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
-        printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this]{
+        printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this, dht]{
             if (service_->is_up() and not stopListeners) {
                 std::cout << getStats().toString() << std::endl;
                 scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
             }
-            if (not stopListeners) {
+            if (not stopListeners && dht) {
                 // Refresh stats cache
-                auto newIpv4Stats = dht_->getNodesStats(AF_INET);
-                auto newIpv6Stats = dht_->getNodesStats(AF_INET6);
+                auto newIpv4Stats = dht->getNodesStats(AF_INET);
+                auto newIpv6Stats = dht->getNodesStats(AF_INET6);
                 {
                     std::lock_guard<std::mutex> lck(statsMutex_);
                     ipv4Stats_ = std::move(newIpv4Stats);
