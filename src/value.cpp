@@ -22,9 +22,9 @@
 #include "default_types.h"
 #include "securedht.h" // print certificate ID
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
 #include "base64.h"
-#endif //OPENDHT_PROXY_SERVER
+#endif
 
 
 namespace dht {
@@ -172,7 +172,7 @@ Value::msgpack_unpack_body(const msgpack::object& o)
     }
 }
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
 Value::Value(Json::Value& json)
 {
     id = Value::Id(unpackId(json, "id"));
@@ -248,7 +248,7 @@ unpackId(const Json::Value& json, const std::string& key) {
     } catch (...) {}
     return ret;
 }
-#endif //OPENDHT_PROXY_SERVER
+#endif
 
 bool
 FieldValue::operator==(const FieldValue& vfd) const

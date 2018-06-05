@@ -47,9 +47,21 @@ if (NOT OPENDHT_ARGON2)
         set(OPENDHT_ARGON2 ON)
     endif()
 endif ()
+
+pkg_search_module(Jsoncpp jsoncpp)
+if (Jsoncpp_FOUND)
+    add_definitions(-DOPENDHT_JSONCPP)
+    list (APPEND opendht_SOURCES
+      src/base64.h
+      src/base64.cpp
+    )
+endif()
+
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
     find_package(Restbed REQUIRED)
-    pkg_search_module(Jsoncpp jsoncpp)
+    if (!Jsoncpp_FOUND)
+        message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
+    endif()
 endif()
 
 # Build flags
@@ -207,12 +219,7 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h
   )
-  list (APPEND opendht_SOURCES
-    src/base64.h
-    src/base64.cpp
-  )
 endif ()
-
 
 if(OPENDHT_ARGON2)
     # make sure argon2 submodule is up to date and initialized

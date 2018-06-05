@@ -29,7 +29,6 @@
 #include <chrono>
 #include <functional>
 #include <limits>
-
 #include <iostream>
 
 using namespace std::placeholders;
@@ -132,12 +131,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
             }
             if (not stopListeners) {
                 // Refresh stats cache
-                auto newIpv4Stats = dht_->getNodesStats(AF_INET);
-                auto newIpv6Stats = dht_->getNodesStats(AF_INET6);
+                auto newInfo = dht_->getNodeInfo();
                 {
                     std::lock_guard<std::mutex> lck(statsMutex_);
-                    ipv4Stats_ = std::move(newIpv4Stats);
-                    ipv6Stats_ = std::move(newIpv6Stats);
+                    nodeInfo_ = std::move(newInfo);
                 }
             }
         });
@@ -213,22 +210,16 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
             try {
                 if (dht_) {
                     Json::Value result;
-                    auto id = dht_->getId();
-                    if (id)
-                        result["id"] = id.toString();
-                    result["node_id"] = dht_->getNodeId().toString();
                     {
                         std::lock_guard<std::mutex> lck(statsMutex_);
-                        if (ipv4Stats_.good_nodes == 0 && ipv6Stats_.good_nodes == 0) {
+                        if (nodeInfo_.ipv4.good_nodes == 0 && nodeInfo_.ipv6.good_nodes == 0) {
                             // NOTE: we want to avoid the disconnected state as much as possible
                             // So, if the node is disconnected, we should force the update of the cache
                             // and reconnect as soon as possible
                             // This should not happen much
-                            ipv4Stats_ = dht_->getNodesStats(AF_INET);
-                            ipv6Stats_ = dht_->getNodesStats(AF_INET);
+                            nodeInfo_ = dht_->getNodeInfo();
                         }
-                        result["ipv4"] = ipv4Stats_.toJson();
-                        result["ipv6"] = ipv6Stats_.toJson();
+                        result = nodeInfo_.toJson();
                     }
                     result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
                     Json::StreamWriterBuilder wbuilder;

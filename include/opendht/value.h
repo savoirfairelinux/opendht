@@ -37,9 +37,9 @@
 #include <chrono>
 #include <set>
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
 #include <json/json.h>
-#endif //OPENDHT_PROXY_SERVER
+#endif
 
 namespace dht {
 
@@ -372,13 +372,13 @@ struct OPENDHT_PUBLIC Value
     Value(ValueType::Id t, const uint8_t* dat_ptr, size_t dat_len, Id id = INVALID_ID)
      : id(id), type(t), data(dat_ptr, dat_ptr+dat_len) {}
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
     /**
      * Build a value from a json object
      * @param json
      */
     Value(Json::Value& json);
-#endif //OPENDHT_PROXY_SERVER
+#endif
 
     template <typename Type>
     Value(ValueType::Id t, const Type& d, Id id = INVALID_ID)
@@ -451,7 +451,7 @@ struct OPENDHT_PUBLIC Value
         return ss.str();
     }
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
     /**
      * Build a json object from a value
      * Example:
@@ -461,7 +461,7 @@ struct OPENDHT_PUBLIC Value
      * }
      */
     Json::Value toJson() const;
-#endif //OPENDHT_PROXY_SERVER
+#endif
 
     /** Return the size in bytes used by this value in memory (minimum). */
     size_t size() const;
@@ -996,7 +996,7 @@ unpackVector(const std::vector<std::shared_ptr<Value>>& vals) {
     return ret;
 }
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
 uint64_t unpackId(const Json::Value& json, const std::string& key);
 #endif
 

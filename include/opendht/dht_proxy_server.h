@@ -239,8 +239,7 @@ private:
 
     Sp<Scheduler::Job> printStatsJob_;
     mutable std::mutex statsMutex_;
-    mutable NodeStats ipv4Stats_ {};
-    mutable NodeStats ipv6Stats_ {};
+    mutable NodeInfo nodeInfo_ {};
 
     // Handle client quit for listen.
     // NOTE: can be simplified when we will supports restbed 5.0
