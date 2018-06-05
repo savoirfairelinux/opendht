@@ -124,20 +124,6 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         while (not service_->is_up() and not stopListeners) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
-        printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this]{
-            if (service_->is_up() and not stopListeners) {
-                std::cout << getStats().toString() << std::endl;
-                scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
-            }
-            if (not stopListeners) {
-                // Refresh stats cache
-                auto newInfo = dht_->getNodeInfo();
-                {
-                    std::lock_guard<std::mutex> lck(statsMutex_);
-                    nodeInfo_ = std::move(newInfo);
-                }
-            }
-        });
         while (service_->is_up()  and not stopListeners) {
             std::unique_lock<std::mutex> lock(schedulerLock_);
             auto next = scheduler_.run();
@@ -147,8 +133,18 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
                 schedulerCv_.wait_until(lock, next);
         }
     });
-
     dht->forwardAllMessages(true);
+    printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this] {
+        if (stopListeners) return;
+        if (service_->is_up())
+            std::cout << getStats().toString() << std::endl;
+        // Refresh stats cache
+        auto newInfo = dht_->getNodeInfo();
+        {
+            std::lock_guard<std::mutex> lck(statsMutex_);
+            nodeInfo_ = std::move(newInfo);
+        }
+    });
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -167,7 +163,7 @@ DhtProxyServer::stop()
         auto listener = currentListeners_.begin();
         while (listener != currentListeners_.end()) {
             listener->session->close();
-            ++ listener;
+            ++listener;
         }
     }
     stopListeners = true;
