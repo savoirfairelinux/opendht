@@ -68,7 +68,7 @@ NodeStats::toString() const
     return ss.str();
 }
 
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_JSONCPP
 /**
  * Build a json object from a NodeStats
  */
@@ -98,6 +98,32 @@ NodeStats::NodeStats(const Json::Value& val)
     if (val.isMember("table_depth"))
         table_depth = static_cast<unsigned>(val["table_depth"].asLargestUInt());
 }
-#endif //OPENDHT_PROXY_SERVER
+
+/**
+ * Build a json object from a NodeStats
+ */
+Json::Value
+NodeInfo::toJson() const
+{
+    Json::Value val;
+    if (id)
+        val["id"] = id.toString();
+    val["node_id"] = node_id.toString();
+    val["ipv4"] = ipv4.toJson();
+    val["ipv6"] = ipv6.toJson();
+    return val;
+}
+
+NodeInfo::NodeInfo(const Json::Value& v)
+{
+    if (v.isMember("id"))
+        id = InfoHash(v["id"].asString());
+    node_id = InfoHash(v["node_id"].asString());
+    ipv4 = NodeStats(v["ipv4"]);
+    ipv6 = NodeStats(v["ipv6"]);
+}
+
+#endif
+
 
 }

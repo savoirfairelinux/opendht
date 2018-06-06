@@ -29,7 +29,6 @@
 #include <chrono>
 #include <functional>
 #include <limits>
-
 #include <iostream>
 
 using namespace std::placeholders;
@@ -125,22 +124,6 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         while (not service_->is_up() and not stopListeners) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
-        printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this]{
-            if (service_->is_up() and not stopListeners) {
-                std::cout << getStats().toString() << std::endl;
-                scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
-            }
-            if (not stopListeners) {
-                // Refresh stats cache
-                auto newIpv4Stats = dht_->getNodesStats(AF_INET);
-                auto newIpv6Stats = dht_->getNodesStats(AF_INET6);
-                {
-                    std::lock_guard<std::mutex> lck(statsMutex_);
-                    ipv4Stats_ = std::move(newIpv4Stats);
-                    ipv6Stats_ = std::move(newIpv6Stats);
-                }
-            }
-        });
         while (service_->is_up()  and not stopListeners) {
             std::unique_lock<std::mutex> lock(schedulerLock_);
             auto next = scheduler_.run();
@@ -150,8 +133,18 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
                 schedulerCv_.wait_until(lock, next);
         }
     });
-
     dht->forwardAllMessages(true);
+    printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this] {
+        if (stopListeners) return;
+        if (service_->is_up())
+            std::cout << getStats().toString() << std::endl;
+        // Refresh stats cache
+        auto newInfo = dht_->getNodeInfo();
+        {
+            std::lock_guard<std::mutex> lck(statsMutex_);
+            nodeInfo_ = std::move(newInfo);
+        }
+    });
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -170,7 +163,7 @@ DhtProxyServer::stop()
         auto listener = currentListeners_.begin();
         while (listener != currentListeners_.end()) {
             listener->session->close();
-            ++ listener;
+            ++listener;
         }
     }
     stopListeners = true;
@@ -213,22 +206,16 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
             try {
                 if (dht_) {
                     Json::Value result;
-                    auto id = dht_->getId();
-                    if (id)
-                        result["id"] = id.toString();
-                    result["node_id"] = dht_->getNodeId().toString();
                     {
                         std::lock_guard<std::mutex> lck(statsMutex_);
-                        if (ipv4Stats_.good_nodes == 0 && ipv6Stats_.good_nodes == 0) {
+                        if (nodeInfo_.ipv4.good_nodes == 0 && nodeInfo_.ipv6.good_nodes == 0) {
                             // NOTE: we want to avoid the disconnected state as much as possible
                             // So, if the node is disconnected, we should force the update of the cache
                             // and reconnect as soon as possible
                             // This should not happen much
-                            ipv4Stats_ = dht_->getNodesStats(AF_INET);
-                            ipv6Stats_ = dht_->getNodesStats(AF_INET);
+                            nodeInfo_ = dht_->getNodeInfo();
                         }
-                        result["ipv4"] = ipv4Stats_.toJson();
-                        result["ipv6"] = ipv6Stats_.toJson();
+                        result = nodeInfo_.toJson();
                     }
                     result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
                     Json::StreamWriterBuilder wbuilder;

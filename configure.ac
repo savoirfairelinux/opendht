@@ -101,9 +101,51 @@ LT_LANG(C++)
 AX_CXX_COMPILE_STDCXX(11,[noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
+
+AC_ARG_ENABLE([proxy_server], AS_HELP_STRING([--enable-proxy-server], [Enable proxy server ability]), proxy_server=yes, proxy_server=no)
+AM_CONDITIONAL(ENABLE_PROXY_SERVER, test x$proxy_server == xyes)
+
+AC_ARG_ENABLE([push_notifications], AS_HELP_STRING([--enable-push-notifications], [Enable push notifications support]), push_notifications=yes, push_notifications=no)
+AM_CONDITIONAL(ENABLE_PUSH_NOTIFICATIONS, test x$push_notifications == xyes)
+
+AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
+	[Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
+AM_CONDITIONAL(ENABLE_PROXY_SERVER_IDENTITY, test x$proxy_server_identity == xyes -a x$proxy_server == xyes)
+AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
+	[Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
+
+AC_ARG_ENABLE([proxy_client], AS_HELP_STRING([--enable-proxy-client], [Enable proxy client ability]), proxy_client=yes, proxy_client=no)
+AM_CONDITIONAL(ENABLE_PROXY_CLIENT, test x$proxy_client == xyes)
+
+AC_ARG_ENABLE([tests], AS_HELP_STRING([--enable-tests], [Enable tests]), build_tests=yes, build_tests=no)
+AM_CONDITIONAL(ENABLE_TESTS, test x$build_tests == xyes)
+AM_COND_IF([ENABLE_TESTS], [
+	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
+])
+
+AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes | test x$proxy_server == xyes)
+
 PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
+
+AC_ARG_WITH([jsoncpp], AS_HELP_STRING([--without-jsoncpp], [Build without JsonCpp support]))
+AS_IF([test "x$with_jsoncpp" != "xno"], 
+      [PKG_CHECK_MODULES([JsonCpp], [jsoncpp >= 1.7.2], [have_jsoncpp=yes], [have_jsoncpp=no])],
+      [have_jsoncpp=no])
+AS_IF([test "x$have_jsoncpp" = "xyes"], [
+    AC_MSG_NOTICE([Using JsonCpp])
+    CPPFLAGS+=" -DOPENDHT_JSONCPP=1"
+], [
+    AC_MSG_NOTICE([Not using JsonCpp])
+    AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
+])
+
+AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
+	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
+	LDFLAGS="${LDFLAGS} -lrestbed"
+])
+
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
 dnl Check for Argon2
@@ -135,58 +177,21 @@ AM_COND_IF([ENABLE_TOOLS], [
   ])
 ])
 
-AC_ARG_ENABLE([proxy_server], AS_HELP_STRING([--enable-proxy-server], [Enable proxy server ability]), proxy_server=yes, proxy_server=no)
-AM_CONDITIONAL(ENABLE_PROXY_SERVER, test x$proxy_server == xyes)
-AC_ARG_ENABLE([push_notifications], AS_HELP_STRING([--enable-push-notifications], [Enable push notifications support]), push_notifications=yes, push_notifications=no)
-AM_CONDITIONAL(ENABLE_PUSH_NOTIFICATIONS, test x$push_notifications == xyes)
-AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
-	[Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
-AM_CONDITIONAL(ENABLE_PROXY_SERVER_IDENTITY, test x$proxy_server_identity == xyes)
-AC_ARG_ENABLE([proxy_client], AS_HELP_STRING([--enable-proxy-client], [Enable proxy client ability]), proxy_client=yes, proxy_client=no)
-AM_CONDITIONAL(ENABLE_PROXY_CLIENT, test x$proxy_client == xyes)
+AM_COND_IF(ENABLE_PROXY_SERVER,
+    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=true"],
+    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"])
 
-AM_COND_IF([ENABLE_PROXY_SERVER], [
-	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
-	PKG_CHECK_MODULES([Jsoncpp], [jsoncpp >= 1.7.2])
-	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=true -ljsoncpp -lrestbed"
-], [
-	CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"
-])
+AM_COND_IF(ENABLE_PROXY_CLIENT,
+    [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT=true"],
+    [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT=false"])
 
-AM_COND_IF([ENABLE_PUSH_NOTIFICATIONS], [
-	CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=true"
-], [
-	CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=false"
-])
+AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS,
+    [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=true"],
+    [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=false"])
 
-AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-identity],
-    [Enable proxy server ability]), proxy_server_identity=yes, proxy_server_identity=no)
-AM_CONDITIONAL(ENABLE_PROXY_SERVER_IDENTITY, test x$proxy_server_identity == xyes -a x$proxy_server == xyes)
-AM_COND_IF([ENABLE_PROXY_SERVER_IDENTITY], [
-    CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=true"
-], [
-    CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=false"
-])
-
-AM_COND_IF([ENABLE_PROXY_CLIENT], [
-	CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT=true"
-], [
-	CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT=false"
-])
-
-AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes | test x$proxy_server == xyes)
-AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
-	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
-	PKG_CHECK_MODULES([Jsoncpp], [jsoncpp >= 1.7.4])
-	CPPFLAGS="${CPPFLAGS} ${Jsoncpp_CFLAGS}"
-	LDFLAGS="${LDFLAGS} ${Jsoncpp_LIBS} -lrestbed"
-], [])
-
-AC_ARG_ENABLE([tests], AS_HELP_STRING([--enable-tests], [Enable tests]), build_tests=yes, build_tests=no)
-AM_CONDITIONAL(ENABLE_TESTS, test x$build_tests == xyes)
-AM_COND_IF([ENABLE_TESTS], [
-	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
-])
+AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY,
+    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=true"],
+    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=false"])
 
 AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
 
@@ -202,6 +207,6 @@ AM_COND_IF([USE_CYTHON], [
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  tools/Makefile
-								 tests/Makefile
+                 tests/Makefile
                  opendht.pc])
 AC_OUTPUT

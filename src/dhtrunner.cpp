@@ -301,6 +301,17 @@ DhtRunner::getNodesStats(sa_family_t af) const
     return activeDht()->getNodesStats(af);
 }
 
+NodeInfo
+DhtRunner::getNodeInfo() const {
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    NodeInfo info;
+    info.id = getId();
+    info.node_id = getNodeId();
+    info.ipv4 = dht_->getNodesStats(AF_INET);
+    info.ipv6 = dht_->getNodesStats(AF_INET6);
+    return info;
+}
+
 std::vector<unsigned>
 DhtRunner::getNodeMessageStats(bool in) const
 {

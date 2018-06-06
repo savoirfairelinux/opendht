@@ -1,7 +1,7 @@
 lib_LTLIBRARIES = libopendht.la
 
-libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@
-libopendht_la_LIBADD   = @Argon2_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@
+libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@
+libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@
 libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@
 libopendht_la_SOURCES  = \
         dht.cpp \

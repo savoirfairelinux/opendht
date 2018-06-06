@@ -27,9 +27,9 @@
 #include <memory>
 #include <functional>
 
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_JSONCPP
 #include <json/json.h>
-#endif //OPENDHT_PROXY_SERVER
+#endif
 
 namespace dht {
 
@@ -52,14 +52,35 @@ struct OPENDHT_PUBLIC NodeStats {
     unsigned table_depth {0};
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
     std::string toString() const;
-#if OPENDHT_PROXY_SERVER || OPENDHT_PROXY_CLIENT
+
+#ifdef OPENDHT_JSONCPP
     /**
      * Build a json object from a NodeStats
      */
     Json::Value toJson() const;
     NodeStats() {};
     explicit NodeStats(const Json::Value& v);
-#endif //OPENDHT_PROXY_SERVER
+#endif
+
+    MSGPACK_DEFINE_MAP(good_nodes, dubious_nodes, cached_nodes, incoming_nodes, table_depth)
+};
+
+struct OPENDHT_PUBLIC NodeInfo {
+    InfoHash id;
+    InfoHash node_id;
+    NodeStats ipv4;
+    NodeStats ipv6;
+
+#ifdef OPENDHT_JSONCPP
+    /**
+     * Build a json object from a NodeStats
+     */
+    Json::Value toJson() const;
+    NodeInfo() {};
+    explicit NodeInfo(const Json::Value& v);
+#endif
+
+    MSGPACK_DEFINE_MAP(id, node_id, ipv4, ipv6)
 };
 
 /**
