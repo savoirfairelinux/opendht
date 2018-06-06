@@ -138,6 +138,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         if (stopListeners) return;
         if (service_->is_up())
             std::cout << getStats().toString() << std::endl;
+        scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
         // Refresh stats cache
         auto newInfo = dht_->getNodeInfo();
         {
