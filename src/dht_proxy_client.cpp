@@ -953,7 +953,7 @@ DhtProxyClient::restartListeners()
         for (auto& put : search.second.puts) {
             if (!put.second.ok) {
                 auto ok = put.second.ok;
-                doPut(InfoHash{search.first.toString()}, put.second.value,
+                doPut(search.first, put.second.value,
                 [ok](bool result, const std::vector<std::shared_ptr<dht::Node> >&){
                     *ok = !result;
                 }, time_point::max(), true);
@@ -967,7 +967,7 @@ DhtProxyClient::restartListeners()
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
                 if (!listener.second.state->ok)
-                    resubscribe(InfoHash{search.first.toString()}, listener.second);
+                    resubscribe(search.first, listener.second);
         return;
     }
     DHT_LOG.d("Restarting listeners");
