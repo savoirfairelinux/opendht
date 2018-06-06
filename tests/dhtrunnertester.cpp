@@ -47,10 +47,24 @@ DhtRunnerTester::testConstructors() {
 
 void
 DhtRunnerTester::testGetPut() {
+    bool done {false};
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+
     auto key = dht::InfoHash::get("123");
     dht::Value val {"hey"};
     auto val_data = val.data;
-    node1.put(key, std::move(val));
+    node1.put(key, std::move(val), [&](bool ok) {
+        {
+            std::lock_guard<std::mutex> lk(cv_m);
+            done = ok;
+        }
+        cv.notify_all();
+    });
+    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(done);
+
     auto vals = node2.get(key).get();
     CPPUNIT_ASSERT(not vals.empty());
     CPPUNIT_ASSERT(vals.front()->data == val_data);

@@ -80,7 +80,7 @@ DhtProxyTester::testGetPut() {
 
 void
 DhtProxyTester::testListen() {
-    bool done = false;
+    bool done {false};
     std::condition_variable cv;
     std::mutex cv_m;
     std::unique_lock<std::mutex> lk(cv_m);
@@ -90,18 +90,25 @@ DhtProxyTester::testListen() {
     // should retrieve this value
     dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
     auto firstVal_data = firstVal.data;
-    nodePeer.put(key, std::move(firstVal), [&](bool) {
-        done = true;
+    nodePeer.put(key, std::move(firstVal), [&](bool ok) {
+        {
+            std::lock_guard<std::mutex> lk(cv_m);
+            done = ok;
+        }
         cv.notify_all();
     });
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(done);
     done = false;
 
     auto values = std::vector<dht::Blob>();
-    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool) {
-        for (const auto& value : v)
-            values.emplace_back(value->data);
-        done = true;
+    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v) {
+        {
+            std::lock_guard<std::mutex> lk(cv_m);
+            for (const auto& value : v)
+                values.emplace_back(value->data);
+            done = true;
+        }
         cv.notify_all();
         return true;
     });
@@ -109,20 +116,25 @@ DhtProxyTester::testListen() {
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
     done = false;
     // Here values should contains 2 values
-    CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
+    CPPUNIT_ASSERT_EQUAL(values.size(), (size_t)1);
     CPPUNIT_ASSERT(values.front() == firstVal_data);
 
     // And the listen should retrieve futures values
     // All values
     dht::Value secondVal {"You're a monster"};
     auto secondVal_data = secondVal.data;
-    nodePeer.put(key, std::move(secondVal), [&](bool) {
-        done = true;
+    nodePeer.put(key, std::move(secondVal), [&](bool ok) {
+        {
+            std::lock_guard<std::mutex> lk(cv_m);
+            done = ok;
+        }
         cv.notify_all();
     });
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(done);
+
     // Here values should contains 3 values
-    CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
+    CPPUNIT_ASSERT_EQUAL(values.size(), (size_t)2);
     CPPUNIT_ASSERT(values.back() == secondVal_data);
 }
 
