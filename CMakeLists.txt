@@ -307,6 +307,8 @@ IF(OPENDHT_TESTS)
     list (APPEND test_FILES
       tests/infohashtester.h
       tests/infohashtester.cpp
+      tests/cryptotester.h
+      tests/cryptotester.cpp
       tests/dhtrunnertester.h
       tests/dhtrunnertester.cpp
     )
