@@ -138,13 +138,13 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         if (stopListeners) return;
         if (service_->is_up())
             std::cout << getStats().toString() << std::endl;
-        scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
         // Refresh stats cache
         auto newInfo = dht_->getNodeInfo();
         {
             std::lock_guard<std::mutex> lck(statsMutex_);
             nodeInfo_ = std::move(newInfo);
         }
+        scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
     });
 }
 
@@ -202,7 +202,7 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b*/)
+        [this](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b*/) mutable
         {
             try {
                 if (dht_) {
