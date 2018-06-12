@@ -410,10 +410,11 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
             { /* on probing done */
                 auto sr = ws.lock();
                 if (not sr) return;
+                const auto& now = scheduler.time();
+                sr->insertNode(req.node, scheduler.time(), answer.ntoken);
                 auto sn = sr->getNode(req.node);
                 if (not sn) return;
 
-                const auto& now = scheduler.time();
                 if (not sn->isSynced(now)) {
                     /* Search is now unsynced. Let's call searchStep to sync again. */
                     scheduler.edit(sr->nextSearchStep, now);
@@ -539,6 +540,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             { /* on new values */
                 if (auto sr = ws.lock()) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
+                    sr->insertNode(req.node, scheduler.time(), answer.ntoken);
                     if (auto sn = sr->getNode(node)) {
                         sn->onValues(query, std::move(answer), types, scheduler);
                     }
@@ -2361,9 +2363,6 @@ Dht::onAnnounceDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>
     DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got reply to put!",
             sr->id.toString().c_str(), node->toString().c_str());
     searchSendGetValues(sr);
-    /* if (auto sn = sr->getNode(req->node)) { */
-    /*     sn->setRefreshTime(answer.vid, now + answer) */
-    /* } */
     sr->checkAnnounced(answer.vid);
 }
 

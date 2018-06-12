@@ -302,7 +302,7 @@ struct Dht::SearchNode {
             return isListening(now, ls);
     }
     bool isListening(time_point now, NodeListenerStatus::const_iterator listen_status) const {
-        if (listen_status == listenStatus.end())
+        if (listen_status == listenStatus.end() or not listen_status->second.req)
             return false;
         return listen_status->second.req->reply_time + LISTEN_EXPIRE_TIME > now;
     }
