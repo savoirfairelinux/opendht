@@ -381,15 +381,7 @@ public:
      */
     void join();
 
-    void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "") {
-#if OPENDHT_PROXY_CLIENT
-        if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
-            return;
-        config_.proxy_server = proxy;
-        config_.push_node_id = pushNodeId;
-        enableProxy(use_proxy and not config_.proxy_server.empty());
-#endif
-    }
+    void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "");
 
     /**
      * Start or stop the proxy

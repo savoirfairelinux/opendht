@@ -908,6 +908,21 @@ DhtRunner::activeDht() const
 }
 
 void
+DhtRunner::setProxyServer(const std::string& proxy, const std::string& pushNodeId)
+{
+#if OPENDHT_PROXY_CLIENT
+    if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
+        return;
+    config_.proxy_server = proxy;
+    config_.push_node_id = pushNodeId;
+    enableProxy(use_proxy and not config_.proxy_server.empty());
+#else
+    if (not proxy.empty())
+        std::cerr << "DHT proxy requested but OpenDHT built without proxy support." << std::endl;
+#endif
+}
+
+void
 DhtRunner::enableProxy(bool proxify)
 {
 #if OPENDHT_PROXY_CLIENT
