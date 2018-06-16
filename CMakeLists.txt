@@ -194,11 +194,6 @@ if (OPENDHT_PROXY_SERVER)
   list (APPEND opendht_SOURCES
     src/dht_proxy_server.cpp
   )
-  if (OPENDHT_PUSH_NOTIFICATIONS)
-    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=true)
-  else ()
-    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=false)
-  endif ()
 else ()
     add_definitions(-DENABLE_PROXY_SERVER=false)
 endif ()
@@ -216,6 +211,12 @@ else ()
 endif ()
 
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+  if (OPENDHT_PUSH_NOTIFICATIONS)
+    message("Using push notification")
+    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=true)
+  else ()
+    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=false)
+  endif ()
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h
   )
