@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
+#include "callbacks.h"
 
 #include <vector>
 #include <string>
@@ -408,6 +409,10 @@ public:
         return stats;
     }
 
+    MessageStats getMessageStats(bool in) {
+        return in ? in_stats : out_stats;
+    }
+
     void blacklistNode(const Sp<Node>& n);
 
     std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) {
@@ -456,16 +461,6 @@ private:
      * be made before the request expires.
      */
     void sendRequest(const Sp<Request>& request);
-
-    struct MessageStats {
-        unsigned ping    {0};
-        unsigned find    {0};
-        unsigned get     {0};
-        unsigned put     {0};
-        unsigned listen  {0};
-        unsigned refresh {0};
-    };
-
 
     // basic wrapper for socket sendto function
     int send(const char *buf, size_t len, int flags, const SockAddr& addr);

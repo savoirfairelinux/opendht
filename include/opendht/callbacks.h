@@ -83,6 +83,16 @@ struct OPENDHT_PUBLIC NodeInfo {
     MSGPACK_DEFINE_MAP(id, node_id, ipv4, ipv6)
 };
 
+struct OPENDHT_PUBLIC MessageStats {
+    unsigned packets {0};
+    unsigned ping    {0};
+    unsigned find    {0};
+    unsigned get     {0};
+    unsigned put     {0};
+    unsigned listen  {0};
+    unsigned refresh {0};
+};
+
 /**
  * Dht configuration.
  */

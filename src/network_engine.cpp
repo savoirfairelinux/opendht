@@ -403,6 +403,7 @@ NetworkEngine::isNodeBlacklisted(const SockAddr& addr) const
 void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
 {
+    in_stats.packets++;
     if (isMartian(from)) {
         DHT_LOG.w("Received packet from martian node %s", from.toString().c_str());
         return;
@@ -663,6 +664,8 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
 #ifdef MSG_NOSIGNAL
     flags |= MSG_NOSIGNAL;
 #endif
+
+    out_stats.packets++;
     if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
         DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
