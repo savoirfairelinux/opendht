@@ -42,6 +42,7 @@
 namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
+static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 
 struct DhtRunner::Listener {
     size_t tokenClassicDht;
@@ -523,6 +524,10 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                     if (rc > 0) {
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
+                            if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
+                                std::cerr << "Dropping packet: queue is full!" << std::endl;
+                                continue;
+                            }
                             rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len), clock::now()});
                         }
                         cv.notify_all();
