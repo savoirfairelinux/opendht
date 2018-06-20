@@ -319,11 +319,12 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
 
     std::weak_ptr<Search> ws = sr;
     auto cb = sr->callbacks.begin();
+    static const auto ANY_QUERY = std::make_shared<Query>(Select {}, Where {}, true);
     do { /* for all requests to send */
         SearchNode* n = nullptr;
-        auto query = not sr->callbacks.empty() ? cb->second.query : std::make_shared<Query>(Select {}, Where {}, true);
-        const time_point up = not sr->callbacks.empty() and update
-                                ? sr->getLastGetTime(query)
+        auto& query = sr->callbacks.empty() ? ANY_QUERY : cb->second.query;
+        const time_point up = (not sr->callbacks.empty() and update)
+                                ? sr->getLastGetTime(*query)
                                 : time_point::min();
 
         if (pn and pn->canGet(now, up, query)) {

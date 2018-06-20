@@ -136,7 +136,7 @@ struct Dht::SearchNode {
      *
      * @return true if we can send get, else false.
      */
-    bool canGet(time_point now, time_point update, Sp<Query> q = {}) const {
+    bool canGet(time_point now, time_point update, const Sp<Query>& q) const {
         if (node->isExpired())
             return false;
 
@@ -147,9 +147,9 @@ struct Dht::SearchNode {
             if (s.second and s.second->pending())
                 pending = true;
             if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
-                if (s.second->pending() and not pending_sq_status)
+                if (s.second->pending())
                     pending_sq_status = true;
-                if (s.second->completed() and not (update > s.second->reply_time) and not completed_sq_status)
+                else if (s.second->completed() and not (update > s.second->reply_time))
                     completed_sq_status = true;
                 if (completed_sq_status and pending_sq_status)
                     break;
@@ -157,7 +157,7 @@ struct Dht::SearchNode {
         }
 
         return (not pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
-                not (hasStartedPagination(q) or completed_sq_status or pending_sq_status);
+                not (completed_sq_status or pending_sq_status or hasStartedPagination(q));
     }
 
     /**
@@ -430,7 +430,8 @@ struct Dht::Search {
      *
      * @param query  The query identifying a 'get' request.
      */
-    time_point getLastGetTime(Sp<Query> query = {}) const;
+    time_point getLastGetTime(const Query&) const;
+    time_point getLastGetTime() const;
 
     /**
      * Is this get operation done ?
@@ -746,11 +747,20 @@ Dht::Search::isSynced(time_point now) const
 }
 
 time_point
-Dht::Search::getLastGetTime(Sp<Query> q) const
+Dht::Search::getLastGetTime(const Query& q) const
 {
     time_point last = time_point::min();
     for (const auto& g : callbacks)
-        last = std::max(last, (not q or q->isSatisfiedBy(*g.second.query) ? g.second.start : time_point::min()));
+        last = std::max(last, (q.isSatisfiedBy(*g.second.query) ? g.second.start : time_point::min()));
+    return last;
+}
+
+time_point
+Dht::Search::getLastGetTime() const
+{
+    time_point last = time_point::min();
+    for (const auto& g : callbacks)
+        last = std::max(last, g.second.start);
     return last;
 }
 
