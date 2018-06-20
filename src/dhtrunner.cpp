@@ -410,14 +410,24 @@ DhtRunner::loop_()
         received = std::move(rcv);
     }
     if (not received.empty()) {
+        size_t packet_num = received.size();
+        auto start = clock::now();
         while (not received.empty()) {
             auto& pck = received.front();
-            auto delay = clock::now() - pck.received;
+            auto now = clock::now();
+            auto delay = now - pck.received;
             if (delay > std::chrono::seconds(1))
                 std::cerr << "Dropping packet with high delay: " << print_dt(delay) << std::endl;
-            else
+            else {
                 wakeup = dht->periodic(pck.data.data(), pck.data.size()-1, pck.from);
+                auto end = clock::now();
+                std::cerr << "periodic took " << print_dt(end - now)*1000 << std::endl;
+            }
             received.pop();
+        }
+        if (packet_num > 1) {
+            auto time_all = print_dt(clock::now() - start);
+            std::cerr << "Treating " << packet_num << " packets took " << time_all << " - " << (packet_num/time_all) << " packets/sec" << std::endl;
         }
     } else {
         wakeup = dht->periodic(nullptr, 0, nullptr, 0);
