@@ -42,6 +42,7 @@
 namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
+static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 
 struct DhtRunner::Listener {
     size_t tokenClassicDht;
@@ -409,12 +410,15 @@ DhtRunner::loop_()
         received = std::move(rcv);
     }
     if (not received.empty()) {
-        for (const auto& pck : received) {
-            auto& buf = pck.first;
-            auto& from = pck.second;
-            wakeup = dht->periodic(buf.data(), buf.size()-1, from);
+        while (not received.empty()) {
+            auto& pck = received.front();
+            auto delay = clock::now() - pck.received;
+            if (delay > std::chrono::seconds(1))
+                std::cerr << "Dropping packet with high delay: " << print_dt(delay) << std::endl;
+            else
+                wakeup = dht->periodic(pck.data.data(), pck.data.size()-1, pck.from);
+            received.pop();
         }
-        received.clear();
     } else {
         wakeup = dht->periodic(nullptr, 0, nullptr, 0);
     }
@@ -520,7 +524,11 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                     if (rc > 0) {
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
-                            rcv.emplace_back(Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len));
+                            if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
+                                std::cerr << "Dropping packet: queue is full!" << std::endl;
+                                continue;
+                            }
+                            rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len), clock::now()});
                         }
                         cv.notify_all();
                     }

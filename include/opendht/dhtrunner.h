@@ -457,7 +457,13 @@ private:
 
     std::thread rcv_thread {};
     std::mutex sock_mtx {};
-    std::vector<std::pair<Blob, SockAddr>> rcv {};
+
+    struct ReceivedPacket {
+        Blob data;
+        SockAddr from;
+        time_point received;
+    };
+    std::queue<ReceivedPacket> rcv {};
 
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};
