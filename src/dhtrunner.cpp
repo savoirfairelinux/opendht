@@ -526,7 +526,7 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                             std::lock_guard<std::mutex> lck(sock_mtx);
                             if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
                                 std::cerr << "Dropping packet: queue is full!" << std::endl;
-                                continue;
+                                rcv.pop();
                             }
                             rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len), clock::now()});
                         }

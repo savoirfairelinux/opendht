@@ -1585,11 +1585,6 @@ Dht::getStorageLog() const
     std::stringstream out;
     for (const auto& s : store)
         out << printStorageLog(s);
-    out << "Total " << store.size() << " storages, " << total_values << " values (";
-    if (total_store_size < 1024)
-        out << total_store_size << " bytes)";
-    else
-        out << (total_store_size/1024) << " KB)";
     out << std::endl << std::endl;
     std::multimap<size_t, const SockAddr*> q_map;
     for (const auto& ip : store_quota)
@@ -1597,6 +1592,12 @@ Dht::getStorageLog() const
             q_map.emplace(ip.second.size(), &ip.first);
     for (auto ip = q_map.rbegin(); ip != q_map.rend(); ++ip)
         out << "IP " << ip->second->toString() << " uses " << ip->first << " bytes" << std::endl;
+    out << std::endl;
+    out << "Total " << store.size() << " storages, " << total_values << " values (";
+    if (total_store_size < 1024)
+        out << total_store_size << " bytes)";
+    else
+        out << (total_store_size/1024) << " / " << (max_store_size/1024) << " KB)";
     out << std::endl;
     return out.str();
 }
