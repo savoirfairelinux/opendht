@@ -413,7 +413,7 @@ DhtRunner::loop_()
         while (not received.empty()) {
             auto& pck = received.front();
             auto delay = clock::now() - pck.received;
-            if (delay > std::chrono::seconds(1))
+            if (delay > std::chrono::milliseconds(500))
                 std::cerr << "Dropping packet with high delay: " << print_dt(delay) << std::endl;
             else
                 wakeup = dht->periodic(pck.data.data(), pck.data.size()-1, pck.from);
