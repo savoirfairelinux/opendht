@@ -288,6 +288,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
     InfoHash infoHash(hash);
     if (!infoHash)
         infoHash = InfoHash::get(hash);
+    std::cout << std::time(nullptr) << " LISTEN " << infoHash <<  " " << session->get_origin() << std::endl;
     session->fetch(content_length,
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
         {
@@ -358,6 +359,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
     InfoHash infoHash(hash);
     if (!infoHash)
         infoHash = InfoHash::get(hash);
+    std::cout << std::time(nullptr) << " SUBSCRIBE " << infoHash <<  " " << session->get_origin() << std::endl;
     session->fetch(content_length,
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& b) mutable
         {
