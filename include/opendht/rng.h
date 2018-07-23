@@ -25,7 +25,7 @@
 namespace dht {
 namespace crypto {
 
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
 #ifdef _WIN32
 
 /**
