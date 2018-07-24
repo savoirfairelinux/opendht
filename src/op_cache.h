@@ -85,13 +85,20 @@ public:
     void onValuesExpired(const std::vector<Sp<Value>>& vals);
 
     void addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
+        std::cout << "New Local listener: " << token << " address: " << &*this << std::endl;
         listeners.emplace(token, LocalListener{q, filter, cb});
         cb(cache.get(filter), false);
     }
 
     bool removeListener(size_t token, const time_point& now) {
+        if (listeners.find(token) != listeners.end()) {
+            std::cout << "Remove listener: " << token << std::endl;
+        } else {
+            std::cout << "FAIL: Remove listener: " << token << std::endl;
+        }
+        auto result = listeners.erase(token) > 0;
         lastRemoved = now;
-        return listeners.erase(token) > 0;
+        return result;
     }
 
     void removeAll() {

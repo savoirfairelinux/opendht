@@ -288,6 +288,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
     InfoHash infoHash(hash);
     if (!infoHash)
         infoHash = InfoHash::get(hash);
+    std::cout << "Listen " << infoHash << std::endl;
     session->fetch(content_length,
         [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
         {
@@ -431,7 +432,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     );
                     listener.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                         [this, token, infoHash, pushToken, isAndroid, clientId] {
-                            std::cout << "Listener: sending refresh " << infoHash << std::endl;
+                            //std::cout << "Listener: sending refresh " << infoHash << std::endl;
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
@@ -489,7 +490,6 @@ DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
 void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
 {
-    std::cout << "cancelPushListen: " << key << " clientId:" << clientId << std::endl;
     std::lock_guard<std::mutex> lock(lockListener_);
     auto pushListener = pushListeners_.find(pushToken);
     if (pushListener == pushListeners_.end())
@@ -499,8 +499,10 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
         return;
     for (auto listener = listeners->second.begin(); listener != listeners->second.end();) {
         if (listener->clientId == clientId) {
-            if (dht_)
+            if (dht_) {
+                std::cout << "cancelListener (push): " << key << " token:" << pushToken << " client:" << clientId << std::endl;
                 dht_->cancelListen(key, std::move(listener->internalToken));
+            }
             listener = listeners->second.erase(listener);
         } else {
             ++listener;
@@ -557,7 +559,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
 void
 DhtProxyServer::cancelPut(const InfoHash& key, Value::Id vid)
 {
-    std::cout << "cancelPut " << key << " " << vid << std::endl;
+    //std::cout << "cancelPut " << key << " " << vid << std::endl;
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
         return;
@@ -603,7 +605,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                             // Build the Value from json
                             auto value = std::make_shared<Value>(root);
                             bool permanent = root.isMember("permanent");
-                            std::cout << "Got put " << infoHash << " " << *value << " " << (permanent ? "permanent" : "") << std::endl;
+                            //std::cout << "Got put " << infoHash << " " << *value << " " << (permanent ? "permanent" : "") << std::endl;
 
                             if (permanent) {
                                 std::string pushToken, clientId, platform;
@@ -623,7 +625,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                 auto& pput = r.first->second;
                                 if (r.second) {
                                     pput.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
-                                        std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
+                                        //std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
                                         cancelPut(infoHash, vid);
                                     });
 #if OPENDHT_PUSH_NOTIFICATIONS
@@ -631,7 +633,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                         pput.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
                                         {
-                                            std::cout << "Permanent put refresh: " << infoHash << " " << vid << std::endl;
+                                            //std::cout << "Permanent put refresh: " << infoHash << " " << vid << std::endl;
                                             Json::Value json;
                                             json["timeout"] = infoHash.toString();
                                             json["to"] = clientId;
@@ -842,6 +844,7 @@ DhtProxyServer::removeClosedListeners(bool testSession)
     while (listener != currentListeners_.end()) {
         auto cancel = dht_ and (not testSession or listener->session->is_closed());
         if (cancel) {
+            std::cout << "cancelListener (listen): " << listener->hash << std::endl;
             dht_->cancelListen(listener->hash, std::move(listener->token));
             // Remove listener if unused
             listener = currentListeners_.erase(listener);
