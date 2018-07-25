@@ -116,10 +116,7 @@ DhtProxyTester::testListen() {
     // All values
     dht::Value secondVal {"You're a monster"};
     auto secondVal_data = secondVal.data;
-    nodePeer.put(key, std::move(secondVal), [&](bool) {
-        done = true;
-        cv.notify_all();
-    });
+    nodePeer.put(key, std::move(secondVal));
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
     // Here values should contains 3 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
