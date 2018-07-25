@@ -583,6 +583,7 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) mutable {
+#if OPENDHT_PROXY_CLIENT
             auto tokenbGlobal = listener_token_++;
             Listener listener {};
             listener.hash = hash;
@@ -590,21 +591,20 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
             listener.w = std::move(w);
             listener.gcb = [hash,vcb,tokenbGlobal,this](const std::vector<Sp<Value>>& vals, bool expired){
                 if (not vcb(vals, expired)) {
-#if OPENDHT_PROXY_CLIENT
                     cancelListen(hash, tokenbGlobal);
-#endif
                     return false;
                 }
                 return true;
             };
-#if OPENDHT_PROXY_CLIENT
             if (use_proxy)
                 listener.tokenProxyDht = dht.listen(hash, listener.gcb, listener.f, listener.w);
             else
-#endif
                 listener.tokenClassicDht = dht.listen(hash, listener.gcb, listener.f, listener.w);
             listeners_.emplace(tokenbGlobal, std::move(listener));
             ret_token->set_value(tokenbGlobal);
+#else
+            ret_token->set_value(dht.listen(hash, vcb, f, w));
+#endif
         });
     }
     cv.notify_all();
@@ -898,8 +898,8 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_p
 void
 DhtRunner::resetDht()
 {
-    listeners_.clear();
 #if OPENDHT_PROXY_CLIENT
+    listeners_.clear();
     dht_via_proxy_.reset();
 #endif // OPENDHT_PROXY_CLIENT
     dht_.reset();
