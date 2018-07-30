@@ -342,7 +342,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
                 if (p != s->second.puts.end()) {
                     doPut(key, p->second.value,
                     [ok](bool result, const std::vector<std::shared_ptr<dht::Node> >&){
-                        *ok = !result;
+                        *ok = result;
                     }, time_point::max(), true);
                     scheduler.edit(p->second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
                 }
@@ -951,11 +951,11 @@ DhtProxyClient::restartListeners()
     DHT_LOG.d("Refresh permanent puts");
     for (auto& search : searches_) {
         for (auto& put : search.second.puts) {
-            if (!put.second.ok) {
+            if (!*put.second.ok) {
                 auto ok = put.second.ok;
                 doPut(search.first, put.second.value,
                 [ok](bool result, const std::vector<std::shared_ptr<dht::Node> >&){
-                    *ok = !result;
+                    *ok = result;
                 }, time_point::max(), true);
                 scheduler.edit(put.second.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             }
