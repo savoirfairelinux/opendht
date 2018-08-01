@@ -144,7 +144,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #if OPENDHT_PROXY_SERVER
             for (const auto& proxy : proxies) {
                 std::cout << "Stats for proxy on port " << proxy.first << std::endl;
-                std::cout << "  " << proxy.second->getStats().toString() << std::endl;
+                std::cout << "  " << proxy.second->stats().toString() << std::endl;
             }
 #endif
             continue;

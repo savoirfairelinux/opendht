@@ -51,6 +51,7 @@ struct OPENDHT_PUBLIC NodeStats {
              incoming_nodes {0};
     unsigned table_depth {0};
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
+    unsigned long getNetworkSizeEstimation() const { return 8 * std::exp2(table_depth); }
     std::string toString() const;
 
 #ifdef OPENDHT_JSONCPP
