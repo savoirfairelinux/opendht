@@ -47,6 +47,43 @@ CryptoTester::testSignatureEncryption() {
 }
 
 void
+CryptoTester::testCertificateRevocation()
+{
+    auto ca1 = dht::crypto::generateIdentity("ca1");
+    auto account1 = dht::crypto::generateIdentity("acc1", ca1, 4096, true);
+    auto device11 = dht::crypto::generateIdentity("dev11", account1);
+    auto device12 = dht::crypto::generateIdentity("dev12", account1);
+
+
+    dht::crypto::TrustList list;
+    list.add(*ca1.second);
+    auto v = list.verify(*account1.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
+
+    list.add(*account1.second);
+    v = list.verify(*device11.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
+    v = list.verify(*device12.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
+
+    auto ca2 = dht::crypto::generateIdentity("ca2");
+    auto account2 = dht::crypto::generateIdentity("acc2", ca2, 4096, true);
+    auto device2 = dht::crypto::generateIdentity("dev2", account2);
+
+    v = list.verify(*device2.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), !v);
+    
+    account1.second->revoke(*account1.first, *device11.second);
+    dht::crypto::TrustList list2;
+    list2.add(*account1.second);
+
+    v = list2.verify(*device11.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), !v);
+    v = list2.verify(*device12.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
+}
+
+void
 CryptoTester::tearDown() {
 
 }
