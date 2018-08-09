@@ -28,6 +28,7 @@ namespace test {
 class CryptoTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(CryptoTester);
     CPPUNIT_TEST(testSignatureEncryption);
+    CPPUNIT_TEST(testCertificateRevocation);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -40,9 +41,13 @@ class CryptoTester : public CppUnit::TestFixture {
      */
     void tearDown();
     /**
-     * Test the differents behaviors of constructors
+     * Test data signature, encryption and decryption
      */
     void testSignatureEncryption();
+    /**
+     * Test certificate generation, validation and revocation
+     */
+    void testCertificateRevocation();
 };
 
 }  // namespace test
