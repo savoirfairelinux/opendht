@@ -34,6 +34,10 @@
 #include <mutex>
 #include <restbed>
 
+#ifdef OPENDHT_JSONCPP
+#include <json/json.h>
+#endif
+
 namespace Json {
     class Value;
 }
@@ -73,15 +77,44 @@ public:
         size_t pushListenersCount;
         /** Average requests per second */
         double requestRate;
+        /** Node Info **/
+        NodeInfo nodeInfo;
 
         std::string toString() const {
             std::ostringstream ss;
             ss << "Listens: " << listenCount << " Puts: " << putCount << " PushListeners: " << pushListenersCount << std::endl;
             ss << "Requests: " << requestRate << " per second." << std::endl;
+            auto& ni = nodeInfo;
+            auto& ipv4 = ni.ipv4;
+            if (ipv4.table_depth > 1) {
+                ss << "IPv4 Network estimation: " << ipv4.getNetworkSizeEstimation() << std::endl;;
+            }
+            auto& ipv6 = ni.ipv6;
+            if (ipv6.table_depth > 1) {
+                ss << "IPv6 Network estimation: " << ipv6.getNetworkSizeEstimation() << std::endl;;
+            }
             return ss.str();
         }
+
+#ifdef OPENDHT_JSONCPP
+        /**
+         * Build a json object from a NodeStats
+         */
+        Json::Value toJson() const {
+            Json::Value result;
+            result["listenCount"] = static_cast<Json::UInt64>(listenCount);
+            result["putCount"] = static_cast<Json::UInt64>(putCount);
+            result["pushListenersCount"] = static_cast<Json::UInt64>(pushListenersCount);
+            result["requestRate"] = requestRate;
+            result["nodeInfo"] = nodeInfo.toJson();
+            return result;
+        }
+#endif
     };
-    ServerStats getStats() const;
+
+    ServerStats stats() const { return stats_; }
+
+    void updateStats() const;
 
     std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
@@ -99,6 +132,14 @@ private:
      * @param session
      */
     void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
+
+    /**
+     * Return ServerStats in JSON format
+     * Method: STATS "/"
+     * Result: HTTP 200, body: Node infos in JSON format
+     * @param session
+     */
+    void getStats(const std::shared_ptr<restbed::Session>& session) const;
 
     /**
      * Return Values of an infoHash
@@ -261,6 +302,8 @@ private:
     mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
 
     const std::string pushServer_;
+
+    mutable ServerStats stats_;
 
 #if OPENDHT_PUSH_NOTIFICATIONS
     struct Listener;

@@ -70,6 +70,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         auto resource = std::make_shared<restbed::Resource>();
         resource->set_path("/");
         resource->set_method_handler("GET", std::bind(&DhtProxyServer::getNodeInfo, this, _1));
+        resource->set_method_handler("STATS", std::bind(&DhtProxyServer::getStats, this, _1));
         service_->publish(resource);
         resource = std::make_shared<restbed::Resource>();
         resource->set_path("/{hash: .*}");
@@ -137,7 +138,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
     printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this] {
         if (stopListeners) return;
         if (service_->is_up())
-            std::cout << getStats().toString() << std::endl;
+            updateStats();
         // Refresh stats cache
         auto newInfo = dht_->getNodeInfo();
         {
@@ -178,21 +179,20 @@ DhtProxyServer::stop()
         server_thread.join();
 }
 
-DhtProxyServer::ServerStats
-DhtProxyServer::getStats() const
+void
+DhtProxyServer::updateStats() const
 {
-    ServerStats ret {};
     auto now = clock::now();
     auto last = lastStatsReset_.exchange(now);
     auto count = requestNum_.exchange(0);
     auto dt = std::chrono::duration<double>(now - last);
-    ret.requestRate = count / dt.count();
+    stats_.requestRate = count / dt.count();
 #if OPENDHT_PUSH_NOTIFICATIONS
-    ret.pushListenersCount = pushListeners_.size();
+    stats_.pushListenersCount = pushListeners_.size();
 #endif
-    ret.putCount = puts_.size();
-    ret.listenCount = currentListeners_.size();
-    return ret;
+    stats_.putCount = puts_.size();
+    stats_.listenCount = currentListeners_.size();
+    stats_.nodeInfo = nodeInfo_;
 }
 
 void
@@ -224,6 +224,36 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
                     wbuilder["indentation"] = "";
                     auto output = Json::writeString(wbuilder, result) + "\n";
                     s->close(restbed::OK, output);
+                }
+                else
+                    s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
+            } catch (...) {
+                s->close(restbed::INTERNAL_SERVER_ERROR, "{\"err\":\"Internal server error\"}");
+            }
+        }
+    );
+}
+
+void
+DhtProxyServer::getStats(const std::shared_ptr<restbed::Session>& session) const
+{
+    requestNum_++;
+    const auto request = session->get_request();
+    int content_length = std::stoi(request->get_header("Content-Length", "0"));
+    session->fetch(content_length,
+        [this](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b*/) mutable
+        {
+            try {
+                if (dht_) {
+#ifdef OPENDHT_JSONCPP
+                    Json::StreamWriterBuilder wbuilder;
+                    wbuilder["commentStyle"] = "None";
+                    wbuilder["indentation"] = "";
+                    auto output = Json::writeString(wbuilder, stats_.toJson()) + "\n";
+                    s->close(restbed::OK, output);
+#else
+                    s->close(restbed::NotFound, "{\"err\":\"JSON not enabled on this instance\"}");
+#endif
                 }
                 else
                     s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");

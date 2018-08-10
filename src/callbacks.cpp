@@ -62,8 +62,7 @@ NodeStats::toString() const
     ss << "Known nodes: " << good_nodes << " good, " << dubious_nodes << " dubious, " << incoming_nodes << " incoming." << std::endl;
     if (table_depth > 1) {
         ss << "Routing table depth: " << table_depth << std::endl;
-        unsigned long tot_nodes = 8 * std::exp2(table_depth);
-        ss << "Network size estimation: " << tot_nodes << " nodes" << std::endl;
+        ss << "Network size estimation: " << getNetworkSizeEstimation() << " nodes" << std::endl;
     }
     return ss.str();
 }
@@ -81,8 +80,7 @@ NodeStats::toJson() const
     val["incoming"] = static_cast<Json::LargestUInt>(incoming_nodes);
     if (table_depth > 1) {
         val["table_depth"] = static_cast<Json::LargestUInt>(table_depth);
-        unsigned long tot_nodes = 8 * std::exp2(table_depth);
-        val["network_size_estimation"] = static_cast<Json::LargestUInt>(tot_nodes);
+        val["network_size_estimation"] = static_cast<Json::LargestUInt>(getNetworkSizeEstimation());
     }
     return val;
 }
