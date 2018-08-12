@@ -66,7 +66,7 @@ public:
     CallbackQueue expireValues(const time_point& now, time_point& next) {
         std::vector<Sp<Value>> expired_values;
         for (auto it = values.begin(); it != values.end();) {
-            if (it->second.expiration < now) {
+            if (it->second.expiration <= now) {
                 expired_values.emplace_back(std::move(it->second.data));
                 it = values.erase(it);
             } else {
@@ -74,7 +74,7 @@ public:
                 ++it;
             }
         }
-        while (values.size() >= MAX_VALUES) {
+        while (values.size() > MAX_VALUES) {
             // too many values, remove oldest values
             time_point oldest_creation = time_point::max();
             auto oldest_value = values.end();
@@ -127,7 +127,7 @@ private:
     ValueCache& operator=(ValueCache&&) = delete;
 
     /* The maximum number of values we store in the cache. */
-    static constexpr unsigned MAX_VALUES {1024};
+    static constexpr unsigned MAX_VALUES {4096};
 
     struct CacheValueStorage {
         Sp<Value> data {};
