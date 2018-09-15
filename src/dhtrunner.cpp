@@ -164,7 +164,7 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 void
 DhtRunner::join()
 {
-    running_network = false;
+    stopNetwork();
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
@@ -458,8 +458,10 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
     if (is_ipv6)
         setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&set, sizeof(set));
     int rc = bind(sock, addr.get(), addr.getLength());
-    if(rc < 0)
+    if(rc < 0) {
+        close(sock);
         throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
+    }
     sockaddr_storage ss;
     socklen_t ss_len = sizeof(ss);
     getsockname(sock, (sockaddr*)&ss, &ss_len);
@@ -467,12 +469,64 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
     return sock;
 }
 
+#ifdef _WIN32
+inline void udpPipe(int fds[2])
+{
+    int lst = socket(AF_INET, SOCK_DGRAM, 0);
+    if (lst < 0)
+        throw DhtException(std::string("Can't open socket: ") + strerror(lst));
+    struct sockaddr_in inaddr;
+    struct sockaddr addr;
+    memset(&inaddr, 0, sizeof(inaddr));
+    memset(&addr, 0, sizeof(addr));
+    inaddr.sin_family = AF_INET;
+    inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    inaddr.sin_port = 0;
+    int yes=1;
+    setsockopt(lst, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(yes));
+    int rc = bind(lst, (struct sockaddr *)&inaddr, sizeof(inaddr));
+    if (rc < 0) {
+        close(lst);
+        throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
+    }
+    socklen_t len = sizeof(inaddr);
+    getsockname(lst, &addr, &len);
+    fds[0] = lst;
+    fds[1] = socket(AF_INET, SOCK_DGRAM, 0);
+    connect(fds[1], &addr, len);
+}
+#endif
+
+void
+DhtRunner::stopNetwork()
+{
+    running_network = false;
+    if (stop_writefd != -1) {
+        if (write(stop_writefd, "\0", 1) == -1) {
+            perror("write");
+        }
+    }
+}
+
 void
 DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
 {
-    running_network = false;
+    stopNetwork();
     if (rcv_thread.joinable())
         rcv_thread.join();
+
+    int stopfds[2];
+#ifndef _WIN32
+    auto status = pipe(stopfds);
+    if (status == -1) {
+        throw DhtException("Can't open pipe");
+    }
+#else
+    udpPipe(stopfds);
+#endif
+    int stop_readfd = stopfds[0];
+    stop_writefd = stopfds[1];
+
     s4 = -1;
     s6 = -1;
 
@@ -487,19 +541,19 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
 #endif
 
     running_network = true;
-    rcv_thread = std::thread([this]() {
+    rcv_thread = std::thread([this, stop_readfd]() {
         try {
             while (running_network) {
-                struct timeval tv {/*.tv_sec = */0, /*.tv_usec = */250000};
                 fd_set readfds;
 
                 FD_ZERO(&readfds);
+                FD_SET(stop_readfd, &readfds);
                 if(s4 >= 0)
                     FD_SET(s4, &readfds);
                 if(s6 >= 0)
                     FD_SET(s6, &readfds);
 
-                int rc = select(s4 > s6 ? s4 + 1 : s6 + 1, &readfds, nullptr, nullptr, &tv);
+                int rc = select(s4 > s6 ? s4 + 1 : s6 + 1, &readfds, nullptr, nullptr, nullptr);
                 if(rc < 0) {
                     if(errno != EINTR) {
                         perror("select");
@@ -545,6 +599,9 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
         s6 = -1;
         bound4 = {};
         bound6 = {};
+        close(stop_readfd);
+        close(stop_writefd);
+        stop_writefd = -1;
     });
 }
 

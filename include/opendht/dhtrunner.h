@@ -416,6 +416,7 @@ private:
      */
     void tryBootstrapContinuously();
 
+    void stopNetwork();
     void startNetwork(const SockAddr sin4, const SockAddr sin6);
     time_point loop_();
 
@@ -486,6 +487,7 @@ private:
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
+    int stop_writefd {-1};
     int s4 {-1}, s6 {-1};
     SockAddr bound4 {};
     SockAddr bound6 {};
