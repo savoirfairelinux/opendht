@@ -1,6 +1,6 @@
 lib_LTLIBRARIES = libopendht.la
 
-libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@
+libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@
 libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@
 libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@
 libopendht_la_SOURCES  = \
@@ -65,8 +65,8 @@ libopendht_la_SOURCES += dht_proxy_client.cpp
 nobase_include_HEADERS += ../include/opendht/dht_proxy_client.h ../include/opendht/dht_interface.h
 endif
 
-if PROXY_CLIENT_OR_SERVER
 libopendht_la_SOURCES += base64.h base64.cpp
+if PROXY_CLIENT_OR_SERVER
 nobase_include_HEADERS += ../include/opendht/proxy.h
 endif
 
