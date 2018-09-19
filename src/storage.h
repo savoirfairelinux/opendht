@@ -154,15 +154,16 @@ struct Storage {
      *
      * @param now  The reference to now
      * @param vid  The value id
-     * @return true if a value storage was updated, false otherwise
+     * @return time of the next expiration, time_point::max() if no expiration
      */
-    bool refresh(const time_point& now, const Value::Id& vid) {
+    time_point refresh(const time_point& now, const Value::Id& vid, const TypeStore& types) {
         for (auto& vs : values)
             if (vs.data->id == vid) {
                 vs.created = now;
-                return true;
+                vs.expiration = std::max(vs.expiration, now + types.getType(vs.data->type).expiration);
+                return vs.expiration;
             }
-        return false;
+        return time_point::max();
     }
 
     StoreDiff remove(const InfoHash& id, Value::Id);

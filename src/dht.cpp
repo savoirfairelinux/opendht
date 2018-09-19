@@ -2363,7 +2363,10 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
     }
 
     auto s = store.find(hash);
-    if (s != store.end() and s->second.refresh(now, vid)) {
+    if (s != store.end()) {
+        auto expiration = s->second.refresh(now, vid, types);
+        if (expiration != time_point::max())
+            scheduler.add(expiration, std::bind(&Dht::expireStorage, this, hash));
         DHT_LOG.d(hash, node->id, "[store %s] [node %s] refreshed value %s", hash.toString().c_str(), node->toString().c_str(), std::to_string(vid).c_str());
     } else {
         DHT_LOG.d(hash, node->id, "[store %s] [node %s] got refresh for unknown value",
