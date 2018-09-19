@@ -753,15 +753,6 @@ Dht::announce(const InfoHash& id,
         time_point created,
         bool permanent)
 {
-    const auto& now = scheduler.time();
-    if (!value) {
-        if (callback)
-            callback(false, {});
-        return;
-    }
-    created = std::min(now, created);
-    storageStore(id, value, created);
-
     auto& srs = searches(af);
     auto srp = srs.find(id);
     auto sr = srp == srs.end() ? search(id, af) : srp->second;
@@ -913,13 +904,20 @@ struct GetStatus : public OpStatus {
 void
 Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point created, bool permanent)
 {
-    scheduler.syncTime();
-
+    if (not val) {
+        if (callback)
+            callback(false, {});
+        return;
+    }
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
         std::uniform_int_distribution<Value::Id> rand_id {};
         val->id = rand_id(rdev);
     }
+    scheduler.syncTime();
+    const auto& now = scheduler.time();
+    created = std::min(now, created);
+    storageStore(id, val, created);
 
     DHT_LOG.d(id, "put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
