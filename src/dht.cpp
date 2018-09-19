@@ -261,11 +261,11 @@ void Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n) {
     auto select_q = std::make_shared<Query>(Select {}.field(Value::Field::Id), query ? query->where : Where {});
     auto onSelectDone = [this,ws,query](const net::Request& status,
                                         net::RequestAnswer&& answer) mutable {
-        // retreive search
+        // Retrieve search
         auto sr = ws.lock();
         if (not sr) return;
         const auto& id = sr->id;
-        // retreive search node
+        // Retrieve search node
         auto sn = sr->getNode(status.node);
         if (not sn) return;
         // backward compatibility

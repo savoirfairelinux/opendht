@@ -320,7 +320,7 @@ struct Dht::SearchNode {
     }
 
     /**
-     * Assumng the node is synced, should a "put" request be sent to this node now ?
+     * Assuming the node is synced, should a "put" request be sent to this node now ?
      */
     time_point getAnnounceTime(Value::Id vid) const {
         const auto& ack = acked.find(vid);
@@ -335,7 +335,7 @@ struct Dht::SearchNode {
     }
 
     /**
-     * Assumng the node is synced, should the "listen" request with Query q be
+     * Assuming the node is synced, should the "listen" request with Query q be
      * sent to this node now ?
      */
     time_point getListenTime(const Sp<Query>& q) const {
