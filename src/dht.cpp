@@ -917,7 +917,7 @@ Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point cr
     scheduler.syncTime();
     const auto& now = scheduler.time();
     created = std::min(now, created);
-    storageStore(id, val, created);
+    storageStore(id, val, created, {}, true);
 
     DHT_LOG.d(id, "put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
@@ -1121,6 +1121,8 @@ bool
 Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 {
     bool canceled {false};
+    if (storageErase(id, vid))
+        canceled = true;
     auto sr_cancel_put = [&](std::map<InfoHash, Sp<Search>> srs) {
         auto srp = srs.find(id);
         if (srp == srs.end())
@@ -1189,11 +1191,11 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v, bool newVa
 }
 
 bool
-Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa)
+Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa, bool permanent)
 {
     const auto& now = scheduler.time();
     created = std::min(created, now);
-    auto expiration = created + getType(value->type).expiration;
+    auto expiration = permanent ? time_point::max() : created + getType(value->type).expiration;
     if (expiration < now)
         return false;
 
@@ -1215,7 +1217,9 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
     if (auto vs = store.first) {
         total_store_size += store.second.size_diff;
         total_values += store.second.values_diff;
-        scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
+        if (not permanent) {
+            scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
+        }
         if (total_store_size > max_store_size) {
             expireStore();
         }
@@ -1223,6 +1227,18 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
     }
 
     return std::get<0>(store);
+}
+
+bool
+Dht::storageErase(const InfoHash& id, Value::Id vid)
+{
+    auto st = store.find(id);
+    if (st == store.end())
+        return false;
+    auto ret = st->second.remove(id, vid);
+    total_store_size += ret.size_diff;
+    total_values += ret.values_diff;
+    return ret.values_diff;
 }
 
 void
