@@ -1,7 +1,7 @@
 bin_PROGRAMS = dhtnode dhtchat dhtscanner
 noinst_HEADERS = tools_common.h
 
-AM_CPPFLAGS = -I../include
+AM_CPPFLAGS = -I../include @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@
 
 dhtnode_SOURCES = dhtnode.cpp
 dhtnode_LDFLAGS = -lopendht -lreadline -L@top_builddir@/src/.libs @Argon2_LDFLAGS@ @GnuTLS_LIBS@
