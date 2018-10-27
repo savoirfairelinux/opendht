@@ -690,7 +690,7 @@ unsigned Dht::refill(Dht::Search& sr) {
 
 /* Start a search. */
 Sp<Dht::Search>
-Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback qcb, DoneCallback dcb, Value::Filter f, Query q)
+Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback qcb, DoneCallback dcb, Value::Filter f, const Sp<Query>& q)
 {
     if (!isRunning(af)) {
         DHT_LOG.e(id, "[search %s IPv%c] unsupported protocol", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
@@ -732,26 +732,14 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         sr->expired = false;
         sr->nodes.clear();
         sr->nodes.reserve(SEARCH_NODES+1);
+        sr->nextSearchStep = scheduler.add(time_point::max(), std::bind(&Dht::searchStep, this, sr));
         DHT_LOG.w(id, "[search %s IPv%c] new search", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         if (search_id == 0)
             search_id++;
     }
 
-    if (gcb or qcb) {
-        auto now = scheduler.time();
-        sr->callbacks.insert(std::make_pair<time_point, Get>(
-            std::move(now),
-            Get { scheduler.time(), f, std::make_shared<Query>(q),
-                qcb ? qcb : QueryCallback {}, gcb ? gcb : GetCallback {}, dcb
-            }
-        ));
-    }
-
+    sr->get(f, q, qcb, gcb, dcb, scheduler);
     refill(*sr);
-    if (sr->nextSearchStep)
-        scheduler.edit(sr->nextSearchStep, scheduler.time());
-    else
-        sr->nextSearchStep = scheduler.add(scheduler.time(), std::bind(&Dht::searchStep, this, sr));
 
     return sr;
 }
@@ -928,7 +916,7 @@ Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point cr
     scheduler.syncTime();
     const auto& now = scheduler.time();
     created = std::min(now, created);
-    storageStore(id, val, created, {}, true);
+    storageStore(id, val, created, {}, permanent);
 
     DHT_LOG.d(id, "put: adding %s -> %s", id.toString().c_str(), val->toString().c_str());
 
@@ -991,10 +979,10 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
 {
     scheduler.syncTime();
 
-    Query q {{}, where};
+    auto q = std::make_shared<Query>(Select {}, std::move(where));
     auto op = std::make_shared<GetStatus<Value>>();
+    auto f = filter.chain(q->where.getFilter());
 
-    auto f = filter.chain(q.where.getFilter());
     auto add_values = [op,f](const std::vector<Sp<Value>>& values) {
         std::vector<Sp<Value>> newvals {};
         for (const auto& v : values) {
@@ -1060,16 +1048,17 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
     /* Try to answer this search locally. */
     qcb(local_fields);
 
+    auto sq = std::make_shared<Query>(std::move(q));
     Dht::search(id, AF_INET, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv4");
         op->status4 = {true, ok};
         doneCallbackWrapper(done_cb, nodes, *op);
-    }, f, q);
+    }, f, sq);
     Dht::search(id, AF_INET6, {}, qcb, [=](bool ok, const std::vector<Sp<Node>>& nodes) {
         //DHT_LOG_WARN("DHT done IPv6");
         op->status6 = {true, ok};
         doneCallbackWrapper(done_cb, nodes, *op);
-    }, f, q);
+    }, f, sq);
 }
 
 std::vector<Sp<Value>>
