@@ -196,13 +196,13 @@ DhtProxyServer::updateStats() const
 }
 
 void
-DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) const
+DhtProxyServer::getNodeInfo(const Sp<restbed::Session>& session) const
 {
     requestNum_++;
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     session->fetch(content_length,
-        [this](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b*/) mutable
+        [this](const Sp<restbed::Session>& s, const restbed::Bytes& /*b*/) mutable
         {
             try {
                 if (dht_) {
@@ -235,13 +235,13 @@ DhtProxyServer::getNodeInfo(const std::shared_ptr<restbed::Session>& session) co
 }
 
 void
-DhtProxyServer::getStats(const std::shared_ptr<restbed::Session>& session) const
+DhtProxyServer::getStats(const Sp<restbed::Session>& session) const
 {
     requestNum_++;
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     session->fetch(content_length,
-        [this](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b*/) mutable
+        [this](const Sp<restbed::Session>& s, const restbed::Bytes& /*b*/) mutable
         {
             try {
                 if (dht_) {
@@ -265,14 +265,14 @@ DhtProxyServer::getStats(const std::shared_ptr<restbed::Session>& session) const
 }
 
 void
-DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
+DhtProxyServer::get(const Sp<restbed::Session>& session) const
 {
     requestNum_++;
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
     auto hash = request->get_path_parameter("hash");
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
+        [=](const Sp<restbed::Session>& s, const restbed::Bytes& /*b* */)
         {
             try {
                 if (dht_) {
@@ -280,15 +280,15 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                     if (!infoHash) {
                         infoHash = InfoHash::get(hash);
                     }
-                    s->yield(restbed::OK, "", [=](const std::shared_ptr<restbed::Session>& s) {});
-                    dht_->get(infoHash, [s](const std::shared_ptr<Value>& value) {
+                    s->yield(restbed::OK, "", [=](const Sp<restbed::Session>&) {});
+                    dht_->get(infoHash, [s](const Sp<Value>& value) {
                         if (s->is_closed()) return false;
                         // Send values as soon as we get them
                         Json::StreamWriterBuilder wbuilder;
                         wbuilder["commentStyle"] = "None";
                         wbuilder["indentation"] = "";
                         auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
-                        s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
                         // Communication is finished
@@ -307,7 +307,7 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
 }
 
 void
-DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
+DhtProxyServer::listen(const Sp<restbed::Session>& session)
 {
     requestNum_++;
     const auto request = session->get_request();
@@ -317,7 +317,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
     if (!infoHash)
         infoHash = InfoHash::get(hash);
     session->fetch(content_length,
-        [=](const std::shared_ptr<restbed::Session> s, const restbed::Bytes& /*b* */)
+        [=](const Sp<restbed::Session>& s, const restbed::Bytes& /*b* */)
         {
             try {
                 if (dht_) {
@@ -485,7 +485,6 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
 void
 DhtProxyServer::unsubscribe(const std::shared_ptr<restbed::Session>& session)
 {
-
     requestNum_++;
     const auto request = session->get_request();
     int content_length = std::stoi(request->get_header("Content-Length", "0"));
