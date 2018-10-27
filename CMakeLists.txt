@@ -252,11 +252,10 @@ if (OPENDHT_STATIC)
     if (OPENDHT_ARGON2)
         target_include_directories(opendht-static SYSTEM PRIVATE argon2)
     else ()
-        target_link_libraries(opendht-static ${argon2_LIBRARIES})
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht-static 
-        PRIVATE ${Restbed_LIBRARY}
+    target_link_libraries(opendht-static
+        PRIVATE ${Restbed_LIBRARY} ${argon2_LIBRARIES}
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Jsoncpp_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
