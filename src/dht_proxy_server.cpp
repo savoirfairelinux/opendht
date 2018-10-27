@@ -280,23 +280,23 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                     if (!infoHash) {
                         infoHash = InfoHash::get(hash);
                     }
-                    s->yield(restbed::OK, "", [=]( const std::shared_ptr< restbed::Session > s) {
-                        auto cacheSession = std::weak_ptr<restbed::Session>(s);
-
-                        dht_->get(infoHash, [cacheSession](std::shared_ptr<Value> value) {
-                            auto s = cacheSession.lock();
-                            if (!s) return false;
-                            // Send values as soon as we get them
-                            Json::StreamWriterBuilder wbuilder;
-                            wbuilder["commentStyle"] = "None";
-                            wbuilder["indentation"] = "";
-                            auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
-                            s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
-                            return true;
-                        }, [s](bool /*ok* */) {
-                            // Communication is finished
-                            s->close();
-                        });
+                    s->yield(restbed::OK, "", [=](const std::shared_ptr<restbed::Session>& s) {});
+                    auto cacheSession = std::weak_ptr<restbed::Session>(s);
+                    dht_->get(infoHash, [cacheSession](const std::shared_ptr<Value>& value) {
+                        auto s = cacheSession.lock();
+                        if (not s or s->is_closed()) return false;
+                        // Send values as soon as we get them
+                        Json::StreamWriterBuilder wbuilder;
+                        wbuilder["commentStyle"] = "None";
+                        wbuilder["indentation"] = "";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        s->yield(output, [](const std::shared_ptr<restbed::Session> /*session*/){ });
+                        return true;
+                    }, [cacheSession](bool /*ok* */) {
+                        // Communication is finished
+                        auto s = cacheSession.lock();
+                        if (not s or s->is_closed()) return;
+                        s->close();
                     });
                 } else {
                     s->close(restbed::SERVICE_UNAVAILABLE, "{\"err\":\"Incorrect DhtRunner\"}");
