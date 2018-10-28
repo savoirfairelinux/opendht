@@ -99,6 +99,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         settings->set_default_header("Access-Control-Allow-Origin", "*");
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // there is a timeout, but really huge
+        settings->set_keep_alive(true);
+        settings->set_keep_alive_start(10); // 10 seconds for first keep alive
+        settings->set_keep_alive_interval(10); // then every 10 seconds
+        settings->set_keep_alive_cnt(1); // do not allow any failure
         settings->set_port(port);
         auto maxThreads = std::thread::hardware_concurrency() - 1;
         settings->set_worker_limit(maxThreads > 1 ? maxThreads : 1);
@@ -280,7 +284,7 @@ DhtProxyServer::get(const std::shared_ptr<restbed::Session>& session) const
                     if (!infoHash) {
                         infoHash = InfoHash::get(hash);
                     }
-                    s->yield(restbed::OK, "", [=](const std::shared_ptr<restbed::Session>& s) {});
+                    s->yield(restbed::OK, "", [=](const std::shared_ptr<restbed::Session>&) {});
                     dht_->get(infoHash, [s](const std::shared_ptr<Value>& value) {
                         if (s->is_closed()) return false;
                         // Send values as soon as we get them
