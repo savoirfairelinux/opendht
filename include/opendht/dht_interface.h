@@ -40,7 +40,7 @@ public:
     virtual NodeStatus getStatus() const = 0;
 
     /**
-     * Get the ID of the node.
+     * Get the ID of the DHT node.
      */
     virtual const InfoHash& getNodeId() const = 0;
 
