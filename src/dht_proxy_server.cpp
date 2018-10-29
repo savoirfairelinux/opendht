@@ -335,7 +335,7 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
                     // cache the session to avoid an incrementation of the shared_ptr's counter
                     // else, the session->close() will not close the socket.
                     auto cacheSession = std::weak_ptr<restbed::Session>(s);
-                    listener.token = dht_->listen(infoHash, [cacheSession](std::shared_ptr<Value> value) {
+                    listener.token = dht_->listen(infoHash, [cacheSession](const std::vector<Sp<Value>>& values, bool expired) {
                         auto s = cacheSession.lock();
                         if (!s) return false;
                         // Send values as soon as we get them
@@ -343,8 +343,13 @@ DhtProxyServer::listen(const std::shared_ptr<restbed::Session>& session)
                             Json::StreamWriterBuilder wbuilder;
                             wbuilder["commentStyle"] = "None";
                             wbuilder["indentation"] = "";
-                            auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
-                            s->yield(output, [](const std::shared_ptr<restbed::Session>){ });
+                            for (const auto& value : values) {
+                                auto val = value->toJson();
+                                if (expired)
+                                    val["expired"] = true;
+                                auto output = Json::writeString(wbuilder, val) + "\n";
+                                s->yield(output, [](const Sp<restbed::Session>&){ });
+                            }
                         }
                         return !s->is_closed();
                     });

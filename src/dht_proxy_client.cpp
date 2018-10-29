@@ -706,11 +706,12 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
                     Json::CharReaderBuilder rbuilder;
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
+                        auto expired = json.get("expired", Json::Value(false)).asBool();
                         auto value = std::make_shared<Value>(json);
                         if ((not filter or filter(*value)) and cb)  {
                             std::lock_guard<std::mutex> lock(lockCallbacks);
-                            callbacks_.emplace_back([cb, value, state]() {
-                                if (not state->cancel and not cb({value}, false))
+                            callbacks_.emplace_back([cb, value, state, expired]() {
+                                if (not state->cancel and not cb({value}, expired))
                                     state->cancel = true;
                             });
                             loopSignal_();

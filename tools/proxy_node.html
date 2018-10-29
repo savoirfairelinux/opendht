@@ -63,11 +63,15 @@ $(function() {
                         if (!element || element.length == 0)
                             return;
                         const o = JSON.parse(element);
-                        const d = window.atob(o.data);
-                        const delay = Math.max(0, start-now);
-                        $('<li class="list-group-item"/>').append(valueGetElement(o)).appendTo(group).hide().delay(delay).slideDown(100);
-                        lastAppended = i+1;
-                        start = Math.max(start, now)+25;
+                        if (o.expired) {
+                            $('#value'+o.id).slideUp(100, (e) => $(e.target).remove());
+                        } else {
+                            const d = window.atob(o.data);
+                            const delay = Math.max(0, start-now);
+                            $('<li class="list-group-item" id="value'+o.id+'"/>').append(valueGetElement(o)).appendTo(group).hide().delay(delay).slideDown(100);
+                            lastAppended = i+1;
+                            start = Math.max(start, now)+25;
+                        }
                     }
                 } else if (this.status !== 0) {
                     group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content: " + this.statusText));
