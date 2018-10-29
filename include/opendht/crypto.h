@@ -530,7 +530,7 @@ public:
     ~secure_vector() { clean(); }
 
     static secure_vector<T> getRandom(size_t size) {
-        secure_vector<T> ret(size/sizeof(T));
+        secure_vector<T> ret(size);
         crypto::random_device rdev;
 #ifdef _WIN32
         std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
