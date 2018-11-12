@@ -254,7 +254,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     o.thread = std::thread([=](){
         // Try to contact the proxy and set the status to connected when done.
         // will change the connectivity status
-        auto ok = std::make_shared<std::atomic_bool>(true);
+        struct GetState{ std::atomic_bool ok {true}; std::atomic_bool stop {false}; };
+        auto state = std::make_shared<GetState>();
         restbed::Http::async(req,
             [=](const std::shared_ptr<restbed::Request>& req,
                 const std::shared_ptr<restbed::Response>& reply) {
@@ -262,9 +263,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 
             if (code == 200) {
                 try {
-                    while (restbed::Http::is_open(req) and not *finished) {
+                    while (restbed::Http::is_open(req) and not *finished and not state->stop) {
                         restbed::Http::fetch("\n", reply);
-                        if (*finished)
+                        if (*finished or state->stop)
                             break;
                         std::string body;
                         reply->get_body(body);
@@ -279,29 +280,30 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                             auto value = std::make_shared<Value>(json);
                             if ((not filter or filter(*value)) and cb) {
                                 std::lock_guard<std::mutex> lock(lockCallbacks);
-                                callbacks_.emplace_back([cb, value, finished]() {
-                                    if (not *finished and not cb({value}))
-                                        *finished = true;
+                                callbacks_.emplace_back([cb, value, state]() {
+                                    if (not state->stop and not cb({value}))
+                                        state->stop = true;
                                 });
                                 loopSignal_();
                             }
                         } else {
-                            *ok = false;
+                            state->ok = false;
                         }
                     }
                 } catch (std::runtime_error& e) { }
             } else {
-                *ok = false;
+                state->ok = false;
             }
         }).wait();
         if (donecb) {
             std::lock_guard<std::mutex> lock(lockCallbacks);
             callbacks_.emplace_back([=](){
-                donecb(*ok, {});
+                donecb(state->ok, {});
+                state->stop = true;
             });
             loopSignal_();
         }
-        if (!ok) {
+        if (!state->ok) {
             // Connection failed, update connectivity
             opFailed();
         }
