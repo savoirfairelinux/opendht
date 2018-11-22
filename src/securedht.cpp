@@ -235,12 +235,17 @@ SecureDht::checkValue(const Sp<Value>& v)
 #endif
             return {};
         }
+        if (v->decrypted) {
+            return v->decryptedValue;
+        }
+        v->decrypted = true;
         try {
             Value decrypted_val (decrypt(*v));
             if (decrypted_val.recipient == getId()) {
                 if (decrypted_val.owner)
                     nodesPubKeys_[decrypted_val.owner->getId()] = decrypted_val.owner;
-                return std::make_shared<Value>(std::move(decrypted_val));
+                v->decryptedValue = std::make_shared<Value>(std::move(decrypted_val));
+                return v->decryptedValue;
             }
             // Ignore values belonging to other people
         } catch (const std::exception& e) {
@@ -249,7 +254,12 @@ SecureDht::checkValue(const Sp<Value>& v)
     }
     // Check signed values
     else if (v->isSigned()) {
+        if (v->signatureChecked) {
+            return v->signatureValid ? v : Sp<Value>{};
+        }
+        v->signatureChecked = true;
         if (v->owner and v->owner->checkSignature(v->getToSign(), v->signature)) {
+            v->signatureValid = true;
             nodesPubKeys_[v->owner->getId()] = v->owner;
             return v;
         }
@@ -355,7 +365,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
 void
 SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    findPublicKey(to, [=](const Sp<const crypto::PublicKey> pk) {
+    findPublicKey(to, [=](const Sp<const crypto::PublicKey>& pk) {
         if(!pk || !*pk) {
             if (callback)
                 callback(false, {});
