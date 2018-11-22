@@ -114,8 +114,10 @@ public:
     ImMessage() {}
     ImMessage(dht::Value::Id id, std::string&& m, long d = 0)
         : id(id), msg(std::move(m)), date(d) {}
-    ImMessage(dht::Value::Id id, std::string&& dt, std::string&& m, long d = 0)
+    ImMessage(dht::Value::Id id, std::string &&dt, std::string &&m, long d = 0)
         : id(id), msg(std::move(m)), datatype(std::move(dt)), date(d) {}
+    ImMessage(dht::Value::Id id, std::string &&dt, std::string &&m, std::map<std::string, std::string> &&md, long d = 0)
+        : id(id), msg(std::move(m)), datatype(std::move(dt)), metadatas(std::move(md)), date(d) {}
 
     virtual void unpackValue(const Value& v) override {
         to = v.recipient;
@@ -126,10 +128,11 @@ public:
     dht::Value::Id id {0};
     std::string msg;
     std::string datatype;
+    std::map<std::string, std::string> metadatas;
     long date {0};
     ImStatus status {ImStatus::NONE};
 
-    MSGPACK_DEFINE_MAP(id, msg, date, status, datatype)
+    MSGPACK_DEFINE_MAP(id, msg, date, status, datatype, metadatas)
 };
 
 class OPENDHT_PUBLIC TrustRequest : public EncryptedValue<TrustRequest>
