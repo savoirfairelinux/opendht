@@ -56,7 +56,7 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
             1
         }, [this](bool ok) {
             if (ok)
-                DHT_LOG.DEBUG("SecureDht: public key announced successfully");
+                DHT_LOG.DBG("SecureDht: public key announced successfully");
         }, {}, true);
     }
 }
@@ -139,7 +139,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
     }
     InfoHash h = crt->getPublicKey().getId();
     if (node == h) {
-        DHT_LOG.DEBUG("Registering certificate for %s", h.toString().c_str());
+        DHT_LOG.DBG("Registering certificate for %s", h.toString().c_str());
         auto it = nodesCertificates_.find(h);
         if (it == nodesCertificates_.end())
             std::tie(it, std::ignore) = nodesCertificates_.emplace(h, std::move(crt));
@@ -147,7 +147,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
             it->second = std::move(crt);
         return it->second;
     } else {
-        DHT_LOG.DEBUG("Certificate %s for node %s does not match node id !", h.toString().c_str(), node.toString().c_str());
+        DHT_LOG.WARN("Certificate %s for node %s does not match node id !", h.toString().c_str(), node.toString().c_str());
         return nullptr;
     }
 }
@@ -164,7 +164,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<cry
 {
     Sp<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
-        DHT_LOG.DEBUG("Using certificate from cache for %s", node.toString().c_str());
+        DHT_LOG.DBG("Using certificate from cache for %s", node.toString().c_str());
         if (cb)
             cb(b);
         return;
@@ -172,7 +172,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<cry
     if (localQueryMethod_) {
         auto res = localQueryMethod_(node);
         if (not res.empty()) {
-            DHT_LOG.DEBUG("Registering certificate from local store for %s", node.toString().c_str());
+            DHT_LOG.DBG("Registering certificate from local store for %s", node.toString().c_str());
             nodesCertificates_.emplace(node, res.front());
             if (cb)
                 cb(res.front());
@@ -187,7 +187,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<cry
         for (const auto& v : vals) {
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
-                DHT_LOG.DEBUG("Found certificate for %s", node.toString().c_str());
+                DHT_LOG.DBG("Found certificate for %s", node.toString().c_str());
                 if (cb)
                     cb(cert);
                 return false;
@@ -205,7 +205,7 @@ SecureDht::findPublicKey(const InfoHash& node, std::function<void(const Sp<const
 {
     auto pk = getPublicKey(node);
     if (pk && *pk) {
-        DHT_LOG.DEBUG("Found public key from cache for %s", node.toString().c_str());
+        DHT_LOG.DBG("Found public key from cache for %s", node.toString().c_str());
         if (cb)
             cb(pk);
         return;
@@ -327,14 +327,13 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
     // Check if we are already announcing a value
     auto p = dht_->getPut(hash, val->id);
     if (p && val->seq <= p->seq) {
-        DHT_LOG.DEBUG("Found previous value being announced.");
         val->seq = p->seq + 1;
     }
 
     // Check if data already exists on the dht
     get(hash,
         [val,this] (const std::vector<Sp<Value>>& vals) {
-            DHT_LOG.DEBUG("Found online previous value being announced.");
+            DHT_LOG.DBG("Found online previous value being announced.");
             for (const auto& v : vals) {
                 if (!v->isSigned())
                     DHT_LOG.ERR("Existing non-signed value seems to exists at this location.");

@@ -635,7 +635,7 @@ Dht::searchStep(Sp<Search> sr)
         // true if this node is part of the target nodes cluter.
         /*bool in = sr->id.xorCmp(myid, sr->nodes.back().node->id) < 0;
 
-        DHT_LOG_DEBUG("[search %s IPv%c] synced%s",
+        DHT_LOG_DBG("[search %s IPv%c] synced%s",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', in ? ", in" : "");*/
 
         if (not sr->listeners.empty()) {
@@ -665,7 +665,7 @@ Dht::searchStep(Sp<Search> sr)
                 i++;
         }
         while (sent and sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES);
-        /*DHT_LOG_DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
+        /*DHT_LOG_DBG("[search %s IPv%c] step: sent %u requests (total %u).",
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->currentlySolicitedNodeCount());*/
     }
 
@@ -1776,7 +1776,7 @@ Dht::Dht(const int& s, const int& s6, Config config)
 bool
 Dht::neighbourhoodMaintenance(RoutingTable& list)
 {
-    //DHT_LOG_DEBUG("neighbourhoodMaintenance");
+    //DHT_LOG_DBG("neighbourhoodMaintenance");
     auto b = list.findBucket(myid);
     if (b == list.end())
         return false;

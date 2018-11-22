@@ -419,7 +419,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         msg->msgpack_unpack(msg_res.get());
     } catch (const std::exception& e) {
         DHT_LOG.w("Can't parse message of size %lu: %s", buflen, e.what());
-        DHT_LOG.DEBUG.logPrintable(buf, buflen);
+        //DHT_LOG.DBG.logPrintable(buf, buflen);
         return;
     }
 
@@ -977,7 +977,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
             pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
             for (const auto& v : st)
                 v->msgpack_pack_fields(fields, pk);
-            //DHT_LOG_DEBUG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
+            //DHT_LOG_DBG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
             //        nodes.size(), nodes6.size(), st.size(), fields.size());
         }
     }

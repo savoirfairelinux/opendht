@@ -85,7 +85,7 @@ private:
 };
 
 struct Logger {
-    LogMethod DEBUG = NOLOG;
+    LogMethod DBG = NOLOG;
     LogMethod WARN = NOLOG;
     LogMethod ERR = NOLOG;
     void setFilter(const InfoHash& f) {
@@ -114,7 +114,7 @@ struct Logger {
 #if OPENDHT_LOG
         va_list args;
         va_start(args, format);
-        log0(DEBUG, format, args);
+        log0(DBG, format, args);
         va_end(args);
 #endif
     }
@@ -122,7 +122,7 @@ struct Logger {
 #if OPENDHT_LOG
         va_list args;
         va_start(args, format);
-        log1(DEBUG, f, format, args);
+        log1(DBG, f, format, args);
         va_end(args);
 #endif
     }
@@ -130,7 +130,7 @@ struct Logger {
 #if OPENDHT_LOG
         va_list args;
         va_start(args, format);
-        log2(DEBUG, f1, f2, format, args);
+        log2(DBG, f1, f2, format, args);
         va_end(args);
 #endif
     }
