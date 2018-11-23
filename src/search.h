@@ -324,14 +324,13 @@ struct Dht::SearchNode {
      */
     time_point getAnnounceTime(Value::Id vid) const {
         const auto& ack = acked.find(vid);
-        const auto& gs = probe_query ? getStatus.find(probe_query) : getStatus.cend();
-        if ((ack == acked.cend() or not ack->second.first) and (gs == getStatus.cend()
-                                                          or not gs->second or not gs->second->pending()))
+        if (ack == acked.cend() or not ack->second.first) {
             return time_point::min();
-        return ((gs != getStatus.cend() and gs->second and gs->second->pending())
-                or ack == acked.cend() or not ack->second.first or ack->second.first->pending())
-                ? time_point::max()
-                : (ack->second.first->completed() ? ack->second.second - REANNOUNCE_MARGIN : time_point::min());
+        }
+        if (ack->second.first->completed()) {
+            return ack->second.second - REANNOUNCE_MARGIN;
+        }
+        return ack->second.first->pending() ? time_point::max() : time_point::min();
     }
 
     /**

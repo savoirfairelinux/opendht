@@ -122,6 +122,8 @@ private:
     std::map<ValueType::Id, ValueType> types {};
 };
 
+struct CryptoValueCache;
+
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.
  *
@@ -588,6 +590,14 @@ struct OPENDHT_PUBLIC Value
      * Hold encrypted version of the data.
      */
     Blob cypher {};
+
+private:
+    friend class SecureDht;
+    /* Cache for crypto ops */
+    bool signatureChecked {false};
+    bool signatureValid {false};
+    bool decrypted {false};
+    Sp<Value> decryptedValue {};
 };
 
 using ValuesExport = std::pair<InfoHash, Blob>;

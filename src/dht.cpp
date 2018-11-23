@@ -381,7 +381,6 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
     if (sr->announce.empty())
         return;
     unsigned i = 0;
-    auto probe_query = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
     std::weak_ptr<Search> ws = sr;
 
     auto onDone = [this,ws](const net::Request& req, net::RequestAnswer&& answer)
@@ -471,25 +470,46 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         }
     };
 
+    Sp<Query> probe_query {};
     const auto& now = scheduler.time();
     for (auto& n : sr->nodes) {
         if (not n.isSynced(now))
             continue;
-        if (std::find_if(sr->announce.cbegin(), sr->announce.cend(),
-            [&now,&n](const Announce& a) {
-                return n.getAnnounceTime(a.value->id) <= now;
-            }) == sr->announce.cend())
-            continue;
 
-        DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending %s",
-                sr->id.toString().c_str(), n.node->toString().c_str(), probe_query->toString().c_str());
-        n.probe_query = probe_query;
-        n.getStatus[probe_query] = network_engine.sendGetValues(n.node,
-                sr->id,
-                *probe_query,
-                -1,
-                onSelectDone,
-                std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, probe_query));
+        const auto& gs = n.probe_query ? n.getStatus.find(n.probe_query) : n.getStatus.cend();
+        if (gs != n.getStatus.cend() and gs->second and gs->second->pending()) {
+            continue;
+        }
+
+        bool sendQuery = false;
+        for (auto& a : sr->announce) {
+            if (n.getAnnounceTime(a.value->id) <= now) {
+                if (a.permanent) {
+                    sendQuery = true;
+                } else {
+                    DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
+                            sr->id.toString().c_str(), n.node->toString().c_str(), a.value->id);
+                    n.acked[a.value->id] = {
+                        network_engine.sendAnnounceValue(n.node, sr->id, a.value, a.created, n.token, onDone, onExpired),
+                        now + getType(a.value->type).expiration
+                    };
+                }
+            }
+        }
+
+        if (sendQuery) {
+            if (not probe_query)
+                probe_query = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
+            DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending %s",
+                    sr->id.toString().c_str(), n.node->toString().c_str(), probe_query->toString().c_str());
+            n.probe_query = probe_query;
+            n.getStatus[probe_query] = network_engine.sendGetValues(n.node,
+                    sr->id,
+                    *probe_query,
+                    -1,
+                    onSelectDone,
+                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, probe_query));
+        }
         if (not n.candidate and ++i == TARGET_NODES)
             break;
     }
@@ -615,7 +635,7 @@ Dht::searchStep(Sp<Search> sr)
         // true if this node is part of the target nodes cluter.
         /*bool in = sr->id.xorCmp(myid, sr->nodes.back().node->id) < 0;
 
-        DHT_LOG_DEBUG("[search %s IPv%c] synced%s",
+        DHT_LOG_DBG("[search %s IPv%c] synced%s",
                 sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', in ? ", in" : "");*/
 
         if (not sr->listeners.empty()) {
@@ -645,7 +665,7 @@ Dht::searchStep(Sp<Search> sr)
                 i++;
         }
         while (sent and sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES);
-        /*DHT_LOG_DEBUG("[search %s IPv%c] step: sent %u requests (total %u).",
+        /*DHT_LOG_DBG("[search %s IPv%c] step: sent %u requests (total %u).",
             sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->currentlySolicitedNodeCount());*/
     }
 
@@ -1756,7 +1776,7 @@ Dht::Dht(const int& s, const int& s6, Config config)
 bool
 Dht::neighbourhoodMaintenance(RoutingTable& list)
 {
-    //DHT_LOG_DEBUG("neighbourhoodMaintenance");
+    //DHT_LOG_DBG("neighbourhoodMaintenance");
     auto b = list.findBucket(myid);
     if (b == list.end())
         return false;

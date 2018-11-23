@@ -310,11 +310,9 @@ public:
         dht_->pushNotificationReceived(notification);
     }
 
-    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG)
+    void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG) override
     {
-        DHT_LOG.DEBUG = debug;
-        DHT_LOG.WARN = warn;
-        DHT_LOG.ERR = error;
+        DhtInterface::setLoggers(error, warn, debug);
         dht_->setLoggers(error, warn, debug);
     }
 
