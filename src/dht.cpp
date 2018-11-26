@@ -2376,17 +2376,11 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
 {
     using namespace net;
 
-    const auto& now = scheduler.time();
     if (not tokenMatch(token, node->getAddr())) {
         DHT_LOG.w(hash, node->id, "[node %s] incorrect token %s for 'put'", node->toString().c_str(), hash.toString().c_str());
         throw DhtProtocolException {DhtProtocolException::UNAUTHORIZED, DhtProtocolException::PUT_WRONG_TOKEN};
     }
-
-    auto s = store.find(hash);
-    if (s != store.end()) {
-        auto expiration = s->second.refresh(now, vid, types);
-        if (expiration != time_point::max())
-            scheduler.add(expiration, std::bind(&Dht::expireStorage, this, hash));
+    if (storageRefresh(hash, vid)) {
         DHT_LOG.d(hash, node->id, "[store %s] [node %s] refreshed value %s", hash.toString().c_str(), node->toString().c_str(), std::to_string(vid).c_str());
     } else {
         DHT_LOG.d(hash, node->id, "[store %s] [node %s] got refresh for unknown value",
@@ -2394,6 +2388,20 @@ Dht::onRefresh(Sp<Node> node, const InfoHash& hash, const Blob& token, const Val
         throw DhtProtocolException {DhtProtocolException::NOT_FOUND, DhtProtocolException::STORAGE_NOT_FOUND};
     }
     return {};
+}
+
+bool
+Dht::storageRefresh(const InfoHash& id, Value::Id vid)
+{
+    const auto& now = scheduler.time();
+    auto s = store.find(id);
+    if (s != store.end()) {
+        auto expiration = s->second.refresh(now, vid, types);
+        if (expiration != time_point::max())
+            scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
+        return true;
+    }
+    return false;
 }
 
 void
