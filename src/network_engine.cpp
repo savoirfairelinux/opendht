@@ -185,7 +185,7 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
 }
 
 void
-NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& token, const std::vector<Value::Id>& values)
+NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -215,7 +215,7 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& 
 }
 
 void
-NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& token, const std::vector<Value::Id>& values)
+NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
