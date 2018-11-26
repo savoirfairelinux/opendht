@@ -158,6 +158,15 @@ public:
         },
         getFilterSet<T>());
     }
+    template <class T>
+    std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&, bool)> cb)
+    {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
+            return cb(unpackVector<T>(vals), expired);
+        },
+        getFilterSet<T>());
+    }
+
     template <typename T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter(), Where w = {})
     {
@@ -165,6 +174,22 @@ public:
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
+                        return false;
+                } catch (const std::exception&) {
+                    continue;
+                }
+            }
+            return true;
+        },
+        getFilterSet<T>(f), w);
+    }
+    template <typename T>
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = Value::AllFilter(), Where w = {})
+    {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
+            for (const auto& v : vals) {
+                try {
+                    if (not cb(Value::unpack<T>(*v), expired))
                         return false;
                 } catch (const std::exception&) {
                     continue;
