@@ -2344,7 +2344,8 @@ Dht::onAnnounce(Sp<Node> n,
         Sp<Value> vc = v;
         if (lv) {
             if (*lv == *vc) {
-                DHT_LOG.d(hash, node.id, "[store %s] nothing to do for %s", hash.toString().c_str(), lv->toString().c_str());
+                storageRefresh(hash, v->id);
+                DHT_LOG.d(hash, node.id, "[store %s] [node %s] refreshed value %s", hash.toString().c_str(), node.toString().c_str(), std::to_string(v->id).c_str());
             } else {
                 const auto& type = getType(lv->type);
                 if (type.editPolicy(hash, lv, vc, node.id, node.getAddr())) {
