@@ -69,12 +69,14 @@ SecureDht::secureType(ValueType&& type)
 {
     type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
         if (v->isSigned()) {
-            if (!v->owner or !v->owner->checkSignature(v->getToSign(), v->signature)) {
+            if (!v->signatureChecked) {
+                v->signatureChecked = true;
+                v->signatureValid = v->owner and v->owner->checkSignature(v->getToSign(), v->signature);
+            }
+            if (!v->signatureValid) {
                 DHT_LOG.WARN("Signature verification failed");
                 return false;
             }
-            else
-                DHT_LOG.WARN("Signature verification succeeded");
         }
         return type.storePolicy(id, v, nid, a);
     };
@@ -85,7 +87,11 @@ SecureDht::secureType(ValueType&& type)
             DHT_LOG.WARN("Edition forbidden: owner changed.");
             return false;
         }
-        if (!o->owner or !o->owner->checkSignature(n->getToSign(), n->signature)) {
+        if (!n->signatureChecked) {
+            n->signatureChecked = true;
+            n->signatureValid = o->owner and o->owner->checkSignature(n->getToSign(), n->signature);
+        }
+        if (!n->signatureValid) {
             DHT_LOG.WARN("Edition forbidden: signature verification failed.");
             return false;
         }
