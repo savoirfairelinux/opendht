@@ -551,7 +551,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         }
         case MessageType::Reply:
             if (req) { /* request reply */
-                if (msg->type == MessageType::AnnounceValue or msg->type == MessageType::Listen)
+                if (req->getType() == MessageType::AnnounceValue or req->getType() == MessageType::Listen)
                     req->node->authSuccess();
                 req->reply_time = scheduler.time();
 
