@@ -1,7 +1,7 @@
 dnl define macros
 m4_define([opendht_major_version], 1)
-m4_define([opendht_minor_version], 7)
-m4_define([opendht_patch_version], 4)
+m4_define([opendht_minor_version], 8)
+m4_define([opendht_patch_version], 0)
 m4_define([opendht_version],
 		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
 
@@ -130,7 +130,7 @@ PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
 
 AC_ARG_WITH([jsoncpp], AS_HELP_STRING([--without-jsoncpp], [Build without JsonCpp support]))
-AS_IF([test "x$with_jsoncpp" != "xno"], 
+AS_IF([test "x$with_jsoncpp" != "xno"],
       [PKG_CHECK_MODULES([JsonCpp], [jsoncpp >= 1.7.2], [have_jsoncpp=yes], [have_jsoncpp=no])],
       [have_jsoncpp=no])
 AS_IF([test "x$have_jsoncpp" = "xyes"], [
