@@ -290,9 +290,9 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
+        if (req.on_expired)
+            req.on_expired(req, false);
         return;
-    } else if (req.attempt_count == 1) {
-        req.on_expired(req, false);
     }
 
     auto err = send((char*)req.msg.data(), req.msg.size(),
@@ -302,7 +302,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         err == EHOSTUNREACH ||
         err == EAFNOSUPPORT ||
         err == EPIPE        ||
-        err == EPERM)
+        err == EPERM        ||
+        err == EFAULT)
     {
         node.setExpired();
         if (not node.id)
@@ -666,9 +667,6 @@ NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr
     if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
         int err = errno;
         DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
-        if (err == EPIPE) {
-            throw SocketException(EPIPE);
-        }
         return err;
     }
     return 0;
