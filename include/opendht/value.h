@@ -638,8 +638,10 @@ struct OPENDHT_PUBLIC Value
      */
     unsigned priority {0};
 
+    bool checkSignature();
+    Sp<Value> decrypt(const crypto::PrivateKey& key);
+
 private:
-    friend class SecureDht;
     /* Cache for crypto ops */
     bool signatureChecked {false};
     bool signatureValid {false};
