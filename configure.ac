@@ -193,7 +193,9 @@ AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY,
     [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=true"],
     [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=false"])
 
-AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
+AM_COND_IF([HAVE_DOXYGEN], [
+  AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
+])
 
 dnl Configure setup.py if we build the python module
 AM_COND_IF([USE_CYTHON], [
