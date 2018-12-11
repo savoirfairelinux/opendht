@@ -37,7 +37,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define close(x) closesocket(x)
-#define write(...) _write(__VA_ARGS__)
+#define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #endif
 
 namespace dht {
