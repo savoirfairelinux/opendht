@@ -68,33 +68,19 @@ ValueType
 SecureDht::secureType(ValueType&& type)
 {
     type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
-        if (v->isSigned()) {
-            if (!v->signatureChecked) {
-                v->signatureChecked = true;
-                v->signatureValid = v->owner and v->owner->checkSignature(v->getToSign(), v->signature);
-            }
-            if (!v->signatureValid) {
-                DHT_LOG.WARN("Signature verification failed");
-                return false;
-            }
-        }
+        if (v->isSigned())
+            return v->checkSignature();
         return type.storePolicy(id, v, nid, a);
     };
     type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
-        if (!o->isSigned())
+        if (not o->isSigned())
             return type.editPolicy(id, o, n, nid, a);
-        if (o->owner != n->owner) {
+        if (o->owner != n->owner or not n->isSigned()) {
             DHT_LOG.WARN("Edition forbidden: owner changed.");
             return false;
         }
-        if (!n->signatureChecked) {
-            n->signatureChecked = true;
-            n->signatureValid = o->owner and o->owner->checkSignature(n->getToSign(), n->signature);
-        }
-        if (!n->signatureValid) {
-            DHT_LOG.WARN("Edition forbidden: signature verification failed.");
+        if (not n->checkSignature())
             return false;
-        }
         if (o->seq == n->seq) {
             // If the data is exactly the same,
             // it can be reannounced, possibly by someone else.
@@ -241,35 +227,23 @@ SecureDht::checkValue(const Sp<Value>& v)
 #endif
             return {};
         }
-        if (v->decrypted) {
-            return v->decryptedValue;
-        }
-        v->decrypted = true;
         try {
-            Value decrypted_val (decrypt(*v));
-            if (decrypted_val.recipient == getId()) {
-                if (decrypted_val.owner)
-                    nodesPubKeys_[decrypted_val.owner->getId()] = decrypted_val.owner;
-                v->decryptedValue = std::make_shared<Value>(std::move(decrypted_val));
-                return v->decryptedValue;
+            if (auto decrypted_val = v->decrypt(*key_)) {
+                if (decrypted_val->owner)
+                    nodesPubKeys_[decrypted_val->owner->getId()] = decrypted_val->owner;
+                return decrypted_val;
             }
-            // Ignore values belonging to other people
         } catch (const std::exception& e) {
             DHT_LOG.WARN("Could not decrypt value %s : %s", v->toString().c_str(), e.what());
         }
     }
     // Check signed values
     else if (v->isSigned()) {
-        if (v->signatureChecked) {
-            return v->signatureValid ? v : Sp<Value>{};
-        }
-        v->signatureChecked = true;
-        if (v->owner and v->owner->checkSignature(v->getToSign(), v->signature)) {
-            v->signatureValid = true;
-            nodesPubKeys_[v->owner->getId()] = v->owner;
+        if (v->checkSignature()) {
+            if (v->owner)
+                nodesPubKeys_[v->owner->getId()] = v->owner;
             return v;
-        }
-        else
+        } else
             DHT_LOG.WARN("Signature verification failed for %s", v->toString().c_str());
     }
     // Forward normal values
