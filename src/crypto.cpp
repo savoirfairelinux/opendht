@@ -105,7 +105,6 @@ Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
     struct gcm_aes_ctx aes;
     gcm_aes_set_key(&aes, key.size(), key.data());
     gcm_aes_set_iv(&aes, GCM_IV_SIZE, ret.data());
-    gcm_aes_update(&aes, data_length, data);
 
     gcm_aes_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
     gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
@@ -137,18 +136,8 @@ Blob aesDecrypt(const Blob& data, const Blob& key)
 
     size_t data_sz = data.size() - GCM_IV_SIZE - GCM_DIGEST_SIZE;
     Blob ret(data_sz);
-    //gcm_aes_update(&aes, data_sz, data.data() + GCM_IV_SIZE);
     gcm_aes_decrypt(&aes, data_sz, ret.data(), data.data() + GCM_IV_SIZE);
-    //gcm_aes_digest(aes, GCM_DIGEST_SIZE, digest.data());
-
-    // TODO compute the proper digest directly from the decryption pass
-    Blob ret_tmp(data_sz);
-    struct gcm_aes_ctx aes_d;
-    gcm_aes_set_key(&aes_d, key.size(), key.data());
-    gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data.data());
-    gcm_aes_update(&aes_d, ret.size(), ret.data());
-    gcm_aes_encrypt(&aes_d, ret.size(), ret_tmp.data(), ret.data());
-    gcm_aes_digest(&aes_d, GCM_DIGEST_SIZE, digest.data());
+    gcm_aes_digest(&aes, GCM_DIGEST_SIZE, digest.data());
 
     if (not std::equal(digest.begin(), digest.end(), data.end() - GCM_DIGEST_SIZE))
         throw DecryptError("Can't decrypt data");
