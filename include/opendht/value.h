@@ -577,7 +577,7 @@ struct OPENDHT_PUBLIC Value
     std::string user_type {};
 
     /**
-     * Sequence number to avoid replay attacks
+     * Sequence number
      */
     uint16_t seq {0};
 
@@ -591,8 +591,10 @@ struct OPENDHT_PUBLIC Value
      */
     Blob cypher {};
 
+    bool checkSignature();
+    Sp<Value> decrypt(const crypto::PrivateKey& key);
+
 private:
-    friend class SecureDht;
     /* Cache for crypto ops */
     bool signatureChecked {false};
     bool signatureValid {false};

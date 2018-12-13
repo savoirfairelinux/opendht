@@ -233,6 +233,39 @@ Value::toJson() const
     return val;
 }
 
+bool
+Value::checkSignature()
+{
+    if (!signatureChecked) {
+        signatureChecked = true;
+        if (isSigned()) {
+            signatureValid = owner and owner->checkSignature(getToSign(), signature);
+        }
+    }
+    return signatureValid;
+}
+
+Sp<Value>
+Value::decrypt(const crypto::PrivateKey& key)
+{
+    if (not decrypted) {
+        decrypted = true;
+        if (isEncrypted()) {
+            auto decryptedBlob = key.decrypt(cypher);
+            std::unique_ptr<Value> v {new Value(id)};
+            auto msg = msgpack::unpack((const char*)decryptedBlob.data(), decryptedBlob.size());
+            v->msgpack_unpack_body(msg.get());
+            if (v->recipient != key.getPublicKey().getId())
+                throw crypto::DecryptError("Recipient mismatch");
+            // Ignore values belonging to other people
+            if (not v->owner or not v->owner->checkSignature(v->getToSign(), v->signature))
+                throw crypto::DecryptError("Signature mismatch");
+            decryptedValue = std::move(v);
+        }
+    }
+    return decryptedValue;
+}
+
 uint64_t
 unpackId(const Json::Value& json, const std::string& key) {
     uint64_t ret = 0;
