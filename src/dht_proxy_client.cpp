@@ -578,6 +578,8 @@ DhtProxyClient::getProxyInfos()
 void
 DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
 {
+    if (isDestroying_)
+        return;
     std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
@@ -951,6 +953,8 @@ DhtProxyClient::getConnectivityStatus()
 void
 DhtProxyClient::restartListeners()
 {
+    if (isDestroying_) return;
+    std::lock_guard<std::mutex> lock(searchLock_);
     DHT_LOG.d("Refresh permanent puts");
     for (auto& search : searches_) {
         for (auto& put : search.second.puts) {
@@ -974,7 +978,6 @@ DhtProxyClient::restartListeners()
         return;
     }
     DHT_LOG.d("Restarting listeners");
-    std::lock_guard<std::mutex> lock(searchLock_);
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;

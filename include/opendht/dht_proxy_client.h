@@ -375,7 +375,7 @@ private:
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
-    bool isDestroying_ {false};
+    std::atomic_bool isDestroying_ {false};
 };
 
 }
