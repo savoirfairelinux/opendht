@@ -351,6 +351,8 @@ private:
      */
     void confirmProxy();
     Sp<Scheduler::Job> nextProxyConfirmation {};
+    Sp<Scheduler::Job> listenerRestart {};
+
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
      */
