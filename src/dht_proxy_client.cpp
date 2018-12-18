@@ -98,6 +98,7 @@ DhtProxyClient::startProxy()
     if (serverHost_.empty()) return;
     DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
+    listenerRestart = std::make_shared<Scheduler::Job>(std::bind(&DhtProxyClient::restartListeners, this));
     loopSignal_();
 }
 
@@ -613,7 +614,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
     if (newStatus == NodeStatus::Connected) {
         if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
-            restartListeners();
+            scheduler.edit(listenerRestart, scheduler.time());
         }
         scheduler.edit(nextProxyConfirmation, scheduler.time() + std::chrono::minutes(15));
     }
