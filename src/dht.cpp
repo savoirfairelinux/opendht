@@ -164,8 +164,14 @@ Dht::reportedAddr(const SockAddr& addr)
 void
 Dht::onNewNode(const Sp<Node>& node, int confirm)
 {
-    if (buckets(node->getFamily()).onNewNode(node, confirm, scheduler.time(), myid, network_engine) or confirm) {
+    const auto& now = scheduler.time();
+    auto& b = buckets(node->getFamily());
+    auto wasEmpty = confirm < 2 && b.grow_time < now - std::chrono::minutes(5);
+    if (b.onNewNode(node, confirm, now, myid, network_engine) or confirm) {
         trySearchInsert(node);
+        if (wasEmpty) {
+            scheduler.edit(nextNodesConfirmation, now + std::chrono::seconds(1));
+        }
     }
 }
 
