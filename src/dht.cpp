@@ -521,8 +521,8 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
         auto list_token = l.first;
         if (n.getListenTime(query) > scheduler.time())
             continue;
-        DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
-                sr->id.toString().c_str(), n.node->toString().c_str());
+        // DHT_LOG.d(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
+        //        sr->id.toString().c_str(), n.node->toString().c_str());
 
         auto r = n.listenStatus.find(query);
         if (r == n.listenStatus.end()) {
@@ -868,7 +868,6 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query);
     auto token6 = Dht::listenTo(id, AF_INET6, gcb, filter, query);
 
-    DHT_LOG.d(id, "Added listen : %d -> %d %d %d", token, tokenlocal, token4, token6);
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
     return token;
 }
@@ -2289,8 +2288,8 @@ Dht::onListenDone(const Sp<Node>& node,
         net::RequestAnswer& answer,
         Sp<Search>& sr)
 {
-    DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
-                sr->id.toString().c_str(), node->toString().c_str(), answer.values.size());
+    // DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
+    //            sr->id.toString().c_str(), node->toString().c_str(), answer.values.size());
 
     if (not sr->done) {
         const auto& now = scheduler.time();
