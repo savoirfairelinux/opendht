@@ -125,19 +125,16 @@ Dht::trySearchInsert(const Sp<Node>& node)
     bool inserted {false};
 
     // insert forward
-    auto it = closest;
-    while (it != srs.end()) {
+    for (auto it = closest; it != srs.end(); it++) {
         auto& s = *it->second;
         if (s.insertNode(node, now)) {
             inserted = true;
             scheduler.edit(s.nextSearchStep, now);
         } else if (not s.expired and not s.done)
             break;
-        ++it;
     }
     // insert backward
-    it = closest;
-    while (it != srs.begin()) {
+    for (auto it = closest; it != srs.begin();) {
         --it;
         auto& s = *it->second;
         if (s.insertNode(node, now)) {
@@ -1805,7 +1802,7 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
                 n->toString().c_str(), id.toString().c_str());
         /* Since our node-id is the same in both DHTs, it's probably
            profitable to query both families. */
-        network_engine.sendFindNode(n, id, network_engine.want(), nullptr, nullptr);
+        network_engine.sendFindNode(n, id, network_engine.want());
     }
 
     return true;

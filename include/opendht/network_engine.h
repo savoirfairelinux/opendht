@@ -290,9 +290,9 @@ public:
      */
     Sp<Request> sendFindNode(Sp<Node> n,
                              const InfoHash& hash,
-                             want_t want,
-                             RequestCb&& on_done,
-                             RequestExpiredCb&& on_expired);
+                             want_t want = -1,
+                             RequestCb&& on_done = {},
+                             RequestExpiredCb&& on_expired = {});
     /**
      * Send a "get" request to a given node.
      *
