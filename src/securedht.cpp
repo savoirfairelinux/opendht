@@ -364,7 +364,8 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
             sign(*val);
             dht_->put(hash, val, callback, time_point::max(), permanent);
         },
-        Value::IdFilter(val->id)
+        Value::IdFilter(val->id),
+        std::move(Where().id(val->id))
     );
 }
 
