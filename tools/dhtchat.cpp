@@ -64,6 +64,15 @@ main(int argc, char **argv)
     try {
         dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
 
+        if (params.log) {
+            if (params.syslog)
+                log::enableSyslog(dht, "dhtnode");
+            else if (not params.logfile.empty())
+                log::enableFileLogging(dht, params.logfile);
+            else
+                log::enableLogging(dht);
+        }
+
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
