@@ -257,45 +257,49 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         // will change the connectivity status
         struct GetState{ std::atomic_bool ok {true}; std::atomic_bool stop {false}; };
         auto state = std::make_shared<GetState>();
-        restbed::Http::async(req,
-            [=](const std::shared_ptr<restbed::Request>& req,
-                const std::shared_ptr<restbed::Response>& reply) {
-            auto code = reply->get_status_code();
+        try {
+            restbed::Http::async(req,
+                [=](const std::shared_ptr<restbed::Request>& req,
+                    const std::shared_ptr<restbed::Response>& reply) {
+                auto code = reply->get_status_code();
 
-            if (code == 200) {
-                try {
-                    while (restbed::Http::is_open(req) and not *finished and not state->stop) {
-                        restbed::Http::fetch("\n", reply);
-                        if (*finished or state->stop)
-                            break;
-                        std::string body;
-                        reply->get_body(body);
-                        reply->set_body(""); // Reset the body for the next fetch
+                if (code == 200) {
+                    try {
+                        while (restbed::Http::is_open(req) and not *finished and not state->stop) {
+                            restbed::Http::fetch("\n", reply);
+                            if (*finished or state->stop)
+                                break;
+                            std::string body;
+                            reply->get_body(body);
+                            reply->set_body(""); // Reset the body for the next fetch
 
-                        std::string err;
-                        Json::Value json;
-                        Json::CharReaderBuilder rbuilder;
-                        auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
-                            auto value = std::make_shared<Value>(json);
-                            if ((not filter or filter(*value)) and cb) {
-                                std::lock_guard<std::mutex> lock(lockCallbacks);
-                                callbacks_.emplace_back([cb, value, state]() {
-                                    if (not state->stop and not cb({value}))
-                                        state->stop = true;
-                                });
-                                loopSignal_();
+                            std::string err;
+                            Json::Value json;
+                            Json::CharReaderBuilder rbuilder;
+                            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                            if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
+                                auto value = std::make_shared<Value>(json);
+                                if ((not filter or filter(*value)) and cb) {
+                                    std::lock_guard<std::mutex> lock(lockCallbacks);
+                                    callbacks_.emplace_back([cb, value, state]() {
+                                        if (not state->stop and not cb({value}))
+                                            state->stop = true;
+                                    });
+                                    loopSignal_();
+                                }
+                            } else {
+                                state->ok = false;
                             }
-                        } else {
-                            state->ok = false;
                         }
-                    }
-                } catch (std::runtime_error& e) { }
-            } else {
-                state->ok = false;
-            }
-        }).wait();
+                    } catch (std::runtime_error& e) { }
+                } else {
+                    state->ok = false;
+                }
+            }).wait();
+        } catch(const std::exception& e) {
+            state->ok = false;
+        }
         if (donecb) {
             std::lock_guard<std::mutex> lock(lockCallbacks);
             callbacks_.emplace_back([=](){
@@ -390,32 +394,36 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     o.finished = finished;
     o.thread = std::thread([=](){
         auto ok = std::make_shared<std::atomic_bool>(true);
-        restbed::Http::async(req,
-            [ok](const std::shared_ptr<restbed::Request>& /*req*/,
-                        const std::shared_ptr<restbed::Response>& reply) {
-            auto code = reply->get_status_code();
+        try {
+            restbed::Http::async(req,
+                [ok](const std::shared_ptr<restbed::Request>& /*req*/,
+                            const std::shared_ptr<restbed::Response>& reply) {
+                auto code = reply->get_status_code();
 
-            if (code == 200) {
-                restbed::Http::fetch("\n", reply);
-                std::string body;
-                reply->get_body(body);
-                reply->set_body(""); // Reset the body for the next fetch
+                if (code == 200) {
+                    restbed::Http::fetch("\n", reply);
+                    std::string body;
+                    reply->get_body(body);
+                    reply->set_body(""); // Reset the body for the next fetch
 
-                try {
-                    std::string err;
-                    Json::Value json;
-                    Json::CharReaderBuilder rbuilder;
-                    auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                    if (not reader->parse(char_data, char_data + body.size(), &json, &err))
+                    try {
+                        std::string err;
+                        Json::Value json;
+                        Json::CharReaderBuilder rbuilder;
+                        auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        if (not reader->parse(char_data, char_data + body.size(), &json, &err))
+                            *ok = false;
+                    } catch (...) {
                         *ok = false;
-                } catch (...) {
+                    }
+                } else {
                     *ok = false;
                 }
-            } else {
-                *ok = false;
-            }
-        }).wait();
+            }).wait();
+        } catch(const std::exception& e) {
+            *ok = false;
+        }
         if (cb) {
             std::lock_guard<std::mutex> lock(lockCallbacks);
             callbacks_.emplace_back([=](){
@@ -692,47 +700,51 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
     std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
     settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
     req->set_method("LISTEN");
-    restbed::Http::async(req,
-        [this, filter, cb, state](const std::shared_ptr<restbed::Request>& req,
-                                  const std::shared_ptr<restbed::Response>& reply) {
-        auto code = reply->get_status_code();
-        if (code == 200) {
-            try {
-                while (restbed::Http::is_open(req) and not state->cancel) {
-                    restbed::Http::fetch("\n", reply);
-                    if (state->cancel)
-                        break;
-                    std::string body;
-                    reply->get_body(body);
-                    reply->set_body(""); // Reset the body for the next fetch
+    try {
+        restbed::Http::async(req,
+            [this, filter, cb, state](const std::shared_ptr<restbed::Request>& req,
+                                    const std::shared_ptr<restbed::Response>& reply) {
+            auto code = reply->get_status_code();
+            if (code == 200) {
+                try {
+                    while (restbed::Http::is_open(req) and not state->cancel) {
+                        restbed::Http::fetch("\n", reply);
+                        if (state->cancel)
+                            break;
+                        std::string body;
+                        reply->get_body(body);
+                        reply->set_body(""); // Reset the body for the next fetch
 
-                    Json::Value json;
-                    std::string err;
-                    Json::CharReaderBuilder rbuilder;
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                    if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
-                        auto expired = json.get("expired", Json::Value(false)).asBool();
-                        auto value = std::make_shared<Value>(json);
-                        if ((not filter or filter(*value)) and cb)  {
-                            std::lock_guard<std::mutex> lock(lockCallbacks);
-                            callbacks_.emplace_back([cb, value, state, expired]() {
-                                if (not state->cancel and not cb({value}, expired))
-                                    state->cancel = true;
-                            });
-                            loopSignal_();
+                        Json::Value json;
+                        std::string err;
+                        Json::CharReaderBuilder rbuilder;
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
+                            auto expired = json.get("expired", Json::Value(false)).asBool();
+                            auto value = std::make_shared<Value>(json);
+                            if ((not filter or filter(*value)) and cb)  {
+                                std::lock_guard<std::mutex> lock(lockCallbacks);
+                                callbacks_.emplace_back([cb, value, state, expired]() {
+                                    if (not state->cancel and not cb({value}, expired))
+                                        state->cancel = true;
+                                });
+                                loopSignal_();
+                            }
                         }
                     }
+                } catch (const std::exception& e) {
+                    if (not state->cancel) {
+                        DHT_LOG.w("Listen closed by the proxy server: %s", e.what());
+                        state->ok = false;
+                    }
                 }
-            } catch (const std::exception& e) {
-                if (not state->cancel) {
-                    DHT_LOG.w("Listen closed by the proxy server: %s", e.what());
-                    state->ok = false;
-                }
+            } else {
+                state->ok = false;
             }
-        } else {
-            state->ok = false;
-        }
-    }, settings).get();
+        }, settings).get();
+    } catch (const std::exception& e) {
+        state->ok = false;
+    }
     auto& s = *state;
     if (not s.ok and not s.cancel)
         opFailed();
@@ -742,37 +754,41 @@ void
 DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, const Sp<proxy::ListenToken>& token, const Sp<ListenState>& state) {
 #if OPENDHT_PUSH_NOTIFICATIONS
     req->set_method("SUBSCRIBE");
-    fillBodyToGetToken(req);
-    restbed::Http::async(req, [this,state, token](const std::shared_ptr<restbed::Request>&,
-                                             const std::shared_ptr<restbed::Response>& reply) {
-        auto code = reply->get_status_code();
-        if (code == 200) {
-            try {
-                restbed::Http::fetch("\n", reply);
-                std::string body;
-                reply->get_body(body);
+    try {
+        fillBodyToGetToken(req);
+        restbed::Http::async(req, [this,state, token](const std::shared_ptr<restbed::Request>&,
+                                                const std::shared_ptr<restbed::Response>& reply) {
+            auto code = reply->get_status_code();
+            if (code == 200) {
+                try {
+                    restbed::Http::fetch("\n", reply);
+                    std::string body;
+                    reply->get_body(body);
 
-                std::string err;
-                Json::Value json;
-                Json::CharReaderBuilder rbuilder;
-                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
-                    if (not json.isMember("token")) {
-                        state->ok = false;
-                        return;
+                    std::string err;
+                    Json::Value json;
+                    Json::CharReaderBuilder rbuilder;
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
+                        if (not json.isMember("token")) {
+                            state->ok = false;
+                            return;
+                        }
+                        *token = unpackId(json, "token");
                     }
-                    *token = unpackId(json, "token");
+                } catch (const std::exception& e) {
+                    if (not state->cancel) {
+                        DHT_LOG.e("sendSubscribe: error: %s", e.what());
+                        state->ok = false;
+                    }
                 }
-            } catch (const std::exception& e) {
-                if (not state->cancel) {
-                    DHT_LOG.e("sendSubscribe: error: %s", e.what());
-                    state->ok = false;
-                }
+            } else {
+                state->ok = false;
             }
-        } else {
-            state->ok = false;
-        }
-    }).get();
+        }).get();
+    } catch(const std::exception& e) {
+        state->ok = false;
+    }
     auto& s = *state;
     if (not s.ok and not s.cancel)
         opFailed();
@@ -912,8 +928,11 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         std::replace(content.begin(), content.end(), '\n', ' ');
         req->set_body(content);
         req->set_header("Content-Length", std::to_string(content.size()));
-
-        restbed::Http::async(req, [](const std::shared_ptr<restbed::Request>&, const std::shared_ptr<restbed::Response>&){});
+        try {
+            restbed::Http::async(req, [](const std::shared_ptr<restbed::Request>&, const std::shared_ptr<restbed::Response>&){});
+        } catch (const std::exception& e) {
+            DHT_LOG.w(key, "[search %s] cancelListen: Http::async failed: %s", key.to_c_str(), e.what());
+        }
     } else {
         // Just stop the request
         if (listener.thread.joinable()) {
