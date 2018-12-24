@@ -89,7 +89,9 @@ public:
 
     void addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
         listeners.emplace(token, LocalListener{q, filter, cb});
-        cb(cache.get(filter), false);
+        auto cached = cache.get(filter);
+        if (not cached.empty())
+            cb(cached, false);
     }
 
     bool removeListener(size_t token, const time_point& now) {
