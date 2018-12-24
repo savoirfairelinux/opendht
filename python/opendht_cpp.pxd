@@ -77,6 +77,9 @@ cdef extern from "opendht/sockaddr.h" namespace "dht":
         void setPort(in_port_t p)
         sa_family_t getFamily() const
         void setFamily(sa_family_t f)
+        bool isLoopback() const
+        bool isPrivate() const
+        bool isUnspecified() const
 
 ctypedef vector[uint8_t] Blob
 

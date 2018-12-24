@@ -139,6 +139,12 @@ cdef class SockAddr(object):
         return self._addr.setPort(port)
     def setFamily(SockAddr self, cpp.sa_family_t af):
         return self._addr.setFamily(af)
+    def isLoopback(SockAddr self):
+        return self._addr.isLoopback()
+    def isPrivate(SockAddr self):
+        return self._addr.isPrivate()
+    def isUnspecified(SockAddr self):
+        return self._addr.isUnspecified()
     def __str__(self):
         return self.toString().decode()
     def __repr__(self):

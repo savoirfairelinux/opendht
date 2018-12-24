@@ -51,7 +51,7 @@ def ping(node, h):
 
 def pong(node, h):
 	print(node.getNodeId().decode(), "got ping", h, i)
-	loop.call_soon_threadsafe(ping, node, h);
+	loop.call_soon_threadsafe(ping, node, h)
 	return True
 
 ping_node.listen(loc_ping, lambda v: pong(pong_node, loc_pong))
