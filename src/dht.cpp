@@ -846,7 +846,9 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     auto vals = std::make_shared<std::map<Value::Id, Sp<Value>>>();
     auto token = ++listener_token;
 
-    auto gcb = OpValueCache::cacheCallback(std::move(cb));
+    auto gcb = OpValueCache::cacheCallback(std::move(cb), [this, id, token]{
+        cancelListen(id, token);
+    });
 
     auto query = std::make_shared<Query>(q);
     auto filter = f.chain(q.where.getFilter());

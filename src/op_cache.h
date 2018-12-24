@@ -37,10 +37,13 @@ public:
         o.callback = {};
     }
 
-    static ValueCallback cacheCallback(ValueCallback&& cb) {
+    static ValueCallback cacheCallback(ValueCallback&& cb, std::function<void()>&& onCancel) {
         auto cache = std::make_shared<OpValueCache>(std::forward<ValueCallback>(cb));
-        return [cache](const std::vector<Sp<Value>>& vals, bool expired){
-            return cache->onValue(vals, expired);
+        return [cache, onCancel](const std::vector<Sp<Value>>& vals, bool expired){
+            auto ret = cache->onValue(vals, expired);
+            if (not ret)
+                onCancel();
+            return ret;
         };
     }
 
