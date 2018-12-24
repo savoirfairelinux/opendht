@@ -853,7 +853,7 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     size_t tokenlocal = 0;
     auto st = store.find(id);
     if (st == store.end() && store.size() < MAX_HASHES)
-        st = store.emplace(id, Storage(scheduler.time() + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME)).first;
+        st = store.emplace(id, scheduler.time() + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME).first;
     if (st != store.end()) {
         if (not st->second.empty()) {
             std::vector<Sp<Value>> newvals = st->second.get(filter);
@@ -1225,7 +1225,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return false;
-        auto st_i = store.emplace(id, Storage(now));
+        auto st_i = store.emplace(id, now);
         st = st_i.first;
         if (maintain_storage and st_i.second)
             scheduler.add(st->second.maintenance_time, std::bind(&Dht::dataPersistence, this, id));
@@ -1271,7 +1271,7 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
     if (st == store.end()) {
         if (store.size() >= MAX_HASHES)
             return;
-        st = store.emplace(id, Storage(now)).first;
+        st = store.emplace(id, now).first;
     }
     auto node_listeners = st->second.listeners.emplace(node, std::map<size_t, Listener> {}).first;
     auto l = node_listeners->second.find(socket_id);
