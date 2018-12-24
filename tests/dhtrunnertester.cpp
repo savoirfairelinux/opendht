@@ -58,7 +58,44 @@ DhtRunnerTester::testGetPut() {
 
 void
 DhtRunnerTester::testListen() {
-    // TODO
+    std::atomic_uint valueCount(0);
+    std::atomic_uint putCount(0);
+
+    auto a = dht::InfoHash::get("234");
+    auto b = dht::InfoHash::get("2345");
+    auto c = dht::InfoHash::get("23456");
+    constexpr unsigned N = 32;
+
+    auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&){
+        valueCount++;
+        return true;
+    });
+
+    auto ftokenb = node1.listen(b, [&](const std::shared_ptr<dht::Value>&){
+        valueCount++;
+        return false;
+    });
+
+    auto ftokenc = node1.listen(c, [&](const std::shared_ptr<dht::Value>&){
+        valueCount++;
+        return true;
+    });
+
+    for (unsigned i=0; i<N; i++) {
+        node2.put(a, dht::Value("v1"), [&](bool ok) { if (ok) putCount++; });
+        node2.put(b, dht::Value("v2"), [&](bool ok) { if (ok) putCount++; });
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    auto tokena = ftokena.get();
+    auto tokenb = ftokenb.get();
+    auto tokenc = ftokenc.get();
+
+    CPPUNIT_ASSERT(tokena);
+    CPPUNIT_ASSERT(tokenb);
+    CPPUNIT_ASSERT(tokenc);
+    CPPUNIT_ASSERT_EQUAL(N * 2u, putCount.load());
+    CPPUNIT_ASSERT_EQUAL(N + 1u, valueCount.load());
 }
 
 }  // namespace test
