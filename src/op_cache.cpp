@@ -133,8 +133,7 @@ SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std
     auto token = nextToken_++;
     if (nextToken_ == 0)
         nextToken_++;
-    op->second->addListener(token, get_cb, q, filter);
-    return token;
+    return op->second->addListener(token, get_cb, q, filter) ? token : 0;
 }
 
 bool
