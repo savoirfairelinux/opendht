@@ -874,7 +874,11 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     }
 
     auto token4 = Dht::listenTo(id, AF_INET, gcb, filter, query);
-    auto token6 = Dht::listenTo(id, AF_INET6, gcb, filter, query);
+    auto token6 = token4 == 0 ? 0 : Dht::listenTo(id, AF_INET6, gcb, filter, query);
+    if (token6 == 0 && st != store.end()) {
+        st->second.local_listeners.erase(tokenlocal);
+        return 0;
+    }
 
     listeners.emplace(token, std::make_tuple(tokenlocal, token4, token6));
     return token;
