@@ -1392,12 +1392,6 @@ Dht::connectivityChanged(sa_family_t af)
     scheduler.edit(nextNodesConfirmation, now);
     buckets(af).connectivityChanged(now);
     network_engine.connectivityChanged(af);
-    for (auto& sp : searches(af))
-        for (auto& sn : sp.second->nodes) {
-            for (auto& ls : sn.listenStatus)
-                sn.node->cancelRequest(ls.second.req);
-            sn.listenStatus.clear();
-        }
     reported_addr.erase(std::remove_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& addr){
         return addr.second.getFamily() == af;
     }), reported_addr.end());
