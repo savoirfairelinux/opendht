@@ -324,10 +324,10 @@ private:
     static constexpr unsigned LISTEN_NODES {4};
 
     /* The maximum number of hashes we're willing to track. */
-    static constexpr unsigned MAX_HASHES {16384};
+    static constexpr unsigned MAX_HASHES {64 * 1024};
 
     /* The maximum number of searches we keep data about. */
-    static constexpr unsigned MAX_SEARCHES {16384};
+    static constexpr unsigned MAX_SEARCHES {64 * 1024};
 
     static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
 
