@@ -51,11 +51,11 @@ DhtRunnerTester::testGetPut() {
     dht::Value val {"hey"};
     auto val_data = val.data;
     std::promise<bool> p;
-    node1.put(key, std::move(val), [&](bool ok){
+    node2.put(key, std::move(val), [&](bool ok){
         p.set_value(ok);
     });
     CPPUNIT_ASSERT(p.get_future().get());
-    auto vals = node2.get(key).get();
+    auto vals = node1.get(key).get();
     CPPUNIT_ASSERT(not vals.empty());
     CPPUNIT_ASSERT(vals.front()->data == val_data);
 }
