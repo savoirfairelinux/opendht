@@ -681,10 +681,6 @@ Dht::searchStep(Sp<Search> sr)
     }
 
     /* dumpSearch(*sr, std::cout); */
-
-    /* periodic searchStep scheduling. */
-    //if (not sr->done)
-    //    scheduler.edit(sr->nextSearchStep, now);
 }
 
 unsigned Dht::refill(Dht::Search& sr) {
