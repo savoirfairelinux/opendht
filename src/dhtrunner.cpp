@@ -460,6 +460,7 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
         setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&set, sizeof(set));
     int rc = bind(sock, addr.get(), addr.getLength());
     if(rc < 0) {
+        rc = errno;
         close(sock);
         throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
     }
