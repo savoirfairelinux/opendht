@@ -282,7 +282,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n) {
                 if (vid == Value::INVALID_ID) continue;
                 auto query_for_vid = std::make_shared<Query>(Select {}, Where {}.id(vid));
                 sn->pagination_queries[query].push_back(query_for_vid);
-                DHT_LOG.w(id, sn->node->id, "[search %s] [node %s] sending %s",
+                DHT_LOG.d(id, sn->node->id, "[search %s] [node %s] sending %s",
                         id.toString().c_str(), sn->node->toString().c_str(), query_for_vid->toString().c_str());
                 sn->getStatus[query_for_vid] = network_engine.sendGetValues(status.node,
                         id,
@@ -301,7 +301,7 @@ void Dht::paginate(std::weak_ptr<Search> ws, Sp<Query> query, SearchNode* n) {
     /* add pagination query key for tracking ongoing requests. */
     n->pagination_queries[query].push_back(select_q);
 
-    DHT_LOG.w(sr->id, n->node->id, "[search %s] [node %s] sending %s",
+    DHT_LOG.d(sr->id, n->node->id, "[search %s] [node %s] sending %s",
             sr->id.toString().c_str(), n->node->toString().c_str(), select_q->toString().c_str());
     n->getStatus[select_q] = network_engine.sendGetValues(n->node,
             sr->id,
@@ -435,7 +435,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
             auto next_refresh_time = now + getType(a.value->type).expiration;
             /* only put the value if the node doesn't already have it */
             if (not hasValue or seq_no < a.value->seq) {
-                DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
+                DHT_LOG.d(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                 sn->acked[a.value->id] = std::make_pair(network_engine.sendAnnounceValue(sn->node,
                                                 sr->id,
@@ -503,7 +503,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         if (sendQuery) {
             if (not probe_query)
                 probe_query = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
-            DHT_LOG.w(sr->id, n.node->id, "[search %s] [node %s] sending %s",
+            DHT_LOG.d(sr->id, n.node->id, "[search %s] [node %s] sending %s",
                     sr->id.toString().c_str(), n.node->toString().c_str(), probe_query->toString().c_str());
             n.probe_query = probe_query;
             n.getStatus[probe_query] = network_engine.sendGetValues(n.node,
@@ -598,9 +598,9 @@ Dht::searchStep(Sp<Search> sr)
     if (not sr or sr->expired or sr->done) return;
 
     const auto& now = scheduler.time();
-    if (auto req_count = sr->currentlySolicitedNodeCount())
+    /*if (auto req_count = sr->currentlySolicitedNodeCount())
         DHT_LOG.d(sr->id, "[search %s IPv%c] step (%d requests)",
-                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', req_count);
+                sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', req_count);*/
     sr->step_time = now;
 
     if (sr->refill_time + Node::NODE_EXPIRE_TIME < now and sr->nodes.size()-sr->getNumberOfBadNodes() < SEARCH_NODES)
@@ -659,18 +659,7 @@ Dht::searchStep(Sp<Search> sr)
             sr->setDone();
     }
 
-    if (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES) {
-        unsigned i = 0;
-        SearchNode* sent;
-        do {
-            sent = searchSendGetValues(sr);
-            if (sent and not sent->candidate)
-                i++;
-        }
-        while (sent and sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES);
-        /*DHT_LOG_DBG("[search %s IPv%c] step: sent %u requests (total %u).",
-            sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6', i, sr->currentlySolicitedNodeCount());*/
-    }
+    while (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES and searchSendGetValues(sr));
 
     if (sr->getNumberOfConsecutiveBadNodes() >= std::min(sr->nodes.size(),
                                                              static_cast<size_t>(SEARCH_MAX_BAD_NODES)))
@@ -2359,7 +2348,7 @@ Dht::onAnnounce(Sp<Node> n,
             // Allow the value to be edited by the storage policy
             const auto& type = getType(vc->type);
             if (type.storePolicy(hash, vc, node.id, node.getAddr())) {
-                DHT_LOG.d(hash, node.id, "[store %s] storing %s", hash.toString().c_str(), vc->toString().c_str());
+                //DHT_LOG.d(hash, node.id, "[store %s] storing %s", hash.toString().c_str(), std::to_string(vc->id).c_str());
                 storageStore(hash, vc, created, node.getAddr());
             } else {
                 DHT_LOG.d(hash, node.id, "[store %s] rejecting storage of %s",

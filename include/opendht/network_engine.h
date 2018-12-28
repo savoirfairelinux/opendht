@@ -531,6 +531,8 @@ private:
     std::set<SockAddr> blacklist {};
 
     Scheduler& scheduler;
+
+    bool logIncoming_ {false};
 };
 
 } /* namespace net  */

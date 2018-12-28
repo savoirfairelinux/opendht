@@ -434,7 +434,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
     if (msg->type == MessageType::ValueData) {
         auto pmsg_it = partial_messages.find(msg->tid);
         if (pmsg_it == partial_messages.end()) {
-            DHT_LOG.d("Can't find partial message");
+            if (logIncoming_)
+                DHT_LOG.d("Can't find partial message");
             rateLimit(from);
             return;
         }
@@ -544,19 +545,21 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 req->reply_time = time_point::min();
                 onError(req, DhtProtocolException {msg->error_code});
             } else {
-                DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",
+                if (logIncoming_)
+                    DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
             }
             break;
         }
         case MessageType::Reply:
             if (req) { /* request reply */
-                if (req->getType() == MessageType::AnnounceValue or req->getType() == MessageType::Listen)
-                    req->node->authSuccess();
-                req->reply_time = scheduler.time();
+                auto& r = *req;
+                if (r.getType() == MessageType::AnnounceValue or r.getType() == MessageType::Listen)
+                    r.node->authSuccess();
+                r.reply_time = scheduler.time();
 
                 deserializeNodes(*msg, from);
-                req->setDone(std::move(*msg));
+                r.setDone(std::move(*msg));
                 break;
             } else { /* request socket data */
                 deserializeNodes(*msg, from);
@@ -574,7 +577,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             switch (msg->type) {
             case MessageType::Ping:
                 ++in_stats.ping;
-                DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
                 onPing(node);
                 sendPong(from, msg->tid);
                 break;
@@ -595,7 +599,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::AnnounceValue: {
-                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
 
@@ -608,13 +613,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::Refresh:
-                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
                 sendValueAnnounced(from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
-                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query));
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
