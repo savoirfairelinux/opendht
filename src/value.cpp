@@ -54,12 +54,14 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
             s << IpServiceAnnouncement(v.data);
         } else if (v.type == CERTIFICATE_TYPE.id) {
             s << "Certificate";
+#ifdef OPENDHT_LOG_CRT_ID
             try {
-                InfoHash h = crypto::Certificate(v.data).getPublicKey().getId();
+                auto h = crypto::Certificate(v.data).getPublicKey().getLongId();
                 s << " with ID " << h;
             } catch (const std::exception& e) {
                 s << " (invalid)";
             }
+#endif
         } else {
             s << "Data (type: " << v.type << " ): ";
             s << std::hex;
