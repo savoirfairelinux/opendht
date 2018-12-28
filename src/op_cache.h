@@ -90,8 +90,12 @@ public:
     bool addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
         listeners.emplace(token, LocalListener{q, filter, cb});
         auto cached = cache.get(filter);
-        if (not cached.empty())
-            return cb(cached, false);
+        if (not cached.empty()) {
+            auto ret = cb(cached, false);
+            if (not ret)
+                listeners.erase(token);
+            return ret;
+        }
         return true;
     }
 
