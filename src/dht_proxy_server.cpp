@@ -430,6 +430,15 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
                             s->close(restbed::OK, "{}\n");
                             schedulerCv_.notify_one();
+                            dht_->get(infoHash,
+                                [this, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
+                                    // Build message content.
+                                    Json::Value json;
+                                    json["key"] = infoHash.toString();
+                                    json["to"] = clientId;
+                                    sendPushNotification(pushToken, json, isAndroid);
+                                    return true;
+                                }, [](bool /*ok* */) {});
                             return;
                         }
                     }
