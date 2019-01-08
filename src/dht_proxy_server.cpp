@@ -287,7 +287,7 @@ DhtProxyServer::get(const Sp<restbed::Session>& session) const
                         Json::StreamWriterBuilder wbuilder;
                         wbuilder["commentStyle"] = "None";
                         wbuilder["indentation"] = "";
-                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n"; 
                         s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
@@ -428,17 +428,24 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                         if (listener.clientId == clientId) {
                             scheduler_.edit(listener.expireJob, timeout);
                             scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
-                            s->close(restbed::OK, "{}\n");
-                            schedulerCv_.notify_one();
                             dht_->get(infoHash,
-                                [this, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
-                                    // Build message content.
-                                    Json::Value json;
-                                    json["key"] = infoHash.toString();
-                                    json["to"] = clientId;
-                                    sendPushNotification(pushToken, json, isAndroid);
+                                [this, s](const Sp<Value>& value) {
+                                    if (s->is_closed()) return false;
+                                    // Send values as soon as we get them
+                                    Json::StreamWriterBuilder wbuilder;
+                                    wbuilder["commentStyle"] = "None";
+                                    wbuilder["indentation"] = "";
+                                    auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                                    s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
                                     return true;
-                                }, [](bool /*ok* */) {});
+                                }, [s](bool /*ok* */) {
+                                    // Communication is finished
+                                    if (not s->is_closed()) {
+                                        std::cout << "X: " << std::endl;
+                                        s->close();
+                                    }
+                                });
+                            schedulerCv_.notify_one();
                             return;
                         }
                     }
@@ -476,6 +483,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                     );
                 }
                 schedulerCv_.notify_one();
+                std::cout << "CLOSE: " << std::endl;
                 s->close(restbed::OK, "{}\n");
             } catch (...) {
                 s->close(restbed::INTERNAL_SERVER_ERROR, "{\"err\":\"Internal server error\"}");
