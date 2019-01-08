@@ -281,7 +281,7 @@ private:
 
     struct ListenState;
     void sendListen(const std::shared_ptr<restbed::Request>& request, const ValueCallback&, const Value::Filter& filter, const Sp<ListenState>& state);
-    void sendSubscribe(const std::shared_ptr<restbed::Request>& request, const Sp<ListenState>& state);
+    void sendSubscribe(const std::shared_ptr<restbed::Request>& request, const ValueCallback&, const Value::Filter& filter, const Sp<ListenState>& state);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 

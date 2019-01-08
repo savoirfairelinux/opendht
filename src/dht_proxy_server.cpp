@@ -431,14 +431,21 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             s->close(restbed::OK, "{}\n");
                             schedulerCv_.notify_one();
                             dht_->get(infoHash,
-                                [this, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
-                                    // Build message content.
-                                    Json::Value json;
-                                    json["key"] = infoHash.toString();
-                                    json["to"] = clientId;
-                                    sendPushNotification(pushToken, json, isAndroid);
+                                [this, s](const Sp<Value>& value) {
+                                    if (s->is_closed()) return false;
+                                    // Send values as soon as we get them
+                                    Json::StreamWriterBuilder wbuilder;
+                                    wbuilder["commentStyle"] = "None";
+                                    wbuilder["indentation"] = "";
+                                    auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                                    s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
                                     return true;
-                                }, [](bool /*ok* */) {});
+                                }, [s](bool /*ok* */) {
+                                    // Communication is finished
+                                    if (not s->is_closed()) {
+                                        s->close();
+                                    }
+                                });
                             return;
                         }
                     }

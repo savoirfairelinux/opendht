@@ -750,19 +750,42 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
 }
 
 void
-DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, const Sp<ListenState>& state) {
+DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, const ValueCallback& cb, const Value::Filter& filter, const Sp<ListenState>& state) {
 #if OPENDHT_PUSH_NOTIFICATIONS
     req->set_method("SUBSCRIBE");
     try {
         fillBody(req);
-        restbed::Http::async(req, [this,state](const std::shared_ptr<restbed::Request>&,
-                                                const std::shared_ptr<restbed::Response>& reply) {
+        restbed::Http::async(req, [this, state, cb, filter, req](const std::shared_ptr<restbed::Request>&,
+                                                                 const std::shared_ptr<restbed::Response>& reply) {
+
             auto code = reply->get_status_code();
             if (code == 200) {
                 try {
-                    restbed::Http::fetch("\n", reply);
-                    auto code = reply->get_status_code();
-                    state->ok = code == 200;
+                    while (restbed::Http::is_open(req) and not state->cancel) {
+                        restbed::Http::fetch("\n", reply);
+                        if (state->cancel)
+                            break;
+                        std::string body;
+                        reply->get_body(body);
+                        reply->set_body(""); // Reset the body for the next fetch
+
+                        Json::Value json;
+                        std::string err;
+                        Json::CharReaderBuilder rbuilder;
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
+                            auto expired = json.get("expired", Json::Value(false)).asBool();
+                            auto value = std::make_shared<Value>(json);
+                            if ((not filter or filter(*value)) and cb)  {
+                                std::lock_guard<std::mutex> lock(lockCallbacks);
+                                callbacks_.emplace_back([cb, value, state, expired]() {
+                                    if (not state->cancel and not cb({value}, expired))
+                                        state->cancel = true;
+                                });
+                                loopSignal_();
+                            }
+                        }
+                    }
                 } catch (const std::exception& e) {
                     if (not state->cancel) {
                         DHT_LOG.e("sendSubscribe: error: %s", e.what());
@@ -864,12 +887,14 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                 }
             }
         });
-        l->second.thread = std::thread([this, req, state](){
-            sendSubscribe(req, state);
+        auto vcb = l->second.cb;
+        auto filter = l->second.filter;
+        l->second.thread = std::thread([this, req, vcb, filter, state](){
+            sendSubscribe(req, vcb, filter, state);
         });
     } else {
         l->second.thread = std::thread([this, req, vcb, filter, state]{
-            sendListen(req,vcb,filter,state);
+            sendListen(req, vcb, filter, state);
         });
     }
     return token;
@@ -1080,8 +1105,10 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     state->ok = true;
     listener.req = req;
     scheduler.edit(listener.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
-    listener.thread = std::thread([this, req, state]() {
-        sendSubscribe(req, state);
+    auto vcb = listener.cb;
+    auto filter = listener.filter;
+    listener.thread = std::thread([this, req, vcb, filter, state]() {
+        sendSubscribe(req, vcb, filter, state);
     });
 #endif
 }
