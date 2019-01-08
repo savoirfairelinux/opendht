@@ -694,12 +694,19 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
 
 
 void
-DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const ValueCallback& cb, const Value::Filter& filter, const Sp<ListenState>& state) {
+DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const ValueCallback& cb, const Value::Filter& filter, const Sp<ListenState>& state, bool usePush) {
     auto settings = std::make_shared<restbed::Settings>();
-    std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
-    settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
-    req->set_method("LISTEN");
+    if (usePush) {
+        req->set_method("SUBSCRIBE");
+    } else {
+        std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
+        settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
+        req->set_method("LISTEN");
+    }
     try {
+#if OPENDHT_PUSH_NOTIFICATIONS
+        if (usePush) fillBody(req);
+#endif
         restbed::Http::async(req,
             [this, filter, cb, state](const std::shared_ptr<restbed::Request>& req,
                                     const std::shared_ptr<restbed::Response>& reply) {
@@ -719,6 +726,10 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
                         Json::CharReaderBuilder rbuilder;
                         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                         if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
+                            if (json.size() == 0) {
+                                // Empty value, it's the end
+                                break;
+                            }
                             auto expired = json.get("expired", Json::Value(false)).asBool();
                             auto value = std::make_shared<Value>(json);
                             if ((not filter or filter(*value)) and cb)  {
@@ -747,82 +758,6 @@ DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const V
     auto& s = *state;
     if (not s.ok and not s.cancel)
         opFailed();
-}
-
-void
-DhtProxyClient::sendSubscribe(const std::shared_ptr<restbed::Request>& req, const ValueCallback& cb, const Value::Filter& filter, const Sp<ListenState>& state) {
-#if OPENDHT_PUSH_NOTIFICATIONS
-    req->set_method("SUBSCRIBE");
-    try {
-        fillBody(req);
-        restbed::Http::async(req, [this, state, cb, filter, req](const std::shared_ptr<restbed::Request>&,
-                                                                 const std::shared_ptr<restbed::Response>& reply) {
-
-            auto code = reply->get_status_code();
-            if (code == 200) {
-                try {
-                        DHT_LOG.e("################1.");
-                    while (restbed::Http::is_open(req) and not state->cancel) {
-                        DHT_LOG.e("################2.");
-                        restbed::Http::fetch("\n", reply);
-                        DHT_LOG.e("################3.");
-                        auto code = reply->get_status_code();
-                        DHT_LOG.e("################4.");
-                        state->ok = code == 200;
-                        if (state->cancel) {
-                            DHT_LOG.e("################5.");
-
-                            break;
-                        }
-                        std::string body;
-                        reply->get_body(body);
-                        reply->set_body(""); // Reset the body for the next fetch
-                        DHT_LOG.e("###BODY: %s\n", body.c_str());;
-                        if (body.empty() || body == "{}") {
-                            DHT_LOG.e("################6.");
-                            break;
-
-                        }
-                        DHT_LOG.e("################7.");
-
-                        Json::Value json;
-                        std::string err;
-                        Json::CharReaderBuilder rbuilder;
-                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
-                            if (json.size() == 0) {
-                                DHT_LOG.e("################*.");
-                                break;
-                            }
-                            auto expired = json.get("expired", Json::Value(false)).asBool();
-                            auto value = std::make_shared<Value>(json);
-                            if ((not filter or filter(*value)) and cb)  {
-                                std::lock_guard<std::mutex> lock(lockCallbacks);
-                                callbacks_.emplace_back([cb, value, state, expired]() {
-                                    if (not state->cancel and not cb({value}, expired))
-                                        state->cancel = true;
-                                });
-                                loopSignal_();
-                            }
-                        }
-                    }
-                } catch (const std::exception& e) {
-                    if (not state->cancel) {
-                        DHT_LOG.e("sendSubscribe: error: %s", e.what());
-                        state->ok = false;
-                    }
-                }
-            } else {
-                state->ok = false;
-            }
-        }).get();
-    } catch(const std::exception& e) {
-        state->ok = false;
-    }
-    auto& s = *state;
-    if (not s.ok and not s.cancel)
-        opFailed();
-#endif
 }
 
 size_t
@@ -907,16 +842,10 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
                 }
             }
         });
-        auto vcb = l->second.cb;
-        auto filter = l->second.filter;
-        l->second.thread = std::thread([this, req, vcb, filter, state](){
-            sendSubscribe(req, vcb, filter, state);
-        });
-    } else {
-        l->second.thread = std::thread([this, req, vcb, filter, state]{
-            sendListen(req, vcb, filter, state);
-        });
     }
+    l->second.thread = std::thread([this, req, vcb, filter, state](){
+        sendListen(req, vcb, filter, state, !deviceKey_.empty());
+    });
     return token;
 }
 
@@ -1128,7 +1057,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     auto vcb = listener.cb;
     auto filter = listener.filter;
     listener.thread = std::thread([this, req, vcb, filter, state]() {
-        sendSubscribe(req, vcb, filter, state);
+        sendListen(req, vcb, filter, state, true);
     });
 #endif
 }
