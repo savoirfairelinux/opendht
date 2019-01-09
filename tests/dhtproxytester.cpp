@@ -77,7 +77,6 @@ DhtProxyTester::testGetPut() {
     CPPUNIT_ASSERT(vals.front()->data == val_data);
 }
 
-
 void
 DhtProxyTester::testListen() {
     bool done = false;
@@ -108,7 +107,7 @@ DhtProxyTester::testListen() {
 
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
     done = false;
-    // Here values should contains 2 values
+    // Here values should contains 1 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
     CPPUNIT_ASSERT(values.front() == firstVal_data);
 
@@ -118,9 +117,63 @@ DhtProxyTester::testListen() {
     auto secondVal_data = secondVal.data;
     nodePeer.put(key, std::move(secondVal));
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
-    // Here values should contains 3 values
+    // Here values should contains 2 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
     CPPUNIT_ASSERT(values.back() == secondVal_data);
+}
+
+void
+DhtProxyTester::testResubscribeGetValues() {
+    nodeClient->setPushNotificationToken("atlas");
+
+    bool done = false;
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    auto key = dht::InfoHash::get("GLaDOs");
+
+    // If a peer send a value, the listen operation from the client
+    // should retrieve this value
+    dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
+    auto firstVal_data = firstVal.data;
+    nodePeer.put(key, std::move(firstVal), [&](bool) {
+        done = true;
+        cv.notify_all();
+    });
+    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    done = false;
+
+    // Send a first subscribe, the value is sent via a push notification
+    // So ignore values here.
+    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) {
+        return true;
+    });
+    cv.wait_for(lk, std::chrono::seconds(1));
+
+    // Reboot node (to avoid cache)
+    nodeClient->join();
+    nodeClient->run(42242, {}, true);
+    nodeClient->bootstrap(nodePeer.getBound());
+    nodeClient->setProxyServer("127.0.0.1:8080");
+    nodeClient->enableProxy(true);
+    nodeClient->setPushNotificationToken("atlas");
+
+    // For the second subscribe, the proxy will return the value in the body
+    auto values = std::vector<dht::Blob>();
+    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool) {
+        for (const auto& value : v)
+            values.emplace_back(value->data);
+        done = true;
+        cv.notify_all();
+        return true;
+    });
+
+    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    done = false;
+    // Here values should still contains 1 values
+    CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
+    CPPUNIT_ASSERT(values.front() == firstVal_data);
+
 }
 
 }  // namespace test
