@@ -32,6 +32,7 @@ class DhtProxyTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(DhtProxyTester);
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testResubscribeGetValues);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -39,19 +40,25 @@ class DhtProxyTester : public CppUnit::TestFixture {
      * Method automatically called before each test by CppUnit
      * Init nodes
      */
-    void setUp();
+   void setUp();
     /**
      * Method automatically called after each test CppUnit
      */
-    void tearDown();
+   void tearDown();
     /**
      * Test get and put methods
      */
-    void testGetPut();
+   void testGetPut();
     /**
      * Test listen
      */
-    void testListen();
+   void testListen();
+
+   /**
+    * When a proxy redo a subscribe on the proxy
+    * it should retrieve existant values
+    */
+   void testResubscribeGetValues();
 
  private:
     dht::DhtRunner nodePeer {};

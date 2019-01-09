@@ -558,6 +558,8 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
 void
 DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value& json, bool isAndroid) const
 {
+    if (pushServer_.empty())
+        return;
     restbed::Uri uri(proxy::HTTP_PROTO + pushServer_ + "/api/push");
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
