@@ -2384,6 +2384,23 @@ Dht::storageRefresh(const InfoHash& id, Value::Id vid)
     const auto& now = scheduler.time();
     auto s = store.find(id);
     if (s != store.end()) {
+        // Values like for a permanent put can be refreshed. So, inform remote listeners that the value
+        // need to be refreshed
+        auto& st = s->second;
+        if (not st.listeners.empty()) {
+            DHT_LOG.d(id, "[store %s] %lu remote listeners", id.toString().c_str(), st.listeners.size());
+            std::vector<Value::Id> ids = {vid};
+            for (const auto& node_listeners : st.listeners) {
+                for (const auto& l : node_listeners.second) {
+                    DHT_LOG.w(id, node_listeners.first->id, "[store %s] [node %s] sending refresh",
+                            id.toString().c_str(),
+                            node_listeners.first->toString().c_str());
+                    Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
+                    network_engine.tellListenerRefreshed(node_listeners.first, l.first, id, ntoken, ids);
+                }
+            }
+        }
+
         auto expiration = s->second.refresh(now, vid, types);
         if (expiration != time_point::max())
             scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
