@@ -429,22 +429,37 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             scheduler_.edit(listener.expireJob, timeout);
                             scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
                             s->yield(restbed::OK);
-                            dht_->get(infoHash,
-                                [this, s](const Sp<Value>& value) {
-                                    if (s->is_closed()) return false;
-                                    // Send values as soon as we get them
-                                    Json::StreamWriterBuilder wbuilder;
-                                    wbuilder["commentStyle"] = "None";
-                                    wbuilder["indentation"] = "";
-                                    auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
-                                    s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
-                                    return true;
-                                }, [s](bool /*ok* */) {
-                                    // Communication is finished
-                                    if (not s->is_closed()) {
-                                        s->close("{}\n");
-                                    }
-                                });
+
+                            if (root.isMember("previous_values") &&
+                                root["previous_values"].asBool()) {
+                                dht_->get(
+                                    infoHash,
+                                    [this, s](const Sp<Value> &value) {
+                                        if (s->is_closed())
+                                            return false;
+                                        // Send values as soon as we get them
+                                        Json::StreamWriterBuilder wbuilder;
+                                        wbuilder["commentStyle"] = "None";
+                                        wbuilder["indentation"] = "";
+                                        auto output = Json::writeString(
+                                                            wbuilder, value->toJson()) +
+                                                        "\n";
+                                        s->yield(output, [](const Sp<restbed::Session>
+                                                                & /*session*/) {});
+                                        return true;
+                                    },
+                                    [s](bool /*ok* */) {
+                                        // Communication is finished
+                                        if (not s->is_closed()) {
+                                            s->close("{}\n");
+                                        }
+                                    });
+                            } else {
+                                // Communication is finished
+                                if (not s->is_closed()) {
+                                    s->close("{}\n");
+                                }
+                            }
                             schedulerCv_.notify_one();
                             return;
                         }

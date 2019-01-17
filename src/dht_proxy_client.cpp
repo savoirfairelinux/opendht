@@ -692,20 +692,24 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     return canceled;
 }
 
-
-void
-DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request>& req, const ValueCallback& cb, const Value::Filter& filter, const Sp<ListenState>& state, bool usePush) {
-    auto settings = std::make_shared<restbed::Settings>();
-    if (usePush) {
-        req->set_method("SUBSCRIBE");
-    } else {
-        std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
-        settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
-        req->set_method("LISTEN");
-    }
-    try {
+void DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request> &req,
+                                const ValueCallback &cb,
+                                const Value::Filter &filter,
+                                const Sp<ListenState> &state,
+                                ListenMethod method) {
+  auto settings = std::make_shared<restbed::Settings>();
+  if (method != ListenMethod::LISTEN) {
+    req->set_method("SUBSCRIBE");
+  } else {
+    std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
+    settings->set_connection_timeout(
+        timeout); // Avoid the client to close the socket after 5 seconds.
+    req->set_method("LISTEN");
+  }
+  try {
 #if OPENDHT_PUSH_NOTIFICATIONS
-        if (usePush) fillBody(req);
+    if (method != ListenMethod::LISTEN)
+      fillBody(req, method == ListenMethod::RESUBSCRIBE);
 #endif
         restbed::Http::async(req,
             [this, filter, cb, state](const std::shared_ptr<restbed::Request>& req,
@@ -843,8 +847,10 @@ DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter fi
             }
         });
     }
-    l->second.thread = std::thread([this, req, vcb, filter, state](){
-        sendListen(req, vcb, filter, state, !deviceKey_.empty());
+    l->second.thread = std::thread([this, req, vcb, filter, state]() {
+        sendListen(req, vcb, filter, state,
+                deviceKey_.empty() ? ListenMethod::LISTEN
+                                   : ListenMethod::SUBSCRIBE);
     });
     return token;
 }
@@ -1057,7 +1063,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     auto vcb = listener.cb;
     auto filter = listener.filter;
     listener.thread = std::thread([this, req, vcb, filter, state]() {
-        sendListen(req, vcb, filter, state, true);
+        sendListen(req, vcb, filter, state, ListenMethod::RESUBSCRIBE);
     });
 #endif
 }
@@ -1077,7 +1083,7 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
 }
 
 void
-DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req)
+DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req, bool resubscribe)
 {
     // Fill body with
     // {
@@ -1085,6 +1091,10 @@ DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req)
     // }
     Json::Value body;
     getPushRequest(body);
+    if (!resubscribe) {
+        // This is the first listen, we want to retrieve previous values.
+        body["previous_values"] = true;
+    }
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
