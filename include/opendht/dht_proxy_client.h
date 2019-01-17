@@ -280,7 +280,15 @@ private:
     bool doCancelListen(const InfoHash& key, size_t token);
 
     struct ListenState;
-    void sendListen(const std::shared_ptr<restbed::Request>& request, const ValueCallback&, const Value::Filter& filter, const Sp<ListenState>& state, bool usePush = false);
+    enum class ListenMethod {
+        LISTEN,
+        SUBSCRIBE,
+        RESUBSCRIBE,
+    };
+    void sendListen(const std::shared_ptr<restbed::Request> &request,
+                    const ValueCallback &, const Value::Filter &filter,
+                    const Sp<ListenState> &state,
+                    ListenMethod method = ListenMethod::LISTEN);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 
@@ -372,7 +380,7 @@ private:
     const std::function<void()> loopSignal_;
 
 #if OPENDHT_PUSH_NOTIFICATIONS
-    void fillBody(std::shared_ptr<restbed::Request> request);
+    void fillBody(std::shared_ptr<restbed::Request> request, bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
