@@ -41,8 +41,6 @@ namespace Json {
 
 namespace dht {
 
-class SearchCache;
-
 class OPENDHT_PUBLIC DhtProxyClient final : public DhtInterface {
 public:
 
@@ -276,7 +274,6 @@ private:
 
     void opFailed();
 
-    size_t doListen(const InfoHash& key, ValueCallback, Value::Filter);
     bool doCancelListen(const InfoHash& key, size_t token);
 
     struct ListenState;
