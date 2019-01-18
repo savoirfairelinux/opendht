@@ -668,7 +668,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         it = searches_.emplace(key, ProxySearch{}).first;
     }
     auto query = std::make_shared<Query>(Select{}, where);
-    auto token = it->second.ops.listen(cb, query, filter, [&](Sp<Query> /*q*/, ValueCallback vcb){
+    auto token = it->second.ops.listen(cb, query, filter, [&](Sp<Query> /*q*/, ValueCallback vcb, SyncCallback /*scb*/){
         return doListen(key, vcb, filter);
     });
     return token;

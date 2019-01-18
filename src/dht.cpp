@@ -437,22 +437,18 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
             if (not hasValue or seq_no < a.value->seq) {
                 DHT_LOG.d(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                sn->acked[a.value->id] = std::make_pair(network_engine.sendAnnounceValue(sn->node,
-                                                sr->id,
-                                                a.value,
-                                                a.permanent ? time_point::max() : a.created,
-                                                sn->token,
-                                                onDone,
-                                                onExpired), next_refresh_time);
+                auto created = a.permanent ? time_point::max() : a.created;
+                sn->acked[a.value->id] = {
+                    network_engine.sendAnnounceValue(sn->node, sr->id, a.value, created, sn->token, onDone, onExpired),
+                    next_refresh_time
+                };
             } else if (hasValue and a.permanent) {
                 DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %d)",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                sn->acked[a.value->id] = std::make_pair(network_engine.sendRefreshValue(sn->node,
-                                                sr->id,
-                                                a.value->id,
-                                                sn->token,
-                                                onDone,
-                                                onExpired), next_refresh_time);
+                sn->acked[a.value->id] = {
+                    network_engine.sendRefreshValue(sn->node, sr->id, a.value->id, sn->token, onDone, onExpired),
+                    next_refresh_time
+                };
             } else {
                 DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %d). Aborting.",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
@@ -540,6 +536,13 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                             l->second.get_cb(l->second.filter.filter(values), expired);
                         }
                     }
+                }, [ws,list_token] (ListenSyncStatus status) {
+                    if (auto sr = ws.lock()) {
+                        auto l = sr->listeners.find(list_token);
+                        if (l != sr->listeners.end()) {
+                            l->second.sync_cb(status);
+                        }
+                    }
                 }
             }).first;
             auto node = n.node;
@@ -557,8 +560,10 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             { /* on done */
                 if (auto sr = ws.lock()) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
-                    if (auto sn = sr->getNode(req.node))
+                    if (auto sn = sr->getNode(req.node)) {
                         scheduler.add(sn->getListenTime(query), std::bind(&Dht::searchStep, this, sr));
+                        sn->onListenSynced(query);
+                    }
                     onListenDone(req.node, answer, sr);
                 }
             },
@@ -2275,9 +2280,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
 }
 
 void
-Dht::onListenDone(const Sp<Node>& node,
-        net::RequestAnswer& answer,
-        Sp<Search>& sr)
+Dht::onListenDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>& sr)
 {
     // DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
     //            sr->id.toString().c_str(), node->toString().c_str(), answer.values.size());

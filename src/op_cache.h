@@ -57,7 +57,18 @@ public:
     bool onValuesAdded(const std::vector<Sp<Value>>& vals);
     bool onValuesExpired(const std::vector<Sp<Value>>& vals);
 
-    std::vector<Sp<Value>> get(Value::Filter& filter) const;
+    void onNodeChanged(ListenSyncStatus status) {
+        switch (status) {
+            case ListenSyncStatus::ADDED: nodes++; break;
+            case ListenSyncStatus::REMOVED: nodes--; break;
+            case ListenSyncStatus::SYNCED : syncedNodes++; break;
+            case ListenSyncStatus::UNSYNCED: syncedNodes--; break;
+        }
+    }
+
+    bool isSynced() const { return nodes > 0 and syncedNodes == nodes; }
+
+    std::vector<Sp<Value>> get(const Value::Filter& filter) const;
     Sp<Value> get(Value::Id id) const;
     std::vector<Sp<Value>> getValues() const;
 
@@ -65,6 +76,8 @@ private:
     OpValueCache(const OpValueCache&) = delete;
     OpValueCache& operator=(const OpValueCache&) = delete;
 
+    size_t nodes {0};
+    size_t syncedNodes {0};
     std::map<Value::Id, OpCacheValueStorage> values {};
     ValueCallback callback;
 };
@@ -82,6 +95,9 @@ public:
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
         cache.onValue(vals, expired);
         return not listeners.empty();
+    }
+    void onNodeChanged(ListenSyncStatus status) {
+        cache.onNodeChanged(status);
     }
 
     void onValuesAdded(const std::vector<Sp<Value>>& vals);
@@ -112,12 +128,16 @@ public:
         return listeners.empty();
     }
 
-    std::vector<Sp<Value>> get(Value::Filter& filter) const {
+    std::vector<Sp<Value>> get(const Value::Filter& filter) const {
         return cache.get(filter);
     }
 
     Sp<Value> get(Value::Id id) const {
         return cache.get(id);
+    }
+
+    bool isSynced() const {
+        return cache.isSynced();
     }
 
     bool isExpired(const time_point& now) const {
@@ -140,7 +160,7 @@ class SearchCache {
 public:
     SearchCache() {}
     SearchCache(SearchCache&&) = default;
-    size_t listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback)> onListen);
+    size_t listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)> onListen);
 
     bool cancelListen(size_t gtoken, const time_point& now);
     void cancelAll(std::function<void(size_t)> onCancel);
@@ -150,7 +170,7 @@ public:
         return nextExpiration_;
     }
 
-    std::vector<Sp<Value>> get(Value::Filter& filter) const;
+    std::vector<Sp<Value>> get(const Value::Filter& filter) const;
     Sp<Value> get(Value::Id id) const;
 
 private:
