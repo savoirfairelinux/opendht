@@ -491,12 +491,11 @@ struct Dht::Search {
 
     void get(Value::Filter f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
         if (gcb or qcb) {
-            const auto& now = scheduler.time();
-            callbacks.emplace(now, Get { now, f, q, qcb, gcb, dcb });
-            auto values = cache.get(f);
-            if (not values.empty())
-                gcb(values);
-            scheduler.edit(nextSearchStep, now);
+            if (not cache.get(f, q, gcb, dcb)) {
+                const auto& now = scheduler.time();
+                callbacks.emplace(now, Get { now, f, q, qcb, gcb, dcb });
+                scheduler.edit(nextSearchStep, now);
+            }
         }
     }
 

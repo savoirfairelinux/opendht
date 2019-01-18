@@ -160,7 +160,9 @@ class SearchCache {
 public:
     SearchCache() {}
     SearchCache(SearchCache&&) = default;
-    size_t listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)> onListen);
+
+    using OnListen = std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)>;
+    size_t listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, OnListen onListen);
 
     bool cancelListen(size_t gtoken, const time_point& now);
     void cancelAll(std::function<void(size_t)> onCancel);
@@ -170,6 +172,7 @@ public:
         return nextExpiration_;
     }
 
+    bool get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& gcb, const DoneCallback& dcb) const;
     std::vector<Sp<Value>> get(const Value::Filter& filter) const;
     Sp<Value> get(Value::Id id) const;
 
@@ -177,7 +180,11 @@ private:
     SearchCache(const SearchCache&) = delete;
     SearchCache& operator=(const SearchCache&) = delete;
 
-    std::map<Sp<Query>, std::unique_ptr<OpCache>> ops {};
+    using OpMap = std::map<Sp<Query>, std::unique_ptr<OpCache>>;
+    OpMap ops {};
+    OpMap::iterator getOp(const Sp<Query>& q);
+    OpMap::const_iterator getOp(const Sp<Query>& q) const;
+
     size_t nextToken_ {1};
     time_point nextExpiration_ {time_point::max()};
 };
