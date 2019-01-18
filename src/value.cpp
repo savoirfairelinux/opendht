@@ -497,8 +497,7 @@ template <typename T>
 bool subset(std::vector<T> fds, std::vector<T> qfds)
 {
     for (auto& fd : fds) {
-        auto correspondance = std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; });
-        if (correspondance == qfds.end())
+        if (std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; }) == qfds.end())
             return false;
     }
     return true;
@@ -506,10 +505,9 @@ bool subset(std::vector<T> fds, std::vector<T> qfds)
 
 bool Select::isSatisfiedBy(const Select& os) const {
     /* empty, means all values are selected. */
-    if (fieldSelection_.empty() and not os.fieldSelection_.empty())
-        return false;
-    else
-        return subset(fieldSelection_, os.fieldSelection_);
+    return fieldSelection_.empty() ?
+        os.fieldSelection_.empty() :
+        subset(fieldSelection_, os.fieldSelection_);
 }
 
 bool Where::isSatisfiedBy(const Where& ow) const {
