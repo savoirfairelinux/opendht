@@ -108,20 +108,43 @@ OpCache::getExpiration() const {
     return lastRemoved + EXPIRATION;
 }
 
-size_t
-SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)> onListen)
+SearchCache::OpMap::iterator
+SearchCache::getOp(const Sp<Query>& q)
 {
     // find exact match
     auto op = ops.find(q);
-    if (op == ops.end()) {
-        // find satisfying query
-        for (auto it = ops.begin(); it != ops.end(); it++) {
-            if (q->isSatisfiedBy(*it->first)) {
-                op = it;
-                break;
-            }
+    if (op != ops.end())
+        return op;
+    // find satisfying query
+    for (auto it = ops.begin(); it != ops.end(); it++) {
+        if (q->isSatisfiedBy(*it->first)) {
+            return it;
         }
     }
+    return ops.end();
+}
+
+SearchCache::OpMap::const_iterator
+SearchCache::getOp(const Sp<Query>& q) const
+{
+    // find exact match
+    auto op = ops.find(q);
+    if (op != ops.cend())
+        return op;
+    // find satisfying query
+    for (auto it = ops.begin(); it != ops.end(); it++) {
+        if (q->isSatisfiedBy(*it->first)) {
+            return it;
+        }
+    }
+    return ops.cend();
+}
+
+size_t
+SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, OnListen onListen)
+{
+    // find exact match
+    auto op = getOp(q);
     if (op == ops.end()) {
         // New query
         op = ops.emplace(q, std::unique_ptr<OpCache>(new OpCache)).first;
@@ -176,6 +199,20 @@ SearchCache::expire(const time_point& now, std::function<void(size_t)> onCancel)
         }
     }
     return ret;
+}
+
+bool
+SearchCache::get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& gcb, const DoneCallback& dcb) const
+{
+    auto op = getOp(q);
+    if (op != ops.end()) {
+        auto vals = op->second->get(f);
+        if ((not vals.empty() and not gcb(vals)) or op->second->isSynced()) {
+            dcb(true, {});
+            return true;
+        }
+    }
+    return false;
 }
 
 std::vector<Sp<Value>>
