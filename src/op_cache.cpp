@@ -50,7 +50,7 @@ OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals) {
     return expiredValues.empty() ? true : callback(expiredValues, true);
 }
 std::vector<Sp<Value>>
-OpValueCache::get(Value::Filter& filter) const {
+OpValueCache::get(const Value::Filter& filter) const {
     std::vector<Sp<Value>> ret;
     if (not filter)
         ret.reserve(values.size());
@@ -109,7 +109,7 @@ OpCache::getExpiration() const {
 }
 
 size_t
-SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback)> onListen)
+SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)> onListen)
 {
     // find exact match
     auto op = ops.find(q);
@@ -128,6 +128,8 @@ SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, std
         auto& cache = *op->second;
         cache.searchToken = onListen(q, [&](const std::vector<Sp<Value>>& values, bool expired){
             return cache.onValue(values, expired);
+        }, [&](ListenSyncStatus status) {
+            cache.onNodeChanged(status);
         });
     }
     auto token = nextToken_++;
@@ -177,7 +179,7 @@ SearchCache::expire(const time_point& now, std::function<void(size_t)> onCancel)
 }
 
 std::vector<Sp<Value>>
-SearchCache::get(Value::Filter& filter) const {
+SearchCache::get(const Value::Filter& filter) const {
     if (ops.size() == 1)
         return ops.begin()->second->get(filter);
     std::map<Value::Id, Sp<Value>> c;
