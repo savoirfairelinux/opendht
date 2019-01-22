@@ -80,6 +80,8 @@ DhtProxyClient::DhtProxyClient() {}
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
 : serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
 {
+    if (serverHost_.find("://") == std::string::npos)
+        serverHost_ = proxy::HTTP_PROTO + serverHost_;
     if (!serverHost_.empty())
         startProxy();
 }
@@ -243,7 +245,7 @@ void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
     DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
-    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
 
@@ -362,7 +364,7 @@ void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point /*created*/, bool permanent)
 {
     DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
-    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("POST");
 
@@ -768,7 +770,7 @@ size_t
 DhtProxyClient::doListen(const InfoHash& key, ValueCallback cb, Value::Filter filter/*, Where where*/)
 {
     scheduler.syncTime();
-    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(serverHost_ + "/" + key.toString());
     std::lock_guard<std::mutex> lock(searchLock_);
     auto search = searches_.find(key);
     if (search == searches_.end()) {
@@ -878,7 +880,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             listener.thread.join();
         }
         // UNSUBSCRIBE
-        restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
+        restbed::Uri uri(serverHost_ + "/" + key.toString());
         auto req = std::make_shared<restbed::Request>(uri);
         req->set_method("UNSUBSCRIBE");
         // fill request body
@@ -977,7 +979,7 @@ DhtProxyClient::restartListeners()
             state->ok = true;
             auto filter = listener.filter;
             auto cb = listener.cb;
-            restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + search.first.toString());
+            restbed::Uri uri(serverHost_ + "/" + search.first.toString());
             auto req = std::make_shared<restbed::Request>(uri);
             req->set_method("LISTEN");
             listener.req = req;
@@ -1049,7 +1051,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     scheduler.syncTime();
     DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
-    restbed::Uri uri(proxy::HTTP_PROTO + serverHost_ + "/" + key.toString());
+    restbed::Uri uri(serverHost_ + "/" + key.toString());
     auto req = std::make_shared<restbed::Request>(uri);
     req->set_method("SUBSCRIBE");
 
