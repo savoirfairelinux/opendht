@@ -527,7 +527,14 @@ DhtProxyClient::getProxyInfos()
     }
     statusThread_ = std::thread([this, serverHost, infoState]{
         try {
-            auto hostAndService = splitPort(serverHost);
+            auto endpointStr = serverHost;
+            auto protocol = std::string(proxy::HTTP_PROTO);
+            auto protocolIdx = serverHost.find("://");
+            if (protocolIdx != std::string::npos) {
+                protocol = endpointStr.substr(0, protocolIdx + 3);
+                endpointStr = endpointStr.substr(protocolIdx + 3);
+            }
+            auto hostAndService = splitPort(endpointStr);
             auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
             std::vector<std::future<Sp<restbed::Response>>> reqs;
             reqs.reserve(resolved_proxies.size());
@@ -536,9 +543,9 @@ DhtProxyClient::getProxyInfos()
                 if (resolved_proxy.getFamily() == AF_INET6) {
                     // HACK restbed seems to not correctly handle directly http://[ipv6]
                     // See https://github.com/Corvusoft/restbed/issues/290.
-                    server = serverHost;
+                    server = endpointStr;
                 }
-                restbed::Uri uri(proxy::HTTP_PROTO + server + "/");
+                restbed::Uri uri(protocol + server + "/");
                 auto req = std::make_shared<restbed::Request>(uri);
                 if (infoState->cancel)
                     return;
