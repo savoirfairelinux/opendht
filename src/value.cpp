@@ -288,7 +288,7 @@ FieldValue::getLocalFilter() const
         case Value::Field::UserType:
             return Value::UserTypeFilter(std::string {blobValue.begin(), blobValue.end()});
         default:
-            return Value::AllFilter();
+            return {};
     }
 }
 

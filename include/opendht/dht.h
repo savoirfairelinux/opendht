@@ -163,7 +163,7 @@ public:
     /**
      * Get locally stored data for the given hash.
      */
-    std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const;
+    std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = {}) const;
 
     /**
      * Get locally stored data for the given key and value id.
@@ -469,7 +469,7 @@ private:
     Sp<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, QueryCallback = {}, DoneCallback = {}, Value::Filter = {}, const Sp<Query>& q = {});
 
     void announce(const InfoHash& id, sa_family_t af, Sp<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
-    size_t listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f = Value::AllFilter(), const Sp<Query>& q = {});
+    size_t listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f = {}, const Sp<Query>& q = {});
 
     /**
      * Refill the search with good nodes if possible.

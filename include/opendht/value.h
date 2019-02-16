@@ -165,8 +165,8 @@ struct OPENDHT_PUBLIC Value
             return chainOr(std::move(f1), std::move(f2));
         }
         static Filter chain(Filter&& f1, Filter&& f2) {
-            if (not f1) return f2;
-            if (not f2) return f1;
+            if (not f1) return std::move(f1);
+            if (not f2) return std::move(f2);
             return [f1,f2](const Value& v) {
                 return f1(v) and f2(v);
             };
@@ -184,7 +184,7 @@ struct OPENDHT_PUBLIC Value
             return chainAll(std::vector<Filter>(l.begin(), l.end()));
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
-            if (not f1 or not f2) return AllFilter();
+            if (not f1 or not f2) return {};
             return [f1,f2](const Value& v) {
                 return f1(v) or f2(v);
             };
@@ -990,7 +990,7 @@ template <typename T,
 Value::Filter
 getFilterSet()
 {
-    return Value::AllFilter();
+    return {};
 }
 
 template <class T>
