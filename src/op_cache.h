@@ -27,7 +27,7 @@ struct OpCacheValueStorage
 {
     Sp<Value> data {};
     unsigned refCount {1};
-    OpCacheValueStorage(Sp<Value> val = {}) : data(val) {}
+    OpCacheValueStorage(Sp<Value> val) : data(val) {}
 };
 
 class OpValueCache {
