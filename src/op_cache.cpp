@@ -25,7 +25,7 @@ bool
 OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals) {
     std::vector<Sp<Value>> newValues;
     for (const auto& v : vals) {
-        auto viop = values.emplace(v->id, OpCacheValueStorage{v});
+        auto viop = values.emplace(v->id, v);
         if (viop.second) {
             newValues.emplace_back(v);
         } else {
