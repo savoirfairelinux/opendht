@@ -106,7 +106,7 @@ public:
     /**
      * Get locally stored data for the given hash.
      */
-    virtual std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const = 0;
+    virtual std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = {}) const = 0;
 
     /**
      * Get locally stored data for the given key and value id.

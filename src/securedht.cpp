@@ -284,6 +284,8 @@ SecureDht::getCallbackFilter(ValueCallback cb, Value::Filter&& filter)
 {
     return [=](const std::vector<Sp<Value>>& values, bool expired) {
         std::vector<Sp<Value>> tmpvals {};
+        if (not filter)
+            tmpvals.reserve(values.size());
         for (const auto& v : values) {
             if (auto nv = checkValue(v))
                 if (not filter or filter(*nv))
@@ -301,6 +303,8 @@ SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
 {
     return [=](const std::vector<Sp<Value>>& values) {
         std::vector<Sp<Value>> tmpvals {};
+        if (not filter)
+            tmpvals.reserve(values.size());
         for (const auto& v : values) {
             if (auto nv = checkValue(v))
                 if (not filter or filter(*nv))
