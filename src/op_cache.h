@@ -56,6 +56,7 @@ public:
 
     bool onValuesAdded(const std::vector<Sp<Value>>& vals);
     bool onValuesExpired(const std::vector<Sp<Value>>& vals);
+    bool onValuesExpired(const std::vector<Value::Id>& vals);
 
     void onNodeChanged(ListenSyncStatus status) {
         switch (status) {

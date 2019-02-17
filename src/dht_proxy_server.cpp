@@ -433,8 +433,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
                             s->yield(restbed::OK);
 
-                            if (root.isMember("previous_values") &&
-                                root["previous_values"].asBool()) {
+                            if (!root.isMember("refresh") or !root["refresh"].asBool()) {
                                 dht_->get(
                                     infoHash,
                                     [this, s](const Sp<Value> &value) {
@@ -474,12 +473,20 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
 
                     // The listener is not found, so add it.
                     listener.internalToken = dht_->listen(infoHash,
-                        [this, infoHash, pushToken, isAndroid, clientId](const std::vector<std::shared_ptr<Value>>& /*values*/) {
-                            threadPool_->run([this, infoHash, pushToken, isAndroid, clientId](){
+                        [this, infoHash, pushToken, isAndroid, clientId](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                            threadPool_->run([this, infoHash, pushToken, isAndroid, clientId, values, expired]() {
                                 // Build message content
                                 Json::Value json;
                                 json["key"] = infoHash.toString();
                                 json["to"] = clientId;
+                                if (expired and values.size() < 3) {
+                                    std::stringstream ss;
+                                    for(size_t i = 0; i < values.size(); ++i) {
+                                        if(i != 0) ss << ",";
+                                        ss << values[i]->id;
+                                    }
+                                    json["exp"] = ss.str();
+                                }
                                 sendPushNotification(pushToken, std::move(json), isAndroid);
                             });
                             return true;
