@@ -17,7 +17,6 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if OPENDHT_PROXY_SERVER
 #include "dht_proxy_server.h"
 
 #include "thread_pool.h"
@@ -61,10 +60,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
 
     std::cout << "Running DHT proxy server on port " << port << std::endl;
     if (not pushServer.empty()) {
-#if !OPENDHT_PUSH_NOTIFICATIONS
-        std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
-#else
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         std::cout << "Using push notification server: " << pushServer << std::endl;
+#else
+        std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
 #endif
     }
 
@@ -79,12 +78,12 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         resource->set_path("/{hash: .*}");
         resource->set_method_handler("GET", std::bind(&DhtProxyServer::get, this, _1));
         resource->set_method_handler("LISTEN", [this](const Sp<restbed::Session>& session) mutable { listen(session); } );
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         resource->set_method_handler("SUBSCRIBE", [this](const Sp<restbed::Session>& session) mutable { subscribe(session); } );
         resource->set_method_handler("UNSUBSCRIBE", [this](const Sp<restbed::Session>& session) mutable { unsubscribe(session); } );
 #endif //OPENDHT_PUSH_NOTIFICATIONS
         resource->set_method_handler("POST", [this](const Sp<restbed::Session>& session) mutable { put(session); });
-#if OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
         resource->set_method_handler("SIGN", std::bind(&DhtProxyServer::putSigned, this, _1));
         resource->set_method_handler("ENCRYPT", std::bind(&DhtProxyServer::putEncrypted, this, _1));
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
@@ -191,7 +190,7 @@ DhtProxyServer::updateStats() const
     auto count = requestNum_.exchange(0);
     auto dt = std::chrono::duration<double>(now - last);
     stats_.requestRate = count / dt.count();
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     stats_.pushListenersCount = pushListeners_.size();
 #endif
     stats_.putCount = puts_.size();
@@ -371,7 +370,7 @@ DhtProxyServer::listen(const Sp<restbed::Session>& session)
     );
 }
 
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
 
 struct DhtProxyServer::Listener {
     std::string clientId;
@@ -688,7 +687,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                         std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
                                         cancelPut(infoHash, vid);
                                     });
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
                                     if (not pushToken.empty()) {
                                         pput.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
@@ -738,7 +737,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
     );
 }
 
-#if OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
 void
 DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) const
 {
@@ -844,7 +843,7 @@ void
 DhtProxyServer::handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const
 {
     requestNum_++;
-#if OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
     const auto allowed = "OPTIONS, GET, POST, LISTEN, SIGN, ENCRYPT";
 #else
     const auto allowed = "OPTIONS, GET, POST, LISTEN";
@@ -914,4 +913,3 @@ DhtProxyServer::removeClosedListeners(bool testSession)
 }
 
 }
-#endif //OPENDHT_PROXY_SERVER

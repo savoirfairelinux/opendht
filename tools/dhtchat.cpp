@@ -76,7 +76,7 @@ main(int argc, char **argv)
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
-#if OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_PROXY_CLIENT
     if (!params.proxyclient.empty()) {
         dht.setProxyServer(params.proxyclient);
         dht.enableProxy(true);

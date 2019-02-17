@@ -235,7 +235,7 @@ SecureDht::checkValue(const Sp<Value>& v)
     // Decrypt encrypted values
     if (v->isEncrypted()) {
         if (not key_) {
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
             if (forward_all_) // We are currently a proxy, send messages to clients.
                 return v;
 #endif

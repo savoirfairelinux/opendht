@@ -17,8 +17,6 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if OPENDHT_PROXY_CLIENT
-
 #include "dht_proxy_client.h"
 
 #include "dhtrunner.h"
@@ -373,7 +371,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         if (deviceKey_.empty()) {
             json["permanent"] = true;
         } else {
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
             Json::Value refresh;
             getPushRequest(refresh);
             json["permanent"] = refresh;
@@ -801,7 +799,7 @@ void DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request> &req,
     req->set_method("LISTEN");
   }
   try {
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     if (method != ListenMethod::LISTEN)
       fillBody(req, method == ListenMethod::RESUBSCRIBE);
 #endif
@@ -994,7 +992,7 @@ DhtProxyClient::restartListeners()
 void
 DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string>& notification)
 {
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     scheduler.syncTime();
     {
         // If a push notification is received, the proxy is up and running
@@ -1047,7 +1045,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
 void
 DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 {
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty()) return;
     scheduler.syncTime();
     DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
@@ -1071,7 +1069,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
 #endif
 }
 
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
 void
 DhtProxyClient::getPushRequest(Json::Value& body) const
 {
@@ -1109,5 +1107,3 @@ DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req, bool resubscribe
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
 } // namespace dht
-
-#endif // OPENDHT_PROXY_CLIENT
