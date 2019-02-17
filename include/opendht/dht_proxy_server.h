@@ -45,6 +45,7 @@ namespace Json {
 namespace dht {
 
 class DhtRunner;
+class ThreadPool;
 
 /**
  * Describes the REST API
@@ -277,6 +278,7 @@ private:
     std::condition_variable schedulerCv_;
     Scheduler scheduler_;
     std::thread schedulerThread_;
+    std::unique_ptr<ThreadPool> threadPool_;
 
     Sp<Scheduler::Job> printStatsJob_;
     mutable std::mutex statsMutex_;
