@@ -56,7 +56,7 @@ nobase_include_HEADERS = \
         ../include/opendht/rng.h
 
 if ENABLE_PROXY_SERVER
-libopendht_la_SOURCES += dht_proxy_server.cpp
+libopendht_la_SOURCES += dht_proxy_server.cpp thread_pool.h thread_pool.cpp
 nobase_include_HEADERS += ../include/opendht/dht_proxy_server.h
 endif
 

@@ -194,6 +194,8 @@ if (OPENDHT_PROXY_SERVER)
     include/opendht/dht_proxy_server.h
   )
   list (APPEND opendht_SOURCES
+    src/thread_pool.h
+    src/thread_pool.cpp
     src/dht_proxy_server.cpp
   )
 else ()
