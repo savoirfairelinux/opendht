@@ -521,7 +521,7 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
 #ifndef _WIN32
     auto status = pipe(stopfds);
     if (status == -1) {
-        throw DhtException("Can't open pipe");
+        throw DhtException(std::string("Can't open pipe: ") + strerror(errno));
     }
 #else
     udpPipe(stopfds);
@@ -533,14 +533,28 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
     s6 = -1;
 
     bound4 = {};
-    if (sin4)
-        s4 = bindSocket(sin4, bound4);
+    if (sin4) {
+        try {
+            s4 = bindSocket(sin4, bound4);
+        } catch (const DhtException& e) {
+            std::cerr << "Can't bind inet socket: " << e.what() << std::endl;
+        }
+    }
 
 #if 1
     bound6 = {};
-    if (sin6)
-        s6 = bindSocket(sin6, bound6);
+    if (sin6) {
+        try {
+            s6 = bindSocket(sin6, bound6);
+        } catch (const DhtException& e) {
+            std::cerr << "Can't bind inet6 socket: " << e.what() << std::endl;
+        }
+    }
 #endif
+
+    if (s4 == -1 && s6 == -1) {
+        throw DhtException("Can't bind socket");
+    }
 
     running_network = true;
     rcv_thread = std::thread([this, stop_readfd]() {
