@@ -450,8 +450,10 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
 {
     bool is_ipv6 = addr.getFamily() == AF_INET6;
     int sock = socket(is_ipv6 ? PF_INET6 : PF_INET, SOCK_DGRAM, 0);
-    if (sock < 0)
-        throw DhtException(std::string("Can't open socket: ") + strerror(sock));
+    if (sock < 0) {
+        std::string inetIndic = is_ipv6 ? "INET6 - " : "INET - ";
+        throw DhtException(inetIndic + std::string("Can't open socket: ") + strerror(sock));
+    }
     int set = 1;
 #ifdef SO_NOSIGPIPE
     setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (const char*)&set, sizeof(set));
@@ -462,7 +464,8 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
     if(rc < 0) {
         rc = errno;
         close(sock);
-        throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
+        std::string inetIndic = is_ipv6 ? "INET6 - " : "INET - ";
+        throw DhtException(inetIndic + "Can't bind socket on " + addr.toString() + " " + strerror(rc));
     }
     sockaddr_storage ss;
     socklen_t ss_len = sizeof(ss);
@@ -531,16 +534,34 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
 
     s4 = -1;
     s6 = -1;
+    DhtException inetBindException, inet6BindException;
 
     bound4 = {};
-    if (sin4)
-        s4 = bindSocket(sin4, bound4);
+    if (sin4) {
+        try {
+            s4 = bindSocket(sin4, bound4);
+        } catch (const DhtException& e) {
+           inetBindException = e;
+        }
+    }
 
 #if 1
     bound6 = {};
-    if (sin6)
-        s6 = bindSocket(sin6, bound6);
+    if (sin6) {
+        try {
+            s6 = bindSocket(sin6, bound6);
+        } catch (const DhtException& e) {
+           inet6BindException = e;
+        }
+    }
 #endif
+
+    if (s4 == -1 && s6 == -1) {
+        if (s4 == -1)
+            throw inetBindException;
+        if (s6 == -1)
+            throw inet6BindException;
+    }
 
     running_network = true;
     rcv_thread = std::thread([this, stop_readfd]() {
