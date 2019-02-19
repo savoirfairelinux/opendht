@@ -67,6 +67,9 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
 #endif
     }
 
+    jsonBuilder_["commentStyle"] = "None";
+    jsonBuilder_["indentation"] = "";
+
     server_thread = std::thread([this, port]() {
         // Create endpoints
         auto resource = std::make_shared<restbed::Resource>();
@@ -222,10 +225,7 @@ DhtProxyServer::getNodeInfo(const Sp<restbed::Session>& session) const
                         result = nodeInfo_.toJson();
                     }
                     result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
-                    Json::StreamWriterBuilder wbuilder;
-                    wbuilder["commentStyle"] = "None";
-                    wbuilder["indentation"] = "";
-                    auto output = Json::writeString(wbuilder, result) + "\n";
+                    auto output = Json::writeString(jsonBuilder_, result) + "\n";
                     s->close(restbed::OK, output);
                 }
                 else
@@ -249,10 +249,7 @@ DhtProxyServer::getStats(const Sp<restbed::Session>& session) const
             try {
                 if (dht_) {
 #ifdef OPENDHT_JSONCPP
-                    Json::StreamWriterBuilder wbuilder;
-                    wbuilder["commentStyle"] = "None";
-                    wbuilder["indentation"] = "";
-                    auto output = Json::writeString(wbuilder, stats_.toJson()) + "\n";
+                    auto output = Json::writeString(jsonBuilder_, stats_.toJson()) + "\n";
                     s->close(restbed::OK, output);
 #else
                     s->close(restbed::NotFound, "{\"err\":\"JSON not enabled on this instance\"}");
@@ -284,13 +281,10 @@ DhtProxyServer::get(const Sp<restbed::Session>& session) const
                         infoHash = InfoHash::get(hash);
                     }
                     s->yield(restbed::OK, "", [=](const Sp<restbed::Session>&) {});
-                    dht_->get(infoHash, [s](const Sp<Value>& value) {
+                    dht_->get(infoHash, [this,s](const Sp<Value>& value) {
                         if (s->is_closed()) return false;
                         // Send values as soon as we get them
-                        Json::StreamWriterBuilder wbuilder;
-                        wbuilder["commentStyle"] = "None";
-                        wbuilder["indentation"] = "";
-                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                         s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
@@ -338,19 +332,16 @@ DhtProxyServer::listen(const Sp<restbed::Session>& session)
                     // cache the session to avoid an incrementation of the shared_ptr's counter
                     // else, the session->close() will not close the socket.
                     auto cacheSession = std::weak_ptr<restbed::Session>(s);
-                    listener.token = dht_->listen(infoHash, [cacheSession](const std::vector<Sp<Value>>& values, bool expired) {
+                    listener.token = dht_->listen(infoHash, [this,cacheSession](const std::vector<Sp<Value>>& values, bool expired) {
                         auto s = cacheSession.lock();
                         if (!s) return false;
                         // Send values as soon as we get them
                         if (!s->is_closed()) {
-                            Json::StreamWriterBuilder wbuilder;
-                            wbuilder["commentStyle"] = "None";
-                            wbuilder["indentation"] = "";
                             for (const auto& value : values) {
                                 auto val = value->toJson();
                                 if (expired)
                                     val["expired"] = true;
-                                auto output = Json::writeString(wbuilder, val) + "\n";
+                                auto output = Json::writeString(jsonBuilder_, val) + "\n";
                                 s->yield(output, [](const Sp<restbed::Session>&){ });
                             }
                         }
@@ -440,10 +431,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                                         if (s->is_closed())
                                             return false;
                                         // Send values as soon as we get them
-                                        Json::StreamWriterBuilder wbuilder;
-                                        wbuilder["commentStyle"] = "None";
-                                        wbuilder["indentation"] = "";
-                                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                                        auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                                         s->yield(output, [](const Sp<restbed::Session>
                                                                 & /*session*/) {});
                                         return true;

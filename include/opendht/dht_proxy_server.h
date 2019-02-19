@@ -271,6 +271,7 @@ private:
     std::thread server_thread {};
     std::unique_ptr<restbed::Service> service_;
     std::shared_ptr<DhtRunner> dht_;
+    Json::StreamWriterBuilder jsonBuilder_;
 
     std::mutex schedulerLock_;
     std::condition_variable schedulerCv_;
