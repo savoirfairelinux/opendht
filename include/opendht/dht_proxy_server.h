@@ -253,7 +253,7 @@ private:
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, const Json::Value& json, bool isAndroid) const;
+    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
 
     /**
      * Remove a push listener between a client and a hash

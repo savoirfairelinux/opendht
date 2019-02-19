@@ -478,7 +478,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             Json::Value json;
                             json["key"] = infoHash.toString();
                             json["to"] = clientId;
-                            sendPushNotification(pushToken, json, isAndroid);
+                            sendPushNotification(pushToken, std::move(json), isAndroid);
                             return true;
                         }
                     );
@@ -493,7 +493,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
-                            sendPushNotification(pushToken, json, isAndroid);
+                            sendPushNotification(pushToken, std::move(json), isAndroid);
                         }
                     );
                 }
@@ -571,7 +571,7 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value& json, bool isAndroid) const
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid) const
 {
     if (pushServer_.empty())
         return;
@@ -583,9 +583,9 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
     Json::Value notification(Json::objectValue);
     Json::Value tokens(Json::arrayValue);
     tokens[0] = token;
-    notification["tokens"] = tokens;
+    notification["tokens"] = std::move(tokens);
     notification["platform"] = isAndroid ? 2 : 1;
-    notification["data"] = json;
+    notification["data"] = std::move(json);
     notification["priority"] = "high";
     notification["time_to_live"] = 600;
 
@@ -593,7 +593,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
     notifications[0] = notification;
 
     Json::Value content;
-    content["notifications"] = notifications;
+    content["notifications"] = std::move(notifications);
 
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
@@ -694,7 +694,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                             json["timeout"] = infoHash.toString();
                                             json["to"] = clientId;
                                             json["vid"] = std::to_string(vid);
-                                            sendPushNotification(pushToken, json, isAndroid);
+                                            sendPushNotification(pushToken, std::move(json), isAndroid);
                                         });
                                     }
 #endif
