@@ -437,22 +437,18 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
             if (not hasValue or seq_no < a.value->seq) {
                 DHT_LOG.d(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                sn->acked[a.value->id] = std::make_pair(network_engine.sendAnnounceValue(sn->node,
-                                                sr->id,
-                                                a.value,
-                                                a.permanent ? time_point::max() : a.created,
-                                                sn->token,
-                                                onDone,
-                                                onExpired), next_refresh_time);
+                auto created = a.permanent ? time_point::max() : a.created;
+                sn->acked[a.value->id] = {
+                    network_engine.sendAnnounceValue(sn->node, sr->id, a.value, created, sn->token, onDone, onExpired),
+                    next_refresh_time
+                };
             } else if (hasValue and a.permanent) {
                 DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %d)",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
-                sn->acked[a.value->id] = std::make_pair(network_engine.sendRefreshValue(sn->node,
-                                                sr->id,
-                                                a.value->id,
-                                                sn->token,
-                                                onDone,
-                                                onExpired), next_refresh_time);
+                sn->acked[a.value->id] = {
+                    network_engine.sendRefreshValue(sn->node, sr->id, a.value->id, sn->token, onDone, onExpired),
+                    next_refresh_time
+                };
             } else {
                 DHT_LOG.w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %d). Aborting.",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
@@ -540,6 +536,13 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                             l->second.get_cb(l->second.filter.filter(values), expired);
                         }
                     }
+                }, [ws,list_token] (ListenSyncStatus status) {
+                    if (auto sr = ws.lock()) {
+                        auto l = sr->listeners.find(list_token);
+                        if (l != sr->listeners.end()) {
+                            l->second.sync_cb(status);
+                        }
+                    }
                 }
             }).first;
             auto node = n.node;
@@ -557,8 +560,10 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             { /* on done */
                 if (auto sr = ws.lock()) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
-                    if (auto sn = sr->getNode(req.node))
+                    if (auto sn = sr->getNode(req.node)) {
                         scheduler.add(sn->getListenTime(query), std::bind(&Dht::searchStep, this, sr));
+                        sn->onListenSynced(query);
+                    }
                     onListenDone(req.node, answer, sr);
                 }
             },
@@ -909,7 +914,7 @@ struct OpStatus {
 
 template <typename T>
 struct GetStatus : public OpStatus {
-    std::vector<Sp<T>> values;
+    T values;
     std::vector<Sp<Node>> nodes;
 };
 
@@ -968,20 +973,16 @@ void doneCallbackWrapper(DoneCallback dcb, const std::vector<Sp<Node>>& nodes, G
     }
 }
 
-template <typename T, typename Cb>
-bool callbackWrapper(Cb get_cb,
-        DoneCallback done_cb,
-        const std::vector<Sp<T>>& values,
-        std::function<std::vector<Sp<T>>(const std::vector<Sp<T>>&)> add_values,
-        Sp<GetStatus<T>> o)
+template <typename T, typename St, typename Cb, typename Av, typename Cv>
+bool callbackWrapper(Cb get_cb, DoneCallback done_cb, const std::vector<Sp<T>>& values,
+    Av add_values, Cv cache_values, GetStatus<St>& op)
 {
-    auto& op = *o;
     if (op.status.done)
         return false;
     auto newvals = add_values(values);
     if (not newvals.empty()) {
         op.status.ok = !get_cb(newvals);
-        op.values.insert(op.values.end(), newvals.begin(), newvals.end());
+        cache_values(newvals);
     }
     doneCallbackWrapper(done_cb, {}, op);
     return !op.status.ok;
@@ -993,23 +994,26 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
     scheduler.syncTime();
 
     auto q = std::make_shared<Query>(Select {}, std::move(where));
-    auto op = std::make_shared<GetStatus<Value>>();
+    auto op = std::make_shared<GetStatus<std::map<Value::Id, Sp<Value>>>>();
     auto f = filter.chain(q->where.getFilter());
 
-    auto add_values = [op,f](const std::vector<Sp<Value>>& values) {
-        std::vector<Sp<Value>> newvals {};
-        for (const auto& v : values) {
-            auto it = std::find_if(op->values.cbegin(), op->values.cend(), [&](const Sp<Value>& sv) {
-                return sv == v or *sv == *v;
-            });
-            if (it == op->values.cend()) {
-               if (not f or f(*v))
-                   newvals.push_back(v);
+    auto gcb = [getcb, donecb, op, f](const std::vector<Sp<Value>>& vals) {
+        auto& o = *op;
+        return callbackWrapper(getcb, donecb, vals, [&o,&f](const std::vector<Sp<Value>>& values) {
+            std::vector<Sp<Value>> newvals {};
+            for (const auto& v : values) {
+                auto it = o.values.find(v->id);
+                if (it == o.values.cend() or (it->second != v && !(*it->second == *v))) {
+                    if (not f or f(*v))
+                        newvals.push_back(v);
+                }
             }
-        }
-        return newvals;
+            return newvals;
+        }, [&o](const std::vector<Sp<Value>>& newvals) {
+            for (const auto& v : newvals)
+                o.values[v->id] = v;
+        }, o);
     };
-    auto gcb = std::bind(callbackWrapper<Value, GetCallback>, getcb, donecb, _1, add_values, op);
 
     /* Try to answer this search locally. */
     gcb(getLocal(id, f));
@@ -1029,36 +1033,39 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
 void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Query&& q)
 {
     scheduler.syncTime();
-    auto op = std::make_shared<GetStatus<FieldValueIndex>>();
-
+    auto op = std::make_shared<GetStatus<std::vector<Sp<FieldValueIndex>>>>();
     auto f = q.where.getFilter();
-    auto values = getLocal(id, f);
-    auto add_fields = [=](const std::vector<Sp<FieldValueIndex>>& fields) {
-        std::vector<Sp<FieldValueIndex>> newvals {};
-        for (const auto& f : fields) {
-            auto it = std::find_if(op->values.cbegin(), op->values.cend(),
-                [&](const Sp<FieldValueIndex>& sf) {
-                    return sf == f or f->containedIn(*sf);
-                });
-            if (it == op->values.cend()) {
-                auto lesser = std::find_if(op->values.begin(), op->values.end(),
+    auto qcb = [cb, done_cb, op](const std::vector<Sp<FieldValueIndex>>& fields){
+        auto& o = *op;
+        return callbackWrapper(cb, done_cb, fields, [&](const std::vector<Sp<FieldValueIndex>>& fields) {
+            std::vector<Sp<FieldValueIndex>> newvals {};
+            for (const auto& f : fields) {
+                auto it = std::find_if(o.values.cbegin(), o.values.cend(),
                     [&](const Sp<FieldValueIndex>& sf) {
-                        return sf->containedIn(*f);
+                        return sf == f or f->containedIn(*sf);
                     });
-                if (lesser != op->values.end())
-                    op->values.erase(lesser);
-                newvals.push_back(f);
+                if (it == o.values.cend()) {
+                    auto lesser = std::find_if(o.values.begin(), o.values.end(),
+                        [&](const Sp<FieldValueIndex>& sf) {
+                            return sf->containedIn(*f);
+                        });
+                    if (lesser != o.values.end())
+                        o.values.erase(lesser);
+                    newvals.push_back(f);
+                }
             }
-        }
-        return newvals;
+            return newvals;
+        }, [&](const std::vector<Sp<FieldValueIndex>>& fields){
+            o.values.insert(o.values.end(), fields.begin(), fields.end());
+        }, o);
     };
+
+    /* Try to answer this search locally. */
+    auto values = getLocal(id, f);
     std::vector<Sp<FieldValueIndex>> local_fields(values.size());
     std::transform(values.begin(), values.end(), local_fields.begin(), [&q](const Sp<Value>& v) {
         return std::make_shared<FieldValueIndex>(*v, q.select);
     });
-    auto qcb = std::bind(callbackWrapper<FieldValueIndex, QueryCallback>, cb, done_cb, _1, add_fields, op);
-
-    /* Try to answer this search locally. */
     qcb(local_fields);
 
     auto sq = std::make_shared<Query>(std::move(q));
@@ -1166,6 +1173,7 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v, bool newVa
         if (not st.local_listeners.empty()) {
             DHT_LOG.d(id, "[store %s] %lu local listeners", id.toString().c_str(), st.local_listeners.size());
             std::vector<std::pair<ValueCallback, std::vector<Sp<Value>>>> cbs;
+            cbs.reserve(st.local_listeners.size());
             for (const auto& l : st.local_listeners) {
                 std::vector<Sp<Value>> vals;
                 if (not l.second.filter or l.second.filter(*v.data))
@@ -2275,9 +2283,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
 }
 
 void
-Dht::onListenDone(const Sp<Node>& node,
-        net::RequestAnswer& answer,
-        Sp<Search>& sr)
+Dht::onListenDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>& sr)
 {
     // DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
     //            sr->id.toString().c_str(), node->toString().c_str(), answer.values.size());

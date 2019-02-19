@@ -70,6 +70,8 @@ set (CMAKE_CXX_STANDARD_REQUIRED on)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
 if (OPENDHT_SANITIZE)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
+else ()
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-stack-protector")
 endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 if (NOT CMAKE_BUILD_TYPE)
@@ -304,7 +306,7 @@ install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE o
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
 
 # Unit tests
-IF(OPENDHT_TESTS)
+if (OPENDHT_TESTS)
   FIND_PACKAGE(Cppunit REQUIRED)
   # unit testing
     list (APPEND test_FILES
@@ -325,16 +327,17 @@ IF(OPENDHT_TESTS)
       tests/tests_runner.cpp
       ${test_FILES}
     )
+    target_include_directories(opendht_unit_tests SYSTEM PRIVATE ${CPPUNIT_INCLUDE_DIRS})
     if (OPENDHT_SHARED)
-      TARGET_LINK_LIBRARIES(opendht_unit_tests opendht)
+      target_link_libraries(opendht_unit_tests opendht)
     else ()
-      TARGET_LINK_LIBRARIES(opendht_unit_tests opendht-static)
+      target_link_libraries(opendht_unit_tests opendht-static)
     endif ()
-    TARGET_LINK_LIBRARIES(opendht_unit_tests
+    target_link_libraries(opendht_unit_tests
        ${CMAKE_THREAD_LIBS_INIT}
        ${CPPUNIT_LIBRARIES}
        ${GNUTLS_LIBRARIES}
     )
     enable_testing()
     add_test(TEST opendht_unit_tests)
-ENDIF()
+endif()

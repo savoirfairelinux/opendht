@@ -353,9 +353,8 @@ NetworkEngine::rateLimit(const SockAddr& addr)
         limiter_maintenance = 0;
     }
 
-    auto it = address_rate_limiter.emplace(addr, IpLimiter{});
     // invoke per IP, then global rate limiter
-    return it.first->second.limit(now) and rate_limiter.limit(now);
+    return address_rate_limiter[addr].limit(now) and rate_limiter.limit(now);
 }
 
 bool
@@ -475,15 +474,15 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         process(std::move(msg), from);
     } else {
         // starting partial message session
-        PartialMessage pmsg;
-        pmsg.from = from;
-        pmsg.msg = std::move(msg);
-        pmsg.start = now;
-        pmsg.last_part = now;
-        auto wmsg = partial_messages.emplace(pmsg.msg->tid, std::move(pmsg));
-        if (wmsg.second) {
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
+        auto k = msg->tid;
+        auto& pmsg = partial_messages[k];
+        if (not pmsg.msg) {
+            pmsg.from = from;
+            pmsg.msg = std::move(msg);
+            pmsg.start = now;
+            pmsg.last_part = now;
+            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
+            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
         } else
             DHT_LOG.e("Partial message with given TID already exists");
     }

@@ -22,19 +22,32 @@
 namespace dht {
 
 using ValueStateCallback = std::function<void(const std::vector<Sp<Value>>&, bool)>;
+enum class ListenSyncStatus { ADDED, SYNCED, UNSYNCED, REMOVED };
+using SyncCallback = std::function<void(ListenSyncStatus)>;
 using CallbackQueue = std::list<std::function<void()>>;
 
 class ValueCache {
 public:
-    ValueCache(ValueStateCallback&& cb) : callback(std::forward<ValueStateCallback>(cb)) {}
-    ValueCache(ValueCache&& o) : values(std::move(o.values)), callback(std::move(o.callback)) {
+    ValueCache(ValueStateCallback&& cb, SyncCallback&& scb = {})
+        : callback(std::forward<ValueStateCallback>(cb)), syncCallback(std::move(scb))
+    {
+        if (syncCallback)
+            syncCallback(ListenSyncStatus::ADDED);
+    }
+    ValueCache(ValueCache&& o) : values(std::move(o.values)), callback(std::move(o.callback)), syncCallback(std::move(o.syncCallback)) {
         o.callback = {};
+        o.syncCallback = {};
     }
 
     ~ValueCache() {
         auto q = clear();
         for (auto& cb: q)
             cb();
+        if (syncCallback) {
+            if (status == ListenSyncStatus::SYNCED)
+                syncCallback(ListenSyncStatus::UNSYNCED);
+            syncCallback(ListenSyncStatus::REMOVED);
+        }
     }
 
     CallbackQueue clear() {
@@ -120,6 +133,15 @@ public:
         return ret;
     }
 
+    void onSynced(bool synced) {
+        auto newStatus = synced ? ListenSyncStatus::SYNCED : ListenSyncStatus::UNSYNCED;
+        if (status != newStatus) {
+            status = newStatus;
+            if (syncCallback)
+                syncCallback(newStatus);
+        }
+    }
+
 private:
     // prevent copy
     ValueCache(const ValueCache&) = delete;
@@ -141,6 +163,8 @@ private:
 
     std::map<Value::Id, CacheValueStorage> values;
     ValueStateCallback callback;
+    SyncCallback syncCallback;
+    ListenSyncStatus status {ListenSyncStatus::UNSYNCED};
 
     CallbackQueue addValues(const std::vector<Sp<Value>>& new_values, const TypeStore& types, const time_point& now) {
         std::vector<Sp<Value>> nvals;
