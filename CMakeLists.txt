@@ -184,40 +184,34 @@ if (OPENDHT_INDEX)
 endif()
 
 if (OPENDHT_PROXY_SERVER)
-  add_definitions(-DOPENDHT_PROXY_SERVER=true)
+  add_definitions(-DOPENDHT_PROXY_SERVER)
   if (OPENDHT_PROXY_SERVER_IDENTITY)
-    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=true)
-  else ()
-    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=false)
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY)
   endif()
   list (APPEND opendht_HEADERS
     include/opendht/dht_proxy_server.h
   )
   list (APPEND opendht_SOURCES
+    src/thread_pool.h
+    src/thread_pool.cpp
     src/dht_proxy_server.cpp
   )
-else ()
-    add_definitions(-DENABLE_PROXY_SERVER=false)
 endif ()
 
 if (OPENDHT_PROXY_CLIENT)
-  add_definitions(-DOPENDHT_PROXY_CLIENT=true)
+  add_definitions(-DOPENDHT_PROXY_CLIENT)
   list (APPEND opendht_HEADERS
     include/opendht/dht_proxy_client.h
   )
   list (APPEND opendht_SOURCES
     src/dht_proxy_client.cpp
   )
-else ()
-  add_definitions(-DOPENDHT_PROXY_CLIENT=false)
 endif ()
 
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
   if (OPENDHT_PUSH_NOTIFICATIONS)
     message("Using push notification")
-    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=true)
-  else ()
-    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=false)
+    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS)
   endif ()
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h

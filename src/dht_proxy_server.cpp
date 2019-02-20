@@ -17,9 +17,9 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if OPENDHT_PROXY_SERVER
 #include "dht_proxy_server.h"
 
+#include "thread_pool.h"
 #include "default_types.h"
 #include "dhtrunner.h"
 
@@ -47,9 +47,11 @@ struct DhtProxyServer::SearchPuts {
 };
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
+constexpr const size_t IO_THREADS_MAX {64};
+
 
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer)
-: dht_(dht) , pushServer_(pushServer)
+: dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer)
 {
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
@@ -58,12 +60,15 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
 
     std::cout << "Running DHT proxy server on port " << port << std::endl;
     if (not pushServer.empty()) {
-#if !OPENDHT_PUSH_NOTIFICATIONS
-        std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
-#else
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         std::cout << "Using push notification server: " << pushServer << std::endl;
+#else
+        std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
 #endif
     }
+
+    jsonBuilder_["commentStyle"] = "None";
+    jsonBuilder_["indentation"] = "";
 
     server_thread = std::thread([this, port]() {
         // Create endpoints
@@ -76,12 +81,12 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         resource->set_path("/{hash: .*}");
         resource->set_method_handler("GET", std::bind(&DhtProxyServer::get, this, _1));
         resource->set_method_handler("LISTEN", [this](const Sp<restbed::Session>& session) mutable { listen(session); } );
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         resource->set_method_handler("SUBSCRIBE", [this](const Sp<restbed::Session>& session) mutable { subscribe(session); } );
         resource->set_method_handler("UNSUBSCRIBE", [this](const Sp<restbed::Session>& session) mutable { unsubscribe(session); } );
 #endif //OPENDHT_PUSH_NOTIFICATIONS
         resource->set_method_handler("POST", [this](const Sp<restbed::Session>& session) mutable { put(session); });
-#if OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
         resource->set_method_handler("SIGN", std::bind(&DhtProxyServer::putSigned, this, _1));
         resource->set_method_handler("ENCRYPT", std::bind(&DhtProxyServer::putEncrypted, this, _1));
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
@@ -177,6 +182,7 @@ DhtProxyServer::stop()
         schedulerThread_.join();
     if (server_thread.joinable())
         server_thread.join();
+    threadPool_->stop();
 }
 
 void
@@ -187,7 +193,7 @@ DhtProxyServer::updateStats() const
     auto count = requestNum_.exchange(0);
     auto dt = std::chrono::duration<double>(now - last);
     stats_.requestRate = count / dt.count();
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     stats_.pushListenersCount = pushListeners_.size();
 #endif
     stats_.putCount = puts_.size();
@@ -219,10 +225,7 @@ DhtProxyServer::getNodeInfo(const Sp<restbed::Session>& session) const
                         result = nodeInfo_.toJson();
                     }
                     result["public_ip"] = s->get_origin(); // [ipv6:ipv4]:port or ipv4:port
-                    Json::StreamWriterBuilder wbuilder;
-                    wbuilder["commentStyle"] = "None";
-                    wbuilder["indentation"] = "";
-                    auto output = Json::writeString(wbuilder, result) + "\n";
+                    auto output = Json::writeString(jsonBuilder_, result) + "\n";
                     s->close(restbed::OK, output);
                 }
                 else
@@ -246,10 +249,7 @@ DhtProxyServer::getStats(const Sp<restbed::Session>& session) const
             try {
                 if (dht_) {
 #ifdef OPENDHT_JSONCPP
-                    Json::StreamWriterBuilder wbuilder;
-                    wbuilder["commentStyle"] = "None";
-                    wbuilder["indentation"] = "";
-                    auto output = Json::writeString(wbuilder, stats_.toJson()) + "\n";
+                    auto output = Json::writeString(jsonBuilder_, stats_.toJson()) + "\n";
                     s->close(restbed::OK, output);
 #else
                     s->close(restbed::NotFound, "{\"err\":\"JSON not enabled on this instance\"}");
@@ -281,13 +281,10 @@ DhtProxyServer::get(const Sp<restbed::Session>& session) const
                         infoHash = InfoHash::get(hash);
                     }
                     s->yield(restbed::OK, "", [=](const Sp<restbed::Session>&) {});
-                    dht_->get(infoHash, [s](const Sp<Value>& value) {
+                    dht_->get(infoHash, [this,s](const Sp<Value>& value) {
                         if (s->is_closed()) return false;
                         // Send values as soon as we get them
-                        Json::StreamWriterBuilder wbuilder;
-                        wbuilder["commentStyle"] = "None";
-                        wbuilder["indentation"] = "";
-                        auto output = Json::writeString(wbuilder, value->toJson()) + "\n";
+                        auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                         s->yield(output, [](const Sp<restbed::Session>& /*session*/){ });
                         return true;
                     }, [s](bool /*ok* */) {
@@ -335,19 +332,16 @@ DhtProxyServer::listen(const Sp<restbed::Session>& session)
                     // cache the session to avoid an incrementation of the shared_ptr's counter
                     // else, the session->close() will not close the socket.
                     auto cacheSession = std::weak_ptr<restbed::Session>(s);
-                    listener.token = dht_->listen(infoHash, [cacheSession](const std::vector<Sp<Value>>& values, bool expired) {
+                    listener.token = dht_->listen(infoHash, [this,cacheSession](const std::vector<Sp<Value>>& values, bool expired) {
                         auto s = cacheSession.lock();
                         if (!s) return false;
                         // Send values as soon as we get them
                         if (!s->is_closed()) {
-                            Json::StreamWriterBuilder wbuilder;
-                            wbuilder["commentStyle"] = "None";
-                            wbuilder["indentation"] = "";
                             for (const auto& value : values) {
                                 auto val = value->toJson();
                                 if (expired)
                                     val["expired"] = true;
-                                auto output = Json::writeString(wbuilder, val) + "\n";
+                                auto output = Json::writeString(jsonBuilder_, val) + "\n";
                                 s->yield(output, [](const Sp<restbed::Session>&){ });
                             }
                         }
@@ -367,7 +361,7 @@ DhtProxyServer::listen(const Sp<restbed::Session>& session)
     );
 }
 
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
 
 struct DhtProxyServer::Listener {
     std::string clientId;
@@ -430,20 +424,14 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
                             s->yield(restbed::OK);
 
-                            if (root.isMember("previous_values") &&
-                                root["previous_values"].asBool()) {
+                            if (!root.isMember("refresh") or !root["refresh"].asBool()) {
                                 dht_->get(
                                     infoHash,
                                     [this, s](const Sp<Value> &value) {
                                         if (s->is_closed())
                                             return false;
                                         // Send values as soon as we get them
-                                        Json::StreamWriterBuilder wbuilder;
-                                        wbuilder["commentStyle"] = "None";
-                                        wbuilder["indentation"] = "";
-                                        auto output = Json::writeString(
-                                                            wbuilder, value->toJson()) +
-                                                        "\n";
+                                        auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                                         s->yield(output, [](const Sp<restbed::Session>
                                                                 & /*session*/) {});
                                         return true;
@@ -473,12 +461,22 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
 
                     // The listener is not found, so add it.
                     listener.internalToken = dht_->listen(infoHash,
-                        [this, infoHash, pushToken, isAndroid, clientId](std::vector<std::shared_ptr<Value>> /*value*/) {
-                            // Build message content.
-                            Json::Value json;
-                            json["key"] = infoHash.toString();
-                            json["to"] = clientId;
-                            sendPushNotification(pushToken, json, isAndroid);
+                        [this, infoHash, pushToken, isAndroid, clientId](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                            threadPool_->run([this, infoHash, pushToken, isAndroid, clientId, values, expired]() {
+                                // Build message content
+                                Json::Value json;
+                                json["key"] = infoHash.toString();
+                                json["to"] = clientId;
+                                if (expired and values.size() < 3) {
+                                    std::stringstream ss;
+                                    for(size_t i = 0; i < values.size(); ++i) {
+                                        if(i != 0) ss << ",";
+                                        ss << values[i]->id;
+                                    }
+                                    json["exp"] = ss.str();
+                                }
+                                sendPushNotification(pushToken, std::move(json), isAndroid);
+                            });
                             return true;
                         }
                     );
@@ -493,7 +491,7 @@ DhtProxyServer::subscribe(const std::shared_ptr<restbed::Session>& session)
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
-                            sendPushNotification(pushToken, json, isAndroid);
+                            sendPushNotification(pushToken, std::move(json), isAndroid);
                         }
                     );
                 }
@@ -571,7 +569,7 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value& json, bool isAndroid) const
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid) const
 {
     if (pushServer_.empty())
         return;
@@ -583,9 +581,9 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
     Json::Value notification(Json::objectValue);
     Json::Value tokens(Json::arrayValue);
     tokens[0] = token;
-    notification["tokens"] = tokens;
+    notification["tokens"] = std::move(tokens);
     notification["platform"] = isAndroid ? 2 : 1;
-    notification["data"] = json;
+    notification["data"] = std::move(json);
     notification["priority"] = "high";
     notification["time_to_live"] = 600;
 
@@ -593,7 +591,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, const Json::Value
     notifications[0] = notification;
 
     Json::Value content;
-    content["notifications"] = notifications;
+    content["notifications"] = std::move(notifications);
 
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
@@ -684,7 +682,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                         std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
                                         cancelPut(infoHash, vid);
                                     });
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
                                     if (not pushToken.empty()) {
                                         pput.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
@@ -694,7 +692,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                             json["timeout"] = infoHash.toString();
                                             json["to"] = clientId;
                                             json["vid"] = std::to_string(vid);
-                                            sendPushNotification(pushToken, json, isAndroid);
+                                            sendPushNotification(pushToken, std::move(json), isAndroid);
                                         });
                                     }
 #endif
@@ -734,7 +732,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
     );
 }
 
-#if OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
 void
 DhtProxyServer::putSigned(const std::shared_ptr<restbed::Session>& session) const
 {
@@ -840,7 +838,7 @@ void
 DhtProxyServer::handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const
 {
     requestNum_++;
-#if OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
     const auto allowed = "OPTIONS, GET, POST, LISTEN, SIGN, ENCRYPT";
 #else
     const auto allowed = "OPTIONS, GET, POST, LISTEN";
@@ -910,4 +908,3 @@ DhtProxyServer::removeClosedListeners(bool testSession)
 }
 
 }
-#endif //OPENDHT_PROXY_SERVER

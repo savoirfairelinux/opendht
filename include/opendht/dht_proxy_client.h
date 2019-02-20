@@ -17,8 +17,6 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#if OPENDHT_PROXY_CLIENT
-
 #pragma once
 
 #include <functional>
@@ -49,7 +47,7 @@ public:
     explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "");
 
     virtual void setPushNotificationToken(const std::string& token) {
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         deviceKey_ = token;
 #endif
     }
@@ -376,7 +374,7 @@ private:
 
     const std::function<void()> loopSignal_;
 
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     void fillBody(std::shared_ptr<restbed::Request> request, bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
@@ -385,5 +383,3 @@ private:
 };
 
 }
-
-#endif // OPENDHT_PROXY_CLIENT

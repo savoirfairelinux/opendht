@@ -58,9 +58,9 @@ void print_help() {
               << "  ld [key]   Print basic information about currenty stored values on this node (or key)." << std::endl
               << "  lr         Print the full current routing table of this node." << std::endl;
 
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
     std::cout << std::endl << "Operations with the proxy:" << std::endl
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
               << "  pst [port] <pushServer> Start the proxy interface on port." << std::endl
 #else
               << "  pst [port]              Start the proxy interface on port." << std::endl
@@ -68,9 +68,9 @@ void print_help() {
               << "  psp [port]              Stop the proxy interface on port." << std::endl;
 #endif //OPENDHT_PROXY_SERVER
 
-#if OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_PROXY_CLIENT
     std::cout << std::endl << "Operations with the proxy:" << std::endl
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
               << "  stt [server_address] <device_key> Start the proxy client." << std::endl
               << "  rs  [token]                       Resubscribe to opendht." << std::endl
               << "  rp  [token]                       Inject a push notification in Opendht." << std::endl
@@ -102,7 +102,7 @@ void print_help() {
 }
 
 void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
     , std::map<in_port_t, std::unique_ptr<DhtProxyServer>>& proxies
 #endif
 )
@@ -141,7 +141,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             std::cout << dht->getNodesStats(AF_INET).toString() << std::endl;
             std::cout << "IPv6 stats:" << std::endl;
             std::cout << dht->getNodesStats(AF_INET6).toString() << std::endl;
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
             for (const auto& proxy : proxies) {
                 std::cout << "Stats for proxy on port " << proxy.first << std::endl;
                 std::cout << "  " << proxy.second->stats().toString() << std::endl;
@@ -201,16 +201,16 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             dht->connectivityChanged();
             continue;
         }
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
         else if (op == "pst") {
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
                 iss >> idstr >> pushServer;
 #else
                 iss >> idstr;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
                 unsigned int port = std::stoi(idstr);
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
                 proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, port, pushServer)));
 #else
                 proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, port)));
@@ -227,7 +227,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             continue;
         }
 #endif //OPENDHT_PROXY_SERVER
-#if OPENDHT_PROXY_CLIENT
+#ifdef OPENDHT_PROXY_CLIENT
         else if (op == "stt") {
             dht->enableProxy(true);
             continue;
@@ -235,7 +235,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             dht->enableProxy(false);
             continue;
         }
-#if OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         else if (op == "rp") {
             iss >> value;
             dht->pushNotificationReceived({{"to", "dhtnode"}, {"token", value}});
@@ -523,11 +523,11 @@ main(int argc, char **argv)
             dht->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
         }
 
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
         std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
 #endif
         if (params.proxyserver != 0) {
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
             proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, params.proxyserver, params.pushserver)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
@@ -539,7 +539,7 @@ main(int argc, char **argv)
             while (runner.wait());
         else
             cmd_loop(dht, params
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
                 , proxies
 #endif
             );

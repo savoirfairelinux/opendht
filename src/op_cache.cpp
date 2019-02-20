@@ -34,6 +34,7 @@ OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals) {
     }
     return newValues.empty() ? true : callback(newValues, false);
 }
+
 bool
 OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals) {
     std::vector<Sp<Value>> expiredValues;
@@ -49,6 +50,24 @@ OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals) {
     }
     return expiredValues.empty() ? true : callback(expiredValues, true);
 }
+
+bool
+OpValueCache::onValuesExpired(const std::vector<Value::Id>& vids)
+{
+    std::vector<Sp<Value>> expiredValues;
+    for (const auto& vid : vids) {
+        auto vit = values.find(vid);
+        if (vit != values.end()) {
+            vit->second.refCount--;
+            if (not vit->second.refCount) {
+                expiredValues.emplace_back(std::move(vit->second.data));
+                values.erase(vit);
+            }
+        }
+    }
+    return expiredValues.empty() ? true : callback(expiredValues, true);
+}
+
 std::vector<Sp<Value>>
 OpValueCache::get(const Value::Filter& filter) const {
     std::vector<Sp<Value>> ret;
