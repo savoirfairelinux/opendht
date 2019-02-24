@@ -103,6 +103,9 @@ struct OPENDHT_PUBLIC Config {
 
     /** Makes the DHT responsible to maintain its stored values. Consumes more ressources. */
     bool maintain_storage;
+
+    /** If set, the dht will load its state from this file on start and save its state in this file on shutdown */
+    std::string persist_path;
 };
 
 /**
