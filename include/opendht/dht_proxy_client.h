@@ -235,7 +235,7 @@ public:
     void insertNode(const InfoHash&, const sockaddr*, socklen_t) { }
     void insertNode(const NodeExport&) { }
     std::pair<size_t, size_t> getStoreSize() const { return {}; }
-    std::vector<NodeExport> exportNodes() { return {}; }
+    std::vector<NodeExport> exportNodes() const { return {}; }
     std::vector<ValuesExport> exportValues() const { return {}; }
     void importValues(const std::vector<ValuesExport>&) {}
     std::string getStorageLog() const { return {}; }

@@ -2056,7 +2056,7 @@ Dht::importValues(const std::vector<ValuesExport>& import)
 
 
 std::vector<NodeExport>
-Dht::exportNodes()
+Dht::exportNodes() const
 {
     const auto& now = scheduler.time();
     std::vector<NodeExport> nodes;
