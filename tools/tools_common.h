@@ -103,6 +103,7 @@ struct dht_params {
     std::string proxyclient {};
     std::string pushserver {};
     std::string devicekey {};
+    std::string persist_path {};
 };
 
 static const constexpr struct option long_options[] = {
@@ -114,6 +115,7 @@ static const constexpr struct option long_options[] = {
    {"verbose",    no_argument      , nullptr, 'v'},
    {"daemonize",  no_argument      , nullptr, 'd'},
    {"service",    no_argument      , nullptr, 's'},
+   {"persist",    required_argument, nullptr, 'f'},
    {"logfile",    required_argument, nullptr, 'l'},
    {"syslog",     no_argument      , nullptr, 'L'},
    {"proxyserver",required_argument, nullptr, 'S'},
@@ -127,7 +129,7 @@ dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "hidsvp:n:b:l:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidsvp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -153,6 +155,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'D':
             params.devicekey = optarg;
+            break;
+        case 'f':
+            params.persist_path = optarg;
             break;
         case 'n':
             params.network = strtoul(optarg, nullptr, 0);

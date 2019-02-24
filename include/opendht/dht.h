@@ -266,6 +266,9 @@ public:
     std::vector<ValuesExport> exportValues() const;
     void importValues(const std::vector<ValuesExport>&);
 
+    void saveState(const std::string& path) const;
+    void loadState(const std::string& path);
+
     NodeStats getNodesStats(sa_family_t af) const;
 
     std::string getStorageLog() const;
@@ -359,13 +362,6 @@ private:
     // registred types
     TypeStore types;
 
-    // are we a bootstrap node ?
-    // note: Any running node can be used as a bootstrap node.
-    //       Only nodes running only as bootstrap nodes should
-    //       be put in bootstrap mode.
-    const bool is_bootstrap {false};
-    const bool maintain_storage {false};
-
     // the stuff
     RoutingTable buckets4 {};
     RoutingTable buckets6 {};
@@ -399,6 +395,15 @@ private:
     std::vector<ReportedAddr> reported_addr;
 
     std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
+
+    std::string persistPath;
+
+    // are we a bootstrap node ?
+    // note: Any running node can be used as a bootstrap node.
+    //       Only nodes running only as bootstrap nodes should
+    //       be put in bootstrap mode.
+    const bool is_bootstrap {false};
+    const bool maintain_storage {false};
 
     void rotateSecrets();
 

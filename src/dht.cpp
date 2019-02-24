@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <random>
 #include <sstream>
+#include <fstream>
 
 namespace dht {
 
@@ -54,6 +55,9 @@ Dht::getStatus(sa_family_t af) const
 void
 Dht::shutdown(ShutdownCallback cb)
 {
+    if (not persistPath.empty())
+        saveState(persistPath);
+
     if (not maintain_storage) {
         if (cb) cb();
         return;
@@ -1722,9 +1726,7 @@ Dht::~Dht()
 Dht::Dht() : store(), network_engine(DHT_LOG, scheduler) {}
 
 Dht::Dht(const int& s, const int& s6, Config config)
-    : myid(config.node_id ? config.node_id : InfoHash::getRandom()),
-    is_bootstrap(config.is_bootstrap),
-    maintain_storage(config.maintain_storage), store(), store_quota(),
+    : myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
     network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
@@ -1734,7 +1736,10 @@ Dht::Dht(const int& s, const int& s6, Config config)
             std::bind(&Dht::onGetValues, this, _1, _2, _3, _4),
             std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5),
             std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5),
-            std::bind(&Dht::onRefresh, this, _1, _2, _3, _4))
+            std::bind(&Dht::onRefresh, this, _1, _2, _3, _4)),
+    persistPath(config.persist_path),
+    is_bootstrap(config.is_bootstrap),
+    maintain_storage(config.maintain_storage)
 {
     scheduler.syncTime();
     if (s < 0 && s6 < 0)
@@ -1765,8 +1770,10 @@ Dht::Dht(const int& s, const int& s6, Config config)
     expire();
 
     DHT_LOG.d("DHT initialised with node ID %s", myid.toString().c_str());
-}
 
+    if (not persistPath.empty())
+        loadState(persistPath);
+}
 
 bool
 Dht::neighbourhoodMaintenance(RoutingTable& list)
@@ -2283,7 +2290,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
 }
 
 void
-Dht::onListenDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>& sr)
+Dht::onListenDone(const Sp<Node>& /* node */, net::RequestAnswer& /* answer */, Sp<Search>& sr)
 {
     // DHT_LOG.d(sr->id, node->id, "[search %s] [node %s] got listen confirmation",
     //            sr->id.toString().c_str(), node->toString().c_str(), answer.values.size());
@@ -2422,6 +2429,54 @@ Dht::onAnnounceDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>
             sr->id.toString().c_str(), node->toString().c_str());
     searchSendGetValues(sr);
     sr->checkAnnounced(answer.vid);
+}
+
+
+void
+Dht::saveState(const std::string& path) const
+{
+    std::ofstream file(path);
+    msgpack::pack(file, exportNodes());
+    msgpack::pack(file, exportValues());
+}
+
+void
+Dht::loadState(const std::string& path)
+{
+    DHT_LOG.d("Importing state from %s", path.c_str());
+    try {
+        // Import nodes from binary file
+        msgpack::unpacker pac;
+        {
+            // Read whole file
+            std::ifstream file(path, std::ios::binary|std::ios::ate);
+            if (!file.is_open()) {
+                return;
+            }
+            auto size = file.tellg();
+            file.seekg (0, std::ios::beg);
+            pac.reserve_buffer(size);
+            file.read (pac.buffer(), size);
+            pac.buffer_consumed(size);
+        }
+        // Import nodes
+        msgpack::object_handle oh;
+        if (pac.next(oh)) {
+            {
+                auto imported_nodes = oh.get().as<std::vector<NodeExport>>();
+                DHT_LOG.d("Importing %zu nodes", imported_nodes.size());
+                for (const auto& node : imported_nodes)
+                    insertNode(node);
+            }
+            if (pac.next(oh)) {
+                auto imported_values = oh.get().as<std::vector<ValuesExport>>();
+                DHT_LOG.d("Importing %zu values", imported_values.size());
+                importValues(imported_values);
+            }
+        }
+    } catch (const std::exception& e) {
+        DHT_LOG.w("Error importing state from %s: %s", path.c_str(), e.what());
+    }
 }
 
 }

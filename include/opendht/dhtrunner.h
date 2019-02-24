@@ -354,7 +354,8 @@ public:
                     /*.node_id = */{},
                     /*.network = */network,
                     /*.is_bootstrap = */false,
-                    /*.maintain_storage*/false
+                    /*.maintain_storage = */false,
+                    /*.persist_path = */{}
                 },
                 /*.id = */identity
             },
