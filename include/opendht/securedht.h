@@ -168,7 +168,7 @@ public:
     void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
         dht_->setStorageLimit(limit);
     }
-    std::vector<NodeExport> exportNodes() override {
+    std::vector<NodeExport> exportNodes() const override {
         return dht_->exportNodes();
     }
     std::vector<ValuesExport> exportValues() const override {

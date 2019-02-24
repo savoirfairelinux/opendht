@@ -181,7 +181,7 @@ public:
      * Get the list of good nodes for local storage saving purposes
      * The list is ordered to minimize the back-to-work delay.
      */
-    virtual std::vector<NodeExport> exportNodes() = 0;
+    virtual std::vector<NodeExport> exportNodes() const = 0;
 
     virtual std::vector<ValuesExport> exportValues() const = 0;
     virtual void importValues(const std::vector<ValuesExport>&) = 0;
