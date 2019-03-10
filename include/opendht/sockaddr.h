@@ -58,7 +58,7 @@ public:
     SockAddr(const SockAddr& o) {
         set(o.get(), o.getLength());
     }
-    SockAddr(SockAddr&& o) : len(o.len), addr(std::move(o.addr)) {
+    SockAddr(SockAddr&& o) noexcept : len(o.len), addr(std::move(o.addr)) {
         o.len = 0;
     }
 
