@@ -34,7 +34,7 @@ public:
         if (syncCallback)
             syncCallback(ListenSyncStatus::ADDED);
     }
-    ValueCache(ValueCache&& o) : values(std::move(o.values)), callback(std::move(o.callback)), syncCallback(std::move(o.syncCallback)) {
+    ValueCache(ValueCache&& o) noexcept : values(std::move(o.values)), callback(std::move(o.callback)), syncCallback(std::move(o.syncCallback)) {
         o.callback = {};
         o.syncCallback = {};
     }

@@ -186,7 +186,7 @@ class OPENDHT_PUBLIC RevocationList
 public:
     RevocationList();
     RevocationList(const Blob& b);
-    RevocationList(RevocationList&& o) : crl(o.crl) { o.crl = nullptr; }
+    RevocationList(RevocationList&& o) noexcept : crl(o.crl) { o.crl = nullptr; }
     ~RevocationList();
 
     RevocationList& operator=(RevocationList&& o) { crl = o.crl; o.crl = nullptr; return *this; }
@@ -500,7 +500,7 @@ struct OPENDHT_PUBLIC TrustList
     };
 
     TrustList();
-    TrustList(TrustList&& o) : trust(std::move(o.trust)) {
+    TrustList(TrustList&& o) noexcept : trust(std::move(o.trust)) {
         o.trust = nullptr;
     }
     TrustList& operator=(TrustList&& o);
