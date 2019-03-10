@@ -907,7 +907,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
     if (svals.size() < 50 && total_size < MAX_PACKET_VALUE_SIZE) {
         for (const auto& b : svals)
             buffer.write((const char*)b.data(), b.size());
-        DHT_LOG.d("sending %lu bytes of values", total_size);
+        // DHT_LOG.d("sending %lu bytes of values", total_size);
         svals.clear();
     } else {
         for (const auto& b : svals)

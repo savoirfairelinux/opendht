@@ -1850,8 +1850,8 @@ Dht::bucketMaintenance(RoutingTable& list)
                 network_engine.sendFindNode(n, id, want, nullptr, [this,start,n](const net::Request&, bool over) {
                     if (over) {
                         const auto& end = scheduler.time();
-                        using namespace std::chrono;
-                        DHT_LOG.d(n->id, "[node %s] bucket maintenance op expired after %llu ms", n->toString().c_str(), duration_cast<milliseconds>(end-start).count());
+                        // using namespace std::chrono;
+                        // DHT_LOG.d(n->id, "[node %s] bucket maintenance op expired after %llu ms", n->toString().c_str(), duration_cast<milliseconds>(end-start).count());
                         scheduler.edit(nextNodesConfirmation, end + Node::MAX_RESPONSE_TIME);
                     }
                 });
