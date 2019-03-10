@@ -165,8 +165,8 @@ struct OPENDHT_PUBLIC Value
             return chainOr(std::move(f1), std::move(f2));
         }
         static Filter chain(Filter&& f1, Filter&& f2) {
-            if (not f1) return std::move(f1);
-            if (not f2) return std::move(f2);
+            if (not f1) return std::move(f2);
+            if (not f2) return std::move(f1);
             return [f1,f2](const Value& v) {
                 return f1(v) and f2(v);
             };
@@ -874,7 +874,7 @@ struct OPENDHT_PUBLIC Query
 {
     static const std::string QUERY_PARSE_ERROR;
 
-    Query(Select s = {}, Where w = {}, bool none = false) : select(s), where(w), none(none) { };
+    Query(Select s = {}, Where w = {}, bool none = false) : select(std::move(s)), where(std::move(w)), none(none) { };
 
     /**
      * Initializes a query based on a SQL-ish formatted string. The abstract
