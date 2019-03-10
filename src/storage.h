@@ -153,6 +153,12 @@ struct Storage {
         return time_point::max();
     }
 
+    size_t listen(ValueCallback& cb, Value::Filter& f, const Sp<Query>& q);
+
+    void cancelListen(size_t token) {
+        local_listeners.erase(token);
+    }
+
     StoreDiff remove(const InfoHash& id, Value::Id);
 
     std::pair<ssize_t, std::vector<Sp<Value>>> expire(const InfoHash& id, time_point now);
@@ -164,6 +170,22 @@ private:
     std::vector<ValueStorage> values {};
     size_t total_size {};
 };
+
+
+size_t
+Storage::listen(ValueCallback& gcb, Value::Filter& filter, const Sp<Query>& query)
+{
+    if (not empty()) {
+        std::vector<Sp<Value>> newvals = get(filter);
+        if (not newvals.empty()) {
+            if (!gcb(newvals, false))
+                return 0;
+        }
+    }
+    auto tokenlocal = ++listener_token;
+    local_listeners.emplace(tokenlocal, LocalListener{query, filter, gcb});
+    return tokenlocal;
+}
 
 
 std::pair<ValueStorage*, Storage::StoreDiff>
