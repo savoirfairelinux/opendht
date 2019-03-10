@@ -29,10 +29,8 @@ namespace dht {
 
 class ThreadPool {
 public:
-    static ThreadPool& instance() {
-        static ThreadPool pool;
-        return pool;
-    }
+    static ThreadPool& computation();
+    static ThreadPool& io();
 
     ThreadPool();
     ThreadPool(size_t maxThreads);

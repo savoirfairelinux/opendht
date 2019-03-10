@@ -26,11 +26,28 @@
 
 namespace dht {
 
+constexpr const size_t IO_THREADS_MAX {64};
+
 struct ThreadPool::ThreadState
 {
     std::thread thread {};
     std::atomic_bool run {true};
 };
+
+ThreadPool&
+ThreadPool::computation()
+{
+    static ThreadPool pool;
+    return pool;
+}
+
+ThreadPool&
+ThreadPool::io()
+{
+    static ThreadPool pool(IO_THREADS_MAX);
+    return pool;
+}
+
 
 ThreadPool::ThreadPool(size_t maxThreads) : maxThreads_(maxThreads)
 {
