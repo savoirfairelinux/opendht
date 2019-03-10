@@ -90,20 +90,7 @@ struct Storage {
 
     Storage() {}
     Storage(time_point t) : maintenance_time(t) {}
-
-#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9 || defined(_WIN32)
-    // GCC-bug: remove me when support of GCC < 4.9.2 is abandoned
-    Storage(Storage&& o) noexcept
-        : maintenance_time(std::move(o.maintenance_time))
-        , listeners(std::move(o.listeners))
-        , local_listeners(std::move(o.local_listeners))
-        , listener_token(std::move(o.listener_token))
-        , values(std::move(o.values))
-        , total_size(std::move(o.total_size)) {}
-#else
     Storage(Storage&& o) noexcept = default;
-#endif
-
     Storage& operator=(Storage&& o) = default;
 
     bool empty() const {
