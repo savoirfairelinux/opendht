@@ -8,8 +8,10 @@ ENV CC cc
 ENV CXX c++
 
 # build restbed from sources
-RUN git clone --recursive https://github.com/corvusoft/restbed.git \
-	&& cd restbed && mkdir build && cd build \
+RUN git clone --recursive https://github.com/AmarOk1412/restbed.git \
+	&& cd restbed \
+	&& git checkout temp/for_jami \
+	&& mkdir build && cd build \
 	&& cmake -DBUILD_TESTS=NO -DBUILD_EXAMPLES=NO -DBUILD_SSL=NO -DBUILD_SHARED=YES -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib .. \
 	&& make -j8 install \
 	&& cd .. && rm -rf restbed

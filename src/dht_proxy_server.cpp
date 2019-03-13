@@ -48,7 +48,7 @@ struct DhtProxyServer::SearchPuts {
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
-
+constexpr const uint32_t KEEP_ALIVE_DELAY {14 * 60};
 
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer)
 : dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer)
@@ -104,6 +104,11 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         settings->set_default_header("Access-Control-Allow-Origin", "*");
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // there is a timeout, but really huge
+        settings->set_keep_alive(true);
+        // 14 minutes for the keep alive to avoid to be killed by Android
+        settings->set_keep_alive_start(KEEP_ALIVE_DELAY);
+        settings->set_keep_alive_interval(KEEP_ALIVE_DELAY);
+        settings->set_keep_alive_cnt(1); // do not allow any failure
         settings->set_port(port);
         auto maxThreads = std::thread::hardware_concurrency() - 1;
         settings->set_worker_limit(maxThreads > 1 ? maxThreads : 1);
