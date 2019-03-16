@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-2017 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -42,7 +42,7 @@ def done(h, ok):
 
 def ping(node, h):
 	global i
-	time.sleep(0.0075) 
+	time.sleep(0.0075)
 	i += 1
 	if i < MAX:
 		node.put(h, dht.Value(b"hey"), lambda ok, nodes: done(node.getNodeId().decode(), ok))

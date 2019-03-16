@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2019 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -72,7 +72,7 @@ CryptoTester::testCertificateRevocation()
 
     v = list.verify(*device2.second);
     CPPUNIT_ASSERT_MESSAGE(v.toString(), !v);
-    
+
     account1.second->revoke(*account1.first, *device11.second);
     dht::crypto::TrustList list2;
     list2.add(*account1.second);
