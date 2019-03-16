@@ -171,6 +171,13 @@ struct OPENDHT_PUBLIC Value
                 return f1(v) and f2(v);
             };
         }
+        static Filter chain(const Filter& f1, const Filter& f2) {
+            if (not f1) return f2;
+            if (not f2) return f1;
+            return [f1,f2](const Value& v) {
+                return f1(v) and f2(v);
+            };
+        }
         static Filter chainAll(std::vector<Filter>&& set) {
             if (set.empty()) return {};
             return std::bind([](const Value& v, std::vector<Filter>& s) {
@@ -188,6 +195,10 @@ struct OPENDHT_PUBLIC Value
             return [f1,f2](const Value& v) {
                 return f1(v) or f2(v);
             };
+        }
+        static Filter notFilter(Filter&& f) {
+            if (not f) return [](const Value&) { return false; };
+            return [f](const Value& v) { return not f(v); };
         }
         std::vector<Sp<Value>> filter(const std::vector<Sp<Value>>& values) {
             if (not (*this))
