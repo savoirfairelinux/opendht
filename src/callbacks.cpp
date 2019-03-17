@@ -4,7 +4,7 @@ namespace dht {
 
 
 GetCallbackSimple
-bindGetCb(GetCallbackRaw raw_cb, void* user_data)
+bindGetCb(const GetCallbackRaw& raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](const std::shared_ptr<Value>& value) {
@@ -13,7 +13,7 @@ bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 }
 
 GetCallback
-bindGetCb(GetCallbackSimple cb)
+bindGetCb(const GetCallbackSimple& cb)
 {
     if (not cb) return {};
     return [=](const std::vector<std::shared_ptr<Value>>& values) {
@@ -25,7 +25,7 @@ bindGetCb(GetCallbackSimple cb)
 }
 
 ShutdownCallback
-bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data)
+bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data)
 {
     return [=]() { shutdown_cb_raw(user_data); };
 }
@@ -39,7 +39,7 @@ bindDoneCb(DoneCallbackSimple donecb)
 }
 
 DoneCallback
-bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
+bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
@@ -48,7 +48,7 @@ bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
 }
 
 DoneCallbackSimple
-bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
+bindDoneCbSimple(const DoneCallbackSimpleRaw& raw_cb, void* user_data) {
     if (not raw_cb) return {};
     return [=](bool success) {
         raw_cb(success, user_data);

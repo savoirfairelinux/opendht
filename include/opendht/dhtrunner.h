@@ -364,7 +364,7 @@ public:
             /*.push_node_id = */""
         });
     }
-    void run(in_port_t port, Config config);
+    void run(in_port_t port, const Config& config);
 
     /**
      * @param local4: Local IPv4 address and port to bind. Can be null.
@@ -374,12 +374,12 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const SockAddr& local4, const SockAddr& local6, Config config);
+    void run(const SockAddr& local4, const SockAddr& local6, const Config& config);
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, Config config);
+    void run(const char* ip4, const char* ip6, const char* service, const Config& config);
 
     void setOnStatusChanged(StatusCallback&& cb) {
         statusCb = std::move(cb);

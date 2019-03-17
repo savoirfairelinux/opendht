@@ -142,19 +142,27 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
     : myid(zeroes), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {}
+
 NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
-        decltype(NetworkEngine::onError) onError,
-        decltype(NetworkEngine::onNewNode) onNewNode,
-        decltype(NetworkEngine::onReportedAddr) onReportedAddr,
-        decltype(NetworkEngine::onPing) onPing,
-        decltype(NetworkEngine::onFindNode) onFindNode,
-        decltype(NetworkEngine::onGetValues) onGetValues,
-        decltype(NetworkEngine::onListen) onListen,
-        decltype(NetworkEngine::onAnnounce) onAnnounce,
-        decltype(NetworkEngine::onRefresh) onRefresh) :
-    onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-    onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
-    network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+        decltype(NetworkEngine::onError)&& onError,
+        decltype(NetworkEngine::onNewNode)&& onNewNode,
+        decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
+        decltype(NetworkEngine::onPing)&& onPing,
+        decltype(NetworkEngine::onFindNode)&& onFindNode,
+        decltype(NetworkEngine::onGetValues)&& onGetValues,
+        decltype(NetworkEngine::onListen)&& onListen,
+        decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+        decltype(NetworkEngine::onRefresh)&& onRefresh) :
+    onError(std::move(onError)),
+    onNewNode(std::move(onNewNode)),
+    onReportedAddr(std::move(onReportedAddr)),
+    onPing(std::move(onPing)),
+    onFindNode(std::move(onFindNode)),
+    onGetValues(std::move(onGetValues)),
+    onListen(std::move(onListen)),
+    onAnnounce(std::move(onAnnounce)),
+    onRefresh(std::move(onRefresh)),
+    myid(myid), network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {
     if (dht_socket >= 0) {
         if (!set_nonblocking(dht_socket, 1))

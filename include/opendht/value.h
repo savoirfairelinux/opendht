@@ -79,7 +79,7 @@ static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 struct OPENDHT_PUBLIC ValueType {
     typedef uint16_t Id;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
+    static bool DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
     static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
         return false;
     }
@@ -947,7 +947,7 @@ struct OPENDHT_PUBLIC Query
  */
 struct OPENDHT_PUBLIC FieldValueIndex {
     FieldValueIndex() {}
-    FieldValueIndex(const Value& v, Select s = {});
+    FieldValueIndex(const Value& v, const Select& s = {});
     /**
      * Tells if all the fields of this are contained in the other
      * FieldValueIndex with the same value.

@@ -166,7 +166,7 @@ SecureDht::registerCertificate(Sp<crypto::Certificate>& cert)
 }
 
 void
-SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<crypto::Certificate>)> cb)
+SecureDht::findCertificate(const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb)
 {
     Sp<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
@@ -207,7 +207,7 @@ SecureDht::findCertificate(const InfoHash& node, std::function<void(const Sp<cry
 }
 
 void
-SecureDht::findPublicKey(const InfoHash& node, std::function<void(const Sp<const crypto::PublicKey>)> cb)
+SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp<const crypto::PublicKey>)>& cb)
 {
     auto pk = getPublicKey(node);
     if (pk && *pk) {
@@ -280,7 +280,7 @@ SecureDht::checkValue(const Sp<Value>& v)
 }
 
 ValueCallback
-SecureDht::getCallbackFilter(ValueCallback cb, Value::Filter&& filter)
+SecureDht::getCallbackFilter(const ValueCallback& cb, Value::Filter&& filter)
 {
     return [=](const std::vector<Sp<Value>>& values, bool expired) {
         std::vector<Sp<Value>> tmpvals {};
@@ -299,7 +299,7 @@ SecureDht::getCallbackFilter(ValueCallback cb, Value::Filter&& filter)
 
 
 GetCallback
-SecureDht::getCallbackFilter(GetCallback cb, Value::Filter&& filter)
+SecureDht::getCallbackFilter(const GetCallback& cb, Value::Filter&& filter)
 {
     return [=](const std::vector<Sp<Value>>& values) {
         std::vector<Sp<Value>> tmpvals {};

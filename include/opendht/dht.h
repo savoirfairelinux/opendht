@@ -68,7 +68,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(const int& s, const int& s6, Config config);
+    Dht(const int& s, const int& s6, const Config& config);
     virtual ~Dht();
 
     /**
@@ -430,7 +430,7 @@ private:
      * nodes.
      */
     void dataPersistence(InfoHash id);
-    size_t maintainStorage(decltype(store)::value_type&, bool force=false, DoneCallback donecb=nullptr);
+    size_t maintainStorage(decltype(store)::value_type&, bool force=false, const DoneCallback& donecb={});
 
     // Buckets
     RoutingTable& buckets(sa_family_t af) { return af == AF_INET ? buckets4 : buckets6; }

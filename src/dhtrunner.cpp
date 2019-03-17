@@ -75,7 +75,7 @@ DhtRunner::~DhtRunner()
 }
 
 void
-DhtRunner::run(in_port_t port, DhtRunner::Config config)
+DhtRunner::run(in_port_t port, const DhtRunner::Config& config)
 {
     SockAddr sin4;
     sin4.setFamily(AF_INET);
@@ -87,7 +87,7 @@ DhtRunner::run(in_port_t port, DhtRunner::Config config)
 }
 
 void
-DhtRunner::run(const char* ip4, const char* ip6, const char* service, DhtRunner::Config config)
+DhtRunner::run(const char* ip4, const char* ip6, const char* service, const DhtRunner::Config& config)
 {
     auto res4 = SockAddr::resolve(ip4, service);
     auto res6 = SockAddr::resolve(ip6, service);
@@ -96,7 +96,7 @@ DhtRunner::run(const char* ip4, const char* ip6, const char* service, DhtRunner:
 }
 
 void
-DhtRunner::run(const SockAddr& local4, const SockAddr& local6, DhtRunner::Config config)
+DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::Config& config)
 {
     if (running)
         return;
@@ -629,7 +629,7 @@ DhtRunner::get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) mutable {
-            dht.get(hash, vcb, dcb, std::move(f), std::move(w));
+            dht.get(hash, std::move(vcb), std::move(dcb), std::move(f), std::move(w));
         });
     }
     cv.notify_all();
@@ -638,14 +638,14 @@ DhtRunner::get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f
 void
 DhtRunner::get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb, Value::Filter f, Where w)
 {
-    get(InfoHash::get(key), vcb, dcb, f, w);
+    get(InfoHash::get(key), std::move(vcb), std::move(dcb), std::move(f), std::move(w));
 }
 void
 DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Query q) {
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) mutable {
-            dht.query(hash, cb, done_cb, std::move(q));
+            dht.query(hash, std::move(cb), std::move(done_cb), std::move(q));
         });
     }
     cv.notify_all();
@@ -678,7 +678,7 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
             listeners_.emplace(tokenbGlobal, std::move(listener));
             ret_token->set_value(tokenbGlobal);
 #else
-            ret_token->set_value(dht.listen(hash, vcb, f, w));
+            ret_token->set_value(dht.listen(hash, std::move(vcb), std::move(f), std::move(w)));
 #endif
         });
     }
@@ -689,7 +689,7 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
 std::future<size_t>
 DhtRunner::listen(const std::string& key, GetCallback vcb, Value::Filter f, Where w)
 {
-    return listen(InfoHash::get(key), vcb, f, w);
+    return listen(InfoHash::get(key), std::move(vcb), std::move(f), std::move(w));
 }
 
 void
@@ -768,7 +768,7 @@ DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, tim
 void
 DhtRunner::put(const std::string& key, Value&& value, DoneCallbackSimple cb, time_point created, bool permanent)
 {
-    put(InfoHash::get(key), std::forward<Value>(value), cb, created, permanent);
+    put(InfoHash::get(key), std::forward<Value>(value), std::move(cb), created, permanent);
 }
 
 void
@@ -798,13 +798,13 @@ DhtRunner::putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback c
 void
 DhtRunner::putSigned(InfoHash hash, Value&& value, DoneCallback cb)
 {
-    putSigned(hash, std::make_shared<Value>(std::move(value)), cb);
+    putSigned(hash, std::make_shared<Value>(std::move(value)), std::move(cb));
 }
 
 void
 DhtRunner::putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb)
 {
-    putSigned(InfoHash::get(key), std::forward<Value>(value), cb);
+    putSigned(InfoHash::get(key), std::forward<Value>(value), std::move(cb));
 }
 
 void
@@ -822,13 +822,13 @@ DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value
 void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb)
 {
-    putEncrypted(hash, to, std::make_shared<Value>(std::move(value)), cb);
+    putEncrypted(hash, to, std::make_shared<Value>(std::move(value)), std::move(cb));
 }
 
 void
 DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb)
 {
-    putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), cb);
+    putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), std::move(cb));
 }
 
 void

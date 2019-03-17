@@ -488,7 +488,7 @@ struct Dht::Search {
     bool isAnnounced(Value::Id id) const;
     bool isListening(time_point now) const;
 
-    void get(Value::Filter f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
+    void get(const Value::Filter& f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
         if (gcb or qcb) {
             if (not cache.get(f, q, gcb, dcb)) {
                 const auto& now = scheduler.time();
@@ -498,7 +498,7 @@ struct Dht::Search {
         }
     }
 
-    size_t listen(ValueCallback cb, Value::Filter f, const Sp<Query>& q, Scheduler& scheduler) {
+    size_t listen(const ValueCallback& cb, const Value::Filter& f, const Sp<Query>& q, Scheduler& scheduler) {
         //DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         return cache.listen(cb, q, f, [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb){
             done = false;

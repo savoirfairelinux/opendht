@@ -38,7 +38,7 @@ class OPENDHT_PUBLIC DhtMessage : public Value::Serializable<DhtMessage>
 public:
     static const ValueType TYPE;
 
-    DhtMessage(std::string s = {}, Blob msg = {}) : service(s), data(msg) {}
+    DhtMessage(const std::string& s = {}, const Blob& msg = {}) : service(s), data(msg) {}
 
     std::string getService() const {
         return service;
@@ -48,7 +48,7 @@ public:
 
     static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr&);
 
-    static Value::Filter ServiceFilter(std::string s);
+    static Value::Filter ServiceFilter(const std::string& s);
 
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream&, const DhtMessage&);

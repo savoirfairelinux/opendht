@@ -307,7 +307,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
-            }, {}, dht::Where {std::move(rem)});
+            }, {}, dht::Where {rem});
         }
         else if (op == "q") {
             std::string rem;
@@ -322,7 +322,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Query: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
-            }, dht::Query {std::move(rem)});
+            }, dht::Query {rem});
         }
         else if (op == "l") {
             std::string rem;
@@ -332,7 +332,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 for (const auto& value : values)
                     std::cout << "\t" << *value << std::endl;
                 return true;
-            }, {}, dht::Where {std::move(rem)});
+            }, {}, dht::Where {rem});
             auto t = token.get();
             std::cout << "Listening, token: " << t << std::endl;
         }
@@ -431,7 +431,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                                   << p.toString() << std::endl
                                   << "   hash: " << p.hash() << std::endl;
                         std::cout << "   entries:" << std::endl;
-                        for (auto v : vals)
+                        for (const auto& v : vals)
                              std::cout << "      " << v->first.toString() << "[vid: " << v->second << "]" << std::endl;
                     },
                     [start](bool ok) {
