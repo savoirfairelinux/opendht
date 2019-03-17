@@ -537,7 +537,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     if (auto sr = ws.lock()) {
                         auto l = sr->listeners.find(list_token);
                         if (l != sr->listeners.end()) {
-                            l->second.get_cb(l->second.filter.filter(values), expired);
+                            l->second.get_cb(values, expired);
                         }
                     }
                 }, [ws,list_token] (ListenSyncStatus status) {

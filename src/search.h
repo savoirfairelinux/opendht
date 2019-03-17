@@ -387,7 +387,6 @@ struct Dht::Search {
     /* listeners */
     struct SearchListener {
         Sp<Query> query;
-        Value::Filter filter;
         ValueCallback get_cb;
         SyncCallback sync_cb;
     };
@@ -504,7 +503,7 @@ struct Dht::Search {
         return cache.listen(cb, q, f, [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb){
             done = false;
             auto token = ++listener_token;
-            listeners.emplace(token, SearchListener{q, f, vcb, scb});
+            listeners.emplace(token, SearchListener{q, vcb, scb});
             scheduler.edit(nextSearchStep, scheduler.time());
             return token;
         });
