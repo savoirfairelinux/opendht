@@ -26,6 +26,42 @@
 namespace dht {
 namespace net {
 
+static const std::string KEY_Y {"y"};
+static const std::string KEY_R {"r"};
+static const std::string KEY_U {"u"};
+static const std::string KEY_E {"e"};
+static const std::string KEY_V {"p"};
+static const std::string KEY_TID {"t"};
+static const std::string KEY_UA {"v"};
+static const std::string KEY_NETID {"n"};
+static const std::string KEY_ISCLIENT {"s"};
+static const std::string KEY_Q {"q"};
+static const std::string KEY_A {"a"};
+
+static const std::string KEY_REQ_SID {"sid"};
+static const std::string KEY_REQ_ID {"id"};
+static const std::string KEY_REQ_H {"h"};
+static const std::string KEY_REQ_TARGET {"target"};
+static const std::string KEY_REQ_QUERY {"q"};
+static const std::string KEY_REQ_TOKEN {"token"};
+static const std::string KEY_REQ_VALUE_ID {"vid"};
+static const std::string KEY_REQ_NODES4 {"n4"};
+static const std::string KEY_REQ_NODES6 {"n6"};
+static const std::string KEY_REQ_CREATION {"c"};
+static const std::string KEY_REQ_ADDRESS {"sa"};
+static const std::string KEY_REQ_VALUES {"values"};
+static const std::string KEY_REQ_EXPIRED {"exp"};
+static const std::string KEY_REQ_REFRESHED {"re"};
+static const std::string KEY_REQ_FIELDS {"fileds"};
+static const std::string KEY_REQ_WANT {"w"};
+
+static const std::string QUERY_PING {"ping"};
+static const std::string QUERY_FIND {"find"};
+static const std::string QUERY_GET {"get"};
+static const std::string QUERY_PUT {"put"};
+static const std::string QUERY_LISTEN {"listen"};
+static const std::string QUERY_REFRESH {"refresh"};
+
 Tid unpackTid(const msgpack::object& o) {
     switch (o.type) {
     case msgpack::type::POSITIVE_INTEGER:
@@ -78,7 +114,7 @@ struct ParsedMessage {
     /* reported address by the distant node */
     std::string ua;
     SockAddr addr;
-    void msgpack_unpack(msgpack::object o);
+    void msgpack_unpack(const msgpack::object& o);
 
     bool append(const ParsedMessage& block);
     bool complete();
@@ -123,63 +159,79 @@ ParsedMessage::complete()
 }
 
 void
-ParsedMessage::msgpack_unpack(msgpack::object msg)
+ParsedMessage::msgpack_unpack(const msgpack::object& msg)
 {
-    auto y = findMapValue(msg, "y");
-    auto r = findMapValue(msg, "r");
-    auto u = findMapValue(msg, "u");
-    auto e = findMapValue(msg, "e");
-    auto v = findMapValue(msg, "p");
+    if (msg.type != msgpack::type::MAP) throw msgpack::type_error();
 
-    if (auto t = findMapValue(msg, "t"))
-        tid = unpackTid(*t);
+    struct ParsedMsg {
+        msgpack::object* y;
+        msgpack::object* r;
+        msgpack::object* u;
+        msgpack::object* e;
+        msgpack::object* v;
+        msgpack::object* a;
+        std::string q;
+    } parsed {};
 
-    if (auto rv = findMapValue(msg, "v"))
-        ua = rv->as<std::string>();
-
-    if (auto netid = findMapValue(msg, "n"))
-        network = netid->as<NetId>();
-
-    if (auto is_client_v = findMapValue(msg, "s"))
-        is_client = is_client_v->as<bool>();
-
-    std::string q;
-    if (auto rq = findMapValue(msg, "q")) {
-        if (rq->type != msgpack::type::STR)
-            throw msgpack::type_error();
-        q = rq->as<std::string>();
+    for (unsigned i = 0; i < msg.via.map.size; i++) {
+        auto& o = msg.via.map.ptr[i];
+        if (o.key.type != msgpack::type::STR)
+            continue;
+        auto key = o.key.as<std::string>();
+        if (key == KEY_Y)
+            parsed.y = &o.val;
+        else if (key == KEY_R)
+            parsed.r = &o.val;
+        else if (key == KEY_U)
+            parsed.u = &o.val;
+        else if (key == KEY_E)
+            parsed.e = &o.val;
+        else if (key == KEY_V)
+            parsed.v = &o.val;
+        else if (key == KEY_TID)
+            tid = unpackTid(o.val);
+        else if (key == KEY_UA)
+            ua = o.val.as<std::string>();
+        else if (key == KEY_NETID)
+            network = o.val.as<NetId>();
+        else if (key == KEY_ISCLIENT)
+            is_client = o.val.as<bool>();
+        else if (key == KEY_Q)
+            parsed.q = o.val.as<std::string>();
+        else if (key == KEY_A)
+            parsed.a = &o.val;
     }
 
-    if (e)
+    if (parsed.e)
         type = MessageType::Error;
-    else if (r)
+    else if (parsed.r)
         type = MessageType::Reply;
-    else if (v)
+    else if (parsed.v)
         type = MessageType::ValueData;
-    else if (u)
+    else if (parsed.u)
         type = MessageType::ValueUpdate;
-    else if (y and y->as<std::string>() != "q")
+    else if (parsed.y and parsed.y->as<std::string>() != "q")
         throw msgpack::type_error();
-    else if (q == "ping")
+    else if (parsed.q == QUERY_PING)
         type = MessageType::Ping;
-    else if (q == "find")
+    else if (parsed.q == QUERY_FIND)
         type = MessageType::FindNode;
-    else if (q == "get")
+    else if (parsed.q == QUERY_GET)
         type = MessageType::GetValues;
-    else if (q == "listen")
+    else if (parsed.q == QUERY_LISTEN)
         type = MessageType::Listen;
-    else if (q == "put")
+    else if (parsed.q == QUERY_PUT)
         type = MessageType::AnnounceValue;
-    else if (q == "refresh")
+    else if (parsed.q == QUERY_REFRESH)
         type = MessageType::Refresh;
     else
         throw msgpack::type_error();
 
     if (type == MessageType::ValueData) {
-        if (v->type != msgpack::type::MAP)
+        if (parsed.v->type != msgpack::type::MAP)
             throw msgpack::type_error();
-        for (size_t i = 0; i < v->via.map.size; ++i) {
-            auto& vdat = v->via.map.ptr[i];
+        for (size_t i = 0; i < parsed.v->via.map.size; ++i) {
+            auto& vdat = parsed.v->via.map.ptr[i];
             auto o = findMapValue(vdat.val, "o");
             auto d = findMapValue(vdat.val, "d");
             if (not o or not d)
@@ -189,70 +241,85 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         return;
     }
 
-    auto a = findMapValue(msg, "a");
-    if (!a && !r && !e && !u)
+    if (!parsed.a && !parsed.r && !parsed.e && !parsed.u)
         throw msgpack::type_error();
-    auto& req = a ? *a : (r ? *r : (u ? *u : *e));
+    auto& req = parsed.a ? *parsed.a : (parsed.r ? *parsed.r : (parsed.u ? *parsed.u : *parsed.e));
 
-    if (e) {
-        if (e->type != msgpack::type::ARRAY)
+    if (parsed.e) {
+        if (parsed.e->type != msgpack::type::ARRAY)
             throw msgpack::type_error();
-        error_code = e->via.array.ptr[0].as<uint16_t>();
+        error_code = parsed.e->via.array.ptr[0].as<uint16_t>();
     }
 
-    if (auto t = findMapValue(req, "sid"))
-        socket_id = unpackTid(*t);
+    struct ParsedReq {
+        msgpack::object* values;
+        msgpack::object* fields;
+        msgpack::object* sa;
+        msgpack::object* want;
+    } parsedReq {};
 
-    if (auto rid = findMapValue(req, "id"))
-        id = {*rid};
+    for (unsigned i = 0; i < req.via.map.size; i++) {
+        auto& o = req.via.map.ptr[i];
+        if (o.key.type != msgpack::type::STR)
+            continue;
+        auto key = o.key.as<std::string>();
+        if (key == KEY_REQ_SID)
+            socket_id = unpackTid(o.val);
+        else if (key == KEY_REQ_ID)
+            id = {o.val};
+        else if (key == KEY_REQ_H)
+            info_hash = {o.val};
+        else if (key == KEY_REQ_TARGET)
+            target = {o.val};
+        else if (key == KEY_REQ_QUERY)
+            query.msgpack_unpack(o.val);
+        else if (key == KEY_REQ_TOKEN)
+            token = unpackBlob(o.val);
+        else if (key == KEY_REQ_VALUE_ID)
+            value_id = o.val.as<Value::Id>();
+        else if (key == KEY_REQ_NODES4)
+            nodes4_raw = unpackBlob(o.val);
+        else if (key == KEY_REQ_NODES6)
+            nodes6_raw = unpackBlob(o.val);
+        else if (key == KEY_REQ_ADDRESS)
+            parsedReq.sa = &o.val;
+        else if (key == KEY_REQ_CREATION)
+            created = from_time_t(o.val.as<std::time_t>());
+        else if (key == KEY_REQ_VALUES)
+            parsedReq.values = &o.val;
+        else if (key == KEY_REQ_EXPIRED)
+            expired_values = o.val.as<decltype(expired_values)>();
+        else if (key == KEY_REQ_REFRESHED)
+            refreshed_values = o.val.as<decltype(refreshed_values)>();
+        else if (key == KEY_REQ_FIELDS)
+            parsedReq.fields = &o.val;
+        else if (key == KEY_REQ_WANT)
+            parsedReq.want = &o.val;
+    }
 
-    if (auto rh = findMapValue(req, "h"))
-        info_hash = {*rh};
-
-    if (auto rtarget = findMapValue(req, "target"))
-        target = {*rtarget};
-
-    if (auto rquery = findMapValue(req, "q"))
-        query.msgpack_unpack(*rquery);
-
-    if (auto otoken = findMapValue(req, "token"))
-        token = unpackBlob(*otoken);
-
-    if (auto vid = findMapValue(req, "vid"))
-        value_id = vid->as<Value::Id>();
-
-    if (auto rnodes4 = findMapValue(req, "n4"))
-        nodes4_raw = unpackBlob(*rnodes4);
-
-    if (auto rnodes6 = findMapValue(req, "n6"))
-        nodes6_raw = unpackBlob(*rnodes6);
-
-    if (auto sa = findMapValue(req, "sa")) {
-        if (sa->type != msgpack::type::BIN)
+    if (parsedReq.sa) {
+        if (parsedReq.sa->type != msgpack::type::BIN)
             throw msgpack::type_error();
-        auto l = sa->via.bin.size;
+        auto l = parsedReq.sa->via.bin.size;
         if (l == sizeof(in_addr)) {
             addr.setFamily(AF_INET);
             auto& a = addr.getIPv4();
             a.sin_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a.sin_addr);
+            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*)&a.sin_addr);
         } else if (l == sizeof(in6_addr)) {
             addr.setFamily(AF_INET6);
             auto& a = addr.getIPv6();
             a.sin6_port = 0;
-            std::copy_n(sa->via.bin.ptr, l, (char*)&a.sin6_addr);
+            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*)&a.sin6_addr);
         }
     } else
         addr = {};
 
-    if (auto rcreated = findMapValue(req, "c"))
-        created = from_time_t(rcreated->as<std::time_t>());
-
-    if (auto rvalues = findMapValue(req, "values")) {
-        if (rvalues->type != msgpack::type::ARRAY)
+    if (parsedReq.values) {
+        if (parsedReq.values->type != msgpack::type::ARRAY)
             throw msgpack::type_error();
-        for (size_t i = 0; i < rvalues->via.array.size; i++) {
-            auto& packed_v = rvalues->via.array.ptr[i];
+        for (size_t i = 0; i < parsedReq.values->via.array.size; i++) {
+            auto& packed_v = parsedReq.values->via.array.ptr[i];
             if (packed_v.type == msgpack::type::POSITIVE_INTEGER) {
                 // Skip oversize values with a small margin for header overhead
                 if (packed_v.via.u64 > MAX_VALUE_SIZE + 32)
@@ -260,16 +327,16 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
                 value_parts.emplace(i, std::make_pair(packed_v.via.u64, Blob{}));
             } else {
                 try {
-                    values.emplace_back(std::make_shared<Value>(rvalues->via.array.ptr[i]));
+                    values.emplace_back(std::make_shared<Value>(parsedReq.values->via.array.ptr[i]));
                 } catch (const std::exception& e) {
                      //DHT_LOG_WARN("Error reading value: %s", e.what());
                 }
             }
         }
-    } else if (auto raw_fields = findMapValue(req, "fields")) {
-        if (auto rfields = findMapValue(*raw_fields, "f")) {
+    } else if (parsedReq.fields) {
+        if (auto rfields = findMapValue(*parsedReq.fields, "f")) {
             auto vfields = rfields->as<std::set<Value::Field>>();
-            if (auto rvalues = findMapValue(*raw_fields, "v")) {
+            if (auto rvalues = findMapValue(*parsedReq.fields, "v")) {
                 if (rvalues->type != msgpack::type::ARRAY)
                     throw msgpack::type_error();
                 size_t val_num = rvalues->via.array.size / vfields.size();
@@ -284,18 +351,14 @@ ParsedMessage::msgpack_unpack(msgpack::object msg)
         } else {
             throw msgpack::type_error();
         }
-    } else if (auto raw_fields = findMapValue(req, "exp")) {
-        expired_values = raw_fields->as<decltype(expired_values)>();
-    } else if (auto raw_fields = findMapValue(req, "re")) {
-        refreshed_values = raw_fields->as<decltype(refreshed_values)>();
     }
 
-    if (auto w = findMapValue(req, "w")) {
-        if (w->type != msgpack::type::ARRAY)
+    if (parsedReq.want) {
+        if (parsedReq.want->type != msgpack::type::ARRAY)
             throw msgpack::type_error();
         want = 0;
-        for (unsigned i=0; i<w->via.array.size; i++) {
-            auto& val = w->via.array.ptr[i];
+        for (unsigned i=0; i<parsedReq.want->via.array.size; i++) {
+            auto& val = parsedReq.want->via.array.ptr[i];
             try {
                 auto w = val.as<sa_family_t>();
                 if (w == AF_INET)
