@@ -385,7 +385,7 @@ PrivateKey::getPublicKey() const
     return pk_ret;
 }
 
-PublicKey::PublicKey(const Blob& dat) : pk(nullptr)
+PublicKey::PublicKey(const Blob& dat)
 {
     unpack(dat.data(), dat.size());
 }
@@ -572,7 +572,7 @@ PublicKey::getLongId() const
 #endif
 }
 
-Certificate::Certificate(const Blob& certData) : cert(nullptr)
+Certificate::Certificate(const Blob& certData)
 {
     unpack(certData.data(), certData.size());
 }
@@ -930,7 +930,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
         return {};
     Certificate ret {cert};
 
-    int64_t now = time(NULL);
+    int64_t now = time(nullptr);
     /* 2038 bug: don't allow time wrap */
     auto boundTime = [](int64_t t) -> time_t {
         return std::min<int64_t>(t, std::numeric_limits<time_t>::max());

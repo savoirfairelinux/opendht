@@ -92,7 +92,7 @@ RoutingTable::middle(const RoutingTable::const_iterator& it) const
         throw std::out_of_range("End of table");
 
     InfoHash id = it->first;
-    id.setBit(bit, 1);
+    id.setBit(bit, true);
     return id;
 }
 

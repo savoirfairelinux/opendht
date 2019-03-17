@@ -65,8 +65,8 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
         } else {
             s << "Data (type: " << v.type << " ): ";
             s << std::hex;
-            for (size_t i=0; i<v.data.size(); i++)
-                s << std::setfill('0') << std::setw(2) << (unsigned)v.data[i];
+            for (auto i : v.data)
+                s << std::setfill('0') << std::setw(2) << (unsigned)i;
             s << std::dec;
         }
     }
