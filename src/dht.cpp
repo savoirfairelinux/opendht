@@ -537,7 +537,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     if (auto sr = ws.lock()) {
                         auto l = sr->listeners.find(list_token);
                         if (l != sr->listeners.end()) {
-                            l->second.get_cb(l->second.filter.filter(values), expired);
+                            l->second.get_cb(values, expired);
                         }
                     }
                 }, [ws,list_token] (ListenSyncStatus status) {
@@ -1714,7 +1714,7 @@ Dht::~Dht()
 
 Dht::Dht() : store(), network_engine(DHT_LOG, scheduler) {}
 
-Dht::Dht(const int& s, const int& s6, Config config)
+Dht::Dht(const int& s, const int& s6, const Config& config)
     : myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
     network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
@@ -1846,8 +1846,8 @@ Dht::bucketMaintenance(RoutingTable& list)
                 }
 
                 DHT_LOG.d(id, n->id, "[node %s] sending find %s for bucket maintenance", n->toString().c_str(), id.toString().c_str());
-                auto start = scheduler.time();
-                network_engine.sendFindNode(n, id, want, nullptr, [this,start,n](const net::Request&, bool over) {
+                //auto start = scheduler.time();
+                network_engine.sendFindNode(n, id, want, nullptr, [this,n](const net::Request&, bool over) {
                     if (over) {
                         const auto& end = scheduler.time();
                         // using namespace std::chrono;
@@ -1877,7 +1877,7 @@ Dht::dataPersistence(InfoHash id)
 }
 
 size_t
-Dht::maintainStorage(decltype(store)::value_type& storage, bool force, DoneCallback donecb)
+Dht::maintainStorage(decltype(store)::value_type& storage, bool force, const DoneCallback& donecb)
 {
     const auto& now = scheduler.time();
     size_t announce_per_af = 0;

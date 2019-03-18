@@ -38,7 +38,7 @@ DhtMessage::storePolicy(InfoHash h, std::shared_ptr<Value>& v, const InfoHash& f
 }
 
 Value::Filter
-DhtMessage::ServiceFilter(std::string s)
+DhtMessage::ServiceFilter(const std::string& s)
 {
     return Value::Filter::chain(
         Value::TypeFilter(TYPE),

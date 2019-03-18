@@ -431,7 +431,7 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
-    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
+    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false);
 
     gnutls_x509_crt_t getCopy() const {
         if (not cert)
@@ -503,7 +503,7 @@ struct OPENDHT_PUBLIC TrustList
     TrustList(TrustList&& o) noexcept : trust(std::move(o.trust)) {
         o.trust = nullptr;
     }
-    TrustList& operator=(TrustList&& o);
+    TrustList& operator=(TrustList&& o) noexcept;
     ~TrustList();
     void add(const Certificate& crt);
     void add(const RevocationList& crl);
@@ -611,11 +611,11 @@ using SecureBlob = secure_vector<uint8_t>;
  *           If not set, the generated certificate will be a self-signed CA.
  * @param key_length stength of the generated private key (bits).
  */
-OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
-OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, const Identity& ca, unsigned key_length, bool is_ca);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", const Identity& ca = {}, unsigned key_length = 4096);
 
-OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, Identity ca, bool is_ca);
-OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", Identity ca = {});
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, const Identity& ca, bool is_ca);
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", const Identity& ca = {});
 
 
 /**

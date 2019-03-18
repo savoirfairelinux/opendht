@@ -37,9 +37,9 @@ public:
 
     using Config = SecureDhtConfig;
 
-    static dht::Config& getConfig(SecureDht::Config& conf)
+    static dht::Config getConfig(const SecureDht::Config& conf)
     {
-        auto& c = conf.node_config;
+        auto c = conf.node_config;
         if (not c.node_id and conf.id.second)
             c.node_id = InfoHash::get("node:"+conf.id.second->getId().toString());
         return c;
@@ -127,8 +127,8 @@ public:
 
     Value decrypt(const Value& v);
 
-    void findCertificate(const InfoHash& node, std::function<void(const Sp<crypto::Certificate>)> cb);
-    void findPublicKey(const InfoHash& node, std::function<void(const Sp<const crypto::PublicKey>)> cb);
+    void findCertificate(const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb);
+    void findPublicKey(const InfoHash& node, const std::function<void(const Sp<const crypto::PublicKey>)>& cb);
 
     const Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
     void registerCertificate(Sp<crypto::Certificate>& cert);
@@ -332,8 +332,8 @@ private:
     SecureDht& operator=(const SecureDht&) = delete;
 
     Sp<Value> checkValue(const Sp<Value>& v);
-    ValueCallback getCallbackFilter(ValueCallback, Value::Filter&&);
-    GetCallback getCallbackFilter(GetCallback, Value::Filter&&);
+    ValueCallback getCallbackFilter(const ValueCallback&, Value::Filter&&);
+    GetCallback getCallbackFilter(const GetCallback&, Value::Filter&&);
 
     Sp<crypto::PrivateKey> key_ {};
     Sp<crypto::Certificate> certificate_ {};

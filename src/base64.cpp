@@ -17,8 +17,8 @@
 
 #include "base64.h"
 
-#include <stdint.h>
-#include <stdlib.h>
+#include <cstdint>
+#include <cstdlib>
 
 /* Mainly based on the following stackoverflow question:
  * http://stackoverflow.com/questions/342409/how-do-i-base64-encode-decode-in-c

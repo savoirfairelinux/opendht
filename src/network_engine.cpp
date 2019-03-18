@@ -142,19 +142,27 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
     : myid(zeroes), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {}
+
 NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
-        decltype(NetworkEngine::onError) onError,
-        decltype(NetworkEngine::onNewNode) onNewNode,
-        decltype(NetworkEngine::onReportedAddr) onReportedAddr,
-        decltype(NetworkEngine::onPing) onPing,
-        decltype(NetworkEngine::onFindNode) onFindNode,
-        decltype(NetworkEngine::onGetValues) onGetValues,
-        decltype(NetworkEngine::onListen) onListen,
-        decltype(NetworkEngine::onAnnounce) onAnnounce,
-        decltype(NetworkEngine::onRefresh) onRefresh) :
-    onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-    onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
-    network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+        decltype(NetworkEngine::onError)&& onError,
+        decltype(NetworkEngine::onNewNode)&& onNewNode,
+        decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
+        decltype(NetworkEngine::onPing)&& onPing,
+        decltype(NetworkEngine::onFindNode)&& onFindNode,
+        decltype(NetworkEngine::onGetValues)&& onGetValues,
+        decltype(NetworkEngine::onListen)&& onListen,
+        decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+        decltype(NetworkEngine::onRefresh)&& onRefresh) :
+    onError(std::move(onError)),
+    onNewNode(std::move(onNewNode)),
+    onReportedAddr(std::move(onReportedAddr)),
+    onPing(std::move(onPing)),
+    onFindNode(std::move(onFindNode)),
+    onGetValues(std::move(onGetValues)),
+    onListen(std::move(onListen)),
+    onAnnounce(std::move(onAnnounce)),
+    onRefresh(std::move(onRefresh)),
+    myid(myid), network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {
     if (dht_socket >= 0) {
         if (!set_nonblocking(dht_socket, 1))
@@ -191,23 +199,23 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
-    pk.pack(std::string("u"));
+    pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_REQ_ID); pk.pack(myid);
     if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
+        pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
     }
     if (not values.empty()) {
-        pk.pack(std::string("re"));
+        pk.pack(KEY_REQ_REFRESHED);
         pk.pack(values);
         DHT_LOG.d(n->id, "[node %s] sending %zu refreshed values", n->toString().c_str(), values.size());
     }
 
-    pk.pack(std::string("t")); pk.pack(socket_id);
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_TID); pk.pack(socket_id);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     // send response
@@ -221,23 +229,23 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
-    pk.pack(std::string("u"));
+    pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_REQ_ID); pk.pack(myid);
     if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
+        pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
     }
     if (not values.empty()) {
-        pk.pack(std::string("exp"));
+        pk.pack(KEY_REQ_EXPIRED);
         pk.pack(values);
         DHT_LOG.d(n->id, "[node %s] sending %zu expired values", n->toString().c_str(), values.size());
     }
 
-    pk.pack(std::string("t")); pk.pack(socket_id);
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_TID); pk.pack(socket_id);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     // send response
@@ -687,16 +695,16 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(1);
-     pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_A); pk.pack_map(1);
+     pk.pack(KEY_REQ_ID); pk.pack(myid);
 
-    pk.pack(std::string("q")); pk.pack(std::string("ping"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_PING);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Ping, tid.toInt(), node,
@@ -724,17 +732,17 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
-    pk.pack(std::string("r")); pk.pack_map(2);
-      pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_R); pk.pack_map(2);
+      pk.pack(KEY_REQ_ID); pk.pack(myid);
       insertAddr(pk, addr);
 
     TransId t (tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     send(buffer.data(), buffer.size(), 0, addr);
@@ -748,23 +756,23 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(2 + (want>0?1:0));
-      pk.pack(std::string("id"));     pk.pack(myid);
-      pk.pack(std::string("target")); pk.pack(target);
+    pk.pack(KEY_A); pk.pack_map(2 + (want>0?1:0));
+      pk.pack(KEY_REQ_ID);     pk.pack(myid);
+      pk.pack(KEY_REQ_TARGET); pk.pack(target);
     if (want > 0) {
-      pk.pack(std::string("w"));
+      pk.pack(KEY_REQ_WANT);
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
       if (want & WANT4) pk.pack(AF_INET);
       if (want & WANT6) pk.pack(AF_INET6);
     }
 
-    pk.pack(std::string("q")); pk.pack(std::string("find"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_FIND);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     auto req = std::make_shared<Request>(MessageType::FindNode, tid.toInt(), n,
@@ -794,26 +802,26 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a"));  pk.pack_map(2 +
+    pk.pack(KEY_A);  pk.pack_map(2 +
                                 (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0) +
                                 (want>0?1:0));
-      pk.pack(std::string("id")); pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(info_hash);
-      pk.pack(std::string("q")); pk.pack(query);
+      pk.pack(KEY_REQ_ID); pk.pack(myid);
+      pk.pack(KEY_REQ_H);  pk.pack(info_hash);
+      pk.pack(KEY_Q); pk.pack(query);
     if (want > 0) {
-      pk.pack(std::string("w"));
+      pk.pack(KEY_REQ_WANT);
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
       if (want & WANT4) pk.pack(AF_INET);
       if (want & WANT6) pk.pack(AF_INET6);
     }
 
-    pk.pack(std::string("q")); pk.pack(std::string("get"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_GET);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     auto req = std::make_shared<Request>(MessageType::GetValues, tid.toInt(), n,
@@ -901,7 +909,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
         total_size += v.size();
 
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack(std::string("values"));
+    pk.pack(KEY_REQ_VALUES);
     pk.pack_array(svals.size());
     // try to put everything in a single UDP packet
     if (svals.size() < 50 && total_size < MAX_PACKET_VALUE_SIZE) {
@@ -929,12 +937,12 @@ NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
             pk.pack_map(3+(network?1:0));
             if (network) {
-                pk.pack(std::string("n")); pk.pack(network);
+                pk.pack(KEY_NETID); pk.pack(network);
             }
-            pk.pack(std::string("y")); pk.pack(std::string("v"));
-            pk.pack(std::string("t")); pk.pack_bin(tid.size());
+            pk.pack(KEY_Y); pk.pack(KEY_V);
+            pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                        pk.pack_bin_body((const char*)tid.data(), tid.size());
-            pk.pack(std::string("p")); pk.pack_map(1);
+            pk.pack(KEY_V); pk.pack_map(1);
                 pk.pack(i); pk.pack_map(2);
                     pk.pack(std::string("o")); pk.pack(start);
                     pk.pack(std::string("d")); pk.pack_bin(end-start);
@@ -954,22 +962,22 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
-    pk.pack(std::string("r"));
+    pk.pack(KEY_R);
     pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_REQ_ID); pk.pack(myid);
     insertAddr(pk, addr);
     if (nodes.size() > 0) {
-        pk.pack(std::string("n4"));
+        pk.pack(KEY_REQ_NODES4);
         pk.pack_bin(nodes.size());
         pk.pack_bin_body((const char*)nodes.data(), nodes.size());
     }
     if (nodes6.size() > 0) {
-        pk.pack(std::string("n6"));
+        pk.pack(KEY_REQ_NODES6);
         pk.pack_bin(nodes6.size());
         pk.pack_bin_body((const char*)nodes6.data(), nodes6.size());
     }
     if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
+        pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
     }
     std::vector<Blob> svals {};
     if (not st.empty()) { /* pack complete values */
@@ -977,7 +985,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
         if (fields.empty()) {
             svals = packValueHeader(buffer, st);
         } else { /* pack fields */
-            pk.pack(std::string("fields"));
+            pk.pack(KEY_REQ_FIELDS);
             pk.pack_map(2);
             pk.pack(std::string("f")); pk.pack(fields);
             pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
@@ -989,12 +997,12 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
     }
 
     TransId t (tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
-                               pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
+                      pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     // send response
@@ -1086,23 +1094,23 @@ NetworkEngine::sendListen(Sp<Node> n,
     pk.pack_map(5+(network?1:0));
 
     auto has_query = query.where.getFilter() or not query.select.getSelection().empty();
-    pk.pack(std::string("a")); pk.pack_map(4 + has_query);
-      pk.pack(std::string("id"));    pk.pack(myid);
-      pk.pack(std::string("h"));     pk.pack(hash);
-      pk.pack(std::string("token")); packToken(pk, token);
-      pk.pack(std::string("sid"));  pk.pack_bin(sid.size());
-                                     pk.pack_bin_body((const char*)sid.data(), sid.size());
+    pk.pack(KEY_A); pk.pack_map(4 + has_query);
+      pk.pack(KEY_REQ_ID);    pk.pack(myid);
+      pk.pack(KEY_REQ_H);     pk.pack(hash);
+      pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
+      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
+                              pk.pack_bin_body((const char*)sid.data(), sid.size());
       if (has_query) {
-          pk.pack(std::string("q")); pk.pack(query);
+          pk.pack(KEY_REQ_QUERY); pk.pack(query);
       }
 
-    pk.pack(std::string("q")); pk.pack(std::string("listen"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_LISTEN);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Listen, tid.toInt(), n,
@@ -1128,17 +1136,17 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
-    pk.pack(std::string("r")); pk.pack_map(2);
-      pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_R); pk.pack_map(2);
+      pk.pack(KEY_REQ_ID); pk.pack(myid);
       insertAddr(pk, addr);
 
     TransId t (tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     send(buffer.data(), buffer.size(), 0, addr);
@@ -1158,23 +1166,23 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map((created < scheduler.time() ? 5 : 4));
-      pk.pack(std::string("id"));     pk.pack(myid);
-      pk.pack(std::string("h"));      pk.pack(infohash);
+    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
+      pk.pack(KEY_REQ_ID);     pk.pack(myid);
+      pk.pack(KEY_REQ_H);      pk.pack(infohash);
       auto v = packValueHeader(buffer, {value});
       if (created < scheduler.time()) {
-          pk.pack(std::string("c"));
+          pk.pack(KEY_REQ_CREATION);
           pk.pack(to_time_t(created));
       }
-      pk.pack(std::string("token"));  pk.pack(token);
+      pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
 
-    pk.pack(std::string("q")); pk.pack(std::string("put"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Q);   pk.pack(QUERY_PUT);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
+                      pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_Y);   pk.pack(KEY_Q);
+    pk.pack(KEY_UA);  pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid.toInt(), n,
@@ -1216,19 +1224,19 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(4);
-      pk.pack(std::string("id"));  pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(infohash);
-      pk.pack(std::string("vid")); pk.pack(vid);
-      pk.pack(std::string("token"));  pk.pack(token);
+    pk.pack(KEY_A); pk.pack_map(4);
+      pk.pack(KEY_REQ_ID);       pk.pack(myid);
+      pk.pack(KEY_REQ_H);        pk.pack(infohash);
+      pk.pack(KEY_REQ_VALUE_ID); pk.pack(vid);
+      pk.pack(KEY_REQ_TOKEN);    pk.pack(token);
 
-    pk.pack(std::string("q")); pk.pack(std::string("refresh"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_REFRESH);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Refresh, tid.toInt(), n,
@@ -1261,18 +1269,18 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) 
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4+(network?1:0));
 
-    pk.pack(std::string("r")); pk.pack_map(3);
-      pk.pack(std::string("id"));  pk.pack(myid);
-      pk.pack(std::string("vid")); pk.pack(vid);
+    pk.pack(KEY_R); pk.pack_map(3);
+      pk.pack(KEY_REQ_ID);  pk.pack(myid);
+      pk.pack(KEY_REQ_VALUE_ID); pk.pack(vid);
       insertAddr(pk, addr);
 
     TransId t(tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     send(buffer.data(), buffer.size(), 0, addr);
@@ -1289,22 +1297,22 @@ NetworkEngine::sendError(const SockAddr& addr,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4 + (include_id?1:0));
 
-    pk.pack(std::string("e")); pk.pack_array(2);
+    pk.pack(KEY_E); pk.pack_array(2);
       pk.pack(code);
       pk.pack(message);
 
     if (include_id) {
-        pk.pack(std::string("r")); pk.pack_map(1);
-          pk.pack(std::string("id")); pk.pack(myid);
+        pk.pack(KEY_R); pk.pack_map(1);
+          pk.pack(KEY_REQ_ID); pk.pack(myid);
     }
 
     TransId t(tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("e"));
-    pk.pack(std::string("v")); pk.pack(my_v);
+    pk.pack(KEY_Y); pk.pack(KEY_E);
+    pk.pack(KEY_UA); pk.pack(my_v);
     if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+        pk.pack(KEY_NETID); pk.pack(network);
     }
 
     send(buffer.data(), buffer.size(), 0, addr);

@@ -49,7 +49,7 @@ Node::isGood(time_point now) const
 bool
 Node::isPendingMessage() const
 {
-    for (auto r : requests_) {
+    for (const auto& r : requests_) {
         if (r.second->pending())
             return true;
     }
@@ -60,7 +60,7 @@ size_t
 Node::getPendingMessageCount() const
 {
     size_t count {0};
-    for (auto r : requests_) {
+    for (const auto& r : requests_) {
         if (r.second->pending())
             count++;
     }

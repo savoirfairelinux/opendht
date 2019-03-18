@@ -104,7 +104,7 @@ public:
     void onValuesAdded(const std::vector<Sp<Value>>& vals);
     void onValuesExpired(const std::vector<Sp<Value>>& vals);
 
-    bool addListener(size_t token, ValueCallback cb, Sp<Query> q, Value::Filter filter) {
+    bool addListener(size_t token, const ValueCallback& cb, const Sp<Query>& q, const Value::Filter& filter) {
         listeners.emplace(token, LocalListener{q, filter, cb});
         auto cached = cache.get(filter);
         if (not cached.empty()) {
@@ -163,12 +163,12 @@ public:
     SearchCache(SearchCache&&) = default;
 
     using OnListen = std::function<size_t(Sp<Query>, ValueCallback, SyncCallback)>;
-    size_t listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, OnListen onListen);
+    size_t listen(const ValueCallback& get_cb, const Sp<Query>& q, const Value::Filter& filter, const OnListen& onListen);
 
     bool cancelListen(size_t gtoken, const time_point& now);
-    void cancelAll(std::function<void(size_t)> onCancel);
+    void cancelAll(const std::function<void(size_t)>& onCancel);
 
-    time_point expire(const time_point& now, std::function<void(size_t)> onCancel);
+    time_point expire(const time_point& now, const std::function<void(size_t)>& onCancel);
     time_point getExpiration() const {
         return nextExpiration_;
     }

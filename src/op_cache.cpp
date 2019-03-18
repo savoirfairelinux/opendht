@@ -160,7 +160,7 @@ SearchCache::getOp(const Sp<Query>& q) const
 }
 
 size_t
-SearchCache::listen(ValueCallback get_cb, Sp<Query> q, Value::Filter filter, OnListen onListen)
+SearchCache::listen(const ValueCallback& get_cb, const Sp<Query>& q, const Value::Filter& filter, const OnListen& onListen)
 {
     // find exact match
     auto op = getOp(q);
@@ -192,7 +192,7 @@ SearchCache::cancelListen(size_t gtoken, const time_point& now) {
 }
 
 void
-SearchCache::cancelAll(std::function<void(size_t)> onCancel) {
+SearchCache::cancelAll(const std::function<void(size_t)>& onCancel) {
     for (auto& op : ops) {
         auto cache = std::move(op.second);
         cache->removeAll();
@@ -202,7 +202,7 @@ SearchCache::cancelAll(std::function<void(size_t)> onCancel) {
 }
 
 time_point
-SearchCache::expire(const time_point& now, std::function<void(size_t)> onCancel) {
+SearchCache::expire(const time_point& now, const std::function<void(size_t)>& onCancel) {
     nextExpiration_ = time_point::max();
     auto ret = nextExpiration_;
     for (auto it = ops.begin(); it != ops.end();) {

@@ -206,15 +206,15 @@ public:
 
     NetworkEngine(Logger& log, Scheduler& scheduler, const int& s = -1, const int& s6 = -1);
     NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
-            decltype(NetworkEngine::onError) onError,
-            decltype(NetworkEngine::onNewNode) onNewNode,
-            decltype(NetworkEngine::onReportedAddr) onReportedAddr,
-            decltype(NetworkEngine::onPing) onPing,
-            decltype(NetworkEngine::onFindNode) onFindNode,
-            decltype(NetworkEngine::onGetValues) onGetValues,
-            decltype(NetworkEngine::onListen) onListen,
-            decltype(NetworkEngine::onAnnounce) onAnnounce,
-            decltype(NetworkEngine::onRefresh) onRefresh);
+            decltype(NetworkEngine::onError)&& onError,
+            decltype(NetworkEngine::onNewNode)&& onNewNode,
+            decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
+            decltype(NetworkEngine::onPing)&& onPing,
+            decltype(NetworkEngine::onFindNode)&& onFindNode,
+            decltype(NetworkEngine::onGetValues)&& onGetValues,
+            decltype(NetworkEngine::onListen)&& onListen,
+            decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+            decltype(NetworkEngine::onRefresh)&& onRefresh);
 
     virtual ~NetworkEngine();
 

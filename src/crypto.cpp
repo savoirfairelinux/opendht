@@ -385,7 +385,7 @@ PrivateKey::getPublicKey() const
     return pk_ret;
 }
 
-PublicKey::PublicKey(const Blob& dat) : pk(nullptr)
+PublicKey::PublicKey(const Blob& dat)
 {
     unpack(dat.data(), dat.size());
 }
@@ -572,7 +572,7 @@ PublicKey::getLongId() const
 #endif
 }
 
-Certificate::Certificate(const Blob& certData) : cert(nullptr)
+Certificate::Certificate(const Blob& certData)
 {
     unpack(certData.data(), certData.size());
 }
@@ -896,7 +896,7 @@ PrivateKey::generateEC()
 }
 
 Identity
-generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_length, bool is_ca)
+generateIdentity(const std::string& name, const Identity& ca, unsigned key_length, bool is_ca)
 {
     auto key = std::make_shared<PrivateKey>(PrivateKey::generate(key_length));
     auto cert = std::make_shared<Certificate>(Certificate::generate(*key, name, ca, is_ca));
@@ -905,12 +905,12 @@ generateIdentity(const std::string& name, crypto::Identity ca, unsigned key_leng
 
 
 Identity
-generateIdentity(const std::string& name, Identity ca, unsigned key_length) {
+generateIdentity(const std::string& name, const Identity& ca, unsigned key_length) {
     return generateIdentity(name, ca, key_length, !ca.first || !ca.second);
 }
 
 Identity
-generateEcIdentity(const std::string& name, crypto::Identity ca, bool is_ca)
+generateEcIdentity(const std::string& name, const Identity& ca, bool is_ca)
 {
     auto key = std::make_shared<PrivateKey>(PrivateKey::generateEC());
     auto cert = std::make_shared<Certificate>(Certificate::generate(*key, name, ca, is_ca));
@@ -918,19 +918,19 @@ generateEcIdentity(const std::string& name, crypto::Identity ca, bool is_ca)
 }
 
 Identity
-generateEcIdentity(const std::string& name, Identity ca) {
+generateEcIdentity(const std::string& name, const Identity& ca) {
     return generateEcIdentity(name, ca, !ca.first || !ca.second);
 }
 
 Certificate
-Certificate::generate(const PrivateKey& key, const std::string& name, Identity ca, bool is_ca)
+Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca)
 {
     gnutls_x509_crt_t cert;
     if (not key.x509_key or gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         return {};
     Certificate ret {cert};
 
-    int64_t now = time(NULL);
+    int64_t now = time(nullptr);
     /* 2038 bug: don't allow time wrap */
     auto boundTime = [](int64_t t) -> time_t {
         return std::min<int64_t>(t, std::numeric_limits<time_t>::max());
@@ -1228,11 +1228,11 @@ TrustList::~TrustList() {
 }
 
 TrustList&
-TrustList::operator=(TrustList&& o)
+TrustList::operator=(TrustList&& o) noexcept
 {
     if (trust)
         gnutls_x509_trust_list_deinit(trust, true);
-    trust = std::move(o.trust);
+    trust = o.trust;
     o.trust = nullptr;
     return *this;
 }

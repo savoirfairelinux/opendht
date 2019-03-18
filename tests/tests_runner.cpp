@@ -21,7 +21,7 @@
 #include <cppunit/CompilerOutputter.h>
 #include <iostream>
 
-int main(int argc, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
     CppUnit::TestFactoryRegistry &registry = CppUnit::TestFactoryRegistry::getRegistry();
     CppUnit::Test *suite = registry.makeTest();
     if (suite->countTestCases() == 0) {
