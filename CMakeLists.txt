@@ -149,6 +149,7 @@ list (APPEND opendht_SOURCES
     src/securedht.cpp
     src/dhtrunner.cpp
     src/log.cpp
+    src/peerDiscovery.cpp
 )
 
 list (APPEND opendht_HEADERS
@@ -172,6 +173,7 @@ list (APPEND opendht_HEADERS
     include/opendht/securedht.h
     include/opendht/log.h
     include/opendht/log_enable.h
+    include/opendht/peerDiscovery.h
     include/opendht.h
 )
 

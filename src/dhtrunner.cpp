@@ -20,6 +20,7 @@
 
 #include "dhtrunner.h"
 #include "securedht.h"
+#include "peerDiscovery.h"
 
 #ifdef OPENDHT_PROXY_CLIENT
 #include "dht_proxy_client.h"
@@ -147,6 +148,38 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
                 cv.wait_until(lk, wakeup, hasJobToDo);
         }
     });
+
+    using sig = void (DhtRunner::*)(const InfoHash&, const SockAddr&);
+    if(config.peer_publish){
+
+        peerDiscovery_p4_send.reset(new PeerDiscovery(AF_INET,port_multicast));
+        peerDiscovery_p4_send->startPublish(getNodeId(),getBoundPort());
+
+        peerDiscovery_p6_send.reset(new PeerDiscovery(AF_INET6,port_multicast));
+        peerDiscovery_p6_send->startPublish(getNodeId(),getBoundPort());
+        //getNodeId(), getBoundPort()
+
+    }
+    if (config.peer_discovery) {
+
+        peerDiscovery_p4_listen.reset(new PeerDiscovery(AF_INET,port_multicast));
+        peerDiscovery_p4_listen->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),this,std::placeholders::_1,std::placeholders::_2),getBoundPort());
+
+        peerDiscovery_p6_listen.reset(new PeerDiscovery(AF_INET6,port_multicast));
+        peerDiscovery_p6_listen->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),this,std::placeholders::_1,std::placeholders::_2),getBoundPort());
+
+    }
+}
+
+void DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
+{
+    {
+        std::unique_lock<std::mutex> lck(storage_mtx);
+        pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
+            dht.insertNode(id, address);
+        });
+    }
+    cv.notify_all();
 }
 
 void
@@ -164,7 +197,17 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 
 void
 DhtRunner::join()
-{
+{   
+
+    peerDiscovery_p4_send->stop(false);
+    peerDiscovery_p4_listen->stop(true);
+    peerDiscovery_p6_send->stop(false);
+    peerDiscovery_p6_listen->stop(true);
+    if(peerDiscovery_p4_send->m_running.joinable()) { peerDiscovery_p4_send->m_running.join(); }
+    if(peerDiscovery_p4_listen->m_running.joinable()) { peerDiscovery_p4_listen->m_running.join(); }
+    if(peerDiscovery_p6_send->m_running.joinable()) { peerDiscovery_p6_send->m_running.join(); }
+    if(peerDiscovery_p6_listen->m_running.joinable()) { peerDiscovery_p6_listen->m_running.join(); }
+
     stopNetwork();
     running = false;
     cv.notify_all();
@@ -187,6 +230,7 @@ DhtRunner::join()
         status4 = NodeStatus::Disconnected;
         status6 = NodeStatus::Disconnected;
     }
+
 }
 
 void

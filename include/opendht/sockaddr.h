@@ -147,6 +147,38 @@ public:
     }
 
     /**
+     * Set Network Interface to any
+     */
+    void setAny() {
+        auto family = getFamily();
+        switch(family) {
+        case AF_INET:
+            getIPv4().sin_addr.s_addr = htonl(INADDR_ANY);
+            break;
+        case AF_INET6:
+            getIPv6().sin6_addr = in6addr_any;
+            break;
+        }
+    }
+
+    /**
+     * Set Ip Address
+     */
+    void setAddress(const char* p4,const char* p6) {
+        auto family = getFamily();
+        switch(family) {
+        case AF_INET:
+            getIPv4().sin_addr.s_addr = inet_addr(p4);
+            break;
+        case AF_INET6:
+            if(inet_pton(AF_INET6,p6,&getIPv6().sin6_addr) <= 0){
+                throw std::runtime_error("inet_pton_initialize_sockaddr");
+            }
+            break;
+        }
+    }
+
+    /**
      * Retreive the port (in host byte order) or 0 if the address is not
      * of a supported family.
      */
