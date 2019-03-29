@@ -40,31 +40,6 @@ static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint
 static std::uniform_int_distribution<uint8_t> rand_byte;
 #endif
 
-static gnutls_digest_algorithm_t get_dig_for_pub(gnutls_pubkey_t pubkey)
-{
-    gnutls_digest_algorithm_t dig;
-    int result = gnutls_pubkey_get_preferred_hash_algorithm(pubkey, &dig, nullptr);
-    if (result < 0)
-        return GNUTLS_DIG_UNKNOWN;
-    return dig;
-}
-
-static gnutls_digest_algorithm_t get_dig(gnutls_x509_crt_t crt)
-{
-    gnutls_pubkey_t pubkey;
-    gnutls_pubkey_init(&pubkey);
-
-    int result = gnutls_pubkey_import_x509(pubkey, crt, 0);
-    if (result < 0) {
-        gnutls_pubkey_deinit(pubkey);
-        return GNUTLS_DIG_UNKNOWN;
-    }
-
-    gnutls_digest_algorithm_t dig = get_dig_for_pub(pubkey);
-    gnutls_pubkey_deinit(pubkey);
-    return dig;
-}
-
 // support for GnuTLS < 3.4.
 #if GNUTLS_VERSION_NUMBER < 0x030400
 #define GNUTLS_PKCS_PKCS12_3DES GNUTLS_PKCS_USE_PKCS12_3DES
@@ -377,15 +352,19 @@ PrivateKey::serialize(const std::string& password) const
 PublicKey
 PrivateKey::getPublicKey() const
 {
-    gnutls_pubkey_t pk;
-    gnutls_pubkey_init(&pk);
-    PublicKey pk_ret {pk};
-    if (gnutls_pubkey_import_privkey(pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0) != GNUTLS_E_SUCCESS)
-        return {};
-    return pk_ret;
+    PublicKey pk;
+    if (auto err = gnutls_pubkey_import_privkey(pk.pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
+        throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
+    return pk;
 }
 
-PublicKey::PublicKey(const Blob& dat)
+PublicKey::PublicKey()
+{
+    if (auto err = gnutls_pubkey_init(&pk))
+        throw CryptoException(std::string("Can't initialize public key: ") + gnutls_strerror(err));
+}
+
+PublicKey::PublicKey(const Blob& dat) : PublicKey()
 {
     unpack(dat.data(), dat.size());
 }
@@ -415,8 +394,7 @@ PublicKey::pack(Blob& b) const
         throw CryptoException(std::string("Could not export public key: null key"));
     std::vector<uint8_t> tmp(2048);
     size_t sz = tmp.size();
-    int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_DER, tmp.data(), &sz);
-    if (err != GNUTLS_E_SUCCESS)
+    if (int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_DER, tmp.data(), &sz))
         throw CryptoException(std::string("Could not export public key: ") + gnutls_strerror(err));
     tmp.resize(sz);
     b.insert(b.end(), tmp.begin(), tmp.end());
@@ -425,9 +403,6 @@ PublicKey::pack(Blob& b) const
 void
 PublicKey::unpack(const uint8_t* data, size_t data_size)
 {
-    if (pk)
-        gnutls_pubkey_deinit(pk);
-    gnutls_pubkey_init(&pk);
     const gnutls_datum_t dat {(uint8_t*)data, (unsigned)data_size};
     int err = gnutls_pubkey_import(pk, &dat, GNUTLS_X509_FMT_PEM);
     if (err != GNUTLS_E_SUCCESS)
@@ -446,10 +421,9 @@ PublicKey::toString() const
     int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_PEM, (void*)ret.data(), &sz);
     if (err ==  GNUTLS_E_SHORT_MEMORY_BUFFER) {
         ret.resize(sz);
-        int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_PEM, (void*)ret.data(), &sz);
-        if (err != GNUTLS_E_SUCCESS)
-            throw CryptoException(std::string("Could not print public key: ") + gnutls_strerror(err));
-    } else if (err != GNUTLS_E_SUCCESS)
+        err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_PEM, (void*)ret.data(), &sz);
+    }
+    if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Could not print public key: ") + gnutls_strerror(err));
     return ret;
 }
@@ -572,6 +546,179 @@ PublicKey::getLongId() const
 #endif
 }
 
+gnutls_digest_algorithm_t
+PublicKey::getPreferredDigest() const
+{
+    gnutls_digest_algorithm_t dig;
+    int result = gnutls_pubkey_get_preferred_hash_algorithm(pk, &dig, nullptr);
+    if (result < 0)
+        return GNUTLS_DIG_UNKNOWN;
+    return dig;
+}
+
+// Certificate Request
+
+static NameType
+typeFromGnuTLS(gnutls_x509_subject_alt_name_t type)
+{
+    switch(type) {
+    case GNUTLS_SAN_DNSNAME:
+        return NameType::DNS;
+    case GNUTLS_SAN_RFC822NAME:
+        return NameType::RFC822;
+    case GNUTLS_SAN_URI:
+        return NameType::URI;
+    case GNUTLS_SAN_IPADDRESS:
+        return NameType::IP;
+    default:
+        return NameType::UNKNOWN;
+    }
+}
+
+static gnutls_x509_subject_alt_name_t
+GnuTLSFromType(NameType type)
+{
+    switch(type) {
+    case NameType::DNS:
+        return GNUTLS_SAN_DNSNAME;
+    case NameType::RFC822:
+        return GNUTLS_SAN_RFC822NAME;
+    case NameType::URI:
+        return GNUTLS_SAN_URI;
+    case NameType::IP:
+        return GNUTLS_SAN_IPADDRESS;
+    default:
+        return (gnutls_x509_subject_alt_name_t)0;
+    }
+}
+
+static std::string
+getDN(gnutls_x509_crq_t request, const char* oid)
+{
+    std::string dn;
+    dn.resize(512);
+    size_t dn_sz = dn.size();
+    int ret = gnutls_x509_crq_get_dn_by_oid(request, oid, 0, 0, &(*dn.begin()), &dn_sz);
+    if (ret != GNUTLS_E_SUCCESS)
+        return {};
+    dn.resize(dn_sz);
+    return dn;
+}
+
+CertificateRequest::CertificateRequest()
+{
+    if (auto err = gnutls_x509_crq_init(&request))
+        throw CryptoException(std::string("Can't initialize certificate request: ") + gnutls_strerror(err));
+}
+
+CertificateRequest::CertificateRequest(const uint8_t* data, size_t size) : CertificateRequest()
+{
+    const gnutls_datum_t dat {(uint8_t*)data, (unsigned)size};
+    if (auto err = gnutls_x509_crq_import(request, &dat, GNUTLS_X509_FMT_PEM))
+        throw CryptoException(std::string("Can't import certificate request: ") + gnutls_strerror(err));
+}
+
+CertificateRequest::~CertificateRequest()
+{
+    if (request) {
+        gnutls_x509_crq_deinit(request);
+        request = nullptr;
+    }
+}
+
+CertificateRequest&
+CertificateRequest::operator=(CertificateRequest&& o) noexcept
+{
+    if (request)
+        gnutls_x509_crq_deinit(request);
+    request = o.request;
+    o.request = nullptr;
+    return *this;
+}
+
+void
+CertificateRequest::setAltName(NameType type, const std::string& name)
+{
+    gnutls_x509_crq_set_subject_alt_name(request, GnuTLSFromType(type), name.data(), name.size(), 0);
+}
+
+void
+CertificateRequest::setName(const std::string& name)
+{
+    gnutls_x509_crq_set_dn_by_oid(request, GNUTLS_OID_X520_COMMON_NAME, 0, name.data(), name.length());
+}
+
+std::string
+CertificateRequest::getName() const
+{
+    return getDN(request, GNUTLS_OID_X520_COMMON_NAME);
+}
+
+std::string
+CertificateRequest::getUID() const
+{
+    return getDN(request, GNUTLS_OID_LDAP_UID);
+}
+
+void
+CertificateRequest::setUID(const std::string& uid)
+{
+    gnutls_x509_crq_set_dn_by_oid(request, GNUTLS_OID_LDAP_UID, 0, uid.data(), uid.length());
+}
+
+void
+CertificateRequest::sign(const PrivateKey& key, const std::string& password)
+{
+    gnutls_x509_crq_set_version(request, 1);
+    if (not password.empty())
+        gnutls_x509_crq_set_challenge_password(request, password.c_str());
+
+    if (auto err = gnutls_x509_crq_set_key(request,  key.x509_key))
+        throw CryptoException(std::string("Can't set certificate request key: ") + gnutls_strerror(err));
+
+#if GNUTLS_VERSION_NUMBER < 0x030601
+    if (auto err = gnutls_x509_crq_privkey_sign(request, key.key, key.getPublicKey().getPreferredDigest(), 0))
+        throw CryptoException(std::string("Can't sign certificate request: ") + gnutls_strerror(err));
+#else
+    if (auto err = gnutls_x509_crq_privkey_sign(request, key.key, GNUTLS_DIG_UNKNOWN, 0))
+        throw CryptoException(std::string("Can't sign certificate request: ") + gnutls_strerror(err));
+#endif
+}
+
+bool
+CertificateRequest::verify() const 
+{
+    return gnutls_x509_crq_verify(request, 0) >= 0;
+}
+
+Blob 
+CertificateRequest::pack() const 
+{
+    gnutls_datum_t dat {nullptr, 0};
+    if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
+        throw CryptoException(std::string("Can't export certificate request: ") + gnutls_strerror(err));
+    Blob ret(dat.data, dat.data + dat.size);
+    gnutls_free(dat.data);
+    return ret;
+}
+
+// Certificate
+
+static std::string
+getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
+{
+    std::string dn;
+    dn.resize(512);
+    size_t dn_sz = dn.size();
+    int ret = issuer
+            ? gnutls_x509_crt_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz)
+            : gnutls_x509_crt_get_dn_by_oid(       cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
+    if (ret != GNUTLS_E_SUCCESS)
+        return {};
+    dn.resize(dn_sz);
+    return dn;
+}
+
 Certificate::Certificate(const Blob& certData)
 {
     unpack(certData.data(), certData.size());
@@ -656,11 +803,9 @@ Certificate::~Certificate()
 PublicKey
 Certificate::getPublicKey() const
 {
-    gnutls_pubkey_t pk;
-    gnutls_pubkey_init(&pk);
-    PublicKey pk_ret(pk);
-    if (gnutls_pubkey_import_x509(pk, cert, 0) != GNUTLS_E_SUCCESS)
-        return {};
+    PublicKey pk_ret;
+    if (auto err = gnutls_pubkey_import_x509(pk_ret.pk, cert, 0))
+        throw CryptoException(std::string("Can't get certificate public key: ") + gnutls_strerror(err));
     return pk_ret;
 }
 
@@ -696,21 +841,6 @@ Certificate::getLongId() const
 #endif
 }
 
-static std::string
-getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
-{
-    std::string dn;
-    dn.resize(512);
-    size_t dn_sz = dn.size();
-    int ret = issuer
-            ? gnutls_x509_crt_get_issuer_dn_by_oid(cert, oid, 0, 0, &(*dn.begin()), &dn_sz)
-            : gnutls_x509_crt_get_dn_by_oid(       cert, oid, 0, 0, &(*dn.begin()), &dn_sz);
-    if (ret != GNUTLS_E_SUCCESS)
-        return {};
-    dn.resize(dn_sz);
-    return dn;
-}
-
 std::string
 Certificate::getName() const
 {
@@ -735,24 +865,7 @@ Certificate::getIssuerUID() const
     return getDN(cert, GNUTLS_OID_LDAP_UID, true);
 }
 
-static Certificate::NameType
-typeFromGnuTLS(gnutls_x509_subject_alt_name_t type)
-{
-    switch(type) {
-    case GNUTLS_SAN_DNSNAME:
-        return Certificate::NameType::DNS;
-    case GNUTLS_SAN_RFC822NAME:
-        return Certificate::NameType::RFC822;
-    case GNUTLS_SAN_URI:
-        return Certificate::NameType::URI;
-    case GNUTLS_SAN_IPADDRESS:
-        return Certificate::NameType::IP;
-    default:
-        return Certificate::NameType::UNKNOWN;
-    }
-}
-
-std::vector<std::pair<Certificate::NameType, std::string>>
+std::vector<std::pair<NameType, std::string>>
 Certificate::getAltNames() const
 {
     std::vector<std::pair<NameType, std::string>> names;
@@ -867,6 +980,14 @@ Certificate::getExpiration() const
     return std::chrono::system_clock::from_time_t(t);
 }
 
+gnutls_digest_algorithm_t
+Certificate::getPreferredDigest() const
+{
+    return getPublicKey().getPreferredDigest();
+}
+
+// PrivateKey
+
 PrivateKey
 PrivateKey::generate(unsigned key_length)
 {
@@ -922,6 +1043,27 @@ generateEcIdentity(const std::string& name, const Identity& ca) {
     return generateEcIdentity(name, ca, !ca.first || !ca.second);
 }
 
+void
+setValidityPeriod(gnutls_x509_crt_t cert, int64_t validity)
+{
+    int64_t now = time(nullptr);
+    /* 2038 bug: don't allow time wrap */
+    auto boundTime = [](int64_t t) -> time_t {
+        return std::min<int64_t>(t, std::numeric_limits<time_t>::max());
+    };
+    gnutls_x509_crt_set_activation_time(cert, boundTime(now));
+    gnutls_x509_crt_set_expiration_time(cert, boundTime(now + validity));
+}
+
+void
+setRandomSerial(gnutls_x509_crt_t cert)
+{
+    random_device rdev;
+    std::uniform_int_distribution<uint64_t> dist{};
+    uint64_t cert_serial = dist(rdev);
+    gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
+}
+
 Certificate
 Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca)
 {
@@ -930,13 +1072,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
         return {};
     Certificate ret {cert};
 
-    int64_t now = time(nullptr);
-    /* 2038 bug: don't allow time wrap */
-    auto boundTime = [](int64_t t) -> time_t {
-        return std::min<int64_t>(t, std::numeric_limits<time_t>::max());
-    };
-    gnutls_x509_crt_set_activation_time(cert, boundTime(now));
-    gnutls_x509_crt_set_expiration_time(cert, boundTime(now + (10 * 365 * 24 * 60 * 60)));
+    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
     if (gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
         std::cerr << "Error when setting certificate key" << std::endl;
         return {};
@@ -947,19 +1083,15 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     }
 
     // TODO: compute the subject key using the recommended RFC method
-    auto pk_id = key.getPublicKey().getId();
+    auto pk = key.getPublicKey();
+    auto pk_id = pk.getId();
     const std::string uid_str = pk_id.toString();
 
     gnutls_x509_crt_set_subject_key_id(cert, &pk_id, sizeof(pk_id));
     gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_X520_COMMON_NAME, 0, name.data(), name.length());
     gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, uid_str.data(), uid_str.length());
 
-    {
-        random_device rdev;
-        std::uniform_int_distribution<uint64_t> dist{};
-        uint64_t cert_serial = dist(rdev);
-        gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
-    }
+    setRandomSerial(cert);
 
     unsigned key_usage = 0;
     if (is_ca) {
@@ -975,19 +1107,42 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
             // Signing certificate must be CA.
             return {};
         }
-        //if (gnutls_x509_crt_sign2(cert, ca.second->cert, ca.first->x509_key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
-        if (gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
+        if (gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0) != GNUTLS_E_SUCCESS) {
             std::cerr << "Error when signing certificate" << std::endl;
             return {};
         }
         ret.issuer = ca.second;
     } else {
-        //if (gnutls_x509_crt_sign2(cert, cert, key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
-        if (gnutls_x509_crt_privkey_sign(cert, cert, key.key, get_dig(cert), 0) != GNUTLS_E_SUCCESS) {
+        if (gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0) != GNUTLS_E_SUCCESS) {
             std::cerr << "Error when signing certificate" << std::endl;
             return {};
         }
     }
+
+    return ret.getPacked();
+}
+
+Certificate
+Certificate::generate(const CertificateRequest& request, const Identity& ca)
+{
+    gnutls_x509_crt_t cert;
+    if (auto err = gnutls_x509_crt_init(&cert))
+        throw CryptoException(std::string("Can't initialize certificate: ") + gnutls_strerror(err));
+    Certificate ret {cert};
+    if (auto err = gnutls_x509_crt_set_crq(cert, request.get()))
+        throw CryptoException(std::string("Can't initialize certificate: ") + gnutls_strerror(err));
+
+    if (auto err = gnutls_x509_crt_set_version(cert, 3)) {
+        throw CryptoException(std::string("Can't set certificate version: ") + gnutls_strerror(err));
+    }
+
+    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
+    setRandomSerial(cert);
+
+    if (auto err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
+        throw CryptoException(std::string("Can't sign certificate: ") + gnutls_strerror(err));
+    }
+    ret.issuer = ca.second;
 
     return ret.getPacked();
 }
@@ -1001,6 +1156,8 @@ Certificate::getRevocationLists() const
         ret.emplace_back(crl);
     return ret;
 }
+
+// RevocationList
 
 RevocationList::RevocationList()
 {
@@ -1218,6 +1375,8 @@ RevocationList::toString() const
     gnutls_free(out.data);
     return ret;
 }
+
+// TrustList
 
 TrustList::TrustList() {
     gnutls_x509_trust_list_init(&trust, 0);

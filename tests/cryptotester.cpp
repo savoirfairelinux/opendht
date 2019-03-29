@@ -54,7 +54,6 @@ CryptoTester::testCertificateRevocation()
     auto device11 = dht::crypto::generateIdentity("dev11", account1);
     auto device12 = dht::crypto::generateIdentity("dev12", account1);
 
-
     dht::crypto::TrustList list;
     list.add(*ca1.second);
     auto v = list.verify(*account1.second);
@@ -80,6 +79,34 @@ CryptoTester::testCertificateRevocation()
     v = list2.verify(*device11.second);
     CPPUNIT_ASSERT_MESSAGE(v.toString(), !v);
     v = list2.verify(*device12.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
+}
+
+void
+CryptoTester::testCertificateRequest()
+{
+    // Generate CA
+    auto ca = dht::crypto::generateIdentity("Test CA");
+
+    // Generate signed request
+    auto deviceKey = dht::crypto::PrivateKey::generate();
+    auto request = dht::crypto::CertificateRequest();
+    request.setName("Test Device");
+    request.sign(deviceKey);
+
+    // Export/import request
+    auto importedRequest = dht::crypto::CertificateRequest(request.pack());
+    CPPUNIT_ASSERT(importedRequest.verify());
+
+    // Generate/sign certificate from request
+    auto signedCert = dht::crypto::Certificate::generate(request, ca);
+    CPPUNIT_ASSERT_EQUAL(ca.second->getName(), signedCert.getIssuerName());
+    CPPUNIT_ASSERT_EQUAL(request.getName(), signedCert.getName());
+
+    // Check generated certificate
+    dht::crypto::TrustList list;
+    list.add(*ca.second);
+    auto v = list.verify(signedCert);
     CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
 }
 
