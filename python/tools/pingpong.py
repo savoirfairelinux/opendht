@@ -27,7 +27,7 @@ ping_node.run()
 pong_node = dht.DhtRunner()
 pong_node.run()
 #pong_node.enableLogging()
-pong_node.ping(ping_node.getBound());
+pong_node.ping(ping_node.getBound())
 
 loc_ping = dht.InfoHash.get("toto99")
 loc_pong = dht.InfoHash.get(str(loc_ping))

@@ -66,7 +66,7 @@ using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certific
  */
 struct OPENDHT_PUBLIC PublicKey
 {
-    PublicKey() {}
+    PublicKey();
 
     /**
      * Takes ownership of an existing gnutls_pubkey.
@@ -115,7 +115,9 @@ struct OPENDHT_PUBLIC PublicKey
 
     void msgpack_unpack(msgpack::object o);
 
-    gnutls_pubkey_t pk {};
+    gnutls_digest_algorithm_t getPreferredDigest() const;
+
+    gnutls_pubkey_t pk {nullptr};
 private:
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
@@ -254,14 +256,48 @@ private:
     RevocationList& operator=(const RevocationList&) = delete;
 };
 
+enum class NameType { UNKNOWN = 0, RFC822, DNS, URI, IP };
+
+class OPENDHT_PUBLIC CertificateRequest {
+public:
+    CertificateRequest();
+    CertificateRequest(const uint8_t* data, size_t size);
+    CertificateRequest(const Blob& data) : CertificateRequest(data.data(), data.size()) {}
+
+    CertificateRequest(CertificateRequest&& o) noexcept : request(std::move(o.request)) {
+        o.request = nullptr;
+    }
+    CertificateRequest& operator=(CertificateRequest&& o) noexcept;
+
+    ~CertificateRequest();
+
+    void setName(const std::string& name);
+    void setUID(const std::string& name);
+    void setAltName(NameType type, const std::string& name);
+
+    std::string getName() const;
+    std::string getUID() const;
+
+    void sign(const PrivateKey& key, const std::string& password = {});
+
+    bool verify() const;
+
+    Blob pack() const;
+
+    gnutls_x509_crq_t get() const { return request; }
+private:
+    CertificateRequest(const CertificateRequest& o) = delete;
+    CertificateRequest& operator=(const CertificateRequest& o) = delete;
+    gnutls_x509_crq_t request {nullptr};
+};
 
 struct OPENDHT_PUBLIC Certificate {
-    Certificate() {}
+    Certificate() noexcept {}
 
     /**
      * Take ownership of existing gnutls structure
      */
-    Certificate(gnutls_x509_crt_t crt) : cert(crt) {}
+    Certificate(gnutls_x509_crt_t crt) noexcept : cert(crt) {}
 
     Certificate(Certificate&& o) noexcept : cert(o.cert), issuer(std::move(o.issuer)) { o.cert = nullptr; };
 
@@ -392,8 +428,6 @@ struct OPENDHT_PUBLIC Certificate {
     /** Read certificate issuer User ID (UID) */
     std::string getIssuerUID() const;
 
-    enum class NameType { UNKNOWN = 0, RFC822, DNS, URI, IP };
-
     /** Read certificate alternative names */
     std::vector<std::pair<NameType, std::string>> getAltNames() const;
 
@@ -432,6 +466,7 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(std::shared_ptr<RevocationList>);
 
     static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false);
+    static Certificate generate(const CertificateRequest& request, const Identity& ca);
 
     gnutls_x509_crt_t getCopy() const {
         if (not cert)
@@ -472,7 +507,9 @@ struct OPENDHT_PUBLIC Certificate {
         return {crts, crls};
     }
 
-    gnutls_x509_crt_t cert {};
+    gnutls_digest_algorithm_t getPreferredDigest() const;
+
+    gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
 private:
     Certificate(const Certificate&) = delete;
@@ -513,7 +550,7 @@ struct OPENDHT_PUBLIC TrustList
 private:
     TrustList(const TrustList& o) = delete;
     TrustList& operator=(const TrustList& o) = delete;
-    gnutls_x509_trust_list_t trust;
+    gnutls_x509_trust_list_t trust {nullptr};
 };
 
 template <class T>
