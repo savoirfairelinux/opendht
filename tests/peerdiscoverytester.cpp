@@ -17,7 +17,7 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "peerDiscoverytester.h"
+#include "peerdiscoverytester.h"
 
 namespace test {
 
@@ -36,8 +36,8 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     char *add = address_ipv4;
     int port_node = 9999;
 
-    dht::PeerDiscovery test_Sender(AF_INET,8080);
-    dht::PeerDiscovery test_Listener(AF_INET,8080);
+    dht::PeerDiscovery test_Sender(AF_INET,port);
+    dht::PeerDiscovery test_Listener(AF_INET,port);
 
     std::thread t([&]{
 
@@ -65,8 +65,8 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
     char *add = address_ipv6;
     int port_node = 10000;
 
-    dht::PeerDiscovery test_Sender(AF_INET6,8080);
-    dht::PeerDiscovery test_Listener(AF_INET6,8080);
+    dht::PeerDiscovery test_Sender(AF_INET6,port);
+    dht::PeerDiscovery test_Listener(AF_INET6,port);
 
     std::thread t([&]{
 

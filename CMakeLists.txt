@@ -312,6 +312,8 @@ if (OPENDHT_TESTS)
       tests/cryptotester.cpp
       tests/dhtrunnertester.h
       tests/dhtrunnertester.cpp
+      tests/peerdiscoverytester.h
+      tests/peerdiscoverytester.cpp
     )
     if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
       list (APPEND test_FILES
