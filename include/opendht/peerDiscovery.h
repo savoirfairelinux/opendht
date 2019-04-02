@@ -56,7 +56,7 @@ public:
     void startDiscovery(PeerDiscoveredCallback callback, in_port_t port_to_avoid);
 
     /**
-     * startPublish - Listen
+     * startPublish - Send
     */
     void startPublish(dht::InfoHash nodeId, in_port_t port_to_send);
 

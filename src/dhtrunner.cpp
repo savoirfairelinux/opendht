@@ -157,7 +157,6 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
 
         peerDiscovery_p6_send.reset(new PeerDiscovery(AF_INET6,port_multicast));
         peerDiscovery_p6_send->startPublish(getNodeId(),getBoundPort());
-        //getNodeId(), getBoundPort()
 
     }
     if (config.peer_discovery) {
