@@ -19,7 +19,6 @@
 #pragma once
 
 #include "opendht/dhtrunner.h"
-#include "opendht/peerDiscovery.h"
 #ifdef OPENDHT_PROXY_SERVER
 #include "opendht/dht_proxy_server.h"
 #endif

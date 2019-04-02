@@ -28,31 +28,28 @@ void PeerDiscoveryTester::setUp(){}
 void PeerDiscoveryTester::testTransmission_ipv4(){
 
     // Node for getnode id
-    dht::DhtRunner node;
-    node.run(4222, dht::crypto::generateIdentity(), true);
+    uint8_t *data_n = dht::InfoHash::get("something").data();
 
     char address_ipv4[10] = "224.0.0.1";
     const int delay_secs = 1;
     int port = 8080;
     char *add = address_ipv4;
-    int port_node = node.getBoundPort();
+    int port_node = 9999;
 
     dht::PeerDiscovery test_Sender(AF_INET,8080);
     dht::PeerDiscovery test_Listener(AF_INET,8080);
 
     std::thread t([&]{
 
-        test_Listener.Listener_oneTimeShoot();
-        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", test_Listener.get_port_received() == port_node);
-        CPPUNIT_ASSERT_MESSAGE("Data receive Incorrect", node.getNodeId().data()[10] == test_Listener.get_node_id_received().data()[10] );
+        int received = test_Listener.listener_oneTimeShoot();
+        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
 
     });
 
     sleep(delay_secs);
-    test_Sender.Sender_oneTimeShoot(node.getNodeId(),node.getBoundPort());
+    test_Sender.sender_oneTimeShoot(data_n,9999);
 
     sleep(5);
-    node.join();
     t.join();
 
 }
@@ -60,31 +57,28 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
 void PeerDiscoveryTester::testTransmission_ipv6(){
 
     // Node for getnode id
-    dht::DhtRunner node;
-    node.run(42225, dht::crypto::generateIdentity(), true);
+    uint8_t *data_n = dht::InfoHash::get("something").data();
     
     char address_ipv6[11] = "ff12::1234";
     const int delay_secs = 1;
     const int port = 8081;
     char *add = address_ipv6;
-    int port_node = node.getBoundPort();
+    int port_node = 10000;
 
     dht::PeerDiscovery test_Sender(AF_INET6,8080);
     dht::PeerDiscovery test_Listener(AF_INET6,8080);
 
     std::thread t([&]{
 
-        test_Listener.Listener_oneTimeShoot();
-        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", test_Listener.get_port_received() == port_node);
-        CPPUNIT_ASSERT_MESSAGE("Data receive Incorrect", node.getNodeId().data()[10] == test_Listener.get_node_id_received().data()[10] );
+        int received = test_Listener.listener_oneTimeShoot();
+        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
 
     });
 
     sleep(delay_secs);
-    test_Sender.Sender_oneTimeShoot(node.getNodeId(),node.getBoundPort());
+    test_Sender.sender_oneTimeShoot(data_n,10000);
 
     sleep(5);
-    node.join();
     t.join();
 
 }

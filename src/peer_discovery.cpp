@@ -16,18 +16,18 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "peerDiscovery.h"
+#include "peer_discovery.h"
 
 namespace dht {
 
 constexpr char multicast_address_ipv4[10] = "224.0.0.1";
 constexpr char multicast_address_ipv6[11] = "ff12::1234";
 
-PeerDiscovery::PeerDiscovery(int domain, in_port_t port){
+PeerDiscovery::PeerDiscovery(sa_family_t domain, in_port_t port){
 
-    m_domain = domain;
-    m_port = port;
-    m_continue_to_run = true;
+    domain_ = domain;
+    port_ = port;
+    continue_to_run_ = true;
 
 }
 
@@ -38,13 +38,13 @@ PeerDiscovery::initialize_socket(){
     // Initialize Windows Socket API with given VERSION.
     if (WSAStartup(0x0101, &wsaData)) {
         perror("WSAStartup");
-        exit(EXIT_FAILURE);
+        throw std::runtime_error(std::string("Socket Creation Error_initialize_socket ") + strerror(errno));
     }
 #endif
 
-    m_sockfd = socket(m_domain, SOCK_DGRAM, 0);
-    if (m_sockfd < 0) {
-        throw std::runtime_error(std::string("Socket Creation Error_initialize_socket") + strerror(errno));
+    sockfd_ = socket(domain_, SOCK_DGRAM, 0);
+    if (sockfd_ < 0) {
+        throw std::runtime_error(std::string("Socket Creation Error_initialize_socket ") + strerror(errno));
     }
 
 }
@@ -54,51 +54,48 @@ PeerDiscovery::initialize_socketopt(){
 
     uint opt = 1;
 
-    if (setsockopt(m_sockfd, 
+    if (setsockopt(sockfd_, 
                    SOL_SOCKET, 
                    SO_REUSEADDR|SO_REUSEPORT, 
                    (char*) &opt, 
                    sizeof(opt)) < 0
     ){
-       throw std::runtime_error(std::string("Reusing ADDR failed_initialize_socketopt") + strerror(errno));
+       throw std::runtime_error(std::string("Reusing ADDR failed_initialize_socketopt ") + strerror(errno));
     }
 
 }
 
 void
-PeerDiscovery::initialize_sockaddr_Listener()
-{   
-    bzero(&m_sockaddr,sizeof(m_sockaddr));
-    m_sockaddr.setFamily(m_domain);
-    m_sockaddr.setPort(m_port);
-    m_sockaddr.setAny();
+PeerDiscovery::initialize_sockaddr_Listener(){   
+
+    sockaddr_.setFamily(domain_);
+    sockaddr_.setPort(port_);
+    sockaddr_.setAny();
 
     // bind to receive address
-    if (bind(m_sockfd, 
-             m_sockaddr.get(), 
-             m_sockaddr.getLength()) < 0
+    if (bind(sockfd_, 
+             sockaddr_.get(), 
+             sockaddr_.getLength()) < 0
     ){
 
-        throw std::runtime_error(std::string("bind_mcast_join") + strerror(errno));
+        throw std::runtime_error(std::string("bind_Listener ") + strerror(errno));
 
     }
 
 }
 
 void
-PeerDiscovery::initialize_sockaddr_Sender(){
+PeerDiscovery::initialize_sockaddr_Sender(){   
 
-    bzero(&m_sockaddr,sizeof(m_sockaddr));
-    m_sockaddr.setFamily(m_domain);
-    m_sockaddr.setPort(m_port);
-    m_sockaddr.setAddress(multicast_address_ipv4,multicast_address_ipv6);
+    sockaddr_ = SockAddr::parse(domain_, domain_ == AF_INET ? multicast_address_ipv4 : multicast_address_ipv6);
+    sockaddr_.setPort(port_);
 
 }
 
 void
 PeerDiscovery::mcast_join(){
 
-    switch (m_domain)
+    switch (domain_)
     {
         case AF_INET:
 
@@ -107,13 +104,13 @@ PeerDiscovery::mcast_join(){
             config_ipv4.imr_multiaddr.s_addr = inet_addr(multicast_address_ipv4);
             config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
 
-            if (setsockopt(m_sockfd, 
+            if (setsockopt(sockfd_, 
                            IPPROTO_IP, 
                            IP_ADD_MEMBERSHIP, 
                            (char*)&config_ipv4, 
                            sizeof(config_ipv4)) < 0
             ){
-                throw std::runtime_error(std::string("Setsockopt_mcast_join error:") + strerror(errno));
+                throw std::runtime_error(std::string("Setsockopt_mcast_join error ") + strerror(errno));
             }
 
             break;
@@ -123,13 +120,13 @@ PeerDiscovery::mcast_join(){
             struct ipv6_mreq config_ipv6;
             config_ipv6.ipv6mr_interface = 0;
             inet_pton(AF_INET6, multicast_address_ipv6, &config_ipv6.ipv6mr_multiaddr);
-            if (setsockopt(m_sockfd, 
+            if (setsockopt(sockfd_, 
                            IPPROTO_IPV6, 
                            IPV6_ADD_MEMBERSHIP, 
                            &config_ipv6, 
                            sizeof(config_ipv6)) < 0
             ){
-                throw std::runtime_error(std::string("setsockopt_mcast_join") + strerror(errno));
+                throw std::runtime_error(std::string("setsockopt_mcast_join ") + strerror(errno));
             }
 
             break;
@@ -142,16 +139,16 @@ void
 PeerDiscovery::m_sendto(uint8_t *buf,size_t &buf_size){
 
     int nbytes = sendto(
-        m_sockfd,
+        sockfd_,
         buf,
         buf_size,
         0,
-        m_sockaddr.get(),
-        m_sockaddr.getLength()
+        sockaddr_.get(),
+        sockaddr_.getLength()
     );
     if (nbytes < 0) {
 
-        throw std::runtime_error(std::string("sendto_m_sendto") + strerror(errno));
+        throw std::runtime_error(std::string("sendto_m_sendto ") + strerror(errno));
 
     }
 
@@ -160,23 +157,28 @@ PeerDiscovery::m_sendto(uint8_t *buf,size_t &buf_size){
 void
 PeerDiscovery::m_recvfrom(uint8_t *buf,size_t &buf_size)
 {
-    socklen_t sa_len = sizeof(m_sockaddr);
+    struct sockaddr_storage storeage_recv;
+    memcpy (&storeage_recv, sockaddr_.get(), sizeof (sockaddr_));
+    socklen_t sa_len = sizeof(storeage_recv);
     int nbytes = recvfrom(
-        m_sockfd,
+        sockfd_,
         buf,
         buf_size,
         0,
-        m_sockaddr.get(),
+        (sockaddr*)&storeage_recv,
         &sa_len
     );
     if (nbytes < 0) {
-        throw std::runtime_error(std::string("recvfrom_m_recvfrom") + strerror(errno));
+        throw std::runtime_error(std::string("recvfrom_m_recvfrom ") + strerror(errno));
     }
+
+    SockAddr received_addrr (storeage_recv,sizeof(storeage_recv));
+    sockaddr_ = std::move(received_addrr);
 
 }
 
 void
-PeerDiscovery::Sender_oneTimeShoot(dht::InfoHash nodeId, in_port_t port_to_send){
+PeerDiscovery::sender_oneTimeShoot(uint8_t * data_n, in_port_t port_to_send){
 
     //Set up for Sender
     initialize_socket();
@@ -184,7 +186,6 @@ PeerDiscovery::Sender_oneTimeShoot(dht::InfoHash nodeId, in_port_t port_to_send)
 
     //Setup for send data
     uint8_t data_send[22];
-    uint8_t *x = nodeId.data();
 
     size_t data_send_size = 22;
     int port_node = port_to_send;
@@ -192,7 +193,7 @@ PeerDiscovery::Sender_oneTimeShoot(dht::InfoHash nodeId, in_port_t port_to_send)
     PeerDiscovery::inttolitend(port_node,port_node_binary);
 
     //Copy Node id and node port
-    memcpy (data_send, x, 20);
+    memcpy (data_send, data_n, 20);
     data_send[20] = port_node_binary[0];
     data_send[21] = port_node_binary[1];
 
@@ -200,8 +201,8 @@ PeerDiscovery::Sender_oneTimeShoot(dht::InfoHash nodeId, in_port_t port_to_send)
 
 }
 
-void
-PeerDiscovery::Listener_oneTimeShoot(){
+uint32_t
+PeerDiscovery::listener_oneTimeShoot(){
 
     initialize_socket();
     initialize_socketopt();
@@ -219,13 +220,12 @@ PeerDiscovery::Listener_oneTimeShoot(){
     data_port[0] = data_receive[20];
     data_port[1] = data_receive[21];
 
-    m_port_received = PeerDiscovery::litendtoint(data_port);
-    m_node_id_received = dht::InfoHash(data_infohash, 20);
+    return PeerDiscovery::litendtoint(data_port);
 
 }
 
 void
-PeerDiscovery::Sender_Setup(dht::InfoHash nodeId, in_port_t port_to_send){
+PeerDiscovery::sender_setup(dht::InfoHash nodeId, in_port_t port_to_send){
 
     //Set up for Sender
     initialize_socket();
@@ -238,33 +238,28 @@ PeerDiscovery::Sender_Setup(dht::InfoHash nodeId, in_port_t port_to_send){
     PeerDiscovery::inttolitend(port_node,port_node_binary);
 
     //Copy Node id and node port
-    memcpy (m_data_send, x, 20);
-    m_data_send[20] = port_node_binary[0];
-    m_data_send[21] = port_node_binary[1];
+    memcpy (data_send_, x, 20);
+    data_send_[20] = port_node_binary[0];
+    data_send_[21] = port_node_binary[1];
     
 }
 
 void
-PeerDiscovery::SenderThread(bool &continues){
+PeerDiscovery::sender_thread(bool &continues){
 
+    std::mutex mtx;
+    std::unique_lock<std::mutex> lck(mtx);
     while(continues){
         
-        m_sendto(m_data_send,m_data_size);
-        sleep(5);
+        m_sendto(data_send_,data_size_);
+        cv_.wait_for(lck,std::chrono::seconds(3));
 
     }
 
 }
 
 void
-PeerDiscovery::Sender_Loop(){
-
-    m_running = std::thread(&PeerDiscovery::SenderThread, this, std::ref(m_continue_to_run));
-
-}
-
-void
-PeerDiscovery::Listener_Setup(){
+PeerDiscovery::listener_setup(){
 
     initialize_socket();
     initialize_socketopt();
@@ -274,28 +269,28 @@ PeerDiscovery::Listener_Setup(){
 }
 
 void
-PeerDiscovery::Listener_Thread(PeerDiscoveredCallback callback, bool &continues){
+PeerDiscovery::listener_thread(PeerDiscoveredCallback callback, bool &continues){
 
 #ifndef _WIN32
-    auto status = pipe(m_stopfds_pipe);
+    auto status = pipe(stopfds_pipe_);
     if (status == -1) {
-        throw DhtException(std::string("Can't open pipe: ") + strerror(errno));
+        throw std::runtime_error(std::string("Can't open pipe: ") + strerror(errno));
     }
 #else
     udpPipe(stopfds);
 #endif
-    m_stop_readfd = m_stopfds_pipe[0];
-    m_stop_writefd = m_stopfds_pipe[1];
+    stop_readfd_ = stopfds_pipe_[0];
+    stop_writefd_ = stopfds_pipe_[1];
 
     while(continues){
         
         fd_set readfds;
 
         FD_ZERO(&readfds);
-        FD_SET(m_stop_readfd, &readfds);
-        FD_SET(m_sockfd, &readfds);
+        FD_SET(stop_readfd_, &readfds);
+        FD_SET(sockfd_, &readfds);
 
-        int data_coming = select(m_sockfd + 1, &readfds, nullptr, nullptr, nullptr);
+        int data_coming = select(sockfd_ + 1, &readfds, nullptr, nullptr, nullptr);
         if(data_coming < 0) {
             if(errno != EINTR) {
                 perror("select");
@@ -305,7 +300,7 @@ PeerDiscovery::Listener_Thread(PeerDiscoveredCallback callback, bool &continues)
 
         if(data_coming > 0){
             
-            if(FD_ISSET(m_stop_readfd,&readfds)){ break; }
+            if(FD_ISSET(stop_readfd_,&readfds)){ break; }
 
             size_t data_receive_size = 22;
             uint8_t data_receive[22];
@@ -322,46 +317,37 @@ PeerDiscovery::Listener_Thread(PeerDiscoveredCallback callback, bool &continues)
             auto port = PeerDiscovery::litendtoint(data_port);
             auto nodeId = dht::InfoHash(data_infohash, 20);
 
-            if(m_port_self != port){
+            if(port_self_ != port){
 
-                m_sockaddr.setPort(port);
-                callback(nodeId, m_sockaddr);
+                sockaddr_.setPort(port);
+                callback(nodeId, sockaddr_);
 
             }
-            sleep(1);
 
         }
 
     }
-    if (m_stop_readfd != -1)
-        close(m_stop_readfd);
-    if (m_stop_writefd != -1)
-        close(m_stop_writefd);
-
-}
-
-void 
-PeerDiscovery::Listener_Loop(PeerDiscoveredCallback callback)
-{
-
-    m_running = std::thread(&PeerDiscovery::Listener_Thread, this, callback,std::ref(m_continue_to_run));
+    if (stop_readfd_ != -1)
+        close(stop_readfd_);
+    if (stop_writefd_ != -1)
+        close(stop_writefd_);
 
 }
 
 void
 PeerDiscovery::startDiscovery(PeerDiscoveredCallback callback, in_port_t port_to_avoid){
 
-    m_port_self = port_to_avoid;
-    Listener_Setup();
-    Listener_Loop(callback);
+    port_self_ = port_to_avoid;
+    listener_setup();
+    running_ = std::thread(&PeerDiscovery::listener_thread, this, callback,std::ref(continue_to_run_));
 
 }
 
 void
 PeerDiscovery::startPublish(dht::InfoHash nodeId, in_port_t port_to_send){
 
-    Sender_Setup(nodeId,port_to_send);
-    Sender_Loop();
+    sender_setup(nodeId,port_to_send);
+    running_ = std::thread(&PeerDiscovery::sender_thread, this, std::ref(continue_to_run_));
 
 }
 
@@ -371,7 +357,7 @@ PeerDiscovery::~PeerDiscovery()
 #ifdef _WIN32
     WSACleanup();
 #endif
-    close(m_sockfd);
+    close(sockfd_);
 
 }
 

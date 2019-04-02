@@ -20,7 +20,7 @@
 
 #include "dhtrunner.h"
 #include "securedht.h"
-#include "peerDiscovery.h"
+#include "peer_discovery.h"
 
 #ifdef OPENDHT_PROXY_CLIENT
 #include "dht_proxy_client.h"
@@ -175,6 +175,7 @@ void DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
     {
         std::unique_lock<std::mutex> lck(storage_mtx);
         pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
+            std::cout<<address.getPort()<<std::endl;
             dht.insertNode(id, address);
         });
     }
@@ -202,10 +203,10 @@ DhtRunner::join()
     peerDiscovery_p4_listen->stop(true);
     peerDiscovery_p6_send->stop(false);
     peerDiscovery_p6_listen->stop(true);
-    if(peerDiscovery_p4_send->m_running.joinable()) { peerDiscovery_p4_send->m_running.join(); }
-    if(peerDiscovery_p4_listen->m_running.joinable()) { peerDiscovery_p4_listen->m_running.join(); }
-    if(peerDiscovery_p6_send->m_running.joinable()) { peerDiscovery_p6_send->m_running.join(); }
-    if(peerDiscovery_p6_listen->m_running.joinable()) { peerDiscovery_p6_listen->m_running.join(); }
+    if(peerDiscovery_p4_send->is_thread_joinable()) { peerDiscovery_p4_send->join_thread(); }
+    if(peerDiscovery_p4_listen->is_thread_joinable()) { peerDiscovery_p4_listen->join_thread(); }
+    if(peerDiscovery_p6_send->is_thread_joinable()) { peerDiscovery_p6_send->join_thread(); }
+    if(peerDiscovery_p6_listen->is_thread_joinable()) { peerDiscovery_p6_listen->join_thread(); }
 
     stopNetwork();
     running = false;

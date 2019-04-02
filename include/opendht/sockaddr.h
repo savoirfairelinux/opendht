@@ -23,6 +23,7 @@
 #ifndef _WIN32
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #ifdef __ANDROID__
 typedef uint16_t in_port_t;
 #endif
@@ -89,6 +90,8 @@ public:
     SockAddr(const sockaddr_storage& ss, socklen_t len) : SockAddr((const sockaddr*)&ss, len) {}
 
     static std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {});
+
+    static SockAddr parse(sa_family_t family, const char* address);
 
     bool operator<(const SockAddr& o) const {
         if (len != o.len)
@@ -157,23 +160,6 @@ public:
             break;
         case AF_INET6:
             getIPv6().sin6_addr = in6addr_any;
-            break;
-        }
-    }
-
-    /**
-     * Set Ip Address
-     */
-    void setAddress(const char* p4,const char* p6) {
-        auto family = getFamily();
-        switch(family) {
-        case AF_INET:
-            getIPv4().sin_addr.s_addr = inet_addr(p4);
-            break;
-        case AF_INET6:
-            if(inet_pton(AF_INET6,p6,&getIPv6().sin6_addr) <= 0){
-                throw std::runtime_error("inet_pton_initialize_sockaddr");
-            }
             break;
         }
     }

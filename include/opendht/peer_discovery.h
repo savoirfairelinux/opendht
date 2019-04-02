@@ -18,7 +18,8 @@
 
 #pragma once
 
-#include "dhtrunner.h"
+#include "sockaddr.h"
+#include "infohash.h"
 
 #ifdef _WIN32
 #include <Winsock2.h> // before Windows.h, else Winsock 1 conflict
@@ -29,7 +30,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <time.h>
 #endif
 
 #include <string.h>
@@ -37,7 +37,10 @@
 #include <stdlib.h>
 #include <unistd.h> 
 
+#include <thread>
 #include <string>
+#include <mutex>
+#include <condition_variable>
 
 namespace dht {
 
@@ -47,7 +50,7 @@ public:
 
     using PeerDiscoveredCallback = std::function<void(const InfoHash&, const SockAddr&)>;
 
-    PeerDiscovery(int domain, in_port_t port);
+    PeerDiscovery(sa_family_t domain, in_port_t port);
     ~PeerDiscovery();
     
     /**
@@ -63,12 +66,12 @@ public:
     /**
      * Send socket procudure start - one time sender
     */
-    void Sender_oneTimeShoot(dht::InfoHash nodeId, in_port_t port_to_send);
+    void sender_oneTimeShoot(uint8_t * data_n, in_port_t port_to_send);
 
     /**
      * Listener socket procudure start - one time Listen
     */
-    void Listener_oneTimeShoot();
+    uint32_t listener_oneTimeShoot();
 
     /**
      * Thread Stopper
@@ -76,11 +79,12 @@ public:
     void stop(bool listenorsend){ 
         
         continue_to_run_setter(false);
+        cv_.notify_one();
         if(listenorsend) {
 
-            close(m_stop_readfd);
-            if (m_stop_writefd != -1) {
-                if (write(m_stop_writefd, "\0", 1) == -1) {
+            close(stop_readfd_);
+            if (stop_writefd_ != -1) {
+                if (write(stop_writefd_, "\0", 1) == -1) {
                     perror("write");
                 }
             }
@@ -92,52 +96,39 @@ public:
     /**
      * Getter and Setters
     */
-    std::thread::id running_threadid_get(){
-
-        return m_running.get_id();
-
-    }
-    SockAddr get_sockAddr(){
-
-        return m_sockaddr;
-
-    }
-    dht::InfoHash get_node_id_received(){
-
-        return m_node_id_received;
-
-    }
-    int get_port_received(){
-
-        return m_port_received;
-
-    }
     void continue_to_run_setter(bool continue_to_run){
 
-        m_continue_to_run = continue_to_run;
+        continue_to_run_ = continue_to_run;
 
     }
-    //Thread export to be joined 
-    std::thread m_running;
+    bool is_thread_joinable(){
+
+        return running_.joinable();
+
+    }
+    void join_thread(){
+
+        running_.join();
+
+    }
     
 private:
     
-    int m_domain;
-    int m_sockfd;
-    SockAddr m_sockaddr;
-    int m_port;
-    in_port_t m_port_self;
-    uint8_t m_data_send[22];
-    size_t m_data_size = 22;
+    sa_family_t domain_;
+    int sockfd_;
+    SockAddr sockaddr_;
+    int port_;
+    in_port_t port_self_;
+    uint8_t data_send_[22];
+    size_t data_size_ = 22;
 
-    bool m_continue_to_run;
-    int m_stopfds_pipe[2];
-    int m_stop_readfd;
-    int m_stop_writefd;
-
-    //Data to export - Listener Socket Test Only
-    dht::InfoHash m_node_id_received;
-    int m_port_received;
+    bool continue_to_run_;
+    int stopfds_pipe_[2];
+    int stop_readfd_;
+    int stop_writefd_;
+    std::condition_variable cv_;
+    //Thread export to be joined 
+    std::thread running_;
 
     /**
      * Multicast Socket Initialization, accept IPV4, IPV6 
@@ -166,44 +157,34 @@ private:
     void mcast_join();
 
     /**
-     * send messages
+     * Send messages
     */
     void m_sendto(uint8_t *buf,size_t &buf_size);
 
     /**
-     * send messages
+     * Receive messages
     */
     void m_recvfrom(uint8_t *buf,size_t &buf_size);
 
     /**
      * Send thread loop
     */
-    void SenderThread(bool &continues);
+    void sender_thread(bool &continues);
 
     /**
      * Listener thread loop
     */
-    void Listener_Thread(PeerDiscoveredCallback callback,bool &continues);
+    void listener_thread(PeerDiscoveredCallback callback,bool &continues);
 
     /**
      * Listener Parameters Setup
     */
-    void Listener_Setup();
-
-    /**
-     * Listener socket procudure start - Loop Listen
-    */
-    void Listener_Loop(PeerDiscoveredCallback callback);
+    void listener_setup();
 
     /**
      * Sender Parameters Setup
     */
-    void Sender_Setup(dht::InfoHash nodeId, in_port_t port_to_send);
-
-    /**
-     * Send socket procudure start - Loop send
-    */
-    void Sender_Loop();
+    void sender_setup(dht::InfoHash nodeId, in_port_t port_to_send);
 
     /**
      * Binary Converters
