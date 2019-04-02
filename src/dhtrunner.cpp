@@ -150,24 +150,29 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     });
 
     using sig = void (DhtRunner::*)(const InfoHash&, const SockAddr&);
-    if(config.peer_publish){
-
-        peerDiscovery_p4_send.reset(new PeerDiscovery(AF_INET,port_multicast));
-        peerDiscovery_p4_send->startPublish(getNodeId(),getBoundPort());
-
-        peerDiscovery_p6_send.reset(new PeerDiscovery(AF_INET6,port_multicast));
-        peerDiscovery_p6_send->startPublish(getNodeId(),getBoundPort());
-
-    }
+    peerDiscovery_p4.reset(new PeerDiscovery(AF_INET,port_multicast));
+    peerDiscovery_p6.reset(new PeerDiscovery(AF_INET6,port_multicast));
     if (config.peer_discovery) {
 
-        peerDiscovery_p4_listen.reset(new PeerDiscovery(AF_INET,port_multicast));
-        peerDiscovery_p4_listen->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),this,std::placeholders::_1,std::placeholders::_2),getBoundPort());
-
-        peerDiscovery_p6_listen.reset(new PeerDiscovery(AF_INET6,port_multicast));
-        peerDiscovery_p6_listen->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),this,std::placeholders::_1,std::placeholders::_2),getBoundPort());
+        peerDiscovery_p4->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),
+                                                   this,
+                                                   std::placeholders::_1,std::placeholders::_2),
+                                                   getNodeId()
+                                        );
+        peerDiscovery_p6->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),
+                                                   this,
+                                                   std::placeholders::_1,std::placeholders::_2),
+                                                   getNodeId()
+                                        );
 
     }
+    if(config.peer_publish){
+
+        peerDiscovery_p4->startPublish(getNodeId(),getBoundPort());
+        peerDiscovery_p6->startPublish(getNodeId(),getBoundPort());
+
+    }
+
 }
 
 void DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
@@ -175,7 +180,6 @@ void DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
     {
         std::unique_lock<std::mutex> lck(storage_mtx);
         pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
-            std::cout<<address.getPort()<<std::endl;
             dht.insertNode(id, address);
         });
     }
@@ -199,14 +203,10 @@ void
 DhtRunner::join()
 {   
 
-    peerDiscovery_p4_send->stop(false);
-    peerDiscovery_p4_listen->stop(true);
-    peerDiscovery_p6_send->stop(false);
-    peerDiscovery_p6_listen->stop(true);
-    if(peerDiscovery_p4_send->is_thread_joinable()) { peerDiscovery_p4_send->join_thread(); }
-    if(peerDiscovery_p4_listen->is_thread_joinable()) { peerDiscovery_p4_listen->join_thread(); }
-    if(peerDiscovery_p6_send->is_thread_joinable()) { peerDiscovery_p6_send->join_thread(); }
-    if(peerDiscovery_p6_listen->is_thread_joinable()) { peerDiscovery_p6_listen->join_thread(); }
+    peerDiscovery_p4->stop();
+    peerDiscovery_p6->stop();
+    peerDiscovery_p4->join();
+    peerDiscovery_p6->join();
 
     stopNetwork();
     running = false;

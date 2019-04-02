@@ -28,26 +28,21 @@ void PeerDiscoveryTester::setUp(){}
 void PeerDiscoveryTester::testTransmission_ipv4(){
 
     // Node for getnode id
-    uint8_t *data_n = dht::InfoHash::get("something").data();
+    dht::InfoHash data_n = dht::InfoHash::get("something");
+    int port = 2222;
+    int port_node = 50000;
 
-    char address_ipv4[10] = "224.0.0.1";
-    const int delay_secs = 1;
-    int port = 8080;
-    char *add = address_ipv4;
-    int port_node = 9999;
-
-    dht::PeerDiscovery test_Sender(AF_INET,port);
-    dht::PeerDiscovery test_Listener(AF_INET,port);
+    dht::PeerDiscovery test(AF_INET,port);
 
     std::thread t([&]{
 
-        int received = test_Listener.listener_oneTimeShoot();
+        int received = test.discoveryOnce();
         CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
 
     });
 
-    sleep(delay_secs);
-    test_Sender.sender_oneTimeShoot(data_n,9999);
+    sleep(1);
+    test.publishOnce(data_n,port_node);
 
     sleep(5);
     t.join();
@@ -57,26 +52,21 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
 void PeerDiscoveryTester::testTransmission_ipv6(){
 
     // Node for getnode id
-    uint8_t *data_n = dht::InfoHash::get("something").data();
-    
-    char address_ipv6[11] = "ff12::1234";
-    const int delay_secs = 1;
-    const int port = 8081;
-    char *add = address_ipv6;
-    int port_node = 10000;
+    dht::InfoHash data_n = dht::InfoHash::get("something");
+    const int port = 2223;
+    int port_node = 50001;
 
-    dht::PeerDiscovery test_Sender(AF_INET6,port);
-    dht::PeerDiscovery test_Listener(AF_INET6,port);
+    dht::PeerDiscovery test(AF_INET6,port);
 
     std::thread t([&]{
 
-        int received = test_Listener.listener_oneTimeShoot();
+        int received = test.discoveryOnce();
         CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
 
     });
 
-    sleep(delay_secs);
-    test_Sender.sender_oneTimeShoot(data_n,10000);
+    sleep(1);
+    test.publishOnce(data_n,port_node);
 
     sleep(5);
     t.join();

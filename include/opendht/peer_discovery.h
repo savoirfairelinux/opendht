@@ -21,24 +21,11 @@
 #include "sockaddr.h"
 #include "infohash.h"
 
-#ifdef _WIN32
-#include <Winsock2.h> // before Windows.h, else Winsock 1 conflict
-#include <Ws2tcpip.h> // needed for ip_mreq definition for multicast
-#include <Windows.h>
-#else
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#endif
-
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h> 
 
 #include <thread>
-#include <string>
 #include <mutex>
 #include <condition_variable>
 
@@ -56,39 +43,35 @@ public:
     /**
      * startDiscovery - Listen
     */
-    void startDiscovery(PeerDiscoveredCallback callback, in_port_t port_to_avoid);
+    void startDiscovery(PeerDiscoveredCallback callback, const dht::InfoHash &nodeId);
 
     /**
      * startPublish - Send
     */
-    void startPublish(dht::InfoHash nodeId, in_port_t port_to_send);
+    void startPublish(const dht::InfoHash &nodeId, in_port_t port_to_send);
 
     /**
      * Send socket procudure start - one time sender
     */
-    void sender_oneTimeShoot(uint8_t * data_n, in_port_t port_to_send);
+    void publishOnce(const dht::InfoHash &nodeId, in_port_t port_to_send);
 
     /**
      * Listener socket procudure start - one time Listen
     */
-    uint32_t listener_oneTimeShoot();
+    uint32_t discoveryOnce();
 
     /**
      * Thread Stopper
     */
-    void stop(bool listenorsend){ 
+    void stop(){ 
         
-        continue_to_run_setter(false);
         cv_.notify_one();
-        if(listenorsend) {
-
-            close(stop_readfd_);
-            if (stop_writefd_ != -1) {
-                if (write(stop_writefd_, "\0", 1) == -1) {
-                    perror("write");
-                }
+        running_ = false;
+        close(stop_readfd_);
+        if (stop_writefd_ != -1) {
+            if (write(stop_writefd_, "\0", 1) == -1) {
+                perror("write");
             }
-
         }
 
     }
@@ -96,39 +79,32 @@ public:
     /**
      * Getter and Setters
     */
-    void continue_to_run_setter(bool continue_to_run){
+    void join(){
 
-        continue_to_run_ = continue_to_run;
-
-    }
-    bool is_thread_joinable(){
-
-        return running_.joinable();
-
-    }
-    void join_thread(){
-
-        running_.join();
+        if(running_listen.joinable()){ running_listen.join(); };
+        if(running_send.joinable()){ running_send.join(); };
 
     }
     
 private:
-    
+
+    bool running_ {true};
     sa_family_t domain_;
     int sockfd_;
-    SockAddr sockaddr_;
+
+    SockAddr sockAddrSend_;
     int port_;
-    in_port_t port_self_;
     uint8_t data_send_[22];
     size_t data_size_ = 22;
 
-    bool continue_to_run_;
     int stopfds_pipe_[2];
     int stop_readfd_;
     int stop_writefd_;
     std::condition_variable cv_;
     //Thread export to be joined 
-    std::thread running_;
+    std::thread running_listen;
+    std::thread running_send;
+    dht::InfoHash nodeId_;
 
     /**
      * Multicast Socket Initialization, accept IPV4, IPV6 
@@ -147,11 +123,6 @@ private:
     void initialize_sockaddr_Listener();
 
     /**
-     * Socket Address Structure Initialization for both Sender 
-    */
-    void initialize_sockaddr_Sender();
-
-    /**
      * Configure the listener to be insterested in joining the IP multicast group
     */
     void mcast_join();
@@ -159,22 +130,22 @@ private:
     /**
      * Send messages
     */
-    void m_sendto(uint8_t *buf,size_t &buf_size);
+    void m_sendto(uint8_t *buf,const size_t &buf_size);
 
     /**
      * Receive messages
     */
-    void m_recvfrom(uint8_t *buf,size_t &buf_size);
+    SockAddr m_recvfrom(uint8_t *buf,const size_t &buf_size);
 
     /**
      * Send thread loop
     */
-    void sender_thread(bool &continues);
+    void sender_thread();
 
     /**
      * Listener thread loop
     */
-    void listener_thread(PeerDiscoveredCallback callback,bool &continues);
+    void listener_thread(PeerDiscoveredCallback callback);
 
     /**
      * Listener Parameters Setup
@@ -184,7 +155,7 @@ private:
     /**
      * Sender Parameters Setup
     */
-    void sender_setup(dht::InfoHash nodeId, in_port_t port_to_send);
+    void sender_setup(const uint8_t * data_n, in_port_t port_to_send);
 
     /**
      * Binary Converters
