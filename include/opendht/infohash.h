@@ -65,7 +65,7 @@ public:
     typedef typename T::iterator iterator;
     typedef typename T::const_iterator const_iterator;
 
-    Hash () {
+    Hash () noexcept {
         data_.fill(0);
     }
     Hash (const uint8_t* h, size_t data_len) {
@@ -85,7 +85,7 @@ public:
         msgpack_unpack(o);
     }
 
-    size_t size() const { return data_.size(); }
+    constexpr size_t size() const noexcept { return data_.size(); }
     const uint8_t* data() const { return data_.data(); }
     uint8_t* data() { return data_.data(); }
     iterator begin() { return data_.begin(); }
