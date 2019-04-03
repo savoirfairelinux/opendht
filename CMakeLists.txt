@@ -177,6 +177,10 @@ list (APPEND opendht_HEADERS
     include/opendht.h
 )
 
+if (OPENDHT_PYTHON)
+    message("Indexation enabled since it is required for Python support")
+    set(OPENDHT_INDEX ON)
+endif()
 if (OPENDHT_INDEX)
     list (APPEND opendht_SOURCES src/indexation/pht.cpp)
     list (APPEND opendht_HEADERS include/opendht/indexation/pht.h)
