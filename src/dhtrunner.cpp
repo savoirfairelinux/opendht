@@ -613,7 +613,8 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                 if(s6 >= 0)
                     FD_SET(s6, &readfds);
 
-                int rc = select(s4 > s6 ? s4 + 1 : s6 + 1, &readfds, nullptr, nullptr, nullptr);
+                int selectFd = std::max({s4, s6, stop_readfd}) + 1;
+                int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
                 if(rc < 0) {
                     if(errno != EINTR) {
                         perror("select");
