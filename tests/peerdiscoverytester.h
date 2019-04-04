@@ -30,7 +30,7 @@ class PeerDiscoveryTester : public CppUnit::TestFixture {
 
     CPPUNIT_TEST_SUITE(PeerDiscoveryTester);
     CPPUNIT_TEST(testTransmission_ipv4);
-    CPPUNIT_TEST(testTransmission_ipv6);
+   // CPPUNIT_TEST(testTransmission_ipv6);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -49,7 +49,7 @@ class PeerDiscoveryTester : public CppUnit::TestFixture {
     /**
      * Test Multicast Transmission Ipv6
      */
-    void testTransmission_ipv6();
+    //void testTransmission_ipv6();
 
 };
 
