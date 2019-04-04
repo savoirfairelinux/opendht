@@ -115,7 +115,7 @@ struct Storage {
         return {};
     }
 
-    std::vector<Sp<Value>> get(Value::Filter f = {}) const {
+    std::vector<Sp<Value>> get(const Value::Filter& f = {}) const {
         std::vector<Sp<Value>> newvals {};
         if (not f) newvals.reserve(values.size());
         for (auto& v : values) {

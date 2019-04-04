@@ -163,7 +163,7 @@ public:
     /**
      * Get locally stored data for the given hash.
      */
-    std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = {}) const;
+    std::vector<Sp<Value>> getLocal(const InfoHash& key, const Value::Filter& f = {}) const;
 
     /**
      * Get locally stored data for the given key and value id.
@@ -210,12 +210,12 @@ public:
     /**
      * Get data currently being put at the given hash.
      */
-    std::vector<Sp<Value>> getPut(const InfoHash&);
+    std::vector<Sp<Value>> getPut(const InfoHash&) const;
 
     /**
      * Get data currently being put at the given hash with the given id.
      */
-    Sp<Value> getPut(const InfoHash&, const Value::Id&);
+    Sp<Value> getPut(const InfoHash&, const Value::Id&) const;
 
     /**
      * Stop any put/announce operation at the given location,

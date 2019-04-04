@@ -110,7 +110,7 @@ DhtProxyClient::~DhtProxyClient()
 }
 
 std::vector<Sp<Value>>
-DhtProxyClient::getLocal(const InfoHash& k, Value::Filter filter) const {
+DhtProxyClient::getLocal(const InfoHash& k, const Value::Filter& filter) const {
     std::lock_guard<std::mutex> lock(searchLock_);
     auto s = searches_.find(k);
     if (s == searches_.end())
@@ -445,7 +445,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
  * Get data currently being put at the given hash.
  */
 std::vector<Sp<Value>>
-DhtProxyClient::getPut(const InfoHash& key) {
+DhtProxyClient::getPut(const InfoHash& key) const {
     std::vector<Sp<Value>> ret;
     auto search = searches_.find(key);
     if (search != searches_.end()) {
@@ -460,7 +460,7 @@ DhtProxyClient::getPut(const InfoHash& key) {
  * Get data currently being put at the given hash with the given id.
  */
 Sp<Value>
-DhtProxyClient::getPut(const InfoHash& key, const Value::Id& id) {
+DhtProxyClient::getPut(const InfoHash& key, const Value::Id& id) const {
     auto search = searches_.find(key);
     if (search == searches_.end())
         return {};
