@@ -986,19 +986,15 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
 {
     scheduler.syncTime();
 
-    auto q = std::make_shared<Query>(Select {}, std::move(where));
     auto op = std::make_shared<GetStatus<std::map<Value::Id, Sp<Value>>>>();
-    auto f = filter.chain(q->where.getFilter());
-
-    auto gcb = [getcb, donecb, op, f](const std::vector<Sp<Value>>& vals) {
+    auto gcb = [getcb, donecb, op](const std::vector<Sp<Value>>& vals) {
         auto& o = *op;
-        return callbackWrapper(getcb, donecb, vals, [&o,&f](const std::vector<Sp<Value>>& values) {
+        return callbackWrapper(getcb, donecb, vals, [&o](const std::vector<Sp<Value>>& values) {
             std::vector<Sp<Value>> newvals {};
             for (const auto& v : values) {
                 auto it = o.values.find(v->id);
                 if (it == o.values.cend() or (it->second != v && !(*it->second == *v))) {
-                    if (not f or f(*v))
-                        newvals.push_back(v);
+                    newvals.push_back(v);
                 }
             }
             return newvals;
@@ -1007,6 +1003,9 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
                 o.values[v->id] = v;
         }, o);
     };
+
+    auto q = std::make_shared<Query>(Select {}, std::move(where));
+    auto f = filter.chain(q->where.getFilter());
 
     /* Try to answer this search locally. */
     gcb(getLocal(id, f));
@@ -1075,7 +1074,7 @@ void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Quer
 }
 
 std::vector<Sp<Value>>
-Dht::getLocal(const InfoHash& id, Value::Filter f) const
+Dht::getLocal(const InfoHash& id, const Value::Filter& f) const
 {
     auto s = store.find(id);
     if (s == store.end()) return {};
@@ -1092,17 +1091,14 @@ Dht::getLocalById(const InfoHash& id, Value::Id vid) const
 }
 
 std::vector<Sp<Value>>
-Dht::getPut(const InfoHash& id)
+Dht::getPut(const InfoHash& id) const
 {
     std::vector<Sp<Value>> ret;
-    auto find_values = [&](std::map<InfoHash, Sp<Search>> srs) {
+    auto find_values = [&](const std::map<InfoHash, Sp<Search>>& srs) {
         auto srp = srs.find(id);
-        if (srp == srs.end())
-            return;
-        auto& search = srp->second;
-        ret.reserve(ret.size() + search->announce.size());
-        for (const auto& a : search->announce)
-            ret.push_back(a.value);
+        if (srp == srs.end()) return;
+        auto vals = srp->second->getPut();
+        ret.insert(ret.end(), vals.begin(), vals.end());
     };
     find_values(searches4);
     find_values(searches6);
@@ -1110,18 +1106,11 @@ Dht::getPut(const InfoHash& id)
 }
 
 Sp<Value>
-Dht::getPut(const InfoHash& id, const Value::Id& vid)
+Dht::getPut(const InfoHash& id, const Value::Id& vid) const
 {
-    auto find_value = [&](std::map<InfoHash, Sp<Search>> srs) {
+    auto find_value = [&](const std::map<InfoHash, Sp<Search>>& srs) {
         auto srp = srs.find(id);
-        if (srp == srs.end())
-            return Sp<Value> {};
-        auto& search = srp->second;
-        for (auto& a : search->announce) {
-            if (a.value->id == vid)
-                return a.value;
-        }
-        return Sp<Value> {};
+        return (srp != srs.end()) ? srp->second->getPut(vid) : Sp<Value> {};
     };
     if (auto v4 = find_value(searches4))
         return v4;
@@ -1134,28 +1123,16 @@ bool
 Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 {
     bool canceled {false};
-    if (storageErase(id, vid))
-        canceled = true;
-    auto sr_cancel_put = [&](std::map<InfoHash, Sp<Search>> srs) {
+    auto sr_cancel_put = [&](std::map<InfoHash, Sp<Search>>& srs) {
         auto srp = srs.find(id);
-        if (srp == srs.end())
-            return;
-
-        auto& sr = srp->second;
-        for (auto it = sr->announce.begin(); it != sr->announce.end();) {
-            if (it->value->id == vid) {
-                canceled = true;
-                it = sr->announce.erase(it);
-            }
-            else
-                ++it;
-        }
+        return (srp != srs.end()) ? srp->second->cancelPut(vid) : false;
     };
-    sr_cancel_put(searches4);
-    sr_cancel_put(searches6);
+    canceled |= sr_cancel_put(searches4);
+    canceled |= sr_cancel_put(searches6);
+    if (canceled)
+        storageErase(id, vid);
     return canceled;
 }
-
 
 // Storage
 
@@ -2016,14 +1993,15 @@ Dht::exportValues() const
 void
 Dht::importValues(const std::vector<ValuesExport>& import)
 {
-    for (const auto& h : import) {
-        if (h.second.empty())
+    const auto& now = scheduler.time();
+
+    for (const auto& node : import) {
+        if (node.second.empty())
             continue;
 
-        const auto& now = scheduler.time();
         try {
             msgpack::unpacked msg;
-            msgpack::unpack(msg, (const char*)h.second.data(), h.second.size());
+            msgpack::unpack(msg, (const char*)node.second.data(), node.second.size());
             auto valarr = msg.get();
             if (valarr.type != msgpack::type::ARRAY)
                 throw msgpack::type_error();
@@ -2037,14 +2015,14 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     val_time = time_point{time_point::duration{valel.via.array.ptr[0].as<time_point::duration::rep>()}};
                     tmp_val.msgpack_unpack(valel.via.array.ptr[1]);
                 } catch (const std::exception&) {
-                    DHT_LOG.e(h.first, "Error reading value at %s", h.first.toString().c_str());
+                    DHT_LOG.e(node.first, "Error reading value at %s", node.first.toString().c_str());
                     continue;
                 }
                 val_time = std::min(val_time, now);
-                storageStore(h.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
+                storageStore(node.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
             }
         } catch (const std::exception&) {
-            DHT_LOG.e(h.first, "Error reading values at %s", h.first.toString().c_str());
+            DHT_LOG.e(node.first, "Error reading values at %s", node.first.toString().c_str());
             continue;
         }
     }

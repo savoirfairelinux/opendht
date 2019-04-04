@@ -532,6 +532,34 @@ struct Dht::Search {
         scheduler.edit(opExpirationJob, cache.getExpiration());
     }
 
+    std::vector<Sp<Value>> getPut() const {
+        std::vector<Sp<Value>> ret;
+        ret.reserve(announce.size());
+        for (const auto& a : announce)
+            ret.push_back(a.value);
+        return ret;
+    }
+
+    Sp<Value> getPut(Value::Id vid) const {
+        for (auto& a : announce) {
+            if (a.value->id == vid)
+                return a.value;
+        }
+    }
+
+    bool cancelPut(Value::Id vid) {
+        bool canceled {false};
+        for (auto it = announce.begin(); it != announce.end();) {
+            if (it->value->id == vid) {
+                canceled = true;
+                it = announce.erase(it);
+            }
+            else
+                ++it;
+        }
+        return canceled;
+    }
+
     /**
      * @return The number of non-good search nodes.
      */

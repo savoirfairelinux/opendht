@@ -231,7 +231,7 @@ public:
     void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override {
         dht_->query(key, cb, done_cb, std::move(q));
     }
-    std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const override {
+    std::vector<Sp<Value>> getLocal(const InfoHash& key, const Value::Filter& f = {}) const override {
         return dht_->getLocal(key, f);
     }
     Sp<Value> getLocalById(const InfoHash& key, Value::Id vid) const override {
@@ -270,10 +270,10 @@ public:
     {
         dht_->put(key, std::move(v), cb, created, permanent);
     }
-    std::vector<Sp<Value>> getPut(const InfoHash& h) override {
+    std::vector<Sp<Value>> getPut(const InfoHash& h) const override {
         return dht_->getPut(h);
     }
-    Sp<Value> getPut(const InfoHash& h, const Value::Id& vid) override {
+    Sp<Value> getPut(const InfoHash& h, const Value::Id& vid) const override {
         return dht_->getPut(h, vid);
     }
     bool cancelPut(const InfoHash& h, const Value::Id& vid) override {

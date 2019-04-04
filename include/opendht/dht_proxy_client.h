@@ -202,12 +202,12 @@ public:
     /**
      * Get data currently being put at the given hash.
      */
-    std::vector<Sp<Value>> getPut(const InfoHash&);
+    std::vector<Sp<Value>> getPut(const InfoHash&) const;
 
     /**
      * Get data currently being put at the given hash with the given id.
      */
-    Sp<Value> getPut(const InfoHash&, const Value::Id&);
+    Sp<Value> getPut(const InfoHash&, const Value::Id&) const;
 
     /**
      * Stop any put/announce operation at the given location,
@@ -224,7 +224,7 @@ public:
         return types.getType(type_id);
     }
 
-    std::vector<Sp<Value>> getLocal(const InfoHash& k, Value::Filter filter) const;
+    std::vector<Sp<Value>> getLocal(const InfoHash& k, const Value::Filter& filter) const;
     Sp<Value> getLocalById(const InfoHash& k, Value::Id id) const;
 
     /**
