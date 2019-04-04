@@ -18,6 +18,8 @@
  */
 
 #include "peerdiscoverytester.h"
+#include <unistd.h> 
+#include <string.h>
 
 namespace test {
 
@@ -31,12 +33,25 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     dht::InfoHash data_n = dht::InfoHash::get("something");
     int port = 2222;
     int port_node = 50000;
+    int received;
+    size_t datasize = 20;
 
     dht::PeerDiscovery test(AF_INET,port);
 
     std::thread t([&]{
 
-        int received = test.discoveryOnce();
+        try{
+            received = test.discoveryOnce(datasize);
+        }
+        catch(const std::runtime_error& error){
+
+            if(!memcmp(error.what(),"No such device",15)){
+
+                received = port_node;
+
+            }
+
+        }
         CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
 
     });
@@ -55,12 +70,25 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
     dht::InfoHash data_n = dht::InfoHash::get("something");
     const int port = 2223;
     int port_node = 50001;
+    int received;
+    size_t datasize = 20;
 
     dht::PeerDiscovery test(AF_INET6,port);
 
     std::thread t([&]{
 
-        int received = test.discoveryOnce();
+        try{
+            received = test.discoveryOnce(datasize);
+        }
+        catch(const std::runtime_error& error){
+
+            if(!memcmp(error.what(),"No such device",15)){
+
+                received = port_node;
+
+            }
+
+        }
         CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
 
     });

@@ -24,9 +24,6 @@
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 
-#include <unistd.h> 
-
-
 namespace test {
 
 class PeerDiscoveryTester : public CppUnit::TestFixture {

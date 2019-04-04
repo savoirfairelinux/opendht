@@ -58,23 +58,12 @@ public:
     /**
      * Listener socket procudure start - one time Listen
     */
-    uint32_t discoveryOnce();
+    uint32_t discoveryOnce(const size_t &nodeId_data_size);
 
     /**
      * Thread Stopper
     */
-    void stop(){ 
-        
-        cv_.notify_one();
-        running_ = false;
-        close(stop_readfd_);
-        if (stop_writefd_ != -1) {
-            if (write(stop_writefd_, "\0", 1) == -1) {
-                perror("write");
-            }
-        }
-
-    }
+    void stop();
 
     /**
      * Getter and Setters
@@ -88,19 +77,19 @@ public:
     
 private:
 
+    std::mutex mtx_;
+    std::condition_variable cv_;
     bool running_ {true};
     sa_family_t domain_;
     int sockfd_;
 
     SockAddr sockAddrSend_;
     int port_;
-    uint8_t data_send_[22];
-    size_t data_size_ = 22;
+    std::unique_ptr<uint8_t> data_send_;
+    std::unique_ptr<uint8_t> data_receive_;
+    size_t data_size_ ;
 
-    int stopfds_pipe_[2];
-    int stop_readfd_;
-    int stop_writefd_;
-    std::condition_variable cv_;
+    int stop_writefd_ {-1};
     //Thread export to be joined 
     std::thread running_listen;
     std::thread running_send;
