@@ -149,6 +149,7 @@ list (APPEND opendht_SOURCES
     src/securedht.cpp
     src/dhtrunner.cpp
     src/log.cpp
+    src/peer_discovery.cpp
 )
 
 list (APPEND opendht_HEADERS
@@ -172,6 +173,7 @@ list (APPEND opendht_HEADERS
     include/opendht/securedht.h
     include/opendht/log.h
     include/opendht/log_enable.h
+    include/opendht/peer_discovery.h
     include/opendht.h
 )
 
@@ -314,6 +316,8 @@ if (OPENDHT_TESTS)
       tests/cryptotester.cpp
       tests/dhtrunnertester.h
       tests/dhtrunnertester.cpp
+      tests/peerdiscoverytester.h
+      tests/peerdiscoverytester.cpp
     )
     if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
       list (APPEND test_FILES

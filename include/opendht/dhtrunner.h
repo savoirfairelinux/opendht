@@ -40,6 +40,7 @@ namespace dht {
 
 struct Node;
 class SecureDht;
+class PeerDiscovery;
 struct SecureDhtConfig;
 
 /**
@@ -58,6 +59,8 @@ public:
         bool threaded;
         std::string proxy_server;
         std::string push_node_id;
+        bool peer_discovery;
+        bool peer_publish;
     };
 
     DhtRunner();
@@ -260,6 +263,12 @@ public:
     void bootstrap(const std::string& host, const std::string& service);
 
     /**
+     * Insert known nodes to the routing table, without necessarly ping them.
+     * Usefull to restart a node and get things running fast without putting load on the network.
+     */
+    void bootstrap(const InfoHash& id, const SockAddr& address);
+
+    /**
      * Clear the list of bootstrap added using bootstrap(const std::string&, const std::string&).
      */
     void clearBootstrap();
@@ -361,7 +370,9 @@ public:
             },
             /*.threaded = */threaded,
             /*.proxy_server = */"",
-            /*.push_node_id = */""
+            /*.push_node_id = */"",
+            /*.peer_discovery = */true,
+            /*.peer_publish = */true,
         });
     }
     void run(in_port_t port, const Config& config);
@@ -526,6 +537,12 @@ private:
 
     /** Push notification token */
     std::string pushToken_;
+
+    /** PeerDiscovery Parameters */
+    std::unique_ptr<PeerDiscovery> peerDiscovery4_;
+    std::unique_ptr<PeerDiscovery> peerDiscovery6_;
+    const in_port_t port_multicast = 8888;
+
 };
 
 }
