@@ -105,7 +105,7 @@ public:
         getFilterSet<T>());
     }
 
-    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = {}, Where w = {}) {
         auto p = std::make_shared<std::promise<std::vector<std::shared_ptr< dht::Value >>>>();
         auto values = std::make_shared<std::vector<std::shared_ptr< dht::Value >>>();
         get(key, [=](const std::vector<std::shared_ptr<dht::Value>>& vlist) {
@@ -136,7 +136,7 @@ public:
         query(hash, cb, bindDoneCb(done_cb), q);
     }
 
-    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
+    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = {}, Where w = {});
 
     std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f={}, Where w={}) {
         return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
@@ -145,8 +145,8 @@ public:
             return true;
         }, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
-    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = {}, Where w = {});
+    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) {
         return listen(key, bindGetCb(cb), f, w);
     }
 
@@ -168,7 +168,7 @@ public:
     }
 
     template <typename T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter(), Where w = {})
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = {}, Where w = {})
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
@@ -184,7 +184,7 @@ public:
         getFilterSet<T>(f), w);
     }
     template <typename T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = Value::AllFilter(), Where w = {})
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = {}, Where w = {})
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
             for (const auto& v : vals) {
