@@ -31,22 +31,29 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 2222;
     in_port_t port_n = 50000;
+    try{
+        dht::PeerDiscovery test_n(AF_INET, port);
+        dht::PeerDiscovery test_s(AF_INET, port);
+        try{
+            test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
+                CPPUNIT_ASSERT_EQUAL(data_n, node);
+                CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
+            });
 
-    dht::PeerDiscovery test_n(AF_INET, port);
-    dht::PeerDiscovery test_s(AF_INET, port);
+            test_n.startPublish(data_n,port_n);
 
-    test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
-        CPPUNIT_ASSERT_EQUAL(data_n, node);
-        CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
-    });
-
-    test_n.startPublish(data_n, port_n);
-
-    sleep(5);
-    test_n.stop();
-    test_s.stop();
-    test_n.join();
-    test_s.join();
+            sleep(5);
+            test_n.stop();
+            test_s.stop();
+            test_n.join();
+            test_s.join();
+        } catch(std::exception &exception){
+            perror(exception.what());
+            CPPUNIT_ASSERT(false);
+        }
+    } catch(std::exception &exception){
+            perror(exception.what());
+    }
 }
 
 void PeerDiscoveryTester::testTransmission_ipv6(){
@@ -55,22 +62,30 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 3333;
     in_port_t port_n = 50001;
+    try{
+        dht::PeerDiscovery test_n(AF_INET6,port);
+        dht::PeerDiscovery test_s(AF_INET6,port);
 
-    dht::PeerDiscovery test_n(AF_INET6,port);
-    dht::PeerDiscovery test_s(AF_INET6,port);
+        try{
+            test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
+                CPPUNIT_ASSERT_EQUAL(data_n, node);
+                CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
+            });
 
-    test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
-        CPPUNIT_ASSERT_EQUAL(data_n, node);
-        CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
-    });
+            test_n.startPublish(data_n,port_n);
 
-    test_n.startPublish(data_n,port_n);
-
-    sleep(5);
-    test_n.stop();
-    test_s.stop();
-    test_n.join();
-    test_s.join();
+            sleep(5);
+            test_n.stop();
+            test_s.stop();
+            test_n.join();
+            test_s.join();
+        } catch(std::exception &exception){
+            perror(exception.what());
+            CPPUNIT_ASSERT(false);
+        }
+    } catch(std::exception &exception){
+            perror(exception.what());
+    }
 
 }
 

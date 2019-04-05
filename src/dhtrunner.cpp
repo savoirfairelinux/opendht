@@ -152,12 +152,12 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (config.peer_discovery or config.peer_publish) {
         try {
             peerDiscovery4_.reset(new PeerDiscovery(AF_INET, port_multicast));
-        }catch(std::exception &exception){
+        } catch(std::exception &exception){
             perror(exception.what());
         }
         try{
             peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, port_multicast));
-        }catch(std::exception &exception){
+        } catch(std::exception &exception){
             perror(exception.what());
         }
     }
@@ -645,7 +645,7 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                     else
                         continue;
 
-                    if (rc > 0 && rc != static_cast<int>(getNodeId().size() + 2)) {
+                    if (rc > 0) {
                         {
                             std::lock_guard<std::mutex> lck(sock_mtx);
                             if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
