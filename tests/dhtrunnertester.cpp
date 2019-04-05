@@ -19,9 +19,9 @@
 
 #include "dhtrunnertester.h"
 
-// std
-#include <iostream>
-#include <string>
+#include <chrono>
+#include <mutex>
+#include <condition_variable>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
@@ -62,35 +62,58 @@ DhtRunnerTester::testGetPut() {
 
 void
 DhtRunnerTester::testListen() {
+    std::mutex mutex;
+    std::condition_variable cv;
     std::atomic_uint valueCount(0);
-    std::atomic_uint putCount(0);
+    unsigned putCount(0);
+    unsigned putOkCount(0);
 
     auto a = dht::InfoHash::get("234");
     auto b = dht::InfoHash::get("2345");
     auto c = dht::InfoHash::get("23456");
-    constexpr unsigned N = 32;
+    constexpr unsigned N = 64;
 
-    auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&){
+    auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&) {
         valueCount++;
         return true;
     });
 
-    auto ftokenb = node1.listen(b, [&](const std::shared_ptr<dht::Value>&){
+    auto ftokenb = node1.listen(b, [&](const std::shared_ptr<dht::Value>&) {
         valueCount++;
         return false;
     });
 
-    auto ftokenc = node1.listen(c, [&](const std::shared_ptr<dht::Value>&){
+    auto ftokenc = node1.listen(c, [&](const std::shared_ptr<dht::Value>&) {
         valueCount++;
         return true;
     });
 
     for (unsigned i=0; i<N; i++) {
-        node2.put(a, dht::Value("v1"), [&](bool ok) { if (ok) putCount++; });
-        node2.put(b, dht::Value("v2"), [&](bool ok) { if (ok) putCount++; });
+        node2.put(a, dht::Value("v1"), [&](bool ok) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                putCount++;
+                if (ok) putOkCount++;
+            }
+            cv.notify_all();
+        });
+        node2.put(b, dht::Value("v2"), [&](bool ok) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                putCount++;
+                if (ok) putOkCount++;
+            }
+            cv.notify_all();
+        });
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        cv.wait_for(lk, std::chrono::seconds(30), [&]{ return putCount == N * 2u; });
+        CPPUNIT_ASSERT_EQUAL(N * 2u, putCount);
+        CPPUNIT_ASSERT_EQUAL(N * 2u, putOkCount);
+    }
+
     auto tokena = ftokena.get();
     auto tokenb = ftokenb.get();
     auto tokenc = ftokenc.get();
@@ -98,8 +121,11 @@ DhtRunnerTester::testListen() {
     CPPUNIT_ASSERT(tokena);
     CPPUNIT_ASSERT(tokenb);
     CPPUNIT_ASSERT(tokenc);
-    CPPUNIT_ASSERT_EQUAL(N * 2u, putCount.load());
     CPPUNIT_ASSERT_EQUAL(N + 1u, valueCount.load());
+
+    node1.cancelListen(a, tokena);
+    node1.cancelListen(b, tokena);
+    node1.cancelListen(c, tokena);
 }
 
 }  // namespace test
