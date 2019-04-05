@@ -158,7 +158,7 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
             break;
         }
 
-    }       
+    }      
 }
 
 void

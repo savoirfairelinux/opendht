@@ -152,8 +152,14 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (config.peer_discovery or config.peer_publish) {
         try {
             peerDiscovery4_.reset(new PeerDiscovery(AF_INET, port_multicast));
-        } ...
-        peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, port_multicast));
+        }catch(std::exception &exception){
+            perror(exception.what());
+        }
+        try{
+            peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, port_multicast));
+        }catch(std::exception &exception){
+            perror(exception.what());
+        }
     }
     if (config.peer_discovery) {
         using sig = void (DhtRunner::*)(const InfoHash&, const SockAddr&);
@@ -180,7 +186,6 @@ void DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
     {
         std::unique_lock<std::mutex> lck(storage_mtx);
         pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
-            std::cout<<address.getPort()<<std::endl;
             dht.insertNode(id, address);
         });
     }
