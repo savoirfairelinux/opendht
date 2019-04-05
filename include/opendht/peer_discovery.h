@@ -41,24 +41,14 @@ public:
     ~PeerDiscovery();
     
     /**
-     * startDiscovery - Listen
+     * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
     */
-    void startDiscovery(PeerDiscoveredCallback callback, const dht::InfoHash &nodeId);
+    void startDiscovery(PeerDiscoveredCallback callback);
 
     /**
-     * startPublish - Send
+     * startPublish - Keeping sending data until node is joinned or stop is called
     */
     void startPublish(const dht::InfoHash &nodeId, in_port_t port_to_send);
-
-    /**
-     * Send socket procudure start - one time sender
-    */
-    void publishOnce(const dht::InfoHash &nodeId, in_port_t port_to_send);
-
-    /**
-     * Listener socket procudure start - one time Listen
-    */
-    uint32_t discoveryOnce(const size_t &nodeId_data_size);
 
     /**
      * Thread Stopper
@@ -66,7 +56,12 @@ public:
     void stop();
 
     /**
-     * Getter and Setters
+     * Configure the sockopt to be able to listen multicast group
+    */
+    static void socketJoinMulticast(int sockfd, sa_family_t family);
+
+    /**
+     * Join the threads
     */
     void join(){
 
@@ -76,20 +71,17 @@ public:
     }
     
 private:
-
     std::mutex mtx_;
     std::condition_variable cv_;
     bool running_ {true};
-    sa_family_t domain_;
-    int sockfd_;
+    sa_family_t domain_ {AF_UNSPEC};
+    int port_;
+    int sockfd_ {-1};
+    int stop_writefd_ {-1};
 
     SockAddr sockAddrSend_;
-    int port_;
-    std::unique_ptr<uint8_t> data_send_;
-    std::unique_ptr<uint8_t> data_receive_;
-    size_t data_size_ ;
+    std::array<uint8_t,dht::InfoHash::size() + sizeof(in_port_t)> data_send_;
 
-    int stop_writefd_ {-1};
     //Thread export to be joined 
     std::thread running_listen;
     std::thread running_send;
@@ -98,33 +90,17 @@ private:
     /**
      * Multicast Socket Initialization, accept IPV4, IPV6 
     */
-    void initialize_socket();
-
-    /**
-     * Multicast Socket Option Initialization, aim to allow multiple sockets to use the same PORT number 
-     * listen used only
-    */
-    void initialize_socketopt();
-
-    /**
-     * Socket Address Structure Initialization for both Listener
-    */
-    void initialize_sockaddr_Listener();
-
-    /**
-     * Configure the listener to be insterested in joining the IP multicast group
-    */
-    void mcast_join();
+    static int initialize_socket(sa_family_t domain);
 
     /**
      * Send messages
     */
-    void m_sendto(uint8_t *buf,const size_t &buf_size);
+    void sendTo(uint8_t *buf,size_t buf_size);
 
     /**
      * Receive messages
     */
-    SockAddr m_recvfrom(uint8_t *buf,const size_t &buf_size);
+    SockAddr recvFrom(uint8_t *buf, size_t &buf_size);
 
     /**
      * Send thread loop
@@ -144,7 +120,7 @@ private:
     /**
      * Sender Parameters Setup
     */
-    void sender_setup(const uint8_t * data_n, in_port_t port_to_send);
+    void sender_setup(const dht::InfoHash& nodeId, in_port_t port_to_send);
 
     /**
      * Binary Converters
@@ -154,7 +130,7 @@ private:
         lit_int[1] = (uint8_t)(x >>  8);
     }
 
-    static uint32_t litendtoint(uint8_t *lit_int) {
+    static uint16_t litendtoint(uint8_t *lit_int) {
         return (uint32_t)lit_int[0] <<  0
             |  (uint32_t)lit_int[1] <<  8;
     }

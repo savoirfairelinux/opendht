@@ -28,48 +28,51 @@ void PeerDiscoveryTester::setUp(){}
 void PeerDiscoveryTester::testTransmission_ipv4(){
 
     // Node for getnode id
-    dht::InfoHash data_n = dht::InfoHash::get("something");
+    dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 2222;
-    int port_node = 50000;
+    in_port_t port_n = 50000;;
 
-    dht::PeerDiscovery test(AF_INET,port);
+    dht::PeerDiscovery test_n(AF_INET, port);
+    dht::PeerDiscovery test_s(AF_INET, port);
 
-    std::thread t([&]{
-
-        int received = test.discoveryOnce(22);
-        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
-
+    test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
+        CPPUNIT_ASSERT_EQUAL(data_n, node);
+        CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
     });
 
-    sleep(1);
-    test.publishOnce(data_n,port_node);
+    test_n.startPublish(data_n, port_n);
 
     sleep(5);
-    t.join();
-
+    test_n.stop();
+    test_s.stop();
+    test_n.join();
+    test_s.join();
 }
 
 /*void PeerDiscoveryTester::testTransmission_ipv6(){
 
     // Node for getnode id
-    dht::InfoHash data_n = dht::InfoHash::get("something");
-    const int port = 2223;
-    int port_node = 50001;
+    dht::InfoHash data_n = dht::InfoHash::get("applepin");
+    int port = 2222;
+    int port_n = 50000;;
 
-    dht::PeerDiscovery test(AF_INET6,port);
+    dht::PeerDiscovery test_n(AF_INET6,port);
+    dht::PeerDiscovery test_s(AF_INET6,port);
 
-    std::thread t([&]{
+    test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
 
-        int received = test.discoveryOnce(22);
-        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", received == port_node);
+        CPPUNIT_ASSERT_MESSAGE("Data Receive Incorrect", memcmp(node.data(),data_n.data(),dht::InfoHash::size()) == 0 );
+        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", addr.getPort() == 50000);
 
     });
 
-    sleep(1);
-    test.publishOnce(data_n,port_node);
+    test_n.startPublish(data_n,port_n);
 
     sleep(5);
-    t.join();
+    test_n.stop();
+    test_s.stop();
+    test_n.join();
+    test_s.join();
 
 }*/
 

@@ -79,7 +79,7 @@ SockAddr::parse(sa_family_t family, const char* address)
 {
     SockAddr addr;
     addr.setFamily(family);
-    if (inet_pton(family, address, family == AF_INET ? (void*)&addr.getIPv4().sin_addr : (void*)&addr.getIPv6().sin6_addr) <= 0){
+    if (inet_pton(family, address, family == AF_INET ? (void*)&addr.getIPv4().sin_addr.s_addr : (void*)&addr.getIPv6().sin6_addr) <= 0){
         throw std::runtime_error("SockAddr::parse inet_pton");
     }
     return addr;

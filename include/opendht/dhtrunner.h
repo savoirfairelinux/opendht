@@ -539,8 +539,8 @@ private:
     std::string pushToken_;
 
     /** PeerDiscovery Parameters */
-    std::unique_ptr<PeerDiscovery> peerDiscovery_p4;
-    std::unique_ptr<PeerDiscovery> peerDiscovery_p6;
+    std::unique_ptr<PeerDiscovery> peerDiscovery4_;
+    std::unique_ptr<PeerDiscovery> peerDiscovery6_;
     const in_port_t port_multicast = 8888;
 
 };

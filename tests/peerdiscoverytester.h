@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include "peer_discovery.h"
+#include "opendht/peer_discovery.h"
 
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
