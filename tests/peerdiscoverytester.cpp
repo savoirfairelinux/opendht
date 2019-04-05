@@ -30,7 +30,7 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     // Node for getnode id
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 2222;
-    in_port_t port_n = 50000;;
+    in_port_t port_n = 50000;
 
     dht::PeerDiscovery test_n(AF_INET, port);
     dht::PeerDiscovery test_s(AF_INET, port);
@@ -49,21 +49,19 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     test_s.join();
 }
 
-/*void PeerDiscoveryTester::testTransmission_ipv6(){
+void PeerDiscoveryTester::testTransmission_ipv6(){
 
     // Node for getnode id
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
-    int port = 2222;
-    int port_n = 50000;;
+    int port = 3333;
+    in_port_t port_n = 50001;
 
     dht::PeerDiscovery test_n(AF_INET6,port);
     dht::PeerDiscovery test_s(AF_INET6,port);
 
     test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
-
-        CPPUNIT_ASSERT_MESSAGE("Data Receive Incorrect", memcmp(node.data(),data_n.data(),dht::InfoHash::size()) == 0 );
-        CPPUNIT_ASSERT_MESSAGE("Port Receive Incorrect", addr.getPort() == 50000);
-
+        CPPUNIT_ASSERT_EQUAL(data_n, node);
+        CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
     });
 
     test_n.startPublish(data_n,port_n);
@@ -74,7 +72,7 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     test_n.join();
     test_s.join();
 
-}*/
+}
 
 void PeerDiscoveryTester::tearDown(){}
 
