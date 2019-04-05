@@ -85,7 +85,7 @@ public:
         msgpack_unpack(o);
     }
 
-    constexpr size_t size() const noexcept { return data_.size(); }
+    static constexpr size_t size() noexcept { return N; }
     const uint8_t* data() const { return data_.data(); }
     uint8_t* data() { return data_.data(); }
     iterator begin() { return data_.begin(); }
