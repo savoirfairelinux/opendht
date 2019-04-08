@@ -665,17 +665,17 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
             listener.hash = hash;
             listener.f = std::move(f);
             listener.w = std::move(w);
-            listener.gcb = [hash,vcb,tokenbGlobal,this](const std::vector<Sp<Value>>& vals, bool expired){
+            listener.gcb = [hash,vcb,tokenbGlobal,this](const std::vector<Sp<Value>>& vals, bool expired) {
                 if (not vcb(vals, expired)) {
                     cancelListen(hash, tokenbGlobal);
                     return false;
                 }
                 return true;
             };
-            if (use_proxy)
-                listener.tokenProxyDht = dht.listen(hash, listener.gcb, listener.f, listener.w);
-            else
-                listener.tokenClassicDht = dht.listen(hash, listener.gcb, listener.f, listener.w);
+            if (auto token = dht.listen(hash, listener.gcb, listener.f, listener.w)) {
+                if (use_proxy)  listener.tokenProxyDht = token;
+                else            listener.tokenClassicDht = token;
+            }
             ret_token->set_value(tokenbGlobal);
 #else
             ret_token->set_value(dht.listen(hash, std::move(vcb), std::move(f), std::move(w)));
