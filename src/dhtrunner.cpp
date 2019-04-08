@@ -138,13 +138,13 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (config.peer_discovery or config.peer_publish) {
         try {
             peerDiscovery4_.reset(new PeerDiscovery(AF_INET, port_multicast));
-        } catch(std::exception &exception){
-            perror(exception.what());
+        } catch(const std::exception& e){
+            std::cerr << "Can't start peer discovery (IPv4): " << e.what() << std::endl;
         }
-        try{
+        try {
             peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, port_multicast));
-        } catch(std::exception &exception){
-            perror(exception.what());
+        } catch(const std::exception& e) {
+            std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
         }
     }
     if (config.peer_discovery) {
