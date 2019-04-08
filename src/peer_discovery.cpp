@@ -201,7 +201,11 @@ void
 PeerDiscovery::sender_thread()
 {
     while(true) {
-        sendTo(data_send_.data(), data_send_.size());
+        try {
+            sendTo(data_send_.data(), data_send_.size());
+        } catch (const std::exception& e) {
+            std::cerr << e.what() << std::endl;
+        }
         {
             std::unique_lock<std::mutex> lck(mtx_);
             if (cv_.wait_for(lck,std::chrono::seconds(3),[&]{ return !running_; }))
