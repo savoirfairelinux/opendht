@@ -160,20 +160,25 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // For the second subscribe, the proxy will return the value in the body
     auto values = std::vector<dht::Blob>();
-    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool) {
-        for (const auto& value : v)
-            values.emplace_back(value->data);
-        done = true;
+    auto ftoken = nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
+        if (not expired) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            for (const auto& value : v)
+                values.emplace_back(value->data);
+            done = true;
+        }
         cv.notify_all();
         return true;
     });
 
     cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    auto token = ftoken.get();
+    CPPUNIT_ASSERT(token);
+    nodeClient->cancelListen(key, token);
     done = false;
     // Here values should still contains 1 values
-    CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
-    CPPUNIT_ASSERT(values.front() == firstVal_data);
-
+    CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
+    CPPUNIT_ASSERT(firstVal_data == values.front());
 }
 
 }  // namespace test
