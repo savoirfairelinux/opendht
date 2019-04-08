@@ -71,7 +71,7 @@ DhtRunnerTester::testListen() {
     auto a = dht::InfoHash::get("234");
     auto b = dht::InfoHash::get("2345");
     auto c = dht::InfoHash::get("23456");
-    constexpr unsigned N = 64;
+    constexpr unsigned N = 32;
 
     auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&) {
         valueCount++;
@@ -113,6 +113,10 @@ DhtRunnerTester::testListen() {
         CPPUNIT_ASSERT_EQUAL(N * 2u, putCount);
         CPPUNIT_ASSERT_EQUAL(N * 2u, putOkCount);
     }
+
+    CPPUNIT_ASSERT(ftokena.valid());
+    CPPUNIT_ASSERT(ftokenb.valid());
+    CPPUNIT_ASSERT(ftokenc.valid());
 
     auto tokena = ftokena.get();
     auto tokenb = ftokenb.get();
