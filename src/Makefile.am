@@ -26,7 +26,9 @@ libopendht_la_SOURCES  = \
         securedht.cpp \
         dhtrunner.cpp \
         default_types.cpp \
-        log.cpp
+        log.cpp \
+        network_utils.h \
+        network_utils.cpp
 
 if WIN32
 libopendht_la_SOURCES += rng.cpp

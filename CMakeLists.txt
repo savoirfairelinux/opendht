@@ -150,6 +150,8 @@ list (APPEND opendht_SOURCES
     src/dhtrunner.cpp
     src/log.cpp
     src/peer_discovery.cpp
+    src/network_utils.h
+    src/network_utils.cpp
 )
 
 list (APPEND opendht_HEADERS

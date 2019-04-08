@@ -17,6 +17,7 @@
  */
 
 #include "peer_discovery.h"
+#include "network_utils.h"
 
 #ifdef _WIN32
 #include <Ws2tcpip.h> // needed for ip_mreq definition for multicast
@@ -31,36 +32,20 @@ namespace dht {
 constexpr char MULTICAST_ADDRESS_IPV4[10] = "224.0.0.1";
 constexpr char MULTICAST_ADDRESS_IPV6[8] = "ff05::2"; // Site-local multicast
 
-#ifdef _WIN32
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    unsigned long mode = !!nonblocking;
-    int rc = ioctlsocket(fd, FIONBIO, &mode);
-    return rc == 0;
-}
-
-extern const char *inet_ntop(int, const void *, char *, socklen_t);
-
-#else
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    int rc = fcntl(fd, F_GETFL, 0);
-    if (rc < 0)
-        return false;
-    rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
-    return rc >= 0;
-}
-
-#endif
-
 PeerDiscovery::PeerDiscovery(sa_family_t domain, in_port_t port)
     : domain_(domain), port_(port), sockfd_(initialize_socket(domain))
 {
     socketJoinMulticast(sockfd_, domain);
+}
+
+PeerDiscovery::~PeerDiscovery()
+{
+    if (sockfd_ != -1)
+        close(sockfd_);
+
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 int
@@ -77,7 +62,7 @@ PeerDiscovery::initialize_socket(sa_family_t domain)
     if (sockfd < 0) {
         throw std::runtime_error(std::string("Socket Creation Error: ") + strerror(errno));
     }
-    set_nonblocking(sockfd, 1);
+    net::set_nonblocking(sockfd);
     return sockfd;
 }
 
@@ -235,7 +220,7 @@ PeerDiscovery::listener_thread(PeerDiscoveredCallback callback)
         throw std::runtime_error(std::string("Can't open pipe: ") + strerror(errno));
     }
 #else
-    udpPipe(stopfds_pipe);
+    net::udpPipe(stopfds_pipe);
 #endif
     int stop_readfd = stopfds_pipe[0];
     stop_writefd_ = stopfds_pipe[1];
@@ -327,16 +312,6 @@ PeerDiscovery::stop()
             perror("write");
         }
     }
-}
-
-PeerDiscovery::~PeerDiscovery()
-{
-    if (sockfd_ != -1)
-        close(sockfd_);
-
-#ifdef _WIN32
-    WSACleanup();
-#endif
 }
 
 }

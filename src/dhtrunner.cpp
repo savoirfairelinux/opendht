@@ -21,24 +21,10 @@
 #include "dhtrunner.h"
 #include "securedht.h"
 #include "peer_discovery.h"
+#include "network_utils.h"
 
 #ifdef OPENDHT_PROXY_CLIENT
 #include "dht_proxy_client.h"
-#endif
-
-#ifndef _WIN32
-#include <unistd.h>
-#else
-#include <io.h>
-#endif
-
-#ifndef _WIN32
-#include <sys/socket.h>
-#else
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#define close(x) closesocket(x)
-#define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #endif
 
 namespace dht {
@@ -179,17 +165,6 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         if (peerDiscovery6_)
             peerDiscovery6_->startPublish(getNodeId(), getBoundPort(AF_INET6));
     }
-}
-
-void DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
-{
-    {
-        std::unique_lock<std::mutex> lck(storage_mtx);
-        pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
-            dht.insertNode(id, address);
-        });
-    }
-    cv.notify_all();
 }
 
 void
@@ -523,34 +498,6 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
     return sock;
 }
 
-#ifdef _WIN32
-inline void udpPipe(int fds[2])
-{
-    int lst = socket(AF_INET, SOCK_DGRAM, 0);
-    if (lst < 0)
-        throw DhtException(std::string("Can't open socket: ") + strerror(lst));
-    sockaddr_in inaddr;
-    sockaddr addr;
-    memset(&inaddr, 0, sizeof(inaddr));
-    memset(&addr, 0, sizeof(addr));
-    inaddr.sin_family = AF_INET;
-    inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    inaddr.sin_port = 0;
-    int yes=1;
-    setsockopt(lst, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(yes));
-    int rc = bind(lst, (sockaddr*)&inaddr, sizeof(inaddr));
-    if (rc < 0) {
-        close(lst);
-        throw DhtException("Can't bind socket on " + print_addr((sockaddr*)&addr, sizeof(inaddr)) + " " + strerror(rc));
-    }
-    socklen_t len = sizeof(inaddr);
-    getsockname(lst, &addr, &len);
-    fds[0] = lst;
-    fds[1] = socket(AF_INET, SOCK_DGRAM, 0);
-    connect(fds[1], &addr, len);
-}
-#endif
-
 void
 DhtRunner::stopNetwork()
 {
@@ -576,7 +523,7 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
         throw DhtException(std::string("Can't open pipe: ") + strerror(errno));
     }
 #else
-    udpPipe(stopfds);
+    net::udpPipe(stopfds);
 #endif
     int stop_readfd = stopfds[0];
     stop_writefd = stopfds[1];
@@ -985,6 +932,18 @@ DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
     pending_ops_prio.emplace([addr,cb](SecureDht& dht) mutable {
         dht.pingNode(addr.get(), addr.getLength(), std::move(cb));
     });
+    cv.notify_all();
+}
+
+void
+DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
+{
+    {
+        std::unique_lock<std::mutex> lck(storage_mtx);
+        pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
+            dht.insertNode(id, address);
+        });
+    }
     cv.notify_all();
 }
 

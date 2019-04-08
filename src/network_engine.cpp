@@ -23,6 +23,7 @@
 #include "default_types.h"
 #include "log_enable.h"
 #include "parsed_message.h"
+#include "network_utils.h"
 
 #include <msgpack.hpp>
 
@@ -60,32 +61,6 @@ static const uint8_t v4prefix[16] = {
 };
 
 constexpr unsigned SEND_NODES {8};
-
-#ifdef _WIN32
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    unsigned long mode = !!nonblocking;
-    int rc = ioctlsocket(fd, FIONBIO, &mode);
-    return rc == 0;
-}
-
-extern const char *inet_ntop(int, const void *, char *, socklen_t);
-
-#else
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    int rc = fcntl(fd, F_GETFL, 0);
-    if (rc < 0)
-        return false;
-    rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
-    return rc >= 0;
-}
-
-#endif
 
 
 /* Transaction-ids are 4-bytes long, with the first two bytes identifying
@@ -165,11 +140,11 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int&
     myid(myid), network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
 {
     if (dht_socket >= 0) {
-        if (!set_nonblocking(dht_socket, 1))
+        if (!set_nonblocking(dht_socket))
             throw DhtException("Can't set socket to non-blocking mode");
     }
     if (dht_socket6 >= 0) {
-        if (!set_nonblocking(dht_socket6, 1))
+        if (!set_nonblocking(dht_socket6))
             throw DhtException("Can't set socket to non-blocking mode");
     }
 }
