@@ -23,7 +23,7 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <unistd.h> 
+#include <unistd.h>
 
 #include <thread>
 #include <mutex>
@@ -39,7 +39,7 @@ public:
 
     PeerDiscovery(sa_family_t domain, in_port_t port);
     ~PeerDiscovery();
-    
+
     /**
      * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
     */
@@ -63,13 +63,11 @@ public:
     /**
      * Join the threads
     */
-    void join(){
-
-        if(running_listen.joinable()){ running_listen.join(); };
-        if(running_send.joinable()){ running_send.join(); };
-
+    void join() {
+        if(running_listen.joinable()) running_listen.join();
+        if(running_send.joinable()) running_send.join();
     }
-    
+
 private:
     std::mutex mtx_;
     std::condition_variable cv_;
@@ -82,13 +80,13 @@ private:
     SockAddr sockAddrSend_;
     std::array<uint8_t,dht::InfoHash::size() + sizeof(in_port_t)> data_send_;
 
-    //Thread export to be joined 
+    //Thread export to be joined
     std::thread running_listen;
     std::thread running_send;
     dht::InfoHash nodeId_;
 
     /**
-     * Multicast Socket Initialization, accept IPV4, IPV6 
+     * Multicast Socket Initialization, accept IPV4, IPV6
     */
     static int initialize_socket(sa_family_t domain);
 
@@ -134,11 +132,6 @@ private:
         return (uint32_t)lit_int[0] <<  0
             |  (uint32_t)lit_int[1] <<  8;
     }
-
-#ifdef _WIN32
-    WSADATA wsaData;
-#endif
-
 };
 
 }

@@ -91,8 +91,6 @@ public:
 
     static std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {});
 
-    static SockAddr parse(sa_family_t family, const char* address);
-
     bool operator<(const SockAddr& o) const {
         if (len != o.len)
             return len < o.len;
@@ -192,6 +190,12 @@ public:
             break;
         }
     }
+
+    /**
+     * Set the address part of the socket address from a numeric IP address (string representation).
+     * Family must be already set. Throws in case of parse failue.
+     */
+    void setAddress(const char* address);
 
     /**
      * Returns the accessible byte length at the pointer returned by #get().

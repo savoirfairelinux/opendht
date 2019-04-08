@@ -73,18 +73,22 @@ SockAddr::resolve(const std::string& host, const std::string& service)
     return ips;
 }
 
-
-SockAddr
-SockAddr::parse(sa_family_t family, const char* address)
+void
+SockAddr::setAddress(const char* address)
 {
-    SockAddr addr;
-    addr.setFamily(family);
-    if (inet_pton(family, address, family == AF_INET ? (void*)&addr.getIPv4().sin_addr.s_addr : (void*)&addr.getIPv6().sin6_addr) <= 0){
-        throw std::runtime_error("SockAddr::parse inet_pton");
+    auto family = getFamily();
+    void* addr = nullptr;
+    switch (family) {
+    case AF_INET:
+        addr = &getIPv4().sin_addr;
+        break;
+    case AF_INET6:
+        addr = &getIPv6().sin6_addr;
+        break;
     }
-    return addr;
+    if (not addr or inet_pton(family, address, addr) <= 0)
+        throw std::runtime_error("Can't parse IP address");
 }
-
 
 std::string
 print_addr(const sockaddr* sa, socklen_t slen)

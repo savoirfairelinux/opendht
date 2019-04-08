@@ -29,7 +29,7 @@
 namespace dht {
 
 constexpr char MULTICAST_ADDRESS_IPV4[10] = "224.0.0.1";
-constexpr char MULTICAST_ADDRESS_IPV6[8] = "ff02::1";
+constexpr char MULTICAST_ADDRESS_IPV6[8] = "ff05::2"; // Site-local multicast
 
 #ifdef _WIN32
 
@@ -66,12 +66,10 @@ PeerDiscovery::PeerDiscovery(sa_family_t domain, in_port_t port)
 int
 PeerDiscovery::initialize_socket(sa_family_t domain)
 {
-
 #ifdef _WIN32
-    // Initialize Windows Socket API with given VERSION.
+    WSADATA wsaData;
     if (WSAStartup(0x0101, &wsaData)) {
-        perror("WSAStartup");
-        throw std::runtime_error(std::string("Socket Creation Error_initialize_socket ") + strerror(errno));
+        throw std::runtime_error(std::string("Can't initialize Winsock2 ") + strerror(errno));
     }
 #endif
 
@@ -85,7 +83,7 @@ PeerDiscovery::initialize_socket(sa_family_t domain)
 
 void
 PeerDiscovery::listener_setup()
-{   
+{
     SockAddr sockAddrListen_;
     sockAddrListen_.setFamily(domain_);
     sockAddrListen_.setPort(port_);
@@ -107,58 +105,52 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 {
     switch (family)
     {
-        case AF_INET:{
+    case AF_INET:{
+        ip_mreq config_ipv4;
 
-            ip_mreq config_ipv4;
-            
-            //This option can be used to set the interface for sending outbound 
-            //multicast datagrams from the sockets application.
-            config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
-            if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &config_ipv4.imr_interface, sizeof( struct in_addr )) < 0 ) {
-                throw std::runtime_error(std::string("Bound Network Interface IPV4 Error: ") + strerror(errno));
-            }
-
-            //The IP_MULTICAST_TTL socket option allows the application to primarily 
-            //limit the lifetime of the packet in the Internet and prevent it from circulating indefinitely
-            unsigned char ttl4 = 20;
-            if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl4, sizeof( ttl4 )) < 0 ) {
-                throw std::runtime_error(std::string(" TTL Sockopt Error: ") + strerror(errno));
-            }
-            
-            // config the listener to be interested in joining in the multicast group
-            config_ipv4.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDRESS_IPV4);
-            config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
-            if (setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&config_ipv4, sizeof(config_ipv4)) < 0){
-                throw std::runtime_error(std::string(" Member Addition IPV4 Error: ") + strerror(errno));
-            }
-
-            break;
-        }
-    
-        case AF_INET6:{
-
-            ipv6_mreq config_ipv6;
-
-            unsigned int outif = 0;
-            if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &outif, sizeof( outif )) < 0 ) {
-                throw std::runtime_error(std::string("Bound Network Interface IPV6 Error: ") + strerror(errno));
-            }
-
-            unsigned int ttl6 = 20;
-            if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &ttl6, sizeof( ttl6 )) < 0 ) {
-                throw std::runtime_error(std::string("Hop Count Set Error: ") + strerror(errno));
-            }
-
-            config_ipv6.ipv6mr_interface = 0;
-            inet_pton(AF_INET6, MULTICAST_ADDRESS_IPV6, &config_ipv6.ipv6mr_multiaddr);
-            if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &config_ipv6, sizeof(config_ipv6)) < 0){
-                throw std::runtime_error(std::string("Member Addition IPV6 Error: ") + strerror(errno));
-            }
-
-            break;
+        //This option can be used to set the interface for sending outbound
+        //multicast datagrams from the sockets application.
+        config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
+        if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &config_ipv4.imr_interface, sizeof( struct in_addr )) < 0 ) {
+            throw std::runtime_error(std::string("Bound Network Interface IPV4 Error: ") + strerror(errno));
         }
 
-    }      
+        //The IP_MULTICAST_TTL socket option allows the application to primarily
+        //limit the lifetime of the packet in the Internet and prevent it from circulating indefinitely
+        unsigned char ttl4 = 20;
+        if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl4, sizeof( ttl4 )) < 0 ) {
+            throw std::runtime_error(std::string(" TTL Sockopt Error: ") + strerror(errno));
+        }
+
+        // config the listener to be interested in joining in the multicast group
+        config_ipv4.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDRESS_IPV4);
+        config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
+        if (setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&config_ipv4, sizeof(config_ipv4)) < 0){
+            throw std::runtime_error(std::string(" Member Addition IPV4 Error: ") + strerror(errno));
+        }
+        break;
+    }
+    case AF_INET6: {
+        ipv6_mreq config_ipv6;
+
+        unsigned int outif = 0;
+        if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &outif, sizeof( outif )) < 0 ) {
+            throw std::runtime_error(std::string("Bound Network Interface IPV6 Error: ") + strerror(errno));
+        }
+
+        unsigned int ttl6 = 20;
+        if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &ttl6, sizeof( ttl6 )) < 0 ) {
+            throw std::runtime_error(std::string("Hop Count Set Error: ") + strerror(errno));
+        }
+
+        config_ipv6.ipv6mr_interface = 0;
+        inet_pton(AF_INET6, MULTICAST_ADDRESS_IPV6, &config_ipv6.ipv6mr_multiaddr);
+        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &config_ipv6, sizeof(config_ipv6)) < 0){
+            throw std::runtime_error(std::string("Member Addition IPV6 Error: ") + strerror(errno));
+        }
+        break;
+    }
+    }
 }
 
 void
@@ -205,7 +197,8 @@ PeerDiscovery::sender_setup(const dht::InfoHash& nodeId, in_port_t port_to_send)
 {
     nodeId_ = nodeId;
     //Set up for Sender
-    sockAddrSend_ = SockAddr::parse(domain_, domain_ == AF_INET ? MULTICAST_ADDRESS_IPV4 : MULTICAST_ADDRESS_IPV6);
+    sockAddrSend_.setFamily(domain_);
+    sockAddrSend_.setAddress(domain_ == AF_INET ? MULTICAST_ADDRESS_IPV4 : MULTICAST_ADDRESS_IPV6);
     sockAddrSend_.setPort(port_);
 
     //Setup for send data
@@ -277,10 +270,10 @@ PeerDiscovery::listener_thread(PeerDiscoveredCallback callback)
             size_t data_receive_size = data_receive.size();
             auto from = recvFrom(data_receive.data(), data_receive_size);
 
-            //Data_receive_size as a value-result member will hlep to filter packs 
-            if(data_receive_size != data_receive.size()){ 
+            //Data_receive_size as a value-result member will hlep to filter packs
+            if(data_receive_size != data_receive.size()){
                 perror("Data Received Unmatch");
-                continue; 
+                continue;
             }
 
             std::array<uint8_t,dht::InfoHash::size()> data_infohash;
@@ -330,7 +323,6 @@ PeerDiscovery::stop()
     }
     cv_.notify_one();
     if (stop_writefd_ != -1) {
-
         if (write(stop_writefd_, "\0", 1) == -1) {
             perror("write");
         }
