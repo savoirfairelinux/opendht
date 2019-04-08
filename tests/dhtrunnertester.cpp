@@ -119,17 +119,16 @@ DhtRunnerTester::testListen() {
     CPPUNIT_ASSERT(ftokenc.valid());
 
     auto tokena = ftokena.get();
-    auto tokenb = ftokenb.get();
     auto tokenc = ftokenc.get();
+    // tokenb might be 0 since the callback returns false.
 
     CPPUNIT_ASSERT(tokena);
-    CPPUNIT_ASSERT(tokenb);
     CPPUNIT_ASSERT(tokenc);
     CPPUNIT_ASSERT_EQUAL(N + 1u, valueCount.load());
 
     node1.cancelListen(a, tokena);
-    node1.cancelListen(b, tokena);
-    node1.cancelListen(c, tokena);
+    node1.cancelListen(b, std::move(ftokenb));
+    node1.cancelListen(c, tokenc);
 }
 
 }  // namespace test
