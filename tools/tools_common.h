@@ -98,6 +98,7 @@ struct dht_params {
     bool generate_identity {false};
     bool daemonize {false};
     bool service {false};
+    bool peer_discovery {false};
     std::pair<std::string, std::string> bootstrap {};
     in_port_t proxyserver {0};
     std::string proxyclient {};
@@ -107,29 +108,30 @@ struct dht_params {
 };
 
 static const constexpr struct option long_options[] = {
-   {"help",       no_argument      , nullptr, 'h'},
-   {"port",       required_argument, nullptr, 'p'},
-   {"net",        required_argument, nullptr, 'n'},
-   {"bootstrap",  required_argument, nullptr, 'b'},
-   {"identity",   no_argument      , nullptr, 'i'},
-   {"verbose",    no_argument      , nullptr, 'v'},
-   {"daemonize",  no_argument      , nullptr, 'd'},
-   {"service",    no_argument      , nullptr, 's'},
-   {"persist",    required_argument, nullptr, 'f'},
-   {"logfile",    required_argument, nullptr, 'l'},
-   {"syslog",     no_argument      , nullptr, 'L'},
-   {"proxyserver",required_argument, nullptr, 'S'},
-   {"proxyclient",required_argument, nullptr, 'C'},
-   {"pushserver", required_argument, nullptr, 'P'},
-   {"devicekey",  required_argument, nullptr, 'D'},
-   {nullptr,      0                , nullptr,  0}
+   {"help",             no_argument      , nullptr, 'h'},
+   {"port",             required_argument, nullptr, 'p'},
+   {"net",              required_argument, nullptr, 'n'},
+   {"bootstrap",        required_argument, nullptr, 'b'},
+   {"identity",         no_argument      , nullptr, 'i'},
+   {"verbose",          no_argument      , nullptr, 'v'},
+   {"daemonize",        no_argument      , nullptr, 'd'},
+   {"service",          no_argument      , nullptr, 's'},
+   {"peer-discovery",   no_argument      , nullptr, 'D'},
+   {"persist",          required_argument, nullptr, 'f'},
+   {"logfile",          required_argument, nullptr, 'l'},
+   {"syslog",           no_argument      , nullptr, 'L'},
+   {"proxyserver",      required_argument, nullptr, 'S'},
+   {"proxyclient",      required_argument, nullptr, 'C'},
+   {"pushserver",       required_argument, nullptr, 'y'},
+   {"devicekey",        required_argument, nullptr, 'z'},
+   {nullptr,            0                , nullptr,  0}
 };
 
 dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "hidsvp:n:b:f:l:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidsvDp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -147,13 +149,16 @@ parseArgs(int argc, char **argv) {
                     std::cout << "Invalid port: " << port_arg << std::endl;
             }
             break;
-        case 'P':
+        case 'D':
+            params.peer_discovery = true;
+            break;
+        case 'y':
             params.pushserver = optarg;
             break;
         case 'C':
             params.proxyclient = optarg;
             break;
-        case 'D':
+        case 'z':
             params.devicekey = optarg;
             break;
         case 'f':

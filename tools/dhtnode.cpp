@@ -505,6 +505,8 @@ main(int argc, char **argv)
         config.threaded = true;
         config.proxy_server = params.proxyclient;
         config.push_node_id = "dhtnode";
+        config.peer_discovery = params.peer_discovery;
+        config.peer_publish = params.peer_discovery;
         if (not params.proxyclient.empty())
             dht->setPushNotificationToken(params.devicekey);
 
