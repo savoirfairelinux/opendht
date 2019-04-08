@@ -33,10 +33,10 @@ constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 
 struct DhtRunner::Listener {
-    size_t tokenClassicDht;
-    size_t tokenProxyDht;
+    size_t tokenClassicDht {0};
+    size_t tokenProxyDht {0};
     ValueCallback gcb;
-    InfoHash hash;
+    InfoHash hash {};
     Value::Filter f;
     Where w;
 };
@@ -661,7 +661,7 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
         pending_ops.emplace([=](SecureDht& dht) mutable {
 #ifdef OPENDHT_PROXY_CLIENT
             auto tokenbGlobal = listener_token_++;
-            Listener listener {};
+            auto& listener = listeners_[tokenbGlobal];
             listener.hash = hash;
             listener.f = std::move(f);
             listener.w = std::move(w);
@@ -676,7 +676,6 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
                 listener.tokenProxyDht = dht.listen(hash, listener.gcb, listener.f, listener.w);
             else
                 listener.tokenClassicDht = dht.listen(hash, listener.gcb, listener.f, listener.w);
-            listeners_.emplace(tokenbGlobal, std::move(listener));
             ret_token->set_value(tokenbGlobal);
 #else
             ret_token->set_value(dht.listen(hash, std::move(vcb), std::move(f), std::move(w)));
