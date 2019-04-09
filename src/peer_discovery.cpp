@@ -122,8 +122,8 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
         ipv6_mreq config_ipv6;
 
         unsigned int outif = 0;
-        if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &outif, sizeof( outif )) < 0 ) {
-            throw std::runtime_error(std::string("Bound Network Interface IPv6 Error: ") + strerror(errno));
+        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &outif, sizeof(outif)) < 0) {
+            //std::cerr << "Can't assign multicast interface: " << strerror(errno) << std::endl;
         }
 
         unsigned int ttl6 = 20;
