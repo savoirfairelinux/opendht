@@ -23,6 +23,10 @@
 #define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #endif
 
+#ifndef IPV6_JOIN_GROUP
+#define IPV6_JOIN_GROUP IPV6_ADD_MEMBERSHIP
+#endif
+
 namespace dht {
 namespace net {
 

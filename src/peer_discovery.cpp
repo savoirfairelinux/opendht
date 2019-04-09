@@ -130,7 +130,7 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 
         config_ipv6.ipv6mr_interface = 0;
         inet_pton(AF_INET6, MULTICAST_ADDRESS_IPV6, &config_ipv6.ipv6mr_multiaddr);
-        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &config_ipv6, sizeof(config_ipv6)) < 0){
+        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &config_ipv6, sizeof(config_ipv6)) < 0){
             throw std::runtime_error(std::string("Member Addition IPV6 Error: ") + strerror(errno));
         }
         break;
