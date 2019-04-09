@@ -75,13 +75,16 @@ PeerDiscovery::listener_setup()
     sockAddrListen_.setAny();
 
     unsigned int opt = 1;
-    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR|SO_REUSEPORT, (char*) &opt, sizeof(opt)) < 0){
-       throw std::runtime_error(std::string("Reusing ADDR failed: ") + strerror(errno));
+    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+       std::cerr << "setsockopt SO_REUSEADDR failed: " << strerror(errno) << std::endl;
+    }
+    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+       std::cerr << "setsockopt SO_REUSEPORT failed: " << strerror(errno) << std::endl;
     }
 
     // bind to receive address
     if (bind(sockfd_, sockAddrListen_.get(), sockAddrListen_.getLength()) < 0){
-        throw std::runtime_error(std::string("Bind Socket For Listener Error: ") + strerror(errno));
+        throw std::runtime_error(std::string("Error binding socket: ") + strerror(errno));
     }
 }
 
@@ -97,21 +100,21 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
         //multicast datagrams from the sockets application.
         config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
         if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &config_ipv4.imr_interface, sizeof( struct in_addr )) < 0 ) {
-            throw std::runtime_error(std::string("Bound Network Interface IPV4 Error: ") + strerror(errno));
+            throw std::runtime_error(std::string("Bound Network Interface IPv4 Error: ") + strerror(errno));
         }
 
         //The IP_MULTICAST_TTL socket option allows the application to primarily
         //limit the lifetime of the packet in the Internet and prevent it from circulating indefinitely
         unsigned char ttl4 = 20;
         if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl4, sizeof( ttl4 )) < 0 ) {
-            throw std::runtime_error(std::string(" TTL Sockopt Error: ") + strerror(errno));
+            throw std::runtime_error(std::string("TTL Sockopt Error: ") + strerror(errno));
         }
 
         // config the listener to be interested in joining in the multicast group
         config_ipv4.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDRESS_IPV4);
         config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
         if (setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&config_ipv4, sizeof(config_ipv4)) < 0){
-            throw std::runtime_error(std::string(" Member Addition IPV4 Error: ") + strerror(errno));
+            throw std::runtime_error(std::string(" Member Addition IPv4 Error: ") + strerror(errno));
         }
         break;
     }
@@ -120,7 +123,7 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 
         unsigned int outif = 0;
         if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &outif, sizeof( outif )) < 0 ) {
-            throw std::runtime_error(std::string("Bound Network Interface IPV6 Error: ") + strerror(errno));
+            throw std::runtime_error(std::string("Bound Network Interface IPv6 Error: ") + strerror(errno));
         }
 
         unsigned int ttl6 = 20;
@@ -131,7 +134,7 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
         config_ipv6.ipv6mr_interface = 0;
         inet_pton(AF_INET6, MULTICAST_ADDRESS_IPV6, &config_ipv6.ipv6mr_multiaddr);
         if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &config_ipv6, sizeof(config_ipv6)) < 0){
-            throw std::runtime_error(std::string("Member Addition IPV6 Error: ") + strerror(errno));
+            throw std::runtime_error(std::string("Member Addition IPv6 Error: ") + strerror(errno));
         }
         break;
     }
