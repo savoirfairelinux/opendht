@@ -181,20 +181,15 @@ void
 PeerDiscovery::sender_setup(const dht::InfoHash& nodeId, in_port_t port_to_send)
 {
     nodeId_ = nodeId;
-    //Set up for Sender
+    // Setup sender address
     sockAddrSend_.setFamily(domain_);
     sockAddrSend_.setAddress(domain_ == AF_INET ? MULTICAST_ADDRESS_IPV4 : MULTICAST_ADDRESS_IPV6);
     sockAddrSend_.setPort(port_);
 
-    //Setup for send data
-    int port_node = port_to_send;
-    uint8_t port_node_binary[2];
-    PeerDiscovery::inttolitend(port_node,port_node_binary);
-
-    //Copy Node id and node port
-    memcpy (data_send_.data(), nodeId.data(), nodeId.size());
-    data_send_[InfoHash::size()] = port_node_binary[0];
-    data_send_[InfoHash::size() + 1] = port_node_binary[1];
+    // Setup sent data
+    std::copy_n(nodeId.cbegin(), nodeId.size(), data_send_.begin());
+    auto portAddr = reinterpret_cast<in_port_t*>(data_send_.data() + dht::InfoHash::size());
+    *portAddr = htons(port_to_send);
 }
 
 void
@@ -252,29 +247,22 @@ PeerDiscovery::listener_thread(PeerDiscoveredCallback callback)
         }
 
         if (data_coming > 0) {
-
-            if(FD_ISSET(stop_readfd, &readfds)){ break; }
+            if (FD_ISSET(stop_readfd, &readfds)) { break; }
 
             std::array<uint8_t,dht::InfoHash::size() + sizeof(in_port_t)> data_receive;
             size_t data_receive_size = data_receive.size();
             auto from = recvFrom(data_receive.data(), data_receive_size);
 
-            //Data_receive_size as a value-result member will hlep to filter packs
+            // Data_receive_size as a value-result member will hlep to filter packs
             if(data_receive_size != data_receive.size()){
-                perror("Data Received Unmatch");
+                // std::cerr << "Received invalid peer discovery packet" << std::endl;
                 continue;
             }
 
-            std::array<uint8_t,dht::InfoHash::size()> data_infohash;
-            uint8_t data_port[2];
-
-            memcpy (data_infohash.data(), data_receive.data(), dht::InfoHash::size());
-            data_port[0] = data_receive[dht::InfoHash::size()];
-            data_port[1] = data_receive[dht::InfoHash::size() + 1];
-
-            auto port = PeerDiscovery::litendtoint(data_port);
-            auto nodeId = dht::InfoHash(data_infohash.data(), dht::InfoHash::size());
-
+            dht::InfoHash nodeId;
+            std::copy_n(data_receive.begin(), dht::InfoHash::size(), nodeId.begin());
+            auto portAddr = reinterpret_cast<in_port_t*>(data_receive.data() + dht::InfoHash::size());
+            auto port = ntohs(*portAddr);
             if (nodeId != nodeId_){
                 from.setPort(port);
                 callback(nodeId, from);

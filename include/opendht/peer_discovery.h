@@ -119,19 +119,6 @@ private:
      * Sender Parameters Setup
     */
     void sender_setup(const dht::InfoHash& nodeId, in_port_t port_to_send);
-
-    /**
-     * Binary Converters
-    */
-    static void inttolitend(uint32_t x, uint8_t *lit_int) {
-        lit_int[0] = (uint8_t)(x >>  0);
-        lit_int[1] = (uint8_t)(x >>  8);
-    }
-
-    static uint16_t litendtoint(uint8_t *lit_int) {
-        return (uint32_t)lit_int[0] <<  0
-            |  (uint32_t)lit_int[1] <<  8;
-    }
 };
 
 }
