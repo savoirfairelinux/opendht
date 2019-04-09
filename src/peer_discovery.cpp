@@ -121,10 +121,10 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
     case AF_INET6: {
         ipv6_mreq config_ipv6;
 
-        unsigned int outif = 0;
+        /* unsigned int outif = 0;
         if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &outif, sizeof(outif)) < 0) {
-            //std::cerr << "Can't assign multicast interface: " << strerror(errno) << std::endl;
-        }
+            std::cerr << "Can't assign multicast interface: " << strerror(errno) << std::endl;
+        } */
 
         unsigned int ttl6 = 20;
         if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &ttl6, sizeof( ttl6 )) < 0 ) {
