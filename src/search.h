@@ -545,6 +545,7 @@ struct Dht::Search {
             if (a.value->id == vid)
                 return a.value;
         }
+        return {};
     }
 
     bool cancelPut(Value::Id vid) {
