@@ -27,6 +27,7 @@ libopendht_la_SOURCES  = \
         dhtrunner.cpp \
         default_types.cpp \
         log.cpp \
+        peer_discovery.cpp \
         network_utils.h \
         network_utils.cpp
 
@@ -55,6 +56,7 @@ nobase_include_HEADERS = \
         ../include/opendht/default_types.h \
         ../include/opendht/log.h \
         ../include/opendht/log_enable.h \
+        ../include/opendht/peer_discovery.h \
         ../include/opendht/rng.h
 
 if ENABLE_PROXY_SERVER
