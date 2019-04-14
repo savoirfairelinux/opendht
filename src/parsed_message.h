@@ -84,13 +84,13 @@ struct ParsedMessage {
     /* target id around which to find nodes */
     InfoHash target;
     /* transaction id */
-    Tid tid;
+    Tid tid {0};
     /* tid for packets going through request socket */
-    Tid socket_id;
+    Tid socket_id {0};
     /* security token */
     Blob token;
     /* the value id (announce confirmation) */
-    Value::Id value_id;
+    Value::Id value_id {0};
     /* time when value was first created */
     time_point created { time_point::max() };
     /* IPv4 nodes in response to a 'find' request */
