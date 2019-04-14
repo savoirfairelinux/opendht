@@ -31,6 +31,7 @@ namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
+static constexpr in_port_t PEER_DISCOVERY_PORT = 8888;
 
 struct DhtRunner::Listener {
     size_t tokenClassicDht {0};
@@ -45,6 +46,7 @@ DhtRunner::DhtRunner() : dht_()
 #ifdef OPENDHT_PROXY_CLIENT
 , dht_via_proxy_()
 #endif //OPENDHT_PROXY_CLIENT
+, peerDiscovery4_(), peerDiscovery6_()
 {
 #ifdef _WIN32
     WSADATA wsd;
@@ -137,12 +139,12 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
 
     if (config.peer_discovery or config.peer_publish) {
         try {
-            peerDiscovery4_.reset(new PeerDiscovery(AF_INET, port_multicast));
+            peerDiscovery4_.reset(new PeerDiscovery(AF_INET, PEER_DISCOVERY_PORT));
         } catch(const std::exception& e){
             std::cerr << "Can't start peer discovery (IPv4): " << e.what() << std::endl;
         }
         try {
-            peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, port_multicast));
+            peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, PEER_DISCOVERY_PORT));
         } catch(const std::exception& e) {
             std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
         }
@@ -150,13 +152,11 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (config.peer_discovery) {
         using sig = void (DhtRunner::*)(const InfoHash&, const SockAddr&);
         if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),
-                                                   this,
+            peerDiscovery4_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap), this,
                                                    std::placeholders::_1,std::placeholders::_2));
 
         if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap),
-                                                    this,
+            peerDiscovery6_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap), this,
                                                     std::placeholders::_1,std::placeholders::_2));
     }
     if (config.peer_publish) {
@@ -187,10 +187,8 @@ DhtRunner::join()
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
-    if (peerDiscovery4_)
-        peerDiscovery4_->stop();
-    if (peerDiscovery6_)
-        peerDiscovery6_->stop();
+    if (peerDiscovery4_) peerDiscovery4_->stop();
+    if (peerDiscovery6_) peerDiscovery6_->stop();
 
     if (dht_thread.joinable())
         dht_thread.join();
@@ -198,10 +196,9 @@ DhtRunner::join()
         bootstrap_thread.join();
     if (rcv_thread.joinable())
         rcv_thread.join();
-    if (peerDiscovery4_)
-        peerDiscovery4_->join();
-    if (peerDiscovery6_)
-        peerDiscovery6_->join();
+
+    if (peerDiscovery4_) peerDiscovery4_->join();
+    if (peerDiscovery6_) peerDiscovery6_->join();
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);

@@ -541,8 +541,6 @@ private:
     /** PeerDiscovery Parameters */
     std::unique_ptr<PeerDiscovery> peerDiscovery4_;
     std::unique_ptr<PeerDiscovery> peerDiscovery6_;
-    const in_port_t port_multicast = 8888;
-
 };
 
 }
