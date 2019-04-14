@@ -74,7 +74,7 @@ public:
     /**
      * Get the ID of the node.
      */
-    inline const InfoHash& getNodeId() const { return myid; }
+    inline const InfoHash& getNodeId() const override { return myid; }
 
     /**
      * Get the current status of the node for the given family.
