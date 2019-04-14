@@ -17,26 +17,13 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #include "network_engine.h"
 #include "request.h"
 #include "default_types.h"
 #include "log_enable.h"
 #include "parsed_message.h"
-#include "network_utils.h"
 
 #include <msgpack.hpp>
-
-#ifndef _WIN32
-#include <arpa/inet.h>
-#include <unistd.h>
-#else
-#include <ws2tcpip.h>
-#include <io.h>
-#endif
-#include <fcntl.h>
-
-#include <cstring>
 
 namespace dht {
 namespace net {
@@ -56,7 +43,7 @@ constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 const std::string NetworkEngine::my_v {"RNG1"};
 constexpr size_t NetworkEngine::MAX_REQUESTS_PER_SEC;
 
-static const uint8_t v4prefix[16] = {
+static constexpr uint8_t v4prefix[16] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
 };
 
@@ -138,16 +125,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int&
     onAnnounce(std::move(onAnnounce)),
     onRefresh(std::move(onRefresh)),
     myid(myid), network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
-{
-    if (dht_socket >= 0) {
-        if (!set_nonblocking(dht_socket))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-    if (dht_socket6 >= 0) {
-        if (!set_nonblocking(dht_socket6))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-}
+{}
 
 NetworkEngine::~NetworkEngine() {
     clear();

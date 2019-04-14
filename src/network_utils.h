@@ -18,9 +18,12 @@
 #pragma once
 
 #ifdef _WIN32
+#include <ws2tcpip.h>
 #include <winsock2.h>
-#define close(x) closesocket(x)
-#define write(s, b, f) send(s, b, (int)strlen(b), 0)
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 #endif
 
 #ifndef IPV6_JOIN_GROUP
@@ -34,7 +37,6 @@ bool set_nonblocking(int fd, bool nonblocking = true);
 
 #ifdef _WIN32
 void udpPipe(int fds[2]);
-// extern const char *inet_ntop(int, const void *, char *, socklen_t);
 #endif
 
 }

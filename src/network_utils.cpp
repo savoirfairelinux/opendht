@@ -18,23 +18,17 @@
 
 #include "network_utils.h"
 
-#ifndef _WIN32
+#ifdef _WIN32
 #include "utils.h"
 #include "sockaddr.h"
-
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#else
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <io.h>
+#include <string>
+#include <cstring>
 #define close(x) closesocket(x)
 #define write(s, b, f) send(s, b, (int)strlen(b), 0)
-#endif
+#else
 #include <fcntl.h>
-
-#include <string>
+#endif
 
 namespace dht {
 namespace net {

@@ -42,7 +42,7 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
 
             test_n.startPublish(data_n,port_n);
 
-            sleep(5);
+            std::this_thread::sleep_for(std::chrono::seconds(5));
             test_n.stop();
             test_s.stop();
             test_n.join();
@@ -63,8 +63,8 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
     int port = 3333;
     in_port_t port_n = 50001;
     try{
-        dht::PeerDiscovery test_n(AF_INET6,port);
-        dht::PeerDiscovery test_s(AF_INET6,port);
+        dht::PeerDiscovery test_n(AF_INET6, port);
+        dht::PeerDiscovery test_s(AF_INET6, port);
 
         try{
             test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
@@ -74,19 +74,16 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
 
             test_n.startPublish(data_n,port_n);
 
-            sleep(5);
+            std::this_thread::sleep_for(std::chrono::seconds(5));
             test_n.stop();
             test_s.stop();
             test_n.join();
             test_s.join();
         } catch(std::exception &exception){
-            perror(exception.what());
             CPPUNIT_ASSERT(false);
         }
-    } catch(std::exception &exception){
-            perror(exception.what());
+    } catch(std::exception &exception) {
     }
-
 }
 
 void PeerDiscoveryTester::tearDown(){}

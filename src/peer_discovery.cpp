@@ -22,8 +22,12 @@
 #ifdef _WIN32
 #include <Ws2tcpip.h> // needed for ip_mreq definition for multicast
 #include <Windows.h>
+#include <cstring>
+#define close(x) closesocket(x)
+#define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #else
 #include <sys/types.h>
+#include <unistd.h>
 #endif
 #include <fcntl.h>
 

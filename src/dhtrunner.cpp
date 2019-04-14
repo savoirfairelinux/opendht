@@ -27,6 +27,12 @@
 #include "dht_proxy_client.h"
 #endif
 
+#ifdef _WIN32
+#include <cstring>
+#define close(x) closesocket(x)
+#define write(s, b, f) send(s, b, (int)strlen(b), 0)
+#endif
+
 namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
@@ -46,7 +52,6 @@ DhtRunner::DhtRunner() : dht_()
 #ifdef OPENDHT_PROXY_CLIENT
 , dht_via_proxy_()
 #endif //OPENDHT_PROXY_CLIENT
-, peerDiscovery4_(), peerDiscovery6_()
 {
 #ifdef _WIN32
     WSADATA wsd;
@@ -482,6 +487,7 @@ int bindSocket(const SockAddr& addr, SockAddr& bound)
 #endif
     if (is_ipv6)
         setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&set, sizeof(set));
+    net::set_nonblocking(sock);
     int rc = bind(sock, addr.get(), addr.getLength());
     if(rc < 0) {
         rc = errno;
