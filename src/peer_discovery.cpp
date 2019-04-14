@@ -250,7 +250,10 @@ PeerDiscovery::listener_thread(PeerDiscoveredCallback callback)
         }
 
         if (data_coming > 0) {
-            if (FD_ISSET(stop_readfd, &readfds)) { break; }
+            if (FD_ISSET(stop_readfd, &readfds)) {
+                std::array<uint8_t, 64 * 1024> buf;
+                recv(stop_readfd, buf.data(), buf.size(), 0);
+            }
 
             std::array<uint8_t,dht::InfoHash::size() + sizeof(in_port_t)> data_receive;
             size_t data_receive_size = data_receive.size();
@@ -288,7 +291,7 @@ PeerDiscovery::startDiscovery(PeerDiscoveredCallback callback)
 }
 
 void
-PeerDiscovery::startPublish(const dht::InfoHash &nodeId, in_port_t port_to_send)
+PeerDiscovery::startPublish(const dht::InfoHash& nodeId, in_port_t port_to_send)
 {
     sender_setup(nodeId, port_to_send);
     running_send = std::thread(&PeerDiscovery::sender_thread, this);
