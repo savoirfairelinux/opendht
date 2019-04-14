@@ -217,10 +217,8 @@ PeerDiscovery::listener_thread(PeerDiscoveredCallback callback)
 {
     int stopfds_pipe[2];
 #ifndef _WIN32
-    auto status = pipe(stopfds_pipe);
-    if (status == -1) {
+    if (pipe(stopfds_pipe) == -1)
         throw std::runtime_error(std::string("Can't open pipe: ") + strerror(errno));
-    }
 #else
     net::udpPipe(stopfds_pipe);
 #endif
@@ -304,7 +302,7 @@ PeerDiscovery::stop()
         std::unique_lock<std::mutex> lck(mtx_);
         running_ = false;
     }
-    cv_.notify_one();
+    cv_.notify_all();
     if (stop_writefd_ != -1) {
         if (write(stop_writefd_, "\0", 1) == -1) {
             perror("write");
