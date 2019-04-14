@@ -18,11 +18,10 @@
 
 #pragma once
 
+#include "def.h"
 #include "sockaddr.h"
 #include "infohash.h"
 
-#include <string.h>
-#include <stdio.h>
 #include <unistd.h>
 
 #include <thread>

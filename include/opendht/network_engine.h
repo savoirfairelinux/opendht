@@ -27,6 +27,7 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
+#include "log_enable.h"
 
 #include <vector>
 #include <string>

@@ -25,9 +25,17 @@
 #define IN_IS_ADDR_UNSPECIFIED(a) (((long int) (a)->s_addr) == 0x00000000)
 #endif /* IN_IS_ADDR_UNSPECIFIED */
 
+#ifndef PACKAGE_VERSION
+#define PACKAGE_VERSION "(unknown version)"
+#endif
+
 namespace dht {
 
 static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
+
+const char* version() {
+    return PACKAGE_VERSION;
+}
 
 std::pair<std::string, std::string>
 splitPort(const std::string& s) {

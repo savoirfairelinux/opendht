@@ -40,6 +40,8 @@ namespace dht {
 using NetId = uint32_t;
 using want_t = int_fast8_t;
 
+OPENDHT_PUBLIC const char* version();
+
 // shortcut for std::shared_ptr
 template<class T>
 using Sp = std::shared_ptr<T>;

@@ -29,10 +29,19 @@ extern "C" {
 
 using namespace dht;
 
-void print_usage() {
-    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port]" << std::endl << std::endl;
+void print_info() {
     std::cout << "dhtnode, a simple OpenDHT command line node runner." << std::endl;
     std::cout << "Report bugs to: https://opendht.net" << std::endl;
+}
+
+void print_version() {
+    std::cout << "OpenDHT version " << dht::version() << std::endl;
+    print_info();
+}
+
+void print_usage() {
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port]" << std::endl << std::endl;
+    print_info();
 }
 
 void print_id_req() {
@@ -40,13 +49,13 @@ void print_id_req() {
 }
 
 void print_node_info(const std::shared_ptr<DhtRunner>& dht, const dht_params& params) {
-    std::cout << "OpenDht node " << dht->getNodeId() << " running on port " <<  dht->getBoundPort() << std::endl;
+    std::cout << "OpenDHT node " << dht->getNodeId() << " running on port " <<  dht->getBoundPort() << std::endl;
     if (params.generate_identity)
         std::cout << "Public key ID " << dht->getId() << std::endl;
 }
 
 void print_help() {
-    std::cout << "OpenDht command line interface (CLI)" << std::endl;
+    std::cout << "OpenDHT command line interface (CLI)" << std::endl;
     std::cout << "Possible commands:" << std::endl
               << "  h, help    Print this help message." << std::endl
               << "  x, quit    Quit the program." << std::endl
@@ -482,6 +491,10 @@ main(int argc, char **argv)
         auto params = parseArgs(argc, argv);
         if (params.help) {
             print_usage();
+            return 0;
+        }
+        if (params.version) {
+            print_version();
             return 0;
         }
 

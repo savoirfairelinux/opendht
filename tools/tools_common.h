@@ -90,6 +90,7 @@ static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 
 struct dht_params {
     bool help {false}; // print help and exit
+    bool version {false};
     bool log {false};
     std::string logfile {};
     bool syslog {false};
@@ -124,6 +125,7 @@ static const constexpr struct option long_options[] = {
    {"proxyclient",      required_argument, nullptr, 'C'},
    {"pushserver",       required_argument, nullptr, 'y'},
    {"devicekey",        required_argument, nullptr, 'z'},
+   {"version",          no_argument      , nullptr, 'V'},
    {nullptr,            0                , nullptr,  0}
 };
 
@@ -172,6 +174,9 @@ parseArgs(int argc, char **argv) {
             if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
                 params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
             }
+            break;
+        case 'V':
+            params.version = true;
             break;
         case 'h':
             params.help = true;
