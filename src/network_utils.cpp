@@ -19,6 +19,9 @@
 #include "network_utils.h"
 
 #ifndef _WIN32
+#include "utils.h"
+#include "sockaddr.h"
+
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -30,6 +33,8 @@
 #define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #endif
 #include <fcntl.h>
+
+#include <string>
 
 namespace dht {
 namespace net {
@@ -55,7 +60,7 @@ void udpPipe(int fds[2])
 {
     int lst = socket(AF_INET, SOCK_DGRAM, 0);
     if (lst < 0)
-        throw DhtException(std::string("Can't open socket: ") + strerror(lst));
+        throw DhtException(std::string("Can't open socket: ") + strerror(WSAGetLastError()));
     sockaddr_in inaddr;
     sockaddr addr;
     memset(&inaddr, 0, sizeof(inaddr));
@@ -63,14 +68,14 @@ void udpPipe(int fds[2])
     inaddr.sin_family = AF_INET;
     inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     inaddr.sin_port = 0;
-    int yes=1;
+    int yes = 1;
     setsockopt(lst, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(yes));
     int rc = bind(lst, (sockaddr*)&inaddr, sizeof(inaddr));
     if (rc < 0) {
         close(lst);
-        throw DhtException("Can't bind socket on " + print_addr((sockaddr*)&addr, sizeof(inaddr)) + " " + strerror(rc));
+        throw DhtException("Can't bind socket on " + print_addr((sockaddr*)&inaddr, sizeof(inaddr)) + " " + strerror(rc));
     }
-    socklen_t len = sizeof(inaddr);
+    socklen_t len = sizeof(addr);
     getsockname(lst, &addr, &len);
     fds[0] = lst;
     fds[1] = socket(AF_INET, SOCK_DGRAM, 0);
