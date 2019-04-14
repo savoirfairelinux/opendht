@@ -68,14 +68,14 @@ public:
     DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
         : DhtException(msg), msg(msg), code(code), failing_node_id(failing_node_id) {}
 
-    std::string getMsg() const { return msg; }
+    const std::string& getMsg() const { return msg; }
     uint16_t getCode() const { return code; }
-    const InfoHash getNodeId() const { return failing_node_id; }
+    const InfoHash& getNodeId() const { return failing_node_id; }
 
 private:
     std::string msg;
     uint16_t code;
-    const InfoHash failing_node_id;
+    InfoHash failing_node_id;
 };
 
 struct ParsedMessage;
