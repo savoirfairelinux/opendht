@@ -161,9 +161,9 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     }
     if (config.peer_publish) {
         if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(getNodeId(), getBoundPort(AF_INET));
+            peerDiscovery4_->startPublish(dht_->getNodeId(), getBoundPort(AF_INET));
         if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(getNodeId(), getBoundPort(AF_INET6));
+            peerDiscovery6_->startPublish(dht_->getNodeId(), getBoundPort(AF_INET6));
     }
 }
 
@@ -226,17 +226,17 @@ DhtRunner::dumpTables() const
 InfoHash
 DhtRunner::getId() const
 {
-    if (!activeDht())
-        return {};
-    return activeDht()->getId();
+    if (auto dht = activeDht())
+        return dht->getId();
+    return {};
 }
 
 InfoHash
 DhtRunner::getNodeId() const
 {
-    if (!activeDht())
-        return {};
-    return activeDht()->getNodeId();
+    if (auto dht = activeDht())
+        return dht->getNodeId();
+    return {};
 }
 
 
