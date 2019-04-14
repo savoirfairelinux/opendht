@@ -49,6 +49,8 @@ public:
     virtual void setPushNotificationToken(const std::string& token) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         deviceKey_ = token;
+#else
+        (void) token;
 #endif
     }
 

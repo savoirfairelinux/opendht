@@ -1037,6 +1037,8 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
     } catch (const std::exception& e) {
         DHT_LOG.e("Error handling push notification: %s", e.what());
     }
+#else
+    (void) notification;
 #endif
 }
 
@@ -1066,6 +1068,9 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     listener.thread = std::thread([this, req, vcb, filter, state]() {
         sendListen(req, vcb, filter, state, ListenMethod::RESUBSCRIBE);
     });
+#else
+    (void) key;
+    (void) listener;
 #endif
 }
 

@@ -1077,6 +1077,8 @@ DhtRunner::forwardAllMessages(bool forward)
 #endif // OPENDHT_PROXY_CLIENT
     if (dht_)
         dht_->forwardAllMessages(forward);
+#else
+    (void) forward;
 #endif // OPENDHT_PROXY_SERVER
 }
 
@@ -1089,6 +1091,8 @@ DhtRunner::setPushNotificationToken(const std::string& token) {
     pushToken_ = token;
     if (dht_via_proxy_)
         dht_via_proxy_->setPushNotificationToken(token);
+#else
+    (void) token;
 #endif
 }
 
@@ -1104,6 +1108,8 @@ DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& da
         });
     }
     cv.notify_all();
+#else
+    (void) data;
 #endif
 }
 
