@@ -18,6 +18,7 @@
 
 #include "peer_discovery.h"
 #include "network_utils.h"
+#include "dhtrunner.h"
 
 #ifdef _WIN32
 #include <Ws2tcpip.h> // needed for ip_mreq definition for multicast
@@ -146,10 +147,10 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 }
 
 void
-PeerDiscovery::startDiscovery(PeerDiscoveredPackCallback callback)
+PeerDiscovery::startDiscovery(const std::string &type, PeerDiscoveredPackCallback callback)
 {
     listener_setup();
-    running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this, callback);
+    running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this, type, callback);
 }
 
 SockAddr
@@ -176,7 +177,7 @@ PeerDiscovery::recvFrom(size_t &buf_size)
 }
 
 void 
-PeerDiscovery::listenerpack_thread(PeerDiscoveredPackCallback callback)
+PeerDiscovery::listenerpack_thread(const std::string &type, PeerDiscoveredPackCallback callback)
 {
     int stopfds_pipe[2];
 #ifndef _WIN32
@@ -229,7 +230,8 @@ PeerDiscovery::listenerpack_thread(PeerDiscoveredPackCallback callback)
                     continue;
                 auto key = o.key.as<std::string>();
 
-                callback(key,std::move(o.val),from);
+                if(key == type)
+                    callback(std::move(o.val),from);
             }
         }
     }
@@ -242,15 +244,20 @@ PeerDiscovery::listenerpack_thread(PeerDiscoveredPackCallback callback)
 }
 
 void 
-PeerDiscovery::sender_setup(const std::string &type, msgpack::sbuffer && pack_buf, const dht::InfoHash &nodeId)
+PeerDiscovery::sender_setup(const std::string &type, msgpack::sbuffer && pack_buf)
 {
-    nodeId_ = nodeId;
     // Setup sender address
     sockAddrSend_.setFamily(domain_);
     sockAddrSend_.setAddress(domain_ == AF_INET ? MULTICAST_ADDRESS_IPV4 : MULTICAST_ADDRESS_IPV6);
     sockAddrSend_.setPort(port_);
 
     //Set up Sending pack
+    if(type == "dht"){
+        msgpack::object_handle oh = msgpack::unpack(pack_buf.data(), pack_buf.size());
+        msgpack::object obj = oh.get();
+        auto v = obj.as<NodeInsertionPack>();
+        nodeId_ = v.nodeid_;
+    }
     std::map<std::string, msgpack::sbuffer> messages;
     messages[type] = std::move(pack_buf);
     msgpack::packer<msgpack::sbuffer> pk(&sbuf_);
@@ -261,9 +268,9 @@ PeerDiscovery::sender_setup(const std::string &type, msgpack::sbuffer && pack_bu
     }
 }
 
-void PeerDiscovery::startPublish(const std::string &type, msgpack::sbuffer && pack_buf, const dht::InfoHash &nodeId)
+void PeerDiscovery::startPublish(const std::string &type, msgpack::sbuffer && pack_buf)
 {
-    sender_setup(type,std::move(pack_buf),nodeId);
+    sender_setup(type,std::move(pack_buf));
     running_send_ = std::thread(&PeerDiscovery::senderpack_thread, this);
 }
 

@@ -160,7 +160,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     NodeInsertionPack adc;
     adc.nid_ = current_node_netid_;
     adc.node_port_ = getBoundPort();
-    adc.nodeid_ = getNodeId();
+    adc.nodeid_ = dht_->getNodeId();
     msgpack::sbuffer sbuf_node_v4;
     msgpack::sbuffer sbuf_node_v6;
     msgpack::pack(sbuf_node_v4, adc);
@@ -168,15 +168,15 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
 
     if (config.peer_discovery) {
         if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(callbackmap_["dht"]);
+            peerDiscovery4_->startDiscovery(pack_type_,callbackmap_[pack_type_]);
         if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(callbackmap_["dht"]);
+            peerDiscovery6_->startDiscovery(pack_type_,callbackmap_[pack_type_]);
     }
     if (config.peer_publish) {
         if (peerDiscovery4_)
-            peerDiscovery4_->startPublish("dht", std::move(sbuf_node_v4), dht_->getNodeId());
+            peerDiscovery4_->startPublish(pack_type_, std::move(sbuf_node_v4));
         if (peerDiscovery6_)
-            peerDiscovery6_->startPublish("dht", std::move(sbuf_node_v6), dht_->getNodeId());
+            peerDiscovery6_->startPublish(pack_type_, std::move(sbuf_node_v6));
     }
 }
 
@@ -958,22 +958,20 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
 }
 
 void 
-DhtRunner::nodeInsertionCallback(std::string& type, msgpack::object&& obj, SockAddr& add)
+DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr& add)
 {
-    if(type == "dht"){
-        auto v = obj.as<NodeInsertionPack>();
-        add.setPort(v.node_port_);
-        if(v.nodeid_ != getNodeId() && current_node_netid_ == v.nid_){
-            bootstrap(v.nodeid_, add);
-        }
+    auto v = obj.as<NodeInsertionPack>();
+    add.setPort(v.node_port_);
+    if(v.nodeid_ != getNodeId() && current_node_netid_ == v.nid_){
+        bootstrap(v.nodeid_, add);
     }
 }
 
 void
 DhtRunner::callbackmapFill()
 {
-    callbackmap_["dht"] = std::bind(&DhtRunner::nodeInsertionCallback, this, 
-                                     std::placeholders::_1,std::placeholders::_2,std::placeholders::_3);
+    callbackmap_[pack_type_] = std::bind(&DhtRunner::nodeInsertionCallback, this, 
+                                     std::placeholders::_1,std::placeholders::_2);
 }
 
 void

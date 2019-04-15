@@ -32,19 +32,19 @@ class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
 
-    using PeerDiscoveredPackCallback = std::function<void(std::string&, msgpack::object&&, SockAddr&)>;
+    using PeerDiscoveredPackCallback = std::function<void(msgpack::object&&, SockAddr&)>;
     PeerDiscovery(sa_family_t domain, in_port_t port);
     ~PeerDiscovery();
 
     /**
      * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
     */
-    void startDiscovery(PeerDiscoveredPackCallback callback);
+    void startDiscovery(const std::string &type, PeerDiscoveredPackCallback callback);
 
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
     */
-    void startPublish(const std::string &type, msgpack::sbuffer && pack_buf, const dht::InfoHash &nodeId);
+    void startPublish(const std::string &type, msgpack::sbuffer && pack_buf);
 
     /**
      * Thread Stopper
@@ -106,7 +106,7 @@ private:
     /**
      * Listener pack thread loop
     */
-    void listenerpack_thread(PeerDiscoveredPackCallback callback);
+    void listenerpack_thread(const std::string &type, PeerDiscoveredPackCallback callback);
 
     /**
      * Listener Parameters Setup
@@ -116,7 +116,7 @@ private:
     /**
      * Sender Parameters Setup
     */
-    void sender_setup(const std::string &type, msgpack::sbuffer && pack_buf, const dht::InfoHash &nodeId);
+    void sender_setup(const std::string &type, msgpack::sbuffer && pack_buf);
 };
 
 }

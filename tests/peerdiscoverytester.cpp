@@ -29,6 +29,7 @@ void PeerDiscoveryTester::setUp(){}
 void PeerDiscoveryTester::testTransmission_ipv4(){
 
     // Node for getnode id
+    const std::string type {"dht"};
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 2222;
     in_port_t port_n = 50000;
@@ -43,13 +44,13 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
         dht::PeerDiscovery test_n(AF_INET, port);
         dht::PeerDiscovery test_s(AF_INET, port);
         try{
-            test_s.startDiscovery([&](std::string& type, msgpack::object&& obj, dht::SockAddr& add){
+            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr& add){
                 auto v = obj.as<dht::NodeInsertionPack>();
                 CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
                 CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);
             });
 
-            test_n.startPublish("dht", std::move(sbuf),data_n);
+            test_n.startPublish(type, std::move(sbuf));
 
             std::this_thread::sleep_for(std::chrono::seconds(5));
             test_n.stop();
@@ -68,6 +69,7 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
 void PeerDiscoveryTester::testTransmission_ipv6(){
 
     // Node for getnode id
+    const std::string type {"dht"};
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 2222;
     in_port_t port_n = 50000;
@@ -82,13 +84,13 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
         dht::PeerDiscovery test_n(AF_INET6, port);
         dht::PeerDiscovery test_s(AF_INET6, port);
         try{
-            test_s.startDiscovery([&](std::string& type, msgpack::object&& obj, dht::SockAddr& add){
+            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr& add){
                 auto v = obj.as<dht::NodeInsertionPack>();
                 CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
                 CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);
             });
 
-            test_n.startPublish("dht", std::move(sbuf),data_n);
+            test_n.startPublish(type, std::move(sbuf));
 
             std::this_thread::sleep_for(std::chrono::seconds(5));
             test_n.stop();

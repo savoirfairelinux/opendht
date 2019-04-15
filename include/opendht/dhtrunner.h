@@ -278,7 +278,7 @@ public:
     /**
      * Insert known nodes to the routing table by using the received msgpack
      */
-    void nodeInsertionCallback(std::string& type, msgpack::object&& sbuf, SockAddr& add);
+    void nodeInsertionCallback(msgpack::object&& sbuf, SockAddr& add);
 
     /**
      * Fill up the callback map for Peerdiscovery
@@ -558,8 +558,9 @@ private:
     /** PeerDiscovery Parameters */
     std::unique_ptr<PeerDiscovery> peerDiscovery4_;
     std::unique_ptr<PeerDiscovery> peerDiscovery6_;
+    const std::string pack_type_ {"dht"};
     NetId current_node_netid_;
-    std::map<std::string,std::function<void(std::string&, msgpack::object&&, SockAddr&)>> callbackmap_;
+    std::map<std::string,std::function<void(msgpack::object&&, SockAddr&)>> callbackmap_;
 
 };
 
