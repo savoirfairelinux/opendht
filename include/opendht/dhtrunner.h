@@ -42,6 +42,13 @@ struct Node;
 class SecureDht;
 class PeerDiscovery;
 struct SecureDhtConfig;
+class OPENDHT_PUBLIC NodeInsertionPack{
+public:
+    dht::InfoHash nodeid_;
+    in_port_t node_port_;
+    dht::NetId nid_;
+    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
+};
 
 /**
  * Provides a thread-safe interface to run the (secure) DHT.
@@ -267,6 +274,16 @@ public:
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
     void bootstrap(const InfoHash& id, const SockAddr& address);
+
+    /**
+     * Insert known nodes to the routing table by using the received msgpack
+     */
+    void nodeInsertionCallback(std::string& type, msgpack::object&& sbuf, SockAddr& add);
+
+    /**
+     * Fill up the callback map for Peerdiscovery
+     */
+    void callbackmapFill();
 
     /**
      * Clear the list of bootstrap added using bootstrap(const std::string&, const std::string&).
@@ -541,6 +558,9 @@ private:
     /** PeerDiscovery Parameters */
     std::unique_ptr<PeerDiscovery> peerDiscovery4_;
     std::unique_ptr<PeerDiscovery> peerDiscovery6_;
+    NetId current_node_netid_;
+    std::map<std::string,std::function<void(std::string&, msgpack::object&&, SockAddr&)>> callbackmap_;
+
 };
 
 }

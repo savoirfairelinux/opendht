@@ -53,6 +53,7 @@ DhtRunner::DhtRunner() : dht_()
 , dht_via_proxy_()
 #endif //OPENDHT_PROXY_CLIENT
 {
+    callbackmapFill();
 #ifdef _WIN32
     WSADATA wsd;
     if (WSAStartup(MAKEWORD(2,2), &wsd) != 0)
@@ -154,21 +155,28 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
             std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
         }
     }
-    if (config.peer_discovery) {
-        using sig = void (DhtRunner::*)(const InfoHash&, const SockAddr&);
-        if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap), this,
-                                                   std::placeholders::_1,std::placeholders::_2));
 
+    current_node_netid_ = config.dht_config.node_config.network;
+    NodeInsertionPack adc;
+    adc.nid_ = current_node_netid_;
+    adc.node_port_ = getBoundPort();
+    adc.nodeid_ = getNodeId();
+    msgpack::sbuffer sbuf_node_v4;
+    msgpack::sbuffer sbuf_node_v6;
+    msgpack::pack(sbuf_node_v4, adc);
+    msgpack::pack(sbuf_node_v6, adc);
+
+    if (config.peer_discovery) {
+        if (peerDiscovery4_)
+            peerDiscovery4_->startDiscovery(callbackmap_["dht"]);
         if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap), this,
-                                                    std::placeholders::_1,std::placeholders::_2));
+            peerDiscovery6_->startDiscovery(callbackmap_["dht"]);
     }
     if (config.peer_publish) {
         if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(dht_->getNodeId(), getBoundPort(AF_INET));
+            peerDiscovery4_->startPublish("dht", std::move(sbuf_node_v4), dht_->getNodeId());
         if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(dht_->getNodeId(), getBoundPort(AF_INET6));
+            peerDiscovery6_->startPublish("dht", std::move(sbuf_node_v6), dht_->getNodeId());
     }
 }
 
@@ -947,6 +955,25 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
         });
     }
     cv.notify_all();
+}
+
+void 
+DhtRunner::nodeInsertionCallback(std::string& type, msgpack::object&& obj, SockAddr& add)
+{
+    if(type == "dht"){
+        auto v = obj.as<NodeInsertionPack>();
+        add.setPort(v.node_port_);
+        if(v.nodeid_ != getNodeId() && current_node_netid_ == v.nid_){
+            bootstrap(v.nodeid_, add);
+        }
+    }
+}
+
+void
+DhtRunner::callbackmapFill()
+{
+    callbackmap_["dht"] = std::bind(&DhtRunner::nodeInsertionCallback, this, 
+                                     std::placeholders::_1,std::placeholders::_2,std::placeholders::_3);
 }
 
 void
