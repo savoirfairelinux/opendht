@@ -38,6 +38,8 @@ namespace dht {
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 static constexpr in_port_t PEER_DISCOVERY_PORT = 8888;
+std::map<PackType,std::string> PeerDiscovery::pack_type_;
+std::map<std::string,std::function<void(msgpack::object&&, SockAddr&)>> PeerDiscovery::callbackmap_;
 
 struct DhtRunner::Listener {
     size_t tokenClassicDht {0};
@@ -48,12 +50,19 @@ struct DhtRunner::Listener {
     Where w;
 };
 
+class OPENDHT_PUBLIC NodeInsertionPack{
+public:
+    dht::InfoHash nodeid_;
+    in_port_t node_port_;
+    dht::NetId nid_;
+    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
+};
+
 DhtRunner::DhtRunner() : dht_()
 #ifdef OPENDHT_PROXY_CLIENT
 , dht_via_proxy_()
 #endif //OPENDHT_PROXY_CLIENT
 {
-    callbackmapFill();
 #ifdef _WIN32
     WSADATA wsd;
     if (WSAStartup(MAKEWORD(2,2), &wsd) != 0)
@@ -143,6 +152,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         }
     });
 
+    callbackmapFill();
     if (config.peer_discovery or config.peer_publish) {
         try {
             peerDiscovery4_.reset(new PeerDiscovery(AF_INET, PEER_DISCOVERY_PORT));
@@ -155,28 +165,27 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
             std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
         }
     }
-
-    current_node_netid_ = config.dht_config.node_config.network;
-    NodeInsertionPack adc;
-    adc.nid_ = current_node_netid_;
-    adc.node_port_ = getBoundPort();
-    adc.nodeid_ = dht_->getNodeId();
-    msgpack::sbuffer sbuf_node_v4;
-    msgpack::sbuffer sbuf_node_v6;
-    msgpack::pack(sbuf_node_v4, adc);
-    msgpack::pack(sbuf_node_v6, adc);
-
+ 
     if (config.peer_discovery) {
         if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(pack_type_,callbackmap_[pack_type_]);
+            peerDiscovery4_->startDiscovery(PeerDiscovery::pack_type_[PackType::NodeInsertion],
+                                            PeerDiscovery::callbackmap_[PeerDiscovery::pack_type_[PackType::NodeInsertion]]);
         if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(pack_type_,callbackmap_[pack_type_]);
+            peerDiscovery6_->startDiscovery(PeerDiscovery::pack_type_[PackType::NodeInsertion],
+                                            PeerDiscovery::callbackmap_[PeerDiscovery::pack_type_[PackType::NodeInsertion]]);
     }
     if (config.peer_publish) {
+        current_node_netid_ = config.dht_config.node_config.network;
+        NodeInsertionPack adc;
+        adc.nid_ = current_node_netid_;
+        adc.node_port_ = getBoundPort();
+        adc.nodeid_ = dht_->getNodeId();
+        msgpack::sbuffer sbuf_node;
+        msgpack::pack(sbuf_node, adc);
         if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(pack_type_, std::move(sbuf_node_v4));
+            peerDiscovery4_->startPublish(PeerDiscovery::pack_type_[PackType::NodeInsertion], sbuf_node);
         if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(pack_type_, std::move(sbuf_node_v6));
+            peerDiscovery6_->startPublish(PeerDiscovery::pack_type_[PackType::NodeInsertion], sbuf_node);
     }
 }
 
@@ -962,7 +971,7 @@ DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr& add)
 {
     auto v = obj.as<NodeInsertionPack>();
     add.setPort(v.node_port_);
-    if(v.nodeid_ != getNodeId() && current_node_netid_ == v.nid_){
+    if(v.nodeid_ != dht_->getNodeId() && current_node_netid_ == v.nid_){
         bootstrap(v.nodeid_, add);
     }
 }
@@ -970,8 +979,8 @@ DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr& add)
 void
 DhtRunner::callbackmapFill()
 {
-    callbackmap_[pack_type_] = std::bind(&DhtRunner::nodeInsertionCallback, this, 
-                                     std::placeholders::_1,std::placeholders::_2);
+    PeerDiscovery::callbackmap_[PeerDiscovery::pack_type_[PackType::NodeInsertion]] = 
+    std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2);
 }
 
 void

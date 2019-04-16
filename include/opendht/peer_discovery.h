@@ -28,23 +28,28 @@
 
 namespace dht {
 
+enum class PackType
+{
+    NodeInsertion = 0
+};
+
 class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
 
-    using PeerDiscoveredPackCallback = std::function<void(msgpack::object&&, SockAddr&)>;
+    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&)>;
     PeerDiscovery(sa_family_t domain, in_port_t port);
     ~PeerDiscovery();
 
     /**
      * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
     */
-    void startDiscovery(const std::string &type, PeerDiscoveredPackCallback callback);
+    void startDiscovery(const std::string &type, ServiceDiscoveredCallback callback);
 
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
     */
-    void startPublish(const std::string &type, msgpack::sbuffer && pack_buf);
+    void startPublish(const std::string &type, msgpack::sbuffer &pack_buf);
 
     /**
      * Thread Stopper
@@ -64,10 +69,16 @@ public:
         if(running_send_.joinable()) running_send_.join();
     }
 
+    /**
+     * Pack Types/Callback Map
+    */
+    static std::map<PackType,std::string> pack_type_;
+    static std::map<std::string,std::function<void(msgpack::object&&, SockAddr&)>> callbackmap_;
+
 private:
     std::mutex mtx_;
     std::condition_variable cv_;
-    bool running_ {true};
+    bool running_ {false};
     sa_family_t domain_ {AF_UNSPEC};
     int port_;
     int sockfd_ {-1};
@@ -78,10 +89,10 @@ private:
     //Thread export to be joined
     std::thread running_listen_;
     std::thread running_send_;
-    dht::InfoHash nodeId_;
 
     msgpack::sbuffer sbuf_;
     msgpack::sbuffer rbuf_;
+    std::map<std::string, msgpack::sbuffer> messages_;
 
     /**
      * Multicast Socket Initialization, accept IPV4, IPV6
@@ -89,24 +100,14 @@ private:
     static int initialize_socket(sa_family_t domain);
 
     /**
-     * Send pack messages
-    */
-    void sendTo();
-
-    /**
      * Receive messages
     */
     SockAddr recvFrom(size_t &buf_size);
-
-    /**
-     * Send pack thread loop
-    */
-    void senderpack_thread();
-
+    
     /**
      * Listener pack thread loop
     */
-    void listenerpack_thread(const std::string &type, PeerDiscoveredPackCallback callback);
+    void listenerpack_thread(const std::string &type, ServiceDiscoveredCallback callback);
 
     /**
      * Listener Parameters Setup
@@ -116,7 +117,12 @@ private:
     /**
      * Sender Parameters Setup
     */
-    void sender_setup(const std::string &type, msgpack::sbuffer && pack_buf);
+    void sender_setup();
+
+    /**
+     * Fill in pack type map
+    */
+    void fillPackMap();
 };
 
 }

@@ -22,6 +22,14 @@
 
 namespace test {
 
+class NodeInsertion{
+public:
+    dht::InfoHash nodeid_;
+    in_port_t node_port_;
+    dht::NetId nid_;
+    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
+};
+
 CPPUNIT_TEST_SUITE_REGISTRATION(PeerDiscoveryTester);
 
 void PeerDiscoveryTester::setUp(){}
@@ -35,7 +43,7 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
     in_port_t port_n = 50000;
     dht::NetId netid = 10;
     msgpack::sbuffer sbuf;
-    dht::NodeInsertionPack adc;
+    NodeInsertion adc;
     adc.nid_ = 10;
     adc.node_port_ = port_n;
     adc.nodeid_ = data_n;
@@ -45,12 +53,12 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
         dht::PeerDiscovery test_s(AF_INET, port);
         try{
             test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr& add){
-                auto v = obj.as<dht::NodeInsertionPack>();
+                auto v = obj.as<NodeInsertion>();
                 CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
                 CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);
             });
 
-            test_n.startPublish(type, std::move(sbuf));
+            test_n.startPublish(type, sbuf);
 
             std::this_thread::sleep_for(std::chrono::seconds(5));
             test_n.stop();
@@ -75,7 +83,7 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
     in_port_t port_n = 50000;
     dht::NetId netid = 10;
     msgpack::sbuffer sbuf;
-    dht::NodeInsertionPack adc;
+    NodeInsertion adc;
     adc.nid_ = 10;
     adc.node_port_ = port_n;
     adc.nodeid_ = data_n;
@@ -85,12 +93,12 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
         dht::PeerDiscovery test_s(AF_INET6, port);
         try{
             test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr& add){
-                auto v = obj.as<dht::NodeInsertionPack>();
+                auto v = obj.as<NodeInsertion>();
                 CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
                 CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);
             });
 
-            test_n.startPublish(type, std::move(sbuf));
+            test_n.startPublish(type, sbuf);
 
             std::this_thread::sleep_for(std::chrono::seconds(5));
             test_n.stop();

@@ -42,13 +42,6 @@ struct Node;
 class SecureDht;
 class PeerDiscovery;
 struct SecureDhtConfig;
-class OPENDHT_PUBLIC NodeInsertionPack{
-public:
-    dht::InfoHash nodeid_;
-    in_port_t node_port_;
-    dht::NetId nid_;
-    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
-};
 
 /**
  * Provides a thread-safe interface to run the (secure) DHT.
@@ -558,9 +551,7 @@ private:
     /** PeerDiscovery Parameters */
     std::unique_ptr<PeerDiscovery> peerDiscovery4_;
     std::unique_ptr<PeerDiscovery> peerDiscovery6_;
-    const std::string pack_type_ {"dht"};
     NetId current_node_netid_;
-    std::map<std::string,std::function<void(msgpack::object&&, SockAddr&)>> callbackmap_;
 
 };
 

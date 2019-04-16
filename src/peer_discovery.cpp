@@ -40,6 +40,7 @@ constexpr char MULTICAST_ADDRESS_IPV6[8] = "ff05::2"; // Site-local multicast
 PeerDiscovery::PeerDiscovery(sa_family_t domain, in_port_t port)
     : domain_(domain), port_(port), sockfd_(initialize_socket(domain))
 {
+    fillPackMap();
     socketJoinMulticast(sockfd_, domain);
 }
 
@@ -51,6 +52,12 @@ PeerDiscovery::~PeerDiscovery()
 #ifdef _WIN32
     WSACleanup();
 #endif
+}
+
+void
+PeerDiscovery::fillPackMap()
+{
+    pack_type_[PackType::NodeInsertion] = "dht";
 }
 
 int
@@ -147,7 +154,7 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 }
 
 void
-PeerDiscovery::startDiscovery(const std::string &type, PeerDiscoveredPackCallback callback)
+PeerDiscovery::startDiscovery(const std::string &type, ServiceDiscoveredCallback callback)
 {
     listener_setup();
     running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this, type, callback);
@@ -177,7 +184,7 @@ PeerDiscovery::recvFrom(size_t &buf_size)
 }
 
 void 
-PeerDiscovery::listenerpack_thread(const std::string &type, PeerDiscoveredPackCallback callback)
+PeerDiscovery::listenerpack_thread(const std::string &type, ServiceDiscoveredCallback callback)
 {
     int stopfds_pipe[2];
 #ifndef _WIN32
@@ -229,7 +236,6 @@ PeerDiscovery::listenerpack_thread(const std::string &type, PeerDiscoveredPackCa
                 if (o.key.type != msgpack::type::STR)
                     continue;
                 auto key = o.key.as<std::string>();
-
                 if(key == type)
                     callback(std::move(o.val),from);
             }
@@ -244,65 +250,49 @@ PeerDiscovery::listenerpack_thread(const std::string &type, PeerDiscoveredPackCa
 }
 
 void 
-PeerDiscovery::sender_setup(const std::string &type, msgpack::sbuffer && pack_buf)
+PeerDiscovery::sender_setup()
 {
     // Setup sender address
     sockAddrSend_.setFamily(domain_);
     sockAddrSend_.setAddress(domain_ == AF_INET ? MULTICAST_ADDRESS_IPV4 : MULTICAST_ADDRESS_IPV6);
     sockAddrSend_.setPort(port_);
+}
 
-    //Set up Sending pack
-    if(type == "dht"){
-        msgpack::object_handle oh = msgpack::unpack(pack_buf.data(), pack_buf.size());
-        msgpack::object obj = oh.get();
-        auto v = obj.as<NodeInsertionPack>();
-        nodeId_ = v.nodeid_;
-    }
-    std::map<std::string, msgpack::sbuffer> messages;
-    messages[type] = std::move(pack_buf);
+void PeerDiscovery::startPublish(const std::string &type, msgpack::sbuffer &pack_buf)
+{
+    sender_setup();
+    //Set up New Sending pack
+    msgpack::sbuffer pack_buf_c;
+    pack_buf_c.write(pack_buf.data(),pack_buf.size());
+
+    std::unique_lock<std::mutex> lck(mtx_);
+    messages_[type] = std::move(pack_buf_c);
     msgpack::packer<msgpack::sbuffer> pk(&sbuf_);
-    pk.pack_map(messages.size());
-    for (const auto& m : messages) {
+    pk.pack_map(messages_.size());
+    for (const auto& m : messages_) {
         pk.pack(m.first);
         sbuf_.write(m.second.data(), m.second.size());
     }
-}
-
-void PeerDiscovery::startPublish(const std::string &type, msgpack::sbuffer && pack_buf)
-{
-    sender_setup(type,std::move(pack_buf));
-    running_send_ = std::thread(&PeerDiscovery::senderpack_thread, this);
-}
-
-void 
-PeerDiscovery::senderpack_thread()
-{
-    while(true) {
-        try {
-            sendTo();
-        } catch (const std::exception& e) {
-            std::cerr << e.what() << std::endl;
-        }
-        {
+    if (not running_) {
+        running_ = true;
+        running_send_ = std::thread([this](){
             std::unique_lock<std::mutex> lck(mtx_);
-            if (cv_.wait_for(lck,std::chrono::seconds(3),[&]{ return !running_; }))
-                break;
-        }
-    }
-}
-
-void PeerDiscovery::sendTo()
-{
-    ssize_t nbytes = sendto(
-        sockfd_,
-        sbuf_.data(),
-        sbuf_.size(),
-        0,
-        sockAddrSend_.get(),
-        sockAddrSend_.getLength()
-    );
-    if (nbytes < 0) {
-        throw std::runtime_error(std::string("Error sending packet: ") + strerror(errno));
+            while (running_) {
+                ssize_t nbytes = sendto(
+                    sockfd_,
+                    sbuf_.data(),
+                    sbuf_.size(),
+                    0,
+                    sockAddrSend_.get(),
+                    sockAddrSend_.getLength()
+                );
+                if (nbytes < 0) {
+                    std::cerr << "Error sending packet: " << strerror(errno) << std::endl;
+                }
+                if (cv_.wait_for(lck,std::chrono::seconds(3),[&]{ return !running_; }))
+                    break;
+            }
+        });
     }
 }
 
