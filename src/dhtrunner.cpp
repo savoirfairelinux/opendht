@@ -38,8 +38,7 @@ namespace dht {
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 static constexpr in_port_t PEER_DISCOVERY_PORT = 8888;
-std::map<PackType,std::string> PeerDiscovery::pack_type_;
-std::map<std::string,std::function<void(msgpack::object&&, SockAddr&)>> PeerDiscovery::callbackmap_;
+static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
 
 struct DhtRunner::Listener {
     size_t tokenClassicDht {0};
@@ -152,7 +151,6 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         }
     });
 
-    callbackmapFill();
     if (config.peer_discovery or config.peer_publish) {
         try {
             peerDiscovery4_.reset(new PeerDiscovery(AF_INET, PEER_DISCOVERY_PORT));
@@ -168,11 +166,11 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
  
     if (config.peer_discovery) {
         if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(PeerDiscovery::pack_type_[PackType::NodeInsertion],
-                                            PeerDiscovery::callbackmap_[PeerDiscovery::pack_type_[PackType::NodeInsertion]]);
+            peerDiscovery4_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
+                                            std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2));
         if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(PeerDiscovery::pack_type_[PackType::NodeInsertion],
-                                            PeerDiscovery::callbackmap_[PeerDiscovery::pack_type_[PackType::NodeInsertion]]);
+            peerDiscovery6_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
+                                            std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2));
     }
     if (config.peer_publish) {
         current_node_netid_ = config.dht_config.node_config.network;
@@ -183,9 +181,9 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         msgpack::sbuffer sbuf_node;
         msgpack::pack(sbuf_node, adc);
         if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(PeerDiscovery::pack_type_[PackType::NodeInsertion], sbuf_node);
+            peerDiscovery4_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(PeerDiscovery::pack_type_[PackType::NodeInsertion], sbuf_node);
+            peerDiscovery6_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
     }
 }
 
@@ -967,20 +965,13 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
 }
 
 void 
-DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr& add)
+DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr&& add)
 {
     auto v = obj.as<NodeInsertionPack>();
     add.setPort(v.node_port_);
     if(v.nodeid_ != dht_->getNodeId() && current_node_netid_ == v.nid_){
         bootstrap(v.nodeid_, add);
     }
-}
-
-void
-DhtRunner::callbackmapFill()
-{
-    PeerDiscovery::callbackmap_[PeerDiscovery::pack_type_[PackType::NodeInsertion]] = 
-    std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2);
 }
 
 void

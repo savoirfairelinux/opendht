@@ -17,8 +17,8 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "opendht/value.h"
 #include "peerdiscoverytester.h"
-#include "opendht/dhtrunner.h"
 
 namespace test {
 
@@ -52,7 +52,7 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
         dht::PeerDiscovery test_n(AF_INET, port);
         dht::PeerDiscovery test_s(AF_INET, port);
         try{
-            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr& add){
+            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr&& add){
                 auto v = obj.as<NodeInsertion>();
                 CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
                 CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);
@@ -92,7 +92,7 @@ void PeerDiscoveryTester::testTransmission_ipv6(){
         dht::PeerDiscovery test_n(AF_INET6, port);
         dht::PeerDiscovery test_s(AF_INET6, port);
         try{
-            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr& add){
+            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr&& add){
                 auto v = obj.as<NodeInsertion>();
                 CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
                 CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);

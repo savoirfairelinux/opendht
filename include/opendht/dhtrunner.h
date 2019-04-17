@@ -271,12 +271,7 @@ public:
     /**
      * Insert known nodes to the routing table by using the received msgpack
      */
-    void nodeInsertionCallback(msgpack::object&& sbuf, SockAddr& add);
-
-    /**
-     * Fill up the callback map for Peerdiscovery
-     */
-    void callbackmapFill();
+    void nodeInsertionCallback(msgpack::object&& sbuf, SockAddr&& add);
 
     /**
      * Clear the list of bootstrap added using bootstrap(const std::string&, const std::string&).

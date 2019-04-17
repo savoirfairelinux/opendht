@@ -18,7 +18,6 @@
 
 #include "peer_discovery.h"
 #include "network_utils.h"
-#include "dhtrunner.h"
 
 #ifdef _WIN32
 #include <Ws2tcpip.h> // needed for ip_mreq definition for multicast
@@ -40,7 +39,6 @@ constexpr char MULTICAST_ADDRESS_IPV6[8] = "ff05::2"; // Site-local multicast
 PeerDiscovery::PeerDiscovery(sa_family_t domain, in_port_t port)
     : domain_(domain), port_(port), sockfd_(initialize_socket(domain))
 {
-    fillPackMap();
     socketJoinMulticast(sockfd_, domain);
 }
 
@@ -52,12 +50,6 @@ PeerDiscovery::~PeerDiscovery()
 #ifdef _WIN32
     WSACleanup();
 #endif
-}
-
-void
-PeerDiscovery::fillPackMap()
-{
-    pack_type_[PackType::NodeInsertion] = "dht";
 }
 
 int
@@ -155,9 +147,13 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 
 void
 PeerDiscovery::startDiscovery(const std::string &type, ServiceDiscoveredCallback callback)
-{
+{   
+    {
+        std::unique_lock<std::mutex> lck(dmtx_);
+        callbackmap_[type] = callback;
+    }
     listener_setup();
-    running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this, type, callback);
+    running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this);
 }
 
 SockAddr
@@ -184,7 +180,7 @@ PeerDiscovery::recvFrom(size_t &buf_size)
 }
 
 void 
-PeerDiscovery::listenerpack_thread(const std::string &type, ServiceDiscoveredCallback callback)
+PeerDiscovery::listenerpack_thread()
 {
     int stopfds_pipe[2];
 #ifndef _WIN32
@@ -236,8 +232,11 @@ PeerDiscovery::listenerpack_thread(const std::string &type, ServiceDiscoveredCal
                 if (o.key.type != msgpack::type::STR)
                     continue;
                 auto key = o.key.as<std::string>();
-                if(key == type)
-                    callback(std::move(o.val),from);
+
+                std::unique_lock<std::mutex> lck(dmtx_);
+                auto callback = callbackmap_.find(key);
+                if (callback != callbackmap_.end())
+                    callback->second(std::move(o.val), std::move(from));
             }
         }
     }
@@ -258,7 +257,7 @@ PeerDiscovery::sender_setup()
     sockAddrSend_.setPort(port_);
 }
 
-void PeerDiscovery::startPublish(const std::string &type, msgpack::sbuffer &pack_buf)
+void PeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer &pack_buf)
 {
     sender_setup();
     //Set up New Sending pack
@@ -293,6 +292,36 @@ void PeerDiscovery::startPublish(const std::string &type, msgpack::sbuffer &pack
                     break;
             }
         });
+    }
+}
+
+void 
+PeerDiscovery::stopDiscovery(const std::string &type)
+{   
+    {   
+        std::unique_lock<std::mutex> lck(dmtx_);
+        auto it  = callbackmap_.find(type);
+        if(it != callbackmap_.end()){
+            callbackmap_.erase(it);
+        }
+    }
+}
+
+void 
+PeerDiscovery::stopPublish(const std::string &type)
+{
+    {    
+        std::unique_lock<std::mutex> lck(mtx_);
+        auto it = messages_.find(type);
+        if(it != messages_.end()){
+            messages_.erase(it);
+        }
+        msgpack::packer<msgpack::sbuffer> pk(&sbuf_);
+        pk.pack_map(messages_.size());
+        for (const auto& m : messages_) {
+            pk.pack(m.first);
+            sbuf_.write(m.second.data(), m.second.size());
+        }
     }
 }
 

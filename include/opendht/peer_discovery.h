@@ -37,7 +37,7 @@ class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
 
-    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&)>;
+    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
     PeerDiscovery(sa_family_t domain, in_port_t port);
     ~PeerDiscovery();
 
@@ -49,12 +49,22 @@ public:
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
     */
-    void startPublish(const std::string &type, msgpack::sbuffer &pack_buf);
+    void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
 
     /**
      * Thread Stopper
     */
     void stop();
+
+    /**
+     * Remove possible callBack to discovery
+    */
+    void stopDiscovery(const std::string &type);
+
+    /**
+     * Remove different serivce message to send
+    */
+    void stopPublish(const std::string &type);
 
     /**
      * Configure the sockopt to be able to listen multicast group
@@ -72,10 +82,9 @@ public:
     /**
      * Pack Types/Callback Map
     */
-    static std::map<PackType,std::string> pack_type_;
-    static std::map<std::string,std::function<void(msgpack::object&&, SockAddr&)>> callbackmap_;
 
 private:
+    std::mutex dmtx_;
     std::mutex mtx_;
     std::condition_variable cv_;
     bool running_ {false};
@@ -93,6 +102,7 @@ private:
     msgpack::sbuffer sbuf_;
     msgpack::sbuffer rbuf_;
     std::map<std::string, msgpack::sbuffer> messages_;
+    std::map<std::string, ServiceDiscoveredCallback> callbackmap_;
 
     /**
      * Multicast Socket Initialization, accept IPV4, IPV6
@@ -107,7 +117,7 @@ private:
     /**
      * Listener pack thread loop
     */
-    void listenerpack_thread(const std::string &type, ServiceDiscoveredCallback callback);
+    void listenerpack_thread();
 
     /**
      * Listener Parameters Setup
@@ -118,11 +128,6 @@ private:
      * Sender Parameters Setup
     */
     void sender_setup();
-
-    /**
-     * Fill in pack type map
-    */
-    void fillPackMap();
 };
 
 }
