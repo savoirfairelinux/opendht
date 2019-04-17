@@ -62,6 +62,9 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
     if (NOT Jsoncpp_FOUND)
         message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
     endif()
+    pkg_search_module(SSL libssl)
+    pkg_search_module(Crypto libcrypto)
+    pkg_search_module(Tls libtls)
 endif()
 
 # Build flags
@@ -106,8 +109,20 @@ endif ()
 if (Jsoncpp_INCLUDE_DIRS)
     include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
 endif ()
+if (SSL_INCLUDE_DIRS)
+    include_directories (SYSTEM "${SSL_INCLUDE_DIRS}")
+endif ()
+if (Crypto_INCLUDE_DIRS)
+    include_directories (SYSTEM "${Crypto_INCLUDE_DIRS}")
+endif ()
+if (Tls_INCLUDE_DIRS)
+    include_directories (SYSTEM "${Tls_INCLUDE_DIRS}")
+endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 link_directories (${Jsoncpp_LIBRARY_DIRS})
+link_directories (${SSL_LIBRARY_DIRS})
+link_directories (${Crypto_LIBRARY_DIRS})
+link_directories (${Tls_LIBRARY_DIRS})
 include_directories (
     ./
     include/
@@ -255,7 +270,7 @@ if (OPENDHT_STATIC)
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht-static
-        PRIVATE ${Restbed_LIBRARY} ${argon2_LIBRARIES}
+        PRIVATE ${Restbed_LIBRARY} ${argon2_LIBRARIES} ${SSL_LIBRARIES} ${Crypto_LIBRARIES} ${Tls_LIBRARIES}
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Jsoncpp_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
@@ -274,7 +289,7 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARY} ${Jsoncpp_LIBRARIES})
+    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARY} ${Jsoncpp_LIBRARIES} ${SSL_LIBRARIES} ${Crypto_LIBRARIES} ${Tls_LIBRARIES})
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
