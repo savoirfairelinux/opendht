@@ -135,7 +135,14 @@ DhtProxyClient::cancelAllOperations()
     while (operation != operations_.end()) {
         if (operation->thread.joinable()) {
             // Close connection to stop operation?
-            restbed::Http::close(operation->req);
+            if (operation->req) {
+                try {
+                    restbed::Http::close(operation->req);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
+                }
+                operation->req.reset();
+            }
             operation->thread.join();
             operation = operations_.erase(operation);
         } else {
@@ -157,8 +164,14 @@ DhtProxyClient::cancelAllListeners()
             if (l->second.thread.joinable()) {
                 // Close connection to stop listener?
                 l->second.state->cancel = true;
-                if (l->second.req)
-                    restbed::Http::close(l->second.req);
+                if (l->second.req) {
+                    try {
+                        restbed::Http::close(l->second.req);
+                    } catch (const std::exception& e) {
+                        DHT_LOG.w("Error closing socket: %s", e.what());
+                    }
+                    l->second.req.reset();
+                }
                 l->second.thread.join();
             }
             s.second.listeners.erase(token);
@@ -224,7 +237,14 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
             if (*(operation->finished)) {
                 if (operation->thread.joinable()) {
                     // Close connection to stop operation?
-                    restbed::Http::close(operation->req);
+                    if (operation->req) {
+                        try {
+                            restbed::Http::close(operation->req);
+                        } catch (const std::exception& e) {
+                            DHT_LOG.w("Error closing socket: %s", e.what());
+                        }
+                        operation->req.reset();
+                    }
                     operation->thread.join();
                 }
                 operation = operations_.erase(operation);
@@ -875,8 +895,14 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // Just stop the request
         if (listener.thread.joinable()) {
             // Close connection to stop listener
-            if (listener.req)
-                restbed::Http::close(listener.req);
+            if (listener.req) {
+                try {
+                    restbed::Http::close(listener.req);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
+                }
+                listener.req.reset();
+            }
             listener.thread.join();
         }
     }
@@ -942,8 +968,14 @@ DhtProxyClient::restartListeners()
             auto state = listener.state;
             if (listener.thread.joinable()) {
                 state->cancel = true;
-                if (listener.req)
-                    restbed::Http::close(listener.req);
+                if (listener.req) {
+                    try {
+                        restbed::Http::close(listener.req);
+                    } catch (const std::exception& e) {
+                        DHT_LOG.w("Error closing socket: %s", e.what());
+                    }
+                    listener.req.reset();
+                }
                 listener.thread.join();
             }
             // Redo listen
@@ -1053,8 +1085,14 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     auto state = listener.state;
     if (listener.thread.joinable()) {
         state->cancel = true;
-        if (listener.req)
-            restbed::Http::close(listener.req);
+        if (listener.req) {
+            try {
+                restbed::Http::close(listener.req);
+            } catch (const std::exception& e) {
+                DHT_LOG.w("Error closing socket: %s", e.what());
+            }
+            listener.req.reset();
+        }
         listener.thread.join();
     }
     state->cancel = false;
