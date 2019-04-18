@@ -967,10 +967,14 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
 void 
 DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr&& add)
 {
-    auto v = obj.as<NodeInsertionPack>();
-    add.setPort(v.node_port_);
-    if(v.nodeid_ != dht_->getNodeId() && current_node_netid_ == v.nid_){
-        bootstrap(v.nodeid_, add);
+    try {
+        auto v = obj.as<NodeInsertionPack>();
+        add.setPort(v.node_port_);
+        if(v.nodeid_ != dht_->getNodeId() && current_node_netid_ == v.nid_){
+            bootstrap(v.nodeid_, add);
+        }
+    } catch(const msgpack::type_error &e){
+        std::cerr << "Msgpack Info Invalid: " << e.what() << '\n';
     }
 }
 

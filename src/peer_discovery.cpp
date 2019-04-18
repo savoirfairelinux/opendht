@@ -147,13 +147,14 @@ PeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t family)
 
 void
 PeerDiscovery::startDiscovery(const std::string &type, ServiceDiscoveredCallback callback)
-{   
-    {
-        std::unique_lock<std::mutex> lck(dmtx_);
-        callbackmap_[type] = callback;
+{
+    std::unique_lock<std::mutex> lck(dmtx_);
+    callbackmap_[type] = callback;
+    if (not drunning_){
+        drunning_ = true;
+        listener_setup();
+        running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this);
     }
-    listener_setup();
-    running_listen_ = std::thread(&PeerDiscovery::listenerpack_thread, this);
 }
 
 SockAddr
@@ -161,11 +162,12 @@ PeerDiscovery::recvFrom(size_t &buf_size)
 {
     sockaddr_storage storeage_recv;
     socklen_t sa_len = sizeof(storeage_recv);
+    char *recv = new char[1024];
 
     ssize_t nbytes = recvfrom(
         sockfd_,
-        rbuf_.data(),
-        MSGPACK_SBUFFER_INIT_SIZE,
+        recv,
+        1024,
         0,
         (sockaddr*)&storeage_recv,
         &sa_len
@@ -174,8 +176,10 @@ PeerDiscovery::recvFrom(size_t &buf_size)
         throw std::runtime_error(std::string("Error receiving packet: ") + strerror(errno));
     }
 
+    rbuf_.write(recv,nbytes);
     buf_size = nbytes; 
     SockAddr ret {storeage_recv, sa_len};
+    delete []recv;
     return ret;
 }
 
@@ -202,8 +206,8 @@ PeerDiscovery::listenerpack_thread()
         int data_coming = select(sockfd_ > stop_readfd ? sockfd_ + 1 : stop_readfd + 1, &readfds, nullptr, nullptr, nullptr);
 
         {
-            std::unique_lock<std::mutex> lck(mtx_);
-            if (not running_)
+            std::unique_lock<std::mutex> lck(dmtx_);
+            if (not drunning_)
                 break;
         }
 
@@ -232,12 +236,13 @@ PeerDiscovery::listenerpack_thread()
                 if (o.key.type != msgpack::type::STR)
                     continue;
                 auto key = o.key.as<std::string>();
-
                 std::unique_lock<std::mutex> lck(dmtx_);
                 auto callback = callbackmap_.find(key);
-                if (callback != callbackmap_.end())
+                if (callback != callbackmap_.end()){
                     callback->second(std::move(o.val), std::move(from));
+                }
             }
+            rbuf_.release();
         }
     }
     if (stop_readfd != -1)
@@ -259,12 +264,12 @@ PeerDiscovery::sender_setup()
 
 void PeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer &pack_buf)
 {
-    sender_setup();
     //Set up New Sending pack
     msgpack::sbuffer pack_buf_c;
     pack_buf_c.write(pack_buf.data(),pack_buf.size());
 
     std::unique_lock<std::mutex> lck(mtx_);
+    sbuf_.release();
     messages_[type] = std::move(pack_buf_c);
     msgpack::packer<msgpack::sbuffer> pk(&sbuf_);
     pk.pack_map(messages_.size());
@@ -272,11 +277,12 @@ void PeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer
         pk.pack(m.first);
         sbuf_.write(m.second.data(), m.second.size());
     }
-    if (not running_) {
-        running_ = true;
+    if (not lrunning_) {
+        lrunning_ = true;
+        sender_setup();
         running_send_ = std::thread([this](){
             std::unique_lock<std::mutex> lck(mtx_);
-            while (running_) {
+            while (lrunning_) {
                 ssize_t nbytes = sendto(
                     sockfd_,
                     sbuf_.data(),
@@ -288,7 +294,7 @@ void PeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer
                 if (nbytes < 0) {
                     std::cerr << "Error sending packet: " << strerror(errno) << std::endl;
                 }
-                if (cv_.wait_for(lck,std::chrono::seconds(3),[&]{ return !running_; }))
+                if (cv_.wait_for(lck,std::chrono::seconds(3),[&]{ return !lrunning_; }))
                     break;
             }
         });
@@ -312,6 +318,7 @@ PeerDiscovery::stopPublish(const std::string &type)
 {
     {    
         std::unique_lock<std::mutex> lck(mtx_);
+        sbuf_.release();
         auto it = messages_.find(type);
         if(it != messages_.end()){
             messages_.erase(it);
@@ -330,7 +337,11 @@ PeerDiscovery::stop()
 {
     {
         std::unique_lock<std::mutex> lck(mtx_);
-        running_ = false;
+        lrunning_ = false;
+    }
+    {
+        std::unique_lock<std::mutex> lck(dmtx_);
+        drunning_ = false;
     }
     cv_.notify_all();
     if (stop_writefd_ != -1) {

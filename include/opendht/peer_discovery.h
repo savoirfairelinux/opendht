@@ -84,10 +84,13 @@ public:
     */
 
 private:
+    //dmtx_ for callbackmap_ and drunning_ (write)
     std::mutex dmtx_;
+    //mtx_ for messages_ and lrunning (listen)
     std::mutex mtx_;
     std::condition_variable cv_;
-    bool running_ {false};
+    bool lrunning_ {false};
+    bool drunning_ {false};
     sa_family_t domain_ {AF_UNSPEC};
     int port_;
     int sockfd_ {-1};
