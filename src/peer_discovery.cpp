@@ -162,7 +162,7 @@ PeerDiscovery::recvFrom(size_t &buf_size)
 {
     sockaddr_storage storeage_recv;
     socklen_t sa_len = sizeof(storeage_recv);
-    char *recv = new char[1024];
+    char recv[1024];
 
     ssize_t nbytes = recvfrom(
         sockfd_,
@@ -179,7 +179,6 @@ PeerDiscovery::recvFrom(size_t &buf_size)
     rbuf_.write(recv,nbytes);
     buf_size = nbytes; 
     SockAddr ret {storeage_recv, sa_len};
-    delete []recv;
     return ret;
 }
 
@@ -242,7 +241,7 @@ PeerDiscovery::listenerpack_thread()
                     callback->second(std::move(o.val), std::move(from));
                 }
             }
-            rbuf_.release();
+            ::free(rbuf_.release());
         }
     }
     if (stop_readfd != -1)
@@ -269,7 +268,7 @@ void PeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer
     pack_buf_c.write(pack_buf.data(),pack_buf.size());
 
     std::unique_lock<std::mutex> lck(mtx_);
-    sbuf_.release();
+    ::free(sbuf_.release());
     messages_[type] = std::move(pack_buf_c);
     msgpack::packer<msgpack::sbuffer> pk(&sbuf_);
     pk.pack_map(messages_.size());
@@ -318,7 +317,7 @@ PeerDiscovery::stopPublish(const std::string &type)
 {
     {    
         std::unique_lock<std::mutex> lck(mtx_);
-        sbuf_.release();
+        ::free(sbuf_.release());
         auto it = messages_.find(type);
         if(it != messages_.end()){
             messages_.erase(it);
