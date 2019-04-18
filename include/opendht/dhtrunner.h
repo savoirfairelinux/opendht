@@ -544,8 +544,7 @@ private:
     std::string pushToken_;
 
     /** PeerDiscovery Parameters */
-    std::unique_ptr<PeerDiscovery> peerDiscovery4_;
-    std::unique_ptr<PeerDiscovery> peerDiscovery6_;
+    std::unique_ptr<PeerDiscovery> peerDiscovery_;
     NetId current_node_netid_;
 
 };

@@ -152,24 +152,12 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     });
 
     if (config.peer_discovery or config.peer_publish) {
-        try {
-            peerDiscovery4_.reset(new PeerDiscovery(AF_INET, PEER_DISCOVERY_PORT));
-        } catch(const std::exception& e){
-            std::cerr << "Can't start peer discovery (IPv4): " << e.what() << std::endl;
-        }
-        try {
-            peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, PEER_DISCOVERY_PORT));
-        } catch(const std::exception& e) {
-            std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
-        }
+        peerDiscovery_.reset(new PeerDiscovery(PEER_DISCOVERY_PORT));
     }
  
     if (config.peer_discovery) {
-        if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
-                                            std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2));
-        if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
+        if (peerDiscovery_)
+            peerDiscovery_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
                                             std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2));
     }
     if (config.peer_publish) {
@@ -180,10 +168,8 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         adc.nodeid_ = dht_->getNodeId();
         msgpack::sbuffer sbuf_node;
         msgpack::pack(sbuf_node, adc);
-        if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
-        if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        if (peerDiscovery_)
+            peerDiscovery_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
     }
 }
 
@@ -207,8 +193,7 @@ DhtRunner::join()
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
-    if (peerDiscovery4_) peerDiscovery4_->stop();
-    if (peerDiscovery6_) peerDiscovery6_->stop();
+    if (peerDiscovery_) peerDiscovery_->stop();
 
     if (dht_thread.joinable())
         dht_thread.join();
@@ -217,8 +202,7 @@ DhtRunner::join()
     if (rcv_thread.joinable())
         rcv_thread.join();
 
-    if (peerDiscovery4_) peerDiscovery4_->join();
-    if (peerDiscovery6_) peerDiscovery6_->join();
+    if (peerDiscovery_) peerDiscovery_->join();
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
@@ -1017,8 +1001,7 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_p
 void
 DhtRunner::resetDht()
 {
-    peerDiscovery4_.reset();
-    peerDiscovery6_.reset();
+    peerDiscovery_.reset();
 #ifdef OPENDHT_PROXY_CLIENT
     listeners_.clear();
     dht_via_proxy_.reset();

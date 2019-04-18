@@ -28,17 +28,12 @@
 
 namespace dht {
 
-enum class PackType
-{
-    NodeInsertion = 0
-};
-
 class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
 
     using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
-    PeerDiscovery(sa_family_t domain, in_port_t port);
+    PeerDiscovery(in_port_t port);
     ~PeerDiscovery();
 
     /**
@@ -74,63 +69,12 @@ public:
     /**
      * Join the threads
     */
-    void join() {
-        if(running_listen_.joinable()) running_listen_.join();
-        if(running_send_.joinable()) running_send_.join();
-    }
-
-    /**
-     * Pack Types/Callback Map
-    */
+    void join();
 
 private:
-    //dmtx_ for callbackmap_ and drunning_ (write)
-    std::mutex dmtx_;
-    //mtx_ for messages_ and lrunning (listen)
-    std::mutex mtx_;
-    std::condition_variable cv_;
-    bool lrunning_ {false};
-    bool drunning_ {false};
-    sa_family_t domain_ {AF_UNSPEC};
-    int port_;
-    int sockfd_ {-1};
-    int stop_writefd_ {-1};
-
-    SockAddr sockAddrSend_;
-
-    //Thread export to be joined
-    std::thread running_listen_;
-    std::thread running_send_;
-
-    msgpack::sbuffer sbuf_;
-    msgpack::sbuffer rbuf_;
-    std::map<std::string, msgpack::sbuffer> messages_;
-    std::map<std::string, ServiceDiscoveredCallback> callbackmap_;
-
-    /**
-     * Multicast Socket Initialization, accept IPV4, IPV6
-    */
-    static int initialize_socket(sa_family_t domain);
-
-    /**
-     * Receive messages
-    */
-    SockAddr recvFrom(size_t &buf_size);
-    
-    /**
-     * Listener pack thread loop
-    */
-    void listenerpack_thread();
-
-    /**
-     * Listener Parameters Setup
-    */
-    void listener_setup();
-
-    /**
-     * Sender Parameters Setup
-    */
-    void sender_setup();
+    class DomainPeerDiscovery;
+    std::unique_ptr<DomainPeerDiscovery> peerDiscovery4_;
+    std::unique_ptr<DomainPeerDiscovery> peerDiscovery6_;
 };
 
 }
