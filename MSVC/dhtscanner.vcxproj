@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -21,32 +21,32 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{78443BCD-4689-4007-A246-F8F34B27F561}</ProjectGuid>
     <RootNamespace>dhtscanner</RootNamespace>
-    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>$(LatestTargetPlatformVersion)</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v140</PlatformToolset>
+    <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
@@ -86,14 +86,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>..\..\include;..\..\msgpack-c\include;$(ProjectDir)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source;$(ProjectDir)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4267;4244;4800;4273;4101;</DisableSpecificWarnings>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>crypt32.lib;blake.lib;argon.lib;libgnutls.lib;opendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\..\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>restbed.lib;libeay32.lib;ssleay32.lib;crypt32.lib;Argon2Ref.lib;lib_json.lib;libgnutls.lib;libopendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\msvc\lib\$(PlatformTarget);$(ProjectDir)..\..\restbed\build\Release;$(ProjectDir)..\..\restbed\dependency\openssl\out32dll;$(ProjectDir)..\..\argon2\vs2015\Argon2Ref\vs2015\build</AdditionalLibraryDirectories>
       <AdditionalOptions>/ignore:4049 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -102,14 +102,14 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>..\..\include;..\..\msgpack-c\include;$(ProjectDir)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source;$(ProjectDir)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4267;4244;4800;4273;4101;</DisableSpecificWarnings>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>crypt32.lib;blake.lib;argon.lib;libgnutls.lib;opendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\..\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>restbed.lib;libeay32.lib;ssleay32.lib;crypt32.lib;Argon2Ref.lib;lib_json.lib;libgnutls.lib;libopendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\msvc\lib\$(PlatformTarget);$(ProjectDir)..\..\restbed\build\Release;$(ProjectDir)..\..\restbed\dependency\openssl\out32dll;$(ProjectDir)..\..\argon2\vs2015\Argon2Ref\vs2015\build</AdditionalLibraryDirectories>
       <AdditionalOptions>/ignore:4049 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -120,16 +120,16 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>..\..\include;..\..\msgpack-c\include;$(ProjectDir)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source;$(ProjectDir)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4267;4244;4800;4273;4101;</DisableSpecificWarnings>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>crypt32.lib;blake.lib;argon.lib;libgnutls.lib;opendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\..\lib\x64</AdditionalLibraryDirectories>
+      <AdditionalDependencies>restbed.lib;libeay32.lib;ssleay32.lib;crypt32.lib;Argon2Ref.lib;lib_json.lib;libgnutls.lib;libopendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\msvc\lib\$(PlatformTarget);$(ProjectDir)..\..\restbed\build\Release;$(ProjectDir)..\..\restbed\dependency\openssl\out32dll;$(ProjectDir)..\..\argon2\vs2015\Argon2Ref\vs2015\build</AdditionalLibraryDirectories>
       <AdditionalOptions>/ignore:4049 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -140,16 +140,16 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>..\..\include;$(ProjectDir)contrib\build\include;$(ProjectDir)contrib\build\msgpack-c\include;$(ProjectDir)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source;$(ProjectDir)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4267;4244;4800;4273;4101;</DisableSpecificWarnings>
       <ProgramDataBaseFileName>$(IntDir)vc$(PlatformToolsetVersion).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>crypt32.lib;Argon2Ref.lib;libgnutls.lib;opendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)contrib\build\lib\x64;$(ProjectDir)..\..\lib\x64;$(ProjectDir)vs2015\build</AdditionalLibraryDirectories>
+      <AdditionalDependencies>restbed.lib;libeay32.lib;ssleay32.lib;crypt32.lib;Argon2Ref.lib;lib_json.lib;libgnutls.lib;libopendht.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\..\..\msvc\lib\$(PlatformTarget);$(ProjectDir)..\..\restbed\build\Release;$(ProjectDir)..\..\restbed\dependency\openssl\out32dll;$(ProjectDir)..\..\argon2\vs2015\Argon2Ref\vs2015\build</AdditionalLibraryDirectories>
       <AdditionalOptions>/ignore:4049 %(AdditionalOptions)</AdditionalOptions>
       <OutputFile>$(OutDir)$(TargetName)$(TargetExt)</OutputFile>
     </Link>

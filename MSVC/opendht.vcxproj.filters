@@ -53,12 +53,26 @@
       <Filter>Source Files\indexation</Filter>
     </ClCompile>
     <ClCompile Include="wingetopt.c" />
+    <ClCompile Include="..\src\rng.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\op_cache.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dht_proxy_client.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\peer_discovery.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\network_utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\thread_pool.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\include\opendht\def.h" />
-    <ClInclude Include="..\include\opendht\sockaddr.h" />
-    <ClInclude Include="..\src\net.h" />
-    <ClInclude Include="..\src\parsed_message.h" />
     <ClInclude Include="..\src\base64.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -139,6 +153,24 @@
     </ClInclude>
     <ClInclude Include="unistd.h" />
     <ClInclude Include="wingetopt.h" />
+    <ClInclude Include="..\include\opendht\def.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\net.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parsed_message.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\sockaddr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\network_utils.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\thread_pool.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Source Files">
