@@ -53,6 +53,10 @@ Enable the verbose mode (log to stdout by default)
 Write log to file instead of stdout
 
 .TP
+\fB-L\fP
+Write log to syslog instead of stdout
+
+.TP
 \fB-i\fP
 Generate cryptographic identity for the node.
 
@@ -61,13 +65,25 @@ Generate cryptographic identity for the node.
 Run the program in daemon mode (will fork in the background).
 
 .TP
+\fB-s\fP
+Run the program in service mode (non-forking daemon).
+
+.TP
+\fB-D\fP
+Enables multicast automatic local peer discovery.
+
+.TP
+\fB-f\fP \fIfile\fP
+Specify a file path to persist/load the node state.
+
+.TP
 \fB-n\fP \fInetwork_id\fP
 Specify the network id. This let you connect to distinct networks and prevents
 the merge of two different networks (available since OpenDHT v0.6.1).
 
 .TP
 \fB-p\fP \fIlocal_port\fP
-Use port \fIlocal_port\fP for the program to bind to.
+Use UDP port \fIlocal_port\fP for the program to bind to.
 
 .TP
 \fB-b\fP \fIbootstrap_host\fP[:\fIport\fP]
