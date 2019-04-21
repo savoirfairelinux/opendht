@@ -976,17 +976,23 @@ DhtProxyClient::restartListeners()
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
+            if (auto state = listener.state)
+                state->cancel = true;
+            if (listener.req) {
+                try {
+                    restbed::Http::close(listener.req);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
+                }
+                listener.req.reset();
+            }
+        }
+    }
+    for (auto& search: searches_) {
+        for (auto& l: search.second.listeners) {
+            auto& listener = l.second;
             auto state = listener.state;
             if (listener.thread.joinable()) {
-                state->cancel = true;
-                if (listener.req) {
-                    try {
-                        restbed::Http::close(listener.req);
-                    } catch (const std::exception& e) {
-                        DHT_LOG.w("Error closing socket: %s", e.what());
-                    }
-                    listener.req.reset();
-                }
                 listener.thread.join();
             }
             // Redo listen
