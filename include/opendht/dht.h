@@ -274,19 +274,19 @@ public:
     std::string getStorageLog() const override;
     std::string getStorageLog(const InfoHash&) const override;
 
-    std::string getRoutingTablesLog(sa_family_t) const;
-    std::string getSearchesLog(sa_family_t) const;
-    std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;
+    std::string getRoutingTablesLog(sa_family_t) const override;
+    std::string getSearchesLog(sa_family_t) const override;
+    std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const override;
 
-    void dumpTables() const;
-    std::vector<unsigned> getNodeMessageStats(bool in = false) {
+    void dumpTables() const override;
+    std::vector<unsigned> getNodeMessageStats(bool in = false) override {
         return network_engine.getNodeMessageStats(in);
     }
 
     /**
      * Set the in-memory storage limit in bytes
      */
-    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) {
+    void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
         max_store_size = limit;
     }
 
@@ -294,7 +294,7 @@ public:
      * Returns the total memory usage of stored values and the number
      * of stored values.
      */
-    std::pair<size_t, size_t> getStoreSize() const {
+    std::pair<size_t, size_t> getStoreSize() const override {
         return {total_store_size, total_values};
     }
 
