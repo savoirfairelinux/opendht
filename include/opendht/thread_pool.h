@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "def.h"
+
 #include <condition_variable>
 #include <vector>
 #include <queue>
@@ -27,7 +29,7 @@
 
 namespace dht {
 
-class ThreadPool {
+class OPENDHT_PUBLIC ThreadPool {
 public:
     static ThreadPool& computation();
     static ThreadPool& io();
