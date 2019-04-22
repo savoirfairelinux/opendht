@@ -2,7 +2,7 @@ lib_LTLIBRARIES = libopendht.la
 
 libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@
 libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@
-libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@
+libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
 libopendht_la_SOURCES  = \
         dht.cpp \
         storage.h \
@@ -29,7 +29,8 @@ libopendht_la_SOURCES  = \
         log.cpp \
         peer_discovery.cpp \
         network_utils.h \
-        network_utils.cpp
+        network_utils.cpp \
+        thread_pool.cpp
 
 if WIN32
 libopendht_la_SOURCES += rng.cpp
@@ -57,10 +58,11 @@ nobase_include_HEADERS = \
         ../include/opendht/log.h \
         ../include/opendht/log_enable.h \
         ../include/opendht/peer_discovery.h \
-        ../include/opendht/rng.h
+        ../include/opendht/rng.h \
+        ../include/opendht/thread_pool.h
 
 if ENABLE_PROXY_SERVER
-libopendht_la_SOURCES += dht_proxy_server.cpp thread_pool.h thread_pool.cpp
+libopendht_la_SOURCES += dht_proxy_server.cpp
 nobase_include_HEADERS += ../include/opendht/dht_proxy_server.h
 endif
 

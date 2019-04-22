@@ -135,7 +135,14 @@ DhtProxyClient::cancelAllOperations()
     while (operation != operations_.end()) {
         if (operation->thread.joinable()) {
             // Close connection to stop operation?
-            restbed::Http::close(operation->req);
+            if (operation->req) {
+                try {
+                    restbed::Http::close(operation->req);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
+                }
+                operation->req.reset();
+            }
             operation->thread.join();
             operation = operations_.erase(operation);
         } else {
@@ -157,8 +164,14 @@ DhtProxyClient::cancelAllListeners()
             if (l->second.thread.joinable()) {
                 // Close connection to stop listener?
                 l->second.state->cancel = true;
-                if (l->second.req)
-                    restbed::Http::close(l->second.req);
+                if (l->second.req) {
+                    try {
+                        restbed::Http::close(l->second.req);
+                    } catch (const std::exception& e) {
+                        DHT_LOG.w("Error closing socket: %s", e.what());
+                    }
+                    l->second.req.reset();
+                }
                 l->second.thread.join();
             }
             s.second.listeners.erase(token);
@@ -210,12 +223,15 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 {
     // Exec all currently stored callbacks
     scheduler.syncTime();
-    if (!callbacks_.empty()) {
+    decltype(callbacks_) callbacks;
+    {
         std::lock_guard<std::mutex> lock(lockCallbacks);
-        for (auto& callback : callbacks_)
-            callback();
-        callbacks_.clear();
+        callbacks = std::move(callbacks_);
     }
+    for (auto& callback : callbacks)
+        callback();
+    callbacks.clear();
+
     // Remove finished operations
     {
         std::lock_guard<std::mutex> lock(lockOperations_);
@@ -224,7 +240,14 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
             if (*(operation->finished)) {
                 if (operation->thread.joinable()) {
                     // Close connection to stop operation?
-                    restbed::Http::close(operation->req);
+                    if (operation->req) {
+                        try {
+                            restbed::Http::close(operation->req);
+                        } catch (const std::exception& e) {
+                            DHT_LOG.w("Error closing socket: %s", e.what());
+                        }
+                        operation->req.reset();
+                    }
                     operation->thread.join();
                 }
                 operation = operations_.erase(operation);
@@ -277,11 +300,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                             if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
                                 auto value = std::make_shared<Value>(json);
                                 if ((not filter or filter(*value)) and cb) {
-                                    std::lock_guard<std::mutex> lock(lockCallbacks);
-                                    callbacks_.emplace_back([cb, value, state]() {
-                                        if (not state->stop and not cb({value}))
-                                            state->stop = true;
-                                    });
+                                    {
+                                        std::lock_guard<std::mutex> lock(lockCallbacks);
+                                        callbacks_.emplace_back([cb, value, state]() {
+                                            if (not state->stop and not cb({value}))
+                                                state->stop = true;
+                                        });
+                                    }
                                     loopSignal_();
                                 }
                             } else {
@@ -297,11 +322,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
             state->ok = false;
         }
         if (donecb) {
-            std::lock_guard<std::mutex> lock(lockCallbacks);
-            callbacks_.emplace_back([=](){
-                donecb(state->ok, {});
-                state->stop = true;
-            });
+            {
+                std::lock_guard<std::mutex> lock(lockCallbacks);
+                callbacks_.emplace_back([=](){
+                    donecb(state->ok, {});
+                    state->stop = true;
+                });
+            }
             loopSignal_();
         }
         if (!state->ok) {
@@ -423,10 +450,12 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             *ok = false;
         }
         if (cb) {
-            std::lock_guard<std::mutex> lock(lockCallbacks);
-            callbacks_.emplace_back([=](){
-                cb(*ok, {});
-            });
+            {
+                std::lock_guard<std::mutex> lock(lockCallbacks);
+                callbacks_.emplace_back([=](){
+                    cb(*ok, {});
+                });
+            }
             loopSignal_();
         }
         if (!ok) {
@@ -802,11 +831,13 @@ void DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request> &req,
                             auto expired = json.get("expired", Json::Value(false)).asBool();
                             auto value = std::make_shared<Value>(json);
                             if ((not filter or filter(*value)) and cb) {
-                                std::lock_guard<std::mutex> lock(lockCallbacks);
-                                callbacks_.emplace_back([cb, value, state, expired]() {
-                                    if (not state->cancel and not cb({value}, expired))
-                                        state->cancel = true;
-                                });
+                                {
+                                    std::lock_guard<std::mutex> lock(lockCallbacks);
+                                    callbacks_.emplace_back([cb, value, state, expired]() {
+                                        if (not state->cancel and not cb({value}, expired))
+                                            state->cancel = true;
+                                    });
+                                }
                                 loopSignal_();
                             }
                         }
@@ -875,8 +906,14 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // Just stop the request
         if (listener.thread.joinable()) {
             // Close connection to stop listener
-            if (listener.req)
-                restbed::Http::close(listener.req);
+            if (listener.req) {
+                try {
+                    restbed::Http::close(listener.req);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
+                }
+                listener.req.reset();
+            }
             listener.thread.join();
         }
     }
@@ -939,11 +976,23 @@ DhtProxyClient::restartListeners()
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
+            if (auto state = listener.state)
+                state->cancel = true;
+            if (listener.req) {
+                try {
+                    restbed::Http::close(listener.req);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
+                }
+                listener.req.reset();
+            }
+        }
+    }
+    for (auto& search: searches_) {
+        for (auto& l: search.second.listeners) {
+            auto& listener = l.second;
             auto state = listener.state;
             if (listener.thread.joinable()) {
-                state->cancel = true;
-                if (listener.req)
-                    restbed::Http::close(listener.req);
                 listener.thread.join();
             }
             // Redo listen
@@ -1019,17 +1068,19 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                         getline(ss, substr, ',');
                         ids.emplace_back(std::stoull(substr));
                     }
-                    std::lock_guard<std::mutex> lock(lockCallbacks);
-                    callbacks_.emplace_back([this, key, token, state, ids]() {
-                        if (state->cancel) return;
-                        std::lock_guard<std::mutex> lock(searchLock_);
-                        auto s = searches_.find(key);
-                        if (s == searches_.end()) return;
-                        auto l = s->second.listeners.find(token);
-                        if (l == s->second.listeners.end()) return;
-                        if (not state->cancel and not l->second.cache.onValuesExpired(ids))
-                            state->cancel = true;
-                    });
+                    {
+                        std::lock_guard<std::mutex> lock(lockCallbacks);
+                        callbacks_.emplace_back([this, key, token, state, ids]() {
+                            if (state->cancel) return;
+                            std::lock_guard<std::mutex> lock(searchLock_);
+                            auto s = searches_.find(key);
+                            if (s == searches_.end()) return;
+                            auto l = s->second.listeners.find(token);
+                            if (l == s->second.listeners.end()) return;
+                            if (not state->cancel and not l->second.cache.onValuesExpired(ids))
+                                state->cancel = true;
+                        });
+                    }
                     loopSignal_();
                 }
             }
@@ -1053,8 +1104,14 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     auto state = listener.state;
     if (listener.thread.joinable()) {
         state->cancel = true;
-        if (listener.req)
-            restbed::Http::close(listener.req);
+        if (listener.req) {
+            try {
+                restbed::Http::close(listener.req);
+            } catch (const std::exception& e) {
+                DHT_LOG.w("Error closing socket: %s", e.what());
+            }
+            listener.req.reset();
+        }
         listener.thread.join();
     }
     state->cancel = false;

@@ -24,6 +24,10 @@
 #include <Ws2tcpip.h> // needed for ip_mreq definition for multicast
 #include <Windows.h>
 #include <cstring>
+#if defined(_MSC_VER)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#endif
 #define close(x) closesocket(x)
 #define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #else
@@ -178,12 +182,14 @@ PeerDiscovery::DomainPeerDiscovery::listener_setup()
     sockAddrListen_.setAny();
 
     unsigned int opt = 1;
-    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt)) < 0) {
        std::cerr << "setsockopt SO_REUSEADDR failed: " << strerror(errno) << std::endl;
     }
-    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+#ifdef SO_REUSEPORT
+    if (setsockopt(sockfd_, SOL_SOCKET, SO_REUSEPORT, (char*)&opt, sizeof(opt)) < 0) {
        std::cerr << "setsockopt SO_REUSEPORT failed: " << strerror(errno) << std::endl;
     }
+#endif
 
     // bind to receive address
     if (bind(sockfd_, sockAddrListen_.get(), sockAddrListen_.getLength()) < 0){
@@ -202,14 +208,14 @@ PeerDiscovery::DomainPeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t 
         //This option can be used to set the interface for sending outbound
         //multicast datagrams from the sockets application.
         config_ipv4.imr_interface.s_addr = htonl(INADDR_ANY);
-        if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, &config_ipv4.imr_interface, sizeof( struct in_addr )) < 0 ) {
+        if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_IF, (char*)&config_ipv4.imr_interface, sizeof( struct in_addr )) < 0 ) {
             throw std::runtime_error(std::string("Bound Network Interface IPv4 Error: ") + strerror(errno));
         }
 
         //The IP_MULTICAST_TTL socket option allows the application to primarily
         //limit the lifetime of the packet in the Internet and prevent it from circulating indefinitely
         unsigned char ttl4 = 20;
-        if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl4, sizeof( ttl4 )) < 0 ) {
+        if( setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, (char*)&ttl4, sizeof( ttl4 )) < 0 ) {
             throw std::runtime_error(std::string("TTL Sockopt Error: ") + strerror(errno));
         }
 
@@ -230,13 +236,13 @@ PeerDiscovery::DomainPeerDiscovery::socketJoinMulticast(int sockfd, sa_family_t 
         } */
 
         unsigned int ttl6 = 20;
-        if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &ttl6, sizeof( ttl6 )) < 0 ) {
+        if( setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, (char*)&ttl6, sizeof( ttl6 )) < 0 ) {
             throw std::runtime_error(std::string("Hop Count Set Error: ") + strerror(errno));
         }
 
         config_ipv6.ipv6mr_interface = 0;
         inet_pton(AF_INET6, MULTICAST_ADDRESS_IPV6, &config_ipv6.ipv6mr_multiaddr);
-        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &config_ipv6, sizeof(config_ipv6)) < 0){
+        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_JOIN_GROUP, (char*)&config_ipv6, sizeof(config_ipv6)) < 0){
             throw std::runtime_error(std::string("Member Addition IPv6 Error: ") + strerror(errno));
         }
         break;
@@ -317,7 +323,7 @@ PeerDiscovery::DomainPeerDiscovery::listenerpack_thread()
         if (data_coming > 0) {
             if (FD_ISSET(stop_readfd, &readfds)) {
                 std::array<uint8_t, 64 * 1024> buf;
-                recv(stop_readfd, buf.data(), buf.size(), 0);
+                recv(stop_readfd, (char*)buf.data(), buf.size(), 0);
             }
 
             auto rcv = recvFrom();
