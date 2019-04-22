@@ -308,14 +308,15 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         if (op == "g") {
             std::string rem;
             std::getline(iss, rem);
-            dht->get(id, [start](std::shared_ptr<Value> value) {
+            dht->get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
                 auto now = std::chrono::high_resolution_clock::now();
-                std::cout << "Get: found value (after " << print_dt(now-start) << "s)" << std::endl;
-                std::cout << "\t" << *value << std::endl;
+                std::cout << "Get: found " << values.size() << " value(s) after " << print_duration(now-start) << std::endl;
+                for (const auto& value : values)
+                    std::cout << "\t" << *value << std::endl;
                 return true;
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Get: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+                std::cout << "Get: " << (ok ? "completed" : "failure") << ", took " << print_duration(end-start) << std::endl;
             }, {}, dht::Where {rem});
         }
         else if (op == "q") {
@@ -324,13 +325,13 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             dht->query(id, [start](const std::vector<std::shared_ptr<FieldValueIndex>>& field_value_indexes) {
                 auto now = std::chrono::high_resolution_clock::now();
                 for (auto& index : field_value_indexes) {
-                    std::cout << "Query: found field value index (after " << print_dt(now-start) << "s)" << std::endl;
+                    std::cout << "Query: found field value index after " << print_duration(now-start) << std::endl;
                     std::cout << "\t" << *index << std::endl;
                 }
                 return true;
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Query: " << (ok ? "completed" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+                std::cout << "Query: " << (ok ? "completed" : "failure") << ", took " << print_duration(end-start) << std::endl;
             }, dht::Query {rem});
         }
         else if (op == "l") {
@@ -365,7 +366,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Put: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+                std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << std::endl;
             });
         }
         else if (op == "pp") {
@@ -378,7 +379,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             dht->put(id, value, [start,value](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 auto flags(std::cout.flags());
-                std::cout << "Put: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s). Value ID: " << std::hex << value->id << std::endl;
+                std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << ". Value ID: " << std::hex << value->id << std::endl;
                 std::cout.flags(flags);
             }, time_point::max(), true);
         }
@@ -399,7 +400,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Put signed: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+                std::cout << "Put signed: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << "s)" << std::endl;
             });
         }
         else if (op == "e") {
@@ -415,7 +416,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+                std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << std::endl;
             });
         }
         else if (op == "a") {
@@ -423,7 +424,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             iss >> port;
             dht->put(id, dht::Value {dht::IpServiceAnnouncement::TYPE.id, dht::IpServiceAnnouncement(port)}, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Announce: " << (ok ? "success" : "failure") << " (took " << print_dt(end-start) << "s)" << std::endl;
+                std::cout << "Announce: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << std::endl;
             });
         }
 #ifdef OPENDHT_INDEXATION
@@ -446,7 +447,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                     [start](bool ok) {
                         auto end = std::chrono::high_resolution_clock::now();
                         std::cout << "Pht::lookup: " << (ok ? "done." : "failed.")
-                                  << " took " << print_dt(end-start) << "s)" << std::endl;
+                                  << " took " << print_duration(end-start) << std::endl;
 
                     }, exact_match.size() != 0 and exact_match == "false" ? false : true
                 );
