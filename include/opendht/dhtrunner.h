@@ -269,6 +269,11 @@ public:
     void bootstrap(const InfoHash& id, const SockAddr& address);
 
     /**
+     * Insert known nodes to the routing table by using the received msgpack
+     */
+    void nodeInsertionCallback(msgpack::object&& sbuf, SockAddr&& add);
+
+    /**
      * Clear the list of bootstrap added using bootstrap(const std::string&, const std::string&).
      */
     void clearBootstrap();
@@ -539,8 +544,9 @@ private:
     std::string pushToken_;
 
     /** PeerDiscovery Parameters */
-    std::unique_ptr<PeerDiscovery> peerDiscovery4_;
-    std::unique_ptr<PeerDiscovery> peerDiscovery6_;
+    std::unique_ptr<PeerDiscovery> peerDiscovery_;
+    NetId current_node_netid_;
+
 };
 
 }

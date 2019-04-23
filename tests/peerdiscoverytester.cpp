@@ -18,31 +18,76 @@
  */
 
 #include "peerdiscoverytester.h"
+#include "opendht/value.h"
 
 namespace test {
+
+class NodeInsertion{
+public:
+    dht::InfoHash nodeid_;
+    in_port_t node_port_;
+    dht::NetId nid_;
+    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
+};
+
+class TestPack{
+public:
+    int num;
+    char cha;
+    std::string str;
+    MSGPACK_DEFINE(num, cha, str)
+};
 
 CPPUNIT_TEST_SUITE_REGISTRATION(PeerDiscoveryTester);
 
 void PeerDiscoveryTester::setUp(){}
 
-void PeerDiscoveryTester::testTransmission_ipv4(){
+void PeerDiscoveryTester::testTransmission(){
 
     // Node for getnode id
+    const std::string type {"dht"};
+    const std::string test_type {"pdd"};
     dht::InfoHash data_n = dht::InfoHash::get("applepin");
     int port = 2222;
     in_port_t port_n = 50000;
+
+    msgpack::sbuffer sbuf;
+    NodeInsertion adc;
+    adc.nid_ = 10;
+    adc.node_port_ = port_n;
+    adc.nodeid_ = data_n;
+    msgpack::pack(sbuf,adc);
+
+    msgpack::sbuffer pbuf;
+    TestPack pdd;
+    pdd.num = 100;
+    pdd.cha = 'a';
+    pdd.str = "apple";
+    msgpack::pack(pbuf,pdd);
+
     try{
-        dht::PeerDiscovery test_n(AF_INET, port);
-        dht::PeerDiscovery test_s(AF_INET, port);
+        dht::PeerDiscovery test_n(port);
+        dht::PeerDiscovery test_s(port);
         try{
-            test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
-                CPPUNIT_ASSERT_EQUAL(data_n, node);
-                CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
+            test_s.startDiscovery(type,[&](msgpack::object&& obj, dht::SockAddr&& add){
+                auto v = obj.as<NodeInsertion>();
+                CPPUNIT_ASSERT_EQUAL(v.node_port_, port_n);
+                CPPUNIT_ASSERT_EQUAL(v.nodeid_, data_n);
             });
 
-            test_n.startPublish(data_n,port_n);
+            test_s.startDiscovery(test_type,[&](msgpack::object&& obj, dht::SockAddr&& add){
+                auto v = obj.as<TestPack>();
+                CPPUNIT_ASSERT_EQUAL(v.num, 100);
+                CPPUNIT_ASSERT_EQUAL(v.cha, 'a');
+            });
 
+            test_n.startPublish(type, sbuf);
             std::this_thread::sleep_for(std::chrono::seconds(5));
+            test_n.startPublish(test_type, pbuf);
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            test_n.stopPublish(test_type);
+
+            std::this_thread::sleep_for(std::chrono::seconds(10));
             test_n.stop();
             test_s.stop();
             test_n.join();
@@ -53,36 +98,6 @@ void PeerDiscoveryTester::testTransmission_ipv4(){
         }
     } catch(std::exception &exception){
             perror(exception.what());
-    }
-}
-
-void PeerDiscoveryTester::testTransmission_ipv6(){
-
-    // Node for getnode id
-    dht::InfoHash data_n = dht::InfoHash::get("applepin");
-    int port = 3333;
-    in_port_t port_n = 50001;
-    try{
-        dht::PeerDiscovery test_n(AF_INET6, port);
-        dht::PeerDiscovery test_s(AF_INET6, port);
-
-        try{
-            test_s.startDiscovery([&](const dht::InfoHash& node, const dht::SockAddr& addr){
-                CPPUNIT_ASSERT_EQUAL(data_n, node);
-                CPPUNIT_ASSERT_EQUAL(port_n, addr.getPort());
-            });
-
-            test_n.startPublish(data_n,port_n);
-
-            std::this_thread::sleep_for(std::chrono::seconds(5));
-            test_n.stop();
-            test_s.stop();
-            test_n.join();
-            test_s.join();
-        } catch(std::exception &exception){
-            CPPUNIT_ASSERT(false);
-        }
-    } catch(std::exception &exception) {
     }
 }
 

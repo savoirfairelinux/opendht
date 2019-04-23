@@ -32,25 +32,34 @@ class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
 
-    using PeerDiscoveredCallback = std::function<void(const InfoHash&, const SockAddr&)>;
-
-    PeerDiscovery(sa_family_t domain, in_port_t port);
+    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
+    PeerDiscovery(in_port_t port);
     ~PeerDiscovery();
 
     /**
      * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
     */
-    void startDiscovery(PeerDiscoveredCallback callback);
+    void startDiscovery(const std::string &type, ServiceDiscoveredCallback callback);
 
     /**
-     * startPublish - Keeping sending data until node is joinned or stop is called
+     * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
     */
-    void startPublish(const dht::InfoHash &nodeId, in_port_t port_to_send);
+    void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
 
     /**
      * Thread Stopper
     */
     void stop();
+
+    /**
+     * Remove possible callBack to discovery
+    */
+    void stopDiscovery(const std::string &type);
+
+    /**
+     * Remove different serivce message to send
+    */
+    void stopPublish(const std::string &type);
 
     /**
      * Configure the sockopt to be able to listen multicast group
@@ -60,62 +69,12 @@ public:
     /**
      * Join the threads
     */
-    void join() {
-        if(running_listen.joinable()) running_listen.join();
-        if(running_send.joinable()) running_send.join();
-    }
+    void join();
 
 private:
-    std::mutex mtx_;
-    std::condition_variable cv_;
-    bool running_ {true};
-    sa_family_t domain_ {AF_UNSPEC};
-    int port_;
-    int sockfd_ {-1};
-    int stop_writefd_ {-1};
-
-    SockAddr sockAddrSend_;
-    std::array<uint8_t,dht::InfoHash::size() + sizeof(in_port_t)> data_send_;
-
-    //Thread export to be joined
-    std::thread running_listen;
-    std::thread running_send;
-    dht::InfoHash nodeId_;
-
-    /**
-     * Multicast Socket Initialization, accept IPV4, IPV6
-    */
-    static int initialize_socket(sa_family_t domain);
-
-    /**
-     * Send messages
-    */
-    void sendTo(uint8_t *buf,size_t buf_size);
-
-    /**
-     * Receive messages
-    */
-    SockAddr recvFrom(uint8_t *buf, size_t &buf_size);
-
-    /**
-     * Send thread loop
-    */
-    void sender_thread();
-
-    /**
-     * Listener thread loop
-    */
-    void listener_thread(PeerDiscoveredCallback callback);
-
-    /**
-     * Listener Parameters Setup
-    */
-    void listener_setup();
-
-    /**
-     * Sender Parameters Setup
-    */
-    void sender_setup(const dht::InfoHash& nodeId, in_port_t port_to_send);
+    class DomainPeerDiscovery;
+    std::unique_ptr<DomainPeerDiscovery> peerDiscovery4_;
+    std::unique_ptr<DomainPeerDiscovery> peerDiscovery6_;
 };
 
 }

@@ -38,6 +38,7 @@ namespace dht {
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 static constexpr in_port_t PEER_DISCOVERY_PORT = 8888;
+static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
 
 struct DhtRunner::Listener {
     size_t tokenClassicDht {0};
@@ -46,6 +47,14 @@ struct DhtRunner::Listener {
     InfoHash hash {};
     Value::Filter f;
     Where w;
+};
+
+class OPENDHT_PUBLIC NodeInsertionPack{
+public:
+    dht::InfoHash nodeid_;
+    in_port_t node_port_;
+    dht::NetId nid_;
+    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
 };
 
 DhtRunner::DhtRunner() : dht_()
@@ -143,32 +152,24 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     });
 
     if (config.peer_discovery or config.peer_publish) {
-        try {
-            peerDiscovery4_.reset(new PeerDiscovery(AF_INET, PEER_DISCOVERY_PORT));
-        } catch(const std::exception& e){
-            std::cerr << "Can't start peer discovery (IPv4): " << e.what() << std::endl;
-        }
-        try {
-            peerDiscovery6_.reset(new PeerDiscovery(AF_INET6, PEER_DISCOVERY_PORT));
-        } catch(const std::exception& e) {
-            std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
-        }
+        peerDiscovery_.reset(new PeerDiscovery(PEER_DISCOVERY_PORT));
     }
+ 
     if (config.peer_discovery) {
-        using sig = void (DhtRunner::*)(const InfoHash&, const SockAddr&);
-        if (peerDiscovery4_)
-            peerDiscovery4_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap), this,
-                                                   std::placeholders::_1,std::placeholders::_2));
-
-        if (peerDiscovery6_)
-            peerDiscovery6_->startDiscovery(std::bind(static_cast<sig>(&DhtRunner::bootstrap), this,
-                                                    std::placeholders::_1,std::placeholders::_2));
+        if (peerDiscovery_)
+            peerDiscovery_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
+                                            std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2));
     }
     if (config.peer_publish) {
-        if (peerDiscovery4_)
-            peerDiscovery4_->startPublish(dht_->getNodeId(), getBoundPort(AF_INET));
-        if (peerDiscovery6_)
-            peerDiscovery6_->startPublish(dht_->getNodeId(), getBoundPort(AF_INET6));
+        current_node_netid_ = config.dht_config.node_config.network;
+        NodeInsertionPack adc;
+        adc.nid_ = current_node_netid_;
+        adc.node_port_ = getBoundPort();
+        adc.nodeid_ = dht_->getNodeId();
+        msgpack::sbuffer sbuf_node;
+        msgpack::pack(sbuf_node, adc);
+        if (peerDiscovery_)
+            peerDiscovery_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
     }
 }
 
@@ -192,8 +193,7 @@ DhtRunner::join()
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
-    if (peerDiscovery4_) peerDiscovery4_->stop();
-    if (peerDiscovery6_) peerDiscovery6_->stop();
+    if (peerDiscovery_) peerDiscovery_->stop();
 
     if (dht_thread.joinable())
         dht_thread.join();
@@ -202,8 +202,7 @@ DhtRunner::join()
     if (rcv_thread.joinable())
         rcv_thread.join();
 
-    if (peerDiscovery4_) peerDiscovery4_->join();
-    if (peerDiscovery6_) peerDiscovery6_->join();
+    if (peerDiscovery_) peerDiscovery_->join();
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
@@ -949,6 +948,20 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
     cv.notify_all();
 }
 
+void 
+DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr&& add)
+{
+    try {
+        auto v = obj.as<NodeInsertionPack>();
+        add.setPort(v.node_port_);
+        if(v.nodeid_ != dht_->getNodeId() && current_node_netid_ == v.nid_){
+            bootstrap(v.nodeid_, add);
+        }
+    } catch(const msgpack::type_error &e){
+        std::cerr << "Msgpack Info Invalid: " << e.what() << '\n';
+    }
+}
+
 void
 DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 {
@@ -988,8 +1001,7 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const std::shared_p
 void
 DhtRunner::resetDht()
 {
-    peerDiscovery4_.reset();
-    peerDiscovery6_.reset();
+    peerDiscovery_.reset();
 #ifdef OPENDHT_PROXY_CLIENT
     listeners_.clear();
     dht_via_proxy_.reset();
