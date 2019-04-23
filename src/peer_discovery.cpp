@@ -105,7 +105,6 @@ private:
     std::thread running_send_;
 
     msgpack::sbuffer sbuf_;
-    msgpack::sbuffer rbuf_;
     std::map<std::string, msgpack::sbuffer> messages_;
     std::map<std::string, ServiceDiscoveredCallback> callbackmap_;
 
@@ -118,7 +117,7 @@ private:
      * Receive messages
     */
     std::pair<SockAddr, Blob> recvFrom();
-    
+
     /**
      * Listener pack thread loop
     */
@@ -280,12 +279,12 @@ PeerDiscovery::DomainPeerDiscovery::recvFrom()
     if (nbytes < 0) {
         throw std::runtime_error(std::string("Error receiving packet: ") + strerror(errno));
     }
-    
+
     SockAddr ret {storeage_recv, sa_len};
-    return {ret, Blob(recv.begin(), recv.end())};
+    return {ret, Blob(recv.begin(), recv.begin()+nbytes+1)};
 }
 
-void 
+void
 PeerDiscovery::DomainPeerDiscovery::listenerpack_thread()
 {
     int stopfds_pipe[2];
@@ -353,7 +352,7 @@ PeerDiscovery::DomainPeerDiscovery::listenerpack_thread()
     }
 }
 
-void 
+void
 PeerDiscovery::DomainPeerDiscovery::sender_setup()
 {
     // Setup sender address
@@ -362,7 +361,7 @@ PeerDiscovery::DomainPeerDiscovery::sender_setup()
     sockAddrSend_.setPort(port_);
 }
 
-void 
+void
 PeerDiscovery::DomainPeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer &pack_buf)
 {
     //Set up New Sending pack
@@ -396,10 +395,10 @@ PeerDiscovery::DomainPeerDiscovery::startPublish(const std::string &type, const 
     }
 }
 
-void 
+void
 PeerDiscovery::DomainPeerDiscovery::stopDiscovery(const std::string &type)
-{   
-    {   
+{
+    {
         std::unique_lock<std::mutex> lck(dmtx_);
         auto it  = callbackmap_.find(type);
         if(it != callbackmap_.end()){
@@ -408,7 +407,7 @@ PeerDiscovery::DomainPeerDiscovery::stopDiscovery(const std::string &type)
     }
 }
 
-void 
+void
 PeerDiscovery::DomainPeerDiscovery::stopPublish(const std::string &type)
 {
     std::unique_lock<std::mutex> lck(mtx_);
@@ -450,18 +449,16 @@ PeerDiscovery::DomainPeerDiscovery::messages_reload()
     }
 }
 
-PeerDiscovery::PeerDiscovery(in_port_t port) 
+PeerDiscovery::PeerDiscovery(in_port_t port)
 {
     try {
         peerDiscovery4_.reset(new DomainPeerDiscovery(AF_INET, port));
     } catch(const std::exception& e){
-        peerDiscovery4_.reset(nullptr);
         std::cerr << "Can't start peer discovery (IPv4): " << e.what() << std::endl;
     }
     try {
         peerDiscovery6_.reset(new DomainPeerDiscovery(AF_INET6, port));
     } catch(const std::exception& e) {
-        peerDiscovery6_.reset(nullptr);
         std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
     }
 
@@ -472,7 +469,7 @@ PeerDiscovery::~PeerDiscovery(){}
 /**
  * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
 */
-void 
+void
 PeerDiscovery::startDiscovery(const std::string &type, ServiceDiscoveredCallback callback)
 {
     if(peerDiscovery4_) peerDiscovery4_->startDiscovery(type, callback);
@@ -482,17 +479,26 @@ PeerDiscovery::startDiscovery(const std::string &type, ServiceDiscoveredCallback
 /**
  * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
 */
-void 
+void
 PeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer &pack_buf)
 {
     if(peerDiscovery4_) peerDiscovery4_->startPublish(type, pack_buf);
     if(peerDiscovery6_) peerDiscovery6_->startPublish(type, pack_buf);
 }
 
+void
+PeerDiscovery::startPublish(sa_family_t domain, const std::string &type, const msgpack::sbuffer &pack_buf)
+{
+    if (domain == AF_INET && peerDiscovery4_)
+        peerDiscovery4_->startPublish(type, pack_buf);
+    else if (domain == AF_INET6 && peerDiscovery6_)
+        peerDiscovery6_->startPublish(type, pack_buf);
+}
+
 /**
  * Thread Stopper
 */
-void 
+void
 PeerDiscovery::stop()
 {
     if(peerDiscovery4_) peerDiscovery4_->stop();
@@ -502,7 +508,7 @@ PeerDiscovery::stop()
 /**
  * Remove possible callBack to discovery
 */
-void 
+void
 PeerDiscovery::stopDiscovery(const std::string &type)
 {
     if(peerDiscovery4_) peerDiscovery4_->stopDiscovery(type);
@@ -512,7 +518,7 @@ PeerDiscovery::stopDiscovery(const std::string &type)
 /**
  * Remove different serivce message to send
 */
-void 
+void
 PeerDiscovery::stopPublish(const std::string &type)
 {
     if(peerDiscovery4_) peerDiscovery4_->stopPublish(type);
@@ -522,7 +528,7 @@ PeerDiscovery::stopPublish(const std::string &type)
 /**
  * Join the threads
 */
-void 
+void
 PeerDiscovery::join() {
     if(peerDiscovery4_) peerDiscovery4_->join();
     if(peerDiscovery6_) peerDiscovery6_->join();

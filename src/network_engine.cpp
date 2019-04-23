@@ -43,9 +43,7 @@ constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 const std::string NetworkEngine::my_v {"RNG1"};
 constexpr size_t NetworkEngine::MAX_REQUESTS_PER_SEC;
 
-static constexpr uint8_t v4prefix[16] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
-};
+static constexpr uint8_t v4prefix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0};
 
 constexpr unsigned SEND_NODES {8};
 

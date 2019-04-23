@@ -154,22 +154,37 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (config.peer_discovery or config.peer_publish) {
         peerDiscovery_.reset(new PeerDiscovery(PEER_DISCOVERY_PORT));
     }
- 
+
+    auto netId = config.dht_config.node_config.network;
     if (config.peer_discovery) {
-        if (peerDiscovery_)
-            peerDiscovery_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE,
-                                            std::bind(&DhtRunner::nodeInsertionCallback, this, std::placeholders::_1,std::placeholders::_2));
+        peerDiscovery_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE, [this, netId](msgpack::object&& obj, SockAddr&& add){
+            try {
+                auto v = obj.as<NodeInsertionPack>();
+                add.setPort(v.node_port_);
+                if(v.nodeid_ != dht_->getNodeId() && netId == v.nid_){
+                    bootstrap(v.nodeid_, add);
+                }
+            } catch(const msgpack::type_error &e){
+                std::cerr << "Msgpack Info Invalid: " << e.what() << '\n';
+            }
+        });
     }
     if (config.peer_publish) {
-        current_node_netid_ = config.dht_config.node_config.network;
-        NodeInsertionPack adc;
-        adc.nid_ = current_node_netid_;
-        adc.node_port_ = getBoundPort();
-        adc.nodeid_ = dht_->getNodeId();
         msgpack::sbuffer sbuf_node;
+        // IPv4
+        NodeInsertionPack adc;
+        adc.nid_ = netId;
+        adc.node_port_ = getBoundPort(AF_INET);
+        adc.nodeid_ = dht_->getNodeId();
         msgpack::pack(sbuf_node, adc);
-        if (peerDiscovery_)
-            peerDiscovery_->startPublish(PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        // IPv6
+        adc.nid_ = netId;
+        adc.node_port_ = getBoundPort(AF_INET6);
+        adc.nodeid_ = dht_->getNodeId();
+        sbuf_node.clear();
+        msgpack::pack(sbuf_node, adc);
+        peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
     }
 }
 
@@ -604,6 +619,8 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                             rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len), clock::now()});
                         }
                         cv.notify_all();
+                    } else if (rc == -1) {
+                        std::cerr << "Error receiving packet: " << strerror(errno) << std::endl;
                     }
                 }
             }
@@ -946,20 +963,6 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
         });
     }
     cv.notify_all();
-}
-
-void 
-DhtRunner::nodeInsertionCallback(msgpack::object&& obj, SockAddr&& add)
-{
-    try {
-        auto v = obj.as<NodeInsertionPack>();
-        add.setPort(v.node_port_);
-        if(v.nodeid_ != dht_->getNodeId() && current_node_netid_ == v.nid_){
-            bootstrap(v.nodeid_, add);
-        }
-    } catch(const msgpack::type_error &e){
-        std::cerr << "Msgpack Info Invalid: " << e.what() << '\n';
-    }
 }
 
 void

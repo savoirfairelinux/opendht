@@ -45,6 +45,7 @@ public:
      * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
     */
     void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
+    void startPublish(sa_family_t domain, const std::string &type, const msgpack::sbuffer &pack_buf);
 
     /**
      * Thread Stopper
