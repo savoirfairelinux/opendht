@@ -179,9 +179,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         msgpack::pack(sbuf_node, adc);
         peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         // IPv6
-        adc.nid_ = netId;
         adc.node_port_ = getBoundPort(AF_INET6);
-        adc.nodeid_ = dht_->getNodeId();
         sbuf_node.clear();
         msgpack::pack(sbuf_node, adc);
         peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
