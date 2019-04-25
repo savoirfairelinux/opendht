@@ -74,7 +74,7 @@ enableLogging(dht::DhtRunner &dht) {
 
 void
 enableFileLogging(dht::DhtRunner &dht, const std::string &path) {
-    auto logfile = std::make_shared<std::fstream>();
+    auto logfile = std::make_shared<std::ofstream>();
     logfile->open(path, std::ios::out);
 
     dht.setLoggers(
