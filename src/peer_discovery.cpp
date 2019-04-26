@@ -29,7 +29,6 @@
 typedef SSIZE_T ssize_t;
 #endif
 #define close(x) closesocket(x)
-#define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #else
 #include <sys/types.h>
 #include <unistd.h>
@@ -435,12 +434,18 @@ PeerDiscovery::DomainPeerDiscovery::stopPublish(const std::string &type)
 void
 PeerDiscovery::DomainPeerDiscovery::stopDiscovery()
 {
+#ifdef _WIN32
+#define write(s, b, f) send((s), (b), (f), 0)
+#endif
     drunning_ = false;
     if (stop_writefd_ != -1) {
         if (write(stop_writefd_, "\0", 1) == -1) {
-            perror("write");
+            std::cerr << "Can't send stop message: " << strerror(errno) << std::endl;
         }
     }
+#ifdef _WIN32
+#undef write
+#endif
 }
 
 void
