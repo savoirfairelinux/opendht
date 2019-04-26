@@ -621,7 +621,7 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                     socklen_t from_len = sizeof(from);
 
                     if (FD_ISSET(stop_readfd, &readfds)) {
-                        if (recvfrom(stop_readfd, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len) < 0) {
+                        if (recv(stop_readfd, (char*)buf.data(), buf.size(), 0) < 0) {
                             std::cerr << "Got stop packet error: " << strerror(errno) << std::endl;
                             break;
                         }
