@@ -615,14 +615,20 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                 if (not running_network)
                     break;
 
-                if(rc > 0) {
+                if (rc > 0) {
                     std::array<uint8_t, 1024 * 64> buf;
                     sockaddr_storage from;
                     socklen_t from_len = sizeof(from);
 
-                    if(s4 >= 0 && FD_ISSET(s4, &readfds))
+                    if (FD_ISSET(stop_readfd, &readfds)) {
+                        if (recvfrom(stop_readfd, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len) < 0) {
+                            std::cerr << "Got stop packet error: " << strerror(errno) << std::endl;
+                            break;
+                        }
+                    }
+                    else if (s4 >= 0 && FD_ISSET(s4, &readfds))
                         rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
-                    else if(s6 >= 0 && FD_ISSET(s6, &readfds))
+                    else if (s6 >= 0 && FD_ISSET(s6, &readfds))
                         rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
                     else
                         continue;
