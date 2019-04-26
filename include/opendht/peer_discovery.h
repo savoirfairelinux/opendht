@@ -41,11 +41,25 @@ public:
     */
     void startDiscovery(const std::string &type, ServiceDiscoveredCallback callback);
 
+    template<typename T>
+    void startDiscovery(const std::string &type, std::function<void(T&&, SockAddr&&)> cb) {
+        startDiscovery(type, [cb](msgpack::object&& ob, SockAddr&& addr) {
+            cb(ob.as<T>(), std::move(addr));
+        });
+    }
+
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
     */
     void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
     void startPublish(sa_family_t domain, const std::string &type, const msgpack::sbuffer &pack_buf);
+
+    template<typename T>
+    void startPublish(const std::string &type, const T& object) {
+        msgpack::sbuffer buf;
+        msgpack::pack(buf, object);
+        startPublish(type, buf);
+    }
 
     /**
      * Thread Stopper
@@ -55,12 +69,13 @@ public:
     /**
      * Remove possible callBack to discovery
     */
-    void stopDiscovery(const std::string &type);
+    bool stopDiscovery(const std::string &type);
 
     /**
      * Remove different serivce message to send
     */
-    void stopPublish(const std::string &type);
+    bool stopPublish(const std::string &type);
+    bool stopPublish(sa_family_t domain, const std::string &type);
 
     /**
      * Configure the sockopt to be able to listen multicast group
