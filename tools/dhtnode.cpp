@@ -48,16 +48,16 @@ void print_id_req() {
     std::cout << "An identity is required to perform this operation (run with -i)" << std::endl;
 }
 
-void print_node_info(const std::shared_ptr<DhtRunner>& dht, const dht_params& params) {
-    std::cout << "OpenDHT node " << dht->getNodeId() << " running on ";
-    auto port4 = dht->getBoundPort(AF_INET);
-    auto port6 = dht->getBoundPort(AF_INET6);
+void print_node_info(const std::shared_ptr<DhtRunner>& node, const dht_params& params) {
+    std::cout << "OpenDHT node " << node->getNodeId() << " running on ";
+    auto port4 = node->getBoundPort(AF_INET);
+    auto port6 = node->getBoundPort(AF_INET6);
     if (port4 == port6)
         std::cout << "port " << port4 << std::endl;
     else
         std::cout << "IPv4 port " << port4 << ", IPv6 port " << port6 << std::endl;
     if (params.generate_identity)
-        std::cout << "Public key ID " << dht->getId() << std::endl;
+        std::cout << "Public key ID " << node->getId() << std::endl;
 }
 
 void print_help() {
@@ -116,13 +116,13 @@ void print_help() {
 #endif
 }
 
-void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
+void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #ifdef OPENDHT_PROXY_SERVER
     , std::map<in_port_t, std::unique_ptr<DhtProxyServer>>& proxies
 #endif
 )
 {
-    print_node_info(dht, params);
+    print_node_info(node, params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
 #ifndef WIN32_NATIVE
@@ -151,11 +151,11 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             print_help();
             continue;
         } else if (op == "ll") {
-            print_node_info(dht, params);
+            print_node_info(node, params);
             std::cout << "IPv4 stats:" << std::endl;
-            std::cout << dht->getNodesStats(AF_INET).toString() << std::endl;
+            std::cout << node->getNodesStats(AF_INET).toString() << std::endl;
             std::cout << "IPv6 stats:" << std::endl;
-            std::cout << dht->getNodesStats(AF_INET6).toString() << std::endl;
+            std::cout << node->getNodesStats(AF_INET6).toString() << std::endl;
 #ifdef OPENDHT_PROXY_SERVER
             for (const auto& proxy : proxies) {
                 std::cout << "Stats for proxy on port " << proxy.first << std::endl;
@@ -165,29 +165,29 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             continue;
         } else if (op == "lr") {
             std::cout << "IPv4 routing table:" << std::endl;
-            std::cout << dht->getRoutingTablesLog(AF_INET) << std::endl;
+            std::cout << node->getRoutingTablesLog(AF_INET) << std::endl;
             std::cout << "IPv6 routing table:" << std::endl;
-            std::cout << dht->getRoutingTablesLog(AF_INET6) << std::endl;
+            std::cout << node->getRoutingTablesLog(AF_INET6) << std::endl;
             continue;
         } else if (op == "ld") {
             iss >> idstr;
             InfoHash filter(idstr);
             if (filter)
-                std::cout << dht->getStorageLog(filter) << std::endl;
+                std::cout << node->getStorageLog(filter) << std::endl;
             else
-                std::cout << dht->getStorageLog() << std::endl;
+                std::cout << node->getStorageLog() << std::endl;
             continue;
         } else if (op == "ls") {
             iss >> idstr;
             InfoHash filter(idstr);
             if (filter)
-                std::cout << dht->getSearchLog(filter) << std::endl;
+                std::cout << node->getSearchLog(filter) << std::endl;
             else
-                std::cout << dht->getSearchesLog() << std::endl;
+                std::cout << node->getSearchesLog() << std::endl;
             continue;
         } else if (op == "la")  {
             std::cout << "Reported public addresses:" << std::endl;
-            auto addrs = dht->getPublicAddressStr();
+            auto addrs = node->getPublicAddressStr();
             for (const auto& addr : addrs)
                 std::cout << addr << std::endl;
             continue;
@@ -197,7 +197,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 auto addr = splitPort(idstr);
                 if (not addr.first.empty() and addr.second.empty())
                     addr.second = std::to_string(DHT_DEFAULT_PORT);
-                dht->bootstrap(addr.first.c_str(), addr.second.c_str());
+                node->bootstrap(addr.first.c_str(), addr.second.c_str());
             } catch (const std::exception& e) {
                 std::cerr << e.what() << std::endl;
             }
@@ -207,13 +207,13 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             InfoHash filter(idstr);
             params.log = filter == InfoHash{} ? !params.log : true;
             if (params.log)
-                log::enableLogging(*dht);
+                log::enableLogging(*node);
             else
-                log::disableLogging(*dht);
-            dht->setLogFilter(filter);
+                log::disableLogging(*node);
+            node->setLogFilter(filter);
             continue;
         } else if (op == "cc") {
-            dht->connectivityChanged();
+            node->connectivityChanged();
             continue;
         }
 #ifdef OPENDHT_PROXY_SERVER
@@ -226,9 +226,9 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             try {
                 unsigned int port = std::stoi(idstr);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, port, pushServer)));
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, port, pushServer)));
 #else
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, port)));
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, port)));
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             } catch (...) { }
             continue;
@@ -244,16 +244,16 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
 #endif //OPENDHT_PROXY_SERVER
 #ifdef OPENDHT_PROXY_CLIENT
         else if (op == "stt") {
-            dht->enableProxy(true);
+            node->enableProxy(true);
             continue;
         } else if (op == "stp") {
-            dht->enableProxy(false);
+            node->enableProxy(false);
             continue;
         }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         else if (op == "rp") {
             iss >> value;
-            dht->pushNotificationReceived({{"to", "dhtnode"}, {"token", value}});
+            node->pushNotificationReceived({{"to", "dhtnode"}, {"token", value}});
             continue;
         }
 #endif // OPENDHT_PUSH_NOTIFICATIONS
@@ -290,7 +290,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                     std::transform(key.begin(), key.end(), std::inserter(ks, ks.end()), [](Pht::Key::value_type& f) {
                         return std::make_pair(f.first, f.second.size());
                     });
-                    indexes.emplace(index, Pht {index, std::move(ks), dht});
+                    indexes.emplace(index, Pht {index, std::move(ks), node});
                 } catch (std::invalid_argument& e) { std::cout << e.what() << std::endl; }
             }
         }
@@ -314,7 +314,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         if (op == "g") {
             std::string rem;
             std::getline(iss, rem);
-            dht->get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
+            node->get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
                 auto now = std::chrono::high_resolution_clock::now();
                 std::cout << "Get: found " << values.size() << " value(s) after " << print_duration(now-start) << std::endl;
                 for (const auto& value : values)
@@ -328,7 +328,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         else if (op == "q") {
             std::string rem;
             std::getline(iss, rem);
-            dht->query(id, [start](const std::vector<std::shared_ptr<FieldValueIndex>>& field_value_indexes) {
+            node->query(id, [start](const std::vector<std::shared_ptr<FieldValueIndex>>& field_value_indexes) {
                 auto now = std::chrono::high_resolution_clock::now();
                 for (auto& index : field_value_indexes) {
                     std::cout << "Query: found field value index after " << print_duration(now-start) << std::endl;
@@ -343,7 +343,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         else if (op == "l") {
             std::string rem;
             std::getline(iss, rem);
-            auto token = dht->listen(id, [](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+            auto token = node->listen(id, [](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
                 std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << std::endl;
                 for (const auto& value : values)
                     std::cout << "\t" << *value << std::endl;
@@ -362,12 +362,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 std::cerr << "Syntax: cl [key] [token]" << std::endl;
                 continue;
             }
-            dht->cancelListen(id, token);
+            node->cancelListen(id, token);
         }
         else if (op == "p") {
             std::string v;
             iss >> v;
-            dht->put(id, dht::Value {
+            node->put(id, dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [start](bool ok) {
@@ -382,7 +382,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
             );
-            dht->put(id, value, [start,value](bool ok) {
+            node->put(id, value, [start,value](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 auto flags(std::cout.flags());
                 std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << ". Value ID: " << std::hex << value->id << std::endl;
@@ -392,7 +392,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         else if (op == "cpp") {
             std::string rem;
             iss >> rem;
-            dht->cancelPut(id, std::stoul(rem, nullptr, 16));
+            node->cancelPut(id, std::stoul(rem, nullptr, 16));
         }
         else if (op == "s") {
             if (not params.generate_identity) {
@@ -401,7 +401,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             }
             std::string v;
             iss >> v;
-            dht->putSigned(id, dht::Value {
+            node->putSigned(id, dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [start](bool ok) {
@@ -417,7 +417,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
             std::string tostr;
             std::string v;
             iss >> tostr >> v;
-            dht->putEncrypted(id, InfoHash(tostr), dht::Value {
+            node->putEncrypted(id, InfoHash(tostr), dht::Value {
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
             }, [start](bool ok) {
@@ -428,7 +428,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& dht, dht_params& params
         else if (op == "a") {
             in_port_t port;
             iss >> port;
-            dht->put(id, dht::Value {dht::IpServiceAnnouncement::TYPE.id, dht::IpServiceAnnouncement(port)}, [start](bool ok) {
+            node->put(id, dht::Value {dht::IpServiceAnnouncement::TYPE.id, dht::IpServiceAnnouncement(port)}, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Announce: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << std::endl;
             });
@@ -491,26 +491,25 @@ main(int argc, char **argv)
 #ifdef WIN32_NATIVE
     gnutls_global_init();
 #endif
+    auto params = parseArgs(argc, argv);
+    if (params.help) {
+        print_usage();
+        return 0;
+    }
+    if (params.version) {
+        print_version();
+        return 0;
+    }
 
-    auto dht = std::make_shared<DhtRunner>();
+    if (params.daemonize) {
+        daemonize();
+    } else if (params.service) {
+        setupSignals();
+    }
+
+    auto node = std::make_shared<DhtRunner>();
 
     try {
-        auto params = parseArgs(argc, argv);
-        if (params.help) {
-            print_usage();
-            return 0;
-        }
-        if (params.version) {
-            print_version();
-            return 0;
-        }
-
-        if (params.daemonize) {
-            daemonize();
-        } else if (params.service) {
-            setupSignals();
-        }
-
         dht::crypto::Identity crt {};
         if (params.generate_identity) {
             auto ca_tmp = dht::crypto::generateEcIdentity("DHT Node CA");
@@ -528,22 +527,22 @@ main(int argc, char **argv)
         config.peer_discovery = params.peer_discovery;
         config.peer_publish = params.peer_discovery;
         if (not params.proxyclient.empty())
-            dht->setPushNotificationToken(params.devicekey);
+            node->setPushNotificationToken(params.devicekey);
 
-        dht->run(params.port, config);
+        node->run(params.port, config);
 
         if (params.log) {
             if (params.syslog or (params.daemonize and params.logfile.empty()))
-                log::enableSyslog(*dht, "dhtnode");
+                log::enableSyslog(*node, "dhtnode");
             else if (not params.logfile.empty())
-                log::enableFileLogging(*dht, params.logfile);
+                log::enableFileLogging(*node, params.logfile);
             else
-                log::enableLogging(*dht);
+                log::enableLogging(*node);
         }
 
         if (not params.bootstrap.first.empty()) {
             //std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;
-            dht->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
+            node->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
         }
 
 #ifdef OPENDHT_PROXY_SERVER
@@ -551,7 +550,7 @@ main(int argc, char **argv)
 #endif
         if (params.proxyserver != 0) {
 #ifdef OPENDHT_PROXY_SERVER
-            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(dht, params.proxyserver, params.pushserver)));
+            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, params.proxyserver, params.pushserver)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);
@@ -561,7 +560,7 @@ main(int argc, char **argv)
         if (params.daemonize or params.service)
             while (runner.wait());
         else
-            cmd_loop(dht, params
+            cmd_loop(node, params
 #ifdef OPENDHT_PROXY_SERVER
                 , proxies
 #endif
@@ -575,7 +574,7 @@ main(int argc, char **argv)
     std::mutex m;
     std::atomic_bool done {false};
 
-    dht->shutdown([&]()
+    node->shutdown([&]()
     {
         std::lock_guard<std::mutex> lk(m);
         done = true;
@@ -586,7 +585,7 @@ main(int argc, char **argv)
     std::unique_lock<std::mutex> lk(m);
     cv.wait(lk, [&](){ return done.load(); });
 
-    dht->join();
+    node->join();
 #ifdef WIN32_NATIVE
     gnutls_global_deinit();
 #endif
