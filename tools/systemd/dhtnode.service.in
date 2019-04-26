@@ -1,13 +1,13 @@
 [Unit]
 Description=OpenDHT standalone node
 After=network.target
- 
+
 [Service]
 EnvironmentFile=@sysconfdir@/dhtnode.conf
-ExecStart=@bindir@/dhtnode -d $DHT_ARGS
+ExecStart=@bindir@/dhtnode -s $DHT_ARGS
 KillMode=process
 Restart=on-failure
-Type=forking
+Type=simple
 DynamicUser=yes
 
 [Install]
