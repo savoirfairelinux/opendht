@@ -188,6 +188,10 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
 
 void
 DhtRunner::shutdown(ShutdownCallback cb) {
+    if (not running) {
+        cb();
+        return;
+    }
 #ifdef OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
         dht_via_proxy_->shutdown(cb);
