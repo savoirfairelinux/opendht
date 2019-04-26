@@ -474,7 +474,7 @@ DhtRunner::loop_()
             if (clock::now() - pck.received > RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
-                wakeup = dht->periodic(pck.data.data(), pck.data.size()-1, pck.from);
+                wakeup = dht->periodic(pck.data.data(), pck.data.size(), pck.from);
             received.pop();
         }
     } else {
@@ -634,7 +634,7 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                                 std::cerr << "Dropping packet: queue is full!" << std::endl;
                                 rcv.pop();
                             }
-                            rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc+1}, SockAddr(from, from_len), clock::now()});
+                            rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc}, SockAddr(from, from_len), clock::now()});
                         }
                         cv.notify_all();
                     } else if (rc == -1) {
