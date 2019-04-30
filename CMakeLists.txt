@@ -321,6 +321,8 @@ if (OPENDHT_TESTS)
       tests/dhtrunnertester.cpp
       tests/peerdiscoverytester.h
       tests/peerdiscoverytester.cpp
+      tests/threadpooltester.h
+      tests/threadpooltester.cpp
     )
     if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
       list (APPEND test_FILES
