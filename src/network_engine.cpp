@@ -286,11 +286,11 @@ NetworkEngine::requestStep(Sp<Request> sreq)
 void
 NetworkEngine::sendRequest(const Sp<Request>& request)
 {
-    auto& node = request->node;
-    if (not node->id)
+    auto& node = *request->node;
+    if (not node.id)
         requests.emplace(request->tid, request);
     request->start = scheduler.time();
-    node->requested(request);
+    node.requested(request);
     requestStep(request);
 }
 
