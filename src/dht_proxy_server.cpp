@@ -669,7 +669,6 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                     clientId = pVal["client_id"].asString();
                                     platform = pVal["platform"].asString();
                                 }
-                                bool isAndroid = platform == "android";
                                 std::unique_lock<std::mutex> lock(schedulerLock_);
                                 scheduler_.syncTime();
                                 auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
@@ -684,6 +683,7 @@ DhtProxyServer::put(const std::shared_ptr<restbed::Session>& session)
                                     });
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                                     if (not pushToken.empty()) {
+                                        bool isAndroid = platform == "android";
                                         pput.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
                                             [this, infoHash, vid, pushToken, clientId, isAndroid]
                                         {
