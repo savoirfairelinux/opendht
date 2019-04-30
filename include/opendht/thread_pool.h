@@ -68,4 +68,23 @@ private:
     bool running_ {true};
 };
 
+class OPENDHT_PUBLIC Executor : public std::enable_shared_from_this<Executor> {
+public:
+    Executor(ThreadPool& pool, unsigned maxConcurrent = 1)
+     : threadPool_(pool), maxConcurrent_(maxConcurrent)
+    {}
+
+    void run(std::function<void()>&& task);
+
+private:
+    std::reference_wrapper<ThreadPool> threadPool_;
+    const unsigned maxConcurrent_ {1};
+    std::mutex lock_ {};
+    unsigned current_ {0};
+    std::queue<std::function<void()>> tasks_ {};
+
+    void run_(std::function<void()>&& task);
+    void schedule();
+};
+
 }

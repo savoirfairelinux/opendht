@@ -21,7 +21,7 @@
 
 #include <atomic>
 #include <thread>
-
+#include <iostream>
 #include <ciso646> // fix windows compiler bug
 
 namespace dht {
@@ -97,6 +97,7 @@ ThreadPool::run(std::function<void()>&& cb)
                         task();
                 } catch (const std::exception& e) {
                     // LOG_ERR("Exception running task: %s", e.what());
+                    std::cerr << "Exception running task: " << e.what() << std::endl;
                 }
             }
         });
@@ -129,6 +130,46 @@ ThreadPool::join()
     for (auto& t : threads_)
         t->thread.join();
     threads_.clear();
+}
+
+void
+Executor::run(std::function<void()>&& task)
+{
+    std::lock_guard<std::mutex> l(lock_);
+    if (current_ < maxConcurrent_) {
+        run_(std::move(task));
+    } else {
+        tasks_.emplace(std::move(task));
+    }
+}
+
+void
+Executor::run_(std::function<void()>&& task)
+{
+    current_++;
+    std::weak_ptr<Executor> w = shared_from_this();
+    threadPool_.get().run([w,task] {
+        try {
+            task();
+        } catch (const std::exception& e) {
+            std::cerr << "Exception running task: " << e.what() << std::endl;
+        }
+        if (auto sthis = w.lock()) {
+            auto& this_ = *sthis;
+            std::lock_guard<std::mutex> l(this_.lock_);
+            this_.current_--;
+            this_.schedule();
+        }
+    });
+}
+
+void
+Executor::schedule()
+{
+    if (not tasks_.empty() and current_ < maxConcurrent_) {
+        run_(std::move(tasks_.front()));
+        tasks_.pop();
+    }
 }
 
 }
