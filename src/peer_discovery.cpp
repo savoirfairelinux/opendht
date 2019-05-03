@@ -552,6 +552,7 @@ PeerDiscovery::stopPublish(sa_family_t domain, const std::string &type)
     } else if (domain == AF_INET6) {
         return peerDiscovery6_ and peerDiscovery6_->stopPublish(type);
     }
+    return false;
 }
 
 void
