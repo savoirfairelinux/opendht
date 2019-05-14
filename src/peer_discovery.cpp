@@ -301,17 +301,22 @@ PeerDiscovery::DomainPeerDiscovery::listenerpack_thread()
     stop_writefd_ = stopfds_pipe[1];
 
     while (true) {
+        {
+            std::lock_guard<std::mutex> lck(dmtx_);
+            if (not drunning_)
+                break;
+        }
+
         fd_set readfds;
 
         FD_ZERO(&readfds);
         FD_SET(stop_readfd, &readfds);
         FD_SET(sockfd_, &readfds);
 
-
         int data_coming = select(std::max(sockfd_, stop_readfd) + 1, &readfds, nullptr, nullptr, nullptr);
 
         {
-            std::unique_lock<std::mutex> lck(dmtx_);
+            std::lock_guard<std::mutex> lck(dmtx_);
             if (not drunning_)
                 break;
         }
@@ -437,10 +442,12 @@ PeerDiscovery::DomainPeerDiscovery::stopDiscovery()
 #ifdef _WIN32
 #define write(s, b, f) send((s), (b), (f), 0)
 #endif
-    drunning_ = false;
-    if (stop_writefd_ != -1) {
-        if (write(stop_writefd_, "\0", 1) == -1) {
-            std::cerr << "Can't send stop message: " << strerror(errno) << std::endl;
+    if (drunning_) {
+        drunning_ = false;
+        if (stop_writefd_ != -1) {
+            if (write(stop_writefd_, "\0", 1) == -1) {
+                std::cerr << "Can't send stop message: " << strerror(errno) << std::endl;
+            }
         }
     }
 #ifdef _WIN32
@@ -451,8 +458,10 @@ PeerDiscovery::DomainPeerDiscovery::stopDiscovery()
 void
 PeerDiscovery::DomainPeerDiscovery::stopPublish()
 {
-    lrunning_ = false;
-    cv_.notify_all();
+    if (lrunning_) {
+        lrunning_ = false;
+        cv_.notify_all();
+    }
 }
 
 void
