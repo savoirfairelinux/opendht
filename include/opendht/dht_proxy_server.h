@@ -2,6 +2,7 @@
  *  Copyright (C) 2017-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,11 +31,20 @@
 #include <thread>
 #include <memory>
 #include <mutex>
-#include <restbed>
+#include <restinio/all.hpp>
 
 #ifdef OPENDHT_JSONCPP
 #include <json/json.h>
 #endif
+
+using RestRouter = restinio::router::express_router_t<>;
+using RestRouterTraits = restinio::traits_t<
+    restinio::asio_timer_manager_t,
+    restinio::single_threaded_ostream_logger_t,
+    RestRouter>;
+using RequestStatus = restinio::request_handling_status_t;
+using ResponseByParts = restinio::chunked_output_t;
+using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
 
 namespace Json {
     class Value;
@@ -123,6 +133,11 @@ public:
     void stop();
 
 private:
+    template <typename HttpResponse>
+    HttpResponse initHttpResponse(HttpResponse response) const;
+
+    std::unique_ptr<RestRouter> createRestRouter();
+
     /**
      * Return the PublicKey id, the node id and node stats
      * Method: GET "/"
@@ -130,7 +145,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus getNodeInfo(restinio::request_handle_t request,
+                               restinio::router::route_params_t params) const;
 
     /**
      * Return ServerStats in JSON format
@@ -138,7 +154,7 @@ private:
      * Result: HTTP 200, body: Node infos in JSON format
      * @param session
      */
-    void getStats(const std::shared_ptr<restbed::Session>& session) const;
+    //void getStats(const std::shared_ptr<restbed::Session>& session) const;
 
     /**
      * Return Values of an infoHash
@@ -150,7 +166,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void get(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus get(restinio::request_handle_t request,
+                       restinio::router::route_params_t params);
 
     /**
      * Listen incoming Values of an infoHash.
@@ -162,7 +179,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void listen(const std::shared_ptr<restbed::Session>& session);
+    //void listen(const std::shared_ptr<restbed::Session>& session);
 
     /**
      * Put a value on the DHT
@@ -173,7 +190,8 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json or HTTP 502 if put fails
      * @param session
      */
-    void put(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus put(restinio::request_handle_t request,
+                       restinio::router::route_params_t params);
 
     void cancelPut(const InfoHash& key, Value::Id vid);
 
@@ -187,7 +205,7 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    void putSigned(const std::shared_ptr<restbed::Session>& session) const;
+    //void putSigned(const std::shared_ptr<restbed::Session>& session) const;
 
     /**
      * Put a value to encrypt by the proxy on the DHT
@@ -198,7 +216,7 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
+    //void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     /**
@@ -211,7 +229,7 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
+    //void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
 
     /**
      * Respond allowed Methods
@@ -220,7 +238,8 @@ private:
      * See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
      * @param session
      */
-    void handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus options(restinio::request_handle_t request,
+                           restinio::router::route_params_t params);
 
     /**
      * Remove finished listeners
@@ -238,7 +257,7 @@ private:
      * so you need to refresh the operation each six hours.
      * @param session
      */
-    void subscribe(const std::shared_ptr<restbed::Session>& session);
+    //void subscribe(const std::shared_ptr<restbed::Session>& session);
     /**
      * Unsubscribe to push notifications for an iOS or Android device.
      * Method: UNSUBSCRIBE "/{InfoHash: .*}"
@@ -246,7 +265,7 @@ private:
      * Return: nothing
      * @param session
      */
-    void unsubscribe(const std::shared_ptr<restbed::Session>& session);
+    //void unsubscribe(const std::shared_ptr<restbed::Session>& session);
     /**
      * Send a push notification via a gorush push gateway
      * @param key of the device
@@ -269,7 +288,7 @@ private:
     using time_point = clock::time_point;
 
     std::thread server_thread {};
-    std::unique_ptr<restbed::Service> service_;
+    //std::unique_ptr<restbed::Service> service_;
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
 
@@ -287,7 +306,7 @@ private:
     // NOTE: can be simplified when we will supports restbed 5.0
     std::thread listenThread_;
     struct SessionToHashToken {
-        std::shared_ptr<restbed::Session> session;
+        //std::shared_ptr<restbed::Session> session;
         InfoHash hash;
         std::future<size_t> token;
     };
@@ -313,6 +332,12 @@ private:
     std::map<std::string, PushListener> pushListeners_;
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
+
+    const std::string RESP_MSG_INCORRECT_JSON = "{\"err:\":\"Incorrect JSON\"}";
+    const std::string RESP_MSG_SERVICE_UNAVAILABLE = "{\"err\":\"Incorrect DhtRunner\"}";
+    const std::string RESP_MSG_INTERNAL_SERVER_ERRROR = "{\"err\":\"Internal server error\"}";
+    const std::string RESP_MSG_MISSING_PARAMS = "{\"err\":\"Missing parameters\"}";
+    const std::string RESP_MSG_PUT_FAILED = "{\"err\":\"Put failed\"}";
 };
 
 }

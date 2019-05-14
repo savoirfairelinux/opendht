@@ -4,7 +4,7 @@
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
-A lightweight C++11 Distributed Hash Table implementation.
+A lightweight C++14 Distributed Hash Table implementation.
 
 OpenDHT provides an easy to use distributed in-memory data store.
 Every node in the network can read and write values to the store.
@@ -14,7 +14,7 @@ Values are distributed over the network, with redundancy.
  * High resilience to network disruption
  * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
  * IPv4 and IPv6 support
- * Clean and powerful C++11 map API
+ * Clean and powerful C++14 map API
  * Python 3 bindings
  * REST API
 
@@ -27,7 +27,7 @@ Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-
 
 #### How-to build a simple client app
 ```bash
-g++ main.cpp -std=c++11 -lopendht -lgnutls
+g++ main.cpp -std=c++14 -lopendht -lgnutls
 ```
 
 ## Examples
