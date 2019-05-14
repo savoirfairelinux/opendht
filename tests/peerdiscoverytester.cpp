@@ -57,53 +57,54 @@ void PeerDiscoveryTester::testTransmission()
     pdd.cha = 'a';
     pdd.str = "apple";
 
-    dht::PeerDiscovery test_n(MULTICAST_PORT);
-    dht::PeerDiscovery test_s(MULTICAST_PORT);
-
     std::mutex lock;
     std::condition_variable cv;
-    std::unique_lock<std::mutex> l(lock);
     unsigned count_node {0};
     unsigned count_test {0};
 
-    test_s.startDiscovery<NodeInsertion>(type,[&](NodeInsertion&& v, dht::SockAddr&& add){
-        CPPUNIT_ASSERT_EQUAL(v.node_port, adc.node_port);
-        CPPUNIT_ASSERT_EQUAL(v.nodeid, adc.nodeid);
-        CPPUNIT_ASSERT_EQUAL(v.nid, adc.nid);
-        {
-            std::lock_guard<std::mutex> l(lock);
-            count_node++;
-        }
-        cv.notify_all();
-    });
+    {
+        std::unique_lock<std::mutex> l(lock);
+        dht::PeerDiscovery test_n(MULTICAST_PORT);
+        dht::PeerDiscovery test_s(MULTICAST_PORT);
 
-    test_s.startDiscovery(test_type,[&](msgpack::object&& obj, dht::SockAddr&& add){
-        auto v = obj.as<TestPack>();
-        CPPUNIT_ASSERT_EQUAL(v.num, pdd.num);
-        CPPUNIT_ASSERT_EQUAL(v.cha, pdd.cha);
-        CPPUNIT_ASSERT_EQUAL(v.str, pdd.str);
-        {
-            std::lock_guard<std::mutex> l(lock);
-            count_test++;
-        }
-        cv.notify_all();
-    });
+        test_s.startDiscovery<NodeInsertion>(type,[&](NodeInsertion&& v, dht::SockAddr&& add){
+            CPPUNIT_ASSERT_EQUAL(adc.node_port, v.node_port);
+            CPPUNIT_ASSERT_EQUAL(adc.nodeid, v.nodeid);
+            CPPUNIT_ASSERT_EQUAL(adc.nid, v.nid);
+            {
+                std::lock_guard<std::mutex> l(lock);
+                count_node++;
+            }
+            cv.notify_all();
+        });
 
-    test_n.startPublish(type, adc);
-    CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
-        return count_node > 0;
-    }));
+        test_s.startDiscovery(test_type,[&](msgpack::object&& obj, dht::SockAddr&& add){
+            auto v = obj.as<TestPack>();
+            CPPUNIT_ASSERT_EQUAL(pdd.num, v.num);
+            CPPUNIT_ASSERT_EQUAL(pdd.cha, v.cha);
+            CPPUNIT_ASSERT_EQUAL(pdd.str, v.str);
+            {
+                std::lock_guard<std::mutex> l(lock);
+                count_test++;
+            }
+            cv.notify_all();
+        });
 
-    test_n.startPublish(test_type, pdd);
-    CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
-        return count_node > 1 and count_test > 0;
-    }));
-    l.unlock();
+        test_n.startPublish(type, adc);
+        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
+            return count_node > 0;
+        }));
 
-    test_n.stopPublish(type);
-    test_n.stopPublish(test_type);
-    test_n.stopDiscovery(type);
-    test_n.stopDiscovery(test_type);
+        test_n.startPublish(test_type, pdd);
+        CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
+            return count_node > 1 and count_test > 0;
+        }));
+        l.unlock();
+        test_n.stopPublish(type);
+        test_n.stopPublish(test_type);
+        test_s.stopDiscovery(type);
+        test_s.stopDiscovery(test_type);
+    }
 }
 
 void PeerDiscoveryTester::tearDown(){}
