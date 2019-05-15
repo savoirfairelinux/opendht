@@ -144,6 +144,8 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(sa_family_t domain, in_p
     : domain_(domain), port_(port), sockfd_(initialize_socket(domain))
 {
     socketJoinMulticast(sockfd_, domain);
+    listener_setup();
+    sender_setup();
 }
 
 PeerDiscovery::DomainPeerDiscovery::~DomainPeerDiscovery()
@@ -262,7 +264,6 @@ PeerDiscovery::DomainPeerDiscovery::startDiscovery(const std::string &type, Serv
         if (running_listen_.joinable())
             running_listen_.join();
         drunning_ = true;
-        listener_setup();
         running_listen_ = std::thread(&DomainPeerDiscovery::listenerpack_thread, this);
     }
 }
@@ -383,7 +384,6 @@ PeerDiscovery::DomainPeerDiscovery::startPublish(const std::string &type, const 
         if (running_send_.joinable())
             running_send_.join();
         lrunning_ = true;
-        sender_setup();
         running_send_ = std::thread([this](){
             std::unique_lock<std::mutex> lck(mtx_);
             while (lrunning_) {
