@@ -221,7 +221,8 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 #endif
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
-        dht.shutdown(cb);
+        if (dht_)
+            dht_->shutdown(cb);
     });
     cv.notify_all();
 }
@@ -229,13 +230,16 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 void
 DhtRunner::join()
 {
-    if (dht_)
-        if (auto sock = dht_->getSocket())
-            sock->stop();
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
     if (peerDiscovery_) peerDiscovery_->stop();
+    {
+        std::lock_guard<std::mutex> lck(dht_mtx);
+        if (dht_)
+            if (auto sock = dht_->getSocket())
+                sock->stop();
+    }
 
     if (dht_thread.joinable())
         dht_thread.join();
