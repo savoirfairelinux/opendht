@@ -154,7 +154,8 @@ private:
      * Result: HTTP 200, body: Node infos in JSON format
      * @param session
      */
-    //void getStats(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus getStats(restinio::request_handle_t request,
+                           restinio::router::route_params_t params);
 
     /**
      * Return Values of an infoHash
@@ -288,7 +289,6 @@ private:
     using time_point = clock::time_point;
 
     std::thread server_thread {};
-    //std::unique_ptr<restbed::Service> service_;
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
 
@@ -303,10 +303,8 @@ private:
     mutable NodeInfo nodeInfo_ {};
 
     // Handle client quit for listen.
-    // NOTE: can be simplified when we will supports restbed 5.0
     std::thread listenThread_;
     struct SessionToHashToken {
-        //std::shared_ptr<restbed::Session> session;
         InfoHash hash;
         std::future<size_t> token;
     };
@@ -333,7 +331,8 @@ private:
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
-    const std::string RESP_MSG_INCORRECT_JSON = "{\"err:\":\"Incorrect JSON\"}";
+    const std::string RESP_MSG_JSON_NOT_ENABLED = "{\"err\":\"JSON not enabled on this instance\"}";
+    const std::string RESP_MSG_JSON_INCORRECT = "{\"err:\":\"Incorrect JSON\"}";
     const std::string RESP_MSG_SERVICE_UNAVAILABLE = "{\"err\":\"Incorrect DhtRunner\"}";
     const std::string RESP_MSG_INTERNAL_SERVER_ERRROR = "{\"err\":\"Internal server error\"}";
     const std::string RESP_MSG_MISSING_PARAMS = "{\"err\":\"Missing parameters\"}";
