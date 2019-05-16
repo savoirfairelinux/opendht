@@ -206,7 +206,6 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    //void putSigned(const std::shared_ptr<restbed::Session>& session) const;
     RequestStatus putSigned(restinio::request_handle_t request,
                             restinio::router::route_params_t params) const;
 
@@ -219,9 +218,8 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    //void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
-    //RequestStatus putEncrypted(restinio::request_handle_t request,
-    //                           restinio::router::route_params_t params);
+    RequestStatus putEncrypted(restinio::request_handle_t request,
+                               restinio::router::route_params_t params);
 
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
@@ -341,6 +339,7 @@ private:
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
+    const std::string RESP_MSG_DESTINATION_NOT_FOUND = "{\"err\":\"No destination found\"}";
     const std::string RESP_MSG_NO_TOKEN = "{\"err\":\"No token\"}";
     const std::string RESP_MSG_JSON_NOT_ENABLED = "{\"err\":\"JSON not enabled on this instance\"}";
     const std::string RESP_MSG_JSON_INCORRECT = "{\"err:\":\"Incorrect JSON\"}";
