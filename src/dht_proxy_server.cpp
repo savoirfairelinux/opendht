@@ -204,6 +204,9 @@ DhtProxyServer::createRestRouter()
     router->add_handler(restinio::http_method_t::http_unsubscribe,
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
+    router->http_post("/:hash/sign", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
+#endif // OPENDHT_PROXY_SERVER_IDENTITY
     router->add_handler(restinio::http_method_t::http_options,
                         "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
     router->http_get("/:hash/:value", std::bind(&DhtProxyServer::getFiltered, this, _1, _2));
@@ -575,7 +578,6 @@ DhtProxyServer::put(restinio::request_handle_t request,
         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
 
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
-            // Build the dht::Value from json, NOTE: {"data": "base64value", ...}
             auto value = std::make_shared<dht::Value>(root);
             bool permanent = root.isMember("permanent");
             std::cout << "Got put " << infoHash << " " << *value <<
@@ -635,7 +637,6 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     response.set_body(this->RESP_MSG_PUT_FAILED);
                     response.done();
                 }
-
             }, dht::time_point::max(), permanent);
         } else {
             auto response = this->initHttpResponse(
@@ -655,7 +656,66 @@ DhtProxyServer::put(restinio::request_handle_t request,
 
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
 
-//DhtProxyServer::putSigned()
+RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
+                                        restinio::router::route_params_t params) const
+{
+    requestNum_++;
+    dht::InfoHash infoHash(params["hash"].to_string());
+    if (!infoHash)
+        infoHash = dht::InfoHash::get(params["hash"].to_string());
+
+    if (!dht_){
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_service_unavailable()));
+        response.set_body(this->RESP_MSG_SERVICE_UNAVAILABLE);
+        return response.done();
+    }
+    else if (request->body().empty()) {
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_bad_request()));
+        response.set_body(this->RESP_MSG_MISSING_PARAMS);
+        return response.done();
+    }
+
+    try {
+        std::string err;
+        Json::Value root;
+        Json::CharReaderBuilder rbuilder;
+        auto* char_data = reinterpret_cast<const char*>(request->body().data());
+        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+
+        if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
+
+            auto value = std::make_shared<Value>(root);
+
+            dht_->putSigned(infoHash, value, [this, request, value](bool ok){
+                if (ok){
+                    auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
+                    auto response = this->initHttpResponse(request->create_response());
+                    response.append_body(output);
+                    response.done();
+                } else {
+                    auto response = this->initHttpResponse(request->create_response(
+                        restinio::status_bad_gateway()));
+                    response.set_body(this->RESP_MSG_PUT_FAILED);
+                    response.done();
+                }
+            });
+        } else {
+            auto response = this->initHttpResponse(
+                request->create_response(restinio::status_bad_request()));
+            response.set_body(this->RESP_MSG_JSON_INCORRECT);
+            return response.done();
+        }
+    } catch (const std::exception& e) {
+        std::cout << "Error performing put: " << e.what() << std::endl;
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_internal_server_error()));
+        response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
+        return response.done();
+    }
+    return restinio::request_handling_status_t::accepted;
+}
 
 //DhtProxyServer::putEncrypted()
 

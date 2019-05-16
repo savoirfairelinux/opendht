@@ -207,6 +207,8 @@ private:
      * @param session
      */
     //void putSigned(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus putSigned(restinio::request_handle_t request,
+                            restinio::router::route_params_t params) const;
 
     /**
      * Put a value to encrypt by the proxy on the DHT
@@ -218,6 +220,9 @@ private:
      * @param session
      */
     //void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
+    //RequestStatus putEncrypted(restinio::request_handle_t request,
+    //                           restinio::router::route_params_t params);
+
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     /**
