@@ -195,8 +195,6 @@ DhtProxyServer::createRestRouter()
     using namespace std::placeholders;
     auto router = std::make_unique<RestRouter>();
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
-    router->add_handler(restinio::http_method_t::http_options,
-                        "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
     router->http_get("/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
@@ -206,6 +204,9 @@ DhtProxyServer::createRestRouter()
     router->add_handler(restinio::http_method_t::http_unsubscribe,
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
+    router->add_handler(restinio::http_method_t::http_options,
+                        "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
+    router->http_get("/:hash/:value", std::bind(&DhtProxyServer::getFiltered, this, _1, _2));
     return router;
 }
 
@@ -281,16 +282,22 @@ DhtProxyServer::get(restinio::request_handle_t request,
     auto response = std::make_shared<ResponseByPartsBuilder>(
         this->initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
-
-    dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
-        auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-        response->append_chunk(output);
-        response->flush();
-        return true;
-    },
-    [response] (bool /*ok*/){
-        response->done();
-    });
+    try {
+        dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+            auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
+            response->append_chunk(output);
+            response->flush();
+            return true;
+        },
+        [response] (bool /*ok*/){
+            response->done();
+        });
+    } catch (const std::exception& e) {
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_internal_server_error()));
+        response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
+        return response.done();
+    }
     return restinio::request_handling_status_t::accepted;
 }
 
@@ -310,7 +317,8 @@ struct DhtProxyServer::PushListener {
 };
 
 RequestStatus
-subscribe(restinio::request_handle_t request, restinio::router::route_params_t params)
+DhtProxyServer::subscribe(restinio::request_handle_t request,
+                          restinio::router::route_params_t params)
 {
     requestNum_++;
 
@@ -443,7 +451,8 @@ subscribe(restinio::request_handle_t request, restinio::router::route_params_t p
 }
 
 RequestStatus
-unsubscribe(restinio::request_handle_t request, restinio::router::route_params_t params)
+DhtProxyServer::unsubscribe(restinio::request_handle_t request,
+                            restinio::router::route_params_t params)
 {
     requestNum_++;
 
@@ -616,9 +625,6 @@ DhtProxyServer::put(restinio::request_handle_t request,
             }
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){
-                    Json::StreamWriterBuilder wbuilder;
-                    wbuilder["commentStyle"] = "None";
-                    wbuilder["indentation"] = "";
                     auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                     auto response = this->initHttpResponse(request->create_response());
                     response.append_body(output);
@@ -672,7 +678,46 @@ DhtProxyServer::options(restinio::request_handle_t request,
     return response.done();
 }
 
-//DhtProxyServer::getFiltered()
+RequestStatus
+DhtProxyServer::getFiltered(restinio::request_handle_t request,
+                            restinio::router::route_params_t params)
+{
+    requestNum_++;
+    auto value = params["value"].to_string();
+    dht::InfoHash infoHash(params["hash"].to_string());
+    if (!infoHash)
+        infoHash = dht::InfoHash::get(params["hash"].to_string());
+
+    if (!dht_){
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_service_unavailable()));
+        response.set_body(this->RESP_MSG_SERVICE_UNAVAILABLE);
+        return response.done();
+    }
+
+    auto response = std::make_shared<ResponseByPartsBuilder>(
+        this->initHttpResponse(request->create_response<ResponseByParts>()));
+    response->flush();
+    try {
+        dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+            auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
+            response->append_chunk(output);
+            response->flush();
+            return true;
+        },
+        [response] (bool /*ok*/){
+            response->done();
+        },
+            {}, value
+        );
+    } catch (const std::exception& e) {
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_internal_server_error()));
+        response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
+        return response.done();
+    }
+    return restinio::request_handling_status_t::accepted;
+}
 
 void
 DhtProxyServer::removeClosedListeners(bool testSession)
