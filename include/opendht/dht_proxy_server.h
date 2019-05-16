@@ -258,7 +258,9 @@ private:
      * so you need to refresh the operation each six hours.
      * @param session
      */
-    //void subscribe(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus subscribe(restinio::request_handle_t request,
+                            restinio::router::route_params_t params);
+
     /**
      * Unsubscribe to push notifications for an iOS or Android device.
      * Method: UNSUBSCRIBE "/{InfoHash: .*}"
@@ -266,13 +268,15 @@ private:
      * Return: nothing
      * @param session
      */
-    //void unsubscribe(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus unsubscribe(restinio::request_handle_t request,
+                              restinio::router::route_params_t params);
+
     /**
      * Send a push notification via a gorush push gateway
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
+    //void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
 
     /**
      * Remove a push listener between a client and a hash
@@ -331,6 +335,7 @@ private:
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
+    const std::string RESP_MSG_NO_TOKEN = "{\"err\":\"No token\"}";
     const std::string RESP_MSG_JSON_NOT_ENABLED = "{\"err\":\"JSON not enabled on this instance\"}";
     const std::string RESP_MSG_JSON_INCORRECT = "{\"err:\":\"Incorrect JSON\"}";
     const std::string RESP_MSG_SERVICE_UNAVAILABLE = "{\"err\":\"Incorrect DhtRunner\"}";

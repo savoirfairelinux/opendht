@@ -194,12 +194,18 @@ DhtProxyServer::createRestRouter()
 {
     using namespace std::placeholders;
     auto router = std::make_unique<RestRouter>();
+    router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
     router->add_handler(restinio::http_method_t::http_options,
                         "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
     router->http_get("/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
-    router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    router->add_handler(restinio::http_method_t::http_subscribe,
+                        "/:hash", std::bind(&DhtProxyServer::subscribe, this, _1, _2));
+    router->add_handler(restinio::http_method_t::http_unsubscribe,
+                        "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
+#endif //OPENDHT_PUSH_NOTIFICATIONS
     return router;
 }
 
@@ -303,8 +309,182 @@ struct DhtProxyServer::PushListener {
     bool isAndroid;
 };
 
-//DhtProxyServer::subscribe()
-//DhtProxyServer::unsubscribe()
+RequestStatus
+subscribe(restinio::request_handle_t request, restinio::router::route_params_t params)
+{
+    requestNum_++;
+
+    dht::InfoHash infoHash(params["hash"].to_string());
+    if (!infoHash)
+        infoHash = dht::InfoHash::get(params["hash"].to_string());
+
+    if (!dht_){
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_service_unavailable()));
+        response.set_body(this->RESP_MSG_SERVICE_UNAVAILABLE);
+        return response.done();
+    }
+
+    try {
+        std::string err;
+        Json::Value root;
+        Json::CharReaderBuilder rbuilder;
+        auto* char_data = reinterpret_cast<const char*>(b.data());
+        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        if (!reader->parse(char_data, char_data + b.size(), &root, &err)) {
+            auto response = this->initHttpResponse(
+                request->create_response(restinio::status_bad_request()));
+            response.set_body(this->RESP_MSG_JSON_INCORRECT);
+            return response.done();
+        }
+        auto pushToken = root["key"].asString();
+        if (pushToken.empty()) {
+            auto response = this->initHttpResponse(
+                request->create_response(restinio::status_bad_request()));
+            response.set_body(this->RESP_MSG_NO_TOKEN);
+            return response.done();
+        }
+        auto platform = root["platform"].asString();
+        auto isAndroid = platform == "android";
+        auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
+
+        std::cout << "Subscribe " << infoHash << " client:" << clientId << std::endl;
+        {
+            std::lock(schedulerLock_, lockListener_);
+            std::lock_guard<std::mutex> lk1(lockListener_, std::adopt_lock);
+            std::lock_guard<std::mutex> lk2(schedulerLock_, std::adopt_lock);
+            scheduler_.syncTime();
+            auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
+            // Check if listener is already present and refresh timeout if launched
+            // One push listener per pushToken.infoHash.clientId
+            auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
+            auto listeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
+            for (auto& listener: listeners->second) {
+                if (listener.clientId == clientId) {
+                    scheduler_.edit(listener.expireJob, timeout);
+                    scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
+
+                    auto response = std::make_shared<ResponseByPartsBuilder>(
+                        this->initHttpResponse(request->create_response<ResponseByParts>()));
+                    response->flush();
+
+                    if (!root.isMember("refresh") or !root["refresh"].asBool()) {
+                        dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+                            auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
+                            response->append_chunk(output);
+                            response->flush();
+                            return true;
+                        },
+                        [response] (bool /*ok*/){
+                            response->done();
+                        });
+                    } else {
+                        response->append_chunk("{}\n");
+                        response->done();
+                    }
+                    schedulerCv_.notify_one();
+                    return;
+                }
+            }
+            listeners->second.emplace_back(Listener{});
+            auto& listener = listeners->second.back();
+            listener.clientId = clientId;
+
+            // New listener
+            pushListener->second.isAndroid = isAndroid;
+
+            // The listener is not found, so add it.
+            listener.internalToken = dht_->listen(infoHash,
+                [this, infoHash, pushToken, isAndroid, clientId](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                    threadPool_->run([this, infoHash, pushToken, isAndroid, clientId, values, expired]() {
+                        // Build message content
+                        Json::Value json;
+                        json["key"] = infoHash.toString();
+                        json["to"] = clientId;
+                        if (expired and values.size() < 3) {
+                            std::stringstream ss;
+                            for(size_t i = 0; i < values.size(); ++i) {
+                                if(i != 0) ss << ",";
+                                ss << values[i]->id;
+                            }
+                            json["exp"] = ss.str();
+                        }
+                        sendPushNotification(pushToken, std::move(json), isAndroid);
+                    });
+                    return true;
+                }
+            );
+            listener.expireJob = scheduler_.add(timeout,
+                [this, clientId, infoHash, pushToken] {
+                    cancelPushListen(pushToken, infoHash, clientId);
+                }
+            );
+            listener.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
+                [this, infoHash, pushToken, isAndroid, clientId] {
+                    std::cout << "Listener: sending refresh " << infoHash << std::endl;
+                    Json::Value json;
+                    json["timeout"] = infoHash.toString();
+                    json["to"] = clientId;
+                    sendPushNotification(pushToken, std::move(json), isAndroid);
+                }
+            );
+        }
+        schedulerCv_.notify_one();
+        auto response = this->initHttpResponse(request->create_response());
+        response.set_body("{}\n");
+        return response.done();
+    } catch (...) {
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_internal_server_error()));
+        response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
+        return response.done();
+    }
+    return restinio::request_handling_status_t::accepted;
+}
+
+RequestStatus
+unsubscribe(restinio::request_handle_t request, restinio::router::route_params_t params)
+{
+    requestNum_++;
+
+    dht::InfoHash infoHash(params["hash"].to_string());
+    if (!infoHash)
+        infoHash = dht::InfoHash::get(params["hash"].to_string());
+
+    if (!dht_){
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_service_unavailable()));
+        response.set_body(this->RESP_MSG_SERVICE_UNAVAILABLE);
+        return response.done();
+    }
+
+    try {
+        std::string err;
+        Json::Value root;
+        Json::CharReaderBuilder rbuilder;
+        auto* char_data = reinterpret_cast<const char*>(b.data());
+        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+
+        if (!reader->parse(char_data, char_data + b.size(), &root, &err)) {
+            auto response = this->initHttpResponse(
+                request->create_response(restinio::status_bad_request()));
+            response.set_body(this->RESP_MSG_JSON_INCORRECT);
+            return response.done();
+        }
+        auto pushToken = root["key"].asString();
+        if (pushToken.empty()) return;
+        auto clientId = root["client_id"].asString();
+
+        cancelPushListen(pushToken, infoHash, clientId);
+        auto response = this->initHttpResponse(request->create_response());
+        return response.done();
+    } catch (...) {
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_internal_server_error()));
+        response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
+        return response.done();
+    }
+}
 
 void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
@@ -333,8 +513,6 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
         pushListeners_.erase(pushListener);
     }
 }
-
-//DhtProxyServer::sendPushNotification()
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
