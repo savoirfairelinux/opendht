@@ -192,7 +192,7 @@ private:
      * @param session
      */
     RequestStatus put(restinio::request_handle_t request,
-                       restinio::router::route_params_t params);
+                      restinio::router::route_params_t params);
 
     void cancelPut(const InfoHash& key, Value::Id vid);
 
@@ -230,7 +230,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    //void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus getFiltered(restinio::request_handle_t request,
+                              restinio::router::route_params_t params);
 
     /**
      * Respond allowed Methods
