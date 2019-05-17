@@ -180,7 +180,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    //void listen(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus listen(restinio::request_handle_t request,
+                         restinio::router::route_params_t params);
 
     /**
      * Put a value on the DHT
@@ -314,6 +315,7 @@ private:
     std::thread listenThread_;
     struct SessionToHashToken {
         InfoHash hash;
+        restinio::connection_id_t connId;
         std::future<size_t> token;
     };
     std::vector<SessionToHashToken> currentListeners_;

@@ -198,6 +198,7 @@ DhtProxyServer::createRestRouter()
     router->http_get("/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+    router->http_get("/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     router->add_handler(restinio::http_method_t::http_subscribe,
                         "/:hash", std::bind(&DhtProxyServer::subscribe, this, _1, _2));
@@ -305,7 +306,50 @@ DhtProxyServer::get(restinio::request_handle_t request,
     return restinio::request_handling_status_t::accepted;
 }
 
-//DhtProxyServer::listen()
+RequestStatus
+DhtProxyServer::listen(restinio::request_handle_t request,
+                       restinio::router::route_params_t params)
+{
+    requestNum_++;
+    dht::InfoHash infoHash(params["hash"].to_string());
+    if (!infoHash)
+        infoHash = dht::InfoHash::get(params["hash"].to_string());
+
+    if (!dht_){
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_service_unavailable()));
+        response.set_body(this->RESP_MSG_SERVICE_UNAVAILABLE);
+        return response.done();
+    }
+    auto response = std::make_shared<ResponseByPartsBuilder>(
+        this->initHttpResponse(request->create_response<ResponseByParts>()));
+    response->flush();
+    try {
+        SessionToHashToken listener;
+        listener.hash = infoHash;
+        listener.connId = request->connection_id();
+        listener.token = dht_->listen(infoHash, [this, response]
+                (const std::vector<dht::Sp<dht::Value>>& values, bool expired){
+            for (const auto& value: values){
+                auto jsonVal = value->toJson();
+                if (expired)
+                    jsonVal["expired"] = true;
+                auto output = Json::writeString(jsonBuilder_, jsonVal) + "\n";
+                response->append_chunk(output);
+                response->flush();
+            }
+            return true;
+        });
+        std::lock_guard<std::mutex> lock(lockListener_);
+        currentListeners_.emplace_back(std::move(listener));
+    } catch (const std::exception& e){
+        auto response = this->initHttpResponse(
+            request->create_response(restinio::status_internal_server_error()));
+        response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
+        return response.done();
+    }
+    return restinio::request_handling_status_t::accepted;
+}
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
 
@@ -852,7 +896,7 @@ DhtProxyServer::removeClosedListeners(bool testSession)
     std::lock_guard<std::mutex> lock(lockListener_);
     auto listener = currentListeners_.begin();
     while (listener != currentListeners_.end()){
-        auto cancel = dht_ and (not testSession or not server_thread.joinable());
+        auto cancel = dht_ and (not testSession); //TODO or !open(listener->connId)
         if (cancel){
             dht_->cancelListen(listener->hash, std::move(listener->token));
             // Remove listener if unused
