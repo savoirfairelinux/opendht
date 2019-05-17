@@ -57,8 +57,6 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
 
-    //service_ = std::unique_ptr<restbed::Service>(new restbed::Service());
-
     std::cout << "Running DHT proxy server on port " << port << std::endl;
     if (not pushServer.empty()){
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
