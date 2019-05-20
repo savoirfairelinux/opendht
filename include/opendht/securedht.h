@@ -207,6 +207,9 @@ public:
     NodeStatus getStatus() const override {
         return dht_->getStatus();
     }
+    net::DatagramSocket* getSocket() const override {
+        return dht_->getSocket();
+    };
     bool isRunning(sa_family_t af = 0) const override {
         return dht_->isRunning(af);
     }

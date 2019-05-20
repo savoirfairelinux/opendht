@@ -28,6 +28,7 @@
 #include "rng.h"
 #include "rate_limiter.h"
 #include "log_enable.h"
+#include "network_utils.h"
 
 #include <vector>
 #include <string>
@@ -205,8 +206,8 @@ public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(Logger& log, Scheduler& scheduler, const int& s = -1, const int& s6 = -1);
-    NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
+    NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
+    NetworkEngine(InfoHash& myid, NetId net, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
             decltype(NetworkEngine::onError)&& onError,
             decltype(NetworkEngine::onNewNode)&& onNewNode,
             decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -217,7 +218,9 @@ public:
             decltype(NetworkEngine::onAnnounce)&& onAnnounce,
             decltype(NetworkEngine::onRefresh)&& onRefresh);
 
-    virtual ~NetworkEngine();
+    ~NetworkEngine();
+
+    net::DatagramSocket* getSocket() const { return dht_socket.get(); };
 
     void clear();
 
@@ -242,7 +245,7 @@ public:
     void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
 
     bool isRunning(sa_family_t af) const;
-    inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
+    inline want_t want () const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
 
     void connectivityChanged(sa_family_t);
 
@@ -469,7 +472,7 @@ private:
 
 
     // basic wrapper for socket sendto function
-    int send(const char *buf, size_t len, int flags, const SockAddr& addr);
+    int send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
 
     void sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
@@ -511,8 +514,7 @@ private:
     /* DHT info */
     const InfoHash& myid;
     const NetId network {0};
-    const int& dht_socket;
-    const int& dht_socket6;
+    const std::unique_ptr<DatagramSocket> dht_socket;
     const Logger& DHT_LOG;
 
     NodeCache cache {};

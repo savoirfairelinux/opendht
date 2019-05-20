@@ -1689,11 +1689,11 @@ Dht::~Dht()
         s.second->clear();
 }
 
-Dht::Dht() : store(), network_engine(DHT_LOG, scheduler) {}
+Dht::Dht() : store(), network_engine(DHT_LOG, scheduler, {}) {}
 
-Dht::Dht(const int& s, const int& s6, const Config& config, const Logger& l)
-    : DhtInterface(l), myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
-    network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
+Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l)
+    : myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
+    network_engine(myid, config.network, std::move(sock), DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),
@@ -1708,13 +1708,14 @@ Dht::Dht(const int& s, const int& s6, const Config& config, const Logger& l)
     maintain_storage(config.maintain_storage)
 {
     scheduler.syncTime();
-    if (s < 0 && s6 < 0)
-        return;
-    if (s >= 0) {
+    auto s = network_engine.getSocket();
+    if (not s or (not s->hasIPv4() and not s->hasIPv6()))
+        throw DhtException("Opened socket required");
+    if (s->hasIPv4()) {
         buckets4 = {Bucket {AF_INET}};
         buckets4.is_client = config.is_bootstrap;
     }
-    if (s6 >= 0) {
+    if (s->hasIPv6()) {
         buckets6 = {Bucket {AF_INET6}};
         buckets6.is_client = config.is_bootstrap;
     }

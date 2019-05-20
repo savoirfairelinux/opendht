@@ -99,11 +99,11 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
    nodes6(std::move(msg.nodes6))
 {}
 
-NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
-    : myid(zeroes), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
+    : myid(zeroes), dht_socket(std::move(sock)), DHT_LOG(log), scheduler(scheduler)
 {}
 
-NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError)&& onError,
         decltype(NetworkEngine::onNewNode)&& onNewNode,
         decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -122,7 +122,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int&
     onListen(std::move(onListen)),
     onAnnounce(std::move(onAnnounce)),
     onRefresh(std::move(onRefresh)),
-    myid(myid), network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+    myid(myid), network(net), dht_socket(std::move(sock)), DHT_LOG(log), scheduler(scheduler)
 {}
 
 NetworkEngine::~NetworkEngine() {
@@ -170,7 +170,7 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, n->getAddr());
+    send(n->getAddr(), buffer.data(), buffer.size());
 }
 
 void
@@ -200,7 +200,7 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, n->getAddr());
+    send(n->getAddr(), buffer.data(), buffer.size());
 }
 
 
@@ -209,11 +209,11 @@ NetworkEngine::isRunning(sa_family_t af) const
 {
     switch (af) {
     case 0:
-        return dht_socket  >= 0 ||  dht_socket6 >= 0;
+        return dht_socket->hasIPv4() or dht_socket->hasIPv6();
     case AF_INET:
-        return dht_socket  >= 0;
+        return dht_socket->hasIPv4();
     case AF_INET6:
-        return dht_socket6 >= 0;
+        return dht_socket->hasIPv6();
     default:
         return false;
     }
@@ -254,9 +254,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         req.on_expired(req, false);
     }
 
-    auto err = send((char*)req.msg.data(), req.msg.size(),
-            (node.getReplyTime() >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            node.getAddr());
+    auto err = send(node.getAddr(), (char*)req.msg.data(), req.msg.size(), node.getReplyTime() < now - UDP_REPLY_TIME);
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
         err == EAFNOSUPPORT ||
@@ -610,33 +608,9 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 }
 
 int
-NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
+NetworkEngine::send(const SockAddr& addr, const char *buf, size_t len, bool confirmed)
 {
-    if (not addr)
-        return EFAULT;
-
-    int s;
-    if (addr.getFamily() == AF_INET)
-        s = dht_socket;
-    else if (addr.getFamily() == AF_INET6)
-        s = dht_socket6;
-    else
-        s = -1;
-
-    if (s < 0)
-        return EAFNOSUPPORT;
-#ifdef MSG_NOSIGNAL
-    flags |= MSG_NOSIGNAL;
-#endif
-    if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
-        int err = errno;
-        DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
-        if (err == EPIPE) {
-            throw SocketException(EPIPE);
-        }
-        return err;
-    }
-    return 0;
+    return dht_socket ? dht_socket->sendTo(addr, (const uint8_t*)buf, len, confirmed) : ENOTCONN;
 }
 
 Sp<Request>
@@ -696,7 +670,7 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
         pk.pack(KEY_NETID); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -898,7 +872,7 @@ NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals
                     pk.pack(std::string("o")); pk.pack(start);
                     pk.pack(std::string("d")); pk.pack_bin(end-start);
                                                pk.pack_bin_body((const char*)v.data()+start, end-start);
-            send(buffer.data(), buffer.size(), 0, addr);
+            send(addr, buffer.data(), buffer.size());
             start = end;
         } while (start != v.size());
         i++;
@@ -957,7 +931,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 
     // send parts
     if (not svals.empty())
@@ -1100,7 +1074,7 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
         pk.pack(KEY_NETID); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -1234,7 +1208,7 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) 
         pk.pack(KEY_NETID); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 void
@@ -1266,7 +1240,7 @@ NetworkEngine::sendError(const SockAddr& addr,
         pk.pack(KEY_NETID); pk.pack(network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 void

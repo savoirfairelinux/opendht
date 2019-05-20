@@ -68,7 +68,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(const int& s, const int& s6, const Config& config, const Logger& l = {});
+    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l = {});
     virtual ~Dht();
 
     /**
@@ -84,6 +84,8 @@ public:
     NodeStatus getStatus() const override {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
     }
+
+    net::DatagramSocket* getSocket() const override { return network_engine.getSocket(); };
 
     /**
      * Performs final operations before quitting.

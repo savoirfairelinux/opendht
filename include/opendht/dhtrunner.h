@@ -20,12 +20,13 @@
 
 #pragma once
 
+#include "def.h"
 #include "infohash.h"
 #include "value.h"
 #include "callbacks.h"
 #include "sockaddr.h"
 #include "log_enable.h"
-#include "def.h"
+#include "network_utils.h"
 
 #include <thread>
 #include <mutex>
@@ -304,9 +305,7 @@ public:
      * Returns the currently bound address.
      * @param f: address family of the bound address to retreive.
      */
-    const SockAddr& getBound(sa_family_t f = AF_INET) const {
-        return (f == AF_INET) ? bound4 : bound6;
-    }
+    SockAddr getBound(sa_family_t f = AF_INET) const;
 
     /**
      * Returns the currently bound port, in host byte order.
@@ -412,13 +411,7 @@ public:
      */
     time_point loop() {
         std::lock_guard<std::mutex> lck(dht_mtx);
-        time_point wakeup = time_point::min();
-        try {
-            wakeup = loop_();
-        } catch (const dht::SocketException& e) {
-            startNetwork(bound4, bound6);
-        }
-        return wakeup;
+        return loop_();
     }
 
     /**
@@ -470,8 +463,6 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void stopNetwork();
-    void startNetwork(const SockAddr sin4, const SockAddr sin6);
     time_point loop_();
 
     NodeStatus getStatus() const {
@@ -509,16 +500,8 @@ private:
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
-
-    std::thread rcv_thread {};
     std::mutex sock_mtx {};
-
-    struct ReceivedPacket {
-        Blob data;
-        SockAddr from;
-        time_point received;
-    };
-    std::queue<ReceivedPacket> rcv {};
+    std::queue<std::unique_ptr<net::ReceivedPacket>> rcv {};
 
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};
@@ -526,7 +509,6 @@ private:
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes_all {};
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
     std::thread bootstrap_thread {};
-    /** protects bootstrap_nodes, bootstrap_thread */
     std::mutex bootstrap_mtx {};
     std::condition_variable bootstrap_cv {};
 
@@ -535,16 +517,10 @@ private:
     std::mutex storage_mtx {};
 
     std::atomic_bool running {false};
-    std::atomic_bool running_network {false};
 
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
-
-    int stop_writefd {-1};
-    int s4 {-1}, s6 {-1};
-    SockAddr bound4 {};
-    SockAddr bound6 {};
 
     /** Push notification token */
     std::string pushToken_;
