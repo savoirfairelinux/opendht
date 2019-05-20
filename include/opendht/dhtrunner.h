@@ -424,6 +424,8 @@ public:
      */
     void join();
 
+    PeerDiscovery* getPeerDiscovery() { return peerDiscovery_.get(); };
+
     void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "");
 
     /**
