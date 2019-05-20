@@ -119,7 +119,7 @@ public:
     /**
      * Returns the address family or AF_UNSPEC if the address is not set.
      */
-    sa_family_t getFamily() const { return len > sizeof(sa_family_t) ? addr->sa_family : AF_UNSPEC; }
+    sa_family_t getFamily() const { return len ? addr->sa_family : AF_UNSPEC; }
 
     /**
      * Resize the managed structure to the appropriate size (if needed),

@@ -35,6 +35,10 @@ typedef SSIZE_T ssize_t;
 #endif
 #include <fcntl.h>
 
+#ifndef IPV6_JOIN_GROUP
+#define IPV6_JOIN_GROUP IPV6_ADD_MEMBERSHIP
+#endif
+
 namespace dht {
 
 // Organization-local Scope multicast
@@ -175,7 +179,7 @@ PeerDiscovery::DomainPeerDiscovery::initialize_socket(sa_family_t domain)
     if (sockfd < 0) {
         throw std::runtime_error(std::string("Socket Creation Error: ") + strerror(errno));
     }
-    net::set_nonblocking(sockfd);
+    net::setNonblocking(sockfd);
     return sockfd;
 }
 
@@ -502,7 +506,6 @@ PeerDiscovery::PeerDiscovery(in_port_t port)
     } catch(const std::exception& e) {
         std::cerr << "Can't start peer discovery (IPv6): " << e.what() << std::endl;
     }
-
 }
 
 PeerDiscovery::~PeerDiscovery(){}

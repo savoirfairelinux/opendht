@@ -102,9 +102,21 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
 {
     if (running)
         return;
-    startNetwork(local4, local6);
 
-    auto dht = std::unique_ptr<DhtInterface>(new Dht(s4, s6, SecureDht::getConfig(config.dht_config), context.logger ? *context.logger : Logger{}));
+    auto sock = std::unique_ptr<net::UdpSocket>(new net::UdpSocket(local4, local6));
+    sock->setOnReceive([&] (std::unique_ptr<net::ReceivedPacket>&& pkt) {
+        {
+            std::lock_guard<std::mutex> lck(sock_mtx);
+            if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
+                std::cerr << "Dropping packet: queue is full!" << std::endl;
+                rcv.pop();
+            }
+            rcv.emplace(std::move(pkt));
+        }
+        cv.notify_all();
+    });
+
+    auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(sock), SecureDht::getConfig(config.dht_config)));
     dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
 
 #ifdef OPENDHT_PROXY_CLIENT
@@ -126,15 +138,10 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     running = true;
     if (not config.threaded)
         return;
-    dht_thread = std::thread([this, local4, local6]() {
+    dht_thread = std::thread([this]() {
         while (running) {
             std::unique_lock<std::mutex> lk(dht_mtx);
-            time_point wakeup;
-            try {
-                wakeup = loop_();
-            } catch (const dht::SocketException& e) {
-                startNetwork(local4, local6);
-            }
+            time_point wakeup = loop_();
 
             auto hasJobToDo = [this]() {
                 if (not running)
@@ -213,7 +220,9 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 void
 DhtRunner::join()
 {
-    stopNetwork();
+    if (dht_)
+        if (auto sock = dht_->getSocket())
+            sock->stop();
     running = false;
     cv.notify_all();
     bootstrap_cv.notify_all();
@@ -223,8 +232,6 @@ DhtRunner::join()
         dht_thread.join();
     if (bootstrap_thread.joinable())
         bootstrap_thread.join();
-    if (rcv_thread.joinable())
-        rcv_thread.join();
 
     if (peerDiscovery_) {
         peerDiscovery_->join();
@@ -241,6 +248,15 @@ DhtRunner::join()
         status4 = NodeStatus::Disconnected;
         status6 = NodeStatus::Disconnected;
     }
+}
+
+SockAddr
+DhtRunner::getBound(sa_family_t af) const {
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    if (dht_)
+        if (auto sock = dht_->getSocket())
+            return sock->getBound(af);
+    return SockAddr{};
 }
 
 void
@@ -475,7 +491,7 @@ DhtRunner::loop_()
     size_t dropped {0};
     if (not received.empty()) {
         auto now = clock::now();
-        while (not received.empty() and now - received.front().received > RX_QUEUE_MAX_DELAY) {
+        while (not received.empty() and now - received.front()->received > RX_QUEUE_MAX_DELAY) {
             received.pop();
             dropped++;
         }
@@ -485,10 +501,10 @@ DhtRunner::loop_()
     if (not received.empty()) {
         while (not received.empty()) {
             auto& pck = received.front();
-            if (clock::now() - pck.received > RX_QUEUE_MAX_DELAY)
+            if (clock::now() - pck->received > RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
-                wakeup = dht->periodic(pck.data.data(), pck.data.size(), pck.from);
+                wakeup = dht->periodic(pck->data.data(), pck->data.size(), pck->from);
             received.pop();
         }
     } else {
@@ -497,7 +513,7 @@ DhtRunner::loop_()
     }
 
     if (dropped)
-        std::cerr << "Dropped %zu packets with high delay" << dropped << std::endl;
+        std::cerr << "Dropped " << dropped << " packets with high delay" << std::endl;
 
     NodeStatus nstatus4 = dht->getStatus(AF_INET);
     NodeStatus nstatus6 = dht->getStatus(AF_INET6);
@@ -518,167 +534,6 @@ DhtRunner::loop_()
     }
 
     return wakeup;
-}
-
-
-int bindSocket(const SockAddr& addr, SockAddr& bound)
-{
-    bool is_ipv6 = addr.getFamily() == AF_INET6;
-    int sock = socket(is_ipv6 ? PF_INET6 : PF_INET, SOCK_DGRAM, 0);
-    if (sock < 0)
-        throw DhtException(std::string("Can't open socket: ") + strerror(sock));
-    int set = 1;
-#ifdef SO_NOSIGPIPE
-    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, (const char*)&set, sizeof(set));
-#endif
-    if (is_ipv6)
-        setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (const char*)&set, sizeof(set));
-    net::set_nonblocking(sock);
-    int rc = bind(sock, addr.get(), addr.getLength());
-    if(rc < 0) {
-        rc = errno;
-        close(sock);
-        throw DhtException("Can't bind socket on " + addr.toString() + " " + strerror(rc));
-    }
-    sockaddr_storage ss;
-    socklen_t ss_len = sizeof(ss);
-    getsockname(sock, (sockaddr*)&ss, &ss_len);
-    bound = {ss, ss_len};
-    return sock;
-}
-
-void
-DhtRunner::stopNetwork()
-{
-    running_network = false;
-    if (stop_writefd != -1) {
-        if (write(stop_writefd, "\0", 1) == -1) {
-            perror("write");
-        }
-    }
-}
-
-void
-DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
-{
-    stopNetwork();
-    if (rcv_thread.joinable())
-        rcv_thread.join();
-
-    int stopfds[2];
-#ifndef _WIN32
-    auto status = pipe(stopfds);
-    if (status == -1) {
-        throw DhtException(std::string("Can't open pipe: ") + strerror(errno));
-    }
-#else
-    net::udpPipe(stopfds);
-#endif
-    int stop_readfd = stopfds[0];
-    stop_writefd = stopfds[1];
-
-    s4 = -1;
-    s6 = -1;
-
-    bound4 = {};
-    if (sin4) {
-        try {
-            s4 = bindSocket(sin4, bound4);
-        } catch (const DhtException& e) {
-            std::cerr << "Can't bind inet socket: " << e.what() << std::endl;
-        }
-    }
-
-#if 1
-    bound6 = {};
-    if (sin6) {
-        try {
-            s6 = bindSocket(sin6, bound6);
-        } catch (const DhtException& e) {
-            std::cerr << "Can't bind inet6 socket: " << e.what() << std::endl;
-        }
-    }
-#endif
-
-    if (s4 == -1 && s6 == -1) {
-        throw DhtException("Can't bind socket");
-    }
-
-    running_network = true;
-    rcv_thread = std::thread([this, stop_readfd]() {
-        try {
-            while (running_network) {
-                fd_set readfds;
-
-                FD_ZERO(&readfds);
-                FD_SET(stop_readfd, &readfds);
-                if(s4 >= 0)
-                    FD_SET(s4, &readfds);
-                if(s6 >= 0)
-                    FD_SET(s6, &readfds);
-
-                int selectFd = std::max({s4, s6, stop_readfd}) + 1;
-                int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
-                if(rc < 0) {
-                    if(errno != EINTR) {
-                        perror("select");
-                        std::this_thread::sleep_for( std::chrono::seconds(1) );
-                    }
-                }
-
-                if (not running_network)
-                    break;
-
-                if (rc > 0) {
-                    std::array<uint8_t, 1024 * 64> buf;
-                    sockaddr_storage from;
-                    socklen_t from_len = sizeof(from);
-
-                    if (FD_ISSET(stop_readfd, &readfds)) {
-                        if (recv(stop_readfd, (char*)buf.data(), buf.size(), 0) < 0) {
-                            std::cerr << "Got stop packet error: " << strerror(errno) << std::endl;
-                            break;
-                        }
-                    }
-                    else if (s4 >= 0 && FD_ISSET(s4, &readfds))
-                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
-                    else if (s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
-                    else
-                        continue;
-
-                    if (rc > 0) {
-                        {
-                            std::lock_guard<std::mutex> lck(sock_mtx);
-                            if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
-                                std::cerr << "Dropping packet: queue is full!" << std::endl;
-                                rcv.pop();
-                            }
-                            rcv.emplace(ReceivedPacket {Blob {buf.begin(), buf.begin()+rc}, SockAddr(from, from_len), clock::now()});
-                        }
-                        cv.notify_all();
-                    } else if (rc == -1) {
-                        std::cerr << "Error receiving packet: " << strerror(errno) << std::endl;
-                    }
-                }
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "Error in DHT networking thread: " << e.what() << std::endl;
-        }
-        if (s4 >= 0)
-            close(s4);
-        if (s6 >= 0)
-            close(s6);
-        s4 = -1;
-        s6 = -1;
-        bound4 = {};
-        bound6 = {};
-        if (stop_readfd != -1)
-            close(stop_readfd);
-        if (stop_writefd != -1)
-            close(stop_writefd);
-        stop_writefd = -1;
-    });
 }
 
 void

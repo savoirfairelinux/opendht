@@ -23,6 +23,10 @@
 
 namespace dht {
 
+namespace net {
+    class DatagramSocket;
+}
+
 class OPENDHT_PUBLIC DhtInterface {
 public:
     DhtInterface() = default;
@@ -39,6 +43,8 @@ public:
      */
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
+
+    virtual net::DatagramSocket* getSocket() const { return {}; };
 
     /**
      * Get the ID of the DHT node.

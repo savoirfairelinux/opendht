@@ -97,9 +97,11 @@ SockAddr::setAddress(const char* address)
     case AF_INET6:
         addr = &getIPv6().sin6_addr;
         break;
+    default:
+        throw std::runtime_error("Unknown address family");
     }
-    if (not addr or inet_pton(family, address, addr) <= 0)
-        throw std::runtime_error("Can't parse IP address");
+    if (inet_pton(family, address, addr) <= 0)
+        throw std::runtime_error(std::string("Can't parse IP address: ") + strerror(errno));
 }
 
 std::string

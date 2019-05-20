@@ -151,7 +151,6 @@ list (APPEND opendht_SOURCES
     src/dhtrunner.cpp
     src/log.cpp
     src/peer_discovery.cpp
-    src/network_utils.h
     src/network_utils.cpp
     src/thread_pool.cpp
 )
@@ -179,6 +178,7 @@ list (APPEND opendht_HEADERS
     include/opendht/log_enable.h
     include/opendht/peer_discovery.h
     include/opendht/thread_pool.h
+    include/opendht/network_utils.h
     include/opendht.h
 )
 
