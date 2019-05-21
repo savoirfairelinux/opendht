@@ -66,6 +66,7 @@ public:
 
     struct Context {
         std::unique_ptr<Logger> logger {};
+        std::unique_ptr<net::DatagramSocket> sock;
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
@@ -399,6 +400,8 @@ public:
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
     void run(const char* ip4, const char* ip6, const char* service, const Config& config, Context&& context = {});
+
+    void run(const Config& config, Context&& context);
 
     void setOnStatusChanged(StatusCallback&& cb) {
         statusCb = std::move(cb);
