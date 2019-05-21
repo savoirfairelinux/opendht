@@ -77,7 +77,7 @@ DhtRunner::~DhtRunner()
 }
 
 void
-DhtRunner::run(in_port_t port, const DhtRunner::Config& config, Context&& context)
+DhtRunner::run(in_port_t port, const Config& config, Context&& context)
 {
     SockAddr sin4;
     sin4.setFamily(AF_INET);
@@ -89,7 +89,7 @@ DhtRunner::run(in_port_t port, const DhtRunner::Config& config, Context&& contex
 }
 
 void
-DhtRunner::run(const char* ip4, const char* ip6, const char* service, const DhtRunner::Config& config, Context&& context)
+DhtRunner::run(const char* ip4, const char* ip6, const char* service, const Config& config, Context&& context)
 {
     auto res4 = SockAddr::resolve(ip4, service);
     auto res6 = SockAddr::resolve(ip6, service);
@@ -98,13 +98,22 @@ DhtRunner::run(const char* ip4, const char* ip6, const char* service, const DhtR
 }
 
 void
-DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::Config& config, Context&& context)
+DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const Config& config, Context&& context)
+{
+    if (not running) {
+        if (not context.sock)
+            context.sock.reset(new net::UdpSocket(local4, local6));
+        run(config, std::move(context));
+    }
+}
+
+void
+DhtRunner::run(const Config& config, Context&& context)
 {
     if (running)
         return;
 
-    auto sock = std::unique_ptr<net::UdpSocket>(new net::UdpSocket(local4, local6));
-    sock->setOnReceive([&] (std::unique_ptr<net::ReceivedPacket>&& pkt) {
+    context.sock->setOnReceive([&] (std::unique_ptr<net::ReceivedPacket>&& pkt) {
         {
             std::lock_guard<std::mutex> lck(sock_mtx);
             if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
@@ -116,7 +125,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         cv.notify_all();
     });
 
-    auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(sock), SecureDht::getConfig(config.dht_config)));
+    auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(context.sock), SecureDht::getConfig(config.dht_config)));
     dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
 
 #ifdef OPENDHT_PROXY_CLIENT
