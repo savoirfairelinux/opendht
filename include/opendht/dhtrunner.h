@@ -63,6 +63,12 @@ public:
         bool peer_publish;
     };
 
+    struct Context {
+        std::unique_ptr<Logger> logger {};
+        std::shared_ptr<PeerDiscovery> peerDiscovery {};
+        Context() {}
+    };
+
     DhtRunner();
     virtual ~DhtRunner();
 
@@ -375,7 +381,7 @@ public:
             /*.peer_publish = */true,
         });
     }
-    void run(in_port_t port, const Config& config);
+    void run(in_port_t port, const Config& config, Context&& context = {});
 
     /**
      * @param local4: Local IPv4 address and port to bind. Can be null.
@@ -385,12 +391,12 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const SockAddr& local4, const SockAddr& local6, const Config& config);
+    void run(const SockAddr& local4, const SockAddr& local6, const Config& config, Context&& context = {});
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, const Config& config);
+    void run(const char* ip4, const char* ip6, const char* service, const Config& config, Context&& context = {});
 
     void setOnStatusChanged(StatusCallback&& cb) {
         statusCb = std::move(cb);
@@ -424,7 +430,7 @@ public:
      */
     void join();
 
-    PeerDiscovery* getPeerDiscovery() { return peerDiscovery_.get(); };
+    std::shared_ptr<PeerDiscovery> getPeerDiscovery() const { return peerDiscovery_; };
 
     void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "");
 
@@ -541,7 +547,7 @@ private:
     std::string pushToken_;
 
     /** PeerDiscovery Parameters */
-    std::unique_ptr<PeerDiscovery> peerDiscovery_;
+    std::shared_ptr<PeerDiscovery> peerDiscovery_;
 };
 
 }
