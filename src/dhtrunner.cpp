@@ -79,7 +79,7 @@ DhtRunner::~DhtRunner()
 }
 
 void
-DhtRunner::run(in_port_t port, const DhtRunner::Config& config)
+DhtRunner::run(in_port_t port, const DhtRunner::Config& config, Context&& context)
 {
     SockAddr sin4;
     sin4.setFamily(AF_INET);
@@ -87,20 +87,20 @@ DhtRunner::run(in_port_t port, const DhtRunner::Config& config)
     SockAddr sin6;
     sin6.setFamily(AF_INET6);
     sin6.setPort(port);
-    run(sin4, sin6, config);
+    run(sin4, sin6, config, std::move(context));
 }
 
 void
-DhtRunner::run(const char* ip4, const char* ip6, const char* service, const DhtRunner::Config& config)
+DhtRunner::run(const char* ip4, const char* ip6, const char* service, const DhtRunner::Config& config, Context&& context)
 {
     auto res4 = SockAddr::resolve(ip4, service);
     auto res6 = SockAddr::resolve(ip6, service);
     run(res4.empty() ? SockAddr() : res4.front(),
-        res6.empty() ? SockAddr() : res6.front(), config);
+        res6.empty() ? SockAddr() : res6.front(), config, std::move(context));
 }
 
 void
-DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::Config& config)
+DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::Config& config, Context&& context)
 {
     if (running)
         return;
@@ -113,6 +113,13 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     config_ = config;
 #endif
     enableProxy(not config.proxy_server.empty());
+
+    if (context.logger) {
+        if (dht_)
+            dht_->setLoggers(context.logger->ERR, context.logger->WARN, context.logger->DBG);
+        if (dht_via_proxy_)
+            dht_via_proxy_->setLoggers(context.logger->ERR, context.logger->WARN, context.logger->DBG);
+    }
 
     running = true;
     if (not config.threaded)
@@ -153,7 +160,10 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     });
 
     if (config.peer_discovery or config.peer_publish) {
-        peerDiscovery_.reset(new PeerDiscovery(PEER_DISCOVERY_PORT));
+        if (context.peerDiscovery)
+            peerDiscovery_ = std::move(context.peerDiscovery);
+        else
+            peerDiscovery_.reset(new PeerDiscovery(PEER_DISCOVERY_PORT));
     }
 
     auto netId = config.dht_config.node_config.network;
@@ -220,7 +230,9 @@ DhtRunner::join()
     if (rcv_thread.joinable())
         rcv_thread.join();
 
-    if (peerDiscovery_) peerDiscovery_->join();
+    if (peerDiscovery_) {
+        peerDiscovery_->join();
+    }
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
