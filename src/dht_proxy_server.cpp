@@ -575,7 +575,6 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 {
     if (pushServer_.empty())
         return;
-
     http_parser_settings settings;
     http_parser_settings_init(&settings);
     settings.on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
@@ -618,10 +617,9 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     auto request = restinio::client::create_http_request(
         header, header_fields, restinio::http_connection_header_t::close, body);
 
-    std::string addr = pushServer_.substr(0, pushServer_.find(":"));
-    uint16_t port = std::atoi(pushServer_.substr(pushServer_.find(":")).c_str());
-
-    restinio::client::do_request(request, addr, port, settings);
+    // TODO move pushServer ip,port parsing supporting ipv6 to constructor
+    uint16_t port = std::atoi(pushServer_.c_str());
+    restinio::client::do_request(request, "127.0.0.1", port, settings);
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
