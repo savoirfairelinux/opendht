@@ -322,6 +322,7 @@ public:
 
     std::vector<ValuesExport> exportValues() const;
 
+    void setLogger(const Logger& logger = {});
     void setLoggers(LogMethod err = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
 
     /**

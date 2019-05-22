@@ -55,9 +55,9 @@ printLog(std::ostream& s, char const *m, va_list args) {
     s << std::endl;
 }
 
-void
-enableLogging(dht::DhtRunner &dht) {
-    dht.setLoggers(
+std::unique_ptr<Logger>
+getStdLogger() {
+    return std::unique_ptr<Logger>(new Logger(
         [](char const *m, va_list args) {
             std::cerr << red;
             printLog(std::cerr, m, args);
@@ -69,23 +69,23 @@ enableLogging(dht::DhtRunner &dht) {
             std::cout << def;
         },
         [](char const *m, va_list args) { printLog(std::cout, m, args); }
-    );
+    ));
 }
 
-void
-enableFileLogging(dht::DhtRunner &dht, const std::string &path) {
+std::unique_ptr<Logger>
+getFileLogger(const std::string &path) {
     auto logfile = std::make_shared<std::ofstream>();
     logfile->open(path, std::ios::out);
 
-    dht.setLoggers(
+    return std::unique_ptr<Logger>(new Logger(
         [=](char const *m, va_list args) { printLog(*logfile, m, args); },
         [=](char const *m, va_list args) { printLog(*logfile, m, args); },
         [=](char const *m, va_list args) { printLog(*logfile, m, args); }
-    );
+    ));
 }
 
-OPENDHT_PUBLIC void
-enableSyslog(dht::DhtRunner &dht, const char* name) {
+std::unique_ptr<Logger>
+getSyslogLogger(const char* name) {
 #ifndef _WIN32
     struct Syslog {
         Syslog(const char* n) {
@@ -102,12 +102,29 @@ enableSyslog(dht::DhtRunner &dht, const char* name) {
         logfile = std::make_shared<Syslog>(name);
         opened_logfile = logfile;
     }
-    dht.setLoggers(
+    return std::unique_ptr<Logger>(new Logger(
         [logfile](char const *m, va_list args) { vsyslog(LOG_ERR, m, args); },
         [logfile](char const *m, va_list args) { vsyslog(LOG_WARNING, m, args); },
         [logfile](char const *m, va_list args) { vsyslog(LOG_INFO, m, args); }
-    );
+    ));
+#else
+    return std::unique_ptr<Logger>(new Logger());
 #endif
+}
+
+void
+enableLogging(dht::DhtRunner &dht) {
+    dht.setLogger(*getStdLogger());
+}
+
+void
+enableFileLogging(dht::DhtRunner &dht, const std::string &path) {
+    dht.setLogger(*getFileLogger(path));
+}
+
+OPENDHT_PUBLIC void
+enableSyslog(dht::DhtRunner &dht, const char* name) {
+    dht.setLogger(*getSyslogLogger(name));
 }
 
 void

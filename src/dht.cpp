@@ -1691,8 +1691,8 @@ Dht::~Dht()
 
 Dht::Dht() : store(), network_engine(DHT_LOG, scheduler) {}
 
-Dht::Dht(const int& s, const int& s6, const Config& config)
-    : myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
+Dht::Dht(const int& s, const int& s6, const Config& config, const Logger& l)
+    : DhtInterface(l), myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
     network_engine(myid, config.network, s, s6, DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),

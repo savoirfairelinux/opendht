@@ -22,6 +22,7 @@
 #pragma once
 
 #include <opendht.h>
+#include <opendht/log.h>
 #ifndef WIN32_NATIVE
 #include <getopt.h>
 #include <readline/readline.h>

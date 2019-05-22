@@ -529,16 +529,17 @@ main(int argc, char **argv)
         if (not params.proxyclient.empty())
             node->setPushNotificationToken(params.devicekey);
 
-        node->run(params.port, config);
-
+        dht::DhtRunner::Context context {};
         if (params.log) {
             if (params.syslog or (params.daemonize and params.logfile.empty()))
-                log::enableSyslog(*node, "dhtnode");
+                context.logger = log::getSyslogLogger("dhtnode");
             else if (not params.logfile.empty())
-                log::enableFileLogging(*node, params.logfile);
+                context.logger = log::getFileLogger(params.logfile);
             else
-                log::enableLogging(*node);
+                context.logger = log::getStdLogger();
         }
+
+        node->run(params.port, config, std::move(context));
 
         if (not params.bootstrap.first.empty()) {
             //std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;

@@ -88,6 +88,9 @@ struct Logger {
     LogMethod DBG = NOLOG;
     LogMethod WARN = NOLOG;
     LogMethod ERR = NOLOG;
+    Logger() = default;
+    Logger(LogMethod&& err, LogMethod&& warn, LogMethod&& dbg)
+        : DBG(std::move(dbg)), WARN(std::move(warn)), ERR(std::move(err)) {}
     void setFilter(const InfoHash& f) {
         filter_ = f;
         filterEnable_ = static_cast<bool>(filter_);

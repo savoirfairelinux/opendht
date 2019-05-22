@@ -44,7 +44,7 @@ public:
 
     DhtProxyClient();
 
-    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "");
+    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "", const Logger& = {});
 
     virtual void setPushNotificationToken(const std::string& token) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS

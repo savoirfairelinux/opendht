@@ -26,6 +26,7 @@ namespace dht {
 class OPENDHT_PUBLIC DhtInterface {
 public:
     DhtInterface() = default;
+    DhtInterface(const Logger& l) : DHT_LOG(l) {};
     virtual ~DhtInterface() = default;
 
     // [[deprecated]]
@@ -219,6 +220,10 @@ public:
         DHT_LOG.DBG = debug;
         DHT_LOG.WARN = warn;
         DHT_LOG.ERR = error;
+    }
+
+    virtual void setLogger(const Logger& l) {
+        DHT_LOG = l;
     }
 
     /**

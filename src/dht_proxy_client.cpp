@@ -72,8 +72,8 @@ struct DhtProxyClient::ProxySearch {
 
 DhtProxyClient::DhtProxyClient() {}
 
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
-: serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
+DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l)
+: DhtInterface(l), serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
 {
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;

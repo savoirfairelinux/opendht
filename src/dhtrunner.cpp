@@ -105,19 +105,15 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         return;
     startNetwork(local4, local6);
 
-    auto dht = std::unique_ptr<DhtInterface>(new Dht(s4, s6, SecureDht::getConfig(config.dht_config)));
+    auto dht = std::unique_ptr<DhtInterface>(new Dht(s4, s6, SecureDht::getConfig(config.dht_config), context.logger ? *context.logger : Logger{}));
     dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
 
 #ifdef OPENDHT_PROXY_CLIENT
     config_ = config;
 #endif
     enableProxy(not config.proxy_server.empty());
-
-    if (context.logger) {
-        if (dht_)
-            dht_->setLoggers(context.logger->ERR, context.logger->WARN, context.logger->DBG);
-        if (dht_via_proxy_)
-            dht_via_proxy_->setLoggers(context.logger->ERR, context.logger->WARN, context.logger->DBG);
+    if (context.logger and dht_via_proxy_) {
+        dht_via_proxy_->setLogger(*context.logger);
     }
 
     running = true;
@@ -297,14 +293,20 @@ DhtRunner::exportValues() const {
 }
 
 void
-DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
+DhtRunner::setLogger(const Logger& logger) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)
-        dht_->setLoggers(error, warn, debug);
+        dht_->setLogger(logger);
 #ifdef OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
-        dht_via_proxy_->setLoggers(error, warn, debug);
+        dht_via_proxy_->setLogger(logger);
 #endif
+}
+
+void
+DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
+    Logger logger {std::move(error), std::move(warn), std::move(debug)};
+    setLogger(logger);
 }
 
 void
