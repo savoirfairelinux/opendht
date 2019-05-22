@@ -205,7 +205,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         } else if (op == "log") {
             iss >> idstr;
             InfoHash filter(idstr);
-            params.log = filter == InfoHash{} ? !params.log : true;
+            params.log = filter ? true : !params.log;
             if (params.log)
                 log::enableLogging(*node);
             else

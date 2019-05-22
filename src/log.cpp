@@ -129,7 +129,7 @@ enableSyslog(dht::DhtRunner &dht, const char* name) {
 
 void
 disableLogging(dht::DhtRunner &dht) {
-    dht.setLoggers(dht::NOLOG, dht::NOLOG, dht::NOLOG);
+    dht.setLogger({});
 }
 
 }

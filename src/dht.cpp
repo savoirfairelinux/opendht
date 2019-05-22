@@ -1722,9 +1722,7 @@ Dht::Dht(const int& s, const int& s6, const Config& config, const Logger& l)
     search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
 
     uniform_duration_distribution<> time_dis {std::chrono::seconds(3), std::chrono::seconds(5)};
-    auto confirm_nodes_time = scheduler.time() + time_dis(rd);
-    DHT_LOG.d(myid, "Scheduling %s", myid.toString().c_str());
-    nextNodesConfirmation = scheduler.add(confirm_nodes_time, std::bind(&Dht::confirmNodes, this));
+    nextNodesConfirmation = scheduler.add(scheduler.time() + time_dis(rd), std::bind(&Dht::confirmNodes, this));
 
     // Fill old secret
     {
@@ -1735,7 +1733,7 @@ Dht::Dht(const int& s, const int& s6, const Config& config, const Logger& l)
 
     expire();
 
-    DHT_LOG.d("DHT initialised with node ID %s", myid.toString().c_str());
+    DHT_LOG.d("DHT node initialised with ID %s", myid.toString().c_str());
 
     if (not persistPath.empty())
         loadState(persistPath);

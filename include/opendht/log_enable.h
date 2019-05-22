@@ -33,11 +33,6 @@ namespace dht {
 // Logging related utility functions
 
 /**
- * Dummy function used to disable logging
- */
-inline void NOLOG(char const*, va_list) {}
-
-/**
  * Wrapper for logging methods
  */
 struct LogMethod {
@@ -85,9 +80,10 @@ private:
 };
 
 struct Logger {
-    LogMethod DBG = NOLOG;
-    LogMethod WARN = NOLOG;
-    LogMethod ERR = NOLOG;
+    LogMethod DBG = {};
+    LogMethod WARN = {};
+    LogMethod ERR = {};
+
     Logger() = default;
     Logger(LogMethod&& err, LogMethod&& warn, LogMethod&& dbg)
         : DBG(std::move(dbg)), WARN(std::move(warn)), ERR(std::move(err)) {}

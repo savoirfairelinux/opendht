@@ -323,7 +323,7 @@ public:
     std::vector<ValuesExport> exportValues() const;
 
     void setLogger(const Logger& logger = {});
-    void setLoggers(LogMethod err = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
+    void setLoggers(LogMethod err = {}, LogMethod warn = {}, LogMethod debug = {});
 
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
