@@ -50,12 +50,11 @@ struct DhtRunner::Listener {
     Where w;
 };
 
-class OPENDHT_PUBLIC NodeInsertionPack{
-public:
-    dht::InfoHash nodeid_;
-    in_port_t node_port_;
-    dht::NetId nid_;
-    MSGPACK_DEFINE(nodeid_, node_port_, nid_)
+struct NodeInsertionPack {
+    dht::InfoHash nodeId;
+    in_port_t port;
+    dht::NetId net;
+    MSGPACK_DEFINE(nodeId, port, net)
 };
 
 DhtRunner::DhtRunner() : dht_()
@@ -160,23 +159,17 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     });
 
     if (config.peer_discovery or config.peer_publish) {
-        if (context.peerDiscovery)
-            peerDiscovery_ = std::move(context.peerDiscovery);
-        else
-            peerDiscovery_.reset(new PeerDiscovery(PEER_DISCOVERY_PORT));
+        peerDiscovery_ = context.peerDiscovery ?
+            std::move(context.peerDiscovery) :
+            std::make_shared<PeerDiscovery>(PEER_DISCOVERY_PORT);
     }
 
     auto netId = config.dht_config.node_config.network;
     if (config.peer_discovery) {
-        peerDiscovery_->startDiscovery(PEER_DISCOVERY_DHT_SERVICE, [this, netId](msgpack::object&& obj, SockAddr&& add){
-            try {
-                auto v = obj.as<NodeInsertionPack>();
-                add.setPort(v.node_port_);
-                if(v.nodeid_ != dht_->getNodeId() && netId == v.nid_){
-                    bootstrap(v.nodeid_, add);
-                }
-            } catch(const msgpack::type_error &e){
-                std::cerr << "Msgpack Info Invalid: " << e.what() << '\n';
+        peerDiscovery_->startDiscovery<NodeInsertionPack>(PEER_DISCOVERY_DHT_SERVICE, [this, netId](NodeInsertionPack&& v, SockAddr&& addr){
+            addr.setPort(v.port);
+            if (v.nodeId != dht_->getNodeId() && netId == v.net){
+                bootstrap(v.nodeId, addr);
             }
         });
     }
@@ -184,13 +177,13 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
         msgpack::sbuffer sbuf_node;
         // IPv4
         NodeInsertionPack adc;
-        adc.nid_ = netId;
-        adc.node_port_ = getBoundPort(AF_INET);
-        adc.nodeid_ = dht_->getNodeId();
+        adc.net = netId;
+        adc.port = getBoundPort(AF_INET);
+        adc.nodeId = dht_->getNodeId();
         msgpack::pack(sbuf_node, adc);
         peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         // IPv6
-        adc.node_port_ = getBoundPort(AF_INET6);
+        adc.port = getBoundPort(AF_INET6);
         sbuf_node.clear();
         msgpack::pack(sbuf_node, adc);
         peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);

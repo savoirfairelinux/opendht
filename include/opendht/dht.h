@@ -436,17 +436,9 @@ private:
     RoutingTable& buckets(sa_family_t af) { return af == AF_INET ? buckets4 : buckets6; }
     const RoutingTable& buckets(sa_family_t af) const { return af == AF_INET ? buckets4 : buckets6; }
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
-        RoutingTable::iterator b;
-        switch (af) {
-        case AF_INET:
-            b = buckets4.findBucket(id);
-            return b == buckets4.end() ? nullptr : &(*b);
-        case AF_INET6:
-            b = buckets6.findBucket(id);
-            return b == buckets6.end() ? nullptr : &(*b);
-        default:
-            return nullptr;
-        }
+        auto& b = buckets(af);
+        auto it = b.findBucket(id);
+        return it == b.end() ? nullptr : &(*it);
     }
     const Bucket* findBucket(const InfoHash& id, sa_family_t af) const {
         return const_cast<Dht*>(this)->findBucket(id, af);

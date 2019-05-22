@@ -52,7 +52,7 @@ struct SecureDhtConfig;
 class OPENDHT_PUBLIC DhtRunner {
 
 public:
-    typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
+    using StatusCallback = std::function<void(NodeStatus, NodeStatus)>;
 
     struct Config {
         SecureDhtConfig dht_config;
