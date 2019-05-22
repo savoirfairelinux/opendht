@@ -47,6 +47,8 @@ do_request(const std::string & request, const std::string & addr, std::uint16_t 
         // write request
         restinio::asio_ns::streambuf b;
         std::ostream req_stream(&b);
+        // TODO log
+        std::cout << "sending client request:\n" << request.c_str() << std::endl;
         req_stream << request;
         restinio::asio_ns::write(socket, b);
         // read response
