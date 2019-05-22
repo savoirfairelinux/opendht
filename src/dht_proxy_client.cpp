@@ -52,12 +52,12 @@ do_request(const std::string & request, const std::string & addr, std::uint16_t 
         // read response
         http_parser parser;
         http_parser_init(&parser, HTTP_RESPONSE);
-        std::ostringstream sout;
         restinio::asio_ns::error_code error;
         restinio::asio_ns::streambuf response_stream;
         restinio::asio_ns::read_until(socket, response_stream, "\r\n\r\n");
         while(restinio::asio_ns::read(socket, response_stream,
                                       restinio::asio_ns::transfer_at_least(1), error)){
+            std::ostringstream sout;
             sout << &response_stream;
             auto nparsed = http_parser_execute(&parser, &settings,
                                                sout.str().c_str(), sout.str().size());
@@ -66,7 +66,6 @@ do_request(const std::string & request, const std::string & addr, std::uint16_t 
                 std::cerr << "Couldn't parse the response: " << http_errno_name(err) << std::endl;
             }
         }
-
         if (!restinio::error_is_eof(error))
             throw std::runtime_error{fmt::format("read error: {}", error)};
     }, addr, port);
