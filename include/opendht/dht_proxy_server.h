@@ -27,6 +27,7 @@
 #include "scheduler.h"
 #include "sockaddr.h"
 #include "value.h"
+#include "dht_proxy_client.h"
 
 #include <thread>
 #include <memory>
@@ -281,7 +282,7 @@ private:
      * @param key of the device
      * @param json, the content to send
      */
-    //void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
+    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
 
     /**
      * Remove a push listener between a client and a hash

@@ -383,9 +383,9 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         std::string err;
         Json::Value root;
         Json::CharReaderBuilder rbuilder;
-        auto* char_data = reinterpret_cast<const char*>(b.data());
+        auto* char_data = reinterpret_cast<const char*>(request->body().data());
         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-        if (!reader->parse(char_data, char_data + b.size(), &root, &err)){
+        if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             auto response = this->initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(this->RESP_MSG_JSON_INCORRECT);
@@ -437,7 +437,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                         response->done();
                     }
                     schedulerCv_.notify_one();
-                    return;
+                    return restinio::request_handling_status_t::accepted;
                 }
             }
             listeners->second.emplace_back(Listener{});
@@ -517,17 +517,18 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
         std::string err;
         Json::Value root;
         Json::CharReaderBuilder rbuilder;
-        auto* char_data = reinterpret_cast<const char*>(b.data());
+        auto* char_data = reinterpret_cast<const char*>(request->body().data());
         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
 
-        if (!reader->parse(char_data, char_data + b.size(), &root, &err)){
+        if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             auto response = this->initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(this->RESP_MSG_JSON_INCORRECT);
             return response.done();
         }
         auto pushToken = root["key"].asString();
-        if (pushToken.empty()) return;
+        if (pushToken.empty())
+            return restinio::request_handling_status_t::rejected;
         auto clientId = root["client_id"].asString();
 
         cancelPushListen(pushToken, infoHash, clientId);
@@ -567,6 +568,60 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
     if (pushListener->second.listeners.empty()){
         pushListeners_.erase(pushListener);
     }
+}
+
+void
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid) const
+{
+    if (pushServer_.empty())
+        return;
+
+    http_parser_settings settings;
+    http_parser_settings_init(&settings);
+    settings.on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
+        if (parser->status_code == 200)
+            return 0;
+        std::cerr << "Error in SendPushNotification status_code=" << parser->status_code << std::endl;
+        return 1;
+    };
+    restinio::http_request_header_t header;
+    header.request_target("/api/push");
+    header.method(restinio::http_method_t::http_post);
+
+    restinio::http_header_fields_t header_fields;
+    header_fields.append_field(restinio::http_field_t::host, pushServer_.c_str());
+    header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
+    header_fields.append_field(restinio::http_field_t::accept, "*/*");
+    header_fields.append_field(restinio::http_field_t::content_type, "application/json");
+
+    // NOTE: see https://github.com/appleboy/gorush
+    Json::Value notification(Json::objectValue);
+    Json::Value tokens(Json::arrayValue);
+    tokens[0] = token;
+    notification["tokens"] = std::move(tokens);
+    notification["platform"] = isAndroid ? 2 : 1;
+    notification["data"] = std::move(json);
+    notification["priority"] = "high";
+    notification["time_to_live"] = 600;
+
+    Json::Value notifications(Json::arrayValue);
+    notifications[0] = notification;
+
+    Json::Value content;
+    content["notifications"] = std::move(notifications);
+
+    Json::StreamWriterBuilder wbuilder;
+    wbuilder["commentStyle"] = "None";
+    wbuilder["indentation"] = "";
+    auto body = Json::writeString(wbuilder, content);
+
+    auto request = restinio::client::create_http_request(
+        header, header_fields, restinio::http_connection_header_t::close, body);
+
+    std::string addr = pushServer_.substr(0, pushServer_.find(":"));
+    uint16_t port = std::atoi(pushServer_.substr(pushServer_.find(":")).c_str());
+
+    restinio::client::do_request(request, addr, port, settings);
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
