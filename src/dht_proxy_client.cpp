@@ -42,7 +42,7 @@ void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t po
 
 void
 do_request(const std::string & request, const std::string & addr, std::uint16_t port,
-           http_parser &parser, http_parser_settings &settings){
+           http_parser_settings &settings){
     do_with_socket([&](auto & socket, auto & io_context){
         // write request
         restinio::asio_ns::streambuf b;
@@ -50,6 +50,8 @@ do_request(const std::string & request, const std::string & addr, std::uint16_t 
         req_stream << request;
         restinio::asio_ns::write(socket, b);
         // read response
+        http_parser parser;
+        http_parser_init(&parser, HTTP_RESPONSE);
         std::ostringstream sout;
         restinio::asio_ns::error_code error;
         restinio::asio_ns::streambuf response_stream;
