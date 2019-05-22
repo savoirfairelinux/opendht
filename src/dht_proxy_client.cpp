@@ -23,11 +23,86 @@
 #include "op_cache.h"
 #include "utils.h"
 
-#include <restbed>
-#include <json/json.h>
+namespace restinio { namespace client {
 
-#include <chrono>
-#include <vector>
+template <typename LAMBDA>
+void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t port){
+    restinio::asio_ns::io_context io_context;
+    restinio::asio_ns::ip::tcp::socket socket{io_context};
+
+    restinio::asio_ns::ip::tcp::resolver resolver{io_context};
+    restinio::asio_ns::ip::tcp::resolver::query
+        query{restinio::asio_ns::ip::tcp::v4(), addr, std::to_string(port)};
+    restinio::asio_ns::ip::tcp::resolver::iterator iterator = resolver.resolve(query);
+
+    restinio::asio_ns::connect(socket, iterator);
+    lambda(socket, io_context);
+    socket.close();
+}
+
+void
+do_request(const std::string & request, const std::string & addr, std::uint16_t port,
+           http_parser &parser, http_parser_settings &settings){
+    do_with_socket([&](auto & socket, auto & io_context){
+        // write request
+        restinio::asio_ns::streambuf b;
+        std::ostream req_stream(&b);
+        req_stream << request;
+        restinio::asio_ns::write(socket, b);
+        // read response
+        std::ostringstream sout;
+        restinio::asio_ns::error_code error;
+        restinio::asio_ns::streambuf response_stream;
+        restinio::asio_ns::read_until(socket, response_stream, "\r\n\r\n");
+        while(restinio::asio_ns::read(socket, response_stream,
+                                      restinio::asio_ns::transfer_at_least(1), error)){
+            sout << &response_stream;
+            auto nparsed = http_parser_execute(&parser, &settings,
+                                               sout.str().c_str(), sout.str().size());
+            if (HPE_OK != parser.http_errno && HPE_PAUSED != parser.http_errno){
+                auto err = HTTP_PARSER_ERRNO(&parser);
+                std::cerr << "Couldn't parse the response: " << http_errno_name(err) << std::endl;
+            }
+        }
+
+        if (!restinio::error_is_eof(error))
+            throw std::runtime_error{fmt::format("read error: {}", error)};
+    }, addr, port);
+}
+
+std::string
+create_http_request(const restinio::http_request_header_t header,
+                    const restinio::http_header_fields_t header_fields,
+                    const restinio::http_connection_header_t connection,
+                    const std::string body){
+    std::stringstream request;
+    request << restinio::method_to_string(header.method()) << " " <<
+               header.request_target() << " " <<
+               "HTTP/" << header.http_major() << "." << header.http_minor() << "\r\n";
+    for (auto header_field: header_fields)
+        request << header_field.name() << ": " << header_field.value() << "\r\n";
+    std::string conn_str;
+    switch (connection){
+        case restinio::http_connection_header_t::keep_alive:
+            conn_str = "keep-alive";
+            break;
+        case restinio::http_connection_header_t::close:
+            conn_str = "close";
+            break;
+        case restinio::http_connection_header_t::upgrade:
+            throw std::invalid_argument("upgrade");
+            break;
+    }
+    request << "Connection: " << conn_str << "\r\n";
+    if (!body.empty()){
+        request << "Content-Length: " << body.size() << "\r\n\r\n";
+        request << body;
+    }
+    request << "\r\n";
+    return request.str();
+}
+
+}}
 
 namespace dht {
 
