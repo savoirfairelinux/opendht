@@ -26,13 +26,14 @@
 namespace restinio { namespace client {
 
 template <typename LAMBDA>
-void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t port){
+void do_with_socket(LAMBDA && lambda, const std::string &ip, std::uint16_t port){
     restinio::asio_ns::io_context io_context;
     restinio::asio_ns::ip::tcp::socket socket{io_context};
-
     restinio::asio_ns::ip::tcp::resolver resolver{io_context};
-    restinio::asio_ns::ip::tcp::resolver::query
-        query{restinio::asio_ns::ip::tcp::v4(), addr, std::to_string(port)};
+
+    auto addr = restinio::asio_ns::ip::address::from_string(ip);
+    auto addrType = addr.is_v4() ? restinio::asio_ns::ip::tcp::v4() : restinio::asio_ns::ip::tcp::v6();
+    restinio::asio_ns::ip::tcp::resolver::query query{addrType, addr.to_string(), std::to_string(port)};
     restinio::asio_ns::ip::tcp::resolver::iterator iterator = resolver.resolve(query);
 
     restinio::asio_ns::connect(socket, iterator);
@@ -41,18 +42,17 @@ void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t po
 }
 
 void
-do_request(const std::string & request, const std::string & addr, std::uint16_t port,
-           http_parser_settings &settings){
+do_request(const std::string & request, const std::string &addr, std::uint16_t port,
+           http_parser &parser, http_parser_settings &settings){
     do_with_socket([&](auto & socket, auto & io_context){
         // write request
         restinio::asio_ns::streambuf b;
         std::ostream req_stream(&b);
-        // TODO log
-        std::cout << "sending client request:\n" << request.c_str() << std::endl;
+        // TODO DHT_LOG.w
+        std::cout << "Sending client request:\n" << request.c_str() << std::endl;
         req_stream << request;
         restinio::asio_ns::write(socket, b);
         // read response
-        http_parser parser;
         http_parser_init(&parser, HTTP_RESPONSE);
         restinio::asio_ns::error_code error;
         restinio::asio_ns::streambuf response_stream;
@@ -157,6 +157,10 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
     if (!serverHost_.empty())
         startProxy();
+
+    auto hostAndPort = splitPort(serverHost_);
+    this->serverHostIp_ = hostAndPort.first;
+    this->serverHostPort_ = std::atoi(hostAndPort.second.c_str());
 }
 
 void
@@ -337,88 +341,85 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
     return scheduler.run();
 }
 
+restinio::http_header_fields_t
+DhtProxyClient::initHeaderFields(){
+    restinio::http_header_fields_t header_fields;
+    header_fields.append_field(restinio::http_field_t::host, (serverHost_).c_str());
+    header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
+    header_fields.append_field(restinio::http_field_t::accept, "*/*");
+    return header_fields;
+}
+
 void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
     DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
-    restbed::Uri uri(serverHost_ + "/" + key.toString());
-    auto req = std::make_shared<restbed::Request>(uri);
-    Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
+    //restbed::Uri uri(serverHost_ + "/" + key.toString());
+    restinio::http_request_header_t header;
+    header.request_target("/" + key.toString());
+    header.method(restinio::http_method_t::http_get);
+    auto header_fields = this->initHeaderFields();
+    auto request = restinio::client::create_http_request(header, header_fields,
+        restinio::http_connection_header_t::keep_alive, ""/*body*/);
+    printf(request.c_str());
 
-    auto finished = std::make_shared<std::atomic_bool>(false);
-    Operation o;
-    o.req = req;
-    o.finished = finished;
-    o.thread = std::thread([=](){
-        // Try to contact the proxy and set the status to connected when done.
-        // will change the connectivity status
-        struct GetState{ std::atomic_bool ok {true}; std::atomic_bool stop {false}; };
-        auto state = std::make_shared<GetState>();
-        try {
-            restbed::Http::async(req,
-                [=](const std::shared_ptr<restbed::Request>& req,
-                    const std::shared_ptr<restbed::Response>& reply) {
-                auto code = reply->get_status_code();
+    //auto req = std::make_shared<restbed::Request>(uri);
+    struct GetContext {
+        std::atomic_bool ok {true};
+        std::atomic_bool stop {false};
+        Value::Filter filter;
+        GetCallback cb;
+        DoneCallback donecb;
+    };
+    auto context = std::make_shared<GetContext>();
+    context->filter = w.empty() ? f : f.chain(w.getFilter());
+    context->cb = cb; context->donecb = donecb;
 
-                if (code == 200) {
-                    try {
-                        while (restbed::Http::is_open(req) and not *finished and not state->stop) {
-                            restbed::Http::fetch("\n", reply);
-                            if (*finished or state->stop)
-                                break;
-                            std::string body;
-                            reply->get_body(body);
-                            reply->set_body(""); // Reset the body for the next fetch
-
-                            std::string err;
-                            Json::Value json;
-                            Json::CharReaderBuilder rbuilder;
-                            auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                            if (reader->parse(char_data, char_data + body.size(), &json, &err)) {
-                                auto value = std::make_shared<Value>(json);
-                                if ((not filter or filter(*value)) and cb) {
-                                    {
-                                        std::lock_guard<std::mutex> lock(lockCallbacks);
-                                        callbacks_.emplace_back([cb, value, state]() {
-                                            if (not state->stop and not cb({value}))
-                                                state->stop = true;
-                                        });
-                                    }
-                                    loopSignal_();
-                                }
-                            } else {
-                                state->ok = false;
-                            }
-                        }
-                    } catch (std::runtime_error& e) { }
-                } else {
-                    state->ok = false;
-                }
-            }).wait();
-        } catch(const std::exception& e) {
-            state->ok = false;
-        }
-        if (donecb) {
-            {
-                std::lock_guard<std::mutex> lock(lockCallbacks);
-                callbacks_.emplace_back([=](){
-                    donecb(state->ok, {});
-                    state->stop = true;
-                });
+    Operation op;
+    //o.req = req;
+    op.finished = std::make_shared<std::atomic_bool>(false);
+    op.thread = std::thread([this, request, &context](){
+        http_parser parser;
+        parser.data = reinterpret_cast<void*>(&context);
+        http_parser_settings settings;
+        http_parser_settings_init(&settings);
+        settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+            auto context = reinterpret_cast<GetContext*>(parser->data);
+            if (parser->status_code != 200)
+                context->ok = false;
+            return 0;
+        };
+        settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+            std::string body, err;
+            Json::Value json;
+            Json::CharReaderBuilder rbuilder;
+            auto context = reinterpret_cast<GetContext*>(parser->data);
+            try {
+                body = std::string(at, length).c_str();
+            } catch(const std::exception& e) {
+                context->ok = false;
+                return 1;
             }
-            loopSignal_();
-        }
-        if (!state->ok) {
-            // Connection failed, update connectivity
-            opFailed();
-        }
-        *finished = true;
+            auto* char_data = reinterpret_cast<const char*>(&body);
+            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+            if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+                context->ok = false;
+                return 1;
+            }
+            auto value = std::make_shared<Value>(json);
+            if ((not context->filter or context->filter(*value)) and context->cb){
+                context->cb({value});
+            }
+            return 0;
+        };
+        settings.on_message_complete = [](http_parser * parser) -> int {
+            auto context = reinterpret_cast<GetContext*>(parser->data);
+            if (context->donecb)
+                context->donecb(context->ok, {});
+            return 0;
+        };
+        restinio::client::do_request(request, serverHostIp_, serverHostPort_, parser, settings);
     });
-    {
-        std::lock_guard<std::mutex> lock(lockOperations_);
-        operations_.emplace_back(std::move(o));
-    }
 }
 
 void

@@ -74,7 +74,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         auto maxThreads = std::thread::hardware_concurrency() - 1;
         auto restThreads = maxThreads > 1 ? maxThreads : 1;
         auto settings = restinio::on_thread_pool<RestRouterTraits>(restThreads);
-        settings.address("0.0.0.0");
+        settings.address("127.0.0.1"); // TODO ipv6 listener?
         settings.port(port);
         settings.request_handler(this->createRestRouter());
         // time limits
@@ -617,9 +617,10 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     auto request = restinio::client::create_http_request(
         header, header_fields, restinio::http_connection_header_t::close, body);
 
-    // TODO move pushServer ip,port parsing supporting ipv6 to constructor
-    uint16_t port = std::atoi(pushServer_.c_str());
-    restinio::client::do_request(request, "127.0.0.1", port, settings);
+    http_parser parser;
+    auto hostAndPort = splitPort(pushServer_);
+    uint16_t port = std::atoi(hostAndPort.second.c_str());
+    restinio::client::do_request(request, hostAndPort.first, port, parser, settings);
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS

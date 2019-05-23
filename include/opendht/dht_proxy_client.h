@@ -44,7 +44,7 @@ namespace restinio { namespace client {
     void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t port);
 
     void do_request(const std::string& request, const std::string& addr, std::uint16_t port,
-                    http_parser_settings &settings);
+                    http_parser &parser, http_parser_settings &settings);
 
     std::string create_http_request(const restinio::http_request_header_t header,
                                     const restinio::http_header_fields_t header_fields,
@@ -68,6 +68,8 @@ public:
     DhtProxyClient();
 
     explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "", const Logger& = {});
+
+    restinio::http_header_fields_t initHeaderFields();
 
     virtual void setPushNotificationToken(const std::string& token) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -326,6 +328,8 @@ private:
     void cancelAllOperations();
 
     std::string serverHost_;
+    std::string serverHostIp_;
+    uint16_t serverHostPort_;
     std::string pushClientId_;
 
     mutable std::mutex lockCurrentProxyInfos_;
