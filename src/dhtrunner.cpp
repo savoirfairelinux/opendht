@@ -38,7 +38,6 @@ namespace dht {
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 static constexpr std::chrono::milliseconds RX_QUEUE_MAX_DELAY(500);
-static constexpr in_port_t PEER_DISCOVERY_PORT = 8888;
 static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
 
 struct DhtRunner::Listener {
@@ -157,7 +156,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (config.peer_discovery or config.peer_publish) {
         peerDiscovery_ = context.peerDiscovery ?
             std::move(context.peerDiscovery) :
-            std::make_shared<PeerDiscovery>(PEER_DISCOVERY_PORT);
+            std::make_shared<PeerDiscovery>();
     }
 
     auto netId = config.dht_config.node_config.network;

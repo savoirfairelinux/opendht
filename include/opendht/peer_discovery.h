@@ -31,9 +31,10 @@ namespace dht {
 class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
-
+    static constexpr in_port_t DEFAULT_PORT = 8888;
     using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
-    PeerDiscovery(in_port_t port);
+
+    PeerDiscovery(in_port_t port = DEFAULT_PORT);
     ~PeerDiscovery();
 
     /**
