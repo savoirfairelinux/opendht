@@ -74,8 +74,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
         auto maxThreads = std::thread::hardware_concurrency() - 1;
         auto restThreads = maxThreads > 1 ? maxThreads : 1;
         auto settings = restinio::on_thread_pool<RestRouterTraits>(restThreads);
-        settings.address("127.0.0.1"); // TODO ipv6 listener?
         settings.port(port);
+        settings.protocol(restinio::asio_ns::ip::tcp::v6());
         settings.request_handler(this->createRestRouter());
         // time limits
         settings.read_next_http_message_timelimit(10s);
