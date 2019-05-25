@@ -360,8 +360,8 @@ private:
      */
     struct Operation
     {
-        std::shared_ptr<restbed::Request> req;
         std::thread thread;
+        std::shared_ptr<restbed::Request> req;
         std::shared_ptr<std::atomic_bool> finished;
     };
     std::vector<Operation> operations_;

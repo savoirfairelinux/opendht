@@ -48,8 +48,6 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
         // write request
         restinio::asio_ns::streambuf b;
         std::ostream req_stream(&b);
-        // TODO DHT_LOG.w
-        std::cout << "Sending client request:\n" << request.c_str() << std::endl;
         req_stream << request;
         restinio::asio_ns::write(socket, b);
         // read response
@@ -61,6 +59,7 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
                                       restinio::asio_ns::transfer_at_least(1), error)){
             std::ostringstream sout;
             sout << &response_stream;
+            //std::cout << "{" << sout.str().c_str() << "}" << std::endl;
             auto nparsed = http_parser_execute(&parser, &settings,
                                                sout.str().c_str(), sout.str().size());
             if (HPE_OK != parser.http_errno && HPE_PAUSED != parser.http_errno){
@@ -153,14 +152,14 @@ DhtProxyClient::DhtProxyClient() {}
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l)
 : DhtInterface(l), serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
 {
+    auto hostAndPort = splitPort(serverHost_);
+    this->serverHostIp_ = hostAndPort.first;
+    this->serverHostPort_ = std::atoi(hostAndPort.second.c_str());
+
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
     if (!serverHost_.empty())
         startProxy();
-
-    auto hostAndPort = splitPort(serverHost_);
-    this->serverHostIp_ = hostAndPort.first;
-    this->serverHostPort_ = std::atoi(hostAndPort.second.c_str());
 }
 
 void
@@ -212,6 +211,7 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
 void
 DhtProxyClient::cancelAllOperations()
 {
+    /*
     std::lock_guard<std::mutex> lock(lockOperations_);
     auto operation = operations_.begin();
     while (operation != operations_.end()) {
@@ -231,6 +231,7 @@ DhtProxyClient::cancelAllOperations()
             ++operation;
         }
     }
+    */
 }
 
 void
@@ -316,6 +317,7 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 
     // Remove finished operations
     {
+        /*
         std::lock_guard<std::mutex> lock(lockOperations_);
         auto operation = operations_.begin();
         while (operation != operations_.end()) {
@@ -337,6 +339,7 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
                 ++operation;
             }
         }
+        */
     }
     return scheduler.run();
 }
@@ -376,50 +379,61 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     context->cb = cb; context->donecb = donecb;
 
     Operation op;
-    //o.req = req;
+    //o.req = req; // TODO save ptr to close
     op.finished = std::make_shared<std::atomic_bool>(false);
-    op.thread = std::thread([this, request, &context](){
+    op.thread = std::thread([this, request, context](){
         http_parser parser;
-        parser.data = reinterpret_cast<void*>(&context);
+        parser.data = static_cast<void*>(context.get());
         http_parser_settings settings;
         http_parser_settings_init(&settings);
         settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-            auto context = reinterpret_cast<GetContext*>(parser->data);
+            GetContext* context = reinterpret_cast<GetContext*>(parser->data);
             if (parser->status_code != 200)
                 context->ok = false;
             return 0;
         };
         settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
-            std::string body, err;
-            Json::Value json;
-            Json::CharReaderBuilder rbuilder;
             auto context = reinterpret_cast<GetContext*>(parser->data);
-            try {
-                body = std::string(at, length).c_str();
+            try{
+                Json::Value json;
+                std::string err;
+                Json::CharReaderBuilder rbuilder;
+                auto body = std::string(at, length);
+                auto* char_data = reinterpret_cast<const char*>(&body[0]);
+                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+                    context->ok = false;
+                    return 1;
+                }
+                auto value = std::make_shared<Value>(json);
+                if ((not context->filter or context->filter(*value)) and context->cb){
+                    context->cb({value});
+                }
             } catch(const std::exception& e) {
+                std::cerr << "Error in get parsing: " << e.what() << std::endl;
                 context->ok = false;
                 return 1;
-            }
-            auto* char_data = reinterpret_cast<const char*>(&body);
-            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-            if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
-                context->ok = false;
-                return 1;
-            }
-            auto value = std::make_shared<Value>(json);
-            if ((not context->filter or context->filter(*value)) and context->cb){
-                context->cb({value});
             }
             return 0;
         };
         settings.on_message_complete = [](http_parser * parser) -> int {
             auto context = reinterpret_cast<GetContext*>(parser->data);
-            if (context->donecb)
-                context->donecb(context->ok, {});
+            try {
+                if (context->donecb)
+                    context->donecb(context->ok, {});
+            } catch(const std::exception& e) {
+                std::cerr << "Error in get parsing: " << e.what() << std::endl;
+                context->ok = false;
+                return 1;
+            }
             return 0;
         };
         restinio::client::do_request(request, serverHostIp_, serverHostPort_, parser, settings);
     });
+    {
+        std::lock_guard<std::mutex> lock(lockOperations_);
+        operations_.emplace_back(std::move(op));
+    }
 }
 
 void
