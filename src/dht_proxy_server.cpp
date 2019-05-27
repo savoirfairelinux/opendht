@@ -620,6 +620,9 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     http_parser parser;
     auto hostAndPort = splitPort(pushServer_);
     uint16_t port = std::atoi(hostAndPort.second.c_str());
+    // if other functions use the client move into private member to share the same
+    //auto io_context = std::make_shared<restinio::asio_ns::io_context>();
+    //std::thread([io_context](){io_context->run();});
     restinio::client::do_request(request, hostAndPort.first, port, parser, settings);
 }
 

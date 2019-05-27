@@ -41,10 +41,12 @@
 namespace restinio { namespace client {
 
     template <typename LAMBDA>
-    void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t port);
+    void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t port,
+                        restinio::asio_ns::io_context &io_context);
 
     void do_request(const std::string& request, const std::string& addr, std::uint16_t port,
-                    http_parser &parser, http_parser_settings &settings);
+                    http_parser &parser, http_parser_settings &settings,
+                    std::shared_ptr<restinio::asio_ns::io_context> io_context = nullptr);
 
     std::string create_http_request(const restinio::http_request_header_t header,
                                     const restinio::http_header_fields_t header_fields,
@@ -375,6 +377,8 @@ private:
     Sp<InfoState> infoState_;
     std::thread statusThread_;
     mutable std::mutex statusLock_;
+
+    std::shared_ptr<restinio::asio_ns::io_context> io_context;
 
     Scheduler scheduler;
     /**
