@@ -151,13 +151,8 @@ struct DhtProxyClient::ProxySearch {
 
 DhtProxyClient::DhtProxyClient() {}
 
-<<<<<<< HEAD
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l)
-: DhtInterface(l), serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
-=======
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
-: serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), io_context(new restinio::asio_ns::io_context())
->>>>>>> dhtproxy: switch threading to io_context
+DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l):
+    serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), io_context(new restinio::asio_ns::io_context())
 {
     auto hostAndPort = splitPort(serverHost_);
     this->serverHostIp_ = hostAndPort.first;
