@@ -18,7 +18,6 @@
  */
 
 #include "dht_proxy_client.h"
-
 #include "dhtrunner.h"
 #include "op_cache.h"
 #include "utils.h"
@@ -45,8 +44,10 @@ void
 do_request(const std::string & request, const std::string &addr, std::uint16_t port,
            http_parser &parser, http_parser_settings &settings,
            std::shared_ptr<restinio::asio_ns::io_context> io_context){
-    if (!io_context)
+    if (!io_context){
+        printf("Client request without io_context, making one for the request\n");
         io_context = std::make_shared<restinio::asio_ns::io_context>();
+    }
     do_with_socket([&](auto & socket){
         // write request
         restinio::asio_ns::streambuf b;
@@ -57,12 +58,11 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
         http_parser_init(&parser, HTTP_RESPONSE);
         restinio::asio_ns::error_code error;
         restinio::asio_ns::streambuf response_stream;
-        restinio::asio_ns::read_until(socket, response_stream, "\r\n\r\n");
         while(restinio::asio_ns::read(socket, response_stream,
                                       restinio::asio_ns::transfer_at_least(1), error)){
             std::ostringstream sout;
             sout << &response_stream;
-            //std::cout << "{" << sout.str().c_str() << "}" << std::endl;// DHT_LOG.w ?
+            printf("Got server response:%s\n", sout.str().c_str());// DHT_LOG.w ?
             http_parser_execute(&parser, &settings, sout.str().c_str(), sout.str().size());
             if (HPE_OK != parser.http_errno && HPE_PAUSED != parser.http_errno){
                 auto err = HTTP_PARSER_ERRNO(&parser);
@@ -70,7 +70,7 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
             }
         }
         if (!restinio::error_is_eof(error))
-            throw std::runtime_error{fmt::format("read error: {}", error)};
+            throw std::runtime_error{fmt::format("Client read error: {}", error)};
     }, addr, port, *io_context);
 }
 
@@ -167,6 +167,8 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
     if (!serverHost_.empty())
         startProxy();
+
+    io_context_thread_ = std::thread([this](){io_context->run();});
 }
 
 void
@@ -195,6 +197,8 @@ DhtProxyClient::~DhtProxyClient()
         infoState_->cancel = true;
     if (statusThread_.joinable())
         statusThread_.join();
+    if (io_context_thread_.joinable())
+        io_context_thread_.join();
 }
 
 std::vector<Sp<Value>>
@@ -218,27 +222,8 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
 void
 DhtProxyClient::cancelAllOperations()
 {
-    /*
-    std::lock_guard<std::mutex> lock(lockOperations_);
-    auto operation = operations_.begin();
-    while (operation != operations_.end()) {
-        if (operation->thread.joinable()) {
-            // Close connection to stop operation?
-            if (operation->req) {
-                try {
-                    restbed::Http::close(operation->req);
-                } catch (const std::exception& e) {
-                    DHT_LOG.w("Error closing socket: %s", e.what());
-                }
-                operation->req.reset();
-            }
-            operation->thread.join();
-            operation = operations_.erase(operation);
-        } else {
-            ++operation;
-        }
-    }
-    */
+    // for graceful finish, call reset() before
+    this->io_context->stop();
 }
 
 void
@@ -272,8 +257,6 @@ DhtProxyClient::cancelAllListeners()
 void
 DhtProxyClient::shutdown(ShutdownCallback cb)
 {
-    this->io_context->stop(); // call reset() before to allow gracefull finish
-
     cancelAllOperations();
     cancelAllListeners();
     if (cb)
@@ -323,42 +306,17 @@ DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
     for (auto& callback : callbacks)
         callback();
     callbacks.clear();
-
-    // Remove finished operations
-    {
-        /*
-        std::lock_guard<std::mutex> lock(lockOperations_);
-        auto operation = operations_.begin();
-        while (operation != operations_.end()) {
-            if (*(operation->finished)) {
-                if (operation->thread.joinable()) {
-                    // Close connection to stop operation?
-                    if (operation->req) {
-                        try {
-                            restbed::Http::close(operation->req);
-                        } catch (const std::exception& e) {
-                            DHT_LOG.w("Error closing socket: %s", e.what());
-                        }
-                        operation->req.reset();
-                    }
-                    operation->thread.join();
-                }
-                operation = operations_.erase(operation);
-            } else {
-                ++operation;
-            }
-        }
-        */
-    }
     return scheduler.run();
 }
 
 restinio::http_header_fields_t
 DhtProxyClient::initHeaderFields(){
     restinio::http_header_fields_t header_fields;
-    header_fields.append_field(restinio::http_field_t::host, (serverHost_).c_str());
+    header_fields.append_field(restinio::http_field_t::host,
+        (serverHostIp_ + ":" + std::to_string(serverHostPort_)).c_str());
     header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
     header_fields.append_field(restinio::http_field_t::accept, "*/*");
+    header_fields.append_field(restinio::http_field_t::content_type, "application/json");
     return header_fields;
 }
 
@@ -372,14 +330,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     auto header_fields = this->initHeaderFields();
     auto request = restinio::client::create_http_request(header, header_fields,
         restinio::http_connection_header_t::keep_alive, ""/*body*/);
-    printf(request.c_str());
+    DHT_LOG.w(request.c_str());
 
     struct GetContext {
-        std::atomic_bool ok {true};
-        std::atomic_bool stop {false};
-        Value::Filter filter;
         GetCallback cb;
         DoneCallback donecb;
+        Value::Filter filter;
+        std::atomic_bool ok {false};
     };
     auto context = std::make_shared<GetContext>();
     context->filter = w.empty() ? f : f.chain(w.getFilter());
@@ -391,8 +348,10 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     http_parser_settings_init(&settings);
     settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
         GetContext* context = reinterpret_cast<GetContext*>(parser->data);
-        if (parser->status_code != 200)
-            context->ok = false;
+        if (parser->status_code != 200){
+            std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
+            context->ok = true;
+        }
         return 0;
     };
     settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
@@ -426,7 +385,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 context->donecb(context->ok, {});
         } catch(const std::exception& e) {
             std::cerr << "Error in get parsing: " << e.what() << std::endl;
-            context->ok = false;
             return 1;
         }
         return 0;
@@ -480,9 +438,10 @@ void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point /*created*/, bool permanent)
 {
     DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
-    restbed::Uri uri(serverHost_ + "/" + key.toString());
-    auto req = std::make_shared<restbed::Request>(uri);
-    req->set_method("POST");
+    restinio::http_request_header_t header;
+    header.request_target("/" + key.toString());
+    header.method(restinio::http_method_t::http_post);
+    auto header_fields = this->initHeaderFields();
 
     auto json = val->toJson();
     if (permanent) {
@@ -501,65 +460,45 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     Json::StreamWriterBuilder wbuilder;
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
-    auto body = Json::writeString(wbuilder, json) + "\n";
-    req->set_body(body);
-    req->set_header("Content-Length", std::to_string(body.size()));
+    auto body = Json::writeString(wbuilder, json);
+    auto request = restinio::client::create_http_request(header, header_fields,
+        restinio::http_connection_header_t::close, body);
+    // TODO dhtlog.w
+    printf("%s\n", request.c_str());
 
-    auto finished = std::make_shared<std::atomic_bool>(false);
-    Operation o;
-    o.req = req;
-    o.finished = finished;
-    o.thread = std::thread([=](){
-        auto ok = std::make_shared<std::atomic_bool>(true);
+    struct GetContext {
+        DoneCallback donecb;
+        std::atomic_bool ok {false};
+    };
+    auto context = std::make_shared<GetContext>();
+    context->donecb = cb;
+
+    http_parser parser;
+    parser.data = static_cast<void*>(context.get());
+    http_parser_settings settings;
+    http_parser_settings_init(&settings);
+    settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+        GetContext* context = reinterpret_cast<GetContext*>(parser->data);
+        if (parser->status_code == 200){
+            context->ok = true;
+        } else {
+            std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
+        }
+        return 0;
+    };
+    settings.on_message_complete = [](http_parser * parser) -> int {
+        auto context = reinterpret_cast<GetContext*>(parser->data);
         try {
-            restbed::Http::async(req,
-                [ok](const std::shared_ptr<restbed::Request>& /*req*/,
-                            const std::shared_ptr<restbed::Response>& reply) {
-                auto code = reply->get_status_code();
-
-                if (code == 200) {
-                    restbed::Http::fetch("\n", reply);
-                    std::string body;
-                    reply->get_body(body);
-                    reply->set_body(""); // Reset the body for the next fetch
-
-                    try {
-                        std::string err;
-                        Json::Value json;
-                        Json::CharReaderBuilder rbuilder;
-                        auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        if (not reader->parse(char_data, char_data + body.size(), &json, &err))
-                            *ok = false;
-                    } catch (...) {
-                        *ok = false;
-                    }
-                } else {
-                    *ok = false;
-                }
-            }).wait();
+            if (context->donecb)
+                context->donecb(context->ok, {});
         } catch(const std::exception& e) {
-            *ok = false;
+            std::cerr << "Error in get parsing: " << e.what() << std::endl;
+            return 1;
         }
-        if (cb) {
-            {
-                std::lock_guard<std::mutex> lock(lockCallbacks);
-                callbacks_.emplace_back([=](){
-                    cb(*ok, {});
-                });
-            }
-            loopSignal_();
-        }
-        if (!ok) {
-            // Connection failed, update connectivity
-            opFailed();
-        }
-        *finished = true;
-    });
-    {
-        std::lock_guard<std::mutex> lock(lockOperations_);
-        operations_.emplace_back(std::move(o));
-    }
+        return 0;
+    };
+    restinio::client::do_request(request, serverHostIp_, serverHostPort_,
+                                 parser, settings, this->io_context);
 }
 
 /**
