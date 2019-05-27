@@ -358,17 +358,6 @@ private:
     mutable std::mutex searchLock_;
 
     /**
-     * Store current put and get requests.
-     */
-    struct Operation
-    {
-        std::thread thread;
-        std::shared_ptr<restbed::Request> req;
-        std::shared_ptr<std::atomic_bool> finished;
-    };
-    std::vector<Operation> operations_;
-    std::mutex lockOperations_;
-    /**
      * Callbacks should be executed in the main thread.
      */
     std::vector<std::function<void()>> callbacks_;
@@ -378,7 +367,12 @@ private:
     std::thread statusThread_;
     mutable std::mutex statusLock_;
 
+    /*
+     * ASIO I/O Context for sockets used in requests
+     * https://www.boost.org/doc/libs/develop/doc/html/boost_asio/reference/io_context.html
+     */
     std::shared_ptr<restinio::asio_ns::io_context> io_context;
+    std::thread io_context_thread_;
 
     Scheduler scheduler;
     /**
