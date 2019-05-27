@@ -26,8 +26,8 @@
 namespace restinio { namespace client {
 
 template <typename LAMBDA>
-void do_with_socket(LAMBDA && lambda, const std::string &ip, std::uint16_t port){
-    restinio::asio_ns::io_context io_context;
+void do_with_socket(LAMBDA && lambda, const std::string &ip, std::uint16_t port,
+                    restinio::asio_ns::io_context &io_context){
     restinio::asio_ns::ip::tcp::socket socket{io_context};
     restinio::asio_ns::ip::tcp::resolver resolver{io_context};
 
@@ -37,14 +37,17 @@ void do_with_socket(LAMBDA && lambda, const std::string &ip, std::uint16_t port)
     restinio::asio_ns::ip::tcp::resolver::iterator iterator = resolver.resolve(query);
 
     restinio::asio_ns::connect(socket, iterator);
-    lambda(socket, io_context);
+    lambda(socket);
     socket.close();
 }
 
 void
 do_request(const std::string & request, const std::string &addr, std::uint16_t port,
-           http_parser &parser, http_parser_settings &settings){
-    do_with_socket([&](auto & socket, auto & io_context){
+           http_parser &parser, http_parser_settings &settings,
+           std::shared_ptr<restinio::asio_ns::io_context> io_context){
+    if (!io_context)
+        io_context = std::make_shared<restinio::asio_ns::io_context>();
+    do_with_socket([&](auto & socket){
         // write request
         restinio::asio_ns::streambuf b;
         std::ostream req_stream(&b);
@@ -59,9 +62,8 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
                                       restinio::asio_ns::transfer_at_least(1), error)){
             std::ostringstream sout;
             sout << &response_stream;
-            //std::cout << "{" << sout.str().c_str() << "}" << std::endl;
-            auto nparsed = http_parser_execute(&parser, &settings,
-                                               sout.str().c_str(), sout.str().size());
+            //std::cout << "{" << sout.str().c_str() << "}" << std::endl;// DHT_LOG.w ?
+            http_parser_execute(&parser, &settings, sout.str().c_str(), sout.str().size());
             if (HPE_OK != parser.http_errno && HPE_PAUSED != parser.http_errno){
                 auto err = HTTP_PARSER_ERRNO(&parser);
                 std::cerr << "Couldn't parse the response: " << http_errno_name(err) << std::endl;
@@ -69,7 +71,7 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
         }
         if (!restinio::error_is_eof(error))
             throw std::runtime_error{fmt::format("read error: {}", error)};
-    }, addr, port);
+    }, addr, port, *io_context);
 }
 
 std::string
@@ -150,7 +152,7 @@ struct DhtProxyClient::ProxySearch {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId)
-: serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
+: serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), io_context(new restinio::asio_ns::io_context())
 {
     auto hostAndPort = splitPort(serverHost_);
     this->serverHostIp_ = hostAndPort.first;
@@ -265,6 +267,8 @@ DhtProxyClient::cancelAllListeners()
 void
 DhtProxyClient::shutdown(ShutdownCallback cb)
 {
+    this->io_context->stop(); // call reset() before to allow gracefull finish
+
     cancelAllOperations();
     cancelAllListeners();
     if (cb)
@@ -357,7 +361,6 @@ void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Value::Filter&& f, Where&& w)
 {
     DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
-    //restbed::Uri uri(serverHost_ + "/" + key.toString());
     restinio::http_request_header_t header;
     header.request_target("/" + key.toString());
     header.method(restinio::http_method_t::http_get);
@@ -366,7 +369,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         restinio::http_connection_header_t::keep_alive, ""/*body*/);
     printf(request.c_str());
 
-    //auto req = std::make_shared<restbed::Request>(uri);
     struct GetContext {
         std::atomic_bool ok {true};
         std::atomic_bool stop {false};
@@ -378,62 +380,54 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     context->filter = w.empty() ? f : f.chain(w.getFilter());
     context->cb = cb; context->donecb = donecb;
 
-    Operation op;
-    //o.req = req; // TODO save ptr to close
-    op.finished = std::make_shared<std::atomic_bool>(false);
-    op.thread = std::thread([this, request, context](){
-        http_parser parser;
-        parser.data = static_cast<void*>(context.get());
-        http_parser_settings settings;
-        http_parser_settings_init(&settings);
-        settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-            GetContext* context = reinterpret_cast<GetContext*>(parser->data);
-            if (parser->status_code != 200)
-                context->ok = false;
-            return 0;
-        };
-        settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
-            auto context = reinterpret_cast<GetContext*>(parser->data);
-            try{
-                Json::Value json;
-                std::string err;
-                Json::CharReaderBuilder rbuilder;
-                auto body = std::string(at, length);
-                auto* char_data = reinterpret_cast<const char*>(&body[0]);
-                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
-                    context->ok = false;
-                    return 1;
-                }
-                auto value = std::make_shared<Value>(json);
-                if ((not context->filter or context->filter(*value)) and context->cb){
-                    context->cb({value});
-                }
-            } catch(const std::exception& e) {
-                std::cerr << "Error in get parsing: " << e.what() << std::endl;
+    http_parser parser;
+    parser.data = static_cast<void*>(context.get());
+    http_parser_settings settings;
+    http_parser_settings_init(&settings);
+    settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+        GetContext* context = reinterpret_cast<GetContext*>(parser->data);
+        if (parser->status_code != 200)
+            context->ok = false;
+        return 0;
+    };
+    settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+        auto context = reinterpret_cast<GetContext*>(parser->data);
+        try{
+            Json::Value json;
+            std::string err;
+            Json::CharReaderBuilder rbuilder;
+            auto body = std::string(at, length);
+            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+            if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
                 context->ok = false;
                 return 1;
             }
-            return 0;
-        };
-        settings.on_message_complete = [](http_parser * parser) -> int {
-            auto context = reinterpret_cast<GetContext*>(parser->data);
-            try {
-                if (context->donecb)
-                    context->donecb(context->ok, {});
-            } catch(const std::exception& e) {
-                std::cerr << "Error in get parsing: " << e.what() << std::endl;
-                context->ok = false;
-                return 1;
+            auto value = std::make_shared<Value>(json);
+            if ((not context->filter or context->filter(*value)) and context->cb){
+                context->cb({value});
             }
-            return 0;
-        };
-        restinio::client::do_request(request, serverHostIp_, serverHostPort_, parser, settings);
-    });
-    {
-        std::lock_guard<std::mutex> lock(lockOperations_);
-        operations_.emplace_back(std::move(op));
-    }
+        } catch(const std::exception& e) {
+            std::cerr << "Error in get parsing: " << e.what() << std::endl;
+            context->ok = false;
+            return 1;
+        }
+        return 0;
+    };
+    settings.on_message_complete = [](http_parser * parser) -> int {
+        auto context = reinterpret_cast<GetContext*>(parser->data);
+        try {
+            if (context->donecb)
+                context->donecb(context->ok, {});
+        } catch(const std::exception& e) {
+            std::cerr << "Error in get parsing: " << e.what() << std::endl;
+            context->ok = false;
+            return 1;
+        }
+        return 0;
+    };
+    restinio::client::do_request(request, serverHostIp_, serverHostPort_,
+                                 parser, settings, this->io_context);
 }
 
 void
