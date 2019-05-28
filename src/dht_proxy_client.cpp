@@ -67,7 +67,7 @@ do_request(const std::string & request, const std::string &addr, std::uint16_t p
                                       restinio::asio_ns::transfer_at_least(1), error)){
             std::ostringstream sout;
             sout << &response_stream;
-            printf("Got server response:%s\n", sout.str().c_str());// DHT_LOG.w ?
+            //printf("Got server response:\n%s\n", sout.str().c_str());// DHT_LOG.w ?
             http_parser_execute(&parser, &settings, sout.str().c_str(), sout.str().size());
             if (HPE_OK != parser.http_errno && HPE_PAUSED != parser.http_errno){
                 auto err = HTTP_PARSER_ERRNO(&parser);
@@ -725,7 +725,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     auto token = search.ops.listen(cb, query, filter, [this, key, filter](
                                    Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
         scheduler.syncTime();
-        restbed::Uri uri(serverHost_ + "/" + key.toString());
+        restbed::Uri uri(serverHost_ + "/" + key.toString() + "/listen");
         std::lock_guard<std::mutex> lock(searchLock_);
         auto search = searches_.find(key);
         if (search == searches_.end()) {
@@ -829,7 +829,7 @@ void DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request> &req,
     } else {
         std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
         settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
-        req->set_method("LISTEN");
+        req->set_method("GET");
     }
     try {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
