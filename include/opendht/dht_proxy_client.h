@@ -2,6 +2,7 @@
  *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,6 +37,7 @@
 
 #include <chrono>
 #include <vector>
+#include <functional>
 
 // nested declaration only in c++17
 namespace restinio { namespace client {
@@ -46,7 +48,8 @@ namespace restinio { namespace client {
 
     void do_request(const std::string& request, const std::string& addr, std::uint16_t port,
                     http_parser &parser, http_parser_settings &settings,
-                    std::shared_ptr<restinio::asio_ns::io_context> io_context = nullptr);
+                    std::shared_ptr<restinio::asio_ns::io_context> io_context = nullptr,
+                    const std::function<void(restinio::asio_ns::ip::tcp::socket&)> conn_cb = nullptr);
 
     std::string create_http_request(const restinio::http_request_header_t header,
                                     const restinio::http_header_fields_t header_fields,
@@ -373,6 +376,8 @@ private:
      */
     std::shared_ptr<restinio::asio_ns::io_context> io_context;
     std::thread io_context_thread_;
+
+    std::vector<restinio::asio_ns::ip::tcp::socket*> listeners;
 
     Scheduler scheduler;
     /**

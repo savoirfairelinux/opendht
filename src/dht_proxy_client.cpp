@@ -2,6 +2,7 @@
  *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,12 +44,16 @@ void do_with_socket(LAMBDA && lambda, const std::string &ip, std::uint16_t port,
 void
 do_request(const std::string & request, const std::string &addr, std::uint16_t port,
            http_parser &parser, http_parser_settings &settings,
-           std::shared_ptr<restinio::asio_ns::io_context> io_context){
+           std::shared_ptr<restinio::asio_ns::io_context> io_context,
+           const std::function<void(restinio::asio_ns::ip::tcp::socket&)> conn_cb){
     if (!io_context){
         printf("Client request without io_context, making one for the request\n");
         io_context = std::make_shared<restinio::asio_ns::io_context>();
     }
     do_with_socket([&](auto & socket){
+        // callback with the active connection
+        if (conn_cb)
+            conn_cb(socket);
         // write request
         restinio::asio_ns::streambuf b;
         std::ostream req_stream(&b);
@@ -717,7 +722,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     DHT_LOG.d(key, "[search %s]: listen", key.to_c_str());
     auto& search = searches_[key];
     auto query = std::make_shared<Query>(Select{}, where);
-    auto token = search.ops.listen(cb, query, filter, [this, key, filter](Sp<Query> /*q*/, ValueCallback cb, SyncCallback /*scb*/) -> size_t {
+    auto token = search.ops.listen(cb, query, filter, [this, key, filter](
+                                   Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
         scheduler.syncTime();
         restbed::Uri uri(serverHost_ + "/" + key.toString());
         std::lock_guard<std::mutex> lock(searchLock_);
