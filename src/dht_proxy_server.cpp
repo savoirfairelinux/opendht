@@ -51,8 +51,8 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer)
-: dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer)
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer, const Logger &logger)
+:  dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer)
 {
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
@@ -69,11 +69,12 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
-    server_thread = std::thread([this, port](){
+    server_thread = std::thread([this, port, &logger](){
         using namespace std::chrono;
         auto maxThreads = std::thread::hardware_concurrency() - 1;
         auto restThreads = maxThreads > 1 ? maxThreads : 1;
         auto settings = restinio::on_thread_pool<RestRouterTraits>(restThreads);
+        settings.logger(logger);
         settings.port(port);
         settings.protocol(restinio::asio_ns::ip::tcp::v6());
         settings.request_handler(this->createRestRouter());

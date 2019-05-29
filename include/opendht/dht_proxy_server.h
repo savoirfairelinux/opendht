@@ -38,10 +38,41 @@
 #include <json/json.h>
 #endif
 
+class opendht_logger_t
+{
+    public:
+        opendht_logger_t(const dht::Logger &logger):
+            m_logger(logger)
+        {}
+
+        template <typename Builder>
+        void trace(Builder && msg_builder){
+            m_logger.d("[restinio] %s", msg_builder().c_str());
+        }
+
+        template <typename Builder>
+        void info(Builder && msg_builder){
+            m_logger.d("[restinio] %s", msg_builder().c_str());
+        }
+
+        template <typename Builder>
+        void warn(Builder && msg_builder){
+            m_logger.w("[restinio] %s", msg_builder().c_str());
+        }
+
+        template <typename Builder>
+        void error(Builder && msg_builder){
+            m_logger.e("[restinio] %s", msg_builder().c_str());
+        }
+
+    private:
+        dht::Logger m_logger;
+};
+
 using RestRouter = restinio::router::express_router_t<>;
 using RestRouterTraits = restinio::traits_t<
     restinio::asio_timer_manager_t,
-    restinio::single_threaded_ostream_logger_t,
+    opendht_logger_t, //restinio::single_threaded_ostream_logger_t,
     RestRouter>;
 using RequestStatus = restinio::request_handling_status_t;
 using ResponseByParts = restinio::chunked_output_t;
@@ -70,7 +101,7 @@ public:
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "");
+    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "", const Logger& logger = {});
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;
