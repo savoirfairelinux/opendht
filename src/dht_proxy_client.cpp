@@ -347,7 +347,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     http_parser_settings settings;
     http_parser_settings_init(&settings);
     settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-        GetContext* context = reinterpret_cast<GetContext*>(parser->data);
+        auto context = reinterpret_cast<GetContext*>(parser->data);
         if (parser->status_code != 200){
             std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
             context->ok = true;
@@ -725,29 +725,21 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     auto token = search.ops.listen(cb, query, filter, [this, key, filter](
                                    Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
         scheduler.syncTime();
-        restbed::Uri uri(serverHost_ + "/" + key.toString() + "/listen");
+        //restbed::Uri uri(serverHost_ + "/" + key.toString() + "/listen");
         std::lock_guard<std::mutex> lock(searchLock_);
         auto search = searches_.find(key);
         if (search == searches_.end()) {
             DHT_LOG.e(key, "[search %s] listen: search not found", key.to_c_str());
             return 0;
         }
-        DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
+        //DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
+        printf("[search %s] sending %s\n", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
-        auto req = std::make_shared<restbed::Request>(uri);
+        //auto req = std::make_shared<restbed::Request>(uri);
         auto token = ++listenerToken_;
-        auto l = search->second.listeners.find(token);
-        if (l == search->second.listeners.end()) {
-            auto f = filter;
-            l = search->second.listeners.emplace(std::piecewise_construct,
-                    std::forward_as_tuple(token),
-                    std::forward_as_tuple(std::move(cb), req, std::move(f))).first;
-        } else {
-            if (l->second.state)
-                l->second.state->cancel = true;
-        }
 
         auto state = std::make_shared<ListenState>();
+        /*
         l->second.state = state;
         l->second.cb = [this,key,token,state](const std::vector<Sp<Value>>& values, bool expired) {
             if (state->cancel)
@@ -763,9 +755,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             }
             return l->second.cache.onValue(values, expired);
         };
-
-        auto vcb = l->second.cb;
-        l->second.req = req;
+        //auto vcb = l->second.cb;
+        //l->second.req = req;
 
         if (not deviceKey_.empty()) {
             // Relaunch push listeners even if a timeout is not received (if the proxy crash for any reason)
@@ -782,10 +773,22 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
                 }
             });
         }
-        l->second.thread = std::thread([this, req, vcb, filter, state]() {
-            sendListen(req, vcb, filter, state,
-                    deviceKey_.empty() ? ListenMethod::LISTEN : ListenMethod::SUBSCRIBE);
-        });
+        */
+        ListenMethod method;
+        restinio::http_request_header_t header;
+        if (deviceKey_.empty()){ // listen
+            method = ListenMethod::LISTEN;
+            header.method(restinio::http_method_t::http_get);
+            header.request_target("/" + key.toString() + "/listen");
+        }
+        else {
+            method = ListenMethod::SUBSCRIBE;
+            header.method(restinio::http_method_t::http_subscribe);
+            header.request_target("/" + key.toString());
+        }
+        //l->second.thread = std::thread([this, header, vcb, filter, state, method]() {
+            sendListen(header, /*vcb*/ cb, filter, state, method);
+        //});
         return token;
     });
     return token;
@@ -818,78 +821,83 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     return canceled;
 }
 
-void DhtProxyClient::sendListen(const std::shared_ptr<restbed::Request> &req,
-                                const ValueCallback &cb,
-                                const Value::Filter &filter,
-                                const Sp<ListenState> &state,
-                                ListenMethod method) {
-    auto settings = std::make_shared<restbed::Settings>();
-    if (method != ListenMethod::LISTEN) {
-        req->set_method("SUBSCRIBE");
-    } else {
-        std::chrono::milliseconds timeout(std::numeric_limits<int>::max());
-        settings->set_connection_timeout(timeout); // Avoid the client to close the socket after 5 seconds.
-        req->set_method("GET");
-    }
-    try {
+void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
+                                const ValueCallback cb, const Value::Filter &filter,
+                                const Sp<ListenState> &state, ListenMethod method){
+    auto headers = this->initHeaderFields();
+    auto conn = restinio::http_connection_header_t::close;
+    if (method == ListenMethod::LISTEN)
+        conn = restinio::http_connection_header_t::keep_alive;
+    std::string body;
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-        if (method != ListenMethod::LISTEN)
-        fillBody(req, method == ListenMethod::RESUBSCRIBE);
-    #endif
-        restbed::Http::async(req,
-              [this, filter, cb, state](const std::shared_ptr<restbed::Request>& req,
-                                        const std::shared_ptr<restbed::Response>& reply)
-        {
-            auto code = reply->get_status_code();
-            if (code == 200) {
-                try {
-                    while (restbed::Http::is_open(req) and not state->cancel) {
-                        restbed::Http::fetch("\n", reply);
-                        if (state->cancel)
-                            break;
-                        std::string body;
-                        reply->get_body(body);
-                        reply->set_body(""); // Reset the body for the next fetch
+    if (method != ListenMethod::LISTEN)
+        body = fillBody(method == ListenMethod::RESUBSCRIBE);
+#endif
+    auto request = restinio::client::create_http_request(header, headers, conn, body);
+    /*DHT_LOG.w*/printf(request.c_str());
 
-                        Json::Value json;
-                        std::string err;
-                        Json::CharReaderBuilder rbuilder;
-                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        if (reader->parse(body.data(), body.data() + body.size(), &json, &err)) {
-                            if (json.size() == 0) {
-                                // Empty value, it's the end
-                                break;
-                            }
-                            auto expired = json.get("expired", Json::Value(false)).asBool();
-                            auto value = std::make_shared<Value>(json);
-                            if ((not filter or filter(*value)) and cb) {
-                                {
-                                    std::lock_guard<std::mutex> lock(lockCallbacks);
-                                    callbacks_.emplace_back([cb, value, state, expired]() {
-                                        if (not state->cancel and not cb({value}, expired))
-                                            state->cancel = true;
-                                    });
-                                }
-                                loopSignal_();
-                            }
-                        }
-                    }
-                } catch (const std::exception& e) {
-                    if (not state->cancel) {
-                        DHT_LOG.w("Listen closed by the proxy server: %s", e.what());
-                        state->ok = false;
-                    }
-                }
-            } else {
-                state->ok = false;
+    struct ListenContext {
+        Logger *logger;
+        ValueCallback cb;
+        Value::Filter filter;
+        std::shared_ptr<ListenState> state;
+    };
+    auto context = std::make_shared<ListenContext>();
+    context->logger = &DHT_LOG;
+    context->cb = cb;
+    context->state = state;
+    context->filter = filter;
+
+    http_parser parser;
+    parser.data = static_cast<void*>(context.get());
+    http_parser_settings settings;
+    http_parser_settings_init(&settings);
+    settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+        auto context = reinterpret_cast<ListenContext*>(parser->data);
+        if (parser->status_code != 200){
+            std::cerr << "Error in listen status_code=" << parser->status_code << std::endl;
+            context->state->ok = false;
+        }
+        return 0;
+    };
+    settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+        auto context = reinterpret_cast<ListenContext*>(parser->data);
+        try {
+            Json::Value json;
+            std::string err;
+            Json::CharReaderBuilder rbuilder;
+            auto body = std::string(at, length);
+            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+            if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+                context->state->ok = false;
+                return 1;
             }
-        }, settings).get();
-    } catch (const std::exception& e) {
-        state->ok = false;
-    }
-    auto& s = *state;
-    if (not s.ok and not s.cancel)
-        opFailed();
+            if (json.size() == 0){ // it's the end
+                context->state->cancel = true;
+            }
+            auto value = std::make_shared<Value>(json);
+            auto expired = json.get("expired", Json::Value(false)).asBool();
+            std::cout << json << " : expired=" << expired << std::endl;
+            context->cb({value}, expired);
+            if ((not context->filter or context->filter(*value)) and context->cb){
+                //std::lock_guard<std::mutex> lock(lockCallbacks);
+                //callbacks_.emplace_back([cb, value, state, expired]() {
+                if (not context->state->cancel and not context->cb({value}, expired))
+                    context->state->cancel = true;
+                //});
+                //loopSignal_();
+            }
+        } catch(const std::exception& e) {
+            /*context->logger->d*/printf("Error in listen parsing: %s\n", e.what());
+            /*context->logger->w*/printf("Listen closed by the proxy server: %s\n", e.what());
+            context->state->ok = false;
+            return 1;
+        }
+        return 0;
+    };
+    restinio::client::do_request(request, serverHostIp_, serverHostPort_,
+                                 parser, settings, this->io_context);
 }
 
 bool
@@ -1037,7 +1045,7 @@ DhtProxyClient::restartListeners()
             req->set_method("LISTEN");
             listener.req = req;
             listener.thread = std::thread([this, req, cb, filter, state]() {
-                sendListen(req, cb, filter, state);
+                //sendListen(req, cb, filter, state);
             });
         }
     }
@@ -1155,7 +1163,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     auto vcb = listener.cb;
     auto filter = listener.filter;
     listener.thread = std::thread([this, req, vcb, filter, state]() {
-        sendListen(req, vcb, filter, state, ListenMethod::RESUBSCRIBE);
+        //sendListen(req, vcb, filter, state, ListenMethod::RESUBSCRIBE);
     });
 #else
     (void) key;
@@ -1177,8 +1185,8 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
 #endif
 }
 
-void
-DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req, bool resubscribe)
+std::string
+DhtProxyClient::fillBody(bool resubscribe)
 {
     // Fill body with
     // {
@@ -1195,8 +1203,7 @@ DhtProxyClient::fillBody(std::shared_ptr<restbed::Request> req, bool resubscribe
     wbuilder["indentation"] = "";
     auto content = Json::writeString(wbuilder, body) + "\n";
     std::replace(content.begin(), content.end(), '\n', ' ');
-    req->set_body(content);
-    req->set_header("Content-Length", std::to_string(content.size()));
+    return content;
 }
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 

@@ -312,10 +312,9 @@ private:
         SUBSCRIBE,
         RESUBSCRIBE,
     };
-    void sendListen(const std::shared_ptr<restbed::Request> &request,
-                    const ValueCallback &, const Value::Filter &filter,
-                    const Sp<ListenState> &state,
-                    ListenMethod method = ListenMethod::LISTEN);
+    void sendListen(const restinio::http_request_header_t header,
+                    const ValueCallback cb, const Value::Filter &filter,
+                    const Sp<ListenState> &state, ListenMethod method = ListenMethod::LISTEN);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 
@@ -407,7 +406,7 @@ private:
     const std::function<void()> loopSignal_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    void fillBody(std::shared_ptr<restbed::Request> request, bool resubscribe);
+    std::string fillBody(bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
