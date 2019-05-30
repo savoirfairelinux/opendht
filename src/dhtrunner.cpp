@@ -114,6 +114,12 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const DhtRunner::
     if (context.logger and dht_via_proxy_) {
         dht_via_proxy_->setLogger(*context.logger);
     }
+    statusCb = std::move(context.statusChangedCallback);
+    if (context.certificateStore) {
+        dht_->setLocalCertificateStore(std::move(context.certificateStore));
+        if (dht_via_proxy_)
+            dht_via_proxy_->setLocalCertificateStore(std::move(context.certificateStore));
+    }
 
     running = true;
     if (not config.threaded)
