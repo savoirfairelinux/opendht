@@ -34,28 +34,11 @@
 #include <restinio/all.hpp>
 #include <http_parser.h>
 #include <json/json.h>
+#include "http.h"
 
 #include <chrono>
 #include <vector>
 #include <functional>
-
-// nested declaration only in c++17
-namespace restinio { namespace client {
-
-    template <typename LAMBDA>
-    void do_with_socket(LAMBDA && lambda, const std::string & addr, std::uint16_t port,
-                        restinio::asio_ns::io_context &io_context);
-
-    void do_request(const std::string& request, const std::string& addr, std::uint16_t port,
-                    http_parser &parser, http_parser_settings &settings,
-                    std::shared_ptr<restinio::asio_ns::io_context> io_context = nullptr,
-                    const std::function<void(restinio::asio_ns::ip::tcp::socket&)> conn_cb = nullptr);
-
-    std::string create_http_request(const restinio::http_request_header_t header,
-                                    const restinio::http_header_fields_t header_fields,
-                                    const restinio::http_connection_header_t connection,
-                                    const std::string body);
-}}
 
 namespace restbed {
     class Request;
@@ -85,6 +68,11 @@ public:
     }
 
     virtual ~DhtProxyClient();
+
+    /**
+     * Get Asio I/O Context.
+     */
+    std::shared_ptr<asio::io_context> context();
 
     /**
      * Get the ID of the node.
@@ -336,6 +324,12 @@ private:
     uint16_t serverHostPort_;
     std::string pushClientId_;
 
+    /*
+     * ASIO I/O Context for sockets used in requests
+     */
+    std::shared_ptr<restinio::asio_ns::io_context> ctx_;
+    http::Client httpClient_ {serverHostIp_, serverHostPort_};
+
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
@@ -368,15 +362,6 @@ private:
     Sp<InfoState> infoState_;
     std::thread statusThread_;
     mutable std::mutex statusLock_;
-
-    /*
-     * ASIO I/O Context for sockets used in requests
-     * https://www.boost.org/doc/libs/develop/doc/html/boost_asio/reference/io_context.html
-     */
-    std::shared_ptr<restinio::asio_ns::io_context> io_context;
-    std::thread io_context_thread_;
-
-    std::vector<restinio::asio_ns::ip::tcp::socket*> listeners;
 
     Scheduler scheduler;
     /**

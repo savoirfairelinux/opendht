@@ -23,96 +23,6 @@
 #include "op_cache.h"
 #include "utils.h"
 
-namespace restinio { namespace client {
-
-template <typename LAMBDA>
-void do_with_socket(LAMBDA && lambda, const std::string &ip, std::uint16_t port,
-                    restinio::asio_ns::io_context &io_context){
-    restinio::asio_ns::ip::tcp::socket socket{io_context};
-    restinio::asio_ns::ip::tcp::resolver resolver{io_context};
-
-    auto addr = restinio::asio_ns::ip::address::from_string(ip);
-    auto addrType = addr.is_v4() ? restinio::asio_ns::ip::tcp::v4() : restinio::asio_ns::ip::tcp::v6();
-    restinio::asio_ns::ip::tcp::resolver::query query{addrType, addr.to_string(), std::to_string(port)};
-    restinio::asio_ns::ip::tcp::resolver::iterator iterator = resolver.resolve(query);
-
-    restinio::asio_ns::connect(socket, iterator);
-    lambda(socket);
-    socket.close();
-}
-
-void
-do_request(const std::string & request, const std::string &addr, std::uint16_t port,
-           http_parser &parser, http_parser_settings &settings,
-           std::shared_ptr<restinio::asio_ns::io_context> io_context,
-           const std::function<void(restinio::asio_ns::ip::tcp::socket&)> conn_cb){
-    if (!io_context){
-        printf("Client request without io_context, making one for the request\n");
-        io_context = std::make_shared<restinio::asio_ns::io_context>();
-    }
-    do_with_socket([&](auto & socket){
-        // callback with the active connection
-        if (conn_cb)
-            conn_cb(socket);
-        // write request
-        restinio::asio_ns::streambuf b;
-        std::ostream req_stream(&b);
-        req_stream << request;
-        restinio::asio_ns::write(socket, b);
-        // read response
-        http_parser_init(&parser, HTTP_RESPONSE);
-        restinio::asio_ns::error_code error;
-        restinio::asio_ns::streambuf response_stream;
-        while(restinio::asio_ns::read(socket, response_stream,
-                                      restinio::asio_ns::transfer_at_least(1), error)){
-            std::ostringstream sout;
-            sout << &response_stream;
-            //printf("Got server response:\n%s\n", sout.str().c_str());// DHT_LOG.w ?
-            http_parser_execute(&parser, &settings, sout.str().c_str(), sout.str().size());
-            if (HPE_OK != parser.http_errno && HPE_PAUSED != parser.http_errno){
-                auto err = HTTP_PARSER_ERRNO(&parser);
-                std::cerr << "Couldn't parse the response: " << http_errno_name(err) << std::endl;
-            }
-        }
-        if (!restinio::error_is_eof(error))
-            throw std::runtime_error{fmt::format("Client read error: {}", error)};
-    }, addr, port, *io_context);
-}
-
-std::string
-create_http_request(const restinio::http_request_header_t header,
-                    const restinio::http_header_fields_t header_fields,
-                    const restinio::http_connection_header_t connection,
-                    const std::string body){
-    std::stringstream request;
-    request << restinio::method_to_string(header.method()) << " " <<
-               header.request_target() << " " <<
-               "HTTP/" << header.http_major() << "." << header.http_minor() << "\r\n";
-    for (auto header_field: header_fields)
-        request << header_field.name() << ": " << header_field.value() << "\r\n";
-    std::string conn_str;
-    switch (connection){
-        case restinio::http_connection_header_t::keep_alive:
-            conn_str = "keep-alive";
-            break;
-        case restinio::http_connection_header_t::close:
-            conn_str = "close";
-            break;
-        case restinio::http_connection_header_t::upgrade:
-            throw std::invalid_argument("upgrade");
-            break;
-    }
-    request << "Connection: " << conn_str << "\r\n";
-    if (!body.empty()){
-        request << "Content-Length: " << body.size() << "\r\n\r\n";
-        request << body;
-    }
-    request << "\r\n";
-    return request.str();
-}
-
-}}
-
 namespace dht {
 
 struct DhtProxyClient::InfoState {
@@ -157,7 +67,7 @@ struct DhtProxyClient::ProxySearch {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l):
-    serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), io_context(new restinio::asio_ns::io_context())
+    serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), ctx_(new restinio::asio_ns::io_context())
 {
     auto hostAndPort = splitPort(serverHost_);
     this->serverHostIp_ = hostAndPort.first;
@@ -167,8 +77,11 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
     if (!serverHost_.empty())
         startProxy();
+}
 
-    io_context_thread_ = std::thread([this](){io_context->run();});
+std::shared_ptr<asio::io_context>
+DhtProxyClient::context(){
+    return ctx_;
 }
 
 void
@@ -197,8 +110,6 @@ DhtProxyClient::~DhtProxyClient()
         infoState_->cancel = true;
     if (statusThread_.joinable())
         statusThread_.join();
-    if (io_context_thread_.joinable())
-        io_context_thread_.join();
 }
 
 std::vector<Sp<Value>>
@@ -223,7 +134,7 @@ void
 DhtProxyClient::cancelAllOperations()
 {
     // for graceful finish, call reset() before
-    this->io_context->stop();
+    this->ctx_->stop();
 }
 
 void
@@ -328,7 +239,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     header.request_target("/" + key.toString());
     header.method(restinio::http_method_t::http_get);
     auto header_fields = this->initHeaderFields();
-    auto request = restinio::client::create_http_request(header, header_fields,
+    auto request = httpClient_.create_request(header, header_fields,
         restinio::http_connection_header_t::keep_alive, ""/*body*/);
     DHT_LOG.w(request.c_str());
 
@@ -389,8 +300,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         }
         return 0;
     };
-    restinio::client::do_request(request, serverHostIp_, serverHostPort_,
-                                 parser, settings, this->io_context);
+    //httpClient_.do_request(request, serverHostIp_, serverHostPort_,
+    //                             parser, settings, this->ctx_);
 }
 
 void
@@ -461,7 +372,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
     auto body = Json::writeString(wbuilder, json);
-    auto request = restinio::client::create_http_request(header, header_fields,
+    auto request = httpClient_.create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
     // TODO dhtlog.w
     printf("%s\n", request.c_str());
@@ -497,8 +408,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         }
         return 0;
     };
-    restinio::client::do_request(request, serverHostIp_, serverHostPort_,
-                                 parser, settings, this->io_context);
+    //do_request(request, serverHostIp_, serverHostPort_,
+    //                             parser, settings, this->ctx_);
 }
 
 /**
@@ -833,7 +744,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     if (method != ListenMethod::LISTEN)
         body = fillBody(method == ListenMethod::RESUBSCRIBE);
 #endif
-    auto request = restinio::client::create_http_request(header, headers, conn, body);
+    auto request = httpClient_.create_request(header, headers, conn, body);
     /*DHT_LOG.w*/printf(request.c_str());
 
     struct ListenContext {
@@ -896,8 +807,8 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         }
         return 0;
     };
-    restinio::client::do_request(request, serverHostIp_, serverHostPort_,
-                                 parser, settings, this->io_context);
+    //do_request(request, serverHostIp_, serverHostPort_,
+    //                             parser, settings, this->ctx_);
 }
 
 bool

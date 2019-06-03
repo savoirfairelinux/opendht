@@ -33,6 +33,7 @@
 #include <memory>
 #include <mutex>
 #include <restinio/all.hpp>
+#include "http.h"
 
 #ifdef OPENDHT_JSONCPP
 #include <json/json.h>
@@ -327,7 +328,6 @@ private:
      * @param clientId
      */
     void cancelPushListen(const std::string& pushToken, const InfoHash& key, const std::string& clientId);
-
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 

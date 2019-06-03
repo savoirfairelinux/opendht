@@ -51,7 +51,7 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer, std::shared_ptr<dht::Logger> logger)
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,const std::string& pushServer, std::shared_ptr<dht::Logger> logger)
 :  dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer)
 {
     if (not dht_)
@@ -576,14 +576,15 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 {
     if (pushServer_.empty())
         return;
-    http_parser_settings settings;
-    http_parser_settings_init(&settings);
-    settings.on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
+    http_parser_settings parser_s;
+    http_parser_settings_init(&parser_s);
+    parser_s.on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
         if (parser->status_code == 200)
             return 0;
         std::cerr << "Error in SendPushNotification status_code=" << parser->status_code << std::endl;
         return 1;
     };
+
     restinio::http_request_header_t header;
     header.request_target("/api/push");
     header.method(restinio::http_method_t::http_post);
@@ -615,16 +616,14 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     wbuilder["indentation"] = "";
     auto body = Json::writeString(wbuilder, content);
 
-    auto request = restinio::client::create_http_request(
-        header, header_fields, restinio::http_connection_header_t::close, body);
-
-    http_parser parser;
     auto hostAndPort = splitPort(pushServer_);
     uint16_t port = std::atoi(hostAndPort.second.c_str());
-    // if other functions use the client move into private member to share the same
-    //auto io_context = std::make_shared<restinio::asio_ns::io_context>();
-    //std::thread([io_context](){io_context->run();});
-    restinio::client::do_request(request, hostAndPort.first, port, parser, settings);
+    http::Client httpClient {hostAndPort.first, port};
+
+    auto request = httpClient.create_request(header, header_fields,
+        restinio::http_connection_header_t::close, body);
+    httpClient.post_request(request, parser_s);
+    httpClient.context().run();
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS

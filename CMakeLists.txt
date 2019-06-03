@@ -163,6 +163,7 @@ list (APPEND opendht_SOURCES
     src/network_utils.h
     src/network_utils.cpp
     src/thread_pool.cpp
+    src/http.cpp
 )
 
 list (APPEND opendht_HEADERS
@@ -188,6 +189,7 @@ list (APPEND opendht_HEADERS
     include/opendht/log_enable.h
     include/opendht/peer_discovery.h
     include/opendht/thread_pool.h
+    include/opendht/http.h
     include/opendht.h
 )
 
