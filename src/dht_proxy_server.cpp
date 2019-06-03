@@ -51,7 +51,7 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer, const Logger &logger)
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , const std::string& pushServer, std::shared_ptr<dht::Logger> logger)
 :  dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer)
 {
     if (not dht_)
@@ -69,7 +69,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port , 
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
-    server_thread = std::thread([this, port, &logger](){
+    server_thread = std::thread([this, port, logger](){
         using namespace std::chrono;
         auto maxThreads = std::thread::hardware_concurrency() - 1;
         auto restThreads = maxThreads > 1 ? maxThreads : 1;
