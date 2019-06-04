@@ -37,8 +37,9 @@ typedef SSIZE_T ssize_t;
 
 namespace dht {
 
+// Organization-local Scope multicast
 constexpr char MULTICAST_ADDRESS_IPV4[12] = "239.192.0.1";
-constexpr char MULTICAST_ADDRESS_IPV6[10] = "ff08::101"; // Site-local multicast
+constexpr char MULTICAST_ADDRESS_IPV6[10] = "ff08::101";
 
 
 class PeerDiscovery::DomainPeerDiscovery
