@@ -70,9 +70,9 @@ public:
     virtual ~DhtProxyClient();
 
     /**
-     * Get Asio I/O Context.
+     * Get Asio I/O Context from the http::Client instance.
      */
-    std::shared_ptr<asio::io_context> context();
+    asio::io_context& httpIOContext();
 
     /**
      * Get the ID of the node.
@@ -327,8 +327,7 @@ private:
     /*
      * ASIO I/O Context for sockets used in requests
      */
-    std::shared_ptr<restinio::asio_ns::io_context> ctx_;
-    http::Client httpClient_ {serverHostIp_, serverHostPort_};
+    http::Client httpClient_;
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};

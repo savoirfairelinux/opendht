@@ -67,35 +67,41 @@ struct DhtProxyClient::ProxySearch {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l):
-    serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), ctx_(new restinio::asio_ns::io_context())
+    serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
 {
     auto hostAndPort = splitPort(serverHost_);
-    this->serverHostIp_ = hostAndPort.first;
-    this->serverHostPort_ = std::atoi(hostAndPort.second.c_str());
+    serverHostIp_ = hostAndPort.first;
+    serverHostPort_ = std::atoi(hostAndPort.second.c_str());
 
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
+
     if (!serverHost_.empty())
         startProxy();
 }
 
-std::shared_ptr<asio::io_context>
-DhtProxyClient::context(){
-    return ctx_;
+asio::io_context&
+DhtProxyClient::httpIOContext(){
+    return httpClient_.io_context();
 }
 
 void
 DhtProxyClient::confirmProxy()
 {
-    if (serverHost_.empty()) return;
+    if (serverHost_.empty())
+        return;
     getConnectivityStatus();
 }
 
 void
 DhtProxyClient::startProxy()
 {
-    if (serverHost_.empty()) return;
+    if (serverHost_.empty())
+        return;
+
     DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
+    httpClient_.set_query_address(serverHostIp_, serverHostPort_);
+
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
     listenerRestart = std::make_shared<Scheduler::Job>(std::bind(&DhtProxyClient::restartListeners, this));
     loopSignal_();
@@ -133,8 +139,9 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
 void
 DhtProxyClient::cancelAllOperations()
 {
-    // for graceful finish, call reset() before
-    this->ctx_->stop();
+    auto &io_context = this->httpIOContext();
+    if (io_context.stopped())
+        io_context.stop();
 }
 
 void
@@ -253,11 +260,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     context->filter = w.empty() ? f : f.chain(w.getFilter());
     context->cb = cb; context->donecb = donecb;
 
-    http_parser parser;
-    parser.data = static_cast<void*>(context.get());
-    http_parser_settings settings;
-    http_parser_settings_init(&settings);
-    settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+    auto parser = std::make_shared<http_parser>();
+    http_parser_init(parser.get(), HTTP_RESPONSE);
+    parser->data = static_cast<void*>(context.get());
+
+    auto parser_s = std::make_shared<http_parser_settings>();
+    http_parser_settings_init(parser_s.get());
+    parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = reinterpret_cast<GetContext*>(parser->data);
         if (parser->status_code != 200){
             std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
@@ -265,7 +274,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         }
         return 0;
     };
-    settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = reinterpret_cast<GetContext*>(parser->data);
         try{
             Json::Value json;
@@ -289,7 +298,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         }
         return 0;
     };
-    settings.on_message_complete = [](http_parser * parser) -> int {
+    parser_s->on_message_complete = [](http_parser *parser) -> int {
         auto context = reinterpret_cast<GetContext*>(parser->data);
         try {
             if (context->donecb)
@@ -300,8 +309,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         }
         return 0;
     };
-    //httpClient_.do_request(request, serverHostIp_, serverHostPort_,
-    //                             parser, settings, this->ctx_);
+    httpClient_.post_request(request, parser, parser_s);
 }
 
 void
@@ -386,9 +394,9 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
 
     http_parser parser;
     parser.data = static_cast<void*>(context.get());
-    http_parser_settings settings;
-    http_parser_settings_init(&settings);
-    settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+    http_parser_settings parser_s;
+    http_parser_settings_init(&parser_s);
+    parser_s.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
         GetContext* context = reinterpret_cast<GetContext*>(parser->data);
         if (parser->status_code == 200){
             context->ok = true;
@@ -397,7 +405,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         }
         return 0;
     };
-    settings.on_message_complete = [](http_parser * parser) -> int {
+    parser_s.on_message_complete = [](http_parser * parser) -> int {
         auto context = reinterpret_cast<GetContext*>(parser->data);
         try {
             if (context->donecb)
@@ -409,7 +417,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         return 0;
     };
     //do_request(request, serverHostIp_, serverHostPort_,
-    //                             parser, settings, this->ctx_);
+    //                             parser, parser_s, this->ctx_);
 }
 
 /**
@@ -761,9 +769,9 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 
     http_parser parser;
     parser.data = static_cast<void*>(context.get());
-    http_parser_settings settings;
-    http_parser_settings_init(&settings);
-    settings.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+    http_parser_settings parser_s;
+    http_parser_settings_init(&parser_s);
+    parser_s.on_status = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = reinterpret_cast<ListenContext*>(parser->data);
         if (parser->status_code != 200){
             std::cerr << "Error in listen status_code=" << parser->status_code << std::endl;
@@ -771,7 +779,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         }
         return 0;
     };
-    settings.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s.on_body = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = reinterpret_cast<ListenContext*>(parser->data);
         try {
             Json::Value json;
@@ -808,7 +816,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         return 0;
     };
     //do_request(request, serverHostIp_, serverHostPort_,
-    //                             parser, settings, this->ctx_);
+    //                             parser, parser_s, this->ctx_);
 }
 
 bool

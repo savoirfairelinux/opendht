@@ -576,14 +576,6 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 {
     if (pushServer_.empty())
         return;
-    http_parser_settings parser_s;
-    http_parser_settings_init(&parser_s);
-    parser_s.on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
-        if (parser->status_code == 200)
-            return 0;
-        std::cerr << "Error in SendPushNotification status_code=" << parser->status_code << std::endl;
-        return 1;
-    };
 
     restinio::http_request_header_t header;
     header.request_target("/api/push");
@@ -620,10 +612,22 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     uint16_t port = std::atoi(hostAndPort.second.c_str());
     http::Client httpClient {hostAndPort.first, port};
 
+    auto parser = std::make_shared<http_parser>();
+    http_parser_init(parser.get(), HTTP_RESPONSE);
+
+    auto parser_s = std::make_shared<http_parser_settings>();
+    http_parser_settings_init(parser_s.get());
+    parser_s->on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
+        if (parser->status_code == 200)
+            return 0;
+        std::cerr << "Error in SendPushNotification status_code=" << parser->status_code << std::endl;
+        return 1;
+    };
+
     auto request = httpClient.create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
-    httpClient.post_request(request, parser_s);
-    httpClient.context().run();
+    httpClient.post_request(request, parser, parser_s);
+    httpClient.io_context().run();
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS

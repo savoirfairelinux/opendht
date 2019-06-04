@@ -27,51 +27,55 @@ namespace http {
 
 class Connection
 {
-    public:
-        Connection(const uint16_t id, asio::ip::tcp::socket socket);
-        ~Connection();
+public:
+    Connection(const uint16_t id, asio::ip::tcp::socket socket);
+    ~Connection();
 
-        uint16_t id();
-        void start(asio::ip::tcp::resolver::iterator &r_iter);
-        bool is_open();
-        std::string read(std::error_code& ec);
-        void write(std::string request, std::error_code& ec);
-        void close();
+    uint16_t id();
+    void start(asio::ip::tcp::resolver::iterator &r_iter);
+    bool is_open();
+    asio::ip::tcp::socket& get_socket();
+    std::string read(std::error_code& ec);
+    void write(std::string request, std::error_code& ec);
+    void close();
 
-    private:
-        uint16_t id_;
-        asio::ip::tcp::socket socket_;
+private:
+    uint16_t id_;
+    asio::ip::tcp::socket socket_;
 };
 
 using ResponseCallback = std::function<void(const std::string data)>;
 
 class Client
 {
-    public:
-        Client(std::string ip, std::uint16_t port);
+public:
+    Client() = default;
+    Client(std::string ip, uint16_t port);
 
-        asio::io_context& context();
+    asio::io_context& io_context();
 
-        asio::ip::tcp::resolver::query query();
+    void set_query_address(const std::string ip, const uint16_t port);
+    asio::ip::tcp::resolver::query build_query();
 
-        std::string create_request(const restinio::http_request_header_t header,
-                                   const restinio::http_header_fields_t header_fields,
-                                   const restinio::http_connection_header_t connection,
-                                   const std::string body);
+    std::string create_request(const restinio::http_request_header_t header,
+                               const restinio::http_header_fields_t header_fields,
+                               const restinio::http_connection_header_t connection,
+                               const std::string body);
 
+    void post_request(std::string request,
+                      std::shared_ptr<http_parser> parser = nullptr,
+                      std::shared_ptr<http_parser_settings> parser_s = nullptr);
 
-        void post_request(std::string request, http_parser_settings parser_s,
-                          const ResponseCallback respcb = nullptr);
+private:
+    void async_request(std::string request,
+                       std::shared_ptr<http_parser> parser = nullptr,
+                       std::shared_ptr<http_parser_settings> parser_s = nullptr);
 
-    private:
-        void async_request(std::string request, http_parser_settings parser_s,
-                           const ResponseCallback respcb = nullptr);
-
-        std::uint16_t port_;
-        asio::ip::address addr_;
-        asio::io_context ctx_;
-        asio::ip::tcp::resolver resolver_;
-        uint16_t connId_ {1};
+    uint16_t port_;
+    asio::ip::address addr_;
+    asio::io_context ctx_;
+    asio::ip::tcp::resolver resolver_ {ctx_};
+    uint16_t connId_ {1};
 };
 
 }
