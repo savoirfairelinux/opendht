@@ -41,6 +41,7 @@
 
 class opendht_logger_t
 {
+    // TODO control dynamicaly from node
     public:
         opendht_logger_t(std::shared_ptr<dht::Logger> logger = nullptr){
             if (logger)
@@ -80,6 +81,7 @@ using RestRouterTraits = restinio::traits_t<
     restinio::asio_timer_manager_t,
     opendht_logger_t,
     RestRouter>;
+using ServerSettings = restinio::run_on_thread_pool_settings_t<RestRouterTraits>;
 using RequestStatus = restinio::request_handling_status_t;
 using ResponseByParts = restinio::chunked_output_t;
 using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
@@ -334,9 +336,11 @@ private:
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
-    std::thread server_thread {};
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
+
+    restinio::http_server_t<RestRouterTraits> httpServer_;
+    std::thread httpServerThread_ {};
 
     std::mutex schedulerLock_;
     std::condition_variable schedulerCv_;
