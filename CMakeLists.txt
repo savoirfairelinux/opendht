@@ -109,9 +109,6 @@ endif ()
 if (Restinio_INCLUDE_DIR)
     include_directories (SYSTEM "${Restinio_INCLUDE_DIR}")
 endif ()
-if (Restbed_INCLUDE_DIR)
-    include_directories (SYSTEM "${Restbed_INCLUDE_DIR}")
-endif ()
 if (Jsoncpp_INCLUDE_DIRS)
     include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
 endif ()
@@ -266,7 +263,7 @@ if (OPENDHT_STATIC)
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht-static
-        PRIVATE  ${Restbed_LIBRARY} ${argon2_LIBRARIES}
+        PRIVATE  ${argon2_LIBRARIES}
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
@@ -288,7 +285,7 @@ if (OPENDHT_SHARED)
     endif ()
     target_link_libraries(opendht
         PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                ${Restbed_LIBRARY} ${Jsoncpp_LIBRARIES}
+                ${Jsoncpp_LIBRARIES}
                 ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)

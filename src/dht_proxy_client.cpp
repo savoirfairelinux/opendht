@@ -40,13 +40,13 @@ struct DhtProxyClient::Listener
     OpValueCache cache;
     ValueCallback cb;
     Value::Filter filter;
-    Sp<restbed::Request> req;
+    //Sp<restbed::Request> req;
     std::thread thread;
     unsigned callbackId;
     Sp<ListenState> state;
     Sp<Scheduler::Job> refreshJob;
-    Listener(OpValueCache&& c, const Sp<restbed::Request>& r, Value::Filter&& f)
-        : cache(std::move(c)), filter(std::move(f)),req(r) {}
+    Listener(OpValueCache&& c, /*const Sp<restbed::Request>& r*/ Value::Filter&& f)
+        : cache(std::move(c)), filter(std::move(f))/*,req(r)*/ {}
 };
 
 struct PermanentPut {
@@ -149,6 +149,7 @@ DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
     DHT_LOG.w("Cancelling all listeners for %zu searches", searches_.size());
+    /*
     for (auto& s: searches_) {
         s.second.ops.cancelAll([&](size_t token){
             auto l = s.second.listeners.find(token);
@@ -159,7 +160,7 @@ DhtProxyClient::cancelAllListeners()
                 l->second.state->cancel = true;
                 if (l->second.req) {
                     try {
-                        restbed::Http::close(l->second.req);
+                        //restbed::Http::close(l->second.req);
                     } catch (const std::exception& e) {
                         DHT_LOG.w("Error closing socket: %s", e.what());
                     }
@@ -170,6 +171,7 @@ DhtProxyClient::cancelAllListeners()
             s.second.listeners.erase(token);
         });
     }
+    */
 }
 
 void
@@ -505,6 +507,7 @@ DhtProxyClient::getProxyInfos()
     }
     statusThread_ = std::thread([this, serverHost, infoState]{
         try {
+        /*
             auto endpointStr = serverHost;
             auto protocol = std::string(proxy::HTTP_PROTO);
             auto protocolIdx = serverHost.find("://");
@@ -560,6 +563,7 @@ DhtProxyClient::getProxyInfos()
             for (auto& r : reqs)
                 r.get();
             reqs.clear();
+        */
         } catch (const std::exception& e) {
             DHT_LOG.e("Error sending proxy info request: %s", e.what());
         }
@@ -833,6 +837,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     listener.state->cancel = true;
     if (not deviceKey_.empty()) {
         // First, be sure to have a token
+        /*
         if (listener.thread.joinable()) {
             listener.thread.join();
         }
@@ -856,7 +861,9 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         } catch (const std::exception& e) {
             DHT_LOG.w(key, "[search %s] cancelListen: Http::async failed: %s", key.to_c_str(), e.what());
         }
+        */
     } else {
+            /*
         // Just stop the request
         if (listener.thread.joinable()) {
             // Close connection to stop listener
@@ -870,6 +877,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             }
             listener.thread.join();
         }
+        */
     }
     search->second.listeners.erase(it);
     DHT_LOG.d(key, "[search %s] cancelListen: %zu listener remaining", key.to_c_str(), search->second.listeners.size());
@@ -932,16 +940,19 @@ DhtProxyClient::restartListeners()
             auto& listener = l.second;
             if (auto state = listener.state)
                 state->cancel = true;
+            /*
             if (listener.req) {
                 try {
-                    restbed::Http::close(listener.req);
+                    //restbed::Http::close(listener.req);
                 } catch (const std::exception& e) {
                     DHT_LOG.w("Error closing socket: %s", e.what());
                 }
                 listener.req.reset();
             }
+            */
         }
     }
+    /*
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
@@ -963,6 +974,7 @@ DhtProxyClient::restartListeners()
             });
         }
     }
+    */
 }
 
 void
@@ -1057,12 +1069,13 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     scheduler.syncTime();
     DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
+    /*
     auto state = listener.state;
     if (listener.thread.joinable()) {
         state->cancel = true;
         if (listener.req) {
             try {
-                restbed::Http::close(listener.req);
+                //restbed::Http::close(listener.req);
             } catch (const std::exception& e) {
                 DHT_LOG.w("Error closing socket: %s", e.what());
             }
@@ -1072,6 +1085,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     }
     state->cancel = false;
     state->ok = true;
+
     auto req = std::make_shared<restbed::Request>(restbed::Uri {serverHost_ + "/" + key.toString()});
     req->set_method("SUBSCRIBE");
     listener.req = req;
@@ -1081,6 +1095,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     listener.thread = std::thread([this, req, vcb, filter, state]() {
         //sendListen(req, vcb, filter, state, ListenMethod::RESUBSCRIBE);
     });
+    */
 #else
     (void) key;
     (void) listener;

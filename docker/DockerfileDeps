@@ -2,13 +2,6 @@ FROM ubuntu:16.04
 MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 RUN apt-get update && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev  cython3 python3-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev python3-setuptools && apt-get clean
 
-# build restbed from sources
-RUN git clone --recursive https://github.com/corvusoft/restbed.git \
-	&& cd restbed && mkdir build && cd build \
-	&& cmake -DBUILD_TESTS=NO -DBUILD_EXAMPLES=NO -DBUILD_SSL=NO -DBUILD_SHARED=YES -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib .. \
-	&& make -j8 install \
-	&& cd .. && rm -rf restbed
-
 #build msgpack from source
 RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz \
 	&& tar -xzf msgpack-2.1.5.tar.gz \

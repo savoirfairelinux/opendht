@@ -142,8 +142,8 @@ AS_IF([test "x$have_jsoncpp" = "xyes"], [
 ])
 
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
-	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
-	LDFLAGS="${LDFLAGS} -lrestbed"
+	#AC_CHECK_LIB(<libname>, exit,, AC_MSG_ERROR([Missing <libname> files]))
+	#LDFLAGS="${LDFLAGS} -l<libname>"
 ])
 
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
