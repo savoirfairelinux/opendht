@@ -41,39 +41,38 @@
 
 class opendht_logger_t
 {
-    // TODO control dynamicaly from node
-    public:
-        opendht_logger_t(std::shared_ptr<dht::Logger> logger = nullptr){
-            if (logger)
-                m_logger = logger;
-        }
+public:
+    opendht_logger_t(std::shared_ptr<dht::Logger> logger = nullptr){
+        if (logger)
+            m_logger = logger;
+    }
 
-        template <typename Builder>
-        void trace(Builder && msg_builder){
-            if (m_logger)
-                m_logger->d("[restinio] %s", msg_builder().c_str());
-        }
+    template <typename Builder>
+    void trace(Builder && msg_builder){
+        if (m_logger)
+            m_logger->d("[restinio] %s", msg_builder().c_str());
+    }
 
-        template <typename Builder>
-        void info(Builder && msg_builder){
-            if (m_logger)
-                m_logger->d("[restinio] %s", msg_builder().c_str());
-        }
+    template <typename Builder>
+    void info(Builder && msg_builder){
+        if (m_logger)
+            m_logger->d("[restinio] %s", msg_builder().c_str());
+    }
 
-        template <typename Builder>
-        void warn(Builder && msg_builder){
-            if (m_logger)
-                m_logger->w("[restinio] %s", msg_builder().c_str());
-        }
+    template <typename Builder>
+    void warn(Builder && msg_builder){
+        if (m_logger)
+            m_logger->w("[restinio] %s", msg_builder().c_str());
+    }
 
-        template <typename Builder>
-        void error(Builder && msg_builder){
-            if (m_logger)
-                m_logger->e("[restinio] %s", msg_builder().c_str());
-        }
+    template <typename Builder>
+    void error(Builder && msg_builder){
+        if (m_logger)
+            m_logger->e("[restinio] %s", msg_builder().c_str());
+    }
 
-    private:
-        std::shared_ptr<dht::Logger> m_logger;
+private:
+    std::shared_ptr<dht::Logger> m_logger;
 };
 
 using RestRouter = restinio::router::express_router_t<>;
