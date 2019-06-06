@@ -50,7 +50,6 @@ struct DhtProxyServer::SearchPuts {
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
-
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,const std::string& pushServer, std::shared_ptr<dht::Logger> logger)
 :  dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer),
    httpServer_(restinio::own_io_context(), []( auto & settings ){})
@@ -208,21 +207,37 @@ DhtProxyServer::createRestRouter()
     using namespace std::placeholders;
     auto router = std::make_unique<RestRouter>();
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
+    // LEGACY STATS ROUTE
+    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_stats.raw_id()),
+                        "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
+    // }
     router->http_get("/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+    // LEGACY LISTEN ROUTE
+    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_listen.raw_id()),
+                        "/:hash", std::bind(&DhtProxyServer::listen, this, _1, _2));
+    // }
     router->http_get("/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    router->add_handler(restinio::http_method_t::http_subscribe,
+    router->add_handler(restinio::http_method_subscribe(),
                         "/:hash", std::bind(&DhtProxyServer::subscribe, this, _1, _2));
-    router->add_handler(restinio::http_method_t::http_unsubscribe,
+    router->add_handler(restinio::http_method_unsubscribe(),
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
+    // LEGACY SIGN ROUTE
+    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_sign.raw_id()),
+                        "/:hash", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
+    // }
     router->http_post("/:hash/sign", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
+    // LEGACY ENCRYPT ROUTE
+    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_encrypt.raw_id()),
+                        "/:hash", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
+    // }
     router->http_post("/:hash/encrypt", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
-    router->add_handler(restinio::http_method_t::http_options,
+    router->add_handler(restinio::http_method_options(),
                         "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
     router->http_get("/:hash/:value", std::bind(&DhtProxyServer::getFiltered, this, _1, _2));
     return router;
@@ -593,7 +608,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 
     restinio::http_request_header_t header;
     header.request_target("/api/push");
-    header.method(restinio::http_method_t::http_post);
+    header.method(restinio::http_method_post());
 
     restinio::http_header_fields_t header_fields;
     header_fields.append_field(restinio::http_field_t::host, pushServer_.c_str());

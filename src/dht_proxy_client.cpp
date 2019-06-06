@@ -247,7 +247,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
     restinio::http_request_header_t header;
     header.request_target("/" + key.toString());
-    header.method(restinio::http_method_t::http_get);
+    header.method(restinio::http_method_get());
     auto header_fields = this->initHeaderFields();
     auto request = httpClient_.create_request(header, header_fields,
         restinio::http_connection_header_t::keep_alive, ""/*body*/);
@@ -362,7 +362,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
     restinio::http_request_header_t header;
     header.request_target("/" + key.toString());
-    header.method(restinio::http_method_t::http_post);
+    header.method(restinio::http_method_post());
     auto header_fields = this->initHeaderFields();
 
     auto json = val->toJson();
@@ -703,12 +703,12 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         restinio::http_request_header_t header;
         if (deviceKey_.empty()){ // listen
             method = ListenMethod::LISTEN;
-            header.method(restinio::http_method_t::http_get);
+            header.method(restinio::http_method_get());
             header.request_target("/" + key.toString() + "/listen");
         }
         else {
             method = ListenMethod::SUBSCRIBE;
-            header.method(restinio::http_method_t::http_subscribe);
+            header.method(restinio::http_method_subscribe());
             header.request_target("/" + key.toString());
         }
         sendListen(header, /*vcb*/ cb, filter, state, method);

@@ -77,10 +77,13 @@ class opendht_logger_t
 };
 
 using RestRouter = restinio::router::express_router_t<>;
-using RestRouterTraits = restinio::traits_t<
-    restinio::asio_timer_manager_t,
-    opendht_logger_t,
-    RestRouter>;
+struct RestRouterTraits : public restinio::default_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+    using http_methods_mapper_t = http::custom_http_methods_t;
+    using logger_t = opendht_logger_t;
+    using request_handler_t = RestRouter;
+};
 using ServerSettings = restinio::run_on_thread_pool_settings_t<RestRouterTraits>;
 using RequestStatus = restinio::request_handling_status_t;
 using ResponseByParts = restinio::chunked_output_t;

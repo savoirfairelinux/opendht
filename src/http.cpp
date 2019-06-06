@@ -99,8 +99,7 @@ Client::create_request(const restinio::http_request_header_t header,
                        const std::string body){
     std::stringstream request;
     // first header
-    request << restinio::method_to_string(header.method()) << " " <<
-               header.request_target() << " " <<
+    request << header.method().c_str() << " " << header.request_target() << " " <<
                "HTTP/" << header.http_major() << "." << header.http_minor() << "\r\n";
     // other headers
     for (auto header_field: header_fields)
