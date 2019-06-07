@@ -105,7 +105,7 @@ void udpPipe(int fds[2])
 }
 #endif
 
-UdpSocket::UdpSocket(in_port_t port) {
+UdpSocket::UdpSocket(in_port_t port, const Logger& l) : logger(l) {
     SockAddr bind4;
     bind4.setFamily(AF_INET);
     bind4.setPort(port);
@@ -115,7 +115,8 @@ UdpSocket::UdpSocket(in_port_t port) {
     openSockets(bind4, bind6);
 }
 
-UdpSocket::UdpSocket(const SockAddr& bind4, const SockAddr& bind6) {
+UdpSocket::UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const Logger& l) : logger(l)
+{
     openSockets(bind4, bind6);
 }
 
@@ -151,9 +152,9 @@ UdpSocket::sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool r
 
     if (sendto(s, data, size, flags, dest.get(), dest.getLength()) == -1) {
         int err = errno;
-        std::cerr << "Can't send message to " << dest.toString() << ": " << strerror(err) << std::endl;
-        if (err == EPIPE) {
-            auto bind4 = std::move(bound4), bind6 = std::move(bound6); 
+        logger.d("Can't send message to %s: %s", dest.toString().c_str(), strerror(err));
+        if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
+            auto bind4 = std::move(bound4), bind6 = std::move(bound6);
             openSockets(bind4, bind6);
             return sendTo(dest, data, size, false);
         }
@@ -189,7 +190,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
         try {
             s4 = bindSocket(bind4, bound4);
         } catch (const DhtException& e) {
-            std::cerr << "Can't bind inet socket: " << e.what() << std::endl;
+            logger.e("Can't bind inet socket: %s", e.what());
         }
     }
 
@@ -199,7 +200,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
         try {
             s6 = bindSocket(bind6, bound6);
         } catch (const DhtException& e) {
-            std::cerr << "Can't bind inet6 socket: " << e.what() << std::endl;
+            logger.e("Can't bind inet6 socket: %s", e.what());
         }
     }
 #endif
@@ -225,8 +226,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                 int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
                 if (rc < 0) {
                     if (errno != EINTR) {
-                        perror("select");
-                        std::this_thread::sleep_for( std::chrono::seconds(1) );
+                        logger.e("Select error: %s", strerror(errno));
+                        std::this_thread::sleep_for(std::chrono::seconds(1));
                     }
                 }
 
@@ -240,7 +241,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
 
                     if (FD_ISSET(stop_readfd, &readfds)) {
                         if (recv(stop_readfd, (char*)buf.data(), buf.size(), 0) < 0) {
-                            std::cerr << "Got stop packet error: " << strerror(errno) << std::endl;
+                            logger.e("Got stop packet error: %s", strerror(errno));
                             break;
                         }
                     }
@@ -258,12 +259,33 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                         pkt->received = clock::now();
                         onReceived(std::move(pkt));
                     } else if (rc == -1) {
-                        std::cerr << "Error receiving packet: " << strerror(errno) << std::endl;
+                        logger.e("Error receiving packet: %s", strerror(errno));
+                        int err = errno;
+                        if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
+                            if (s4 >= 0) {
+                                close(s4);
+                                try {
+                                    s4 = bindSocket(bound4, bound4);
+                                } catch (const DhtException& e) {
+                                    logger.e("Can't bind inet socket: %s", e.what());
+                                }
+                            }
+                            if (s6 >= 0) {
+                                close(s6);
+                                try {
+                                    s6 = bindSocket(bound6, bound6);
+                                } catch (const DhtException& e) {
+                                    logger.e("Can't bind inet6 socket: %s", e.what());
+                                }
+                            }
+                            if (s4 < 0 && s6 < 0)
+                                break;
+                        }
                     }
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error in DHT networking thread: " << e.what() << std::endl;
+            logger.e("Error in UdpSocket rx thread: %s", e.what());
         }
         if (s4 >= 0)
             close(s4);
@@ -287,7 +309,7 @@ UdpSocket::stop()
     if (running.exchange(false)) {
         auto sfd = stopfd;
         if (sfd != -1 && write(sfd, "\0", 1) == -1) {
-            std::cerr << "can't write to stop fd" << std::endl;
+            logger.e("Can't write to stop fd");
         }
     }
 }

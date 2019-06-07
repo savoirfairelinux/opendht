@@ -21,6 +21,7 @@
 
 #include "sockaddr.h"
 #include "utils.h"
+#include "log_enable.h"
 
 #ifdef _WIN32
 #include <ws2tcpip.h>
@@ -84,14 +85,14 @@ private:
 
 class OPENDHT_PUBLIC UdpSocket : public DatagramSocket {
 public:
-    UdpSocket(in_port_t port);
-    UdpSocket(const SockAddr& bind4, const SockAddr& bind6);
+    UdpSocket(in_port_t port, const Logger& l = {});
+    UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const Logger& l = {});
     ~UdpSocket();
 
     int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) override;
 
     const SockAddr& getBound(sa_family_t family = AF_UNSPEC) const override {
-        return (family == AF_INET6) ? bound6 : bound4; 
+        return (family == AF_INET6) ? bound6 : bound4;
     }
 
     bool hasIPv4() const override { return s4 != -1; }
@@ -99,6 +100,7 @@ public:
 
     void stop() override;
 private:
+    Logger logger;
     int s4 {-1};
     int s6 {-1};
     int stopfd {-1};

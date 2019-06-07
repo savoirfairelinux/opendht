@@ -102,7 +102,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const Config& con
 {
     if (not running) {
         if (not context.sock)
-            context.sock.reset(new net::UdpSocket(local4, local6));
+            context.sock.reset(new net::UdpSocket(local4, local6, context.logger ? *context.logger : Logger{}));
         run(config, std::move(context));
     }
 }
