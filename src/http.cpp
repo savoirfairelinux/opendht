@@ -79,6 +79,10 @@ Client::io_context(){
 }
 
 void
+Client::set_logger(std::shared_ptr<dht::Logger> logger){
+    logger_ = logger;
+}
+void
 Client::set_query_address(const std::string ip, const uint16_t port){
     addr_ = asio::ip::address::from_string(ip);
     port_ = port;
@@ -100,7 +104,7 @@ Client::open_conn(){
         connId_,
         std::move(asio::ip::tcp::socket{ctx_})
     );
-    printf("[connection:%i] created\n", conn->id());
+    logger_->d("[connection:%i] created", conn->id());
     connId_++;
     return conn;
 }
@@ -169,29 +173,29 @@ Client::async_request(std::string request,
     resolver_.async_resolve(build_query(), [=](std::error_code ec,
                                                tcp::resolver::results_type res){
         if (ec or res.empty()){
-            printf("[connection:%i] error resolving\n", conn->id());
+            logger_->e("[connection:%i] error resolving", conn->id());
             conn->close();
             return;
         }
         for (auto da = res.begin(); da != res.end(); ++da){
-            printf("[connection:%i] resolved host=%s service=%s\n",
+            logger_->d("[connection:%i] resolved host=%s service=%s",
                     conn->id(), da->host_name().c_str(), da->service_name().c_str());
             conn->start(da);
             break;
         }
         if (!conn->is_open()){
-            printf("[connection:%i] error closed connection\n", conn->id());
+            logger_->e("[connection:%i] error closed connection", conn->id());
             return;
         }
         // send request
-        printf("[connection:%i] request write\n", conn->id());
+        logger_->d("[connection:%i] request write", conn->id());
         conn->write(request, ec);
         if (ec and ec != asio::error::eof){
-            printf("[connection:%i] error: %s\n", conn->id(), ec.message().c_str());
+            logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
             return;
         }
         // read response
-        printf("[connection:%i] response read\n", conn->id());
+        logger_->d("[connection:%i] response read", conn->id());
         asio::streambuf resp_s;
         auto& socket = conn->get_socket();
         asio::read_until(socket, resp_s, "\r\n\r\n");
@@ -205,14 +209,14 @@ Client::async_request(std::string request,
             // detect parsing errors
             if (HPE_OK != parser->http_errno && HPE_PAUSED != parser->http_errno){
                 auto err = HTTP_PARSER_ERRNO(parser.get());
-                printf("[connection:%i] error parsing: %s\n", conn->id(), http_errno_name(err));
+                logger_->e("[connection:%i] error parsing: %s",
+                            conn->id(), http_errno_name(err));
             }
         }
-        if (ec != asio::error::eof){
+        if (ec != asio::error::eof)
             throw std::runtime_error{fmt::format(
-                "[connection:{}] error parsing: {}\n", conn->id(), ec)};
-        }
-        printf("[connection:%i] request finished\n", conn->id());
+                "[connection:{}] error parsing: {}", conn->id(), ec)};
+        logger_->d("[connection:%i] request finished", conn->id());
     });
 }
 

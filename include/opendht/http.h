@@ -22,6 +22,7 @@
 #include <json/json.h>
 #include <http_parser.h>
 #include <restinio/all.hpp>
+#include <opendht/log.h>
 
 namespace http {
 
@@ -53,6 +54,7 @@ public:
     Client(std::string ip, uint16_t port);
 
     asio::io_context& io_context();
+    void set_logger(std::shared_ptr<dht::Logger> logger);
 
     void set_query_address(const std::string ip, const uint16_t port);
     asio::ip::tcp::resolver::query build_query();
@@ -80,6 +82,7 @@ private:
     asio::io_context ctx_;
     asio::ip::tcp::resolver resolver_ {ctx_};
     uint16_t connId_ {1};
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 /* Custom HTTP-methods for RESTinio > 0.5.0.

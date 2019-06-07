@@ -30,7 +30,6 @@
 #include "scheduler.h"
 #include "proxy.h"
 
-#include <restbed>
 #include <restinio/all.hpp>
 #include <http_parser.h>
 #include <json/json.h>
@@ -39,10 +38,6 @@
 #include <chrono>
 #include <vector>
 #include <functional>
-
-namespace restbed {
-    class Request;
-}
 
 namespace Json {
     class Value;
@@ -55,7 +50,9 @@ public:
 
     DhtProxyClient();
 
-    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "", const Logger& = {});
+    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost,
+                            const std::string& pushClientId = "",
+                            std::shared_ptr<dht::Logger> logger = nullptr);
 
     restinio::http_header_fields_t initHeaderFields();
 
@@ -394,6 +391,8 @@ private:
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
     std::atomic_bool isDestroying_ {false};
+
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 }

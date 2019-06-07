@@ -40,8 +40,7 @@ struct DhtProxyClient::Listener
     OpValueCache cache;
     ValueCallback cb;
     Value::Filter filter;
-    //Sp<restbed::Request> req;
-    std::thread thread;
+    //Sp<restbed::Request> req; // TODO store http::Connection
     unsigned callbackId;
     Sp<ListenState> state;
     Sp<Scheduler::Job> refreshJob;
@@ -66,12 +65,16 @@ struct DhtProxyClient::ProxySearch {
 
 DhtProxyClient::DhtProxyClient() {}
 
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost, const std::string& pushClientId, const Logger& l):
-    serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal)
+DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost,
+    const std::string &pushClientId, std::shared_ptr<dht::Logger> logger):
+        serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
 {
     auto hostAndPort = splitPort(serverHost_);
     serverHostIp_ = hostAndPort.first;
     serverHostPort_ = std::atoi(hostAndPort.second.c_str());
+
+    httpClient_.set_query_address(serverHostIp_, serverHostPort_);
+    httpClient_.set_logger(logger);
 
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
@@ -100,7 +103,6 @@ DhtProxyClient::startProxy()
         return;
 
     DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
-    httpClient_.set_query_address(serverHostIp_, serverHostPort_);
 
     nextProxyConfirmation = scheduler.add(scheduler.time(), std::bind(&DhtProxyClient::confirmProxy, this));
     listenerRestart = std::make_shared<Scheduler::Job>(std::bind(&DhtProxyClient::restartListeners, this));
@@ -656,7 +658,6 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     auto token = search.ops.listen(cb, query, filter, [this, key, filter](
                                    Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
         scheduler.syncTime();
-        //restbed::Uri uri(serverHost_ + "/" + key.toString() + "/listen");
         std::lock_guard<std::mutex> lock(searchLock_);
         auto search = searches_.find(key);
         if (search == searches_.end()) {
@@ -665,9 +666,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         }
         DHT_LOG.d("[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
-        //auto req = std::make_shared<restbed::Request>(uri);
         auto token = ++listenerToken_;
-
+        auto l = search->second.listeners.find(token);
         auto state = std::make_shared<ListenState>();
         /*
         l->second.state = state;
@@ -685,8 +685,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             }
             return l->second.cache.onValue(values, expired);
         };
-        //auto vcb = l->second.cb;
-        //l->second.req = req;
+        auto vcb = l->second.cb;
 
         if (not deviceKey_.empty()) {
             // Relaunch push listeners even if a timeout is not received (if the proxy crash for any reason)
@@ -716,7 +715,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             header.method(restinio::http_method_subscribe());
             header.request_target("/" + key.toString());
         }
-        sendListen(header, /*vcb*/ cb, filter, state, method);
+        sendListen(header, cb, filter, state, method);
         return token;
     });
     return token;
@@ -843,7 +842,6 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     auto& listener = it->second;
     listener.state->cancel = true;
     if (not deviceKey_.empty()) {
-        // First, be sure to have a token
         /*
         if (listener.thread.joinable()) {
             listener.thread.join();
