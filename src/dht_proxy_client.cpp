@@ -255,13 +255,17 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 
     struct GetContext {
         GetCallback cb;
-        DoneCallback donecb;
+        DoneCallbackSimple donecb; // wrapper
         Value::Filter filter;
         std::atomic_bool ok {false};
     };
     auto context = std::make_shared<GetContext>();
+    context->cb = cb;
+    // keeping context data alive
+    context->donecb = [context, donecb](bool ok){
+        return donecb(ok, {});
+    };
     context->filter = w.empty() ? f : f.chain(w.getFilter());
-    context->cb = cb; context->donecb = donecb;
 
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);
@@ -270,7 +274,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
     parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-        auto context = reinterpret_cast<GetContext*>(parser->data);
+        auto context = static_cast<GetContext*>(parser->data);
         if (parser->status_code != 200){
             std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
             context->ok = true;
@@ -278,13 +282,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         return 0;
     };
     parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
-        auto context = reinterpret_cast<GetContext*>(parser->data);
+        auto context = static_cast<GetContext*>(parser->data);
         try{
             Json::Value json;
             std::string err;
             Json::CharReaderBuilder rbuilder;
             auto body = std::string(at, length);
-            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+            auto* char_data = static_cast<const char*>(&body[0]);
             auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
                 context->ok = false;
@@ -302,10 +306,10 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         return 0;
     };
     parser_s->on_message_complete = [](http_parser *parser) -> int {
-        auto context = reinterpret_cast<GetContext*>(parser->data);
+        auto context = static_cast<GetContext*>(parser->data);
         try {
             if (context->donecb)
-                context->donecb(context->ok, {});
+                context->donecb(context->ok);
         } catch(const std::exception& e) {
             std::cerr << "Error in get parsing: " << e.what() << std::endl;
             return 1;
@@ -385,15 +389,17 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     auto body = Json::writeString(wbuilder, json);
     auto request = httpClient_.create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
-    // TODO dhtlog.w
-    printf("%s\n", request.c_str());
+    DHT_LOG.d("%s", request.c_str());
 
     struct GetContext {
-        DoneCallback donecb;
+        DoneCallbackSimple donecb; // wrapper
         std::atomic_bool ok {false};
     };
     auto context = std::make_shared<GetContext>();
-    context->donecb = cb;
+    // keeping context data alive
+    context->donecb = [context, cb](bool ok){
+        return cb(ok, {});
+    };
 
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);
@@ -402,7 +408,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
     parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-        GetContext* context = reinterpret_cast<GetContext*>(parser->data);
+        GetContext* context = static_cast<GetContext*>(parser->data);
         if (parser->status_code == 200){
             context->ok = true;
         } else {
@@ -411,10 +417,10 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         return 0;
     };
     parser_s->on_message_complete = [](http_parser * parser) -> int {
-        auto context = reinterpret_cast<GetContext*>(parser->data);
+        auto context = static_cast<GetContext*>(parser->data);
         try {
             if (context->donecb)
-                context->donecb(context->ok, {});
+                context->donecb(context->ok);
         } catch(const std::exception& e) {
             std::cerr << "Error in get parsing: " << e.what() << std::endl;
             return 1;
@@ -657,8 +663,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             DHT_LOG.e(key, "[search %s] listen: search not found", key.to_c_str());
             return 0;
         }
-        //DHT_LOG.d(key, "[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
-        printf("[search %s] sending %s\n", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
+        DHT_LOG.d("[search %s] sending %s", key.to_c_str(), deviceKey_.empty() ? "listen" : "subscribe");
 
         //auto req = std::make_shared<restbed::Request>(uri);
         auto token = ++listenerToken_;
@@ -757,17 +762,20 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         body = fillBody(method == ListenMethod::RESUBSCRIBE);
 #endif
     auto request = httpClient_.create_request(header, headers, conn, body);
-    /*DHT_LOG.w*/printf(request.c_str());
+    DHT_LOG.d(request.c_str());
 
     struct ListenContext {
         Logger *logger;
-        ValueCallback cb;
+        ValueCallback cb; // wrapper
         Value::Filter filter;
         std::shared_ptr<ListenState> state;
     };
     auto context = std::make_shared<ListenContext>();
     context->logger = &DHT_LOG;
-    context->cb = cb;
+    // keeping context data alive
+    context->cb = [context, cb](const std::vector<std::shared_ptr<Value>>& values, bool expired){
+        return cb(values, expired);
+    };
     context->state = state;
     context->filter = filter;
 
@@ -778,7 +786,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
     parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-        auto context = reinterpret_cast<ListenContext*>(parser->data);
+        auto context = static_cast<ListenContext*>(parser->data);
         if (parser->status_code != 200){
             std::cerr << "Error in listen status_code=" << parser->status_code << std::endl;
             context->state->ok = false;
@@ -786,13 +794,13 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         return 0;
     };
     parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
-        auto context = reinterpret_cast<ListenContext*>(parser->data);
+        auto context = static_cast<ListenContext*>(parser->data);
         try {
             Json::Value json;
             std::string err;
             Json::CharReaderBuilder rbuilder;
             auto body = std::string(at, length);
-            auto* char_data = reinterpret_cast<const char*>(&body[0]);
+            auto* char_data = static_cast<const char*>(&body[0]);
             auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
                 context->state->ok = false;
@@ -803,13 +811,12 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             }
             auto value = std::make_shared<Value>(json);
             auto expired = json.get("expired", Json::Value(false)).asBool();
-            std::cout << json << " : expired=" << expired << std::endl;
             if ((not context->filter or context->filter(*value)) and context->cb){
                 context->cb({value}, expired);
             }
         } catch(const std::exception& e) {
-            /*context->logger->d*/printf("Error in listen parsing: %s\n", e.what());
-            /*context->logger->w*/printf("Listen closed by the proxy server: %s\n", e.what());
+            context->logger->e("Error in listen parsing: %s", e.what());
+            context->logger->w("Listen closed by the proxy server: %s", e.what());
             context->state->ok = false;
             return 1;
         }
