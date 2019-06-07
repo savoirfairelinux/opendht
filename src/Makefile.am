@@ -28,7 +28,6 @@ libopendht_la_SOURCES  = \
         default_types.cpp \
         log.cpp \
         peer_discovery.cpp \
-        network_utils.h \
         network_utils.cpp \
         thread_pool.cpp
 
@@ -58,6 +57,7 @@ nobase_include_HEADERS = \
         ../include/opendht/log.h \
         ../include/opendht/log_enable.h \
         ../include/opendht/peer_discovery.h \
+        ../include/opendht/network_utils.h \
         ../include/opendht/rng.h \
         ../include/opendht/thread_pool.h
 
