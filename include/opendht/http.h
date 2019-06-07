@@ -57,6 +57,8 @@ public:
     void set_query_address(const std::string ip, const uint16_t port);
     asio::ip::tcp::resolver::query build_query();
 
+    std::shared_ptr<Connection> open_conn();
+
     std::string create_request(const restinio::http_request_header_t header,
                                const restinio::http_header_fields_t header_fields,
                                const restinio::http_connection_header_t connection,
@@ -64,12 +66,14 @@ public:
 
     void post_request(std::string request,
                       std::shared_ptr<http_parser> parser = nullptr,
-                      std::shared_ptr<http_parser_settings> parser_s = nullptr);
+                      std::shared_ptr<http_parser_settings> parser_s = nullptr,
+                      std::shared_ptr<Connection> conn = nullptr);
 
 private:
     void async_request(std::string request,
                        std::shared_ptr<http_parser> parser = nullptr,
-                       std::shared_ptr<http_parser_settings> parser_s = nullptr);
+                       std::shared_ptr<http_parser_settings> parser_s = nullptr,
+                       std::shared_ptr<Connection> conn = nullptr);
 
     uint16_t port_;
     asio::ip::address addr_;

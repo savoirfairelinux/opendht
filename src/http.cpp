@@ -92,6 +92,19 @@ Client::build_query(){
         addr_.to_string(), std::to_string(port_)};
 }
 
+
+std::shared_ptr<Connection>
+Client::open_conn(){
+    using namespace asio::ip;
+    auto conn = std::make_shared<Connection>(
+        connId_,
+        std::move(asio::ip::tcp::socket{ctx_})
+    );
+    printf("[connection:%i] created\n", conn->id());
+    connId_++;
+    return conn;
+}
+
 std::string
 Client::create_request(const restinio::http_request_header_t header,
                        const restinio::http_header_fields_t header_fields,
@@ -129,11 +142,13 @@ Client::create_request(const restinio::http_request_header_t header,
 }
 
 void
-Client::post_request(std::string request, std::shared_ptr<http_parser> parser,
-                     std::shared_ptr<http_parser_settings> parser_s){
+Client::post_request(std::string request,
+                     std::shared_ptr<http_parser> parser,
+                     std::shared_ptr<http_parser_settings> parser_s,
+                     std::shared_ptr<Connection> conn){
     // invoke the given handler and return immediately
-    asio::post(ctx_, [this, request, parser, parser_s](){
-        this->async_request(request, parser, parser_s);
+    asio::post(ctx_, [this, request, parser, parser_s, conn](){
+        this->async_request(request, parser, parser_s, conn);
         // execute at most one handler, it ensures that same func call
         // with different callback gets the priority on the io_context
         ctx_.run_one();
@@ -141,13 +156,14 @@ Client::post_request(std::string request, std::shared_ptr<http_parser> parser,
 }
 
 void
-Client::async_request(std::string request, std::shared_ptr<http_parser> parser,
-                      std::shared_ptr<http_parser_settings> parser_s){
+Client::async_request(std::string request,
+                      std::shared_ptr<http_parser> parser,
+                      std::shared_ptr<http_parser_settings> parser_s,
+                      std::shared_ptr<Connection> conn){
     using namespace asio::ip;
 
-    auto conn = std::make_shared<Connection>(connId_, std::move(tcp::socket{ctx_}));
-    printf("[connection:%i] created\n", conn->id());
-    connId_++;
+    if (!conn)
+        conn = open_conn();
 
     // resolve sometime in future
     resolver_.async_resolve(build_query(), [=](std::error_code ec,
