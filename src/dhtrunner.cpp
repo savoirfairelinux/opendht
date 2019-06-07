@@ -659,6 +659,20 @@ DhtRunner::startNetwork(const SockAddr sin4, const SockAddr sin6)
                         cv.notify_all();
                     } else if (rc == -1) {
                         std::cerr << "Error receiving packet: " << strerror(errno) << std::endl;
+                        if (s4 >= 0)
+                            close(s4);
+                        if (s6 >= 0)
+                            close(s6);
+                        try {
+                            s4 = bindSocket(bound4, bound4);
+                        } catch (const DhtException& e) {
+                            std::cerr << "Can't bind inet socket: " << e.what() << std::endl;
+                        }
+                        try {
+                            s6 = bindSocket(bound6, bound6);
+                        } catch (const DhtException& e) {
+                            std::cerr << "Can't bind inet6 socket: " << e.what() << std::endl;
+                        }
                     }
                 }
             }
