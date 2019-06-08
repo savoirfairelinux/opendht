@@ -1,22 +1,25 @@
-.TH DHTNODE 1 2016-07-29
-
+.TH DHTNODE 1 2019-06-08
 .SH NAME
 .B dhtnode
 - a simple OpenDHT command line node runner.
-
 .SH SYNOPSIS
-.B dhtnode [-h]
+.B dhtnode [\fB\-h\fP]
 
-.B dhtnode [-v [-l \fIlogfile\fP]] [-i [--save-identity \fIfile\fP]] [-d] [-n \fInetwork_id\fP] [-p \fIlocal_port\fP] [-b \fIbootstrap_host\fP[:\fIport\fP]] [--certificate \fIfile\fP] [--privkey \fIfile\fP] [--privkey-password \fIpassword\fP]
-
+.B dhtnode
+[\fB-v\fP [\fB\-l\fP \fIlogfile\fP] [\fB\-L\fP]]
+[\fB\-i\fP [\fB\-\-save\-identity\fP \fIfile\fP]]
+[\fB\-d\fP] [\fB\-s\fP]
+[\fB\-n\fP \fInetwork_id\fP]
+[\fB\-p\fP \fIlocal_port\fP]
+[\fB\-b\fP \fIbootstrap_host\fP[:\fIport\fP]]
+[\fB\-\-certificate\fP \fIfile\fP]
+[\fB\-\-privkey\fP \fIfile\fP]
+[\fB\-\-privkey\-password\fP \fIpassword\fP]
+[\fB\-\-proxyserver\fP \fIport\fP]
+[\fB\-\-proxyclient\fP \fIserver\fP]
 .SH DESCRIPTION
-
-This program runs a simple OpenDHT node in an interactive way. If you rather
-want to run the node in daemon mode, option \fB'-d'\fP is provided. When running
-in the interactive shell, you benefit from the readline capabilities for writing
-your commands such as command history. Here are the available commands in the
-interactive shell:
-
+Runs an OpenDHT node, with a CLI (default) or as a daemon (with \fB'-d'\fP or \fB'-s'\fP).
+Commands available in the interactive shell are:
 .EE
     h, help    Print this help message.
     q, quit    Quit the program.
@@ -37,75 +40,63 @@ interactive shell:
                           private key.
     e [key] [dest] [str]  Put string value at [key], encrypted for [dest] with
                           its public key (if found).
-
 .SH OPTIONS
-
 .TP
-\fB-h\fP
+\fB\-h\fP
 Prints some help.
-
 .TP
-\fB-v\fP
-Enable the verbose mode (log to stdout by default)
-
+\fB\-v\fP
+Enable the verbose mode (log to stdout/stderr by default)
 .TP
-\fB-l\fP \fIlog_file\fP
-Write log to file instead of stdout
-
+\fB\-l\fP \fIlog_file\fP
+Write log to file instead of stdout/stderr
 .TP
-\fB-L\fP
-Write log to syslog instead of stdout
-
+\fB\-L\fP
+Write log to syslog instead of stdout/stderr
 .TP
-\fB-i\fP
+\fB\-i\fP
 Generate cryptographic identity for the node.
-
 .TP
-\fB--save-identity\fP \fIfile\fP
+\fB\-\-save\-identity\fP \fIfile\fP
 Save generated identity (certificate and private key) to given file prefix.
-
 .TP
-\fB--certificate\fP \fIfile\fP
+\fB\-\-certificate\fP \fIfile\fP
 Load identity certificate from given file.
-
 .TP
-\fB--privkey\fP \fIfile\fP
+\fB\-\-privkey\fP \fIfile\fP
 Load identity private key from given file.
-
 .TP
-\fB--privkey-password\fP \fIpassword\fP
+\fB\-\-privkey\-password\fP \fIpassword\fP
 Password to use for private key encryption or decryption (optional).
-
 .TP
-\fB-d\fP
+\fB\-d\fP
 Run the program in daemon mode (will fork in the background).
-
 .TP
-\fB-s\fP
-Run the program in service mode (non-forking daemon).
-
+\fB\-s\fP
+Run the program in service mode (non\-forking daemon).
 .TP
-\fB-D\fP
+\fB\-D\fP
 Enables multicast automatic local peer discovery.
-
 .TP
-\fB-f\fP \fIfile\fP
+\fB\-f\fP \fIfile\fP
 Specify a file path to persist/load the node state.
-
 .TP
-\fB-n\fP \fInetwork_id\fP
+\fB\-n\fP \fInetwork_id\fP
 Specify the network id. This let you connect to distinct networks and prevents
 the merge of two different networks (available since OpenDHT v0.6.1).
-
 .TP
-\fB-p\fP \fIlocal_port\fP
+\fB\-p\fP \fIlocal_port\fP
 Use UDP port \fIlocal_port\fP for the program to bind to.
-
 .TP
-\fB-b\fP \fIbootstrap_host\fP[:\fIport\fP]
+\fB\-b\fP \fIbootstrap_host\fP[:\fIport\fP]
 The program needs to be given a node to connect to the network. You use this
 option to provide the ip address of that node.
-
+.TP
+\fB\-\-proxyserver\fP \fIlocal_port\fP
+Run a proxy server bound to this DHT node on HTTP port \fIlocal_port\fP
+.TP
+\fB\-\-proxyclient\fP \fIserver\fP
+Run this DHT node in proxy client mode, and connect to \fIserver\fP
 .SH AUTHORS
 .TP
 Program written by
