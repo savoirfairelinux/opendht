@@ -654,6 +654,7 @@ OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", co
 OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, const Identity& ca, bool is_ca);
 OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", const Identity& ca = {});
 
+OPENDHT_PUBLIC void saveIdentity(const Identity& id, const std::string& path, const std::string& privkey_password = {});
 
 /**
  * Performs SHA512, SHA256 or SHA1, depending on hash_length.

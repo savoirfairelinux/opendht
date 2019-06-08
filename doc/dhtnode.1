@@ -7,7 +7,7 @@
 .SH SYNOPSIS
 .B dhtnode [-h]
 
-.B dhtnode [-v [-l \fIlogfile\fP]] [-i] [-d] [-n \fInetwork_id\fP] [-p \fIlocal_port\fP] [-b \fIbootstrap_host\fP[:\fIport\fP]]
+.B dhtnode [-v [-l \fIlogfile\fP]] [-i [--save-identity \fIfile\fP]] [-d] [-n \fInetwork_id\fP] [-p \fIlocal_port\fP] [-b \fIbootstrap_host\fP[:\fIport\fP]] [--certificate \fIfile\fP] [--privkey \fIfile\fP] [--privkey-password \fIpassword\fP]
 
 .SH DESCRIPTION
 
@@ -59,6 +59,22 @@ Write log to syslog instead of stdout
 .TP
 \fB-i\fP
 Generate cryptographic identity for the node.
+
+.TP
+\fB--save-identity\fP \fIfile\fP
+Save generated identity (certificate and private key) to given file prefix.
+
+.TP
+\fB--certificate\fP \fIfile\fP
+Load identity certificate from given file.
+
+.TP
+\fB--privkey\fP \fIfile\fP
+Load identity private key from given file.
+
+.TP
+\fB--privkey-password\fP \fIpassword\fP
+Password to use for private key encryption or decryption (optional).
 
 .TP
 \fB-d\fP

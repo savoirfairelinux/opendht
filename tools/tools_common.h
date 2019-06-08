@@ -23,6 +23,7 @@
 
 #include <opendht.h>
 #include <opendht/log.h>
+#include <opendht/crypto.h>
 #ifndef WIN32_NATIVE
 #include <getopt.h>
 #include <readline/readline.h>
@@ -87,53 +88,79 @@ bool isInfoHash(const dht::InfoHash& h) {
     return true;
 }
 
+std::vector<uint8_t>
+loadFile(const std::string& path)
+{
+    std::vector<uint8_t> buffer;
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Can't read file: "+path);
+    file.seekg(0, std::ios::end);
+    auto size = file.tellg();
+    if (size > std::numeric_limits<unsigned>::max())
+        throw std::runtime_error("File is too big: "+path);
+    buffer.resize(size);
+    file.seekg(0, std::ios::beg);
+    if (!file.read((char*)buffer.data(), size))
+        throw std::runtime_error("Can't load file: "+path);
+    return buffer;
+}
+
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 
 struct dht_params {
     bool help {false}; // print help and exit
     bool version {false};
-    bool log {false};
-    std::string logfile {};
-    bool syslog {false};
-    in_port_t port {0};
-    dht::NetId network {0};
     bool generate_identity {false};
     bool daemonize {false};
     bool service {false};
     bool peer_discovery {false};
+    bool log {false};
+    bool syslog {false};
+    std::string logfile {};
     std::pair<std::string, std::string> bootstrap {};
+    dht::NetId network {0};
+    in_port_t port {0};
     in_port_t proxyserver {0};
     std::string proxyclient {};
     std::string pushserver {};
     std::string devicekey {};
     std::string persist_path {};
+    dht::crypto::Identity id {};
+    std::string privkey_pwd {};
+    std::string save_identity {};
 };
 
 static const constexpr struct option long_options[] = {
-   {"help",             no_argument      , nullptr, 'h'},
-   {"port",             required_argument, nullptr, 'p'},
-   {"net",              required_argument, nullptr, 'n'},
-   {"bootstrap",        required_argument, nullptr, 'b'},
-   {"identity",         no_argument      , nullptr, 'i'},
-   {"verbose",          no_argument      , nullptr, 'v'},
-   {"daemonize",        no_argument      , nullptr, 'd'},
-   {"service",          no_argument      , nullptr, 's'},
-   {"peer-discovery",   no_argument      , nullptr, 'D'},
-   {"persist",          required_argument, nullptr, 'f'},
-   {"logfile",          required_argument, nullptr, 'l'},
-   {"syslog",           no_argument      , nullptr, 'L'},
-   {"proxyserver",      required_argument, nullptr, 'S'},
-   {"proxyclient",      required_argument, nullptr, 'C'},
-   {"pushserver",       required_argument, nullptr, 'y'},
-   {"devicekey",        required_argument, nullptr, 'z'},
-   {"version",          no_argument      , nullptr, 'V'},
-   {nullptr,            0                , nullptr,  0}
+    {"help",             no_argument      , nullptr, 'h'},
+    {"port",             required_argument, nullptr, 'p'},
+    {"net",              required_argument, nullptr, 'n'},
+    {"bootstrap",        required_argument, nullptr, 'b'},
+    {"identity",         no_argument      , nullptr, 'i'},
+    {"save-identity",    required_argument, nullptr, 'I'},
+    {"certificate",      required_argument, nullptr, 'c'},
+    {"privkey",          required_argument, nullptr, 'k'},
+    {"privkey-password", required_argument, nullptr, 'm'},
+    {"verbose",          no_argument      , nullptr, 'v'},
+    {"daemonize",        no_argument      , nullptr, 'd'},
+    {"service",          no_argument      , nullptr, 's'},
+    {"peer-discovery",   no_argument      , nullptr, 'D'},
+    {"persist",          required_argument, nullptr, 'f'},
+    {"logfile",          required_argument, nullptr, 'l'},
+    {"syslog",           no_argument      , nullptr, 'L'},
+    {"proxyserver",      required_argument, nullptr, 'S'},
+    {"proxyclient",      required_argument, nullptr, 'C'},
+    {"pushserver",       required_argument, nullptr, 'y'},
+    {"devicekey",        required_argument, nullptr, 'z'},
+    {"version",          no_argument      , nullptr, 'V'},
+    {nullptr,            0                , nullptr,  0}
 };
 
 dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
+    std::string privkey;
     while ((opt = getopt_long(argc, argv, "hidsvDp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
@@ -201,10 +228,36 @@ parseArgs(int argc, char **argv) {
         case 's':
             params.service = true;
             break;
+        case 'c': {
+            try {
+                params.id.second = std::make_shared<dht::crypto::Certificate>(loadFile(optarg));
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::string("Error loading certificate: ") + e.what());
+            }
+            break;
+        }
+        case 'k':
+            privkey = optarg;
+            break;
+        case 'm':
+            params.privkey_pwd = optarg;
+            break;
+        case 'I':
+            params.save_identity = optarg;
+            break;
         default:
             break;
         }
     }
+    if (not privkey.empty()) {
+        try {
+            params.id.first = std::make_shared<dht::crypto::PrivateKey>(loadFile(privkey), params.privkey_pwd);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("Error loading private key: ") + e.what());
+        }
+    }
+    if (params.save_identity.empty())
+        params.privkey_pwd.clear();
     return params;
 }
 

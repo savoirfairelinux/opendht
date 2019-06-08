@@ -31,6 +31,7 @@ extern "C" {
 
 #include <random>
 #include <sstream>
+#include <fstream>
 #include <stdexcept>
 #include <cassert>
 
@@ -1041,6 +1042,21 @@ generateEcIdentity(const std::string& name, const Identity& ca, bool is_ca)
 Identity
 generateEcIdentity(const std::string& name, const Identity& ca) {
     return generateEcIdentity(name, ca, !ca.first || !ca.second);
+}
+
+void
+saveIdentity(const Identity& id, const std::string& path, const std::string& privkey_password)
+{
+    {
+        auto ca_key_data = id.first->serialize(privkey_password);
+        std::ofstream key_file(path + ".pem");
+        key_file.write((char*)ca_key_data.data(), ca_key_data.size());
+    }
+    {
+        auto ca_key_data = id.second->getPacked();
+        std::ofstream crt_file(path + ".crt");
+        crt_file.write((char*)ca_key_data.data(), ca_key_data.size());
+    }
 }
 
 void

@@ -56,7 +56,7 @@ void print_node_info(const std::shared_ptr<DhtRunner>& node, const dht_params& p
         std::cout << "port " << port4 << std::endl;
     else
         std::cout << "IPv4 port " << port4 << ", IPv6 port " << port6 << std::endl;
-    if (params.generate_identity)
+    if (params.id.first)
         std::cout << "Public key ID " << node->getId() << std::endl;
 }
 
@@ -395,7 +395,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             node->cancelPut(id, std::stoul(rem, nullptr, 16));
         }
         else if (op == "s") {
-            if (not params.generate_identity) {
+            if (not params.id.first) {
                 print_id_req();
                 continue;
             }
@@ -410,7 +410,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             });
         }
         else if (op == "e") {
-            if (not params.generate_identity) {
+            if (not params.id.first) {
                 print_id_req();
                 continue;
             }
@@ -510,17 +510,20 @@ main(int argc, char **argv)
     auto node = std::make_shared<DhtRunner>();
 
     try {
-        dht::crypto::Identity crt {};
-        if (params.generate_identity) {
+        if (not params.id.first and params.generate_identity) {
             auto ca_tmp = dht::crypto::generateEcIdentity("DHT Node CA");
-            crt = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+            params.id = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+            if (not params.save_identity.empty()) {
+                dht::crypto::saveIdentity(ca_tmp, params.save_identity + "_ca", params.privkey_pwd);
+                dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
+            }
         }
 
         dht::DhtRunner::Config config {};
         config.dht_config.node_config.network = params.network;
         config.dht_config.node_config.maintain_storage = false;
         config.dht_config.node_config.persist_path = params.persist_path;
-        config.dht_config.id = crt;
+        config.dht_config.id = params.id;
         config.threaded = true;
         config.proxy_server = params.proxyclient;
         config.push_node_id = "dhtnode";
