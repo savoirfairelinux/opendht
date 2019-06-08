@@ -33,7 +33,7 @@ g++ main.cpp -std=c++11 -lopendht -lgnutls
 ## Examples
 ### C++ example
 The `tools` directory includes simple example programs :
-* `dhtnode`, a command line tool, mostly used for debuging, allowing to perform operations supported by the library (get, put etc.) with text values.
+* `dhtnode`, a command line tool, allowing to run a DHT node and perform operations supported by the library (get, put etc.) with text values.
 * `dhtchat`, a very simple IM client working over the dht.
 
 Example program launching a DHT node, connecting to the network and performing some basic operations:
