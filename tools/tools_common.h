@@ -282,18 +282,17 @@ readLine(const char* prefix = PROMPT)
 struct ServiceRunner {
     bool wait() {
         std::unique_lock<std::mutex> lock(m);
-        cv.wait(lock, [&]{return terminate;});
+        cv.wait(lock, [&]{return terminate.load();});
         return !terminate;
     }
     void kill() {
-        std::lock_guard<std::mutex> lock(m);
         terminate = true;
         cv.notify_all();
     }
 private:
     std::condition_variable cv;
     std::mutex m;
-    bool terminate = false;
+    std::atomic_bool terminate {false};
 };
 
 ServiceRunner runner;
@@ -340,7 +339,5 @@ void daemonize()
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
-
-    setupSignals();
 #endif
 }

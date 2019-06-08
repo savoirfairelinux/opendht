@@ -503,9 +503,8 @@ main(int argc, char **argv)
 
     if (params.daemonize) {
         daemonize();
-    } else if (params.service) {
-        setupSignals();
     }
+    setupSignals();
 
     auto node = std::make_shared<DhtRunner>();
 
@@ -576,7 +575,7 @@ main(int argc, char **argv)
 
     std::condition_variable cv;
     std::mutex m;
-    std::atomic_bool done {false};
+    bool done {false};
 
     node->shutdown([&]()
     {
@@ -587,7 +586,7 @@ main(int argc, char **argv)
 
     // wait for shutdown
     std::unique_lock<std::mutex> lk(m);
-    cv.wait(lk, [&](){ return done.load(); });
+    cv.wait(lk, [&](){ return done; });
 
     node->join();
 #ifdef WIN32_NATIVE
