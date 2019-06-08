@@ -110,6 +110,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const Config& con
 void
 DhtRunner::run(const Config& config, Context&& context)
 {
+    std::lock_guard<std::mutex> lck(dht_mtx);
     if (running)
         return;
 
@@ -230,12 +231,14 @@ DhtRunner::shutdown(ShutdownCallback cb) {
 void
 DhtRunner::join()
 {
-    running = false;
-    cv.notify_all();
-    bootstrap_cv.notify_all();
-    if (peerDiscovery_) peerDiscovery_->stop();
+    if (peerDiscovery_)
+        peerDiscovery_->stop();
+
     {
         std::lock_guard<std::mutex> lck(dht_mtx);
+        running = false;
+        cv.notify_all();
+        bootstrap_cv.notify_all();
         if (dht_)
             if (auto sock = dht_->getSocket())
                 sock->stop();
@@ -243,6 +246,7 @@ DhtRunner::join()
 
     if (dht_thread.joinable())
         dht_thread.join();
+
     if (bootstrap_thread.joinable())
         bootstrap_thread.join();
 
