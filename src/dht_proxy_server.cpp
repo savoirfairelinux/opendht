@@ -78,10 +78,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,c
         settings.port(port);
         settings.protocol(restinio::asio_ns::ip::tcp::v6());
         settings.request_handler(this->createRestRouter());
-        // time limits
-        settings.read_next_http_message_timelimit(10s);
-        settings.write_http_response_timelimit(10s);
+        // time limits                                      // ~ 0.8 month
         std::chrono::milliseconds timeout_request(std::numeric_limits<int>::max());
+        settings.read_next_http_message_timelimit(timeout_request);
+        settings.write_http_response_timelimit(60s);
         settings.handle_request_timeout(timeout_request);
         // socket options
         settings.socket_options_setter([](auto & options){
