@@ -195,18 +195,22 @@ DhtRunner::run(const Config& config, Context&& context)
     }
     if (config.peer_publish) {
         msgpack::sbuffer sbuf_node;
-        // IPv4
         NodeInsertionPack adc;
         adc.net = netId;
-        adc.port = getBoundPort(AF_INET);
         adc.nodeId = dht_->getNodeId();
-        msgpack::pack(sbuf_node, adc);
-        peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        // IPv4
+        if (auto bound4 = dht_->getSocket()->getBound(AF_INET)) {
+            adc.port = bound4.getPort();
+            msgpack::pack(sbuf_node, adc);
+            peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        }
         // IPv6
-        adc.port = getBoundPort(AF_INET6);
-        sbuf_node.clear();
-        msgpack::pack(sbuf_node, adc);
-        peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        if (auto bound6 = dht_->getSocket()->getBound(AF_INET6)) {
+            adc.port = bound6.getPort();
+            sbuf_node.clear();
+            msgpack::pack(sbuf_node, adc);
+            peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
+        }
     }
 }
 
