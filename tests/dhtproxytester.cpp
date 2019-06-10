@@ -32,15 +32,15 @@ CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
 
 void
 DhtProxyTester::setUp() {
-    nodePeer.run(42222, {}, true);
+    nodePeer.run(0);
     nodeProxy = std::make_shared<dht::DhtRunner>();
     nodeClient = std::make_shared<dht::DhtRunner>();
 
-    nodeProxy->run(42232, {}, true);
+    nodeProxy->run(0);
     nodeProxy->bootstrap(nodePeer.getBound());
     server = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(nodeProxy, 8080));
 
-    nodeClient->run(42242, {}, true);
+    nodeClient->run(0);
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true);
@@ -65,12 +65,15 @@ DhtProxyTester::testGetPut() {
     dht::Value val {"Hey! It's been a long time. How have you been?"};
     auto val_data = val.data;
 
-    nodePeer.put(key, std::move(val), [&](bool) {
-        done = true;
-        cv.notify_all();
-    });
-    std::unique_lock<std::mutex> lk(cv_m);
-    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    {
+        std::unique_lock<std::mutex> lk(cv_m);
+        nodePeer.put(key, std::move(val), [&](bool) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            done = true;
+            cv.notify_all();
+        });
+        CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    }
 
     auto vals = nodeClient->get(key).get();
     CPPUNIT_ASSERT(not vals.empty());
@@ -79,33 +82,37 @@ DhtProxyTester::testGetPut() {
 
 void
 DhtProxyTester::testListen() {
-    bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;
     std::unique_lock<std::mutex> lk(cv_m);
     auto key = dht::InfoHash::get("GLaDOs");
+    bool done = false;
 
     // If a peer send a value, the listen operation from the client
     // should retrieve this value
     dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
     auto firstVal_data = firstVal.data;
-    nodePeer.put(key, std::move(firstVal), [&](bool) {
+    nodePeer.put(key, std::move(firstVal), [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(cv_m);
         done = true;
         cv.notify_all();
     });
-    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     done = false;
 
-    auto values = std::vector<dht::Blob>();
-    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool) {
-        for (const auto& value : v)
-            values.emplace_back(value->data);
-        done = true;
-        cv.notify_all();
+    std::vector<dht::Blob> values;
+    auto token = nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
+        if (not expired) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            for (const auto& value : v)
+                values.emplace_back(value->data);
+            done = true;
+            cv.notify_all();
+        }
         return true;
     });
-
-    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     done = false;
     // Here values should contains 1 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
@@ -116,7 +123,8 @@ DhtProxyTester::testListen() {
     dht::Value secondVal {"You're a monster"};
     auto secondVal_data = secondVal.data;
     nodePeer.put(key, std::move(secondVal));
-    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    nodeClient->cancelListen(key, std::move(token));
     // Here values should contains 2 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
     CPPUNIT_ASSERT(values.back() == secondVal_data);
@@ -137,10 +145,11 @@ DhtProxyTester::testResubscribeGetValues() {
     dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
     auto firstVal_data = firstVal.data;
     nodePeer.put(key, std::move(firstVal), [&](bool) {
+        std::lock_guard<std::mutex> lk(cv_m);
         done = true;
         cv.notify_all();
     });
-    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     done = false;
 
     // Send a first subscribe, the value is sent via a push notification
@@ -166,16 +175,15 @@ DhtProxyTester::testResubscribeGetValues() {
             for (const auto& value : v)
                 values.emplace_back(value->data);
             done = true;
+            cv.notify_all();
         }
-        cv.notify_all();
         return true;
     });
 
-    cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     auto token = ftoken.get();
     CPPUNIT_ASSERT(token);
     nodeClient->cancelListen(key, token);
-    done = false;
     // Here values should still contains 1 values
     CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
     CPPUNIT_ASSERT(firstVal_data == values.front());
