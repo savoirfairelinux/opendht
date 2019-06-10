@@ -50,9 +50,12 @@ struct DhtProxyServer::SearchPuts {
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,const std::string& pushServer, std::shared_ptr<dht::Logger> logger)
-:  dht_(dht), threadPool_(new ThreadPool(IO_THREADS_MAX)), pushServer_(pushServer),
-   httpServer_(restinio::own_io_context(), []( auto & settings ){})
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,
+                              const std::string& pushServer,
+                              std::shared_ptr<dht::Logger> logger):
+        dht_(dht), logger_(logger), threadPool_(new ThreadPool(IO_THREADS_MAX)),
+        pushServer_(pushServer),
+        httpServer_(restinio::own_io_context(), []( auto & settings ){})
 {
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
@@ -640,6 +643,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     auto hostAndPort = splitPort(pushServer_);
     uint16_t port = std::atoi(hostAndPort.second.c_str());
     http::Client httpClient {hostAndPort.first, port};
+    httpClient.set_logger(logger_);
 
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);

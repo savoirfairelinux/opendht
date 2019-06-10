@@ -339,6 +339,7 @@ private:
     using time_point = clock::time_point;
 
     std::shared_ptr<DhtRunner> dht_;
+    std::shared_ptr<dht::Logger> logger_;
     Json::StreamWriterBuilder jsonBuilder_;
 
     restinio::http_server_t<RestRouterTraits> httpServer_;
