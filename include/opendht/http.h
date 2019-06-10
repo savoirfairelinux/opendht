@@ -22,6 +22,7 @@
 #include <json/json.h>
 #include <http_parser.h>
 #include <restinio/all.hpp>
+#include <opendht.h>
 #include <opendht/log.h>
 
 namespace http {
@@ -45,7 +46,33 @@ private:
     asio::ip::tcp::socket socket_;
 };
 
-using ResponseCallback = std::function<void(const std::string data)>;
+struct SessionToHashToken {
+    dht::InfoHash hash;
+    restinio::connection_id_t connId;
+    std::future<size_t> token;
+};
+
+class ConnectionListener
+{
+public:
+    ConnectionListener();
+    ConnectionListener(std::vector<SessionToHashToken> *listeners,
+                       std::mutex *lock, std::shared_ptr<dht::Logger> logger);
+    ~ConnectionListener();
+
+    /**
+     * Connection state change used to handle Listeners disconnects.
+     * RESTinio >= 0.5.1 https://github.com/Stiffstream/restinio/issues/28
+     */
+    void state_changed(const restinio::connection_state::notice_t &notice) noexcept;
+
+private:
+    std::string to_str( restinio::connection_state::cause_t cause ) noexcept;
+
+    std::mutex *lock_;
+    std::vector<SessionToHashToken> *listeners_;
+    std::shared_ptr<dht::Logger> logger_;
+};
 
 class Client
 {

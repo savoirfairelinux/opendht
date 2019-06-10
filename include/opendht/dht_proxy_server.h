@@ -75,6 +75,12 @@ private:
     std::shared_ptr<dht::Logger> m_logger;
 };
 
+namespace http {
+    class ConnectionListener;
+    struct SessionToHashToken;
+    struct custom_http_methods_t;
+}
+
 using RestRouter = restinio::router::express_router_t<>;
 struct RestRouterTraits : public restinio::default_traits_t
 {
@@ -82,6 +88,7 @@ struct RestRouterTraits : public restinio::default_traits_t
     using http_methods_mapper_t = http::custom_http_methods_t;
     using logger_t = opendht_logger_t;
     using request_handler_t = RestRouter;
+    using connection_state_listener_t = http::ConnectionListener;
 };
 using ServerSettings = restinio::run_on_thread_pool_settings_t<RestRouterTraits>;
 using RequestStatus = restinio::request_handling_status_t;
@@ -111,7 +118,9 @@ public:
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "", std::shared_ptr<dht::Logger> logger = nullptr);
+    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000,
+                   const std::string& pushServer = "",
+                   std::shared_ptr<dht::Logger> logger = nullptr);
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;
@@ -342,7 +351,7 @@ private:
     std::shared_ptr<dht::Logger> logger_;
     Json::StreamWriterBuilder jsonBuilder_;
 
-    restinio::http_server_t<RestRouterTraits> httpServer_;
+    std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
     std::thread httpServerThread_ {};
 
     std::mutex schedulerLock_;
@@ -357,14 +366,10 @@ private:
 
     // Handle client quit for listen.
     std::thread listenThread_;
-    struct SessionToHashToken {
-        InfoHash hash;
-        restinio::connection_id_t connId;
-        std::future<size_t> token;
-    };
-    std::vector<SessionToHashToken> currentListeners_;
+    std::vector<http::SessionToHashToken> currentListeners_;
     std::mutex lockListener_;
     std::atomic_bool stopListeners {false};
+    std::shared_ptr<http::ConnectionListener> connListener_;
 
     struct PermanentPut;
     struct SearchPuts;

@@ -43,6 +43,10 @@ namespace Json {
     class Value;
 }
 
+namespace http {
+    class Client;
+}
+
 namespace dht {
 
 class OPENDHT_PUBLIC DhtProxyClient final : public DhtInterface {
@@ -323,7 +327,7 @@ private:
     /*
      * ASIO I/O Context for sockets used in requests
      */
-    http::Client httpClient_;
+    std::unique_ptr<http::Client> httpClient_;
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};

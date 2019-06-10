@@ -67,6 +67,54 @@ Connection::close(){
     socket_.close();
 }
 
+// connection listener
+
+ConnectionListener::ConnectionListener()
+{}
+
+ConnectionListener::ConnectionListener(std::vector<SessionToHashToken> *listeners,
+                                      std::mutex *lock, std::shared_ptr<dht::Logger> logger):
+        listeners_(listeners), lock_(lock), logger_(logger)
+{}
+
+ConnectionListener::~ConnectionListener()
+{}
+
+void
+ConnectionListener::state_changed(const restinio::connection_state::notice_t &notice) noexcept
+{
+    printf("[restinio] [connection:%li] listener is %s\n",
+            notice.connection_id(), to_str(notice.cause()).c_str());
+
+    std::lock_guard<std::mutex> lock(*lock_);
+    printf("[restinio] [connection:%li] searching listeners\n", notice.connection_id());
+
+    //auto listener = listeners_->begin();
+    //while (listener != currentListeners_->end()){
+    //}
+}
+
+std::string
+ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
+{
+    std::string result;
+    switch(cause)
+    {
+    case restinio::connection_state::cause_t::accepted:
+        result = "accepted";
+        break;
+    case restinio::connection_state::cause_t::closed:
+        result = "closed";
+        break;
+    case restinio::connection_state::cause_t::upgraded_to_websocket:
+        result = "upgraded";
+        break;
+    default:
+        result = "unknown";
+    }
+    return result;
+}
+
 // client
 
 Client::Client(const std::string ip, const uint16_t port){

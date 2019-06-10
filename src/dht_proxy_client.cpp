@@ -73,8 +73,8 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
     serverHostIp_ = hostAndPort.first;
     serverHostPort_ = std::atoi(hostAndPort.second.c_str());
 
-    httpClient_.set_query_address(serverHostIp_, serverHostPort_);
-    httpClient_.set_logger(logger);
+    httpClient_->set_query_address(serverHostIp_, serverHostPort_);
+    httpClient_->set_logger(logger);
 
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
@@ -85,7 +85,7 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
 
 asio::io_context&
 DhtProxyClient::httpIOContext(){
-    return httpClient_.io_context();
+    return httpClient_->io_context();
 }
 
 void
@@ -251,7 +251,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     header.request_target("/" + key.toString());
     header.method(restinio::http_method_get());
     auto header_fields = this->initHeaderFields();
-    auto request = httpClient_.create_request(header, header_fields,
+    auto request = httpClient_->create_request(header, header_fields,
         restinio::http_connection_header_t::keep_alive, ""/*body*/);
     DHT_LOG.w(request.c_str());
 
@@ -318,7 +318,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         }
         return 0;
     };
-    httpClient_.post_request(request, parser, parser_s);
+    httpClient_->post_request(request, parser, parser_s);
 }
 
 void
@@ -389,7 +389,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     wbuilder["commentStyle"] = "None";
     wbuilder["indentation"] = "";
     auto body = Json::writeString(wbuilder, json);
-    auto request = httpClient_.create_request(header, header_fields,
+    auto request = httpClient_->create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
     DHT_LOG.d("%s", request.c_str());
 
@@ -429,7 +429,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         }
         return 0;
     };
-    httpClient_.post_request(request, parser, parser_s);
+    httpClient_->post_request(request, parser, parser_s);
 }
 
 /**
@@ -760,7 +760,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     if (method != ListenMethod::LISTEN)
         body = fillBody(method == ListenMethod::RESUBSCRIBE);
 #endif
-    auto request = httpClient_.create_request(header, headers, conn, body);
+    auto request = httpClient_->create_request(header, headers, conn, body);
     DHT_LOG.d(request.c_str());
 
     struct ListenContext {
@@ -821,7 +821,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         }
         return 0;
     };
-    httpClient_.post_request(request, parser, parser_s);
+    httpClient_->post_request(request, parser, parser_s);
 }
 
 bool

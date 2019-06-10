@@ -50,12 +50,13 @@ struct DhtProxyServer::SearchPuts {
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,
+DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
                               const std::string& pushServer,
                               std::shared_ptr<dht::Logger> logger):
         dht_(dht), logger_(logger), threadPool_(new ThreadPool(IO_THREADS_MAX)),
-        pushServer_(pushServer),
-        httpServer_(restinio::own_io_context(), []( auto & settings ){})
+        connListener_(std::make_shared<http::ConnectionListener>(
+                        &currentListeners_, &lockListener_, logger)),
+        pushServer_(pushServer)
 {
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
@@ -90,15 +91,16 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port ,
         settings.socket_options_setter([](auto & options){
             options.set_option(asio::ip::tcp::no_delay{true});
         });
-        httpServer_ = restinio::http_server_t<RestRouterTraits>(
+        settings.connection_state_listener(connListener_);
+        httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
             restinio::own_io_context(), // requirement: each thread has its own
             std::forward<ServerSettings>(settings)
-        );
-        restinio::asio_ns::post(httpServer_.io_context(), [&]{
-            httpServer_.open_sync();
+        ));
+        restinio::asio_ns::post(httpServer_->io_context(), [&]{
+            httpServer_->open_sync();
         });
         try {
-            httpServer_.io_context().run();
+            httpServer_->io_context().run();
         }
         catch(const std::exception &ex){
             std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
@@ -164,7 +166,7 @@ DhtProxyServer::stop()
     schedulerCv_.notify_all();
 
     // stop its own io_context loop
-    httpServer_.close_sync();
+    httpServer_->close_sync();
 
     // listenThreads_ will stop because there is no more sessions
     if (listenThread_.joinable())
@@ -356,7 +358,7 @@ DhtProxyServer::listen(restinio::request_handle_t request,
         this->initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
-        SessionToHashToken listener;
+        http::SessionToHashToken listener;
         listener.hash = infoHash;
         listener.connId = request->connection_id();
         listener.token = dht_->listen(infoHash, [this, response]
