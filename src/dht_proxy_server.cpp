@@ -54,8 +54,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
                               const std::string& pushServer,
                               std::shared_ptr<dht::Logger> logger):
         dht_(dht), logger_(logger), threadPool_(new ThreadPool(IO_THREADS_MAX)),
+        lockListener_(std::make_shared<std::mutex>()),
+        listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
         connListener_(std::make_shared<http::ConnectionListener>(
-                      &currentListeners_, &lockListener_, logger)),
+                        dht, listeners_, lockListener_, logger)),
         pushServer_(pushServer)
 {
     if (not dht_)
@@ -105,22 +107,11 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
             std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
         }
     });
-    listenThread_ = std::thread([this](){
-        while (not httpServerThread_.joinable() and not stopListeners){
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-        while (httpServerThread_.joinable() and not stopListeners){
-            removeClosedListeners();
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-        // Remove last listeners
-        removeClosedListeners(false);
-    });
     schedulerThread_ = std::thread([this](){
-        while (not httpServerThread_.joinable() and not stopListeners){
+        while (not httpServerThread_.joinable()){
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
-        while (httpServerThread_.joinable()  and not stopListeners){
+        while (httpServerThread_.joinable()){
             std::unique_lock<std::mutex> lock(schedulerLock_);
             auto next = scheduler_.run();
             if (next == time_point::max())
@@ -130,11 +121,12 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
         }
     });
     dht->forwardAllMessages(true);
+
     printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this] {
-        if (stopListeners)
-            return;
+
         if (httpServerThread_.joinable())
             updateStats();
+
         // Refresh stats cache
         auto newInfo = dht_->getNodeInfo();
         {
@@ -157,11 +149,19 @@ DhtProxyServer::makeHttpServerSettings(const in_port_t port)
     auto maxThreads = std::thread::hardware_concurrency() - 1;
     auto restThreads = maxThreads > 1 ? maxThreads : 1;
     auto settings = ServerSettings(restThreads);
+    /**
+     * If max_pipelined_requests is greater than 1 then RESTinio will continue
+     * to read from the socket after parsing the first request.
+     * In that case, RESTinio can detect the disconnection
+     * and calls state listener as expected.
+     * https://github.com/Stiffstream/restinio/issues/28
+     */
+    settings.max_pipelined_requests(2);
     settings.logger(logger_);
     settings.port(port);
     settings.protocol(restinio::asio_ns::ip::tcp::v6());
     settings.request_handler(this->createRestRouter());
-    // time limits                                      // ~ 0.8 month
+    // time limits                                              // ~ 0.8 month
     std::chrono::milliseconds timeout_request(std::numeric_limits<int>::max());
     settings.read_next_http_message_timelimit(timeout_request);
     settings.write_http_response_timelimit(60s);
@@ -180,13 +180,9 @@ DhtProxyServer::stop()
     if (printStatsJob_)
         printStatsJob_->cancel();
 
-    std::lock_guard<std::mutex> lock(lockListener_);
-    auto listener = currentListeners_.begin();
-    while (listener != currentListeners_.end()){
-        ++listener;
-    }
-    stopListeners = true;
-    schedulerCv_.notify_all();
+    std::lock_guard<std::mutex> lock(*lockListener_);
+    for (auto it = listeners_->begin(); it != listeners_->end(); ++it)
+        it->second.response->done();
 
     logger_->d("[restinio] closing http server async operations");
     httpServer_->close_async([this]{
@@ -204,9 +200,6 @@ DhtProxyServer::stop()
     if (httpServerThread_.joinable())
         httpServerThread_.join();
 
-    // listenThreads_ will stop because there is no more sessions
-    if (listenThread_.joinable())
-        listenThread_.join();
     if (schedulerThread_.joinable())
         schedulerThread_.join();
 
@@ -225,7 +218,7 @@ DhtProxyServer::updateStats() const
     stats_.pushListenersCount = pushListeners_.size();
 #endif
     stats_.putCount = puts_.size();
-    stats_.listenCount = currentListeners_.size();
+    stats_.listenCount = listeners_->size();
     stats_.nodeInfo = nodeInfo_;
 }
 
@@ -391,10 +384,12 @@ DhtProxyServer::listen(restinio::request_handle_t request,
         this->initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
-        http::SessionToHashToken listener;
-        listener.hash = infoHash;
-        listener.connId = request->connection_id();
-        listener.token = dht_->listen(infoHash, [this, response]
+        std::lock_guard<std::mutex> lock(*lockListener_);
+        // save the listener to handle a disconnect
+        auto &session = (*listeners_)[request->connection_id()];
+        session.hash = infoHash;
+        session.response = response;
+        session.token = dht_->listen(infoHash, [this, response]
                 (const std::vector<dht::Sp<dht::Value>>& values, bool expired){
             for (const auto& value: values){
                 auto jsonVal = value->toJson();
@@ -406,8 +401,7 @@ DhtProxyServer::listen(restinio::request_handle_t request,
             }
             return true;
         });
-        std::lock_guard<std::mutex> lock(lockListener_);
-        currentListeners_.emplace_back(std::move(listener));
+
     } catch (const std::exception& e){
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
@@ -425,6 +419,7 @@ struct DhtProxyServer::Listener {
     Sp<Scheduler::Job> expireJob;
     Sp<Scheduler::Job> expireNotifyJob;
 };
+
 struct DhtProxyServer::PushListener {
     std::map<InfoHash, std::vector<Listener>> listeners;
     bool isAndroid;
@@ -472,8 +467,8 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 
         std::cout << "Subscribe " << infoHash << " client:" << clientId << std::endl;
         {
-            std::lock(schedulerLock_, lockListener_);
-            std::lock_guard<std::mutex> lk1(lockListener_, std::adopt_lock);
+            std::lock(schedulerLock_, *lockListener_);
+            std::lock_guard<std::mutex> lk1(*lockListener_, std::adopt_lock);
             std::lock_guard<std::mutex> lk2(schedulerLock_, std::adopt_lock);
             scheduler_.syncTime();
             auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
@@ -616,7 +611,7 @@ void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
 {
     std::cout << "cancelPushListen: " << key << " clientId:" << clientId << std::endl;
-    std::lock_guard<std::mutex> lock(lockListener_);
+    std::lock_guard<std::mutex> lock(*lockListener_);
     auto pushListener = pushListeners_.find(pushToken);
     if (pushListener == pushListeners_.end())
         return;
@@ -1016,24 +1011,6 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
         return response.done();
     }
     return restinio::request_handling_status_t::accepted;
-}
-
-void
-DhtProxyServer::removeClosedListeners(bool testSession)
-{
-    // clean useless listeners
-    std::lock_guard<std::mutex> lock(lockListener_);
-    auto listener = currentListeners_.begin();
-    while (listener != currentListeners_.end()){
-        auto cancel = dht_ and (not testSession); //TODO or !open(listener->connId)
-        if (cancel){
-            dht_->cancelListen(listener->hash, std::move(listener->token));
-            // Remove listener if unused
-            listener = currentListeners_.erase(listener);
-        } else {
-             ++listener;
-        }
-    }
 }
 
 }

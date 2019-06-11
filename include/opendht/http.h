@@ -46,18 +46,24 @@ private:
     asio::ip::tcp::socket socket_;
 };
 
-struct SessionToHashToken {
+/**
+ * Session value associated with a connection_id_t key.
+ */
+struct ListenerSession
+{
+    ListenerSession() = default;
     dht::InfoHash hash;
-    restinio::connection_id_t connId;
     std::future<size_t> token;
+    std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
 };
 
 class ConnectionListener
 {
 public:
     ConnectionListener();
-    ConnectionListener(std::vector<SessionToHashToken> *listeners,
-                       std::mutex *lock, std::shared_ptr<dht::Logger> logger);
+    ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
+        std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
+        std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger);
     ~ConnectionListener();
 
     /**
@@ -69,8 +75,10 @@ public:
 private:
     std::string to_str( restinio::connection_state::cause_t cause ) noexcept;
 
-    std::mutex *lock_;
-    std::vector<SessionToHashToken> *listeners_;
+    std::shared_ptr<dht::DhtRunner> dht_;
+    std::shared_ptr<std::mutex> lock_;
+    std::shared_ptr<std::map<restinio::connection_id_t,
+                             http::ListenerSession>> listeners_;
     std::shared_ptr<dht::Logger> logger_;
 };
 

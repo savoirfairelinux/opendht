@@ -77,7 +77,7 @@ private:
 
 namespace http {
     class ConnectionListener;
-    struct SessionToHashToken;
+    struct ListenerSession;
     struct custom_http_methods_t;
 }
 
@@ -302,12 +302,6 @@ private:
     RequestStatus options(restinio::request_handle_t request,
                            restinio::router::route_params_t params);
 
-    /**
-     * Remove finished listeners
-     * @param testSession if we remove the listener only if the session is closed
-     */
-    void removeClosedListeners(bool testSession = true);
-
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     /**
      * Subscribe to push notifications for an iOS or Android device.
@@ -369,11 +363,12 @@ private:
     mutable std::mutex statsMutex_;
     mutable NodeInfo nodeInfo_ {};
 
-    // Handle client quit for listen.
-    std::thread listenThread_;
-    std::vector<http::SessionToHashToken> currentListeners_;
-    std::mutex lockListener_;
-    std::atomic_bool stopListeners {false};
+    // Thread-safe access to listeners map.
+    std::shared_ptr<std::mutex> lockListener_;
+    // Shared with connection listener.
+    std::shared_ptr<std::map<restinio::connection_id_t,
+                             http::ListenerSession>> listeners_;
+    // Connection Listener observing conn state changes.
     std::shared_ptr<http::ConnectionListener> connListener_;
 
     struct PermanentPut;

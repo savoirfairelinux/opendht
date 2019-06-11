@@ -72,9 +72,10 @@ Connection::close(){
 ConnectionListener::ConnectionListener()
 {}
 
-ConnectionListener::ConnectionListener(std::vector<SessionToHashToken> *listeners,
-                                      std::mutex *lock, std::shared_ptr<dht::Logger> logger):
-        listeners_(listeners), lock_(lock), logger_(logger)
+ConnectionListener::ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
+    std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
+    std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger):
+        dht_(dht), listeners_(listeners), lock_(lock), logger_(logger)
 {}
 
 ConnectionListener::~ConnectionListener()
@@ -84,14 +85,18 @@ void
 ConnectionListener::state_changed(const restinio::connection_state::notice_t &notice) noexcept
 {
     std::lock_guard<std::mutex> lock(*lock_);
+    auto id = notice.connection_id();
+    auto cause = to_str(notice.cause());
 
-    printf("[restinio] [connection:%li] listener is %s\n",
-            notice.connection_id(), to_str(notice.cause()).c_str());
-    printf("[restinio] [connection:%li] searching listeners\n", notice.connection_id());
-
-    //auto listener = listeners_->begin();
-    //while (listener != currentListeners_->end()){
-    //}
+    if (listeners_->find(id) != listeners_->end()){
+        if (notice.cause() == restinio::connection_state::cause_t::closed){
+            logger_->d("[restinio] [connection:%li] cancelling listener", id);
+            dht_->cancelListen(listeners_->at(id).hash,
+                               std::move(listeners_->at(id).token));
+            listeners_->erase(id);
+            logger_->d("[restinio] %li listeners are connected", listeners_->size());
+        }
+    }
 }
 
 std::string
