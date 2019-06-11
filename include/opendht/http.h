@@ -120,6 +120,47 @@ private:
     std::shared_ptr<dht::Logger> logger_;
 };
 
+} // namespace http
+
+namespace restinio
+{
+
+class opendht_logger_t
+{
+public:
+    opendht_logger_t(std::shared_ptr<dht::Logger> logger = nullptr){
+        if (logger)
+            m_logger = logger;
+    }
+
+    template <typename Builder>
+    void trace(Builder && msg_builder){
+        if (m_logger)
+            m_logger->d("[restinio] %s", msg_builder().c_str());
+    }
+
+    template <typename Builder>
+    void info(Builder && msg_builder){
+        if (m_logger)
+            m_logger->d("[restinio] %s", msg_builder().c_str());
+    }
+
+    template <typename Builder>
+    void warn(Builder && msg_builder){
+        if (m_logger)
+            m_logger->w("[restinio] %s", msg_builder().c_str());
+    }
+
+    template <typename Builder>
+    void error(Builder && msg_builder){
+        if (m_logger)
+            m_logger->e("[restinio] %s", msg_builder().c_str());
+    }
+
+private:
+    std::shared_ptr<dht::Logger> m_logger;
+};
+
 /* Custom HTTP-methods for RESTinio > 0.5.0.
  * https://github.com/Stiffstream/restinio/issues/26
  */
@@ -144,4 +185,4 @@ struct custom_http_methods_t
 	}
 };
 
-}
+} // namespace restinio

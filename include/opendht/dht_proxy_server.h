@@ -39,45 +39,14 @@
 #include <json/json.h>
 #endif
 
-class opendht_logger_t
-{
-public:
-    opendht_logger_t(std::shared_ptr<dht::Logger> logger = nullptr){
-        if (logger)
-            m_logger = logger;
-    }
-
-    template <typename Builder>
-    void trace(Builder && msg_builder){
-        if (m_logger)
-            m_logger->d("[restinio] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void info(Builder && msg_builder){
-        if (m_logger)
-            m_logger->d("[restinio] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void warn(Builder && msg_builder){
-        if (m_logger)
-            m_logger->w("[restinio] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void error(Builder && msg_builder){
-        if (m_logger)
-            m_logger->e("[restinio] %s", msg_builder().c_str());
-    }
-
-private:
-    std::shared_ptr<dht::Logger> m_logger;
-};
-
 namespace http {
     class ConnectionListener;
     struct ListenerSession;
+    class opendht_logger_t;
+}
+
+namespace restinio {
+    class opendht_logger_t;
     struct custom_http_methods_t;
 }
 
@@ -85,8 +54,8 @@ using RestRouter = restinio::router::express_router_t<>;
 struct RestRouterTraits : public restinio::default_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
-    using http_methods_mapper_t = http::custom_http_methods_t;
-    using logger_t = opendht_logger_t;
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+    using logger_t = restinio::opendht_logger_t;
     using request_handler_t = RestRouter;
     using connection_state_listener_t = http::ConnectionListener;
 };
@@ -122,7 +91,8 @@ public:
      */
     DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000,
                    const std::string& pushServer = "",
-                   std::shared_ptr<dht::Logger> logger = nullptr);
+                   std::shared_ptr<dht::Logger> logger = nullptr,
+                   const unsigned int ioThreads = 1);
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;
@@ -189,7 +159,8 @@ private:
     template <typename HttpResponse>
     HttpResponse initHttpResponse(HttpResponse response) const;
 
-    ServerSettings makeHttpServerSettings(const in_port_t port);
+    ServerSettings makeHttpServerSettings(const in_port_t port,
+                                          const unsigned int n_threads = 1);
 
     std::unique_ptr<RestRouter> createRestRouter();
 

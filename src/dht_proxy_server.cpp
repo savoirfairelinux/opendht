@@ -52,7 +52,9 @@ constexpr const size_t IO_THREADS_MAX {64};
 
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
                               const std::string& pushServer,
-                              std::shared_ptr<dht::Logger> logger):
+                              std::shared_ptr<dht::Logger> logger,
+                              const unsigned int ioThreads
+):
         dht_(dht), logger_(logger), threadPool_(new ThreadPool(IO_THREADS_MAX)),
         lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
@@ -76,7 +78,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     jsonBuilder_["indentation"] = "";
 
     // build http server
-    auto settings = makeHttpServerSettings(port);
+    auto settings = makeHttpServerSettings(port, ioThreads);
     httpServerThreadPool_.reset(new IOContextThreadPool(settings.pool_size()));
 
     httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
@@ -86,17 +88,6 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     // run http server
     httpServerThread_ = std::thread([this](){
         try {
-            asio::signal_set break_signals{httpServer_->io_context(), SIGINT};
-            break_signals.async_wait([&](const asio::error_code &ec, int){
-                if (!ec){
-                    httpServer_->close_async([&]{
-                        httpServerThreadPool_->stop();
-                    },
-                    []( std::exception_ptr ex ){
-                        std::rethrow_exception( ex );
-                    });
-                }
-            });
             httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
                 std::rethrow_exception(ex);
             });
@@ -143,12 +134,14 @@ DhtProxyServer::~DhtProxyServer()
 }
 
 ServerSettings
-DhtProxyServer::makeHttpServerSettings(const in_port_t port)
+DhtProxyServer::makeHttpServerSettings(const in_port_t port, const unsigned int n_threads)
 {
     using namespace std::chrono;
     auto maxThreads = std::thread::hardware_concurrency() - 1;
-    auto restThreads = maxThreads > 1 ? maxThreads : 1;
-    auto settings = ServerSettings(restThreads);
+    auto ioThreads = n_threads < maxThreads ? n_threads : maxThreads;
+    auto settings = ServerSettings(ioThreads);
+    logger_->d("[restinio] io_context will run on %i thread%s",
+               ioThreads, (ioThreads == 1 ? "" : "s"));
     /**
      * If max_pipelined_requests is greater than 1 then RESTinio will continue
      * to read from the socket after parsing the first request.
@@ -239,14 +232,14 @@ DhtProxyServer::createRestRouter()
     auto router = std::make_unique<RestRouter>();
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
     // LEGACY STATS ROUTE
-    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_stats.raw_id()),
+    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_stats.raw_id()),
                         "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
     // }
     router->http_get("/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
     // LEGACY LISTEN ROUTE
-    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_listen.raw_id()),
+    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_listen.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::listen, this, _1, _2));
     // }
     router->http_get("/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
@@ -258,12 +251,12 @@ DhtProxyServer::createRestRouter()
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
     // LEGACY SIGN ROUTE
-    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_sign.raw_id()),
+    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_sign.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
     // }
     router->http_post("/:hash/sign", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
     // LEGACY ENCRYPT ROUTE
-    router->add_handler(http::custom_http_methods_t::from_nodejs(http::method_encrypt.raw_id()),
+    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_encrypt.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
     // }
     router->http_post("/:hash/encrypt", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
