@@ -83,10 +83,10 @@ ConnectionListener::~ConnectionListener()
 void
 ConnectionListener::state_changed(const restinio::connection_state::notice_t &notice) noexcept
 {
+    std::lock_guard<std::mutex> lock(*lock_);
+
     printf("[restinio] [connection:%li] listener is %s\n",
             notice.connection_id(), to_str(notice.cause()).c_str());
-
-    std::lock_guard<std::mutex> lock(*lock_);
     printf("[restinio] [connection:%li] searching listeners\n", notice.connection_id());
 
     //auto listener = listeners_->begin();

@@ -55,7 +55,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
                               std::shared_ptr<dht::Logger> logger):
         dht_(dht), logger_(logger), threadPool_(new ThreadPool(IO_THREADS_MAX)),
         connListener_(std::make_shared<http::ConnectionListener>(
-                        &currentListeners_, &lockListener_, logger)),
+                      &currentListeners_, &lockListener_, logger)),
         pushServer_(pushServer)
 {
     if (not dht_)
@@ -73,34 +73,33 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
-    httpServerThread_ = std::thread([this, port, logger](){
-        using namespace std::chrono;
-        auto maxThreads = std::thread::hardware_concurrency() - 1;
-        auto restThreads = maxThreads > 1 ? maxThreads : 1;
-        auto settings = ServerSettings(restThreads);
-        settings.logger(logger);
-        settings.port(port);
-        settings.protocol(restinio::asio_ns::ip::tcp::v6());
-        settings.request_handler(this->createRestRouter());
-        // time limits                                      // ~ 0.8 month
-        std::chrono::milliseconds timeout_request(std::numeric_limits<int>::max());
-        settings.read_next_http_message_timelimit(timeout_request);
-        settings.write_http_response_timelimit(60s);
-        settings.handle_request_timeout(timeout_request);
-        // socket options
-        settings.socket_options_setter([](auto & options){
-            options.set_option(asio::ip::tcp::no_delay{true});
-        });
-        settings.connection_state_listener(connListener_);
-        httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
-            restinio::own_io_context(), // requirement: each thread has its own
-            std::forward<ServerSettings>(settings)
-        ));
-        restinio::asio_ns::post(httpServer_->io_context(), [&]{
-            httpServer_->open_sync();
-        });
+    // build http server
+    auto settings = makeHttpServerSettings(port);
+    httpServerThreadPool_.reset(new IOContextThreadPool(settings.pool_size()));
+
+    httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
+        restinio::external_io_context(httpServerThreadPool_->io_context()),
+        std::forward<ServerSettings>(settings)
+    ));
+    // run http server
+    httpServerThread_ = std::thread([this](){
         try {
-            httpServer_->io_context().run();
+            asio::signal_set break_signals{httpServer_->io_context(), SIGINT};
+            break_signals.async_wait([&](const asio::error_code &ec, int){
+                if (!ec){
+                    httpServer_->close_async([&]{
+                        httpServerThreadPool_->stop();
+                    },
+                    []( std::exception_ptr ex ){
+                        std::rethrow_exception( ex );
+                    });
+                }
+            });
+            httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
+                std::rethrow_exception(ex);
+            });
+            httpServerThreadPool_->start();
+            httpServerThreadPool_->wait();
         }
         catch(const std::exception &ex){
             std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
@@ -151,6 +150,30 @@ DhtProxyServer::~DhtProxyServer()
     stop();
 }
 
+ServerSettings
+DhtProxyServer::makeHttpServerSettings(const in_port_t port)
+{
+    using namespace std::chrono;
+    auto maxThreads = std::thread::hardware_concurrency() - 1;
+    auto restThreads = maxThreads > 1 ? maxThreads : 1;
+    auto settings = ServerSettings(restThreads);
+    settings.logger(logger_);
+    settings.port(port);
+    settings.protocol(restinio::asio_ns::ip::tcp::v6());
+    settings.request_handler(this->createRestRouter());
+    // time limits                                      // ~ 0.8 month
+    std::chrono::milliseconds timeout_request(std::numeric_limits<int>::max());
+    settings.read_next_http_message_timelimit(timeout_request);
+    settings.write_http_response_timelimit(60s);
+    settings.handle_request_timeout(timeout_request);
+    // socket options
+    settings.socket_options_setter([](auto & options){
+        options.set_option(asio::ip::tcp::no_delay{true});
+    });
+    settings.connection_state_listener(connListener_);
+    return settings;
+}
+
 void
 DhtProxyServer::stop()
 {
@@ -165,17 +188,27 @@ DhtProxyServer::stop()
     stopListeners = true;
     schedulerCv_.notify_all();
 
-    // stop its own io_context loop
-    httpServer_->close_sync();
+    logger_->d("[restinio] closing http server async operations");
+    httpServer_->close_async([this]{
+        logger_->d("[restinio] stopping http server io_context thread pool");
+        httpServerThreadPool_->stop();
+    },
+    [this](std::exception_ptr eptr){
+        try {
+           std::rethrow_exception(eptr);
+        }
+        catch (const std::exception &ex){
+           logger_->e("[restinio] error closing http server async: %s", ex.what());
+        }
+    });
+    if (httpServerThread_.joinable())
+        httpServerThread_.join();
 
     // listenThreads_ will stop because there is no more sessions
     if (listenThread_.joinable())
         listenThread_.join();
     if (schedulerThread_.joinable())
         schedulerThread_.join();
-
-    if (httpServerThread_.joinable())
-        httpServerThread_.join();
 
     threadPool_->stop();
 }
@@ -448,15 +481,17 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             // One push listener per pushToken.infoHash.clientId
             auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
             auto listeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
+
+            // Existing Listener
             for (auto& listener: listeners->second){
                 if (listener.clientId == clientId){
                     scheduler_.edit(listener.expireJob, timeout);
                     scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
-
                     auto response = std::make_shared<ResponseByPartsBuilder>(
                         this->initHttpResponse(request->create_response<ResponseByParts>()));
                     response->flush();
 
+                    // No Refresh
                     if (!root.isMember("refresh") or !root["refresh"].asBool()){
                         dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
                             auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
@@ -475,16 +510,16 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                     return restinio::request_handling_status_t::accepted;
                 }
             }
+            // New listener
             listeners->second.emplace_back(Listener{});
             auto& listener = listeners->second.back();
             listener.clientId = clientId;
-
-            // New listener
             pushListener->second.isAndroid = isAndroid;
 
             // The listener is not found, so add it.
             listener.internalToken = dht_->listen(infoHash,
-                [this, infoHash, pushToken, isAndroid, clientId](const std::vector<std::shared_ptr<Value>>& values, bool expired){
+                [this, infoHash, pushToken, isAndroid, clientId]
+                (const std::vector<std::shared_ptr<Value>>& values, bool expired){
                     threadPool_->run([this, infoHash, pushToken, isAndroid, clientId, values, expired](){
                         // Build message content
                         Json::Value json;
