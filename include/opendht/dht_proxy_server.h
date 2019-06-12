@@ -73,7 +73,6 @@ namespace Json {
 namespace dht {
 
 class DhtRunner;
-class ThreadPool;
 
 /**
  * Describes the REST API
@@ -313,6 +312,8 @@ private:
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
+    void asyncPrintStats();
+
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
@@ -322,17 +323,11 @@ private:
 
     std::unique_ptr<IOContextThreadPool> httpServerThreadPool_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
-    std::thread httpServerThread_ {};
 
-    std::mutex schedulerLock_;
-    std::condition_variable schedulerCv_;
-    Scheduler scheduler_;
-    std::thread schedulerThread_;
-    std::unique_ptr<ThreadPool> threadPool_;
-
-    Sp<Scheduler::Job> printStatsJob_;
     mutable std::mutex statsMutex_;
+    mutable ServerStats stats_;
     mutable NodeInfo nodeInfo_ {};
+    std::unique_ptr<asio::steady_timer> printStatsTimer_;
 
     // Thread-safe access to listeners map.
     std::shared_ptr<std::mutex> lockListener_;
@@ -342,8 +337,17 @@ private:
     // Connection Listener observing conn state changes.
     std::shared_ptr<http::ConnectionListener> connListener_;
 
-    struct PermanentPut;
-    struct SearchPuts;
+    struct PermanentPut {
+        time_point expiration;
+        std::string pushToken;
+        std::string clientId;
+        std::unique_ptr<asio::steady_timer> expireTimer;
+        std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+    };
+    struct SearchPuts {
+        std::map<dht::Value::Id, PermanentPut> puts;
+    };
+    std::mutex lockSearchPuts_;
     std::map<InfoHash, SearchPuts> puts_;
 
     mutable std::atomic<size_t> requestNum_ {0};
@@ -351,11 +355,16 @@ private:
 
     const std::string pushServer_;
 
-    mutable ServerStats stats_;
-
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    struct Listener;
-    struct PushListener;
+    struct Listener {
+        std::string clientId;
+        std::future<size_t> internalToken;
+        std::unique_ptr<asio::steady_timer> expireTimer;
+        std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+    };
+    struct PushListener {
+        std::map<InfoHash, std::vector<Listener>> listeners;
+    };
     std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
     proxy::ListenToken tokenPushNotif_ {0};

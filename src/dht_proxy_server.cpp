@@ -36,17 +36,6 @@ using namespace std::placeholders;
 
 namespace dht {
 
-struct DhtProxyServer::PermanentPut {
-    time_point expiration;
-    std::string pushToken;
-    std::string clientId;
-    Sp<Scheduler::Job> expireJob;
-    Sp<Scheduler::Job> expireNotifyJob;
-};
-struct DhtProxyServer::SearchPuts {
-    std::map<dht::Value::Id, PermanentPut> puts;
-};
-
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 constexpr const size_t IO_THREADS_MAX {64};
 
@@ -55,8 +44,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
                               std::shared_ptr<dht::Logger> logger,
                               const unsigned int ioThreads
 ):
-        dht_(dht), logger_(logger), threadPool_(new ThreadPool(IO_THREADS_MAX)),
-        lockListener_(std::make_shared<std::mutex>()),
+        dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
         connListener_(std::make_shared<http::ConnectionListener>(
                         dht, listeners_, lockListener_, logger)),
@@ -86,46 +74,20 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
         std::forward<ServerSettings>(settings)
     ));
     // run http server
-    httpServerThread_ = std::thread([this](){
-        try {
-            httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
-                std::rethrow_exception(ex);
-            });
-            httpServerThreadPool_->start();
-            httpServerThreadPool_->wait();
-        }
-        catch(const std::exception &ex){
-            std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
-        }
-    });
-    schedulerThread_ = std::thread([this](){
-        while (not httpServerThread_.joinable()){
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-        while (httpServerThread_.joinable()){
-            std::unique_lock<std::mutex> lock(schedulerLock_);
-            auto next = scheduler_.run();
-            if (next == time_point::max())
-                schedulerCv_.wait(lock);
-            else
-                schedulerCv_.wait_until(lock, next);
-        }
-    });
+    try {
+        httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
+            std::rethrow_exception(ex);
+        });
+        httpServerThreadPool_->start();
+    }
+    catch(const std::exception &ex){
+        std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
+    }
     dht->forwardAllMessages(true);
 
-    printStatsJob_ = scheduler_.add(scheduler_.time() + PRINT_STATS_PERIOD, [this] {
-
-        if (httpServerThread_.joinable())
-            updateStats();
-
-        // Refresh stats cache
-        auto newInfo = dht_->getNodeInfo();
-        {
-            std::lock_guard<std::mutex> lck(statsMutex_);
-            nodeInfo_ = std::move(newInfo);
-        }
-        scheduler_.edit(printStatsJob_, scheduler_.time() + PRINT_STATS_PERIOD);
-    });
+    printStatsTimer_ = std::make_unique<asio::steady_timer>(
+        httpServer_->io_context(), PRINT_STATS_PERIOD);
+    printStatsTimer_->async_wait(std::bind(&DhtProxyServer::asyncPrintStats, this));
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -170,13 +132,6 @@ DhtProxyServer::makeHttpServerSettings(const in_port_t port, const unsigned int 
 void
 DhtProxyServer::stop()
 {
-    if (printStatsJob_)
-        printStatsJob_->cancel();
-
-    std::lock_guard<std::mutex> lock(*lockListener_);
-    for (auto it = listeners_->begin(); it != listeners_->end(); ++it)
-        it->second.response->done();
-
     logger_->d("[restinio] closing http server async operations");
     httpServer_->close_async([this]{
         logger_->d("[restinio] stopping http server io_context thread pool");
@@ -190,13 +145,6 @@ DhtProxyServer::stop()
            logger_->e("[restinio] error closing http server async: %s", ex.what());
         }
     });
-    if (httpServerThread_.joinable())
-        httpServerThread_.join();
-
-    if (schedulerThread_.joinable())
-        schedulerThread_.join();
-
-    threadPool_->stop();
 }
 
 void
@@ -213,6 +161,26 @@ DhtProxyServer::updateStats() const
     stats_.putCount = puts_.size();
     stats_.listenCount = listeners_->size();
     stats_.nodeInfo = nodeInfo_;
+}
+
+void
+DhtProxyServer::asyncPrintStats()
+{
+    if (httpServer_->io_context().stopped())
+        return;
+
+    if (dht_){
+        updateStats();
+        // Refresh stats cache
+        auto newInfo = dht_->getNodeInfo();
+        std::lock_guard<std::mutex> lck(statsMutex_);
+        nodeInfo_ = std::move(newInfo);
+        auto json = nodeInfo_.toJson();
+        auto str = Json::writeString(jsonBuilder_, json);
+        logger_->d("[stats] %s", str.c_str());
+    }
+    printStatsTimer_->expires_at(printStatsTimer_->expiry() + PRINT_STATS_PERIOD);
+    printStatsTimer_->async_wait(std::bind(&DhtProxyServer::asyncPrintStats, this));
 }
 
 template <typename HttpResponse>
@@ -406,18 +374,6 @@ DhtProxyServer::listen(restinio::request_handle_t request,
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
 
-struct DhtProxyServer::Listener {
-    std::string clientId;
-    std::future<size_t> internalToken;
-    Sp<Scheduler::Job> expireJob;
-    Sp<Scheduler::Job> expireNotifyJob;
-};
-
-struct DhtProxyServer::PushListener {
-    std::map<InfoHash, std::vector<Listener>> listeners;
-    bool isAndroid;
-};
-
 RequestStatus
 DhtProxyServer::subscribe(restinio::request_handle_t request,
                           restinio::router::route_params_t params)
@@ -434,7 +390,6 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         response.set_body(this->RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
-
     try {
         std::string err;
         Json::Value root;
@@ -458,94 +413,96 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto isAndroid = platform == "android";
         auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
-        std::cout << "Subscribe " << infoHash << " client:" << clientId << std::endl;
-        {
-            std::lock(schedulerLock_, *lockListener_);
-            std::lock_guard<std::mutex> lk1(*lockListener_, std::adopt_lock);
-            std::lock_guard<std::mutex> lk2(schedulerLock_, std::adopt_lock);
-            scheduler_.syncTime();
-            auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
-            // Check if listener is already present and refresh timeout if launched
-            // One push listener per pushToken.infoHash.clientId
-            auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
-            auto listeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
+        logger_->w("[subscribe] %s client: %s", infoHash.toString().c_str(), clientId.c_str());
+        // ================ Search for existing listener ===================
+        // start the timer
+        auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
+        std::lock_guard<std::mutex> lock(lockPushListeners_);
 
-            // Existing Listener
-            for (auto& listener: listeners->second){
-                if (listener.clientId == clientId){
-                    scheduler_.edit(listener.expireJob, timeout);
-                    scheduler_.edit(listener.expireNotifyJob, timeout - proxy::OP_MARGIN);
-                    auto response = std::make_shared<ResponseByPartsBuilder>(
-                        this->initHttpResponse(request->create_response<ResponseByParts>()));
-                    response->flush();
+        // Insert new or return existing push listeners of a token
+        auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
+        auto pushListeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
 
-                    // No Refresh
-                    if (!root.isMember("refresh") or !root["refresh"].asBool()){
-                        dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
-                            auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-                            response->append_chunk(output);
-                            response->flush();
-                            return true;
-                        },
-                        [response] (bool /*ok*/){
-                            response->done();
-                        });
-                    } else {
-                        response->append_chunk("{}\n");
+        for (auto &listener: pushListeners->second){
+            logger_->w("[subscribe] found client_id: %s", listener.clientId.c_str());
+            // Found -> Resubscribe
+            if (listener.clientId == clientId){
+                // Reset timers
+                listener.expireTimer->expires_at(timeout);
+                listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
+                // Send response header
+                auto response = std::make_shared<ResponseByPartsBuilder>(
+                    this->initHttpResponse(request->create_response<ResponseByParts>()));
+                response->flush();
+                // No Refresh
+                if (!root.isMember("refresh") or !root["refresh"].asBool()){
+                    dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+                        auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
+                        response->append_chunk(output);
+                        response->flush();
+                        return true;
+                    },
+                    [response] (bool){
                         response->done();
-                    }
-                    schedulerCv_.notify_one();
-                    return restinio::request_handling_status_t::accepted;
-                }
-            }
-            // New listener
-            listeners->second.emplace_back(Listener{});
-            auto& listener = listeners->second.back();
-            listener.clientId = clientId;
-            pushListener->second.isAndroid = isAndroid;
-
-            // The listener is not found, so add it.
-            listener.internalToken = dht_->listen(infoHash,
-                [this, infoHash, pushToken, isAndroid, clientId]
-                (const std::vector<std::shared_ptr<Value>>& values, bool expired){
-                    threadPool_->run([this, infoHash, pushToken, isAndroid, clientId, values, expired](){
-                        // Build message content
-                        Json::Value json;
-                        json["key"] = infoHash.toString();
-                        json["to"] = clientId;
-                        if (expired and values.size() < 3){
-                            std::stringstream ss;
-                            for(size_t i = 0; i < values.size(); ++i){
-                                if(i != 0) ss << ",";
-                                ss << values[i]->id;
-                            }
-                            json["exp"] = ss.str();
-                        }
-                        sendPushNotification(pushToken, std::move(json), isAndroid);
                     });
-                    return true;
+                // Refresh
+                } else {
+                    response->append_chunk("{}\n");
+                    response->done();
                 }
-            );
-            listener.expireJob = scheduler_.add(timeout,
-                [this, clientId, infoHash, pushToken] {
-                    cancelPushListen(pushToken, infoHash, clientId);
-                }
-            );
-            listener.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
-                [this, infoHash, pushToken, isAndroid, clientId] {
-                    std::cout << "Listener: sending refresh " << infoHash << std::endl;
-                    Json::Value json;
-                    json["timeout"] = infoHash.toString();
-                    json["to"] = clientId;
-                    sendPushNotification(pushToken, std::move(json), isAndroid);
-                }
-            );
+                return restinio::request_handling_status_t::accepted;
+            }
         }
-        schedulerCv_.notify_one();
+        // =========== No existing listener for an infoHash ============
+        // Add new listener to list of listeners
+        pushListeners->second.emplace_back(Listener{});
+        auto &listener = pushListeners->second.back();
+        listener.clientId = clientId;
+
+        // Add listen on dht
+        listener.internalToken = dht_->listen(infoHash,
+            [this, infoHash, pushToken, isAndroid, clientId]
+            (const std::vector<std::shared_ptr<Value>>& values, bool expired){
+                // Build message content
+                Json::Value json;
+                json["key"] = infoHash.toString();
+                json["to"] = clientId;
+                if (expired and values.size() < 2){
+                    std::stringstream ss;
+                    for(size_t i = 0; i < values.size(); ++i){
+                        if(i != 0) ss << ",";
+                        ss << values[i]->id;
+                    }
+                    json["exp"] = ss.str();
+                }
+                sendPushNotification(pushToken, std::move(json), isAndroid);
+                return true;
+            }
+        );
+        // Init & set timers
+        auto &ctx = httpServer_->io_context();
+        listener.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
+        listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx,
+                                        timeout - proxy::OP_MARGIN);
+        // Launch timers
+        listener.expireTimer->async_wait(std::bind(
+            &DhtProxyServer::cancelPushListen, this, pushToken, infoHash, clientId));
+
+        listener.expireNotifyTimer->async_wait(
+        [this, infoHash, pushToken, isAndroid, clientId](const asio::error_code &ec){
+            logger_->d("[subscribe] sending refresh %s", infoHash.toString().c_str());
+            if (ec)
+                logger_->d("[subscribe] error sending refresh: %s", ec.message().c_str());
+            Json::Value json;
+            json["timeout"] = infoHash.toString();
+            json["to"] = clientId;
+            sendPushNotification(pushToken, std::move(json), isAndroid);
+        });
         auto response = this->initHttpResponse(request->create_response());
         response.set_body("{}\n");
         return response.done();
-    } catch (...){
+    }
+    catch (...) {
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
@@ -592,7 +549,8 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
         cancelPushListen(pushToken, infoHash, clientId);
         auto response = this->initHttpResponse(request->create_response());
         return response.done();
-    } catch (...){
+    }
+    catch (...) {
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(this->RESP_MSG_INTERNAL_SERVER_ERRROR);
@@ -603,14 +561,16 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
 {
-    std::cout << "cancelPushListen: " << key << " clientId:" << clientId << std::endl;
+    logger_->d("[cancelpushlisten] %s %s", key.toString().c_str(), clientId.c_str());
     std::lock_guard<std::mutex> lock(*lockListener_);
+
     auto pushListener = pushListeners_.find(pushToken);
     if (pushListener == pushListeners_.end())
         return;
     auto listeners = pushListener->second.listeners.find(key);
     if (listeners == pushListener->second.listeners.end())
         return;
+
     for (auto listener = listeners->second.begin(); listener != listeners->second.end();){
         if (listener->clientId == clientId){
             if (dht_)
@@ -620,12 +580,10 @@ DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHa
             ++listener;
         }
     }
-    if (listeners->second.empty()){
+    if (listeners->second.empty())
         pushListener->second.listeners.erase(listeners);
-    }
-    if (pushListener->second.listeners.empty()){
+    if (pushListener->second.listeners.empty())
         pushListeners_.erase(pushListener);
-    }
 }
 
 void
@@ -703,8 +661,8 @@ DhtProxyServer::cancelPut(const InfoHash& key, Value::Id vid)
         return;
     if (dht_)
         dht_->cancelPut(key, vid);
-    if (put->second.expireNotifyJob)
-        put->second.expireNotifyJob->cancel();
+    if (put->second.expireNotifyTimer)
+        put->second.expireNotifyTimer->cancel();
     sPutsMap.erase(put);
     if (sPutsMap.empty())
         puts_.erase(sPuts);
@@ -752,25 +710,32 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     clientId = pVal["client_id"].asString();
                     platform = pVal["platform"].asString();
                 }
-                std::unique_lock<std::mutex> lock(schedulerLock_);
-                scheduler_.syncTime();
-                auto timeout = scheduler_.time() + proxy::OP_TIMEOUT;
+                std::unique_lock<std::mutex> lock(lockSearchPuts_);
+                auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
                 auto vid = value->id;
                 auto sPuts = puts_.emplace(infoHash, SearchPuts{}).first;
                 auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
                 auto& pput = r.first->second;
                 if (r.second){
-                    pput.expireJob = scheduler_.add(timeout, [this, infoHash, vid]{
+                    auto &ctx = httpServer_->io_context();
+                    pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
+                    pput.expireTimer->async_wait([this, infoHash, vid](const asio::error_code &ec){
                         std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
+                        if (ec)
+                            std::cout << "Permanent put error: " << ec.message() << std::endl;
                         cancelPut(infoHash, vid);
                     });
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                     if (not pushToken.empty()){
                         bool isAndroid = platform == "android";
-                        pput.expireNotifyJob = scheduler_.add(timeout - proxy::OP_MARGIN,
-                            [this, infoHash, vid, pushToken, clientId, isAndroid]
+                        pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx,
+                                                    timeout - proxy::OP_MARGIN);
+                        pput.expireNotifyTimer->async_wait(
+                        [this, infoHash, vid, pushToken, clientId, isAndroid](const asio::error_code &ec)
                         {
                             std::cout << "Permanent put refresh: " << infoHash << " " << vid << std::endl;
+                            if (ec)
+                                std::cout << "Permanent put refresh error: " << ec.message() << std::endl;
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
@@ -780,12 +745,11 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     }
 #endif
                 } else {
-                    scheduler_.edit(pput.expireJob, timeout);
-                    if (pput.expireNotifyJob)
-                        scheduler_.edit(pput.expireNotifyJob, timeout - proxy::OP_MARGIN);
+                    pput.expireTimer->expires_at(timeout);
+                    if (pput.expireNotifyTimer)
+                        pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                 }
                 lock.unlock();
-                schedulerCv_.notify_one();
             }
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){
