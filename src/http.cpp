@@ -122,13 +122,16 @@ ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
 
 // client
 
-Client::Client(const std::string ip, const uint16_t port){
+Client::Client(asio::io_context &ctx, const std::string ip, const uint16_t port,
+               std::shared_ptr<dht::Logger> logger):
+        resolver_(ctx), logger_(logger)
+{
     set_query_address(ip, port);
 }
 
 asio::io_context&
 Client::io_context(){
-    return ctx_;
+    return resolver_.get_io_context();
 }
 
 void
@@ -155,7 +158,7 @@ Client::open_conn(){
     using namespace asio::ip;
     auto conn = std::make_shared<Connection>(
         connId_,
-        std::move(asio::ip::tcp::socket{ctx_})
+        std::move(asio::ip::tcp::socket{resolver_.get_io_context()})
     );
     logger_->d("[connection:%i] created", conn->id());
     connId_++;
@@ -204,11 +207,8 @@ Client::post_request(std::string request,
                      std::shared_ptr<http_parser_settings> parser_s,
                      std::shared_ptr<Connection> conn){
     // invoke the given handler and return immediately
-    asio::post(ctx_, [this, request, parser, parser_s, conn](){
+    asio::post(resolver_.get_io_context(), [this, request, parser, parser_s, conn](){
         this->async_request(request, parser, parser_s, conn);
-        // execute at most one handler, it ensures that same func call
-        // with different callback gets the priority on the io_context
-        ctx_.run_one();
     });
 }
 

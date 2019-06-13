@@ -67,14 +67,13 @@ DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost,
     const std::string &pushClientId, std::shared_ptr<dht::Logger> logger):
-        serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
+        serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal),
+        logger_(logger)
 {
     auto hostAndPort = splitPort(serverHost_);
     serverHostIp_ = hostAndPort.first;
     serverHostPort_ = std::atoi(hostAndPort.second.c_str());
-
-    httpClient_->set_query_address(serverHostIp_, serverHostPort_);
-    httpClient_->set_logger(logger);
+    httpClient_ = std::make_unique<http::Client>(ctx_, serverHostIp_, serverHostPort_, logger);
 
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
@@ -84,8 +83,8 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
 }
 
 asio::io_context&
-DhtProxyClient::httpIOContext(){
-    return httpClient_->io_context();
+DhtProxyClient::io_context(){
+    return ctx_;
 }
 
 void
@@ -141,9 +140,8 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
 void
 DhtProxyClient::cancelAllOperations()
 {
-    auto &io_context = this->httpIOContext();
-    if (io_context.stopped())
-        io_context.stop();
+    if (!ctx_.stopped())
+        ctx_.stop();
 }
 
 void

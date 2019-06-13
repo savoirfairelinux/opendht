@@ -85,8 +85,8 @@ private:
 class Client
 {
 public:
-    Client() = default;
-    Client(std::string ip, uint16_t port);
+    Client(asio::io_context &ctx, std::string ip, uint16_t port,
+           std::shared_ptr<dht::Logger> logger = nullptr);
 
     asio::io_context& io_context();
     void set_logger(std::shared_ptr<dht::Logger> logger);
@@ -114,8 +114,7 @@ private:
 
     uint16_t port_;
     asio::ip::address addr_;
-    asio::io_context ctx_;
-    asio::ip::tcp::resolver resolver_ {ctx_};
+    asio::ip::tcp::resolver resolver_;
     uint16_t connId_ {1};
     std::shared_ptr<dht::Logger> logger_;
 };

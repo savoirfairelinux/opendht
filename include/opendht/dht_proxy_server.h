@@ -40,9 +40,10 @@
 #endif
 
 namespace http {
-    class ConnectionListener;
-    struct ListenerSession;
+    class Client;
     class opendht_logger_t;
+    struct ListenerSession;
+    class ConnectionListener;
 }
 
 namespace restinio {
@@ -323,6 +324,7 @@ private:
 
     std::unique_ptr<IOContextThreadPool> httpServerThreadPool_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
+    std::unique_ptr<http::Client> httpClient_;
 
     mutable std::mutex statsMutex_;
     mutable ServerStats stats_;

@@ -71,9 +71,9 @@ public:
     virtual ~DhtProxyClient();
 
     /**
-     * Get Asio I/O Context from the http::Client instance.
+     * Get Asio I/O Context.
      */
-    asio::io_context& httpIOContext();
+    asio::io_context& io_context();
 
     /**
      * Get the ID of the node.
@@ -327,6 +327,7 @@ private:
     /*
      * ASIO I/O Context for sockets used in requests
      */
+    asio::io_context ctx_;
     std::unique_ptr<http::Client> httpClient_;
 
     mutable std::mutex lockCurrentProxyInfos_;

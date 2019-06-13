@@ -73,6 +73,11 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
         restinio::external_io_context(httpServerThreadPool_->io_context()),
         std::forward<ServerSettings>(settings)
     ));
+    // build http client
+    auto pushHostPort = splitPort(pushServer_);
+    uint16_t pushPort = std::atoi(pushHostPort.second.c_str());
+    httpClient_.reset(new http::Client(httpServer_->io_context(),
+                                       pushHostPort.first, pushPort, logger_));
     // run http server
     try {
         httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
@@ -623,11 +628,6 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     wbuilder["indentation"] = "";
     auto body = Json::writeString(wbuilder, content);
 
-    auto hostAndPort = splitPort(pushServer_);
-    uint16_t port = std::atoi(hostAndPort.second.c_str());
-    http::Client httpClient {hostAndPort.first, port};
-    httpClient.set_logger(logger_);
-
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);
 
@@ -639,11 +639,9 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         std::cerr << "Error in SendPushNotification status_code=" << parser->status_code << std::endl;
         return 1;
     };
-
-    auto request = httpClient.create_request(header, header_fields,
+    auto request = httpClient_->create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
-    httpClient.post_request(request, parser, parser_s);
-    httpClient.io_context().run();
+    httpClient_->post_request(request, parser, parser_s);
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
