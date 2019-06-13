@@ -1,6 +1,22 @@
 FROM ubuntu:16.04
 MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
-RUN apt-get update && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev  cython3 python3-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev python3-setuptools && apt-get clean
+RUN apt-get update && apt-get install -y build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev cython3 python3-dev libcppunit-dev libjsoncpp-dev libasio-dev libssl-dev python3-setuptools python3-pip && apt-get clean
+
+#install conan
+RUN pip install conan
+
+#build restinio from source
+RUN git clone https://github.com/Stiffstream/restinio-conan.git \
+    && cd restinio-conan/ \
+    && conan remote add stiffstream https://api.bintray.com/conan/stiffstream/public \
+    && echo "[requires]" > conanfile.txt \
+    && echo "restinio/0.5.0@stiffstream/stable" >> conanfile.txt \  # TODO change for 0.5.1 once released
+    && git clone https://github.com/Stiffstream/restinio \          # TODO remove once can download with conan ^
+    && conan install . --build=missing \                            # dependencies > .conan/data/restinio/
+    && conan package --package-folder /usr . \
+    && git clone https://github.com/binarytrails/http-parser.git \  # fork for custom methods LISTEN,SIGN,ENCRYPT,STATS
+    && cd http-parser && make && make install PREFIX=/usr \
+    && cd ../ && rm -rf restinio-conan/
 
 #build msgpack from source
 RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz \
