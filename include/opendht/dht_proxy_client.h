@@ -2,6 +2,7 @@
  *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,12 +30,21 @@
 #include "scheduler.h"
 #include "proxy.h"
 
-namespace restbed {
-    class Request;
-}
+#include <restinio/all.hpp>
+#include <http_parser.h>
+#include <json/json.h>
+#include "http.h"
+
+#include <chrono>
+#include <vector>
+#include <functional>
 
 namespace Json {
     class Value;
+}
+
+namespace http {
+    class Client;
 }
 
 namespace dht {
@@ -44,7 +54,11 @@ public:
 
     DhtProxyClient();
 
-    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "", const Logger& = {});
+    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost,
+                            const std::string& pushClientId = "",
+                            std::shared_ptr<dht::Logger> logger = nullptr);
+
+    restinio::http_header_fields_t initHeaderFields();
 
     virtual void setPushNotificationToken(const std::string& token) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -55,6 +69,11 @@ public:
     }
 
     virtual ~DhtProxyClient();
+
+    /**
+     * Get Asio I/O Context.
+     */
+    asio::io_context& io_context();
 
     /**
      * Get the ID of the node.
@@ -185,7 +204,6 @@ public:
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }
 
-
     /**
      * Similar to Dht::get, but sends a Query to filter data remotely.
      * @param key the key for which to query data for.
@@ -282,10 +300,9 @@ private:
         SUBSCRIBE,
         RESUBSCRIBE,
     };
-    void sendListen(const std::shared_ptr<restbed::Request> &request,
-                    const ValueCallback &, const Value::Filter &filter,
-                    const Sp<ListenState> &state,
-                    ListenMethod method = ListenMethod::LISTEN);
+    void sendListen(const restinio::http_request_header_t header,
+                    const ValueCallback &cb, const Value::Filter &filter,
+                    const Sp<ListenState> &state, ListenMethod method = ListenMethod::LISTEN);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 
@@ -303,7 +320,15 @@ private:
     void cancelAllOperations();
 
     std::string serverHost_;
+    std::string serverHostIp_;
+    uint16_t serverHostPort_;
     std::string pushClientId_;
+
+    /*
+     * ASIO I/O Context for sockets used in requests
+     */
+    asio::io_context ctx_;
+    std::unique_ptr<http::Client> httpClient_;
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
@@ -328,17 +353,6 @@ private:
     std::map<InfoHash, ProxySearch> searches_;
     mutable std::mutex searchLock_;
 
-    /**
-     * Store current put and get requests.
-     */
-    struct Operation
-    {
-        std::shared_ptr<restbed::Request> req;
-        std::thread thread;
-        std::shared_ptr<std::atomic_bool> finished;
-    };
-    std::vector<Operation> operations_;
-    std::mutex lockOperations_;
     /**
      * Callbacks should be executed in the main thread.
      */
@@ -377,11 +391,13 @@ private:
     const std::function<void()> loopSignal_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    void fillBody(std::shared_ptr<restbed::Request> request, bool resubscribe);
+    std::string fillBody(bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
     std::atomic_bool isDestroying_ {false};
+
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 }
