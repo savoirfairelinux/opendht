@@ -65,7 +65,7 @@ public:
     };
 
     struct Context {
-        std::unique_ptr<Logger> logger {};
+        std::shared_ptr<Logger> logger {};
         std::unique_ptr<net::DatagramSocket> sock;
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
