@@ -8,18 +8,18 @@ ENV CC cc
 ENV CXX c++
 
 #install conan
-RUN pip install conan
+RUN pip3 install conan
 
 #build restinio from source
 RUN git clone https://github.com/Stiffstream/restinio-conan.git \
     && cd restinio-conan/ \
     && conan remote add stiffstream https://api.bintray.com/conan/stiffstream/public \
     && echo "[requires]" > conanfile.txt \
-    && echo "restinio/0.5.0@stiffstream/stable" >> conanfile.txt \  # TODO change for 0.5.1 once released
-    && git clone https://github.com/Stiffstream/restinio \          # TODO remove once can download with conan ^
-    && conan install . --build=missing \                            # dependencies > .conan/data/restinio/
+    && echo "restinio/0.5.0@stiffstream/stable" >> conanfile.txt \
+    && git clone https://github.com/Stiffstream/restinio \
+    && conan install . --build=missing \
     && conan package --package-folder /usr . \
-    && git clone https://github.com/binarytrails/http-parser.git \  # fork for custom methods LISTEN,SIGN,ENCRYPT,STATS
+    && git clone https://github.com/binarytrails/http-parser.git \
     && cd http-parser && make && make install PREFIX=/usr \
     && cd ../ && rm -rf restinio-conan/
 
