@@ -14,7 +14,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
-# Run with: locust -f proxy_benchmark.py --host http://127.0.0.1:8080
+# Manually run with Web UI:
+#   locust -f proxy_benchmark.py --host http://127.0.0.1:8080
+#
+# Run in Terminal:
+#   locust -f proxy_benchmark.py --host http://127.0.0.1:8080 \
+#       --clients 100 --hatch-rate 1 --run-time 10s --no-web --only-summary
 
 from locust import HttpLocust, TaskSet
 from random import randint
@@ -48,15 +53,27 @@ def get_key(l):
 def get_stats(l):
     l.client.get("/stats")
 
+def subscribe(l):
+    key = rand_list_value(words)
+    print("Subscribe: key={}".format(key))
+    l.client.get("/" + key + "/subscribe")
+
+def listen(l):
+    key = rand_list_value(words)
+    print("Listen: key={}".format(key))
+    l.client.get("/" + key + "/listen")
+
 class UserBehavior(TaskSet):
-    tasks = {get_key: 1, put_key: 1}
+    tasks = {get_key: 5, put_key: 5, get_stats: 1, subscribe: 1, listen: 1}
 
     def on_start(self):
         put_key(self)
         get_key(self)
+        subscribe(self)
+        listen(self)
 
     def on_stop(self):
-        get_stats()
+        get_stats(self)
 
 class WebsiteUser(HttpLocust):
     task_set = UserBehavior
