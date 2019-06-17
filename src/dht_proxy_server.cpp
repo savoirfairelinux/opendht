@@ -142,7 +142,8 @@ DhtProxyServer::stop()
     logger_->d("[restinio] closing http server async operations");
     httpServer_->io_context().reset();
     httpServer_->io_context().stop();
-    httpServerThread_.join();
+    if (httpServerThread_.joinable())
+        httpServerThread_.join();
     logger_->d("[restinio] http server closed");
 }
 
