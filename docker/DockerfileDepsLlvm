@@ -7,19 +7,25 @@ RUN apt-get update \
 ENV CC cc
 ENV CXX c++
 
-#install conan
-RUN pip3 install conan
-
+#patch for https://github.com/Stiffstream/restinio-conan-example/issues/2
+RUN pip3 install --upgrade cmake && cmake --version
+#install conan & add restinio remotes
+RUN pip3 install conan && \
+    conan remote add stiffstream https://api.bintray.com/conan/stiffstream/public && \
+    conan remote add public-conan https://api.bintray.com/conan/bincrafters/public-conan
+#clone & setup restinio docker project
+RUN git clone https://github.com/binarytrails/restinio-conan.git
 #build restinio from source
-RUN git clone https://github.com/Stiffstream/restinio-conan.git \
-    && cd restinio-conan/ \
-    && conan remote add stiffstream https://api.bintray.com/conan/stiffstream/public \
-    && echo "[requires]" > conanfile.txt \
-    && echo "restinio/0.5.0@stiffstream/stable" >> conanfile.txt \
-    && git clone https://github.com/Stiffstream/restinio \
-    && conan install . --build=missing \
-    && conan package --package-folder /usr . \
-    && git clone https://github.com/binarytrails/http-parser.git \
+RUN echo "*** Building RESTinio ***" \
+	&& cd restinio-conan \
+	&& mkdir build \
+	&& cd build \
+	&& conan install -o restinio:boost_libs=none --build=missing ..  \
+    && conan install .. --build=missing
+    #&& conan package --package-folder /usr .
+#build http_parser fork
+RUN echo "*** Building http_parser for custom HTTP methods ***" \
+    && git clone https://github.com/eao197/http-parser.git \
     && cd http-parser && make && make install PREFIX=/usr \
     && cd ../ && rm -rf restinio-conan/
 
