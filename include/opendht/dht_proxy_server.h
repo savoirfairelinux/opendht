@@ -371,15 +371,6 @@ private:
     std::map<std::string, PushListener> pushListeners_;
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
-
-    const std::string RESP_MSG_DESTINATION_NOT_FOUND = "{\"err\":\"No destination found\"}";
-    const std::string RESP_MSG_NO_TOKEN = "{\"err\":\"No token\"}";
-    const std::string RESP_MSG_JSON_NOT_ENABLED = "{\"err\":\"JSON not enabled on this instance\"}";
-    const std::string RESP_MSG_JSON_INCORRECT = "{\"err:\":\"Incorrect JSON\"}";
-    const std::string RESP_MSG_SERVICE_UNAVAILABLE = "{\"err\":\"Incorrect DhtRunner\"}";
-    const std::string RESP_MSG_INTERNAL_SERVER_ERRROR = "{\"err\":\"Internal server error\"}";
-    const std::string RESP_MSG_MISSING_PARAMS = "{\"err\":\"Missing parameters\"}";
-    const std::string RESP_MSG_PUT_FAILED = "{\"err\":\"Put failed\"}";
 };
 
 }
