@@ -3,10 +3,12 @@ MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 RUN apt-get update && apt-get install -y \
         build-essential cmake git wget libncurses5-dev libreadline-dev nettle-dev \
         libgnutls28-dev libuv1-dev cython3 python3-dev libcppunit-dev libjsoncpp-dev \
-        libasio-dev libssl-dev python3-setuptools python3-pip \
+        libasio-dev libssl-dev python3-setuptools \
     && apt-get clean
 
 #patch for https://github.com/Stiffstream/restinio-conan-example/issues/2
+RUN apt-get update && apt-get install -y \
+        python3-pip libasio-dev
 RUN pip3 install --upgrade cmake
 #install conan & add restinio remotes
 RUN pip3 install conan && \
@@ -19,14 +21,19 @@ COPY conan/restinio/conanfile.py restinio-conan/conanfile.py
 #build restinio from source
 RUN echo "*** Installing RESTinio & dependencies ***" \
     && cd restinio-conan \
-    && conan source . \
+    && conan source .  \
     && conan install -o restinio:boost_libs=none --build=missing . \
     && conan package . -pf /usr/local \
     && cd ../ && rm -rf restinio*
+#installing dependencies
+RUN echo "*** Installing asio & fmt dependencies ***" \
+    && cp -r ~/.conan/data/asio/*/bincrafters/stable/package/*/include/* /usr/local/include/ \
+    && cp -r ~/.conan/data/fmt/*/bincrafters/stable/package/*/lib/* /usr/local/lib/ \
+    && cp -r ~/.conan/data/fmt/*/bincrafters/stable/package/*/include/* /usr/local/include/
 #build http_parser fork
-RUN echo "*** Building http_parser for custom HTTP methods ***" \
+RUN echo "*** Building http_parser dependency for custom HTTP methods ***" \
     && git clone https://github.com/eao197/http-parser.git \
-    && cd http-parser && make && make install PREFIX=/usr \
+    && cd http-parser && make -j8 && make install PREFIX=/usr \
     && cd ../ && rm -rf restinio-conan/
 
 #build msgpack from source
