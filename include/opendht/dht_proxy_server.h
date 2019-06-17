@@ -29,7 +29,6 @@
 #include "value.h"
 #include "dht_proxy_client.h"
 
-#include <thread>
 #include <memory>
 #include <mutex>
 #include <restinio/all.hpp>
@@ -60,9 +59,7 @@ struct RestRouterTraits : public restinio::default_traits_t
     using request_handler_t = RestRouter;
     using connection_state_listener_t = http::ConnectionListener;
 };
-using ServerSettings = restinio::run_on_thread_pool_settings_t<RestRouterTraits>;
-using IOContextThreadPool = restinio::impl::ioctx_on_thread_pool_t<
-    restinio::impl::own_io_context_for_thread_pool_t>;
+using ServerSettings = restinio::run_on_this_thread_settings_t<RestRouterTraits>;
 using RequestStatus = restinio::request_handling_status_t;
 using ResponseByParts = restinio::chunked_output_t;
 using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
@@ -91,8 +88,7 @@ public:
      */
     DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000,
                    const std::string& pushServer = "",
-                   std::shared_ptr<dht::Logger> logger = nullptr,
-                   const unsigned int ioThreads = 1);
+                   std::shared_ptr<dht::Logger> logger = nullptr);
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;
@@ -159,8 +155,7 @@ private:
     template <typename HttpResponse>
     HttpResponse initHttpResponse(HttpResponse response) const;
 
-    ServerSettings makeHttpServerSettings(const in_port_t port,
-                                          const unsigned int n_threads = 1);
+    ServerSettings makeHttpServerSettings();
 
     std::unique_ptr<RestRouter> createRestRouter();
 
@@ -322,7 +317,7 @@ private:
     std::shared_ptr<dht::Logger> logger_;
     Json::StreamWriterBuilder jsonBuilder_;
 
-    std::unique_ptr<IOContextThreadPool> httpServerThreadPool_;
+    std::thread httpServerThread_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
     std::unique_ptr<http::Client> httpClient_;
 

@@ -20,7 +20,6 @@
 
 #include "dht_proxy_server.h"
 
-#include "thread_pool.h"
 #include "default_types.h"
 #include "dhtrunner.h"
 
@@ -49,8 +48,7 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
 DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
                               const std::string& pushServer,
-                              std::shared_ptr<dht::Logger> logger,
-                              const unsigned int ioThreads
+                              std::shared_ptr<dht::Logger> logger
 ):
         dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
@@ -74,11 +72,10 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     jsonBuilder_["indentation"] = "";
 
     // build http server
-    auto settings = makeHttpServerSettings(port, ioThreads);
-    httpServerThreadPool_.reset(new IOContextThreadPool(settings.pool_size()));
-
+    auto settings = makeHttpServerSettings();
+    settings.port(port);
     httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
-        restinio::external_io_context(httpServerThreadPool_->io_context()),
+        restinio::own_io_context(),
         std::forward<ServerSettings>(settings)
     ));
     // build http client
@@ -87,15 +84,17 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     httpClient_.reset(new http::Client(httpServer_->io_context(),
                                        pushHostPort.first, pushPort, logger_));
     // run http server
-    try {
-        httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
-            std::rethrow_exception(ex);
-        });
-        httpServerThreadPool_->start();
-    }
-    catch(const std::exception &ex){
-        std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
-    }
+    httpServerThread_ = std::thread([this](){
+        try {
+            httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
+                std::rethrow_exception(ex);
+            });
+            httpServer_->io_context().run();
+        }
+        catch(const std::exception &ex){
+            std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
+        }
+    });
     dht->forwardAllMessages(true);
 
     printStatsTimer_ = std::make_unique<asio::steady_timer>(
@@ -109,14 +108,10 @@ DhtProxyServer::~DhtProxyServer()
 }
 
 ServerSettings
-DhtProxyServer::makeHttpServerSettings(const in_port_t port, const unsigned int n_threads)
+DhtProxyServer::makeHttpServerSettings()
 {
     using namespace std::chrono;
-    auto maxThreads = std::thread::hardware_concurrency() - 1;
-    auto ioThreads = n_threads < maxThreads ? n_threads : maxThreads;
-    auto settings = ServerSettings(ioThreads);
-    logger_->d("[restinio] io_context will run on %i thread%s",
-               ioThreads, (ioThreads == 1 ? "" : "s"));
+    auto settings = ServerSettings();
     /**
      * If max_pipelined_requests is greater than 1 then RESTinio will continue
      * to read from the socket after parsing the first request.
@@ -126,7 +121,6 @@ DhtProxyServer::makeHttpServerSettings(const in_port_t port, const unsigned int 
      */
     settings.max_pipelined_requests(2);
     settings.logger(logger_);
-    settings.port(port);
     settings.protocol(restinio::asio_ns::ip::tcp::v6());
     settings.request_handler(this->createRestRouter());
     // time limits                                              // ~ 0.8 month
@@ -146,18 +140,10 @@ void
 DhtProxyServer::stop()
 {
     logger_->d("[restinio] closing http server async operations");
-    httpServer_->close_async([this]{
-        logger_->d("[restinio] stopping http server io_context thread pool");
-        httpServerThreadPool_->stop();
-    },
-    [this](std::exception_ptr eptr){
-        try {
-           std::rethrow_exception(eptr);
-        }
-        catch (const std::exception &ex){
-           logger_->e("[restinio] error closing http server async: %s", ex.what());
-        }
-    });
+    httpServer_->io_context().reset();
+    httpServer_->io_context().stop();
+    httpServerThread_.join();
+    logger_->d("[restinio] http server closed");
 }
 
 void
