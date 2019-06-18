@@ -155,7 +155,8 @@ private:
     template <typename HttpResponse>
     HttpResponse initHttpResponse(HttpResponse response) const;
 
-    ServerSettings makeHttpServerSettings();
+    ServerSettings makeHttpServerSettings(
+        const unsigned int max_pipelined_requests = 16);
 
     std::unique_ptr<RestRouter> createRestRouter();
 

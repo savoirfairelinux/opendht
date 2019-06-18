@@ -108,7 +108,7 @@ DhtProxyServer::~DhtProxyServer()
 }
 
 ServerSettings
-DhtProxyServer::makeHttpServerSettings()
+DhtProxyServer::makeHttpServerSettings(const unsigned int max_pipelined_requests)
 {
     using namespace std::chrono;
     auto settings = ServerSettings();
@@ -119,9 +119,9 @@ DhtProxyServer::makeHttpServerSettings()
      * and calls state listener as expected.
      * https://github.com/Stiffstream/restinio/issues/28
      */
-    settings.max_pipelined_requests(16);
+    settings.max_pipelined_requests(max_pipelined_requests);
     // one less to detect the listener disconnect
-    settings.concurrent_accepts_count(15);
+    settings.concurrent_accepts_count(max_pipelined_requests - 1);
     settings.separate_accept_and_create_connect(true);
     settings.logger(logger_);
     settings.protocol(restinio::asio_ns::ip::tcp::v6());
