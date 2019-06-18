@@ -42,8 +42,11 @@ public:
     void close();
 
 private:
+    friend class Client;
+
     uint16_t id_;
     asio::ip::tcp::socket socket_;
+    asio::streambuf response_stream_;
 };
 
 /**
@@ -111,6 +114,11 @@ private:
                        std::shared_ptr<http_parser> parser = nullptr,
                        std::shared_ptr<http_parser_settings> parser_s = nullptr,
                        std::shared_ptr<Connection> conn = nullptr);
+
+    void handle_response(const asio::error_code &ec,
+                         std::shared_ptr<http_parser> parser = nullptr,
+                         std::shared_ptr<http_parser_settings> parser_s = nullptr,
+                         std::shared_ptr<Connection> conn = nullptr);
 
     uint16_t port_;
     asio::ip::address addr_;

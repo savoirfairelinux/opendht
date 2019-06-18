@@ -256,30 +256,36 @@ Client::async_request(std::string request,
         }
         // read response
         logger_->d("[connection:%i] response read", conn->id());
-        asio::streambuf resp_s;
-        auto& socket = conn->get_socket();
-        asio::read_until(socket, resp_s, "\r\n\r\n");
-
-        while(asio::read(socket, resp_s, asio::transfer_at_least(1), ec)){
-            std::ostringstream str_s;
-            str_s << &resp_s;
-            // parse the request
-            http_parser_execute(parser.get(), parser_s.get(),
-                                str_s.str().c_str(), str_s.str().size());
-            // detect parsing errors
-            if (HPE_OK != parser->http_errno && HPE_PAUSED != parser->http_errno){
-                auto err = HTTP_PARSER_ERRNO(parser.get());
-                if (logger_)
-                    logger_->e("[connection:%i] error parsing: %s",
-                            conn->id(), http_errno_name(err));
-            }
-        }
-        if (ec != asio::error::eof)
-            throw std::runtime_error{fmt::format(
-                "[connection:{}] error parsing: {}", conn->id(), ec)};
-        if (logger_)
-            logger_->d("[connection:%i] request finished", conn->id());
+        asio::async_read_until(conn->socket_, conn->response_stream_, "\r\n\r\n",
+            std::bind(&Client::handle_response, this, ec, parser, parser_s, conn));
     });
+}
+
+void
+Client::handle_response(const asio::error_code &ec,
+                        std::shared_ptr<http_parser> parser,
+                        std::shared_ptr<http_parser_settings> parser_s,
+                        std::shared_ptr<Connection> conn){
+    if (ec && ec != asio::error::eof){
+        if (logger_)
+            logger_->e("[connection:%i] error handling response: %s",
+                       conn->id(), ec.message().c_str());
+    }
+    std::ostringstream str_s;
+    str_s << &conn->response_stream_;
+
+    // parse the request
+    http_parser_execute(parser.get(), parser_s.get(), str_s.str().c_str(), str_s.str().size());
+
+    // detect parsing errors
+    if (HPE_OK != parser->http_errno && HPE_PAUSED != parser->http_errno){
+        if (logger_){
+            auto err = HTTP_PARSER_ERRNO(parser.get());
+            logger_->e("[connection:%i] error parsing: %s", conn->id(), http_errno_name(err));
+        }
+    }
+    asio::async_read(conn->socket_, conn->response_stream_, asio::transfer_at_least(1),
+        std::bind(&Client::handle_response, this, ec, parser, parser_s, conn));
 }
 
 }
