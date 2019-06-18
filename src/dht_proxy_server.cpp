@@ -119,7 +119,10 @@ DhtProxyServer::makeHttpServerSettings()
      * and calls state listener as expected.
      * https://github.com/Stiffstream/restinio/issues/28
      */
-    settings.max_pipelined_requests(2);
+    settings.max_pipelined_requests(16);
+    // one less to detect the listener disconnect
+    settings.concurrent_accepts_count(15);
+    settings.separate_accept_and_create_connect(true);
     settings.logger(logger_);
     settings.protocol(restinio::asio_ns::ip::tcp::v6());
     settings.request_handler(this->createRestRouter());
