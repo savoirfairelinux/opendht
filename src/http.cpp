@@ -90,11 +90,13 @@ ConnectionListener::state_changed(const restinio::connection_state::notice_t &no
 
     if (listeners_->find(id) != listeners_->end()){
         if (notice.cause() == restinio::connection_state::cause_t::closed){
-            logger_->d("[restinio] [connection:%li] cancelling listener", id);
+            if (logger_)
+                logger_->d("[restinio] [connection:%li] cancelling listener", id);
             dht_->cancelListen(listeners_->at(id).hash,
                                std::move(listeners_->at(id).token));
             listeners_->erase(id);
-            logger_->d("[restinio] %li listeners are connected", listeners_->size());
+            if (logger_)
+                logger_->d("[restinio] %li listeners are connected", listeners_->size());
         }
     }
 }
@@ -160,7 +162,8 @@ Client::open_conn(){
         connId_,
         std::move(asio::ip::tcp::socket{resolver_.get_io_context()})
     );
-    logger_->d("[connection:%i] created", conn->id());
+    if (logger_)
+        logger_->d("[connection:%i] created", conn->id());
     connId_++;
     return conn;
 }
@@ -226,25 +229,29 @@ Client::async_request(std::string request,
     resolver_.async_resolve(build_query(), [=](std::error_code ec,
                                                tcp::resolver::results_type res){
         if (ec or res.empty()){
-            logger_->e("[connection:%i] error resolving", conn->id());
+            if (logger_)
+                logger_->e("[connection:%i] error resolving", conn->id());
             conn->close();
             return;
         }
         for (auto da = res.begin(); da != res.end(); ++da){
-            logger_->d("[connection:%i] resolved host=%s service=%s",
+            if (logger_)
+                logger_->d("[connection:%i] resolved host=%s service=%s",
                     conn->id(), da->host_name().c_str(), da->service_name().c_str());
             conn->start(da);
             break;
         }
         if (!conn->is_open()){
-            logger_->e("[connection:%i] error closed connection", conn->id());
+            if (logger_)
+                logger_->e("[connection:%i] error closed connection", conn->id());
             return;
         }
         // send request
         logger_->d("[connection:%i] request write", conn->id());
         conn->write(request, ec);
         if (ec and ec != asio::error::eof){
-            logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
+            if (logger_)
+                logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
             return;
         }
         // read response
@@ -262,14 +269,16 @@ Client::async_request(std::string request,
             // detect parsing errors
             if (HPE_OK != parser->http_errno && HPE_PAUSED != parser->http_errno){
                 auto err = HTTP_PARSER_ERRNO(parser.get());
-                logger_->e("[connection:%i] error parsing: %s",
+                if (logger_)
+                    logger_->e("[connection:%i] error parsing: %s",
                             conn->id(), http_errno_name(err));
             }
         }
         if (ec != asio::error::eof)
             throw std::runtime_error{fmt::format(
                 "[connection:{}] error parsing: {}", conn->id(), ec)};
-        logger_->d("[connection:%i] request finished", conn->id());
+        if (logger_)
+            logger_->d("[connection:%i] request finished", conn->id());
     });
 }
 

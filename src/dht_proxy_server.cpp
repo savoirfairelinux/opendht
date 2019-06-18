@@ -139,12 +139,14 @@ DhtProxyServer::makeHttpServerSettings()
 void
 DhtProxyServer::stop()
 {
-    logger_->d("[restinio] closing http server async operations");
+    if (logger_)
+        logger_->d("[restinio] closing http server async operations");
     httpServer_->io_context().reset();
     httpServer_->io_context().stop();
     if (httpServerThread_.joinable())
         httpServerThread_.join();
-    logger_->d("[restinio] http server closed");
+    if (logger_)
+        logger_->d("[restinio] http server closed");
 }
 
 void
@@ -177,7 +179,8 @@ DhtProxyServer::asyncPrintStats()
         nodeInfo_ = std::move(newInfo);
         auto json = nodeInfo_.toJson();
         auto str = Json::writeString(jsonBuilder_, json);
-        logger_->d("[stats] %s", str.c_str());
+        if (logger_)
+            logger_->d("[stats] %s", str.c_str());
     }
     printStatsTimer_->expires_at(printStatsTimer_->expiry() + PRINT_STATS_PERIOD);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::asyncPrintStats, this));
@@ -413,7 +416,8 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto isAndroid = platform == "android";
         auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
-        logger_->w("[subscribe] %s client: %s", infoHash.toString().c_str(), clientId.c_str());
+        if (logger_)
+            logger_->w("[subscribe] %s client: %s", infoHash.toString().c_str(), clientId.c_str());
         // ================ Search for existing listener ===================
         // start the timer
         auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
@@ -424,7 +428,8 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto pushListeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
 
         for (auto &listener: pushListeners->second){
-            logger_->w("[subscribe] found client_id: %s", listener.clientId.c_str());
+            if (logger_)
+                logger_->w("[subscribe] found client_id: %s", listener.clientId.c_str());
             // Found -> Resubscribe
             if (listener.clientId == clientId){
                 // Reset timers
@@ -490,9 +495,12 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 
         listener.expireNotifyTimer->async_wait(
         [this, infoHash, pushToken, isAndroid, clientId](const asio::error_code &ec){
-            logger_->d("[subscribe] sending refresh %s", infoHash.toString().c_str());
-            if (ec)
-                logger_->d("[subscribe] error sending refresh: %s", ec.message().c_str());
+            if (logger_)
+                logger_->d("[subscribe] sending refresh %s", infoHash.toString().c_str());
+            if (ec){
+                if (logger_)
+                    logger_->d("[subscribe] error sending refresh: %s", ec.message().c_str());
+            }
             Json::Value json;
             json["timeout"] = infoHash.toString();
             json["to"] = clientId;
@@ -561,7 +569,8 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
 {
-    logger_->d("[cancelpushlisten] %s %s", key.toString().c_str(), clientId.c_str());
+    if (logger_)
+        logger_->d("[cancelpushlisten] %s %s", key.toString().c_str(), clientId.c_str());
     std::lock_guard<std::mutex> lock(*lockListener_);
 
     auto pushListener = pushListeners_.find(pushToken);
