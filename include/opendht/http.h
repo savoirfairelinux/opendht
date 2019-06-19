@@ -103,8 +103,10 @@ public:
     asio::io_context& io_context();
 
     void set_logger(std::shared_ptr<dht::Logger> logger);
-
     void set_query_address(const std::string host, const uint16_t port);
+
+    bool active_connection(uint16_t conn_id);
+    void close_connection(uint16_t conn_id);
 
     std::string create_request(const restinio::http_request_header_t header,
                                const restinio::http_header_fields_t header_fields,
@@ -114,8 +116,6 @@ public:
     uint16_t post_request(std::string request,
                           std::shared_ptr<http_parser> parser,
                           std::shared_ptr<http_parser_settings> parser_s);
-
-    void close_connection(uint16_t conn_id);
 
 private:
     std::shared_ptr<Connection> create_connection();

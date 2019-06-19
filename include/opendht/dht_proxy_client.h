@@ -368,8 +368,8 @@ private:
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
     void confirmProxy();
-    Sp<Scheduler::Job> nextProxyConfirmation {};
-    Sp<Scheduler::Job> listenerRestart {};
+    Sp<asio::steady_timer> nextProxyConfirmationTimer_;
+    Sp<asio::steady_timer> listenerRestartTimer_;
 
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.

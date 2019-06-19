@@ -138,6 +138,15 @@ Client::create_connection()
     return conn;
 }
 
+bool
+Client::active_connection(const uint16_t conn_id)
+{
+    auto req = requests_.find(conn_id);
+    if (req == requests_.end())
+        return false;
+    return req->second.connection->is_open();
+}
+
 void
 Client::close_connection(const uint16_t conn_id)
 {
