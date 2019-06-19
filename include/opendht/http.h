@@ -1,4 +1,5 @@
 /*
+ * return;
  *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -63,7 +64,6 @@ struct Request
     std::string content;
     std::shared_ptr<http_parser> parser;
     std::shared_ptr<http_parser_settings> parser_settings;
-
 };
 
 class ConnectionListener
@@ -103,8 +103,6 @@ public:
     void set_query_address(const std::string ip, const uint16_t port);
     asio::ip::tcp::resolver::query build_query();
 
-    std::shared_ptr<Connection> open_conn();
-
     std::string create_request(const restinio::http_request_header_t header,
                                const restinio::http_header_fields_t header_fields,
                                const restinio::http_connection_header_t connection,
@@ -115,6 +113,9 @@ public:
                       std::shared_ptr<http_parser_settings> parser_s);
 
 private:
+    std::shared_ptr<Connection> open_connection();
+    void close_connection(std::shared_ptr<Connection> conn);
+
     void handle_resolve(const asio::error_code &ec,
                         asio::ip::tcp::resolver::results_type results,
                         std::shared_ptr<Connection> conn = nullptr);

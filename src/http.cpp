@@ -15,7 +15,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-// TODO remove requests connection get closed
 
 #include "http.h"
 
@@ -144,17 +143,23 @@ Client::build_query()
 
 
 std::shared_ptr<Connection>
-Client::open_conn()
+Client::open_connection()
 {
-    using namespace asio::ip;
-    auto conn = std::make_shared<Connection>(
-        connId_,
-        std::move(asio::ip::tcp::socket{resolver_.get_io_context()})
-    );
+    auto conn = std::make_shared<Connection>(connId_,
+        std::move(asio::ip::tcp::socket{resolver_.get_io_context()}));
     if (logger_)
         logger_->d("[connection:%i] created", conn->id());
     connId_++;
     return conn;
+}
+
+void
+Client::close_connection(std::shared_ptr<Connection> conn)
+{
+    requests_.erase(conn->id());
+    conn->close();
+    if (logger_)
+        logger_->d("[connection:%i] closed", conn->id());
 }
 
 std::string
@@ -164,12 +169,15 @@ Client::create_request(const restinio::http_request_header_t header,
                        const std::string body)
 {
     std::stringstream request;
+
     // first header
     request << header.method().c_str() << " " << header.request_target() << " " <<
                "HTTP/" << header.http_major() << "." << header.http_minor() << "\r\n";
+
     // other headers
     for (auto header_field: header_fields)
         request << header_field.name() << ": " << header_field.value() << "\r\n";
+
     // last connection header
     std::string conn_str;
     switch (connection){
@@ -184,11 +192,13 @@ Client::create_request(const restinio::http_request_header_t header,
         break;
     }
     request << "Connection: " << conn_str << "\r\n";
+
     // body & content-length
     if (!body.empty()){
         request << "Content-Length: " << body.size() << "\r\n\r\n";
         request << body;
     }
+
     // last delim
     request << "\r\n";
     return request.str();
@@ -199,16 +209,19 @@ Client::post_request(std::string request,
                      std::shared_ptr<http_parser> parser,
                      std::shared_ptr<http_parser_settings> parser_s)
 {
-    auto conn = open_conn();
+    auto conn = open_connection();
+
     // write the request to buffer
     std::ostream request_stream(&conn->request_);
     request_stream << request;
+
     // save things needed later
     Request req = {};
     req.content = request;
     req.parser = parser;
     req.parser_settings = parser_s;
     requests_[conn->id()] = req;
+
     // resolve the query to the server
     resolver_.async_resolve(build_query(),
         std::bind(&Client::handle_resolve, this,
@@ -236,6 +249,7 @@ Client::handle_resolve(const asio::error_code &ec,
     if (!conn->is_open()){
         if (logger_)
             logger_->e("[connection:%i] error closed connection", conn->id());
+        requests_.erase(conn->id());
         return;
     }
     // send the request
@@ -251,6 +265,7 @@ Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> c
     if (ec and ec != asio::error::eof){
         if (logger_)
             logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
+        close_connection(conn);
         return;
     }
     // read response
@@ -266,13 +281,18 @@ Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> 
         if (logger_)
             logger_->e("[connection:%i] error handling response: %s",
                        conn->id(), ec.message().c_str());
+        return;
     }
-    auto &req = requests_[conn->id()];
-
+    else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
+        close_connection(conn);
+        return;
+    }
+    // read the response buffer
     std::ostringstream str_s;
     str_s << &conn->response_;
 
     // parse the request
+    auto &req = requests_[conn->id()];
     http_parser_execute(req.parser.get(), req.parser_settings.get(),
                         str_s.str().c_str(), str_s.str().size());
 
