@@ -1,5 +1,4 @@
 /*
- * return;
  *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
