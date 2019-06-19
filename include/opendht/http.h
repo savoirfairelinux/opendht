@@ -59,11 +59,15 @@ struct ListenerSession
     std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
 };
 
+/**
+ * Request is the context of an active connection allowing it to parse responses
+ */
 struct Request
 {
     std::string content;
     std::shared_ptr<http_parser> parser;
     std::shared_ptr<http_parser_settings> parser_settings;
+    std::shared_ptr<Connection> connection;
 };
 
 class ConnectionListener
@@ -108,14 +112,14 @@ public:
                                const restinio::http_connection_header_t connection,
                                const std::string body);
 
-    void post_request(std::string request,
-                      std::shared_ptr<http_parser> parser,
-                      std::shared_ptr<http_parser_settings> parser_s);
+    uint16_t post_request(std::string request,
+                          std::shared_ptr<http_parser> parser,
+                          std::shared_ptr<http_parser_settings> parser_s);
+
+    void close_connection(uint16_t conn_id);
 
 private:
     std::shared_ptr<Connection> create_connection();
-
-    void close_connection(std::shared_ptr<Connection> conn);
 
     void handle_connect(const asio::error_code &ec,
                         asio::ip::tcp::resolver::iterator endpoint_it,
@@ -138,7 +142,9 @@ private:
     asio::ip::tcp::resolver resolver_;
 
     uint16_t connId_ {1};
-    // conn_id : request
+    /*
+     * An association between an active connection and its context, a Request.
+     */
     std::map<uint16_t, Request> requests_;
 
     std::shared_ptr<dht::Logger> logger_;
