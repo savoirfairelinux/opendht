@@ -89,23 +89,23 @@ struct OPENDHT_PUBLIC NodeInfo {
  */
 struct OPENDHT_PUBLIC Config {
     /** DHT node ID */
-    InfoHash node_id;
+    InfoHash node_id {};
 
     /**
      * DHT network ID. A node will only talk with other nodes having
      * the same network ID.
      * Network ID 0 (default) represents the main public network.
      */
-    NetId network;
+    NetId network {0};
 
     /** For testing purposes only, enables bootstrap mode */
-    bool is_bootstrap;
+    bool is_bootstrap {false};
 
     /** Makes the DHT responsible to maintain its stored values. Consumes more ressources. */
-    bool maintain_storage;
+    bool maintain_storage {false};
 
     /** If set, the dht will load its state from this file on start and save its state in this file on shutdown */
-    std::string persist_path;
+    std::string persist_path {};
 };
 
 /**
@@ -113,8 +113,8 @@ struct OPENDHT_PUBLIC Config {
  */
 struct OPENDHT_PUBLIC SecureDhtConfig
 {
-    Config node_config;
-    crypto::Identity id;
+    Config node_config {};
+    crypto::Identity id {};
 };
 
 static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
