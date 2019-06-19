@@ -94,14 +94,14 @@ private:
 class Client
 {
 public:
-    Client(asio::io_context &ctx, std::string ip, uint16_t port,
+    Client(asio::io_context &ctx, std::string host, uint16_t port,
            std::shared_ptr<dht::Logger> logger = nullptr);
 
     asio::io_context& io_context();
+
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
-    void set_query_address(const std::string ip, const uint16_t port);
-    asio::ip::tcp::resolver::query build_query();
+    void set_query_address(const std::string host, const uint16_t port);
 
     std::string create_request(const restinio::http_request_header_t header,
                                const restinio::http_header_fields_t header_fields,
@@ -113,11 +113,16 @@ public:
                       std::shared_ptr<http_parser_settings> parser_s);
 
 private:
-    std::shared_ptr<Connection> open_connection();
+    std::shared_ptr<Connection> create_connection();
+
     void close_connection(std::shared_ptr<Connection> conn);
 
+    void handle_connect(const asio::error_code &ec,
+                        asio::ip::tcp::resolver::iterator endpoint_it,
+                        std::shared_ptr<Connection> conn = nullptr);
+
     void handle_resolve(const asio::error_code &ec,
-                        asio::ip::tcp::resolver::results_type results,
+                        asio::ip::tcp::resolver::iterator endpoint_it,
                         std::shared_ptr<Connection> conn = nullptr);
 
     void handle_request(const asio::error_code &ec,
@@ -127,7 +132,7 @@ private:
                          std::shared_ptr<Connection> conn = nullptr);
 
     uint16_t port_;
-    asio::ip::address addr_;
+    std::string host_;
 
     // contains the io_context
     asio::ip::tcp::resolver resolver_;

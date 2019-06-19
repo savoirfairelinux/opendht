@@ -35,11 +35,6 @@ Connection::id(){
     return id_;
 }
 
-void
-Connection::start(asio::ip::tcp::resolver::iterator &r_iter){
-    asio::connect(socket_, r_iter);
-}
-
 bool
 Connection::is_open(){
     return socket_.is_open();
@@ -107,11 +102,11 @@ ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
 
 // client
 
-Client::Client(asio::io_context &ctx, const std::string ip, const uint16_t port,
+Client::Client(asio::io_context &ctx, const std::string host, const uint16_t port,
                std::shared_ptr<dht::Logger> logger):
         resolver_(ctx), logger_(logger)
 {
-    set_query_address(ip, port);
+    set_query_address(host, port);
 }
 
 asio::io_context&
@@ -126,24 +121,14 @@ Client::set_logger(std::shared_ptr<dht::Logger> logger)
     logger_ = logger;
 }
 void
-Client::set_query_address(const std::string ip, const uint16_t port)
+Client::set_query_address(const std::string host, const uint16_t port)
 {
-    addr_ = asio::ip::address::from_string(ip);
+    host_ = host;
     port_ = port;
 }
 
-asio::ip::tcp::resolver::query
-Client::build_query()
-{
-    // support of ipv4 & ipv6
-    return asio::ip::tcp::resolver::query {
-        addr_.is_v4() ? asio::ip::tcp::v4() : asio::ip::tcp::v6(),
-        addr_.to_string(), std::to_string(port_)};
-}
-
-
 std::shared_ptr<Connection>
-Client::open_connection()
+Client::create_connection()
 {
     auto conn = std::make_shared<Connection>(connId_,
         std::move(asio::ip::tcp::socket{resolver_.get_io_context()}));
@@ -209,7 +194,7 @@ Client::post_request(std::string request,
                      std::shared_ptr<http_parser> parser,
                      std::shared_ptr<http_parser_settings> parser_s)
 {
-    auto conn = open_connection();
+    auto conn = create_connection();
 
     // write the request to buffer
     std::ostream request_stream(&conn->request_);
@@ -223,33 +208,51 @@ Client::post_request(std::string request,
     requests_[conn->id()] = req;
 
     // resolve the query to the server
-    resolver_.async_resolve(build_query(),
+    asio::ip::tcp::resolver::query query(host_, std::to_string(port_));
+    resolver_.async_resolve(query,
         std::bind(&Client::handle_resolve, this,
             std::placeholders::_1, std::placeholders::_2, conn));
 }
 
 void
 Client::handle_resolve(const asio::error_code &ec,
-                       asio::ip::tcp::resolver::results_type results,
+                       asio::ip::tcp::resolver::iterator endpoint_it,
                        std::shared_ptr<Connection> conn)
 {
-    if (ec or results.empty()){
+    if (ec){
         if (logger_)
             logger_->e("[connection:%i] error resolving", conn->id());
         conn->close();
         return;
     }
-    for (auto da = results.begin(); da != results.end(); ++da){
-        if (logger_)
-            logger_->d("[connection:%i] resolved host=%s service=%s",
-                conn->id(), da->host_name().c_str(), da->service_name().c_str());
-        conn->start(da);
-        break;
+    if (logger_){
+        logger_->d("[connection:%i] resolved host=%s service=%s", conn->id(),
+            endpoint_it->host_name().c_str(), endpoint_it->service_name().c_str());
     }
-    if (!conn->is_open()){
+    conn->socket_.async_connect(*endpoint_it,
+        std::bind(&Client::handle_connect, this,
+                  std::placeholders::_1, ++endpoint_it, conn));
+}
+
+void
+Client::handle_connect(const asio::error_code &ec,
+                       asio::ip::tcp::resolver::iterator endpoint_it,
+                       std::shared_ptr<Connection> conn)
+{
+    if (ec){
         if (logger_)
-            logger_->e("[connection:%i] error closed connection", conn->id());
-        requests_.erase(conn->id());
+            logger_->e("[connection:%i] error opening: %s",
+                       conn->id(), ec.message().c_str());
+        close(conn->id());
+        return;
+    }
+    else if (endpoint_it != asio::ip::tcp::resolver::iterator()){
+        if (logger_)
+            logger_->e("[connection:%i] error connecting, trying next endpoint", conn->id());
+        conn->socket_.close();
+        conn->socket_.async_connect(*endpoint_it,
+            std::bind(&Client::handle_connect, this,
+                      std::placeholders::_1, ++endpoint_it, conn));
         return;
     }
     // send the request
@@ -260,16 +263,17 @@ Client::handle_resolve(const asio::error_code &ec,
 void
 Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> conn)
 {
-    logger_->d("[connection:%i] request write", conn->id());
-
     if (ec and ec != asio::error::eof){
         if (logger_)
-            logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
+            logger_->e("[connection:%i] error handling request: %s",
+                       conn->id(), ec.message().c_str());
         close_connection(conn);
         return;
     }
+    if (logger_)
+        logger_->d("[connection:%i] request write", conn->id());
+
     // read response
-    logger_->d("[connection:%i] response read", conn->id());
     asio::async_read_until(conn->socket_, conn->response_, "\r\n\r\n",
         std::bind(&Client::handle_response, this, std::placeholders::_1, conn));
 }
@@ -287,6 +291,9 @@ Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> 
         close_connection(conn);
         return;
     }
+    if (logger_)
+        logger_->d("[connection:%i] response read", conn->id());
+
     // read the response buffer
     std::ostringstream str_s;
     str_s << &conn->response_;
