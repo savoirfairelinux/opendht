@@ -15,6 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+// TODO remove requests connection get closed
 
 #include "http.h"
 
@@ -43,23 +44,6 @@ Connection::start(asio::ip::tcp::resolver::iterator &r_iter){
 bool
 Connection::is_open(){
     return socket_.is_open();
-}
-
-asio::ip::tcp::socket&
-Connection::get_socket(){
-    return socket_;
-}
-
-std::string
-Connection::read(std::error_code& ec){
-    std::string response;
-    asio::read(socket_, asio::dynamic_buffer(response), ec);
-    return response;
-}
-
-void
-Connection::write(std::string request, std::error_code& ec){
-    asio::write(socket_, asio::dynamic_buffer(request), ec);
 }
 
 void
@@ -132,22 +116,26 @@ Client::Client(asio::io_context &ctx, const std::string ip, const uint16_t port,
 }
 
 asio::io_context&
-Client::io_context(){
+Client::io_context()
+{
     return resolver_.get_io_context();
 }
 
 void
-Client::set_logger(std::shared_ptr<dht::Logger> logger){
+Client::set_logger(std::shared_ptr<dht::Logger> logger)
+{
     logger_ = logger;
 }
 void
-Client::set_query_address(const std::string ip, const uint16_t port){
+Client::set_query_address(const std::string ip, const uint16_t port)
+{
     addr_ = asio::ip::address::from_string(ip);
     port_ = port;
 }
 
 asio::ip::tcp::resolver::query
-Client::build_query(){
+Client::build_query()
+{
     // support of ipv4 & ipv6
     return asio::ip::tcp::resolver::query {
         addr_.is_v4() ? asio::ip::tcp::v4() : asio::ip::tcp::v6(),
@@ -156,7 +144,8 @@ Client::build_query(){
 
 
 std::shared_ptr<Connection>
-Client::open_conn(){
+Client::open_conn()
+{
     using namespace asio::ip;
     auto conn = std::make_shared<Connection>(
         connId_,
@@ -172,7 +161,8 @@ std::string
 Client::create_request(const restinio::http_request_header_t header,
                        const restinio::http_header_fields_t header_fields,
                        const restinio::http_connection_header_t connection,
-                       const std::string body){
+                       const std::string body)
+{
     std::stringstream request;
     // first header
     request << header.method().c_str() << " " << header.request_target() << " " <<
@@ -207,85 +197,94 @@ Client::create_request(const restinio::http_request_header_t header,
 void
 Client::post_request(std::string request,
                      std::shared_ptr<http_parser> parser,
-                     std::shared_ptr<http_parser_settings> parser_s,
-                     std::shared_ptr<Connection> conn){
-    // invoke the given handler and return immediately
-    asio::post(resolver_.get_io_context(), [this, request, parser, parser_s, conn](){
-        this->async_request(request, parser, parser_s, conn);
-    });
+                     std::shared_ptr<http_parser_settings> parser_s)
+{
+    auto conn = open_conn();
+    // write the request to buffer
+    std::ostream request_stream(&conn->request_);
+    request_stream << request;
+    // save things needed later
+    Request req = {};
+    req.content = request;
+    req.parser = parser;
+    req.parser_settings = parser_s;
+    requests_[conn->id()] = req;
+    // resolve the query to the server
+    resolver_.async_resolve(build_query(),
+        std::bind(&Client::handle_resolve, this,
+            std::placeholders::_1, std::placeholders::_2, conn));
 }
 
 void
-Client::async_request(std::string request,
-                      std::shared_ptr<http_parser> parser,
-                      std::shared_ptr<http_parser_settings> parser_s,
-                      std::shared_ptr<Connection> conn){
-    using namespace asio::ip;
-
-    if (!conn)
-        conn = open_conn();
-
-    // resolve sometime in future
-    resolver_.async_resolve(build_query(), [=](std::error_code ec,
-                                               tcp::resolver::results_type res){
-        if (ec or res.empty()){
-            if (logger_)
-                logger_->e("[connection:%i] error resolving", conn->id());
-            conn->close();
-            return;
-        }
-        for (auto da = res.begin(); da != res.end(); ++da){
-            if (logger_)
-                logger_->d("[connection:%i] resolved host=%s service=%s",
-                    conn->id(), da->host_name().c_str(), da->service_name().c_str());
-            conn->start(da);
-            break;
-        }
-        if (!conn->is_open()){
-            if (logger_)
-                logger_->e("[connection:%i] error closed connection", conn->id());
-            return;
-        }
-        // send request
-        logger_->d("[connection:%i] request write", conn->id());
-        conn->write(request, ec);
-        if (ec and ec != asio::error::eof){
-            if (logger_)
-                logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
-            return;
-        }
-        // read response
-        logger_->d("[connection:%i] response read", conn->id());
-        asio::async_read_until(conn->socket_, conn->response_stream_, "\r\n\r\n",
-            std::bind(&Client::handle_response, this, ec, parser, parser_s, conn));
-    });
+Client::handle_resolve(const asio::error_code &ec,
+                       asio::ip::tcp::resolver::results_type results,
+                       std::shared_ptr<Connection> conn)
+{
+    if (ec or results.empty()){
+        if (logger_)
+            logger_->e("[connection:%i] error resolving", conn->id());
+        conn->close();
+        return;
+    }
+    for (auto da = results.begin(); da != results.end(); ++da){
+        if (logger_)
+            logger_->d("[connection:%i] resolved host=%s service=%s",
+                conn->id(), da->host_name().c_str(), da->service_name().c_str());
+        conn->start(da);
+        break;
+    }
+    if (!conn->is_open()){
+        if (logger_)
+            logger_->e("[connection:%i] error closed connection", conn->id());
+        return;
+    }
+    // send the request
+    asio::async_write(conn->socket_, conn->request_,
+        std::bind(&Client::handle_request, this, std::placeholders::_1, conn));
 }
 
 void
-Client::handle_response(const asio::error_code &ec,
-                        std::shared_ptr<http_parser> parser,
-                        std::shared_ptr<http_parser_settings> parser_s,
-                        std::shared_ptr<Connection> conn){
+Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> conn)
+{
+    logger_->d("[connection:%i] request write", conn->id());
+
+    if (ec and ec != asio::error::eof){
+        if (logger_)
+            logger_->e("[connection:%i] error: %s", conn->id(), ec.message().c_str());
+        return;
+    }
+    // read response
+    logger_->d("[connection:%i] response read", conn->id());
+    asio::async_read_until(conn->socket_, conn->response_, "\r\n\r\n",
+        std::bind(&Client::handle_response, this, std::placeholders::_1, conn));
+}
+
+void
+Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> conn)
+{
     if (ec && ec != asio::error::eof){
         if (logger_)
             logger_->e("[connection:%i] error handling response: %s",
                        conn->id(), ec.message().c_str());
     }
+    auto &req = requests_[conn->id()];
+
     std::ostringstream str_s;
-    str_s << &conn->response_stream_;
+    str_s << &conn->response_;
 
     // parse the request
-    http_parser_execute(parser.get(), parser_s.get(), str_s.str().c_str(), str_s.str().size());
+    http_parser_execute(req.parser.get(), req.parser_settings.get(),
+                        str_s.str().c_str(), str_s.str().size());
 
     // detect parsing errors
-    if (HPE_OK != parser->http_errno && HPE_PAUSED != parser->http_errno){
+    if (HPE_OK != req.parser->http_errno && HPE_PAUSED != req.parser->http_errno){
         if (logger_){
-            auto err = HTTP_PARSER_ERRNO(parser.get());
+            auto err = HTTP_PARSER_ERRNO(req.parser.get());
             logger_->e("[connection:%i] error parsing: %s", conn->id(), http_errno_name(err));
         }
     }
-    asio::async_read(conn->socket_, conn->response_stream_, asio::transfer_at_least(1),
-        std::bind(&Client::handle_response, this, ec, parser, parser_s, conn));
+    asio::async_read(conn->socket_, conn->response_, asio::transfer_at_least(1),
+        std::bind(&Client::handle_response, this, std::placeholders::_1, conn));
 }
 
-}
+} // namespace http

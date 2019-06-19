@@ -36,9 +36,6 @@ public:
     uint16_t id();
     void start(asio::ip::tcp::resolver::iterator &r_iter);
     bool is_open();
-    asio::ip::tcp::socket& get_socket();
-    std::string read(std::error_code& ec);
-    void write(std::string request, std::error_code& ec);
     void close();
 
 private:
@@ -46,7 +43,8 @@ private:
 
     uint16_t id_;
     asio::ip::tcp::socket socket_;
-    asio::streambuf response_stream_;
+    asio::streambuf request_;
+    asio::streambuf response_;
 };
 
 /**
@@ -58,6 +56,17 @@ struct ListenerSession
     dht::InfoHash hash;
     std::future<size_t> token;
     std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
+};
+
+struct Request
+{
+    std::string content;
+    std::shared_ptr<http_parser> parser;
+    std::shared_ptr<http_parser_settings> parser_settings;
+
+    asio::error_code ec;
+    asio::ip::tcp::resolver::results_type resolved;
+
 };
 
 class ConnectionListener
@@ -105,25 +114,30 @@ public:
                                const std::string body);
 
     void post_request(std::string request,
-                      std::shared_ptr<http_parser> parser = nullptr,
-                      std::shared_ptr<http_parser_settings> parser_s = nullptr,
-                      std::shared_ptr<Connection> conn = nullptr);
+                      std::shared_ptr<http_parser> parser,
+                      std::shared_ptr<http_parser_settings> parser_s);
 
 private:
-    void async_request(std::string request,
-                       std::shared_ptr<http_parser> parser = nullptr,
-                       std::shared_ptr<http_parser_settings> parser_s = nullptr,
-                       std::shared_ptr<Connection> conn = nullptr);
+    void handle_resolve(const asio::error_code &ec,
+                        asio::ip::tcp::resolver::results_type results,
+                        std::shared_ptr<Connection> conn = nullptr);
+
+    void handle_request(const asio::error_code &ec,
+                        std::shared_ptr<Connection> conn = nullptr);
 
     void handle_response(const asio::error_code &ec,
-                         std::shared_ptr<http_parser> parser = nullptr,
-                         std::shared_ptr<http_parser_settings> parser_s = nullptr,
                          std::shared_ptr<Connection> conn = nullptr);
 
     uint16_t port_;
     asio::ip::address addr_;
+
+    // contains the io_context
     asio::ip::tcp::resolver resolver_;
+
     uint16_t connId_ {1};
+    // conn_id : request
+    std::map<uint16_t, Request> requests_;
+
     std::shared_ptr<dht::Logger> logger_;
 };
 
