@@ -159,29 +159,23 @@ DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
     DHT_LOG.w("Cancelling all listeners for %zu searches", searches_.size());
-    /*
     for (auto& s: searches_) {
         s.second.ops.cancelAll([&](size_t token){
             auto l = s.second.listeners.find(token);
             if (l == s.second.listeners.end())
                 return;
-            if (l->second.thread.joinable()) {
-                // Close connection to stop listener?
+            if (httpClient_->active_connection(l->second.connId)){
                 l->second.state->cancel = true;
-                if (l->second.req) {
-                    try {
-                        //restbed::Http::close(l->second.req);
-                    } catch (const std::exception& e) {
-                        DHT_LOG.w("Error closing socket: %s", e.what());
-                    }
-                    l->second.req.reset();
+                try {
+                    httpClient_->close_connection(l->second.connId);
+                } catch (const std::exception& e) {
+                    DHT_LOG.w("Error closing socket: %s", e.what());
                 }
-                l->second.thread.join();
+                l->second.connId = 0;
             }
             s.second.listeners.erase(token);
         });
     }
-    */
 }
 
 void
