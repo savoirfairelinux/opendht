@@ -84,12 +84,12 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
     // run http client
     httpClientThread_ = std::thread([this](){
         try {
-            DHT_LOG.d("Starting the HTTP Client io_context");
+            logger_->d("Starting the HTTP Client io_context");
             httpContext_.run();
-            DHT_LOG.d("HTTP Client io_context stopped");
+            logger_->d("HTTP Client io_context stopped");
         }
         catch(const std::exception &ex){
-            DHT_LOG.e("Error starting the HTTP Client io_context");
+            logger_->e("Error starting the HTTP Client io_context");
         }
     });
 
@@ -119,7 +119,7 @@ DhtProxyClient::startProxy()
     if (serverHost_.empty())
         return;
 
-    DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
+    logger_->w("Staring proxy client to %s", serverHost_.c_str());
 
     nextProxyConfirmationTimer_ = std::make_shared<asio::steady_timer>(
         periodicContext_, std::chrono::steady_clock::now());
@@ -172,7 +172,7 @@ void
 DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
-    DHT_LOG.w("Cancelling all listeners for %zu searches", searches_.size());
+    logger_->w("Cancelling all listeners for %zu searches", searches_.size());
     for (auto& s: searches_) {
         s.second.ops.cancelAll([&](size_t token){
             auto l = s.second.listeners.find(token);
@@ -183,7 +183,7 @@ DhtProxyClient::cancelAllListeners()
                 try {
                     httpClient_->close_connection(l->second.connId);
                 } catch (const std::exception& e) {
-                    DHT_LOG.w("Error closing socket: %s", e.what());
+                    logger_->w("Error closing socket: %s", e.what());
                 }
                 l->second.connId = 0;
             }
@@ -235,10 +235,10 @@ time_point
 DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 {
     // Execute all HTTP opeations
-    DHT_LOG.d("[periodic] running the io_context operations");
+    logger_->d("[periodic] running the io_context operations");
     periodicContext_.run();
     // Exec all currently stored callbacks
-    DHT_LOG.d("[periodic] executing the stored callbacks");
+    logger_->d("[periodic] executing the stored callbacks");
     scheduler.syncTime();
     decltype(callbacks_) callbacks;
     {
@@ -267,14 +267,14 @@ void
 DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
                     Value::Filter&& f, Where&& w)
 {
-    DHT_LOG.d(key, "[search %s]: get", key.to_c_str());
+    logger_->d(key, "[search %s]: get", key.to_c_str());
     restinio::http_request_header_t header;
     header.request_target("/" + key.toString());
     header.method(restinio::http_method_get());
     auto header_fields = this->initHeaderFields();
     auto request = httpClient_->create_request(header, header_fields,
         restinio::http_connection_header_t::keep_alive, ""/*body*/);
-    DHT_LOG.w(request.c_str());
+    logger_->d(request.c_str());
 
     struct GetContext {
         GetCallback cb;
@@ -363,7 +363,7 @@ void
 DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb,
                     time_point created, bool permanent)
 {
-    DHT_LOG.d(key, "[search %s]: put", key.to_c_str());
+    logger_->d(key, "[search %s]: put", key.to_c_str());
     if (not val){
         if (cb)
             cb(false, {});
@@ -413,7 +413,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb,
 void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point /*created*/, bool permanent)
 {
-    DHT_LOG.d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
+    logger_->d(key, "[search %s] performing put of %s", key.to_c_str(), val->toString().c_str());
     restinio::http_request_header_t header;
     header.request_target("/" + key.toString());
     header.method(restinio::http_method_post());
@@ -439,7 +439,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     auto body = Json::writeString(wbuilder, json);
     auto request = httpClient_->create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
-    DHT_LOG.d("%s", request.c_str());
+    logger_->d("%s", request.c_str());
 
     struct GetContext {
         DoneCallbackSimple donecb; // wrapper
@@ -525,7 +525,7 @@ DhtProxyClient::cancelPut(const InfoHash& key, const Value::Id& id)
     auto search = searches_.find(key);
     if (search == searches_.end())
         return false;
-    DHT_LOG.d(key, "[search %s] cancel put", key.to_c_str());
+    logger_->d(key, "[search %s] cancel put", key.to_c_str());
     return search->second.puts.erase(id) > 0;
 }
 
@@ -538,7 +538,7 @@ DhtProxyClient::getNodesStats(sa_family_t af) const
 void
 DhtProxyClient::getProxyInfos()
 {
-    DHT_LOG.d("Requesting proxy server node information");
+    logger_->d("Requesting proxy server node information");
     std::lock_guard<std::mutex> l(statusLock_);
 
     auto infoState = std::make_shared<InfoState>();
@@ -567,7 +567,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                                   std::shared_ptr<InfoState> infoState)
 {
     if (ec){
-        DHT_LOG.e("[proxy:status] handling error: %s", ec.message().c_str());
+        logger_->e("[proxy:status] handling error: %s", ec.message().c_str());
         return;
     }
     auto serverHost = serverHost_;
@@ -597,7 +597,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
             auto header_fields = this->initHeaderFields();
             auto request = httpClient_->create_request(header, header_fields,
                 restinio::http_connection_header_t::keep_alive, ""/*body*/);
-            DHT_LOG.w(request.c_str());
+            logger_->w(request.c_str());
 
             // initalise the parser callback data
             struct GetContext {
@@ -662,7 +662,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
         }
     }
     catch (const std::exception& e) {
-        DHT_LOG.e("Error sending proxy info request: %s", e.what());
+        logger_->e("Error sending proxy info request: %s", e.what());
     }
 }
 
@@ -675,10 +675,10 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
     if (not proxyInfos.isMember("node_id")) {
-        DHT_LOG.e("Proxy info request failed for %s", family == AF_INET ? "IPv4" : "IPv6");
+        logger_->e("Proxy info request failed for %s", family == AF_INET ? "IPv4" : "IPv6");
         status = NodeStatus::Disconnected;
     } else {
-        DHT_LOG.d("Got proxy reply for %s", family == AF_INET ? "IPv4" : "IPv6");
+        logger_->d("Got proxy reply for %s", family == AF_INET ? "IPv4" : "IPv6");
         try {
             myid = InfoHash(proxyInfos["node_id"].asString());
             stats4_ = NodeStats(proxyInfos["ipv4"]);
@@ -697,7 +697,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
             else if (publicFamily == AF_INET6)
                 publicAddressV6_ = publicIp;
         } catch (const std::exception& e) {
-            DHT_LOG.w("Error processing proxy infos: %s", e.what());
+            logger_->w("Error processing proxy infos: %s", e.what());
         }
     }
 
@@ -738,7 +738,7 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 
 size_t
 DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
-    DHT_LOG.d(key, "[search %s]: listen", key.to_c_str());
+    logger_->d(key, "[search %s]: listen", key.to_c_str());
 
     auto& search = searches_[key];
     auto query = std::make_shared<Query>(Select{}, where);
@@ -747,10 +747,10 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         std::lock_guard<std::mutex> lock(searchLock_);
         auto search = searches_.find(key);
         if (search == searches_.end()) {
-            DHT_LOG.e(key, "[search %s] listen: search not found", key.to_c_str());
+            logger_->e(key, "[search %s] listen: search not found", key.to_c_str());
             return 0;
         }
-        DHT_LOG.d("[search %s] sending %s", key.to_c_str(),
+        logger_->d("[search %s] sending %s", key.to_c_str(),
                   deviceKey_.empty() ? "listen" : "subscribe");
 
         auto token = ++listenerToken_;
@@ -831,7 +831,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     scheduler.syncTime();
-    DHT_LOG.d(key, "[search %s]: cancelListen %zu", key.to_c_str(), gtoken);
+    logger_->d(key, "[search %s]: cancelListen %zu", key.to_c_str(), gtoken);
     auto it = searches_.find(key);
     if (it == searches_.end())
         return false;
@@ -877,7 +877,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         body = fillBody(method == ListenMethod::RESUBSCRIBE);
 #endif
     auto request = httpClient_->create_request(header, headers, conn, body);
-    DHT_LOG.d(request.c_str());
+    logger_->d(request.c_str());
 
     struct ListenContext {
         Logger *logger;
@@ -886,7 +886,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         std::shared_ptr<ListenState> state;
     };
     auto context = std::make_shared<ListenContext>();
-    context->logger = &DHT_LOG;
+    context->logger = logger_.get();
     // keeping context data alive
     context->cb = [context, cb](const std::vector<std::shared_ptr<Value>>& values, bool expired){
         return cb(values, expired);
@@ -931,7 +931,6 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             }
         } catch(const std::exception& e) {
             context->logger->e("Error in listen parsing: %s", e.what());
-            context->logger->w("Listen closed by the proxy server: %s", e.what());
             context->state->ok = false;
             return 1;
         }
@@ -954,7 +953,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     if (it == search->second.listeners.end())
         return false;
 
-    DHT_LOG.d(key, "[search %s] cancel listen", key.to_c_str());
+    logger_->d(key, "[search %s] cancel listen", key.to_c_str());
 
     auto& listener = it->second;
     listener.state->cancel = true;
@@ -976,7 +975,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // build the request
         auto request = httpClient_->create_request(header, header_fields,
             restinio::http_connection_header_t::keep_alive, content);
-        DHT_LOG.w(request.c_str());
+        logger_->w(request.c_str());
         // define context
         struct UnsubscribeContext {
             InfoHash key;
@@ -1006,12 +1005,12 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
                 httpClient_->close_connection(listener.connId);
             }
             catch (const std::exception& e){
-                DHT_LOG.w("Error closing socket: %s", e.what());
+                logger_->w("Error closing socket: %s", e.what());
             }
         }
     }
     search->second.listeners.erase(it);
-    DHT_LOG.d(key, "[search %s] cancelListen: %zu listener remaining",
+    logger_->d(key, "[search %s] cancelListen: %zu listener remaining",
                    key.to_c_str(), search->second.listeners.size());
     if (search->second.listeners.empty()){
         searches_.erase(search);
@@ -1022,7 +1021,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
 void
 DhtProxyClient::opFailed()
 {
-    DHT_LOG.e("Proxy request failed");
+    logger_->e("Proxy request failed");
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         statusIpv4_ = NodeStatus::Disconnected;
@@ -1044,7 +1043,7 @@ DhtProxyClient::restartListeners()
 {
     if (isDestroying_) return;
     std::lock_guard<std::mutex> lock(searchLock_);
-    DHT_LOG.d("Refresh permanent puts");
+    logger_->d("Refresh permanent puts");
     for (auto& search : searches_) {
         for (auto& put : search.second.puts) {
             if (!*put.second.ok) {
@@ -1059,7 +1058,7 @@ DhtProxyClient::restartListeners()
         }
     }
     if (not deviceKey_.empty()) {
-        DHT_LOG.d("resubscribe due to a connectivity change");
+        logger_->d("resubscribe due to a connectivity change");
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
@@ -1067,7 +1066,7 @@ DhtProxyClient::restartListeners()
                     resubscribe(search.first, listener.second);
         return;
     }
-    DHT_LOG.d("Restarting listeners");
+    logger_->d("Restarting listeners");
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
@@ -1077,7 +1076,7 @@ DhtProxyClient::restartListeners()
                 try {
                     httpClient_->close_connection(listener.connId);
                 } catch (const std::exception& e) {
-                    DHT_LOG.w("Error closing socket: %s", e.what());
+                    logger_->w("Error closing socket: %s", e.what());
                 }
                 l.second.connId = 0;
             }
@@ -1137,7 +1136,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             for (auto& list : search.listeners) {
                 if (list.second.state->cancel)
                     continue;
-                DHT_LOG.d(key, "[search %s] handling push notification", key.to_c_str());
+                logger_->d(key, "[search %s] handling push notification", key.to_c_str());
                 auto expired = notification.find("exp");
                 auto token = list.first;
                 auto state = list.second.state;
@@ -1180,7 +1179,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             }
         }
     } catch (const std::exception& e) {
-        DHT_LOG.e("Error handling push notification: %s", e.what());
+        logger_->e("Error handling push notification: %s", e.what());
     }
 #else
     (void) notification;
@@ -1194,7 +1193,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     if (deviceKey_.empty())
         return;
     scheduler.syncTime();
-    DHT_LOG.d(key, "[search %s] resubscribe push listener", key.to_c_str());
+    logger_->d(key, "[search %s] resubscribe push listener", key.to_c_str());
     // Subscribe
     auto state = listener.state;
     state->cancel = true;
@@ -1202,7 +1201,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
         try {
             httpClient_->close_connection(listener.connId);
         } catch (const std::exception& e) {
-            DHT_LOG.w("Error closing socket: %s", e.what());
+            logger_->w("Error closing socket: %s", e.what());
         }
     }
     state->cancel = false;
