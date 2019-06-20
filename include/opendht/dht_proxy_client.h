@@ -70,11 +70,6 @@ public:
     virtual ~DhtProxyClient();
 
     /**
-     * Get Asio I/O Context.
-     */
-    asio::io_context& io_context();
-
-    /**
      * Get the ID of the node.
      */
     inline const InfoHash& getNodeId() const { return myid; }
@@ -330,11 +325,17 @@ private:
     std::string pushClientId_;
 
     /*
-       * ASIO I/O Context for sockets in httpClient_
-       * Note: Each context is used in one thread only.
+     * ASIO I/O Context for sockets in httpClient_
+     * Note: Each context is used in one thread only
      */
     asio::io_context httpContext_;
+    /*
+     * http::Client instance used on http io_context
+     */
     std::unique_ptr<http::Client> httpClient_;
+    /*
+     * Thread for executing the http io_context.run() blocking call
+     */
     std::thread httpClientThread_;
 
     mutable std::mutex lockCurrentProxyInfos_;

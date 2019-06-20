@@ -71,7 +71,7 @@ struct DhtProxyClient::ProxySearch {
 
 DhtProxyClient::DhtProxyClient() {}
 
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost,
+DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string &serverHost,
     const std::string &pushClientId, std::shared_ptr<dht::Logger> logger):
         serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal),
         logger_(logger)
@@ -80,11 +80,14 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
     auto hostAndPort = splitPort(serverHost_);
     serverHostIp_ = hostAndPort.first;
     serverHostPort_ = std::atoi(hostAndPort.second.c_str());
-    httpClient_ = std::make_unique<http::Client>(httpContext_, serverHostIp_, serverHostPort_, logger);
+    httpClient_ = std::make_unique<http::Client>(
+        httpContext_, serverHostIp_, serverHostPort_, logger);
     // run http client
     httpClientThread_ = std::thread([this](){
         try {
             logger_->d("Starting the HTTP Client io_context");
+            // Ensures the httpContext_ won't run out of work
+            auto work = asio::make_work_guard(httpContext_);
             httpContext_.run();
             logger_->d("HTTP Client io_context stopped");
         }
@@ -98,11 +101,6 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
 
     if (!serverHost_.empty())
         startProxy();
-}
-
-asio::io_context&
-DhtProxyClient::io_context(){
-    return httpContext_;
 }
 
 void
