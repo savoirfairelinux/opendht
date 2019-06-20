@@ -764,7 +764,6 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             return l->second.cache.onValue(values, expired);
         };
         auto vcb = l->second.cb;
-        // l->second.req = req TODO later in code l->second.connId = connId
 
         if (not deviceKey_.empty()) {
             /*
@@ -805,7 +804,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             header.method(restinio::http_method_subscribe());
             header.request_target("/" + key.toString());
         }
-        sendListen(header, vcb, filter, state, method);
+        l->second.connId = sendListen(header, vcb, filter, state, method);
         return token;
     });
     return token;
@@ -845,9 +844,11 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     return canceled;
 }
 
-void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
-                                const ValueCallback &cb, const Value::Filter &filter,
-                                const Sp<ListenState> &state, ListenMethod method){
+uint16_t
+DhtProxyClient::sendListen(const restinio::http_request_header_t header,
+                           const ValueCallback &cb, const Value::Filter &filter,
+                           const Sp<ListenState> &state, ListenMethod method)
+{
     auto headers = this->initHeaderFields();
     auto conn = restinio::http_connection_header_t::close;
     if (method == ListenMethod::LISTEN)
@@ -919,7 +920,7 @@ void DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         return 0;
     };
     auto connId = httpClient_->post_request(request, parser, parser_s);
-    // TODO pass to Listener for restarts
+    return connId;
 }
 
 bool
@@ -1054,41 +1055,33 @@ DhtProxyClient::restartListeners()
             auto& listener = l.second;
             if (auto state = listener.state)
                 state->cancel = true;
-            /*
-            if (listener.req) {
+            if (httpClient_->active_connection(listener.connId)){
                 try {
-                    //restbed::Http::close(listener.req);
+                    httpClient_->close_connection(listener.connId);
                 } catch (const std::exception& e) {
                     DHT_LOG.w("Error closing socket: %s", e.what());
                 }
-                listener.req.reset();
+                l.second.connId = 0;
             }
-            */
         }
     }
-    /*
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
             auto state = listener.state;
-            if (listener.thread.joinable()) {
-                listener.thread.join();
-            }
             // Redo listen
             state->cancel = false;
             state->ok = true;
             auto filter = listener.filter;
             auto cb = listener.cb;
-            restbed::Uri uri(serverHost_ + "/" + search.first.toString());
-            auto req = std::make_shared<restbed::Request>(uri);
-            req->set_method("LISTEN");
-            listener.req = req;
-            listener.thread = std::thread([this, req, cb, filter, state]() {
-                //sendListen(req, cb, filter, state);
-            });
+            // define header
+            restinio::http_request_header_t header;
+            header.method(restinio::http_method_get());
+            header.request_target("/" + search.first.toString() + "/listen");
+            // send listen
+            listener.connId = sendListen(header, cb, filter, state, ListenMethod::LISTEN);
         }
     }
-    */
 }
 
 void
@@ -1200,12 +1193,11 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     restinio::http_request_header_t header;
     header.method(restinio::http_method_subscribe());
     header.request_target("/" + key.toString());
-    //listener.req = req; TODO
     listener.refreshTimer->expires_at(std::chrono::steady_clock::now() +
                                       proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     auto vcb = listener.cb;
     auto filter = listener.filter;
-    sendListen(header, vcb, filter, state, ListenMethod::RESUBSCRIBE);
+    listener.connId = sendListen(header, vcb, filter, state, ListenMethod::RESUBSCRIBE);
 #else
     (void) key;
     (void) listener;
