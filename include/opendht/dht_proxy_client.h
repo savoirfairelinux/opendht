@@ -330,10 +330,12 @@ private:
     std::string pushClientId_;
 
     /*
-     * ASIO I/O Context for sockets used in requests
+       * ASIO I/O Context for sockets in httpClient_
+       * Note: Each context is used in one thread only.
      */
-    asio::io_context ctx_;
+    asio::io_context httpContext_;
     std::unique_ptr<http::Client> httpClient_;
+    std::thread httpClientThread_;
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
@@ -368,6 +370,11 @@ private:
     Sp<asio::steady_timer> statusTimer_;
     mutable std::mutex statusLock_;
 
+    /*
+       * ASIO I/O Context for periodic scheduler
+       * Note: Each context is used in one thread only.
+     */
+    asio::io_context periodicContext_;
     Scheduler scheduler;
     /**
      * Retrieve if we can connect to the proxy (update statusIpvX_)

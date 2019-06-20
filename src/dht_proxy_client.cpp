@@ -76,10 +76,22 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
         serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal),
         logger_(logger)
 {
+    // build http client
     auto hostAndPort = splitPort(serverHost_);
     serverHostIp_ = hostAndPort.first;
     serverHostPort_ = std::atoi(hostAndPort.second.c_str());
-    httpClient_ = std::make_unique<http::Client>(ctx_, serverHostIp_, serverHostPort_, logger);
+    httpClient_ = std::make_unique<http::Client>(httpContext_, serverHostIp_, serverHostPort_, logger);
+    // run http client
+    httpClientThread_ = std::thread([this](){
+        try {
+            DHT_LOG.d("Starting the HTTP Client io_context");
+            httpContext_.run();
+            DHT_LOG.d("HTTP Client io_context stopped");
+        }
+        catch(const std::exception &ex){
+            DHT_LOG.e("Error starting the HTTP Client io_context");
+        }
+    });
 
     if (serverHost_.find("://") == std::string::npos)
         serverHost_ = proxy::HTTP_PROTO + serverHost_;
@@ -90,7 +102,7 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
 
 asio::io_context&
 DhtProxyClient::io_context(){
-    return ctx_;
+    return httpContext_;
 }
 
 void
@@ -110,10 +122,10 @@ DhtProxyClient::startProxy()
     DHT_LOG.w("Staring proxy client to %s", serverHost_.c_str());
 
     nextProxyConfirmationTimer_ = std::make_shared<asio::steady_timer>(
-        ctx_, std::chrono::steady_clock::now());
+        periodicContext_, std::chrono::steady_clock::now());
     nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::confirmProxy, this));
 
-    listenerRestartTimer_ = std::make_shared<asio::steady_timer>(ctx_);
+    listenerRestartTimer_ = std::make_shared<asio::steady_timer>(periodicContext_);
     listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this));
 
     loopSignal_();
@@ -127,6 +139,8 @@ DhtProxyClient::~DhtProxyClient()
     if (infoState_)
         infoState_->cancel = true;
     statusTimer_->cancel();
+    if (httpClientThread_.joinable())
+        httpClientThread_.join();
 }
 
 std::vector<Sp<Value>>
@@ -150,8 +164,8 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
 void
 DhtProxyClient::cancelAllOperations()
 {
-    if (!ctx_.stopped())
-        ctx_.stop();
+    if (!httpContext_.stopped())
+        httpContext_.stop();
 }
 
 void
@@ -220,7 +234,11 @@ DhtProxyClient::isRunning(sa_family_t af) const
 time_point
 DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
 {
+    // Execute all HTTP opeations
+    DHT_LOG.d("[periodic] running the io_context operations");
+    periodicContext_.run();
     // Exec all currently stored callbacks
+    DHT_LOG.d("[periodic] executing the stored callbacks");
     scheduler.syncTime();
     decltype(callbacks_) callbacks;
     {
@@ -360,7 +378,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb,
         std::lock_guard<std::mutex> lock(searchLock_);
         auto id = val->id;
         auto &search = searches_[key];
-        auto refreshTimer = std::make_shared<asio::steady_timer>(ctx_,
+        auto refreshTimer = std::make_shared<asio::steady_timer>(periodicContext_,
             std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
         auto ok = std::make_shared<std::atomic_bool>(false);
         // define refresh timer handler
@@ -537,7 +555,7 @@ DhtProxyClient::getProxyInfos()
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
     if (!statusTimer_)
-        statusTimer_ = std::make_shared<asio::steady_timer>(ctx_);
+        statusTimer_ = std::make_shared<asio::steady_timer>(periodicContext_);
 
     statusTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyStatus, this,
         std::placeholders::_1, infoState));
