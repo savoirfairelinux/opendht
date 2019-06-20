@@ -15,10 +15,10 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # Manually run with Web UI:
-#   locust -f proxy_benchmark.py --host http://127.0.0.1:8080
+#   locust -f tester.py --host http://127.0.0.1:8080
 #
 # Run in Terminal:
-#   locust -f proxy_benchmark.py --host http://127.0.0.1:8080 \
+#   locust -f tester.py --host http://127.0.0.1:8080 \
 #       --clients 100 --hatch-rate 1 --run-time 10s --no-web --only-summary
 
 from locust import HttpLocust, TaskSet
