@@ -287,6 +287,8 @@ private:
      */
     struct InfoState;
     void getProxyInfos();
+    void handleProxyStatus(const asio::error_code &ec,
+                           std::shared_ptr<InfoState> infoState);
     void onProxyInfos(const Json::Value& val, sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
@@ -360,7 +362,7 @@ private:
     std::mutex lockCallbacks;
 
     Sp<InfoState> infoState_;
-    std::thread statusThread_;
+    Sp<asio::steady_timer> statusTimer_;
     mutable std::mutex statusLock_;
 
     Scheduler scheduler;

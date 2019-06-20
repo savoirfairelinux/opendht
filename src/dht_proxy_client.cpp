@@ -126,8 +126,7 @@ DhtProxyClient::~DhtProxyClient()
     cancelAllListeners();
     if (infoState_)
         infoState_->cancel = true;
-    if (statusThread_.joinable())
-        statusThread_.join();
+    statusTimer_->cancel();
 }
 
 std::vector<Sp<Value>>
@@ -534,7 +533,6 @@ DhtProxyClient::getProxyInfos()
     if (infoState_)
         infoState_->cancel = true;
     infoState_ = infoState;
-
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
         if (statusIpv4_ == NodeStatus::Disconnected)
@@ -542,87 +540,119 @@ DhtProxyClient::getProxyInfos()
         if (statusIpv6_ == NodeStatus::Disconnected)
             statusIpv6_ = NodeStatus::Connecting;
     }
-
-    // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
-    auto serverHost = serverHost_;
-
     // Try to contact the proxy and set the status to connected when done.
     // will change the connectivity status
-    if (statusThread_.joinable()) {
-        try {
-            statusThread_.detach();
-            statusThread_ = {};
-        } catch (const std::exception& e) {
-            DHT_LOG.e("Error detaching thread: %s", e.what());
+    if (!statusTimer_)
+        statusTimer_ = std::make_shared<asio::steady_timer>(ctx_);
+
+    statusTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyStatus, this,
+        std::placeholders::_1, infoState));
+    statusTimer_->expires_at(std::chrono::steady_clock::now());
+}
+
+void
+DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
+                                  std::shared_ptr<InfoState> infoState)
+{
+    if (ec){
+        DHT_LOG.e("[proxy:status] handling error: %s", ec.message().c_str());
+        return;
+    }
+    auto serverHost = serverHost_;
+    try {
+        // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
+        auto endpointStr = serverHost;
+        auto protocol = std::string(proxy::HTTP_PROTO);
+        auto protocolIdx = serverHost.find("://");
+        if (protocolIdx != std::string::npos) {
+            protocol = endpointStr.substr(0, protocolIdx + 3);
+            endpointStr = endpointStr.substr(protocolIdx + 3);
+        }
+        auto hostAndService = splitPort(endpointStr);
+        auto resolvedProxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
+
+        for (const auto& resolvedProxy: resolvedProxies){
+            auto server = resolvedProxy.toString();
+            if (resolvedProxy.getFamily() == AF_INET6) {
+                // TODO verify with RESTinio
+                // HACK restbed seems to not correctly handle directly http://[ipv6]
+                // See https://github.com/Corvusoft/restbed/issues/290.
+                server = endpointStr;
+            }
+            // make an http header
+            restinio::http_request_header_t header;
+            header.request_target(protocol + server + "/");
+            header.method(restinio::http_method_get());
+            auto header_fields = this->initHeaderFields();
+            auto request = httpClient_->create_request(header, header_fields,
+                restinio::http_connection_header_t::keep_alive, ""/*body*/);
+            DHT_LOG.w(request.c_str());
+
+            // initalise the parser callback data
+            struct GetContext {
+                std::atomic_bool ok {true};
+                std::shared_ptr<InfoState> infoState;
+                SockAddr resolvedProxy;
+                std::function<void(const Json::Value&, sa_family_t)> proxyInfo;
+            };
+            auto context = std::make_shared<GetContext>();
+            context->infoState = infoState;
+            context->resolvedProxy = resolvedProxy;
+            context->proxyInfo = std::bind(&DhtProxyClient::onProxyInfos, this,
+                std::placeholders::_1, std::placeholders::_2);
+
+            // initialize the parser
+            auto parser = std::make_shared<http_parser>();
+            http_parser_init(parser.get(), HTTP_RESPONSE);
+            parser->data = static_cast<void*>(context.get());
+
+            // init the parser callbacks
+            auto parser_s = std::make_shared<http_parser_settings>();
+            http_parser_settings_init(parser_s.get());
+            parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+                auto context = static_cast<GetContext*>(parser->data);
+                if (parser->status_code != 200){
+                    std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
+                    context->ok = true;
+                }
+                return 0;
+            };
+            parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+                auto context = static_cast<GetContext*>(parser->data);
+                try{
+                    std::string err;
+                    Json::Value proxyInfos;
+                    Json::CharReaderBuilder rbuilder;
+                    auto body = std::string(at, length);
+                    auto* char_data = static_cast<const char*>(&body[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (!reader->parse(char_data, char_data + body.size(), &proxyInfos, &err)){
+                        context->ok = false;
+                        return 1;
+                    }
+                    auto family = context->resolvedProxy.getFamily();
+                    if (family == AF_INET) 
+                        context->infoState->ipv4++;
+                    else if (family == AF_INET6)
+                        context->infoState->ipv6++;
+                    if (not context->infoState->cancel)
+                        context->proxyInfo(proxyInfos, family);
+                }
+                catch (const std::exception& e) {
+                    std::cerr << "Error in get parsing: " << e.what() << std::endl;
+                    context->ok = false;
+                    return 1;
+                }
+                return 0;
+            };
+            if (context->infoState->cancel)
+                return;
+            httpClient_->post_request(request, parser, parser_s);
         }
     }
-    statusThread_ = std::thread([this, serverHost, infoState]{
-        try {
-        /*
-            auto endpointStr = serverHost;
-            auto protocol = std::string(proxy::HTTP_PROTO);
-            auto protocolIdx = serverHost.find("://");
-            if (protocolIdx != std::string::npos) {
-                protocol = endpointStr.substr(0, protocolIdx + 3);
-                endpointStr = endpointStr.substr(protocolIdx + 3);
-            }
-            auto hostAndService = splitPort(endpointStr);
-            auto resolved_proxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
-            std::vector<std::future<Sp<restbed::Response>>> reqs;
-            reqs.reserve(resolved_proxies.size());
-            for (const auto& resolved_proxy: resolved_proxies) {
-                auto server = resolved_proxy.toString();
-                if (resolved_proxy.getFamily() == AF_INET6) {
-                    // HACK restbed seems to not correctly handle directly http://[ipv6]
-                    // See https://github.com/Corvusoft/restbed/issues/290.
-                    server = endpointStr;
-                }
-                restbed::Uri uri(protocol + server + "/");
-                auto req = std::make_shared<restbed::Request>(uri);
-                if (infoState->cancel)
-                    return;
-                reqs.emplace_back(restbed::Http::async(req,
-                    [this, resolved_proxy, infoState](
-                                const std::shared_ptr<restbed::Request>&,
-                                const std::shared_ptr<restbed::Response>& reply)
-                {
-                    auto code = reply->get_status_code();
-                    Json::Value proxyInfos;
-                    if (code == 200) {
-                        restbed::Http::fetch("\n", reply);
-                        auto& state = *infoState;
-                        if (state.cancel) return;
-                        std::string body;
-                        reply->get_body(body);
-
-                        std::string err;
-                        Json::CharReaderBuilder rbuilder;
-                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                        try {
-                            reader->parse(body.data(), body.data() + body.size(), &proxyInfos, &err);
-                        } catch (...) {
-                            return;
-                        }
-                        auto family = resolved_proxy.getFamily();
-                        if      (family == AF_INET)  state.ipv4++;
-                        else if (family == AF_INET6) state.ipv6++;
-                        if (not state.cancel)
-                            onProxyInfos(proxyInfos, family);
-                    }
-                }));
-            }
-            for (auto& r : reqs)
-                r.get();
-            reqs.clear();
-        */
-        } catch (const std::exception& e) {
-            DHT_LOG.e("Error sending proxy info request: %s", e.what());
-        }
-        const auto& state = *infoState;
-        if (state.cancel) return;
-        if (state.ipv4 == 0) onProxyInfos(Json::Value{}, AF_INET);
-        if (state.ipv6 == 0) onProxyInfos(Json::Value{}, AF_INET6);
-    });
+    catch (const std::exception& e) {
+        DHT_LOG.e("Error sending proxy info request: %s", e.what());
+    }
 }
 
 void
@@ -984,7 +1014,8 @@ DhtProxyClient::opFailed()
 void
 DhtProxyClient::getConnectivityStatus()
 {
-    if (!isDestroying_) getProxyInfos();
+    if (!isDestroying_)
+        getProxyInfos();
 }
 
 void
