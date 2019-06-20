@@ -573,15 +573,14 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
 
         for (const auto& resolvedProxy: resolvedProxies){
             auto server = resolvedProxy.toString();
-            if (resolvedProxy.getFamily() == AF_INET6) {
+            //if (resolvedProxy.getFamily() == AF_INET6) {
                 // TODO verify with RESTinio
                 // HACK restbed seems to not correctly handle directly http://[ipv6]
                 // See https://github.com/Corvusoft/restbed/issues/290.
-                server = endpointStr;
-            }
+                //server = endpointStr;
             // make an http header
             restinio::http_request_header_t header;
-            header.request_target(protocol + server + "/");
+            header.request_target("/");
             header.method(restinio::http_method_get());
             auto header_fields = this->initHeaderFields();
             auto request = httpClient_->create_request(header, header_fields,
@@ -947,14 +946,11 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     auto& listener = it->second;
     listener.state->cancel = true;
     if (not deviceKey_.empty()) {
-        /*
-        if (listener.thread.joinable()) {
-            listener.thread.join();
-        }
         // UNSUBSCRIBE
-        restbed::Uri uri(serverHost_ + "/" + key.toString());
-        auto req = std::make_shared<restbed::Request>(uri);
-        req->set_method("UNSUBSCRIBE");
+        restinio::http_request_header_t header;
+        header.request_target("/" + key.toString());
+        header.method(restinio::http_method_unsubscribe());
+        auto header_fields = this->initHeaderFields();
         // fill request body
         Json::Value body;
         body["key"] = deviceKey_;
@@ -964,37 +960,49 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         wbuilder["indentation"] = "";
         auto content = Json::writeString(wbuilder, body) + "\n";
         std::replace(content.begin(), content.end(), '\n', ' ');
-        req->set_body(content);
-        req->set_header("Content-Length", std::to_string(content.size()));
-        try {
-            restbed::Http::async(req, [](const std::shared_ptr<restbed::Request>&, const std::shared_ptr<restbed::Response>&){});
-        } catch (const std::exception& e) {
-            DHT_LOG.w(key, "[search %s] cancelListen: Http::async failed: %s", key.to_c_str(), e.what());
-        }
-        */
-    } else {
-            /*
-        // Just stop the request
-        if (listener.thread.joinable()) {
-            // Close connection to stop listener
-            if (listener.req) {
-                try {
-                    restbed::Http::close(listener.req);
-                } catch (const std::exception& e) {
-                    DHT_LOG.w("Error closing socket: %s", e.what());
-                }
-                listener.req.reset();
+        // build the request
+        auto request = httpClient_->create_request(header, header_fields,
+            restinio::http_connection_header_t::keep_alive, content);
+        DHT_LOG.w(request.c_str());
+        // define context
+        struct UnsubscribeContext {
+            InfoHash key;
+        };
+        auto context = std::make_shared<UnsubscribeContext>();
+        context->key = key;
+        // define parser
+        auto parser = std::make_shared<http_parser>();
+        http_parser_init(parser.get(), HTTP_RESPONSE);
+        parser->data = static_cast<void*>(context.get());
+        // define callbacks
+        auto parser_s = std::make_shared<http_parser_settings>();
+        http_parser_settings_init(parser_s.get());
+        parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+            auto context = static_cast<UnsubscribeContext*>(parser->data);
+            if (parser->status_code != 200){
+                std::cerr << "[search " << context->key.to_c_str() << "] " <<
+                    "cancel listen failed status_code=" << parser->status_code << std::endl;
             }
-            listener.thread.join();
+            return 0;
+        };
+        httpClient_->post_request(request, parser, parser_s);
+    } else {
+        // Just stop the request
+        if (httpClient_->active_connection(listener.connId)){
+            try {
+                httpClient_->close_connection(listener.connId);
+            }
+            catch (const std::exception& e){
+                DHT_LOG.w("Error closing socket: %s", e.what());
+            }
         }
-        */
     }
     search->second.listeners.erase(it);
-    DHT_LOG.d(key, "[search %s] cancelListen: %zu listener remaining", key.to_c_str(), search->second.listeners.size());
-    if (search->second.listeners.empty()) {
+    DHT_LOG.d(key, "[search %s] cancelListen: %zu listener remaining",
+                   key.to_c_str(), search->second.listeners.size());
+    if (search->second.listeners.empty()){
         searches_.erase(search);
     }
-
     return true;
 }
 

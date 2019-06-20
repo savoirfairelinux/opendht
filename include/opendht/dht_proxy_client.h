@@ -21,7 +21,6 @@
 #pragma once
 
 #include <functional>
-#include <thread>
 #include <mutex>
 
 #include "callbacks.h"
