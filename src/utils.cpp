@@ -215,6 +215,22 @@ SockAddr::getMappedIPv4() const
     return ret;
 }
 
+SockAddr
+SockAddr::getMappedIPv6() const
+{
+    auto family = getFamily();
+    if (family != AF_INET)
+        return *this;
+    SockAddr ret;
+    ret.setFamily(AF_INET6);
+    ret.setPort(getPort());
+    auto addr4 = reinterpret_cast<const uint8_t*>(&getIPv4().sin_addr);
+    auto addr6 = reinterpret_cast<uint8_t*>(&ret.getIPv6().sin6_addr);
+    std::copy(MAPPED_IPV4_PREFIX.begin(), MAPPED_IPV4_PREFIX.end(), addr6);
+    std::copy_n(addr4, sizeof(in_addr), addr6 + MAPPED_IPV4_PREFIX.size());
+    return ret;
+}
+
 bool operator==(const SockAddr& a, const SockAddr& b) {
     return a.equals(b);
 }

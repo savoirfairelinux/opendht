@@ -249,6 +249,7 @@ public:
 
     bool isMappedIPv4() const;
     SockAddr getMappedIPv4() const;
+    SockAddr getMappedIPv6() const;
 
     /**
      * A comparator to classify IP addresses, only considering the
