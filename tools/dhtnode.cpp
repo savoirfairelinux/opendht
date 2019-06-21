@@ -539,10 +539,7 @@ main(int argc, char **argv)
                 context.logger = log::getFileLogger(params.logfile);
             else
                 context.logger = log::getStdLogger();
-        } else {
-            context.logger = nullptr;
         }
-
         node->run(params.port, config, std::move(context));
 
         if (not params.bootstrap.first.empty()) {

@@ -88,7 +88,7 @@ public:
      */
     DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000,
                    const std::string& pushServer = "",
-                   std::shared_ptr<dht::Logger> logger = nullptr);
+                   std::shared_ptr<dht::Logger> logger = {});
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;

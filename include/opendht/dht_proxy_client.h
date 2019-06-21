@@ -55,7 +55,7 @@ public:
 
     explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost,
                             const std::string& pushClientId = "",
-                            std::shared_ptr<dht::Logger> logger = nullptr);
+                            std::shared_ptr<dht::Logger> logger = {});
 
     restinio::http_header_fields_t initHeaderFields();
 

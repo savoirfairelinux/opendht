@@ -98,7 +98,7 @@ class Client
 {
 public:
     Client(asio::io_context &ctx, std::string host, uint16_t port,
-           std::shared_ptr<dht::Logger> logger = nullptr);
+           std::shared_ptr<dht::Logger> logger = {});
 
     asio::io_context& io_context();
 
@@ -122,17 +122,17 @@ private:
 
     void handle_connect(const asio::error_code &ec,
                         asio::ip::tcp::resolver::iterator endpoint_it,
-                        std::shared_ptr<Connection> conn = nullptr);
+                        std::shared_ptr<Connection> conn = {});
 
     void handle_resolve(const asio::error_code &ec,
                         asio::ip::tcp::resolver::iterator endpoint_it,
-                        std::shared_ptr<Connection> conn = nullptr);
+                        std::shared_ptr<Connection> conn = {});
 
     void handle_request(const asio::error_code &ec,
-                        std::shared_ptr<Connection> conn = nullptr);
+                        std::shared_ptr<Connection> conn = {});
 
     void handle_response(const asio::error_code &ec,
-                         std::shared_ptr<Connection> conn = nullptr);
+                         std::shared_ptr<Connection> conn = {});
 
     uint16_t port_;
     std::string host_;
@@ -157,7 +157,7 @@ namespace restinio
 class opendht_logger_t
 {
 public:
-    opendht_logger_t(std::shared_ptr<dht::Logger> logger = nullptr){
+    opendht_logger_t(std::shared_ptr<dht::Logger> logger = {}){
         if (logger)
             m_logger = logger;
     }
