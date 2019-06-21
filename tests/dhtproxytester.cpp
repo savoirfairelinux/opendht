@@ -168,7 +168,7 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // Reboot node (to avoid cache)
     nodeClient->join();
-    nodeClient->run(42242, {}, true);
+    nodeClient->run(0, {}, true);
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true);
