@@ -420,7 +420,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
         if (logger_)
-            logger_->w("[subscribe] %s client: %s", infoHash.toString().c_str(), clientId.c_str());
+            logger_->d("[subscribe] %s client: %s", infoHash.toString().c_str(), clientId.c_str());
         // ================ Search for existing listener ===================
         // start the timer
         auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
@@ -432,7 +432,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 
         for (auto &listener: pushListeners->second){
             if (logger_)
-                logger_->w("[subscribe] found client_id: %s", listener.clientId.c_str());
+                logger_->d("[subscribe] found client_id: %s", listener.clientId.c_str());
             // Found -> Resubscribe
             if (listener.clientId == clientId){
                 // Reset timers
