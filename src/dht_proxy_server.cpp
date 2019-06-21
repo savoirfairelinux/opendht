@@ -671,7 +671,7 @@ void
 DhtProxyServer::cancelPut(const InfoHash& key, Value::Id vid)
 {
     if (logger_)
-        logger_->d("[proxy:server] [put] cancel put %s %i", key.toString(), vid);
+        logger_->d("[proxy:server] [put %s] cancel put %i", key.toString().c_str(), vid);
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
         return;
@@ -721,8 +721,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
             auto value = std::make_shared<dht::Value>(root);
             bool permanent = root.isMember("permanent");
             if (logger_)
-                logger_->d("[proxy:server] [put] %s %s %s", infoHash.toString(),
-                          value->toString(), (permanent ? "permanent" : ""));
+                logger_->d("[proxy:server] [put %s] %s %s", infoHash.toString().c_str(),
+                          value->toString().c_str(), (permanent ? "permanent" : ""));
             if (permanent){
                 std::string pushToken, clientId, platform;
                 auto& pVal = root["permanent"];
@@ -742,10 +742,10 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
                     pput.expireTimer->async_wait([this, infoHash, vid](const asio::error_code &ec){
                         if (logger_)
-                            logger_->d("[proxy:server] [put] permanent expired: %s %i", infoHash.toString(), vid);
+                            logger_->d("[proxy:server] [put %s] permanent expired: %i", infoHash.toString().c_str(), vid);
                         if (ec){
                             if (logger_)
-                                logger_->e("[proxy:server] [put] error in permanent: %s", ec.message().c_str());
+                                logger_->e("[proxy:server] error in permanent put: %s", ec.message().c_str());
                         }
                         cancelPut(infoHash, vid);
                     });
@@ -758,10 +758,10 @@ DhtProxyServer::put(restinio::request_handle_t request,
                         [this, infoHash, vid, pushToken, clientId, isAndroid](const asio::error_code &ec)
                         {
                             if (logger_)
-                                logger_->d("[proxy:server] [put] refresh: %s %i", infoHash.toString(), vid);
+                                logger_->d("[proxy:server] [put %s] refresh: %i", infoHash.toString().c_str(), vid);
                             if (ec){
                                 if (logger_)
-                                    logger_->e("[proxy:server] [put] error in refresh: %s", ec.message().c_str());
+                                    logger_->e("[proxy:server] error in refresh put: %s", ec.message().c_str());
                             }
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
@@ -799,7 +799,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
         }
     } catch (const std::exception& e){
         if (logger_)
-            logger_->d("[proxy:server] [put] error: %s", e.what());
+            logger_->d("[proxy:server] error in put: %s", e.what());
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
@@ -863,7 +863,7 @@ RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
         }
     } catch (const std::exception& e){
         if (logger_)
-            logger_->d("[proxy:server] [put] error: %s", e.what());
+            logger_->d("[proxy:server] error in put: %s", e.what());
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
@@ -931,7 +931,7 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
         }
     } catch (const std::exception& e){
         if (logger_)
-            logger_->d("[proxy:server] [put] error: %s", e.what());
+            logger_->d("[proxy:server] error in put: %s", e.what());
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
