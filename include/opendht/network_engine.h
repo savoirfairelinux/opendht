@@ -397,7 +397,7 @@ public:
      * @param fromlen  The length of the corresponding sockaddr structure.
      * @param now  The time to adjust the clock in the network engine.
      */
-    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr& addr);
+    void processMessage(const uint8_t *buf, size_t buflen, SockAddr addr);
 
     Sp<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
         auto n = cache.getNode(myid, addr, scheduler.time(), 0);

@@ -201,10 +201,10 @@ SockAddr::isMappedIPv4() const
 }
 
 SockAddr
-SockAddr::getMappedIPv4() const
+SockAddr::getMappedIPv4()
 {
     if (not isMappedIPv4())
-        return *this;
+        return std::move(*this);
     SockAddr ret;
     ret.setFamily(AF_INET);
     ret.setPort(getPort());

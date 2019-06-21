@@ -525,7 +525,7 @@ DhtRunner::loop_()
             if (clock::now() - pck->received > RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
-                wakeup = dht->periodic(pck->data.data(), pck->data.size(), pck->from);
+                wakeup = dht->periodic(pck->data.data(), pck->data.size(), std::move(pck->from));
             received.pop();
         }
     } else {

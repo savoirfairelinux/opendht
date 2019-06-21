@@ -219,7 +219,7 @@ DhtProxyClient::isRunning(sa_family_t af) const
 }
 
 time_point
-DhtProxyClient::periodic(const uint8_t*, size_t, const SockAddr&)
+DhtProxyClient::periodic(const uint8_t*, size_t, SockAddr)
 {
     // Exec all currently stored callbacks
     scheduler.syncTime();

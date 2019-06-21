@@ -180,7 +180,7 @@ public:
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& notification);
 
-    time_point periodic(const uint8_t*, size_t, const SockAddr&);
+    time_point periodic(const uint8_t*, size_t, SockAddr);
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }

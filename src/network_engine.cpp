@@ -357,8 +357,9 @@ NetworkEngine::isNodeBlacklisted(const SockAddr& addr) const
 }
 
 void
-NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
+NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
 {
+    auto from = f.getMappedIPv4();
     if (isMartian(from)) {
         DHT_LOG.w("Received packet from martian node %s", from.toString().c_str());
         return;
