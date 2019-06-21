@@ -140,7 +140,8 @@ DhtProxyClient::~DhtProxyClient()
     cancelAllListeners();
     if (infoState_)
         infoState_->cancel = true;
-    statusTimer_->cancel();
+    if (statusTimer_)
+        statusTimer_->cancel();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
 }
@@ -863,6 +864,7 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     auto& ops = it->second.ops;
     bool canceled = ops.cancelListen(gtoken, std::chrono::steady_clock::now());
     if (not it->second.opExpirationTimer) {
+        it->second.opExpirationTimer = std::make_shared<asio::steady_timer>(periodicContext_);
         it->second.opExpirationTimer->expires_at(time_point::max());
         it->second.opExpirationTimer->async_wait([this, key](const asio::error_code ec){
             if (ec){
@@ -877,10 +879,18 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
                     doCancelListen(key, ltoken);
                 });
                 if (next != time_point::max()) {
+                    if (!it->second.opExpirationTimer){
+                        it->second.opExpirationTimer = std::make_shared<
+                            asio::steady_timer>(periodicContext_);
+                    }
                     it->second.opExpirationTimer->expires_at(next);
                 }
             }
         });
+    }
+    if (!it->second.opExpirationTimer){
+        it->second.opExpirationTimer = std::make_shared<
+            asio::steady_timer>(periodicContext_);
     }
     it->second.opExpirationTimer->expires_at(ops.getExpiration());
     loopSignal_();
@@ -1086,6 +1096,10 @@ DhtProxyClient::restartListeners()
                 [ok](bool result, const std::vector<std::shared_ptr<dht::Node> >&){
                     *ok = result;
                 }, time_point::max(), true);
+                if (!put.second.refreshTimer){
+                    put.second.refreshTimer = std::make_shared<
+                        asio::steady_timer>(periodicContext_);
+                }
                 put.second.refreshTimer->expires_at(std::chrono::steady_clock::now() +
                     proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             }
@@ -1160,6 +1174,10 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 // Refresh put
                 auto vid = std::stoull(vidIt->second);
                 auto& put = search.puts.at(vid);
+                if (!put.refreshTimer){
+                    put.refreshTimer = std::make_shared<
+                        asio::steady_timer>(periodicContext_);
+                }
                 put.refreshTimer->expires_at(std::chrono::steady_clock::now());
                 loopSignal_();
             } else {
@@ -1251,6 +1269,10 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     restinio::http_request_header_t header;
     header.method(restinio::http_method_subscribe());
     header.request_target("/" + key.toString());
+    if (!listener.refreshTimer){
+        listener.refreshTimer = std::make_shared<
+            asio::steady_timer>(periodicContext_);
+    }
     listener.refreshTimer->expires_at(std::chrono::steady_clock::now() +
                                       proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     auto vcb = listener.cb;
