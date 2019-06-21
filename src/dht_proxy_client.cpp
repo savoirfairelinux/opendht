@@ -291,6 +291,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         Value::Filter filter;
         std::atomic_bool ok {true};
         std::atomic_bool stop {false};
+        std::shared_ptr<dht::Logger> logger;
     };
     auto context = std::make_shared<GetContext>();
     context->filter = w.empty() ? f : f.chain(w.getFilter());
@@ -315,6 +316,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             context->stop = true;
         });
     };
+    if (logger_)
+        context->logger = logger_;
 
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);
@@ -325,7 +328,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
     parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = static_cast<GetContext*>(parser->data);
         if (parser->status_code != 200){
-            std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
+            if (context->logger)
+                context->logger->e("[proxy:client] get status error: %i", parser->status_code);
             context->ok = true;
         }
         return 0;
@@ -348,7 +352,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
                 context->cb({value});
             }
         } catch(const std::exception& e) {
-            std::cerr << "Error in get parsing: " << e.what() << std::endl;
+            if (context->logger)
+                context->logger->e("[proxy:client] get body parsing error: %s", e.what());
             context->ok = false;
             return 1;
         }
@@ -360,7 +365,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             if (context->donecb)
                 context->donecb(context->ok);
         } catch(const std::exception& e) {
-            std::cerr << "Error in get parsing: " << e.what() << std::endl;
+            if (context->logger)
+                context->logger->e("[proxy:client] get message complete parsing error: %i",
+                                   parser->status_code);
             return 1;
         }
         return 0;
@@ -456,6 +463,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     struct GetContext {
         DoneCallbackSimple donecb; // wrapper
         std::atomic_bool ok {false};
+        std::shared_ptr<dht::Logger> logger;
     };
     auto context = std::make_shared<GetContext>();
     // keeping context data alive
@@ -468,6 +476,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         }
         loopSignal_();
     };
+    if (logger_)
+        context->logger = logger_;
 
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);
@@ -480,7 +490,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         if (parser->status_code == 200){
             context->ok = true;
         } else {
-            std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
+            if (context->logger)
+                context->logger->e("[proxy:client] put status error: %i", parser->status_code);
         }
         return 0;
     };
@@ -490,7 +501,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             if (context->donecb)
                 context->donecb(context->ok);
         } catch(const std::exception& e) {
-            std::cerr << "Error in get parsing: " << e.what() << std::endl;
+            if (context->logger)
+                context->logger->e("[proxy:client] put message complete error: %s", e.what());
             return 1;
         }
         return 0;
@@ -621,12 +633,15 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                 std::shared_ptr<InfoState> infoState;
                 SockAddr resolvedProxy;
                 std::function<void(const Json::Value&, sa_family_t)> proxyInfo;
+                std::shared_ptr<dht::Logger> logger;
             };
             auto context = std::make_shared<GetContext>();
             context->infoState = infoState;
             context->resolvedProxy = resolvedProxy;
             context->proxyInfo = std::bind(&DhtProxyClient::onProxyInfos, this,
                 std::placeholders::_1, std::placeholders::_2);
+            if (logger_)
+                context->logger = logger_;
 
             // initialize the parser
             auto parser = std::make_shared<http_parser>();
@@ -639,7 +654,8 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
             parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
                 auto context = static_cast<GetContext*>(parser->data);
                 if (parser->status_code != 200){
-                    std::cerr << "Error in get status_code=" << parser->status_code << std::endl;
+                    if (context->logger)
+                        context->logger->e("[proxy:client] proxy status error: %i", parser->status_code);
                     context->ok = true;
                 }
                 return 0;
@@ -666,7 +682,8 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                         context->proxyInfo(proxyInfos, family);
                 }
                 catch (const std::exception& e) {
-                    std::cerr << "Error in get parsing: " << e.what() << std::endl;
+                    if (context->logger)
+                        context->logger->e("[proxy:client] proxy status body error: %s", e.what());
                     context->ok = false;
                     return 1;
                 }
@@ -916,14 +933,14 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         logger_->d(request.c_str());
 
     struct ListenContext {
-        Logger *logger;
+        std::shared_ptr<Logger> logger;
         ValueCallback cb; // wrapper
         Value::Filter filter;
         std::shared_ptr<ListenState> state;
     };
     auto context = std::make_shared<ListenContext>();
     if (logger_)
-        context->logger = logger_.get();
+        context->logger = logger_;
     // keeping context data alive
     context->cb = [context, cb](const std::vector<std::shared_ptr<Value>>& values, bool expired){
         return cb(values, expired);
@@ -940,7 +957,8 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = static_cast<ListenContext*>(parser->data);
         if (parser->status_code != 200){
-            std::cerr << "Error in listen status_code=" << parser->status_code << std::endl;
+            if (context->logger)
+                context->logger->e("[proxy:client] listen status error: %i", parser->status_code);
             context->state->ok = false;
         }
         return 0;
@@ -1019,9 +1037,12 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // define context
         struct UnsubscribeContext {
             InfoHash key;
+            std::shared_ptr<dht::Logger> logger;
         };
         auto context = std::make_shared<UnsubscribeContext>();
         context->key = key;
+        if (logger_)
+            context->logger = logger_;
         // define parser
         auto parser = std::make_shared<http_parser>();
         http_parser_init(parser.get(), HTTP_RESPONSE);
@@ -1032,8 +1053,9 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
             auto context = static_cast<UnsubscribeContext*>(parser->data);
             if (parser->status_code != 200){
-                std::cerr << "[search " << context->key.to_c_str() << "] " <<
-                    "cancel listen failed status_code=" << parser->status_code << std::endl;
+                if (context->logger)
+                    context->logger->e("[proxy:client] [search %s] cancel listen failed: %i",
+                                       context->key.to_c_str(), parser->status_code);
             }
             return 0;
         };

@@ -59,12 +59,15 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
 
-    std::cout << "Running DHT proxy server on port " << port << std::endl;
+    if (logger_)
+        logger_->d("[proxy:server] [init] running on %i", port);
     if (not pushServer.empty()){
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-        std::cout << "Using push notification server: " << pushServer << std::endl;
+        if (logger_)
+            logger_->d("[proxy:server] [init] using push server %s", pushServer.c_str());
 #else
-        std::cerr << "Push server defined but built OpenDHT built without push notification support" << std::endl;
+        if (logger_)
+            logger_->e("[proxy:server] [init] opendht built without push notification support");
 #endif
     }
 
@@ -92,7 +95,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
             httpServer_->io_context().run();
         }
         catch(const std::exception &ex){
-            std::cerr << "Error starting RESTinio: " << ex.what() << std::endl;
+            if (logger_)
+                logger_->e("[proxy:server] error starting: %s", ex.what());
         }
     });
     dht->forwardAllMessages(true);
@@ -143,13 +147,13 @@ void
 DhtProxyServer::stop()
 {
     if (logger_)
-        logger_->d("[restinio] closing http server async operations");
+        logger_->d("[proxy:server] closing http server async operations");
     httpServer_->io_context().reset();
     httpServer_->io_context().stop();
     if (httpServerThread_.joinable())
         httpServerThread_.join();
     if (logger_)
-        logger_->d("[restinio] http server closed");
+        logger_->d("[proxy:server] http server closed");
 }
 
 void
@@ -183,7 +187,7 @@ DhtProxyServer::asyncPrintStats()
         auto json = nodeInfo_.toJson();
         auto str = Json::writeString(jsonBuilder_, json);
         if (logger_)
-            logger_->d("[stats] %s", str.c_str());
+            logger_->d("[proxy:server] [stats] %s", str.c_str());
     }
     printStatsTimer_->expires_at(printStatsTimer_->expiry() + PRINT_STATS_PERIOD);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::asyncPrintStats, this));
@@ -499,10 +503,10 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         listener.expireNotifyTimer->async_wait(
         [this, infoHash, pushToken, isAndroid, clientId](const asio::error_code &ec){
             if (logger_)
-                logger_->d("[subscribe] sending refresh %s", infoHash.toString().c_str());
+                logger_->d("[proxy:server] [subscribe] sending refresh %s", infoHash.toString().c_str());
             if (ec){
                 if (logger_)
-                    logger_->d("[subscribe] error sending refresh: %s", ec.message().c_str());
+                    logger_->d("[proxy:server] [subscribe] error sending refresh: %s", ec.message().c_str());
             }
             Json::Value json;
             json["timeout"] = infoHash.toString();
@@ -638,12 +642,22 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     auto parser = std::make_shared<http_parser>();
     http_parser_init(parser.get(), HTTP_RESPONSE);
 
+    struct PushContext {
+        std::shared_ptr<Logger> logger;
+    };
+    auto context = std::make_shared<PushContext>();
+    if (logger_)
+        context->logger = logger_;
+    parser->data = static_cast<void*>(context.get());
+
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
     parser_s->on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
+        auto context = static_cast<PushContext*>(parser->data);
         if (parser->status_code == 200)
             return 0;
-        std::cerr << "Error in SendPushNotification status_code=" << parser->status_code << std::endl;
+        if (context->logger)
+            context->logger->e("[proxy:server] [notification] error send push: %i", parser->status_code);
         return 1;
     };
     auto request = httpClient_->create_request(header, header_fields,
@@ -656,7 +670,8 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 void
 DhtProxyServer::cancelPut(const InfoHash& key, Value::Id vid)
 {
-    std::cout << "cancelPut " << key << " " << vid << std::endl;
+    if (logger_)
+        logger_->d("[proxy:server] [put] cancel put %s %i", key.toString(), vid);
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
         return;
@@ -705,8 +720,9 @@ DhtProxyServer::put(restinio::request_handle_t request,
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             auto value = std::make_shared<dht::Value>(root);
             bool permanent = root.isMember("permanent");
-            std::cout << "Got put " << infoHash << " " << *value <<
-                         " " << (permanent ? "permanent" : "") << std::endl;
+            if (logger_)
+                logger_->d("[proxy:server] [put] %s %s %s", infoHash.toString(),
+                          value->toString(), (permanent ? "permanent" : ""));
             if (permanent){
                 std::string pushToken, clientId, platform;
                 auto& pVal = root["permanent"];
@@ -725,9 +741,12 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     auto &ctx = httpServer_->io_context();
                     pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
                     pput.expireTimer->async_wait([this, infoHash, vid](const asio::error_code &ec){
-                        std::cout << "Permanent put expired: " << infoHash << " " << vid << std::endl;
-                        if (ec)
-                            std::cout << "Permanent put error: " << ec.message() << std::endl;
+                        if (logger_)
+                            logger_->d("[proxy:server] [put] permanent expired: %s %i", infoHash.toString(), vid);
+                        if (ec){
+                            if (logger_)
+                                logger_->e("[proxy:server] [put] error in permanent: %s", ec.message().c_str());
+                        }
                         cancelPut(infoHash, vid);
                     });
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -738,9 +757,12 @@ DhtProxyServer::put(restinio::request_handle_t request,
                         pput.expireNotifyTimer->async_wait(
                         [this, infoHash, vid, pushToken, clientId, isAndroid](const asio::error_code &ec)
                         {
-                            std::cout << "Permanent put refresh: " << infoHash << " " << vid << std::endl;
-                            if (ec)
-                                std::cout << "Permanent put refresh error: " << ec.message() << std::endl;
+                            if (logger_)
+                                logger_->d("[proxy:server] [put] refresh: %s %i", infoHash.toString(), vid);
+                            if (ec){
+                                if (logger_)
+                                    logger_->e("[proxy:server] [put] error in refresh: %s", ec.message().c_str());
+                            }
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
                             json["to"] = clientId;
@@ -776,7 +798,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
             return response.done();
         }
     } catch (const std::exception& e){
-        std::cout << "Error performing put: " << e.what() << std::endl;
+        if (logger_)
+            logger_->d("[proxy:server] [put] error: %s", e.what());
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
@@ -839,7 +862,8 @@ RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
             return response.done();
         }
     } catch (const std::exception& e){
-        std::cout << "Error performing put: " << e.what() << std::endl;
+        if (logger_)
+            logger_->d("[proxy:server] [put] error: %s", e.what());
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
@@ -906,7 +930,8 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
             return response.done();
         }
     } catch (const std::exception& e){
-        std::cout << "Error performing put: " << e.what() << std::endl;
+        if (logger_)
+            logger_->d("[proxy:server] [put] error: %s", e.what());
         auto response = this->initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);

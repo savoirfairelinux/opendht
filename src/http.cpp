@@ -69,12 +69,12 @@ ConnectionListener::state_changed(const restinio::connection_state::notice_t &no
     if (listeners_->find(id) != listeners_->end()){
         if (notice.cause() == restinio::connection_state::cause_t::closed){
             if (logger_)
-                logger_->d("[restinio] [connection:%li] cancelling listener", id);
+                logger_->d("[proxy:server] [connection:%li] cancelling listener", id);
             dht_->cancelListen(listeners_->at(id).hash,
                                std::move(listeners_->at(id).token));
             listeners_->erase(id);
             if (logger_)
-                logger_->d("[restinio] %li listeners are connected", listeners_->size());
+                logger_->d("[proxy:server] %li listeners are connected", listeners_->size());
         }
     }
 }
@@ -133,7 +133,7 @@ Client::create_connection()
     auto conn = std::make_shared<Connection>(connId_,
         std::move(asio::ip::tcp::socket{resolver_.get_io_context()}));
     if (logger_)
-        logger_->d("[connection:%i] created", conn->id());
+        logger_->d("[proxy:client] [connection:%i] created", conn->id());
     connId_++;
     return conn;
 }
@@ -156,7 +156,7 @@ Client::close_connection(const uint16_t conn_id)
     // remove from active requests
     requests_.erase(conn_id);
     if (logger_)
-        logger_->d("[connection:%i] closed", conn_id);
+        logger_->d("[proxy:client] [connection:%i] closed", conn_id);
 }
 
 std::string
@@ -236,12 +236,12 @@ Client::handle_resolve(const asio::error_code &ec,
 {
     if (ec){
         if (logger_)
-            logger_->e("[connection:%i] error resolving", conn->id());
+            logger_->e("[proxy:client] [connection:%i] error resolving", conn->id());
         conn->close();
         return;
     }
     if (logger_){
-        logger_->d("[connection:%i] resolved host=%s service=%s", conn->id(),
+        logger_->d("[proxy:client] [connection:%i] resolved host=%s service=%s", conn->id(),
             endpoint_it->host_name().c_str(), endpoint_it->service_name().c_str());
     }
     asio::ip::tcp::endpoint endpoint = *endpoint_it;
@@ -257,14 +257,14 @@ Client::handle_connect(const asio::error_code &ec,
 {
     if (ec){
         if (logger_)
-            logger_->e("[connection:%i] error opening: %s",
+            logger_->e("[proxy:client] [connection:%i] error opening: %s",
                        conn->id(), ec.message().c_str());
         close(conn->id());
         return;
     }
     else if (endpoint_it != asio::ip::tcp::resolver::iterator()){
         if (logger_)
-            logger_->e("[connection:%i] error connecting, trying next endpoint", conn->id());
+            logger_->e("[proxy:client] [connection:%i] error connecting, trying next endpoint", conn->id());
         conn->socket_.close();
         // connect to next one
         asio::ip::tcp::endpoint endpoint = *endpoint_it;
@@ -283,13 +283,13 @@ Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> c
 {
     if (ec and ec != asio::error::eof){
         if (logger_)
-            logger_->e("[connection:%i] error handling request: %s",
+            logger_->e("[proxy:client] [connection:%i] error handling request: %s",
                        conn->id(), ec.message().c_str());
         close_connection(conn->id());
         return;
     }
     if (logger_)
-        logger_->d("[connection:%i] request write", conn->id());
+        logger_->d("[proxy:client] [connection:%i] request write", conn->id());
 
     // read response
     asio::async_read_until(conn->socket_, conn->response_, "\r\n\r\n",
@@ -301,7 +301,7 @@ Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> 
 {
     if (ec && ec != asio::error::eof){
         if (logger_)
-            logger_->e("[connection:%i] error handling response: %s",
+            logger_->e("[proxy:client] [connection:%i] error handling response: %s",
                        conn->id(), ec.message().c_str());
         return;
     }
@@ -310,7 +310,7 @@ Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> 
         return;
     }
     if (logger_)
-        logger_->d("[connection:%i] response read", conn->id());
+        logger_->d("[proxy:client] [connection:%i] response read", conn->id());
 
     // read the response buffer
     std::ostringstream str_s;
@@ -325,7 +325,8 @@ Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> 
     if (HPE_OK != req.parser->http_errno && HPE_PAUSED != req.parser->http_errno){
         if (logger_){
             auto err = HTTP_PARSER_ERRNO(req.parser.get());
-            logger_->e("[connection:%i] error parsing: %s", conn->id(), http_errno_name(err));
+            logger_->e("[proxy:client] [connection:%i] error parsing: %s",
+                        conn->id(), http_errno_name(err));
         }
     }
     asio::async_read(conn->socket_, conn->response_, asio::transfer_at_least(1),

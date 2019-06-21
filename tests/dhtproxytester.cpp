@@ -52,13 +52,13 @@ DhtProxyTester::setUp() {
 
 void
 DhtProxyTester::tearDown() {
-    logger->d("[dhtproxytester] stopping peer node");
+    logger->d("[tester:proxy] stopping peer node");
     nodePeer.join();
     nodeClient->join();
-    logger->d("[dhtproxytester] stopping proxy server");
+    logger->d("[tester:proxy] stopping proxy server");
     serverProxy->stop();
     serverProxy = nullptr;
-    logger->d("[dhtproxytester] stopping proxy node");
+    logger->d("[tester:proxy] stopping proxy node");
     nodeProxy->join();
 }
 

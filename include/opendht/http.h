@@ -165,25 +165,25 @@ public:
     template <typename Builder>
     void trace(Builder && msg_builder){
         if (m_logger)
-            m_logger->d("[restinio] %s", msg_builder().c_str());
+            m_logger->d("[proxy:server] %s", msg_builder().c_str());
     }
 
     template <typename Builder>
     void info(Builder && msg_builder){
         if (m_logger)
-            m_logger->d("[restinio] %s", msg_builder().c_str());
+            m_logger->d("[proxy:server] %s", msg_builder().c_str());
     }
 
     template <typename Builder>
     void warn(Builder && msg_builder){
         if (m_logger)
-            m_logger->w("[restinio] %s", msg_builder().c_str());
+            m_logger->w("[proxy:server] %s", msg_builder().c_str());
     }
 
     template <typename Builder>
     void error(Builder && msg_builder){
         if (m_logger)
-            m_logger->e("[restinio] %s", msg_builder().c_str());
+            m_logger->e("[proxy:server] %s", msg_builder().c_str());
     }
 
 private:
