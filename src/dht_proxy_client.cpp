@@ -810,6 +810,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
              * Relaunch push listeners even if a timeout is not received
              * (if the proxy crash for any reason)
              */
+            if (!l->second.refreshTimer)
+                l->second.refreshTimer = std::make_shared<asio::steady_timer>(periodicContext_);
             l->second.refreshTimer->expires_at(std::chrono::steady_clock::now() +
                     proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             l->second.refreshTimer->async_wait(
