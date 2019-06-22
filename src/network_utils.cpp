@@ -197,10 +197,23 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
 #if 1
     bound6 = {};
     if (bind6) {
-        try {
-            s6 = bindSocket(bind6, bound6);
-        } catch (const DhtException& e) {
-            logger.e("Can't bind inet6 socket: %s", e.what());
+        if (bind6.getPort() == 0) {
+            if (auto p4 = bound4.getPort()) {
+                auto b6 = bind6;
+                b6.setPort(p4);
+                try {
+                    s6 = bindSocket(b6, bound6);
+                } catch (const DhtException& e) {
+                    logger.e("Can't bind inet6 socket: %s", e.what());
+                }
+            }
+        }
+        if (s6 == -1) {
+            try {
+                s6 = bindSocket(bind6, bound6);
+            } catch (const DhtException& e) {
+                logger.e("Can't bind inet6 socket: %s", e.what());
+            }
         }
     }
 #endif
