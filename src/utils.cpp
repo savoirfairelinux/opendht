@@ -216,11 +216,11 @@ SockAddr::getMappedIPv4()
 }
 
 SockAddr
-SockAddr::getMappedIPv6() const
+SockAddr::getMappedIPv6()
 {
     auto family = getFamily();
     if (family != AF_INET)
-        return *this;
+        return std::move(*this);
     SockAddr ret;
     ret.setFamily(AF_INET6);
     ret.setPort(getPort());
