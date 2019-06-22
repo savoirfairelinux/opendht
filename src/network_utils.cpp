@@ -211,6 +211,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
 
     running = true;
     rcv_thread = std::thread([this, stop_readfd]() {
+        int selectFd = std::max({s4, s6, stop_readfd}) + 1;
         try {
             while (running) {
                 fd_set readfds;
@@ -222,7 +223,6 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                 if(s6 >= 0)
                     FD_SET(s6, &readfds);
 
-                int selectFd = std::max({s4, s6, stop_readfd}) + 1;
                 int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
                 if (rc < 0) {
                     if (errno != EINTR) {
