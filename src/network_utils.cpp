@@ -294,6 +294,7 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                             }
                             if (s4 < 0 && s6 < 0)
                                 break;
+                            selectFd = std::max({s4, s6, stop_readfd}) + 1;
                         }
                     }
                 }
