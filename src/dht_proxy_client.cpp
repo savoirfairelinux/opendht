@@ -589,7 +589,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
 {
     if (ec){
         if (logger_){
-            logger_->e("[proxy:status] handling error: %s", ec.message().c_str());
+            logger_->e("[proxy:client] [status] handling error: %s", ec.message().c_str());
             return;
         }
     }
@@ -608,11 +608,6 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
 
         for (const auto& resolvedProxy: resolvedProxies){
             auto server = resolvedProxy.toString();
-            //if (resolvedProxy.getFamily() == AF_INET6) {
-                // TODO verify with asio http class; if not, add handling there
-                // HACK restbed seems to not correctly handle directly http://[ipv6]
-                // See https://github.com/Corvusoft/restbed/issues/290.
-                //server = endpointStr;
             // make an http header
             restinio::http_request_header_t header;
             header.request_target("/");
@@ -621,8 +616,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
             auto request = httpClient_->create_request(header, header_fields,
                 restinio::http_connection_header_t::keep_alive, ""/*body*/);
             if (logger_)
-                logger_->w(request.c_str());
-
+                logger_->d("[proxy:client] [status] sending request:\n%s", request.c_str());
             // initalise the parser callback data
             struct GetContext {
                 unsigned int family;
@@ -661,7 +655,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                 auto context = static_cast<GetContext*>(parser->data);
                 if (parser->status_code != 200){
                     if (context->logger)
-                        context->logger->e("[proxy:client] proxy status error: %i", parser->status_code);
+                        context->logger->e("[proxy:client] [status] error: %i", parser->status_code);
                     context->ok = true;
                 }
                 return 0;
@@ -683,7 +677,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                 }
                 catch (const std::exception& e) {
                     if (context->logger)
-                        context->logger->e("[proxy:client] proxy status body error: %s", e.what());
+                        context->logger->e("[proxy:client] [status] body error: %s", e.what());
                     context->ok = false;
                     return 1;
                 }
