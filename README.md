@@ -96,7 +96,7 @@ for r in results:
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.3+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
-- (optional) restbed used for the REST API. commit fb84213e170bc171fecd825a8e47ed9f881a12cd (https://github.com/AmarOk1412/restbed/tree/async_read_until)
+- (optional) restinio used for the REST API.
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
 - Build tested with GCC 5.2+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
 - Build tested with Microsoft Visual Studio 2015
