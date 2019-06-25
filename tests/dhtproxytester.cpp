@@ -47,7 +47,7 @@ DhtProxyTester::setUp() {
     nodeClient->run(0, /*identity*/{}, /*threaded*/true);
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
-    //nodeClient->enableProxy(true);
+    nodeClient->enableProxy(true); // creates DhtProxyClient
 }
 
 void
