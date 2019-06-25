@@ -541,9 +541,11 @@ main(int argc, char **argv)
                 context.logger = log::getStdLogger();
         }
         node->run(params.port, config, std::move(context));
+        if (context.logger)
+            log::enableLogging(*node);
 
         if (not params.bootstrap.first.empty()) {
-            //std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;
+            std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;
             node->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
         }
 
