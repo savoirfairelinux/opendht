@@ -73,7 +73,7 @@ endif()
 # Build flags
 set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lpthread -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
 if (OPENDHT_SANITIZE)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
 endif ()
@@ -284,7 +284,8 @@ if (OPENDHT_SHARED)
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht
-        PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT}
+        PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                 ${Jsoncpp_LIBRARIES}
                 ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
 
