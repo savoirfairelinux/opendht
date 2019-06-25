@@ -185,6 +185,10 @@ public:
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
+    /*
+     * This function relies on the cache implementation.
+     * It means that there are no true cancel here, it keeps the caching in higher priority.
+     */
     virtual bool cancelListen(const InfoHash& key, size_t token);
 
     /**

@@ -424,7 +424,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
 
         if (logger_)
-            logger_->d("[subscribe] %s client: %s", infoHash.toString().c_str(), clientId.c_str());
+            logger_->d("[proxy:server] [subscribe %s] [client %s]", infoHash.toString().c_str(), clientId.c_str());
         // ================ Search for existing listener ===================
         // start the timer
         auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
@@ -436,7 +436,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 
         for (auto &listener: pushListeners->second){
             if (logger_)
-                logger_->d("[subscribe] found client_id: %s", listener.clientId.c_str());
+                logger_->d("[proxy:server] [subscribe] found [client %s]", listener.clientId.c_str());
             // Found -> Resubscribe
             if (listener.clientId == clientId){
                 // Reset timers
@@ -577,7 +577,8 @@ void
 DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
 {
     if (logger_)
-        logger_->d("[cancelpushlisten] %s %s", key.toString().c_str(), clientId.c_str());
+        logger_->d("[proxy:server] [listen:push %s] cancelled for  %s",
+                   key.toString().c_str(), clientId.c_str());
     std::lock_guard<std::mutex> lock(*lockListener_);
 
     auto pushListener = pushListeners_.find(pushToken);

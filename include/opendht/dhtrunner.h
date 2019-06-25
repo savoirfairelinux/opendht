@@ -530,6 +530,12 @@ private:
 
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;
+
+    /**
+     * The Logger instance is used in enableProxy and other methods that
+     * would create instances of classes using a common logger.
+     */
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 }

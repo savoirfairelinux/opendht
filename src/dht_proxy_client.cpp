@@ -176,7 +176,7 @@ DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
     if (logger_)
-        logger_->w("Cancelling all listeners for %zu searches", searches_.size());
+        logger_->w("[proxy:client] [listeners:cancel:all] [%zu searches]", searches_.size());
     for (auto& s: searches_) {
         s.second.ops.cancelAll([&](size_t token){
             auto l = s.second.listeners.find(token);
@@ -188,7 +188,7 @@ DhtProxyClient::cancelAllListeners()
                     httpClient_->close_connection(l->second.connId);
                 } catch (const std::exception& e) {
                     if (logger_)
-                        logger_->w("Error closing socket: %s", e.what());
+                        logger_->w("[proxy:client] [listeners:cancel:all] error closing socket: %s", e.what());
                 }
                 l->second.connId = 0;
             }
@@ -874,25 +874,27 @@ bool
 DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     scheduler.syncTime();
     if (logger_)
-        logger_->d(key, "[search %s]: cancelListen %zu", key.to_c_str(), gtoken);
+        logger_->d(key, "[proxy:client] [search %s] cancel listen %zu", key.to_c_str(), gtoken);
     auto it = searches_.find(key);
     if (it == searches_.end())
         return false;
     auto& ops = it->second.ops;
     bool canceled = ops.cancelListen(gtoken, std::chrono::steady_clock::now());
-    if (not it->second.opExpirationTimer) {
+    // on new listener set the expiration to the max,
+    // in case a user redo a listen right after cancel, we won't impact the network.
+    if (!it->second.opExpirationTimer) {
         it->second.opExpirationTimer = std::make_shared<asio::steady_timer>(periodicContext_);
         it->second.opExpirationTimer->expires_at(time_point::max());
         it->second.opExpirationTimer->async_wait([this, key](const asio::error_code ec){
             if (ec){
                 if (logger_)
-                    logger_->d("[liste::expiration] error key=%s", key.toString().c_str());
-                return;
+                    logger_->d("[proxy:client] [listen %s] error in cancel", key.toString().c_str());
+                return false;
             }
             auto it = searches_.find(key);
             if (it != searches_.end()) {
                 auto next = it->second.ops.expire(std::chrono::steady_clock::now(),
-                                                 [this,key](size_t ltoken){
+                                                 [this, key](size_t ltoken){
                     doCancelListen(key, ltoken);
                 });
                 if (next != time_point::max()) {
@@ -905,10 +907,7 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
             }
         });
     }
-    if (!it->second.opExpirationTimer){
-        it->second.opExpirationTimer = std::make_shared<
-            asio::steady_timer>(periodicContext_);
-    }
+    // Let it expire when it is due.
     it->second.opExpirationTimer->expires_at(ops.getExpiration());
     loopSignal_();
     return canceled;
@@ -1282,7 +1281,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
             httpClient_->close_connection(listener.connId);
         } catch (const std::exception& e) {
             if (logger_)
-                logger_->w("Error closing socket: %s", e.what());
+                logger_->w("[resubscribe] error closing socket: %s", e.what());
         }
     }
     state->cancel = false;
