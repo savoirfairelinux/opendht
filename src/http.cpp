@@ -281,6 +281,9 @@ Client::handle_connect(const asio::error_code &ec,
 void
 Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> conn)
 {
+    if (!conn->is_open())
+        return;
+
     if (ec and ec != asio::error::eof){
         if (logger_)
             logger_->e("[proxy:client] [connection:%i] error handling request: %s",
@@ -299,6 +302,9 @@ Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> c
 void
 Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> conn)
 {
+    if (!conn->is_open())
+        return;
+
     if (ec && ec != asio::error::eof){
         if (logger_)
             logger_->e("[proxy:client] [connection:%i] error handling response: %s",
