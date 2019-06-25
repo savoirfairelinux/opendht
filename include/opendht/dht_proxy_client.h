@@ -26,7 +26,6 @@
 #include "callbacks.h"
 #include "def.h"
 #include "dht_interface.h"
-#include "scheduler.h"
 #include "proxy.h"
 
 #include <restinio/all.hpp>
@@ -369,18 +368,12 @@ private:
      * Callbacks should be executed in the main thread.
      */
     std::vector<std::function<void()>> callbacks_;
-    std::mutex lockCallbacks;
+    std::mutex lockCallbacks_;
 
     Sp<InfoState> infoState_;
     Sp<asio::steady_timer> statusTimer_;
     mutable std::mutex statusLock_;
 
-    /*
-       * ASIO I/O Context for periodic scheduler
-       * Note: Each context is used in one thread only.
-     */
-    asio::io_context periodicContext_;
-    Scheduler scheduler;
     /**
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
