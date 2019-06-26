@@ -220,12 +220,12 @@ DhtRunner::shutdown(ShutdownCallback cb) {
         cb();
         return;
     }
-#ifdef OPENDHT_PROXY_CLIENT
-    if (dht_via_proxy_)
-        dht_via_proxy_->shutdown(cb);
-#endif
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht&) mutable {
+#ifdef OPENDHT_PROXY_CLIENT
+        if (dht_via_proxy_)
+            dht_via_proxy_->shutdown(cb);
+#endif
         if (dht_)
             dht_->shutdown(cb);
     });
