@@ -2,6 +2,7 @@
  *  Copyright (C) 2019 Savoir-faire Linux Inc.
  *
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,26 +33,32 @@ CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
 
 void
 DhtProxyTester::setUp() {
-    nodePeer.run(0);
+    logger = dht::log::getStdLogger();
+
+    nodePeer.run(0, /*identity*/{}, /*threaded*/true);
+
     nodeProxy = std::make_shared<dht::DhtRunner>();
-    nodeClient = std::make_shared<dht::DhtRunner>();
-
-    nodeProxy->run(0);
+    nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
     nodeProxy->bootstrap(nodePeer.getBound());
-    server = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(nodeProxy, 8080));
+    serverProxy = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(
+        nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 
-    nodeClient->run(0);
+    nodeClient = std::make_shared<dht::DhtRunner>();
+    nodeClient->run(0, /*identity*/{}, /*threaded*/true);
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
-    nodeClient->enableProxy(true);
+    nodeClient->enableProxy(true); // creates DhtProxyClient
 }
 
 void
 DhtProxyTester::tearDown() {
+    logger->d("[tester:proxy] stopping peer node");
     nodePeer.join();
     nodeClient->join();
-    server->stop();
-    server = nullptr;
+    logger->d("[tester:proxy] stopping proxy server");
+    serverProxy->stop();
+    serverProxy = nullptr;
+    logger->d("[tester:proxy] stopping proxy node");
     nodeProxy->join();
 }
 
@@ -161,7 +168,7 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // Reboot node (to avoid cache)
     nodeClient->join();
-    nodeClient->run(42242, {}, true);
+    nodeClient->run(0, {}, true);
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true);

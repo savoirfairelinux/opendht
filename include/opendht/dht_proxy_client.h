@@ -2,6 +2,7 @@
  *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,21 +21,28 @@
 #pragma once
 
 #include <functional>
-#include <thread>
 #include <mutex>
 
 #include "callbacks.h"
 #include "def.h"
 #include "dht_interface.h"
-#include "scheduler.h"
 #include "proxy.h"
 
-namespace restbed {
-    class Request;
-}
+#include <restinio/all.hpp>
+#include <http_parser.h>
+#include <json/json.h>
+#include "http.h"
+
+#include <chrono>
+#include <vector>
+#include <functional>
 
 namespace Json {
     class Value;
+}
+
+namespace http {
+    class Client;
 }
 
 namespace dht {
@@ -44,7 +52,11 @@ public:
 
     DhtProxyClient();
 
-    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost, const std::string& pushClientId = "", const Logger& = {});
+    explicit DhtProxyClient(std::function<void()> loopSignal, const std::string& serverHost,
+                            const std::string& pushClientId = "",
+                            std::shared_ptr<dht::Logger> logger = {});
+
+    restinio::http_header_fields_t initHeaderFields();
 
     virtual void setPushNotificationToken(const std::string& token) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -172,6 +184,10 @@ public:
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
+    /*
+     * This function relies on the cache implementation.
+     * It means that there are no true cancel here, it keeps the caching in higher priority.
+     */
     virtual bool cancelListen(const InfoHash& key, size_t token);
 
     /**
@@ -184,7 +200,6 @@ public:
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }
-
 
     /**
      * Similar to Dht::get, but sends a Query to filter data remotely.
@@ -269,6 +284,8 @@ private:
      */
     struct InfoState;
     void getProxyInfos();
+    void handleProxyStatus(const asio::error_code &ec,
+                           std::shared_ptr<InfoState> infoState);
     void onProxyInfos(const Json::Value& val, sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
@@ -282,10 +299,13 @@ private:
         SUBSCRIBE,
         RESUBSCRIBE,
     };
-    void sendListen(const std::shared_ptr<restbed::Request> &request,
-                    const ValueCallback &, const Value::Filter &filter,
-                    const Sp<ListenState> &state,
-                    ListenMethod method = ListenMethod::LISTEN);
+    /**
+     * Send Listen with httpClient_
+     * Return a Connection Id
+     */
+    uint16_t sendListen(const restinio::http_request_header_t header,
+                        const ValueCallback &cb, const Value::Filter &filter,
+                        const Sp<ListenState> &state, ListenMethod method = ListenMethod::LISTEN);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 
@@ -303,7 +323,23 @@ private:
     void cancelAllOperations();
 
     std::string serverHost_;
+    std::string serverHostIp_;
+    uint16_t serverHostPort_;
     std::string pushClientId_;
+
+    /*
+     * ASIO I/O Context for sockets in httpClient_
+     * Note: Each context is used in one thread only
+     */
+    asio::io_context httpContext_;
+    /*
+     * http::Client instance used on http io_context
+     */
+    std::unique_ptr<http::Client> httpClient_;
+    /*
+     * Thread for executing the http io_context.run() blocking call
+     */
+    std::thread httpClientThread_;
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
@@ -329,33 +365,21 @@ private:
     mutable std::mutex searchLock_;
 
     /**
-     * Store current put and get requests.
-     */
-    struct Operation
-    {
-        std::shared_ptr<restbed::Request> req;
-        std::thread thread;
-        std::shared_ptr<std::atomic_bool> finished;
-    };
-    std::vector<Operation> operations_;
-    std::mutex lockOperations_;
-    /**
      * Callbacks should be executed in the main thread.
      */
     std::vector<std::function<void()>> callbacks_;
-    std::mutex lockCallbacks;
+    std::mutex lockCallbacks_;
 
     Sp<InfoState> infoState_;
-    std::thread statusThread_;
+    Sp<asio::steady_timer> statusTimer_;
     mutable std::mutex statusLock_;
 
-    Scheduler scheduler;
     /**
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
     void confirmProxy();
-    Sp<Scheduler::Job> nextProxyConfirmation {};
-    Sp<Scheduler::Job> listenerRestart {};
+    Sp<asio::steady_timer> nextProxyConfirmationTimer_;
+    Sp<asio::steady_timer> listenerRestartTimer_;
 
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
@@ -377,11 +401,13 @@ private:
     const std::function<void()> loopSignal_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    void fillBody(std::shared_ptr<restbed::Request> request, bool resubscribe);
+    std::string fillBody(bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
     std::atomic_bool isDestroying_ {false};
+
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 }

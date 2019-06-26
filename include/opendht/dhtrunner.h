@@ -65,7 +65,7 @@ public:
     };
 
     struct Context {
-        std::unique_ptr<Logger> logger {};
+        std::shared_ptr<Logger> logger {};
         std::unique_ptr<net::DatagramSocket> sock;
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
@@ -518,6 +518,12 @@ private:
 
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;
+
+    /**
+     * The Logger instance is used in enableProxy and other methods that
+     * would create instances of classes using a common logger.
+     */
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 }
