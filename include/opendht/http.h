@@ -23,6 +23,7 @@
 #include <http_parser.h>
 #include <restinio/all.hpp>
 #include <opendht.h>
+#include <opendht/def.h>
 #include <opendht/log.h>
 
 namespace http {
@@ -94,7 +95,7 @@ private:
     std::shared_ptr<dht::Logger> logger_;
 };
 
-class Client
+class OPENDHT_PUBLIC Client
 {
 public:
     Client(asio::io_context &ctx, std::string host, uint16_t port,
