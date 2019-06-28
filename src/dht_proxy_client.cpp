@@ -80,8 +80,9 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string &
     auto hostAndPort = splitPort(serverHost_);
     serverHostIp_ = hostAndPort.first;
     serverHostPort_ = std::atoi(hostAndPort.second.c_str());
-    httpClient_ = std::make_unique<http::Client>(
-        httpContext_, serverHostIp_, serverHostPort_, logger);
+    serverHostPort_ = serverHostPort_ == 0 ? 80 : serverHostPort_;
+    httpClient_ = std::make_unique<http::Client>(httpContext_,
+        serverHostIp_, serverHostPort_, logger);
     // run http client
     httpClientThread_ = std::thread([this](){
         try {
