@@ -159,7 +159,6 @@ list (APPEND opendht_SOURCES
     src/peer_discovery.cpp
     src/network_utils.cpp
     src/thread_pool.cpp
-    src/http.cpp
 )
 
 list (APPEND opendht_HEADERS
@@ -186,7 +185,6 @@ list (APPEND opendht_HEADERS
     include/opendht/peer_discovery.h
     include/opendht/thread_pool.h
     include/opendht/network_utils.h
-    include/opendht/http.h
     include/opendht.h
 )
 
@@ -230,6 +228,10 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
   endif ()
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h
+    include/opendht/http.h
+  )
+  list (APPEND opendht_SOURCES
+    src/http.cpp
   )
 endif ()
 
