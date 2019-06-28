@@ -151,6 +151,8 @@ void
 Client::close_connection(const uint16_t conn_id)
 {
     auto &req = requests_[conn_id];
+    // ensure on_message_complete is fired
+    http_parser_execute(req.parser.get(), req.parser_settings.get(), "", 0);
     // close the socket
     req.connection->close();
     // remove from active requests
