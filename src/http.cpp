@@ -263,8 +263,6 @@ Client::handle_connect(const asio::error_code &ec,
         return;
     }
     else if (endpoint_it != asio::ip::tcp::resolver::iterator()){
-        if (logger_)
-            logger_->e("[proxy:client] [connection:%i] error connecting, trying next endpoint", conn->id());
         conn->socket_.close();
         // connect to next one
         asio::ip::tcp::endpoint endpoint = *endpoint_it;
