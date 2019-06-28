@@ -98,7 +98,7 @@ private:
 class OPENDHT_PUBLIC Client
 {
 public:
-    Client(asio::io_context &ctx, std::string host, uint16_t port,
+    Client(asio::io_context &ctx, std::string host, uint16_t port = 80,
            std::shared_ptr<dht::Logger> logger = {});
 
     asio::io_context& io_context();
