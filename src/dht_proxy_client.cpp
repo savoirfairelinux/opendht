@@ -1052,14 +1052,13 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 auto state = list.second.state;
                 if (expired == notification.end()) {
                     auto cb = list.second.cb;
-                    auto filter = list.second.filter;
                     auto oldValues = list.second.cache.getValues();
                     get(key, [cb](const std::vector<Sp<Value>>& vals) {
                         return cb(vals, false);
                     }, [cb, oldValues](bool /*ok*/) {
                         // Decrement old values refcount to expire values not present in the new list
                         cb(oldValues, true);
-                    }, std::move(filter));
+                    });
                 } else {
                     std::stringstream ss(expired->second);
                     std::vector<Value::Id> ids;
@@ -1121,9 +1120,8 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
     listener.req = req;
     scheduler.edit(listener.refreshJob, scheduler.time() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     auto vcb = listener.cb;
-    auto filter = listener.filter;
-    listener.thread = std::thread([this, req, vcb, filter, state]() {
-        sendListen(req, vcb, filter, state, ListenMethod::RESUBSCRIBE);
+    listener.thread = std::thread([this, req, vcb, state]() {
+        sendListen(req, vcb, state, ListenMethod::RESUBSCRIBE);
     });
 #else
     (void) key;
