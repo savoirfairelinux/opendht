@@ -283,7 +283,7 @@ private:
         RESUBSCRIBE,
     };
     void sendListen(const std::shared_ptr<restbed::Request> &request,
-                    const ValueCallback &, const Value::Filter &filter,
+                    const ValueCallback &,
                     const Sp<ListenState> &state,
                     ListenMethod method = ListenMethod::LISTEN);
 
