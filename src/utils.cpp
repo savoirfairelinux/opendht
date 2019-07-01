@@ -110,7 +110,7 @@ print_addr(const sockaddr* sa, socklen_t slen)
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
     std::stringstream out;
-    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+    if (sa and slen and !getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
         if (sa->sa_family == AF_INET6)
             out << "[" << hbuf << "]";
         else
