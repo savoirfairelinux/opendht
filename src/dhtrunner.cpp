@@ -1005,6 +1005,7 @@ DhtRunner::enableProxy(bool proxify)
 void
 DhtRunner::forwardAllMessages(bool forward)
 {
+    std::lock_guard<std::mutex> lck(dht_mtx);
 #ifdef OPENDHT_PROXY_SERVER
 #ifdef OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
@@ -1022,6 +1023,7 @@ DhtRunner::forwardAllMessages(bool forward)
  */
 void
 DhtRunner::setPushNotificationToken(const std::string& token) {
+    std::lock_guard<std::mutex> lck(dht_mtx);
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
     pushToken_ = token;
     if (dht_via_proxy_)
