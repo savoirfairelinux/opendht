@@ -1908,7 +1908,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen, SockAddr from)
         try {
             network_engine.processMessage(buf, buflen, std::move(from));
         } catch (const std::exception& e) {
-            DHT_LOG.e("Can't process message from %s: %s", from.toString().c_str(), e.what());
+            DHT_LOG.e("Can't process message: %s", e.what());
         }
     }
     return scheduler.run();
