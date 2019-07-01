@@ -83,9 +83,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     ));
     // build http client
     auto pushHostPort = splitPort(pushServer_);
-    uint16_t pushPort = std::atoi(pushHostPort.second.c_str());
     httpClient_.reset(new http::Client(httpServer_->io_context(),
-                                       pushHostPort.first, pushPort, logger_));
+                        pushHostPort.first, pushHostPort.second, logger_));
     // run http server
     httpServerThread_ = std::thread([this](){
         try {
@@ -663,7 +662,12 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     };
     auto request = httpClient_->create_request(header, header_fields,
         restinio::http_connection_header_t::close, body);
-    httpClient_->post_request(request, parser, parser_s);
+
+    httpClient_->async_connect([this, request, parser, parser_s]
+                               (std::shared_ptr<http::Connection> conn)
+    {
+        httpClient_->async_request(conn, request, parser, parser_s);
+    });
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS

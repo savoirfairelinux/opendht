@@ -293,6 +293,7 @@ private:
 
     bool doCancelListen(const InfoHash& key, size_t token);
 
+    struct Listener;
     struct ListenState;
     enum class ListenMethod {
         LISTEN,
@@ -301,11 +302,11 @@ private:
     };
     /**
      * Send Listen with httpClient_
-     * Return a Connection Id
      */
-    uint16_t sendListen(const restinio::http_request_header_t header,
-                        const ValueCallback &cb, const Value::Filter &filter,
-                        const Sp<ListenState> &state, ListenMethod method = ListenMethod::LISTEN);
+    void sendListen(const restinio::http_request_header_t header,
+                    const ValueCallback &cb, const Value::Filter &filter,
+                    const Sp<ListenState> &state, Listener &listener,
+                    ListenMethod method = ListenMethod::LISTEN);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
 
@@ -322,9 +323,7 @@ private:
      */
     void cancelAllOperations();
 
-    std::string serverHost_;
-    std::string serverHostIp_;
-    uint16_t serverHostPort_;
+    std::pair<std::string, std::string> serverHostService_;
     std::string pushClientId_;
 
     /*

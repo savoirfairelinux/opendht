@@ -73,16 +73,15 @@ DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string &serverHost,
     const std::string &pushClientId, std::shared_ptr<dht::Logger> logger):
-        serverHost_(serverHost), pushClientId_(pushClientId), loopSignal_(signal),
+        pushClientId_(pushClientId), loopSignal_(signal),
         logger_(logger)
 {
     // build http client
-    auto hostAndPort = splitPort(serverHost_);
-    serverHostIp_ = hostAndPort.first;
-    serverHostPort_ = std::atoi(hostAndPort.second.c_str());
-    serverHostPort_ = serverHostPort_ == 0 ? 80 : serverHostPort_;
+    serverHostService_ = splitPort(serverHost);
+    serverHostService_.second = serverHostService_.second.empty() ? "80" :
+                                serverHostService_.second;
     httpClient_ = std::make_unique<http::Client>(httpContext_,
-        serverHostIp_, serverHostPort_, logger);
+        serverHostService_.first, serverHostService_.second, logger);
     // run http client
     httpClientThread_ = std::thread([this](){
         try {
@@ -99,18 +98,14 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string &
                 logger_->e("[proxy:client] error starting io context");
         }
     });
-
-    if (serverHost_.find("://") == std::string::npos)
-        serverHost_ = proxy::HTTP_PROTO + serverHost_;
-
-    if (!serverHost_.empty())
+    if (!serverHostService_.first.empty())
         startProxy();
 }
 
 void
 DhtProxyClient::confirmProxy()
 {
-    if (serverHost_.empty())
+    if (serverHostService_.first.empty())
         return;
     getConnectivityStatus();
 }
@@ -118,11 +113,11 @@ DhtProxyClient::confirmProxy()
 void
 DhtProxyClient::startProxy()
 {
-    if (serverHost_.empty())
+    if (serverHostService_.first.empty())
         return;
 
     if (logger_)
-        logger_->d("[proxy:client] staring proxy with %s", serverHost_.c_str());
+        logger_->d("[proxy:client] staring proxy with %s", serverHostService_.first.c_str());
 
     nextProxyConfirmationTimer_ = std::make_shared<asio::steady_timer>(
         httpContext_, std::chrono::steady_clock::now());
@@ -256,7 +251,7 @@ restinio::http_header_fields_t
 DhtProxyClient::initHeaderFields(){
     restinio::http_header_fields_t header_fields;
     header_fields.append_field(restinio::http_field_t::host,
-        (serverHostIp_ + ":" + std::to_string(serverHostPort_)).c_str());
+        (serverHostService_.first + ":" + serverHostService_.second).c_str());
     header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
     header_fields.append_field(restinio::http_field_t::accept, "*/*");
     header_fields.append_field(restinio::http_field_t::content_type, "application/json");
@@ -279,7 +274,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         logger_->d(request.c_str());
 
     struct GetContext {
-        GetCallback cb;
+        GetCallback cb;            // wrapper
         DoneCallbackSimple donecb; // wrapper
         Value::Filter filter;
         std::atomic_bool ok {true};
@@ -288,6 +283,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
     };
     auto context = std::make_shared<GetContext>();
     context->filter = w.empty() ? f : f.chain(w.getFilter());
+    // keeping context data alive
     context->cb = [this, context, cb]
         (const std::vector<dht::Sp<dht::Value>>& values) -> bool {
         {
@@ -332,7 +328,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
     };
     parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
         auto context = static_cast<GetContext*>(parser->data);
-        try{
+        try {
             Json::Value json;
             std::string err;
             Json::CharReaderBuilder rbuilder;
@@ -368,7 +364,11 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         }
         return 0;
     };
-    httpClient_->post_request(request, parser, parser_s);
+    httpClient_->async_connect([this, request, parser, parser_s]
+                               (std::shared_ptr<http::Connection> conn)
+    {
+        httpClient_->async_request(conn, request, parser, parser_s);
+    });
 }
 
 void
@@ -503,7 +503,11 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         }
         return 0;
     };
-    httpClient_->post_request(request, parser, parser_s);
+    httpClient_->async_connect([this, request, parser, parser_s]
+                               (std::shared_ptr<http::Connection> conn)
+    {
+        httpClient_->async_request(conn, request, parser, parser_s);
+    });
 }
 
 /**
@@ -594,105 +598,102 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
             return;
         }
     }
-    auto serverHost = serverHost_;
-    try {
-        // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
-        auto endpointStr = serverHost;
-        auto protocol = std::string(proxy::HTTP_PROTO);
-        auto protocolIdx = serverHost.find("://");
-        if (protocolIdx != std::string::npos) {
-            protocol = endpointStr.substr(0, protocolIdx + 3);
-            endpointStr = endpointStr.substr(protocolIdx + 3);
+    // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
+    httpClient_->async_resolve(serverHostService_.first, serverHostService_.second,
+                               [this, infoState](const asio::error_code &ec){
+        if (ec){
+            logger_->e("[proxy:client] [status] error resolving: %s", ec.message().c_str());
+            return;
         }
-        auto hostAndService = splitPort(endpointStr);
-        auto resolvedProxies = SockAddr::resolve(hostAndService.first, hostAndService.second);
+        // in all cases attempt to connect
+        httpClient_->async_connect([this, infoState](std::shared_ptr<http::Connection> conn){
+            try {
+                // make an http header
+                restinio::http_request_header_t header;
+                header.request_target("/");
+                header.method(restinio::http_method_get());
+                auto header_fields = this->initHeaderFields();
+                auto request = httpClient_->create_request(header, header_fields,
+                    restinio::http_connection_header_t::keep_alive, ""/*body*/);
+                if (logger_)
+                    logger_->d("[proxy:client] [status] sending request:\n%s", request.c_str());
+                // initalise the parser callback data
+                struct GetContext {
+                    unsigned int family;
+                    std::function<void(Json::Value infos)> cb; // wrapper
+                    std::atomic_bool ok {true};
+                    std::shared_ptr<InfoState> infoState;
+                    std::function<void(const Json::Value&, sa_family_t)> proxyInfo;
+                    std::shared_ptr<dht::Logger> logger;
+                };
+                auto context = std::make_shared<GetContext>();
+                context->infoState = infoState;
+                context->family = conn->is_v6() ? AF_INET6 : AF_INET;
+                context->proxyInfo = std::bind(&DhtProxyClient::onProxyInfos, this,
+                    std::placeholders::_1, std::placeholders::_2);
+                // keeping context data alive
+                context->cb = [this, context](Json::Value infos){
+                    if (context->family == AF_INET) 
+                        context->infoState->ipv4++;
+                    else if (context->family == AF_INET6)
+                        context->infoState->ipv6++;
+                    if (not context->infoState->cancel)
+                        context->proxyInfo(infos, context->family);
+                };
+                if (logger_)
+                    context->logger = logger_;
 
-        for (const auto& resolvedProxy: resolvedProxies){
-            auto server = resolvedProxy.toString();
-            // make an http header
-            restinio::http_request_header_t header;
-            header.request_target("/");
-            header.method(restinio::http_method_get());
-            auto header_fields = this->initHeaderFields();
-            auto request = httpClient_->create_request(header, header_fields,
-                restinio::http_connection_header_t::keep_alive, ""/*body*/);
-            if (logger_)
-                logger_->d("[proxy:client] [status] sending request:\n%s", request.c_str());
-            // initalise the parser callback data
-            struct GetContext {
-                unsigned int family;
-                std::function<void(Json::Value infos)> cb; // wrapper
-                std::atomic_bool ok {true};
-                std::shared_ptr<InfoState> infoState;
-                std::function<void(const Json::Value&, sa_family_t)> proxyInfo;
-                std::shared_ptr<dht::Logger> logger;
-            };
-            auto context = std::make_shared<GetContext>();
-            context->infoState = infoState;
-            context->family = resolvedProxy.getFamily();
-            context->proxyInfo = std::bind(&DhtProxyClient::onProxyInfos, this,
-                std::placeholders::_1, std::placeholders::_2);
-            // keeping context data alive
-            context->cb = [this, context](Json::Value infos){
-                if (context->family == AF_INET) 
-                    context->infoState->ipv4++;
-                else if (context->family == AF_INET6)
-                    context->infoState->ipv6++;
-                if (not context->infoState->cancel)
-                    context->proxyInfo(infos, context->family);
-            };
-            if (logger_)
-                context->logger = logger_;
+                // initialize the parser
+                auto parser = std::make_shared<http_parser>();
+                http_parser_init(parser.get(), HTTP_RESPONSE);
+                parser->data = static_cast<void*>(context.get());
 
-            // initialize the parser
-            auto parser = std::make_shared<http_parser>();
-            http_parser_init(parser.get(), HTTP_RESPONSE);
-            parser->data = static_cast<void*>(context.get());
-
-            // init the parser callbacks
-            auto parser_s = std::make_shared<http_parser_settings>();
-            http_parser_settings_init(parser_s.get());
-            parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
-                auto context = static_cast<GetContext*>(parser->data);
-                if (parser->status_code != 200){
-                    if (context->logger)
-                        context->logger->e("[proxy:client] [status] error: %i", parser->status_code);
-                    context->ok = true;
-                }
-                return 0;
-            };
-            parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
-                auto context = static_cast<GetContext*>(parser->data);
-                try{
-                    std::string err;
-                    Json::Value proxyInfos;
-                    Json::CharReaderBuilder rbuilder;
-                    auto body = std::string(at, length);
-                    auto* char_data = static_cast<const char*>(&body[0]);
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                    if (!reader->parse(char_data, char_data + body.size(), &proxyInfos, &err)){
+                // init the parser callbacks
+                auto parser_s = std::make_shared<http_parser_settings>();
+                http_parser_settings_init(parser_s.get());
+                parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+                    auto context = static_cast<GetContext*>(parser->data);
+                    if (parser->status_code != 200){
+                        if (context->logger)
+                            context->logger->e("[proxy:client] [status] error: %i", parser->status_code);
+                        context->ok = true;
+                    }
+                    return 0;
+                };
+                parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+                    auto context = static_cast<GetContext*>(parser->data);
+                    try{
+                        std::string err;
+                        Json::Value proxyInfos;
+                        Json::CharReaderBuilder rbuilder;
+                        auto body = std::string(at, length);
+                        auto* char_data = static_cast<const char*>(&body[0]);
+                        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                        if (!reader->parse(char_data, char_data + body.size(), &proxyInfos, &err)){
+                            context->ok = false;
+                            return 1;
+                        }
+                        context->cb(proxyInfos);
+                    }
+                    catch (const std::exception& e) {
+                        if (context->logger)
+                            context->logger->e("[proxy:client] [status] body error: %s", e.what());
                         context->ok = false;
                         return 1;
                     }
-                    context->cb(proxyInfos);
-                }
-                catch (const std::exception& e) {
-                    if (context->logger)
-                        context->logger->e("[proxy:client] [status] body error: %s", e.what());
-                    context->ok = false;
-                    return 1;
-                }
-                return 0;
-            };
-            if (context->infoState->cancel)
-                return;
-            httpClient_->post_request(request, parser, parser_s);
-        }
-    }
-    catch (const std::exception& e) {
-        if (logger_)
-            logger_->e("[proxy:client] [info] error sending request: %s", e.what());
-    }
+                    return 0;
+                };
+                if (context->infoState->cancel)
+                    return;
+
+                httpClient_->async_request(conn, request, parser, parser_s);
+            }
+            catch (const std::exception& e) {
+                if (logger_)
+                    logger_->e("[proxy:client] [info] error sending request: %s", e.what());
+            }
+        });
+    });
 }
 
 void
@@ -860,7 +861,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             header.method(restinio::http_method_subscribe());
             header.request_target("/" + key.toString());
         }
-        l->second.connId = sendListen(header, vcb, filter, state, method);
+        sendListen(header, vcb, filter, state, l->second, method);
         return token;
     });
     return token;
@@ -908,10 +909,11 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
     return canceled;
 }
 
-uint16_t
+void
 DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                            const ValueCallback &cb, const Value::Filter &filter,
-                           const Sp<ListenState> &state, ListenMethod method)
+                           const Sp<ListenState> &state,
+                           Listener &listener, ListenMethod method)
 {
     auto headers = this->initHeaderFields();
     auto conn = restinio::http_connection_header_t::close;
@@ -986,8 +988,12 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         }
         return 0;
     };
-    auto connId = httpClient_->post_request(request, parser, parser_s);
-    return connId;
+    httpClient_->async_connect([this, &listener, request, parser, parser_s]
+                               (std::shared_ptr<http::Connection> conn)
+    {
+        listener.connId = conn->id();
+        httpClient_->async_request(conn, request, parser, parser_s);
+    });
 }
 
 bool
@@ -1053,7 +1059,11 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             }
             return 0;
         };
-        httpClient_->post_request(request, parser, parser_s);
+        httpClient_->async_connect([this, request, parser, parser_s]
+                                   (std::shared_ptr<http::Connection> conn)
+        {
+            httpClient_->async_request(conn, request, parser, parser_s);
+        });
     } else {
         // Just stop the request
         if (httpClient_->active_connection(listener.connId)){
@@ -1163,7 +1173,7 @@ DhtProxyClient::restartListeners()
             header.method(restinio::http_method_get());
             header.request_target("/" + search.first.toString() + "/listen");
             // send listen
-            listener.connId = sendListen(header, cb, filter, state, ListenMethod::LISTEN);
+            sendListen(header, cb, filter, state, listener, ListenMethod::LISTEN);
         }
     }
 }
@@ -1291,7 +1301,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, Listener& listener)
                                       proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     auto vcb = listener.cb;
     auto filter = listener.filter;
-    listener.connId = sendListen(header, vcb, filter, state, ListenMethod::RESUBSCRIBE);
+    sendListen(header, vcb, filter, state, listener, ListenMethod::RESUBSCRIBE);
 #else
     (void) key;
     (void) listener;
