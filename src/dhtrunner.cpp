@@ -225,7 +225,7 @@ DhtRunner::shutdown(ShutdownCallback cb) {
         dht_via_proxy_->shutdown(cb);
 #endif
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht& dht) mutable {
+    pending_ops_prio.emplace([=](SecureDht&) mutable {
         if (dht_)
             dht_->shutdown(cb);
     });
