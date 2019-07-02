@@ -150,7 +150,7 @@ UdpSocket::sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool r
     flags |= MSG_NOSIGNAL;
 #endif
 
-    if (sendto(s, data, size, flags, dest.get(), dest.getLength()) == -1) {
+    if (sendto(s, (const char*)data, size, flags, dest.get(), dest.getLength()) == -1) {
         int err = errno;
         logger.d("Can't send message to %s: %s", dest.toString().c_str(), strerror(err));
         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
