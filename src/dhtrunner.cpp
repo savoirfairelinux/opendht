@@ -940,6 +940,7 @@ void
 DhtRunner::setProxyServer(const std::string& proxy, const std::string& pushNodeId)
 {
 #ifdef OPENDHT_PROXY_CLIENT
+    std::lock_guard<std::mutex> lck(dht_mtx);
     if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
         return;
     config_.proxy_server = proxy;
