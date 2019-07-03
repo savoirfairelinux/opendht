@@ -137,6 +137,8 @@ DhtProxyClient::~DhtProxyClient()
         infoState_->cancel = true;
     if (statusTimer_)
         statusTimer_->cancel();
+    httpContext_.reset();
+    httpContext_.stop();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
 }
