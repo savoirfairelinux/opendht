@@ -207,40 +207,68 @@ DhtProxyServer::createRestRouter()
 {
     using namespace std::placeholders;
     auto router = std::make_unique<RestRouter>();
+
+    // **************************** LEGACY ROUTES ****************************
+    // node.info
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
-    // LEGACY STATS ROUTE
+    // node.stats
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_stats.raw_id()),
                         "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
-    // }
-    router->http_get("/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
+    // node.options
+    router->add_handler(restinio::http_method_options(),
+                        "/", std::bind(&DhtProxyServer::options, this, _1, _2));
+    // key.get
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
+    // key.post
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
-    // LEGACY LISTEN ROUTE
+    // key.listen
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_listen.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::listen, this, _1, _2));
-    // }
-    router->http_get("/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    // key.subscribe
     router->add_handler(restinio::http_method_subscribe(),
                         "/:hash", std::bind(&DhtProxyServer::subscribe, this, _1, _2));
+    // key.unsubscribe
     router->add_handler(restinio::http_method_unsubscribe(),
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
-    // LEGACY SIGN ROUTE
+    // key.sign
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_sign.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
-    // }
-    router->http_post("/:hash/sign", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
-    // LEGACY ENCRYPT ROUTE
+    // key.encrypt
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_encrypt.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
-    // }
-    router->http_post("/:hash/encrypt", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
-    router->add_handler(restinio::http_method_options(),
-                        "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
-    router->http_get("/:hash/:value", std::bind(&DhtProxyServer::getFiltered, this, _1, _2));
+
+    // **************************** NEW ROUTES ****************************
+    // node.info
+    router->http_get("/node/info", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
+    // node.stats
+    router->http_get("/node/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
+    // node.options
+    router->http_get("/node/options", std::bind(&DhtProxyServer::options, this, _1, _2));
+    // key.get
+    router->http_get("/key/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
+    // key.post
+    router->http_post("/key/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+    // key.listen
+    router->http_get("/key/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    // key.subscribe
+    router->add_handler(restinio::http_method_subscribe(),
+                        "/key/:hash", std::bind(&DhtProxyServer::subscribe, this, _1, _2));
+    // key.unsubscribe
+    router->add_handler(restinio::http_method_unsubscribe(),
+                        "/key/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
+#endif //OPENDHT_PUSH_NOTIFICATIONS
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
+    // key.sign
+    router->http_post("/key/:hash/sign", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
+    // key.encrypt
+    router->http_post("/key/:hash/encrypt", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
+#endif // OPENDHT_PROXY_SERVER_IDENTITY
+
     return router;
 }
 
