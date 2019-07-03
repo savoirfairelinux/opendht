@@ -65,7 +65,7 @@ ConnectionListener::~ConnectionListener()
 {}
 
 void
-ConnectionListener::state_changed(const restinio::connection_state::notice_t &notice) noexcept
+ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
 {
     std::lock_guard<std::mutex> lock(*lock_);
     auto id = notice.connection_id();
@@ -107,7 +107,7 @@ ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
 
 // client
 
-Client::Client(asio::io_context &ctx, const std::string host, const std::string service,
+Client::Client(asio::io_context& ctx, const std::string host, const std::string service,
                std::shared_ptr<dht::Logger> logger, const bool resolve):
         resolver_(ctx), logger_(logger)
 {
@@ -139,7 +139,7 @@ Client::active_connection(const ConnectionId conn_id)
 void
 Client::close_connection(const ConnectionId conn_id)
 {
-    auto &req = requests_[conn_id];
+    auto& req = requests_[conn_id];
     // ensure on_message_complete is fired
     http_parser_execute(req.parser.get(), req.parser_settings.get(), "", 0);
     // close the socket
@@ -164,7 +164,7 @@ Client::async_resolve(const std::string host, const std::string service, Handler
 
     // resolve the query to the server
     resolver_.async_resolve(query, [this, host, service, cb](
-            const asio::error_code &ec,
+            const asio::error_code& ec,
             asio::ip::tcp::resolver::results_type endpoints)
     {
         if (ec){
@@ -251,7 +251,7 @@ Client::async_connect(ConnectionCb cb)
     // try to connect
     conn->socket_.async_connect(endpoint, std::bind(
         &Client::handle_connect, this, std::placeholders::_1, ++endpoint_it, conn,
-        [this, endpoint, conn, cb](const asio::error_code &ec){
+        [this, endpoint, conn, cb](const asio::error_code& ec){
             if (!ec){
                 // save the associated endpoint
                 conn->endpoint_ = endpoint;
@@ -264,7 +264,7 @@ Client::async_connect(ConnectionCb cb)
 }
 
 void
-Client::handle_connect(const asio::error_code &ec,
+Client::handle_connect(const asio::error_code& ec,
                        asio::ip::tcp::resolver::iterator endpoint_it,
                        std::shared_ptr<Connection> conn, HandlerCb cb)
 {
@@ -324,7 +324,7 @@ Client::async_request(std::shared_ptr<Connection> conn, std::string request,
 }
 
 void
-Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> conn)
+Client::handle_request(const asio::error_code& ec, std::shared_ptr<Connection> conn)
 {
     if (!conn->is_open())
         return;
@@ -345,7 +345,7 @@ Client::handle_request(const asio::error_code &ec, std::shared_ptr<Connection> c
 }
 
 void
-Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> conn)
+Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> conn)
 {
     if (!conn->is_open())
         return;
@@ -370,7 +370,7 @@ Client::handle_response(const asio::error_code &ec, std::shared_ptr<Connection> 
         logger_->d("%s", str_s.str().c_str());
 
     // parse the request
-    auto &req = requests_[conn->id()];
+    auto& req = requests_[conn->id()];
     http_parser_execute(req.parser.get(), req.parser_settings.get(),
                         str_s.str().c_str(), str_s.str().size());
 

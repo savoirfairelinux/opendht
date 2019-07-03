@@ -274,7 +274,7 @@ DhtProxyServer::createRestRouter()
 
 RequestStatus
 DhtProxyServer::getNodeInfo(restinio::request_handle_t request,
-                            restinio::router::route_params_t params) const
+                            restinio::router::route_params_t /*params*/) const
 {
     Json::Value result;
     std::lock_guard<std::mutex> lck(statsMutex_);
@@ -294,7 +294,7 @@ DhtProxyServer::getNodeInfo(restinio::request_handle_t request,
 
 RequestStatus
 DhtProxyServer::getStats(restinio::request_handle_t request,
-                         restinio::router::route_params_t params)
+                         restinio::router::route_params_t /*params*/)
 {
     requestNum_++;
     try {
@@ -680,7 +680,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
-    parser_s->on_status = []( http_parser * parser, const char * at, size_t length ) -> int {
+    parser_s->on_status = [](http_parser*  parser, const char* /*at*/, size_t /*length*/) -> int {
         auto context = static_cast<PushContext*>(parser->data);
         if (parser->status_code == 200)
             return 0;
@@ -977,7 +977,7 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
 
 RequestStatus
 DhtProxyServer::options(restinio::request_handle_t request,
-                        restinio::router::route_params_t params)
+                        restinio::router::route_params_t /*params*/)
 {
     this->requestNum_++;
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY

@@ -86,7 +86,7 @@ public:
      * Connection state change used to handle Listeners disconnects.
      * RESTinio >= 0.5.1 https://github.com/Stiffstream/restinio/issues/28
      */
-    void state_changed(const restinio::connection_state::notice_t &notice) noexcept;
+    void state_changed(const restinio::connection_state::notice_t& notice) noexcept;
 
 private:
     std::string to_str( restinio::connection_state::cause_t cause ) noexcept;
@@ -101,10 +101,10 @@ private:
 class OPENDHT_PUBLIC Client
 {
 public:
-    using HandlerCb = std::function<void(const asio::error_code &ec)>;
+    using HandlerCb = std::function<void(const asio::error_code& ec)>;
     using ConnectionCb = std::function<void(std::shared_ptr<Connection>)>;
 
-    Client(asio::io_context &ctx, const std::string host, const std::string service = "80",
+    Client(asio::io_context& ctx, const std::string host, const std::string service = "80",
            std::shared_ptr<dht::Logger> logger = {}, const bool resolve = true);
 
     asio::io_context& io_context();
@@ -131,18 +131,18 @@ public:
 private:
     std::shared_ptr<Connection> create_connection();
 
-    void handle_connect(const asio::error_code &ec,
+    void handle_connect(const asio::error_code& ec,
                         asio::ip::tcp::resolver::iterator endpoint_it,
                         std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
 
-    void handle_resolve(const asio::error_code &ec,
+    void handle_resolve(const asio::error_code& ec,
                         asio::ip::tcp::resolver::iterator endpoint_it,
                         std::shared_ptr<Connection> conn = {});
 
-    void handle_request(const asio::error_code &ec,
+    void handle_request(const asio::error_code& ec,
                         std::shared_ptr<Connection> conn = {});
 
-    void handle_response(const asio::error_code &ec,
+    void handle_response(const asio::error_code& ec,
                          std::shared_ptr<Connection> conn = {});
 
     std::string service_;

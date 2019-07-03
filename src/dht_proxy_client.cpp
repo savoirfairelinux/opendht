@@ -71,8 +71,8 @@ struct DhtProxyClient::ProxySearch {
 
 DhtProxyClient::DhtProxyClient() {}
 
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string &serverHost,
-    const std::string &pushClientId, std::shared_ptr<dht::Logger> logger):
+DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost,
+    const std::string& pushClientId, std::shared_ptr<dht::Logger> logger):
         pushClientId_(pushClientId), loopSignal_(signal),
         logger_(logger)
 {
@@ -93,7 +93,7 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string &
             if (logger_)
                 logger_->d("[proxy:client] http client io context stopped");
         }
-        catch(const std::exception &ex){
+        catch(const std::exception& ex){
             if (logger_)
                 logger_->e("[proxy:client] error starting io context");
         }
@@ -302,7 +302,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         {
             std::lock_guard<std::mutex> lock(lockCallbacks_);
             callbacks_.emplace_back([=](){
-                donecb(context->ok, {});
+                donecb(ok, {});
                 context->stop = true;
             });
         }
@@ -317,7 +317,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
 
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
-    parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
         auto context = static_cast<GetContext*>(parser->data);
         if (parser->status_code != 200){
             if (context->logger)
@@ -326,7 +326,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         }
         return 0;
     };
-    parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
         auto context = static_cast<GetContext*>(parser->data);
         try {
             Json::Value json;
@@ -351,7 +351,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         }
         return 0;
     };
-    parser_s->on_message_complete = [](http_parser *parser) -> int {
+    parser_s->on_message_complete = [](http_parser* parser) -> int {
         auto context = static_cast<GetContext*>(parser->data);
         try {
             if (context->donecb)
@@ -390,12 +390,12 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb,
     if (permanent) {
         std::lock_guard<std::mutex> lock(searchLock_);
         auto id = val->id;
-        auto &search = searches_[key];
+        auto& search = searches_[key];
         auto refreshTimer = std::make_shared<asio::steady_timer>(httpContext_,
             std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
         auto ok = std::make_shared<std::atomic_bool>(false);
         // define refresh timer handler
-        refreshTimer->async_wait([this, key, id, ok](const asio::error_code &ec){
+        refreshTimer->async_wait([this, key, id, ok](const asio::error_code& ec){
             if (ec){
                 if (logger_)
                     logger_->e("[proxy:client] [listener:refresh] error key=%s", key.toString().c_str());
@@ -467,7 +467,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         {
             std::lock_guard<std::mutex> lock(lockCallbacks_);
             callbacks_.emplace_back([=](){
-                cb(context->ok, {});
+                cb(ok, {});
             });
         }
         loopSignal_();
@@ -481,7 +481,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
 
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
-    parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
         GetContext* context = static_cast<GetContext*>(parser->data);
         if (parser->status_code == 200){
             context->ok = true;
@@ -491,7 +491,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         }
         return 0;
     };
-    parser_s->on_message_complete = [](http_parser * parser) -> int {
+    parser_s->on_message_complete = [](http_parser*  parser) -> int {
         auto context = static_cast<GetContext*>(parser->data);
         try {
             if (context->donecb)
@@ -589,7 +589,7 @@ DhtProxyClient::getProxyInfos()
 }
 
 void
-DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
+DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                                   std::shared_ptr<InfoState> infoState)
 {
     if (ec){
@@ -600,7 +600,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
     }
     // A node can have a Ipv4 and a Ipv6. So, we need to retrieve all public ips
     httpClient_->async_resolve(serverHostService_.first, serverHostService_.second,
-                               [this, infoState](const asio::error_code &ec){
+                               [this, infoState](const asio::error_code& ec){
         if (ec){
             logger_->e("[proxy:client] [status] error resolving: %s", ec.message().c_str());
             return;
@@ -651,7 +651,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                 // init the parser callbacks
                 auto parser_s = std::make_shared<http_parser_settings>();
                 http_parser_settings_init(parser_s.get());
-                parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+                parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
                     auto context = static_cast<GetContext*>(parser->data);
                     if (parser->status_code != 200){
                         if (context->logger)
@@ -660,7 +660,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code &ec,
                     }
                     return 0;
                 };
-                parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+                parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
                     auto context = static_cast<GetContext*>(parser->data);
                     try{
                         std::string err;
@@ -830,7 +830,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             l->second.refreshTimer->expires_at(std::chrono::steady_clock::now() +
                     proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             l->second.refreshTimer->async_wait(
-                [this, key, token, state](const asio::error_code &ec)
+                [this, key, token, state](const asio::error_code& ec)
             {
                 if (ec){
                     if (logger_)
@@ -912,9 +912,9 @@ DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
 
 void
 DhtProxyClient::sendListen(const restinio::http_request_header_t header,
-                           const ValueCallback &cb, const Value::Filter &filter,
-                           const Sp<ListenState> &state,
-                           Listener &listener, ListenMethod method)
+                           const ValueCallback& cb, const Value::Filter& filter,
+                           const Sp<ListenState>& state,
+                           Listener& listener, ListenMethod method)
 {
     auto headers = this->initHeaderFields();
     auto conn = restinio::http_connection_header_t::close;
@@ -951,7 +951,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 
     auto parser_s = std::make_shared<http_parser_settings>();
     http_parser_settings_init(parser_s.get());
-    parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
         auto context = static_cast<ListenContext*>(parser->data);
         if (parser->status_code != 200){
             if (context->logger)
@@ -960,7 +960,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         }
         return 0;
     };
-    parser_s->on_body = [](http_parser *parser, const char *at, size_t length) -> int {
+    parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
         auto context = static_cast<ListenContext*>(parser->data);
         try {
             Json::Value json;
@@ -1051,7 +1051,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
         // define callbacks
         auto parser_s = std::make_shared<http_parser_settings>();
         http_parser_settings_init(parser_s.get());
-        parser_s->on_status = [](http_parser *parser, const char *at, size_t length) -> int {
+        parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
             auto context = static_cast<UnsubscribeContext*>(parser->data);
             if (parser->status_code != 200){
                 if (context->logger)
