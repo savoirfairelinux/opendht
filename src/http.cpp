@@ -140,10 +140,14 @@ void
 Client::close_connection(const ConnectionId conn_id)
 {
     auto& req = requests_[conn_id];
-    // ensure on_message_complete is fired
-    http_parser_execute(req.parser.get(), req.parser_settings.get(), "", 0);
-    // close the socket
-    req.connection->close();
+    if (req.parser)
+        // ensure on_message_complete is fired
+        http_parser_execute(req.parser.get(), req.parser_settings.get(), "", 0);
+    if (req.connection){
+        // close the socket
+        if (req.connection->is_open())
+            req.connection->close();
+    }
     // remove from active requests
     requests_.erase(conn_id);
     if (logger_)
@@ -258,8 +262,11 @@ Client::async_connect(ConnectionCb cb)
                 // get back to user
                 cb(conn);
             }
-            else
-                close(conn->id());
+            else {
+                logger_->e("[http::client] [connection:%i] error opening: %s",
+                           conn->id(), ec.message().c_str());
+                close_connection(conn->id());
+            }
         }));
 }
 
