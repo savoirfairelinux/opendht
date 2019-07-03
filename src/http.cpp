@@ -130,28 +130,54 @@ Client::set_logger(std::shared_ptr<dht::Logger> logger)
 bool
 Client::active_connection(const ConnectionId conn_id)
 {
-    auto req = requests_.find(conn_id);
-    if (req == requests_.end())
+    auto conn_context = connections_.find(conn_id);
+    if (conn_context == connections_.end())
         return false;
-    return req->second.connection->is_open();
+    return conn_context->second.connection->is_open();
 }
 
 void
 Client::close_connection(const ConnectionId conn_id)
 {
-    auto& req = requests_[conn_id];
-    if (req.parser)
+    auto& conn_context = connections_[conn_id];
+    if (conn_context.parser)
         // ensure on_message_complete is fired
-        http_parser_execute(req.parser.get(), req.parser_settings.get(), "", 0);
-    if (req.connection){
+        http_parser_execute(conn_context.parser.get(),
+                            conn_context.parser_settings.get(), "", 0);
+    if (conn_context.connection){
         // close the socket
-        if (req.connection->is_open())
-            req.connection->close();
+        if (conn_context.connection->is_open())
+            conn_context.connection->close();
     }
     // remove from active requests
-    requests_.erase(conn_id);
+    connections_.erase(conn_id);
     if (logger_)
         logger_->d("[http::client] [connection:%i] closed", conn_id);
+}
+
+void
+Client::set_connection_timeout(const ConnectionId conn_id,
+                               const std::chrono::seconds timeout)
+{
+    auto& conn_context = connections_[conn_id];
+    if (!conn_context.connection){
+        logger_->e("[http::client] [connection:%i] closed, can't timeout", conn_id);
+        return;
+    }
+    if (!conn_context.timeout_timer)
+        conn_context.timeout_timer = std::make_shared<asio::steady_timer>(io_context());
+    // define or overwrites existing
+    conn_context.timeout_timer->expires_at(std::chrono::steady_clock::now() + timeout);
+    // define timeout
+    conn_context.timeout_timer->async_wait([this, conn_id](const asio::error_code &ec){
+        if (ec){
+            if (logger_)
+                logger_->e("[http::client] [connection:%i] timeout error: %s",
+                           conn_id, ec.message().c_str());
+        }
+        // attempt to close anyway
+        close_connection(conn_id);
+    });
 }
 
 bool
@@ -259,6 +285,10 @@ Client::async_connect(ConnectionCb cb)
             if (!ec){
                 // save the associated endpoint
                 conn->endpoint_ = endpoint;
+                // make the connection context and save it
+                ConnectionContext conn_context = {};
+                conn_context.connection = conn;
+                connections_[conn->id()] = conn_context;
                 // get back to user
                 cb(conn);
             }
@@ -314,12 +344,10 @@ Client::async_request(std::shared_ptr<Connection> conn, std::string request,
         return;
     }
     // save the request context
-    Request req = {};
-    req.connection = conn;
-    req.content = request;
-    req.parser = parser;
-    req.parser_settings = parser_s;
-    requests_[conn->id()] = req;
+    auto& conn_context = connections_[conn->id()];
+    conn_context.request = request;
+    conn_context.parser = parser;
+    conn_context.parser_settings = parser_s;
 
     // write the request to buffer
     std::ostream request_stream(&conn->request_);
@@ -377,14 +405,16 @@ Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> 
         logger_->d("%s", str_s.str().c_str());
 
     // parse the request
-    auto& req = requests_[conn->id()];
-    http_parser_execute(req.parser.get(), req.parser_settings.get(),
+    auto& conn_context = connections_[conn->id()];
+    http_parser_execute(conn_context.parser.get(), conn_context.parser_settings.get(),
                         str_s.str().c_str(), str_s.str().size());
 
     // detect parsing errors
-    if (HPE_OK != req.parser->http_errno && HPE_PAUSED != req.parser->http_errno){
+    if (HPE_OK != conn_context.parser->http_errno &&
+        HPE_PAUSED != conn_context.parser->http_errno)
+    {
         if (logger_){
-            auto err = HTTP_PARSER_ERRNO(req.parser.get());
+            auto err = HTTP_PARSER_ERRNO(conn_context.parser.get());
             logger_->e("[http::client] [connection:%i] error parsing: %s",
                         conn->id(), http_errno_name(err));
         }

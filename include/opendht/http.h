@@ -30,7 +30,7 @@ namespace http {
 
 using ConnectionId = unsigned int;
 
-class Connection
+class OPENDHT_PUBLIC Connection
 {
 public:
     Connection(const ConnectionId id, asio::ip::tcp::socket socket);
@@ -63,14 +63,16 @@ struct ListenerSession
 };
 
 /**
- * Request is the context of an active connection allowing it to parse responses
+ * Context of an active connection allowing it to parse responses etc.
  */
-struct Request
+struct ConnectionContext
 {
-    std::string content;
+    // TODO store multiple requests
+    std::string request;
     std::shared_ptr<http_parser> parser;
     std::shared_ptr<http_parser_settings> parser_settings;
     std::shared_ptr<Connection> connection;
+    std::shared_ptr<asio::steady_timer> timeout_timer;
 };
 
 class ConnectionListener
@@ -111,8 +113,10 @@ public:
 
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
-    bool active_connection(ConnectionId conn_id);
-    void close_connection(ConnectionId conn_id);
+    bool active_connection(const ConnectionId conn_id);
+    void close_connection(const ConnectionId conn_id);
+    void set_connection_timeout(const ConnectionId conn_id,
+                                const std::chrono::seconds timeout);
 
     bool resolved();
     void async_resolve(const std::string host, const std::string service, HandlerCb cb = {});
@@ -155,9 +159,9 @@ private:
 
     ConnectionId connId_ {1};
     /*
-     * An association between an active connection and its context, a Request.
+     * An association between an active connection and its context.
      */
-    std::map<ConnectionId, Request> requests_;
+    std::map<ConnectionId, ConnectionContext> connections_;
 
     std::shared_ptr<dht::Logger> logger_;
 };
