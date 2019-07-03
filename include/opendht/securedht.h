@@ -195,8 +195,8 @@ public:
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override {
         return dht_->getPublicAddress(family);
     }
-    time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr& sa) override {
-        return dht_->periodic(buf, buflen, sa);
+    time_point periodic(const uint8_t *buf, size_t buflen, SockAddr sa) override {
+        return dht_->periodic(buf, buflen, std::move(sa));
     }
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) override {
         return dht_->periodic(buf, buflen, from, fromlen);

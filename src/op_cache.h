@@ -105,14 +105,11 @@ public:
     void onValuesExpired(const std::vector<Sp<Value>>& vals);
 
     bool addListener(size_t token, const ValueCallback& cb, const Sp<Query>& q, const Value::Filter& filter) {
-        listeners.emplace(token, LocalListener{q, filter, cb});
         auto cached = cache.get(filter);
-        if (not cached.empty()) {
-            auto ret = cb(cached, false);
-            if (not ret)
-                listeners.erase(token);
-            return ret;
+        if (not cached.empty() and not cb(cached, false)) {
+            return false;
         }
+        listeners.emplace(token, LocalListener{q, filter, cb});
         return true;
     }
 

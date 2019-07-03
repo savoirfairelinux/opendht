@@ -59,7 +59,7 @@ public:
     SockAddr(const SockAddr& o) {
         set(o.get(), o.getLength());
     }
-    SockAddr(SockAddr&& o) noexcept : len(o.len), addr(std::move(o.addr)) {
+    SockAddr(SockAddr&& o) noexcept : addr(std::move(o.addr)), len(o.len) {
         o.len = 0;
     }
 
@@ -248,7 +248,8 @@ public:
     bool isUnspecified() const;
 
     bool isMappedIPv4() const;
-    SockAddr getMappedIPv4() const;
+    SockAddr getMappedIPv4();
+    SockAddr getMappedIPv6();
 
     /**
      * A comparator to classify IP addresses, only considering the
@@ -279,9 +280,9 @@ public:
         }
     };
 private:
-    socklen_t len {0};
     struct free_delete { void operator()(void* p) { ::free(p); } };
     std::unique_ptr<sockaddr, free_delete> addr {};
+    socklen_t len {0};
 
     void set(const sockaddr* sa, socklen_t length) {
         if (len != length) {

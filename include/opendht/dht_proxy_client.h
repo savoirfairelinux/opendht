@@ -196,7 +196,7 @@ public:
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& notification);
 
-    time_point periodic(const uint8_t*, size_t, const SockAddr&);
+    time_point periodic(const uint8_t*, size_t, SockAddr);
     time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }
@@ -304,7 +304,7 @@ private:
      * Send Listen with httpClient_
      */
     void sendListen(const restinio::http_request_header_t header,
-                    const ValueCallback &cb, const Value::Filter &filter,
+                    const ValueCallback &cb,
                     const Sp<ListenState> &state, Listener &listener,
                     ListenMethod method = ListenMethod::LISTEN);
 

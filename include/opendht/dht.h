@@ -122,7 +122,7 @@ public:
 
     void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={}) override;
 
-    time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr&) override;
+    time_point periodic(const uint8_t *buf, size_t buflen, SockAddr) override;
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) override {
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }

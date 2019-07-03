@@ -56,12 +56,12 @@ public:
     using StatusCallback = std::function<void(NodeStatus, NodeStatus)>;
 
     struct Config {
-        SecureDhtConfig dht_config;
-        bool threaded;
-        std::string proxy_server;
-        std::string push_node_id;
-        bool peer_discovery;
-        bool peer_publish;
+        SecureDhtConfig dht_config {};
+        bool threaded {true};
+        std::string proxy_server {};
+        std::string push_node_id {};
+        bool peer_discovery {false};
+        bool peer_publish {false};
     };
 
     struct Context {
@@ -365,24 +365,12 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port = 4222, const crypto::Identity identity = {}, bool threaded = true, NetId network = 0) {
-        run(port, {
-            /*.dht_config = */{
-                /*.node_config = */{
-                    /*.node_id = */{},
-                    /*.network = */network,
-                    /*.is_bootstrap = */false,
-                    /*.maintain_storage = */false,
-                    /*.persist_path = */{}
-                },
-                /*.id = */identity
-            },
-            /*.threaded = */threaded,
-            /*.proxy_server = */"",
-            /*.push_node_id = */"",
-            /*.peer_discovery = */true,
-            /*.peer_publish = */true,
-        });
+    void run(in_port_t port = 4222, const crypto::Identity& identity = {}, bool threaded = true, NetId network = 0) {
+        Config config;
+        config.dht_config.node_config.network = network;
+        config.dht_config.id = identity;
+        config.threaded = threaded;
+        run(port, config);
     }
     void run(in_port_t port, const Config& config, Context&& context = {});
 

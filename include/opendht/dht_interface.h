@@ -79,7 +79,7 @@ public:
 
     virtual void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={}) = 0;
 
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr&) = 0;
+    virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr) = 0;
     virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) = 0;
 
     /**

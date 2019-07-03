@@ -1901,14 +1901,14 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, const Don
 }
 
 time_point
-Dht::periodic(const uint8_t *buf, size_t buflen, const SockAddr& from)
+Dht::periodic(const uint8_t *buf, size_t buflen, SockAddr from)
 {
     scheduler.syncTime();
     if (buflen) {
         try {
-            network_engine.processMessage(buf, buflen, from);
+            network_engine.processMessage(buf, buflen, std::move(from));
         } catch (const std::exception& e) {
-            DHT_LOG.e("Can't process message from %s: %s", from.toString().c_str(), e.what());
+            DHT_LOG.e("Can't process message: %s", e.what());
         }
     }
     return scheduler.run();

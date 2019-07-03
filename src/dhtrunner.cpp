@@ -223,12 +223,12 @@ DhtRunner::shutdown(ShutdownCallback cb) {
         cb();
         return;
     }
-#ifdef OPENDHT_PROXY_CLIENT
-    if (dht_via_proxy_)
-        dht_via_proxy_->shutdown(cb);
-#endif
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht& dht) mutable {
+    pending_ops_prio.emplace([=](SecureDht&) mutable {
+#ifdef OPENDHT_PROXY_CLIENT
+        if (dht_via_proxy_)
+            dht_via_proxy_->shutdown(cb);
+#endif
         if (dht_)
             dht_->shutdown(cb);
     });
@@ -528,7 +528,7 @@ DhtRunner::loop_()
             if (clock::now() - pck->received > RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
-                wakeup = dht->periodic(pck->data.data(), pck->data.size(), pck->from);
+                wakeup = dht->periodic(pck->data.data(), pck->data.size(), std::move(pck->from));
             received.pop();
         }
     } else {
@@ -943,6 +943,7 @@ void
 DhtRunner::setProxyServer(const std::string& proxy, const std::string& pushNodeId)
 {
 #ifdef OPENDHT_PROXY_CLIENT
+    std::lock_guard<std::mutex> lck(dht_mtx);
     if (config_.proxy_server == proxy and config_.push_node_id == pushNodeId)
         return;
     config_.proxy_server = proxy;
@@ -1008,6 +1009,7 @@ DhtRunner::enableProxy(bool proxify)
 void
 DhtRunner::forwardAllMessages(bool forward)
 {
+    std::lock_guard<std::mutex> lck(dht_mtx);
 #ifdef OPENDHT_PROXY_SERVER
 #ifdef OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
@@ -1025,6 +1027,7 @@ DhtRunner::forwardAllMessages(bool forward)
  */
 void
 DhtRunner::setPushNotificationToken(const std::string& token) {
+    std::lock_guard<std::mutex> lck(dht_mtx);
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
     pushToken_ = token;
     if (dht_via_proxy_)

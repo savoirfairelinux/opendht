@@ -303,6 +303,8 @@ void signal_handler(int sig)
     case SIGHUP:
         break;
     case SIGINT:
+        close(STDIN_FILENO);
+        // fall through
     case SIGTERM:
         runner.kill();
         break;
