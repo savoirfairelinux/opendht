@@ -157,7 +157,7 @@ Client::close_connection(const ConnectionId conn_id)
 
 void
 Client::set_connection_timeout(const ConnectionId conn_id,
-                               const std::chrono::seconds timeout)
+                               const std::chrono::seconds timeout, HandlerCb cb)
 {
     auto& conn_context = connections_[conn_id];
     if (!conn_context.connection){
@@ -169,14 +169,14 @@ Client::set_connection_timeout(const ConnectionId conn_id,
     // define or overwrites existing
     conn_context.timeout_timer->expires_at(std::chrono::steady_clock::now() + timeout);
     // define timeout
-    conn_context.timeout_timer->async_wait([this, conn_id](const asio::error_code &ec){
+    conn_context.timeout_timer->async_wait([this, conn_id, cb](const asio::error_code &ec){
         if (ec){
             if (logger_)
                 logger_->e("[http::client] [connection:%i] timeout error: %s",
                            conn_id, ec.message().c_str());
         }
-        // attempt to close anyway
-        close_connection(conn_id);
+        if (cb)
+            cb(ec);
     });
 }
 
@@ -267,80 +267,65 @@ Client::async_connect(ConnectionCb cb)
     if (endpoints_.empty()){
         if (logger_)
             logger_->e("[http::client] host not resolved, can't send request");
+        if (cb)
+            cb(nullptr);
         return;
     }
-    auto conn = std::make_shared<Connection>(connId_,
+    auto conn = std::make_shared<Connection>(connId_++,
         std::move(asio::ip::tcp::socket{resolver_.get_io_context()}));
     if (logger_)
         logger_->d("[http::client] [connection:%i] created", conn->id());
-    connId_++;
 
-    auto endpoint_it = endpoints_.begin();
-    // get the first endpoint
-    asio::ip::tcp::endpoint endpoint = *endpoint_it;
-    // try to connect
-    conn->socket_.async_connect(endpoint, std::bind(
-        &Client::handle_connect, this, std::placeholders::_1, ++endpoint_it, conn,
-        [this, endpoint, conn, cb](const asio::error_code& ec){
-            if (!ec){
-                // save the associated endpoint
-                conn->endpoint_ = endpoint;
-                // make the connection context and save it
-                ConnectionContext conn_context = {};
-                conn_context.connection = conn;
-                connections_[conn->id()] = conn_context;
-                // get back to user
-                cb(conn);
-            }
-            else {
-                logger_->e("[http::client] [connection:%i] error opening: %s",
-                           conn->id(), ec.message().c_str());
-                close_connection(conn->id());
-            }
-        }));
-}
-
-void
-Client::handle_connect(const asio::error_code& ec,
-                       asio::ip::tcp::resolver::iterator endpoint_it,
-                       std::shared_ptr<Connection> conn, HandlerCb cb)
-{
-    if (ec && endpoint_it != endpoints_.end()){
-        if (logger_)
-            logger_->e("[http::client] [connection:%i] error opening: %s",
-                       conn->id(), ec.message().c_str());
-        // close current
-        conn->socket_.close();
-        // connect to next one
-        asio::ip::tcp::endpoint endpoint = endpoint_it->endpoint();
-        conn->socket_.async_connect(endpoint,
-            std::bind(&Client::handle_connect, this,
-                std::placeholders::_1, ++endpoint_it, conn, cb));
-        return;
-    }
-    if (logger_)
-        logger_->d("[http::client] [connection:%i] opened", conn->id());
-    cb(ec);
+    // try to connect to any until one works
+    asio::async_connect(conn->socket_, endpoints_, [this, conn, cb](const asio::error_code& ec,
+                                                                    const asio::ip::tcp::endpoint& endpoint){
+        // only reacts if all endpoints fail
+        if (ec){
+            logger_->e("[http::client] [connection:%i] error opening: %s for %s:%lu",
+                       conn->id(), ec.message().c_str(),
+                       endpoint.address().to_string().c_str(), endpoint.port());
+            close_connection(conn->id());
+            if (cb)
+                cb(nullptr);
+            return;
+        }
+        // save the associated endpoint
+        conn->endpoint_ = endpoint;
+        // make the connection context and save it
+        ConnectionContext conn_context = {};
+        conn_context.connection = conn;
+        connections_[conn->id()] = conn_context;
+        // get back to user
+        if (cb)
+            cb(conn);
+    });
 }
 
 void
 Client::async_request(std::shared_ptr<Connection> conn, std::string request,
                       std::shared_ptr<http_parser> parser,
-                      std::shared_ptr<http_parser_settings> parser_s)
+                      std::shared_ptr<http_parser_settings> parser_s, HandlerCb cb)
 {
     if (endpoints_.empty()){
         if (logger_)
             logger_->e("[http::client] host not resolved, can't send request");
+        if (cb)
+            cb(asio::error::addrinfo_errors::service_not_found);
         return;
     }
     if (!conn){
         if (logger_)
-            logger_->e("[http::client] invalid connection, can't post request");
+            logger_->e("[http::client] invalid connection, can't post request:\n%s", request.c_str());
+        if (cb)
+            cb(asio::error::not_connected);
         return;
     }
     else if (!conn->is_open()){
         if (logger_)
             logger_->e("[http::client] closed connection, can't post request");
+        close_connection(conn->id());
+        if (cb)
+            cb(asio::error::not_connected);
         return;
     }
     // save the request context
@@ -355,20 +340,27 @@ Client::async_request(std::shared_ptr<Connection> conn, std::string request,
 
     // send the request
     asio::async_write(conn->socket_, conn->request_,
-        std::bind(&Client::handle_request, this, std::placeholders::_1, conn));
+        std::bind(&Client::handle_request, this, std::placeholders::_1, conn, cb));
 }
 
 void
-Client::handle_request(const asio::error_code& ec, std::shared_ptr<Connection> conn)
+Client::handle_request(const asio::error_code& ec, std::shared_ptr<Connection> conn, HandlerCb cb)
 {
-    if (!conn->is_open())
+    if (!conn->is_open()){
+        if (logger_)
+            logger_->e("[http::client] closed connection, can't handle request");
+        close_connection(conn->id());
+        if (cb)
+            cb(asio::error::not_connected);
         return;
-
+    }
     if (ec and ec != asio::error::eof){
         if (logger_)
             logger_->e("[http::client] [connection:%i] error handling request: %s",
                        conn->id(), ec.message().c_str());
         close_connection(conn->id());
+        if (cb)
+            cb(ec);
         return;
     }
     if (logger_)
@@ -376,23 +368,33 @@ Client::handle_request(const asio::error_code& ec, std::shared_ptr<Connection> c
 
     // read response
     asio::async_read_until(conn->socket_, conn->response_, "\r\n\r\n",
-        std::bind(&Client::handle_response, this, std::placeholders::_1, conn));
+        std::bind(&Client::handle_response, this, std::placeholders::_1, conn, cb));
 }
 
 void
-Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> conn)
+Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> conn, HandlerCb cb)
 {
-    if (!conn->is_open())
+    if (!conn->is_open()){
+        if (logger_)
+            logger_->e("[http::client] closed connection, can't handle response");
+        close_connection(conn->id());
+        if (cb)
+            cb(asio::error::not_connected);
         return;
-
+    }
     if (ec && ec != asio::error::eof){
         if (logger_)
             logger_->e("[http::client] [connection:%i] error handling response: %s",
                        conn->id(), ec.message().c_str());
+        close_connection(conn->id());
+        if (cb)
+            cb(ec);
         return;
     }
     else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
         close_connection(conn->id());
+        if (cb)
+            cb(ec);
         return;
     }
     if (logger_)
@@ -420,7 +422,7 @@ Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> 
         }
     }
     asio::async_read(conn->socket_, conn->response_, asio::transfer_at_least(1),
-        std::bind(&Client::handle_response, this, std::placeholders::_1, conn));
+        std::bind(&Client::handle_response, this, std::placeholders::_1, conn, cb));
 }
 
 } // namespace http

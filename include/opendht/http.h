@@ -115,8 +115,8 @@ public:
 
     bool active_connection(const ConnectionId conn_id);
     void close_connection(const ConnectionId conn_id);
-    void set_connection_timeout(const ConnectionId conn_id,
-                                const std::chrono::seconds timeout);
+    void set_connection_timeout(const ConnectionId conn_id, const std::chrono::seconds timeout,
+                                HandlerCb cb = {});
 
     bool resolved();
     void async_resolve(const std::string host, const std::string service, HandlerCb cb = {});
@@ -130,24 +130,20 @@ public:
 
     void async_request(std::shared_ptr<http::Connection> conn,
                        std::string request, std::shared_ptr<http_parser> parser,
-                       std::shared_ptr<http_parser_settings> parser_s);
+                       std::shared_ptr<http_parser_settings> parser_s, HandlerCb cb = {});
 
 private:
     std::shared_ptr<Connection> create_connection();
 
-    void handle_connect(const asio::error_code& ec,
+    void handle_resolve(const asio::error_code& ec,
                         asio::ip::tcp::resolver::iterator endpoint_it,
                         std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
 
-    void handle_resolve(const asio::error_code& ec,
-                        asio::ip::tcp::resolver::iterator endpoint_it,
-                        std::shared_ptr<Connection> conn = {});
-
     void handle_request(const asio::error_code& ec,
-                        std::shared_ptr<Connection> conn = {});
+                        std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
 
     void handle_response(const asio::error_code& ec,
-                         std::shared_ptr<Connection> conn = {});
+                         std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
 
     std::string service_;
     std::string host_;
