@@ -265,109 +265,107 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
 {
     if (logger_)
         logger_->d("[proxy:client] [get] [search %s]", key.to_c_str());
-    restinio::http_request_header_t header;
-    header.request_target("/" + key.toString());
-    header.method(restinio::http_method_get());
-    auto header_fields = this->initHeaderFields();
-    auto request = httpClient_->create_request(header, header_fields,
-        restinio::http_connection_header_t::keep_alive, ""/*body*/);
-    if (logger_)
-        logger_->d(request.c_str());
 
-    struct GetContext {
-        GetCallback cb;            // wrapper
-        DoneCallbackSimple donecb; // wrapper
-        Value::Filter filter;
-        std::atomic_bool ok {true};
-        std::atomic_bool stop {false};
-        std::shared_ptr<dht::Logger> logger;
-    };
-    auto context = std::make_shared<GetContext>();
-    context->filter = w.empty() ? f : f.chain(w.getFilter());
-    // keeping context data alive
-    context->cb = [this, context, cb]
-        (const std::vector<dht::Sp<dht::Value>>& values) -> bool {
-        {
-            std::lock_guard<std::mutex> lock(lockCallbacks_);
-            callbacks_.emplace_back([context, cb, values](){
-                if (not context->stop and not cb(values)){
+    Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
+    httpClient_->async_connect([this, key, cb, donecb, filter](std::shared_ptr<http::Connection> conn)
+    {
+        restinio::http_request_header_t header;
+        header.request_target("/" + key.toString());
+        header.method(restinio::http_method_get());
+        auto header_fields = this->initHeaderFields();
+        auto request = httpClient_->create_request(header, header_fields,
+            restinio::http_connection_header_t::keep_alive, ""/*body*/);
+        if (logger_)
+            logger_->d(request.c_str());
+
+        struct GetContext {
+            std::function<bool(const dht::Sp<dht::Value>)> cb; // wrapper
+            DoneCallbackSimple donecb; // wrapper
+            Value::Filter filter;
+            std::atomic_bool ok {true};
+            std::atomic_bool stop {false};
+            std::shared_ptr<dht::Logger> logger;
+        };
+        auto context = std::make_shared<GetContext>();
+        context->filter = filter;
+        if (logger_)
+            context->logger = logger_;
+        // keeping context data alive
+        context->cb = [this, key, context, cb](const dht::Sp<dht::Value> value) -> bool {
+            {
+                std::lock_guard<std::mutex> lock(lockCallbacks_);
+                callbacks_.emplace_back([context, cb, value](){
+                    if (not context->stop and not cb({value})){
+                        context->stop = true;
+                    }
+                });
+            }
+            loopSignal_();
+            return context->ok;
+        };
+        context->donecb = [this, key, context, donecb](bool ok){
+            {
+                std::lock_guard<std::mutex> lock(lockCallbacks_);
+                callbacks_.emplace_back([=](){
+                    donecb(ok, {});
                     context->stop = true;
+                });
+            }
+            loopSignal_();
+        };
+        auto parser = std::make_shared<http_parser>();
+        http_parser_init(parser.get(), HTTP_RESPONSE);
+        parser->data = static_cast<void*>(context.get());
+
+        auto parser_s = std::make_shared<http_parser_settings>();
+        http_parser_settings_init(parser_s.get());
+        parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
+            auto context = static_cast<GetContext*>(parser->data);
+            if (parser->status_code != 200){
+                if (context->logger)
+                    context->logger->e("[proxy:client] [get] status error: %i", parser->status_code);
+                context->ok = true;
+            }
+            return 0;
+        };
+        parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
+            auto context = static_cast<GetContext*>(parser->data);
+            try {
+                Json::Value json;
+                std::string err;
+                Json::CharReaderBuilder rbuilder;
+                auto body = std::string(at, length);
+                auto* char_data = static_cast<const char*>(&body[0]);
+                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+                    context->ok = false;
+                    return 1;
                 }
-            });
-        }
-        loopSignal_();
-        return context->ok;
-    };
-    // keeping context data alive
-    context->donecb = [this, context, donecb](bool ok){
-        {
-            std::lock_guard<std::mutex> lock(lockCallbacks_);
-            callbacks_.emplace_back([=](){
-                donecb(ok, {});
-                context->stop = true;
-            });
-        }
-        loopSignal_();
-    };
-    if (logger_)
-        context->logger = logger_;
-
-    auto parser = std::make_shared<http_parser>();
-    http_parser_init(parser.get(), HTTP_RESPONSE);
-    parser->data = static_cast<void*>(context.get());
-
-    auto parser_s = std::make_shared<http_parser_settings>();
-    http_parser_settings_init(parser_s.get());
-    parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-        auto context = static_cast<GetContext*>(parser->data);
-        if (parser->status_code != 200){
-            if (context->logger)
-                context->logger->e("[proxy:client] [get] status error: %i", parser->status_code);
-            context->ok = true;
-        }
-        return 0;
-    };
-    parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
-        auto context = static_cast<GetContext*>(parser->data);
-        try {
-            Json::Value json;
-            std::string err;
-            Json::CharReaderBuilder rbuilder;
-            auto body = std::string(at, length);
-            auto* char_data = static_cast<const char*>(&body[0]);
-            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-            if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+                auto value = std::make_shared<Value>(json);
+                if ((not context->filter or context->filter(*value)) and context->cb){
+                    context->cb(value);
+                }
+            } catch(const std::exception& e) {
+                if (context->logger)
+                    context->logger->e("[proxy:client] [get] body parsing error: %s", e.what());
                 context->ok = false;
                 return 1;
             }
-            auto value = std::make_shared<Value>(json);
-            if ((not context->filter or context->filter(*value)) and context->cb){
-                context->cb({value});
+            return 0;
+        };
+        parser_s->on_message_complete = [](http_parser* parser) -> int {
+            auto context = static_cast<GetContext*>(parser->data);
+            try {
+                if (context->donecb)
+                    context->donecb(context->ok);
+            } catch(const std::exception& e) {
+                if (context->logger)
+                    context->logger->e("[proxy:client] [get] message complete parsing error: %i",
+                                       parser->status_code);
+                return 1;
             }
-        } catch(const std::exception& e) {
-            if (context->logger)
-                context->logger->e("[proxy:client] [get] body parsing error: %s", e.what());
-            context->ok = false;
-            return 1;
-        }
-        return 0;
-    };
-    parser_s->on_message_complete = [](http_parser* parser) -> int {
-        auto context = static_cast<GetContext*>(parser->data);
-        try {
-            if (context->donecb)
-                context->donecb(context->ok);
-        } catch(const std::exception& e) {
-            if (context->logger)
-                context->logger->e("[proxy:client] [get] message complete parsing error: %i",
-                                   parser->status_code);
-            return 1;
-        }
-        return 0;
-    };
-    httpClient_->async_connect([this, request, parser, parser_s]
-                               (std::shared_ptr<http::Connection> conn)
-    {
+            return 0;
+        };
         httpClient_->async_request(conn, request, parser, parser_s);
     });
 }
@@ -429,84 +427,83 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
 {
     if (logger_)
         logger_->d("[proxy:client] [put] [search %s] executing for %s", key.to_c_str(), val->toString().c_str());
-    restinio::http_request_header_t header;
-    header.request_target("/" + key.toString());
-    header.method(restinio::http_method_post());
-    auto header_fields = this->initHeaderFields();
-
-    auto json = val->toJson();
-    if (permanent) {
-        if (deviceKey_.empty()) {
-            json["permanent"] = true;
-        } else {
-#ifdef OPENDHT_PUSH_NOTIFICATIONS
-            Json::Value refresh;
-            getPushRequest(refresh);
-            json["permanent"] = refresh;
-#else
-            json["permanent"] = true;
-#endif
-        }
-    }
-    Json::StreamWriterBuilder wbuilder;
-    wbuilder["commentStyle"] = "None";
-    wbuilder["indentation"] = "";
-    auto body = Json::writeString(wbuilder, json);
-    auto request = httpClient_->create_request(header, header_fields,
-        restinio::http_connection_header_t::close, body);
-    if (logger_)
-        logger_->d("%s", request.c_str());
-
-    struct GetContext {
-        DoneCallbackSimple donecb; // wrapper
-        std::atomic_bool ok {false};
-        std::shared_ptr<dht::Logger> logger;
-    };
-    auto context = std::make_shared<GetContext>();
-    // keeping context data alive
-    context->donecb = [this, context, cb](bool ok){
-        {
-            std::lock_guard<std::mutex> lock(lockCallbacks_);
-            callbacks_.emplace_back([=](){
-                cb(ok, {});
-            });
-        }
-        loopSignal_();
-    };
-    if (logger_)
-        context->logger = logger_;
-
-    auto parser = std::make_shared<http_parser>();
-    http_parser_init(parser.get(), HTTP_RESPONSE);
-    parser->data = static_cast<void*>(context.get());
-
-    auto parser_s = std::make_shared<http_parser_settings>();
-    http_parser_settings_init(parser_s.get());
-    parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-        GetContext* context = static_cast<GetContext*>(parser->data);
-        if (parser->status_code == 200){
-            context->ok = true;
-        } else {
-            if (context->logger)
-                context->logger->e("[proxy:client] [put] status error: %i", parser->status_code);
-        }
-        return 0;
-    };
-    parser_s->on_message_complete = [](http_parser*  parser) -> int {
-        auto context = static_cast<GetContext*>(parser->data);
-        try {
-            if (context->donecb)
-                context->donecb(context->ok);
-        } catch(const std::exception& e) {
-            if (context->logger)
-                context->logger->e("[proxy:client] [put] message complete error: %s", e.what());
-            return 1;
-        }
-        return 0;
-    };
-    httpClient_->async_connect([this, request, parser, parser_s]
-                               (std::shared_ptr<http::Connection> conn)
+    httpClient_->async_connect([this, key, val, cb, permanent](std::shared_ptr<http::Connection> conn)
     {
+        restinio::http_request_header_t header;
+        header.request_target("/" + key.toString());
+        header.method(restinio::http_method_post());
+        auto header_fields = this->initHeaderFields();
+        auto json = val->toJson();
+        if (permanent) {
+            if (deviceKey_.empty()) {
+                json["permanent"] = true;
+            } else {
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+                Json::Value refresh;
+                getPushRequest(refresh);
+                json["permanent"] = refresh;
+#else
+                json["permanent"] = true;
+#endif
+            }
+        }
+        Json::StreamWriterBuilder wbuilder;
+        wbuilder["commentStyle"] = "None";
+        wbuilder["indentation"] = "";
+        auto body = Json::writeString(wbuilder, json);
+        auto request = httpClient_->create_request(header, header_fields,
+            restinio::http_connection_header_t::close, body);
+        if (logger_)
+            logger_->d("%s", request.c_str());
+
+        struct PutContext {
+            DoneCallbackSimple donecb;
+            std::atomic_bool ok;
+            std::shared_ptr<dht::Logger> logger;
+        };
+        auto context = std::make_shared<PutContext>();
+        context->ok = false;
+        if (logger_)
+            context->logger = logger_;
+        // keeping context data alive
+        context->donecb = [this, context, cb](bool ok){
+            {
+                std::lock_guard<std::mutex> lock(lockCallbacks_);
+                callbacks_.emplace_back([=](){
+                    cb(ok, {});
+                });
+            }
+            loopSignal_();
+        };
+        // define http parser
+        auto parser = std::make_shared<http_parser>();
+        http_parser_init(parser.get(), HTTP_RESPONSE);
+        parser->data = static_cast<void*>(context.get());
+        // define http parser callbacks
+        auto parser_s = std::make_shared<http_parser_settings>();
+        http_parser_settings_init(parser_s.get());
+        parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
+            auto context = static_cast<PutContext*>(parser->data);
+            if (parser->status_code == 200){
+                context->ok = true;
+            } else {
+                if (context->logger)
+                    context->logger->e("[proxy:client] [put] status error: %i", parser->status_code);
+            }
+            return 0;
+        };
+        parser_s->on_message_complete = [](http_parser*  parser) -> int {
+            auto context = static_cast<PutContext*>(parser->data);
+            try {
+                if (context->donecb)
+                    context->donecb(context->ok);
+            } catch(const std::exception& e) {
+                if (context->logger)
+                    context->logger->e("[proxy:client] [put] message complete error: %s", e.what());
+                return 1;
+            }
+            return 0;
+        };
         httpClient_->async_request(conn, request, parser, parser_s);
     });
 }
@@ -619,7 +616,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                 if (logger_)
                     logger_->d("[proxy:client] [status] sending request:\n%s", request.c_str());
                 // initalise the parser callback data
-                struct GetContext {
+                struct StatusContext {
                     unsigned int family;
                     std::function<void(Json::Value infos)> cb; // wrapper
                     std::atomic_bool ok {true};
@@ -627,11 +624,13 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                     std::function<void(const Json::Value&, sa_family_t)> proxyInfo;
                     std::shared_ptr<dht::Logger> logger;
                 };
-                auto context = std::make_shared<GetContext>();
+                auto context = std::make_shared<StatusContext>();
                 context->infoState = infoState;
                 context->family = conn->is_v6() ? AF_INET6 : AF_INET;
                 context->proxyInfo = std::bind(&DhtProxyClient::onProxyInfos, this,
                     std::placeholders::_1, std::placeholders::_2);
+                if (logger_)
+                    context->logger = logger_;
                 // keeping context data alive
                 context->cb = [this, context](Json::Value infos){
                     if (context->family == AF_INET) 
@@ -641,19 +640,15 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                     if (not context->infoState->cancel)
                         context->proxyInfo(infos, context->family);
                 };
-                if (logger_)
-                    context->logger = logger_;
-
                 // initialize the parser
                 auto parser = std::make_shared<http_parser>();
                 http_parser_init(parser.get(), HTTP_RESPONSE);
                 parser->data = static_cast<void*>(context.get());
-
                 // init the parser callbacks
                 auto parser_s = std::make_shared<http_parser_settings>();
                 http_parser_settings_init(parser_s.get());
                 parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-                    auto context = static_cast<GetContext*>(parser->data);
+                    auto context = static_cast<StatusContext*>(parser->data);
                     if (parser->status_code != 200){
                         if (context->logger)
                             context->logger->e("[proxy:client] [status] error: %i", parser->status_code);
@@ -662,7 +657,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                     return 0;
                 };
                 parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
-                    auto context = static_cast<GetContext*>(parser->data);
+                    auto context = static_cast<StatusContext*>(parser->data);
                     try{
                         std::string err;
                         Json::Value proxyInfos;
@@ -686,7 +681,6 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                 };
                 if (context->infoState->cancel)
                     return;
-
                 httpClient_->async_request(conn, request, parser, parser_s);
             }
             catch (const std::exception& e) {
@@ -918,82 +912,89 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                            const Sp<ListenState>& state,
                            Listener& listener, ListenMethod method)
 {
-    auto headers = this->initHeaderFields();
-    auto conn = restinio::http_connection_header_t::close;
-    if (method == ListenMethod::LISTEN)
-        conn = restinio::http_connection_header_t::keep_alive;
-    std::string body;
+    httpClient_->async_connect([this, &listener, header, cb, state, method](std::shared_ptr<http::Connection> conn)
+    {
+        listener.connId = conn->id();
+        // define request header fields
+        auto headers = this->initHeaderFields();
+        auto connType = restinio::http_connection_header_t::close;
+        if (method == ListenMethod::LISTEN)
+            connType = restinio::http_connection_header_t::keep_alive;
+        std::string body;
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    if (method != ListenMethod::LISTEN)
-        body = fillBody(method == ListenMethod::RESUBSCRIBE);
+        if (method != ListenMethod::LISTEN)
+            body = fillBody(method == ListenMethod::RESUBSCRIBE);
 #endif
-    auto request = httpClient_->create_request(header, headers, conn, body);
-    if (logger_)
-        logger_->d(request.c_str());
+        auto request = httpClient_->create_request(header, headers, connType, body);
+        if (logger_)
+            logger_->d(request.c_str());
 
-    struct ListenContext {
-        std::shared_ptr<Logger> logger;
-        ValueCallback cb; // wrapper
-        Value::Filter filter;
-        std::shared_ptr<ListenState> state;
-    };
-    auto context = std::make_shared<ListenContext>();
-    if (logger_)
-        context->logger = logger_;
-    // keeping context data alive
-    context->cb = [context, cb](const std::vector<std::shared_ptr<Value>>& values, bool expired){
-        return cb(values, expired);
-    };
-    context->state = state;
+        struct ListenContext {
+            std::shared_ptr<Logger> logger;
+            std::function<void(const dht::Sp<dht::Value>, bool)> cb; // wrapper
+            Value::Filter filter;
+            std::shared_ptr<ListenState> state;
+        };
+        auto context = std::make_shared<ListenContext>();
+        if (logger_)
+            context->logger = logger_;
+        context->state = state;
+        // keeping context data alive
+        context->cb = [this, cb, context, state](const std::shared_ptr<Value> value, bool expired){
+            {
+                std::lock_guard<std::mutex> lock(lockCallbacks_);
+                callbacks_.emplace_back([cb, value, state, expired]() {
+                    if (not state->cancel and not cb({value}, expired))
+                        state->cancel = true;
+                });
+            }
+            loopSignal_();
+        };
 
-    auto parser = std::make_shared<http_parser>();
-    http_parser_init(parser.get(), HTTP_RESPONSE);
-    parser->data = static_cast<void*>(context.get());
+        auto parser = std::make_shared<http_parser>();
+        http_parser_init(parser.get(), HTTP_RESPONSE);
+        parser->data = static_cast<void*>(context.get());
 
-    auto parser_s = std::make_shared<http_parser_settings>();
-    http_parser_settings_init(parser_s.get());
-    parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-        auto context = static_cast<ListenContext*>(parser->data);
-        if (parser->status_code != 200){
-            if (context->logger)
-                context->logger->e("[proxy:client] [listen] status error: %i", parser->status_code);
-            context->state->ok = false;
-        }
-        return 0;
-    };
-    parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
-        auto context = static_cast<ListenContext*>(parser->data);
-        try {
-            Json::Value json;
-            std::string err;
-            Json::CharReaderBuilder rbuilder;
-            auto body = std::string(at, length);
-            auto* char_data = static_cast<const char*>(&body[0]);
-            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-            if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+        auto parser_s = std::make_shared<http_parser_settings>();
+        http_parser_settings_init(parser_s.get());
+        parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
+            auto context = static_cast<ListenContext*>(parser->data);
+            if (parser->status_code != 200){
+                if (context->logger)
+                    context->logger->e("[proxy:client] [listen] status error: %i", parser->status_code);
+                context->state->ok = false;
+            }
+            return 0;
+        };
+        parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
+            auto context = static_cast<ListenContext*>(parser->data);
+            try {
+                Json::Value json;
+                std::string err;
+                Json::CharReaderBuilder rbuilder;
+                auto body = std::string(at, length);
+                auto* char_data = static_cast<const char*>(&body[0]);
+                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
+                    context->state->ok = false;
+                    return 1;
+                }
+                if (json.size() == 0){ // it's the end
+                    context->state->cancel = true;
+                }
+                auto value = std::make_shared<Value>(json);
+                auto expired = json.get("expired", Json::Value(false)).asBool();
+                if (context->cb){
+                    context->cb(value, expired);
+                }
+            } catch(const std::exception& e) {
+                if (context->logger)
+                    context->logger->e("[proxy:client] [listen] error in parsing: %s", e.what());
                 context->state->ok = false;
                 return 1;
             }
-            if (json.size() == 0){ // it's the end
-                context->state->cancel = true;
-            }
-            auto value = std::make_shared<Value>(json);
-            auto expired = json.get("expired", Json::Value(false)).asBool();
-            if (context->cb){
-                context->cb({value}, expired);
-            }
-        } catch(const std::exception& e) {
-            if (context->logger)
-                context->logger->e("[proxy:client] [listen] error in parsing: %s", e.what());
-            context->state->ok = false;
-            return 1;
-        }
-        return 0;
-    };
-    httpClient_->async_connect([this, &listener, request, parser, parser_s]
-                               (std::shared_ptr<http::Connection> conn)
-    {
-        listener.connId = conn->id();
+            return 0;
+        };
         httpClient_->async_request(conn, request, parser, parser_s);
     });
 }
@@ -1018,52 +1019,51 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
     listener.state->cancel = true;
     if (not deviceKey_.empty()) {
         // UNSUBSCRIBE
-        restinio::http_request_header_t header;
-        header.request_target("/" + key.toString());
-        header.method(restinio::http_method_unsubscribe());
-        auto header_fields = this->initHeaderFields();
-        // fill request body
-        Json::Value body;
-        body["key"] = deviceKey_;
-        body["client_id"] = pushClientId_;
-        Json::StreamWriterBuilder wbuilder;
-        wbuilder["commentStyle"] = "None";
-        wbuilder["indentation"] = "";
-        auto content = Json::writeString(wbuilder, body) + "\n";
-        std::replace(content.begin(), content.end(), '\n', ' ');
-        // build the request
-        auto request = httpClient_->create_request(header, header_fields,
-            restinio::http_connection_header_t::keep_alive, content);
-        if (logger_)
-            logger_->d(request.c_str());
-        // define context
-        struct UnsubscribeContext {
-            InfoHash key;
-            std::shared_ptr<dht::Logger> logger;
-        };
-        auto context = std::make_shared<UnsubscribeContext>();
-        context->key = key;
-        if (logger_)
-            context->logger = logger_;
-        // define parser
-        auto parser = std::make_shared<http_parser>();
-        http_parser_init(parser.get(), HTTP_RESPONSE);
-        parser->data = static_cast<void*>(context.get());
-        // define callbacks
-        auto parser_s = std::make_shared<http_parser_settings>();
-        http_parser_settings_init(parser_s.get());
-        parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-            auto context = static_cast<UnsubscribeContext*>(parser->data);
-            if (parser->status_code != 200){
-                if (context->logger)
-                    context->logger->e("[proxy:client] [search %s] cancel listen failed: %i",
-                                       context->key.to_c_str(), parser->status_code);
-            }
-            return 0;
-        };
-        httpClient_->async_connect([this, request, parser, parser_s]
-                                   (std::shared_ptr<http::Connection> conn)
+        httpClient_->async_connect([this, key](std::shared_ptr<http::Connection> conn)
         {
+            restinio::http_request_header_t header;
+            header.request_target("/" + key.toString());
+            header.method(restinio::http_method_unsubscribe());
+            auto header_fields = this->initHeaderFields();
+            // fill request body
+            Json::Value body;
+            body["key"] = deviceKey_;
+            body["client_id"] = pushClientId_;
+            Json::StreamWriterBuilder wbuilder;
+            wbuilder["commentStyle"] = "None";
+            wbuilder["indentation"] = "";
+            auto content = Json::writeString(wbuilder, body) + "\n";
+            std::replace(content.begin(), content.end(), '\n', ' ');
+            // build the request
+            auto request = httpClient_->create_request(header, header_fields,
+                restinio::http_connection_header_t::keep_alive, content);
+            if (logger_)
+                logger_->d(request.c_str());
+            // define context
+            struct UnsubscribeContext {
+                InfoHash key;
+                std::shared_ptr<dht::Logger> logger;
+            };
+            auto context = std::make_shared<UnsubscribeContext>();
+            context->key = key;
+            if (logger_)
+                context->logger = logger_;
+            // define parser
+            auto parser = std::make_shared<http_parser>();
+            http_parser_init(parser.get(), HTTP_RESPONSE);
+            parser->data = static_cast<void*>(context.get());
+            // define callbacks
+            auto parser_s = std::make_shared<http_parser_settings>();
+            http_parser_settings_init(parser_s.get());
+            parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
+                auto context = static_cast<UnsubscribeContext*>(parser->data);
+                if (parser->status_code != 200){
+                    if (context->logger)
+                        context->logger->e("[proxy:client] [search %s] cancel listen failed: %i",
+                                           context->key.to_c_str(), parser->status_code);
+                }
+                return 0;
+            };
             httpClient_->async_request(conn, request, parser, parser_s);
         });
     } else {
