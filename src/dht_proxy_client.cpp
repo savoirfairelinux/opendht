@@ -137,7 +137,6 @@ DhtProxyClient::~DhtProxyClient()
         infoState_->cancel = true;
     if (statusTimer_)
         statusTimer_->cancel();
-    httpContext_.reset();
     httpContext_.stop();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
@@ -331,19 +330,26 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
             auto context = static_cast<GetContext*>(parser->data);
             try {
-                Json::Value json;
-                std::string err;
                 Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
-                auto* char_data = static_cast<const char*>(&body[0]);
-                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
-                    context->ok = false;
-                    return 1;
-                }
-                auto value = std::make_shared<Value>(json);
-                if ((not context->filter or context->filter(*value)) and context->cb){
-                    context->cb(value);
+                std::vector<dht::Sp<dht::Value>> values;
+                // one value per body line
+                std::string data_line;
+                std::stringstream body_stream(body);
+                while (std::getline(body_stream, data_line, '\n') and !context->stop){
+                    std::string err;
+                    Json::Value json;
+                    auto* char_data = static_cast<const char*>(&data_line[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (!reader->parse(char_data, char_data + data_line.size(), &json, &err)){
+                        context->ok = false;
+                        return 1;
+                    }
+                    auto value = std::make_shared<Value>(json);
+                    values.push_back(value);
+                    if ((not context->filter or context->filter(*value)) and context->cb){
+                        context->cb(value);
+                    }
                 }
             } catch(const std::exception& e) {
                 if (context->logger)
@@ -969,23 +975,30 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         parser_s->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
             auto context = static_cast<ListenContext*>(parser->data);
             try {
-                Json::Value json;
-                std::string err;
                 Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
-                auto* char_data = static_cast<const char*>(&body[0]);
-                auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-                if (!reader->parse(char_data, char_data + body.size(), &json, &err)){
-                    context->state->ok = false;
-                    return 1;
-                }
-                if (json.size() == 0){ // it's the end
-                    context->state->cancel = true;
-                }
-                auto value = std::make_shared<Value>(json);
-                auto expired = json.get("expired", Json::Value(false)).asBool();
-                if (context->cb){
-                    context->cb(value, expired);
+                std::vector<dht::Sp<dht::Value>> values;
+                // one value per body line
+                std::string data_line;
+                std::stringstream body_stream(body);
+                while (std::getline(body_stream, data_line, '\n') and !context->state->cancel){
+                    std::string err;
+                    Json::Value json;
+                    auto* char_data = static_cast<const char*>(&data_line[0]);
+                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    if (!reader->parse(char_data, char_data + data_line.size(), &json, &err)){
+                        context->state->ok = false;
+                        return 1;
+                    }
+                    if (json.size() == 0){ // it's the end
+                        context->state->cancel = true;
+                    }
+                    auto value = std::make_shared<Value>(json);
+                    values.push_back(value);
+                    if (context->cb){
+                        auto expired = json.get("expired", Json::Value(false)).asBool();
+                        context->cb(value, expired);
+                    }
                 }
             } catch(const std::exception& e) {
                 if (context->logger)
