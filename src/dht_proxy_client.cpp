@@ -94,7 +94,7 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
         }
         catch(const std::exception& ex){
             if (logger_)
-                logger_->e("[proxy:client] error starting io context");
+                logger_->e("[proxy:client] run error: %s", ex.what());
         }
     });
     if (!serverHostService_.first.empty())

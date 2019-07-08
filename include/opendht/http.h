@@ -47,7 +47,8 @@ private:
     ConnectionId id_;
     asio::ip::tcp::socket socket_;
     asio::streambuf request_;
-    asio::streambuf response_;
+    std::string response_body_;
+    asio::streambuf response_chunk_;
     asio::ip::tcp::endpoint endpoint_;
 };
 
@@ -142,8 +143,15 @@ private:
     void handle_request(const asio::error_code& ec,
                         std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
 
-    void handle_response(const asio::error_code& ec,
-                         std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+    void handle_response_header(const asio::error_code& ec, const size_t bytes,
+                                std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+
+    void handle_response_body(const asio::error_code& ec, const size_t bytes,
+                              std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+
+    void parse_request(const std::string request, const ConnectionId conn_id = 0);
+
+    size_t get_content_length(const std::string str, const ConnectionId conn_id = 0);
 
     std::string service_;
     std::string host_;

@@ -95,7 +95,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
         }
         catch(const std::exception &ex){
             if (logger_)
-                logger_->e("[proxy:server] error starting: %s", ex.what());
+                logger_->e("[proxy:server] run error: %s", ex.what());
         }
     });
     dht->forwardAllMessages(true);

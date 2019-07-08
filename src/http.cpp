@@ -20,6 +20,8 @@
 
 namespace http {
 
+constexpr char HTTP_HEADER_CONTENT_LENGTH[] = "Content-Length:";
+
 // connection
 
 Connection::Connection(const ConnectionId id, asio::ip::tcp::socket socket):
@@ -367,16 +369,18 @@ Client::handle_request(const asio::error_code& ec, std::shared_ptr<Connection> c
         logger_->d("[http::client] [connection:%i] request write", conn->id());
 
     // read response
-    asio::async_read_until(conn->socket_, conn->response_, "\r\n\r\n",
-        std::bind(&Client::handle_response, this, std::placeholders::_1, conn, cb));
+    asio::async_read_until(conn->socket_, conn->response_chunk_, "\r\n\r\n",
+        std::bind(&Client::handle_response_header, this,
+            std::placeholders::_1, std::placeholders::_2, conn, cb));
 }
 
 void
-Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> conn, HandlerCb cb)
+Client::handle_response_header(const asio::error_code& ec, const size_t bytes,
+                               std::shared_ptr<Connection> conn, HandlerCb cb)
 {
     if (!conn->is_open()){
         if (logger_)
-            logger_->e("[http::client] closed connection, can't handle response");
+            logger_->e("[http::client] closed connection, can't handle response header");
         close_connection(conn->id());
         if (cb)
             cb(asio::error::not_connected);
@@ -384,7 +388,7 @@ Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> 
     }
     if (ec && ec != asio::error::eof){
         if (logger_)
-            logger_->e("[http::client] [connection:%i] error handling response: %s",
+            logger_->e("[http::client] [connection:%i] error handling response header: %s",
                        conn->id(), ec.message().c_str());
         close_connection(conn->id());
         if (cb)
@@ -397,32 +401,123 @@ Client::handle_response(const asio::error_code& ec, std::shared_ptr<Connection> 
             cb(ec);
         return;
     }
-    if (logger_)
-        logger_->d("[http::client] [connection:%i] response read", conn->id());
-
     // read the response buffer
     std::ostringstream str_s;
-    str_s << &conn->response_;
+    str_s << &conn->response_chunk_;
+    auto chunk = str_s.str();
+    auto header = chunk.substr(0, bytes);
     if (logger_)
-        logger_->d("%s", str_s.str().c_str());
+        logger_->d("[http::client] [connection:%i] response header read:\n%s", conn->id(), header.c_str());
+    // parse the header right away
+    parse_request(header, conn->id());
 
-    // parse the request
-    auto& conn_context = connections_[conn->id()];
+    unsigned int content_length = get_content_length(header);
+    // has body size
+    if (content_length){
+        // append current body chunk
+        auto body_chunk = chunk.substr(bytes, std::string::npos);
+        conn->response_body_.append(body_chunk);
+        // read the rest of body
+        asio::async_read(conn->socket_, conn->response_chunk_,
+            asio::transfer_exactly(content_length - (body_chunk.size())),
+            std::bind(&Client::handle_response_body, this,
+                std::placeholders::_1, content_length, conn, cb));
+        return;
+    }
+    // has potential body but no content-length (current proxy behavior on key get/listen)
+    else if (header.find("Content-Type: application/json") != std::string::npos){
+        auto body_chunk = chunk.substr(bytes, std::string::npos);
+        if (!body_chunk.empty()){
+            parse_request(body_chunk, conn->id());
+        }
+        // keep reading
+        asio::async_read(conn->socket_, conn->response_chunk_, asio::transfer_at_least(1),
+            std::bind(&Client::handle_response_body, this,
+                std::placeholders::_1, std::placeholders::_2, conn, cb));
+    }
+}
+
+void
+Client::handle_response_body(const asio::error_code& ec, const size_t bytes,
+                             std::shared_ptr<Connection> conn, HandlerCb cb)
+{
+    if (!conn->is_open()){
+        if (logger_)
+            logger_->e("[http::client] closed connection, can't handle response body");
+        close_connection(conn->id());
+        if (cb)
+            cb(asio::error::not_connected);
+        return;
+    }
+    if (ec && ec != asio::error::eof){
+        if (logger_)
+            logger_->e("[http::client] [connection:%i] error handling response body: %s",
+                       conn->id(), ec.message().c_str());
+        close_connection(conn->id());
+        if (cb)
+            cb(ec);
+        return;
+    }
+    else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
+        close_connection(conn->id());
+        if (cb)
+            cb(ec);
+        return;
+    }
+    std::string body;
+    if (!conn->response_body_.empty()){
+        // append previous incomplete chunk from header
+        body.append(conn->response_body_);
+    }
+    // read the response buffer
+    std::ostringstream str_s;
+    str_s << &conn->response_chunk_;
+    body.append(str_s.str().substr(0, bytes));
+    if (logger_)
+        logger_->d("[http::client] [connection:%i] response body read:\n%s", conn->id(), body.c_str());
+    // parse the body
+    parse_request(body, conn->id());
+    // clear the read body
+    conn->response_body_.clear();
+    // keep reading line by line
+    asio::async_read(conn->socket_, conn->response_chunk_, asio::transfer_at_least(1),
+        std::bind(&Client::handle_response_body, this,
+            std::placeholders::_1, std::placeholders::_2, conn, cb));
+}
+
+void
+Client::parse_request(const std::string request, const ConnectionId conn_id)
+{
+    auto& conn_context = connections_[conn_id];
     http_parser_execute(conn_context.parser.get(), conn_context.parser_settings.get(),
-                        str_s.str().c_str(), str_s.str().size());
-
+                        request.c_str(), request.size());
     // detect parsing errors
-    if (HPE_OK != conn_context.parser->http_errno &&
-        HPE_PAUSED != conn_context.parser->http_errno)
-    {
+    if (HPE_OK != conn_context.parser->http_errno && HPE_PAUSED != conn_context.parser->http_errno){
         if (logger_){
             auto err = HTTP_PARSER_ERRNO(conn_context.parser.get());
-            logger_->e("[http::client] [connection:%i] error parsing: %s",
-                        conn->id(), http_errno_name(err));
+            logger_->e("[http::client] [connection:%i] error parsing: %s", conn_id, http_errno_name(err));
         }
     }
-    asio::async_read(conn->socket_, conn->response_, asio::transfer_at_least(1),
-        std::bind(&Client::handle_response, this, std::placeholders::_1, conn, cb));
+}
+
+size_t
+Client::get_content_length(const std::string str, const ConnectionId conn_id)
+{
+    size_t content_length = 0;
+    auto content_length_i = str.find(HTTP_HEADER_CONTENT_LENGTH);
+    if (content_length_i != std::string::npos){
+        auto content_length_str = str.substr(content_length_i + std::strlen(HTTP_HEADER_CONTENT_LENGTH) + 1,
+                                             str.find("\r\n", content_length_i));
+        try {
+            content_length = atoi(content_length_str.c_str());
+        }
+        catch (const std::exception& e){
+            if (logger_)
+                logger_->d("[http::client] [connection:%i] invalid content-length '%s': %s",
+                           conn_id, content_length_str.c_str(), e.what());
+        }
+    }
+    return content_length;
 }
 
 } // namespace http
