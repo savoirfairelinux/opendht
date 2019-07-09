@@ -142,8 +142,12 @@ AS_IF([test "x$have_jsoncpp" = "xyes"], [
 ])
 
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
-	#AC_CHECK_LIB(<libname>, exit,, AC_MSG_ERROR([Missing <libname> files]))
-	#LDFLAGS="${LDFLAGS} -l<libname>"
+    PKG_CHECK_MODULES([Asio], [fmt >= 1.12.2])
+    PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0])
+    # http_parser has no pkgconfig, instead we check with:
+    AC_CHECK_LIB(http_parser, exit,, AC_MSG_ERROR([Missing HttpParser library files]))
+    AC_CHECK_HEADERS([http_parser.h], [http_parser_headers=yes; break;])
+    AS_IF([test "x$http_parser_headers" != "xyes"], AC_MSG_ERROR([Missing HttpParser headers files]))
 ])
 
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
