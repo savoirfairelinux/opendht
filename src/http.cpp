@@ -292,9 +292,7 @@ Client::async_connect(ConnectionCb cb)
         // save the associated endpoint
         conn->endpoint_ = endpoint;
         // make the connection context and save it
-        ConnectionContext conn_context = {};
-        conn_context.connection = conn;
-        connections_[conn->id()] = conn_context;
+        connections_[conn->id()].connection = conn;
         // get back to user
         if (cb)
             cb(conn);
