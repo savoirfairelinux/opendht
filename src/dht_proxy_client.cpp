@@ -289,8 +289,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         context->filter = filter;
         if (logger_)
             context->logger = logger_;
-        // keeping context data alive
-        context->cb = [this, key, context, cb](const dht::Sp<dht::Value> value) -> bool {
+        std::weak_ptr<GetContext> wcontext = context;
+        context->cb = [this, key, wcontext, cb](const dht::Sp<dht::Value> value) -> bool {
+            auto context = wcontext.lock();
             {
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
                 callbacks_.emplace_back([context, cb, value](){
@@ -302,12 +303,11 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             loopSignal_();
             return context->ok;
         };
-        context->donecb = [this, key, context, donecb](bool ok){
+        context->donecb = [this, key, donecb](bool ok){
             {
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
                 callbacks_.emplace_back([=](){
                     donecb(ok, {});
-                    context->stop = true;
                 });
             }
             loopSignal_();
@@ -372,7 +372,12 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             }
             return 0;
         };
-        httpClient_->async_request(conn, request, parser, parser_s);
+        // keeping context data alive
+        httpClient_->async_request(conn, request, parser, parser_s,
+                                  [this, key, context](const asio::error_code& ec){
+            if (ec && logger_)
+                logger_->e("[proxy:client] [get %s] failed: %s", key.to_c_str(), ec.message().c_str());
+        });
     });
 }
 
@@ -471,8 +476,9 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         context->ok = false;
         if (logger_)
             context->logger = logger_;
-        // keeping context data alive
-        context->donecb = [this, context, cb](bool ok){
+        std::weak_ptr<PutContext> wcontext = context;
+        context->donecb = [this, wcontext, cb](bool ok){
+            auto context = wcontext.lock();
             {
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
                 callbacks_.emplace_back([=](){
@@ -510,7 +516,13 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             }
             return 0;
         };
-        httpClient_->async_request(conn, request, parser, parser_s);
+        // keeping context data alive
+        httpClient_->async_request(conn, request, parser, parser_s,
+                                  [this, key, context](const asio::error_code& ec){
+            if (ec && logger_)
+                logger_->e("[proxy:client] [put %s] failed: %s", key.to_c_str(), ec.message().c_str());
+        });
+
     });
 }
 
@@ -637,8 +649,10 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                     std::placeholders::_1, std::placeholders::_2);
                 if (logger_)
                     context->logger = logger_;
-                // keeping context data alive
-                context->cb = [this, context](Json::Value infos){
+                std::weak_ptr<StatusContext> wcontext = context;
+                context->cb = [this, wcontext](Json::Value infos)
+                {
+                    auto context = wcontext.lock();
                     if (context->family == AF_INET) 
                         context->infoState->ipv4++;
                     else if (context->family == AF_INET6)
@@ -687,7 +701,13 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                 };
                 if (context->infoState->cancel)
                     return;
-                httpClient_->async_request(conn, request, parser, parser_s);
+                // keeping context data alive
+                httpClient_->async_request(conn, request, parser, parser_s,
+                                          [this, context](const asio::error_code& ec){
+                    if (ec && logger_)
+                        logger_->e("[proxy:client] [status] failed: %s", ec.message().c_str());
+            });
+
             }
             catch (const std::exception& e) {
                 if (logger_)
@@ -945,8 +965,9 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         if (logger_)
             context->logger = logger_;
         context->state = state;
-        // keeping context data alive
-        context->cb = [this, cb, context, state](const std::shared_ptr<Value> value, bool expired){
+        std::weak_ptr<ListenContext> wcontext = context;
+        context->cb = [this, cb, wcontext, state](const std::shared_ptr<Value> value, bool expired){
+            auto context = wcontext.lock();
             {
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
                 callbacks_.emplace_back([cb, value, state, expired]() {
@@ -1008,7 +1029,13 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             }
             return 0;
         };
-        httpClient_->async_request(conn, request, parser, parser_s);
+        // keeping context data alive
+        httpClient_->async_request(conn, request, parser, parser_s,
+                                  [this, &listener, context](const asio::error_code& ec){
+            if (ec && logger_)
+                logger_->e("[proxy:client] [send listen] [connection %i} failed: %s",
+                           listener.connId, ec.message().c_str());
+        });
     });
 }
 
@@ -1077,7 +1104,11 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
                 }
                 return 0;
             };
-            httpClient_->async_request(conn, request, parser, parser_s);
+            httpClient_->async_request(conn, request, parser, parser_s,
+                                       [this, key](const asio::error_code& ec){
+                if (ec && logger_)
+                    logger_->e("[proxy:client] [unsubscribe %s] failed: %s", key.to_c_str(), ec.message().c_str());
+            });
         });
     } else {
         // Just stop the request
