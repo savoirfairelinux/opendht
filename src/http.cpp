@@ -283,9 +283,7 @@ Client::async_connect(ConnectionCb cb)
                                                                     const asio::ip::tcp::endpoint& endpoint){
         // only reacts if all endpoints fail
         if (ec){
-            logger_->e("[http::client] [connection:%i] error opening: %s for %s:%lu",
-                       conn->id(), ec.message().c_str(),
-                       endpoint.address().to_string().c_str(), endpoint.port());
+            logger_->e("[http::client] [connection] failed to connect to any endpoints");
             close_connection(conn->id());
             if (cb)
                 cb(nullptr);

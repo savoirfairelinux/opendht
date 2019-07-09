@@ -638,62 +638,72 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 
     httpClient_->async_connect([this, &token, json=std::move(json), isAndroid](std::shared_ptr<http::Connection> conn)
     {
-        restinio::http_request_header_t header;
-        header.request_target("/api/push");
-        header.method(restinio::http_method_post());
+        if (!conn){
+            logger_->e("[proxy:server] [notification] invalid connection");
+            return;
+        }
+        try {
+            restinio::http_request_header_t header;
+            header.request_target("/api/push");
+            header.method(restinio::http_method_post());
 
-        restinio::http_header_fields_t header_fields;
-        header_fields.append_field(restinio::http_field_t::host, pushServer_.c_str());
-        header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
-        header_fields.append_field(restinio::http_field_t::accept, "*/*");
-        header_fields.append_field(restinio::http_field_t::content_type, "application/json");
+            restinio::http_header_fields_t header_fields;
+            header_fields.append_field(restinio::http_field_t::host, pushServer_.c_str());
+            header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
+            header_fields.append_field(restinio::http_field_t::accept, "*/*");
+            header_fields.append_field(restinio::http_field_t::content_type, "application/json");
 
-        // NOTE: see https://github.com/appleboy/gorush
-        Json::Value notification(Json::objectValue);
-        Json::Value tokens(Json::arrayValue);
-        tokens[0] = token;
-        notification["tokens"] = std::move(tokens);
-        notification["platform"] = isAndroid ? 2 : 1;
-        notification["data"] = std::move(json);
-        notification["priority"] = "high";
-        notification["time_to_live"] = 600;
+            // NOTE: see https://github.com/appleboy/gorush
+            Json::Value notification(Json::objectValue);
+            Json::Value tokens(Json::arrayValue);
+            tokens[0] = token;
+            notification["tokens"] = std::move(tokens);
+            notification["platform"] = isAndroid ? 2 : 1;
+            notification["data"] = std::move(json);
+            notification["priority"] = "high";
+            notification["time_to_live"] = 600;
 
-        Json::Value notifications(Json::arrayValue);
-        notifications[0] = notification;
+            Json::Value notifications(Json::arrayValue);
+            notifications[0] = notification;
 
-        Json::Value content;
-        content["notifications"] = std::move(notifications);
+            Json::Value content;
+            content["notifications"] = std::move(notifications);
 
-        Json::StreamWriterBuilder wbuilder;
-        wbuilder["commentStyle"] = "None";
-        wbuilder["indentation"] = "";
-        auto body = Json::writeString(wbuilder, content);
+            Json::StreamWriterBuilder wbuilder;
+            wbuilder["commentStyle"] = "None";
+            wbuilder["indentation"] = "";
+            auto body = Json::writeString(wbuilder, content);
 
-        auto parser = std::make_shared<http_parser>();
-        http_parser_init(parser.get(), HTTP_RESPONSE);
+            auto parser = std::make_shared<http_parser>();
+            http_parser_init(parser.get(), HTTP_RESPONSE);
 
-        struct PushContext {
-            std::shared_ptr<Logger> logger;
-        };
-        auto context = std::make_shared<PushContext>();
-        if (logger_)
-            context->logger = logger_;
-        parser->data = static_cast<void*>(context.get());
+            struct PushContext {
+                std::shared_ptr<Logger> logger;
+            };
+            auto context = std::make_shared<PushContext>();
+            if (logger_)
+                context->logger = logger_;
+            parser->data = static_cast<void*>(context.get());
 
-        auto parser_s = std::make_shared<http_parser_settings>();
-        http_parser_settings_init(parser_s.get());
-        parser_s->on_status = [](http_parser*  parser, const char* /*at*/, size_t /*length*/) -> int {
-            auto context = static_cast<PushContext*>(parser->data);
-            if (parser->status_code == 200)
-                return 0;
-            if (context->logger)
-                context->logger->e("[proxy:server] [notification] error send push: %i", parser->status_code);
-            return 1;
-        };
-        auto request = httpClient_->create_request(header, header_fields,
-            restinio::http_connection_header_t::close, body);
+            auto parser_s = std::make_shared<http_parser_settings>();
+            http_parser_settings_init(parser_s.get());
+            parser_s->on_status = [](http_parser*  parser, const char* /*at*/, size_t /*length*/) -> int {
+                auto context = static_cast<PushContext*>(parser->data);
+                if (parser->status_code == 200)
+                    return 0;
+                if (context->logger)
+                    context->logger->e("[proxy:server] [notification] error send push: %i", parser->status_code);
+                return 1;
+            };
+            auto request = httpClient_->create_request(header, header_fields,
+                restinio::http_connection_header_t::close, body);
 
-        httpClient_->async_request(conn, request, parser, parser_s);
+            httpClient_->async_request(conn, request, parser, parser_s);
+        }
+        catch (const std::exception &e){
+            if (logger_)
+                logger_->e("[proxy:server] [notification] error send push: %i", e.what());
+        }
     });
 }
 
