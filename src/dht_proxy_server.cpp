@@ -214,9 +214,9 @@ DhtProxyServer::createRestRouter()
     // node.stats
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_stats.raw_id()),
                         "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
-    // node.options
+    // key.options
     router->add_handler(restinio::http_method_options(),
-                        "/", std::bind(&DhtProxyServer::options, this, _1, _2));
+                        "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
     // key.get
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
@@ -246,8 +246,8 @@ DhtProxyServer::createRestRouter()
     router->http_get("/node/info", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
     // node.stats
     router->http_get("/node/stats", std::bind(&DhtProxyServer::getStats, this, _1, _2));
-    // node.options
-    router->http_get("/node/options", std::bind(&DhtProxyServer::options, this, _1, _2));
+    // key.options
+    router->http_get("/key/:hash/options", std::bind(&DhtProxyServer::options, this, _1, _2));
     // key.get
     router->http_get("/key/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
