@@ -674,7 +674,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             wbuilder["indentation"] = "";
             auto body = Json::writeString(wbuilder, content);
 
-            auto parser = std::make_shared<http_parser>();
+            auto parser = std::make_unique<http_parser>();
             http_parser_init(parser.get(), HTTP_RESPONSE);
 
             struct PushContext {
@@ -685,7 +685,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
                 context->logger = logger_;
             parser->data = static_cast<void*>(context.get());
 
-            auto parser_s = std::make_shared<http_parser_settings>();
+            auto parser_s = std::make_unique<http_parser_settings>();
             http_parser_settings_init(parser_s.get());
             parser_s->on_status = [](http_parser*  parser, const char* /*at*/, size_t /*length*/) -> int {
                 auto context = static_cast<PushContext*>(parser->data);
@@ -698,7 +698,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             auto request = httpClient_->create_request(header, header_fields,
                 restinio::http_connection_header_t::close, body);
 
-            httpClient_->async_request(conn, request, parser, parser_s);
+            httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s));
         }
         catch (const std::exception &e){
             if (logger_)

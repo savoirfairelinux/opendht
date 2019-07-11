@@ -312,11 +312,11 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             }
             loopSignal_();
         };
-        auto parser = std::make_shared<http_parser>();
+        auto parser = std::make_unique<http_parser>();
         http_parser_init(parser.get(), HTTP_RESPONSE);
         parser->data = static_cast<void*>(context.get());
 
-        auto parser_s = std::make_shared<http_parser_settings>();
+        auto parser_s = std::make_unique<http_parser_settings>();
         http_parser_settings_init(parser_s.get());
         parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
             auto context = static_cast<GetContext*>(parser->data);
@@ -373,7 +373,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             return 0;
         };
         // keeping context data alive
-        httpClient_->async_request(conn, request, parser, parser_s,
+        httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                   [this, key, context](const asio::error_code& ec){
             if (ec && logger_)
                 logger_->e("[proxy:client] [get %s] failed: %s", key.to_c_str(), ec.message().c_str());
@@ -488,11 +488,11 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             loopSignal_();
         };
         // define http parser
-        auto parser = std::make_shared<http_parser>();
+        auto parser = std::make_unique<http_parser>();
         http_parser_init(parser.get(), HTTP_RESPONSE);
         parser->data = static_cast<void*>(context.get());
         // define http parser callbacks
-        auto parser_s = std::make_shared<http_parser_settings>();
+        auto parser_s = std::make_unique<http_parser_settings>();
         http_parser_settings_init(parser_s.get());
         parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
             auto context = static_cast<PutContext*>(parser->data);
@@ -517,7 +517,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             return 0;
         };
         // keeping context data alive
-        httpClient_->async_request(conn, request, parser, parser_s,
+        httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                   [this, key, context](const asio::error_code& ec){
             if (ec && logger_)
                 logger_->e("[proxy:client] [put %s] failed: %s", key.to_c_str(), ec.message().c_str());
@@ -661,11 +661,11 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                         context->proxyInfo(infos, context->family);
                 };
                 // initialize the parser
-                auto parser = std::make_shared<http_parser>();
+                auto parser = std::make_unique<http_parser>();
                 http_parser_init(parser.get(), HTTP_RESPONSE);
                 parser->data = static_cast<void*>(context.get());
                 // init the parser callbacks
-                auto parser_s = std::make_shared<http_parser_settings>();
+                auto parser_s = std::make_unique<http_parser_settings>();
                 http_parser_settings_init(parser_s.get());
                 parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
                     auto context = static_cast<StatusContext*>(parser->data);
@@ -702,7 +702,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                 if (context->infoState->cancel)
                     return;
                 // keeping context data alive
-                httpClient_->async_request(conn, request, parser, parser_s,
+                httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                           [this, context](const asio::error_code& ec){
                     if (ec && logger_)
                         logger_->e("[proxy:client] [status] failed: %s", ec.message().c_str());
@@ -978,11 +978,11 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             loopSignal_();
         };
 
-        auto parser = std::make_shared<http_parser>();
+        auto parser = std::make_unique<http_parser>();
         http_parser_init(parser.get(), HTTP_RESPONSE);
         parser->data = static_cast<void*>(context.get());
 
-        auto parser_s = std::make_shared<http_parser_settings>();
+        auto parser_s = std::make_unique<http_parser_settings>();
         http_parser_settings_init(parser_s.get());
         parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
             auto context = static_cast<ListenContext*>(parser->data);
@@ -1030,7 +1030,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             return 0;
         };
         // keeping context data alive
-        httpClient_->async_request(conn, request, parser, parser_s,
+        httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                   [this, &listener, context](const asio::error_code& ec){
             if (ec && logger_)
                 logger_->e("[proxy:client] [send listen] [connection %i} failed: %s",
@@ -1089,11 +1089,11 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             if (logger_)
                 context->logger = logger_;
             // define parser
-            auto parser = std::make_shared<http_parser>();
+            auto parser = std::make_unique<http_parser>();
             http_parser_init(parser.get(), HTTP_RESPONSE);
             parser->data = static_cast<void*>(context.get());
             // define callbacks
-            auto parser_s = std::make_shared<http_parser_settings>();
+            auto parser_s = std::make_unique<http_parser_settings>();
             http_parser_settings_init(parser_s.get());
             parser_s->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
                 auto context = static_cast<UnsubscribeContext*>(parser->data);
@@ -1104,7 +1104,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
                 }
                 return 0;
             };
-            httpClient_->async_request(conn, request, parser, parser_s,
+            httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                        [this, key](const asio::error_code& ec){
                 if (ec && logger_)
                     logger_->e("[proxy:client] [unsubscribe %s] failed: %s", key.to_c_str(), ec.message().c_str());

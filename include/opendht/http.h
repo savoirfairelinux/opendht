@@ -70,10 +70,10 @@ struct ConnectionContext
 {
     // TODO store multiple requests
     std::string request;
-    std::shared_ptr<http_parser> parser;
-    std::shared_ptr<http_parser_settings> parser_settings;
+    std::unique_ptr<http_parser> parser;
+    std::unique_ptr<http_parser_settings> parser_settings;
     std::shared_ptr<Connection> connection;
-    std::shared_ptr<asio::steady_timer> timeout_timer;
+    std::unique_ptr<asio::steady_timer> timeout_timer;
 };
 
 class ConnectionListener
@@ -130,8 +130,8 @@ public:
                                const std::string body);
 
     void async_request(std::shared_ptr<http::Connection> conn,
-                       std::string request, std::shared_ptr<http_parser> parser,
-                       std::shared_ptr<http_parser_settings> parser_s, HandlerCb cb = {});
+                       std::string request, std::unique_ptr<http_parser> parser,
+                       std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb = {});
 
 private:
     std::shared_ptr<Connection> create_connection();

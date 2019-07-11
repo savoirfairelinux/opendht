@@ -60,7 +60,7 @@ ConnectionListener::ConnectionListener()
 ConnectionListener::ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
     std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
     std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger):
-        dht_(dht), listeners_(listeners), lock_(lock), logger_(logger)
+        dht_(dht), lock_(lock), listeners_(listeners), logger_(logger)
 {}
 
 ConnectionListener::~ConnectionListener()
@@ -167,7 +167,7 @@ Client::set_connection_timeout(const ConnectionId conn_id,
         return;
     }
     if (!conn_context.timeout_timer)
-        conn_context.timeout_timer = std::make_shared<asio::steady_timer>(io_context());
+        conn_context.timeout_timer = std::make_unique<asio::steady_timer>(io_context());
     // define or overwrites existing
     conn_context.timeout_timer->expires_at(std::chrono::steady_clock::now() + timeout);
     // define timeout
@@ -301,8 +301,8 @@ Client::async_connect(ConnectionCb cb)
 
 void
 Client::async_request(std::shared_ptr<Connection> conn, std::string request,
-                      std::shared_ptr<http_parser> parser,
-                      std::shared_ptr<http_parser_settings> parser_s, HandlerCb cb)
+                      std::unique_ptr<http_parser> parser,
+                      std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb)
 {
     if (endpoints_.empty()){
         if (logger_)
@@ -329,8 +329,8 @@ Client::async_request(std::shared_ptr<Connection> conn, std::string request,
     // save the request context
     auto& conn_context = connections_[conn->id()];
     conn_context.request = request;
-    conn_context.parser = parser;
-    conn_context.parser_settings = parser_s;
+    conn_context.parser = std::move(parser);
+    conn_context.parser_settings = std::move(parser_s);
 
     // write the request to buffer
     std::ostream request_stream(&conn->request_);
