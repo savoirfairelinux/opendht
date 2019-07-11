@@ -269,7 +269,7 @@ DhtProxyServer::createRestRouter()
     router->http_post("/key/:hash/encrypt", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
-    return router;
+    return std::move(router);
 }
 
 RequestStatus
