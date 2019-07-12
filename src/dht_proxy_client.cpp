@@ -63,7 +63,7 @@ struct PermanentPut {
 
 struct DhtProxyClient::ProxySearch {
     SearchCache ops {};
-    Sp<asio::steady_timer> opExpirationTimer;
+    std::unique_ptr<asio::steady_timer> opExpirationTimer;
     std::map<size_t, Listener> listeners {};
     std::map<Value::Id, PermanentPut> puts {};
 };
@@ -80,7 +80,7 @@ DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& 
     serverHostService_.second = serverHostService_.second.empty() ? "80" :
                                 serverHostService_.second;
     httpClient_ = std::make_unique<http::Client>(httpContext_,
-        serverHostService_.first, serverHostService_.second, logger);
+        serverHostService_.first, serverHostService_.second);
     // run http client
     httpClientThread_ = std::thread([this](){
         try {
@@ -274,8 +274,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         auto header_fields = this->initHeaderFields();
         auto request = httpClient_->create_request(header, header_fields,
             restinio::http_connection_header_t::keep_alive, ""/*body*/);
-        if (logger_)
-            logger_->d(request.c_str());
 
         struct GetContext {
             std::function<bool(const dht::Sp<dht::Value>)> cb; // wrapper
@@ -375,7 +373,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         // keeping context data alive
         httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                   [this, key, context](const asio::error_code& ec){
-            if (ec && logger_)
+            if (ec && ec != asio::error::eof && logger_)
                 logger_->e("[proxy:client] [get %s] failed: %s", key.to_c_str(), ec.message().c_str());
         });
     });
@@ -464,8 +462,6 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         auto body = Json::writeString(wbuilder, json);
         auto request = httpClient_->create_request(header, header_fields,
             restinio::http_connection_header_t::close, body);
-        if (logger_)
-            logger_->d("%s", request.c_str());
 
         struct PutContext {
             DoneCallbackSimple donecb;
@@ -519,7 +515,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
         // keeping context data alive
         httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                   [this, key, context](const asio::error_code& ec){
-            if (ec && logger_)
+            if (ec && ec != asio::error::eof && logger_)
                 logger_->e("[proxy:client] [put %s] failed: %s", key.to_c_str(), ec.message().c_str());
         });
 
@@ -632,7 +628,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                 auto request = httpClient_->create_request(header, header_fields,
                     restinio::http_connection_header_t::keep_alive, ""/*body*/);
                 if (logger_)
-                    logger_->d("[proxy:client] [status] sending request:\n%s", request.c_str());
+                    logger_->d("[proxy:client] [status] sending request");
                 // initalise the parser callback data
                 struct StatusContext {
                     unsigned int family;
@@ -704,7 +700,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec,
                 // keeping context data alive
                 httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                           [this, context](const asio::error_code& ec){
-                    if (ec && logger_)
+                    if (ec && ec != asio::error::eof && logger_)
                         logger_->e("[proxy:client] [status] failed: %s", ec.message().c_str());
             });
 
@@ -792,14 +788,14 @@ DhtProxyClient::getPublicAddress(sa_family_t family)
 }
 
 size_t
-DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where) {
+DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filter, Where where)
+{
     if (logger_)
         logger_->d("[proxy:client] [listen] [search %s]", key.to_c_str());
 
     auto& search = searches_[key];
     auto query = std::make_shared<Query>(Select{}, std::move(where));
-    auto token = search.ops.listen(cb, query, filter, [this, key](
-                                   Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
+    return search.ops.listen(cb, query, filter, [this, key](Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
         std::lock_guard<std::mutex> lock(searchLock_);
         // Find search
         auto search = searches_.find(key);
@@ -811,7 +807,6 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         if (logger_)
             logger_->d("[proxy:client] [listen] [search %s] sending %s", key.to_c_str(),
                   deviceKey_.empty() ? "listen" : "subscribe");
-
         // Add listener
         auto token = ++listenerToken_;
         auto l = search->second.listeners.find(token);
@@ -823,8 +818,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             if (l->second.state)
                 l->second.state->cancel = true;
         }
-
-        // Add callback
+        // Add cache callback
         auto state = std::make_shared<ListenState>();
         l->second.state = state;
         l->second.cb = [this,key,token,state](const std::vector<Sp<Value>>& values, bool expired) {
@@ -840,8 +834,6 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             }
             return false;
         };
-        auto vcb = l->second.cb;
-
         if (not deviceKey_.empty()) {
             /*
              * Relaunch push listeners even if a timeout is not received
@@ -884,52 +876,66 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             header.method(restinio::http_method_subscribe());
             header.request_target("/" + key.toString());
         }
-        sendListen(header, vcb, state, l->second, method);
+        sendListen(header, l->second.cb, state, l->second, method);
         return token;
     });
-    return token;
 }
 
 bool
-DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken) {
+DhtProxyClient::cancelListen(const InfoHash& key, size_t gtoken)
+{
     if (logger_)
         logger_->d(key, "[proxy:client] [search %s] cancel listen %zu", key.to_c_str(), gtoken);
+
+    // find the listener in cache
     auto it = searches_.find(key);
     if (it == searches_.end())
         return false;
     auto& ops = it->second.ops;
     bool canceled = ops.cancelListen(gtoken, std::chrono::steady_clock::now());
-    // on new listener set the expiration to the max,
-    // in case a user redo a listen right after cancel, we won't impact the network.
-    if (!it->second.opExpirationTimer) {
-        it->second.opExpirationTimer = std::make_shared<asio::steady_timer>(httpContext_);
-        it->second.opExpirationTimer->expires_at(time_point::max());
-        it->second.opExpirationTimer->async_wait([this, key](const asio::error_code ec){
-            if (ec){
-                if (logger_)
-                    logger_->d("[proxy:client] [listen %s] error in cancel", key.toString().c_str());
-                return false;
-            }
-            auto it = searches_.find(key);
-            if (it != searches_.end()) {
-                auto next = it->second.ops.expire(std::chrono::steady_clock::now(),
-                                                 [this, key](size_t ltoken){
-                    doCancelListen(key, ltoken);
-                });
-                if (next != time_point::max()) {
-                    if (!it->second.opExpirationTimer){
-                        it->second.opExpirationTimer = std::make_shared<
-                            asio::steady_timer>(httpContext_);
-                    }
-                    it->second.opExpirationTimer->expires_at(next);
-                }
-            }
-        });
+
+    // define real cancel listen only once
+    if (!it->second.opExpirationTimer){
+        it->second.opExpirationTimer = std::make_unique<asio::steady_timer>(httpContext_, time_point::max());
+        it->second.opExpirationTimer->async_wait(std::bind(
+            &DhtProxyClient::handleExpireListener, this, std::placeholders::_1, key));
     }
-    // Let it expire when it is due.
-    it->second.opExpirationTimer->expires_at(ops.getExpiration());
-    loopSignal_();
+    else {
+        // set expires to max if listeners else to last removed + expiration
+        it->second.opExpirationTimer->expires_at(ops.getExpiration());
+    }
     return canceled;
+}
+
+void
+DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash& key)
+{
+    auto it = searches_.find(key);
+    // everytime a new expiry is set, a previous gets aborted
+    if (ec == asio::error::operation_aborted){
+        it->second.opExpirationTimer->expires_at(it->second.ops.getExpiration());
+        it->second.opExpirationTimer->async_wait(std::bind(
+            &DhtProxyClient::handleExpireListener, this, std::placeholders::_1, key));
+        return;
+    }
+    else if (ec){
+        if (logger_)
+            logger_->e("[proxy:client] [listen %s] error in cancel: %s",
+                        key.toString().c_str(), ec.message().c_str());
+        return;
+    }
+    // found an existing listener
+    if (it != searches_.end()){
+        time_point next = it->second.ops.expire(std::chrono::steady_clock::now(),
+                                                [this, key](size_t ltoken){
+            doCancelListen(key, ltoken);
+        });
+        if (next != time_point::max()){
+            it->second.opExpirationTimer->expires_at(next);
+            it->second.opExpirationTimer->async_wait(std::bind(
+                &DhtProxyClient::handleExpireListener, this, std::placeholders::_1, key));
+        }
+    }
 }
 
 void
@@ -952,8 +958,6 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             body = fillBody(method == ListenMethod::RESUBSCRIBE);
 #endif
         auto request = httpClient_->create_request(header, headers, connType, body);
-        if (logger_)
-            logger_->d(request.c_str());
 
         struct ListenContext {
             std::shared_ptr<Logger> logger;
@@ -1032,8 +1036,8 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         // keeping context data alive
         httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                   [this, &listener, context](const asio::error_code& ec){
-            if (ec && logger_)
-                logger_->e("[proxy:client] [send listen] [connection %i} failed: %s",
+            if (ec && ec != asio::error::eof && logger_ && !listener.state->cancel.load())
+                logger_->e("[proxy:client] [send listen] [connection %i] failed: %s",
                            listener.connId, ec.message().c_str());
         });
     });
@@ -1042,6 +1046,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 bool
 DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
 {
+    // only cancel on dht when it is the last listener in the cache
     std::lock_guard<std::mutex> lock(searchLock_);
 
     auto search = searches_.find(key);
@@ -1077,8 +1082,6 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             // build the request
             auto request = httpClient_->create_request(header, header_fields,
                 restinio::http_connection_header_t::keep_alive, content);
-            if (logger_)
-                logger_->d(request.c_str());
             // define context
             struct UnsubscribeContext {
                 InfoHash key;
@@ -1106,7 +1109,7 @@ DhtProxyClient::doCancelListen(const InfoHash& key, size_t ltoken)
             };
             httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s),
                                        [this, key](const asio::error_code& ec){
-                if (ec && logger_)
+                if (ec && ec != asio::error::eof && logger_)
                     logger_->e("[proxy:client] [unsubscribe %s] failed: %s", key.to_c_str(), ec.message().c_str());
             });
         });

@@ -84,7 +84,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
     // build http client
     auto pushHostPort = splitPort(pushServer_);
     httpClient_.reset(new http::Client(httpServer_->io_context(),
-                        pushHostPort.first, pushHostPort.second, logger_));
+                      pushHostPort.first, pushHostPort.second));
     // run http server
     httpServerThread_ = std::thread([this](){
         try {

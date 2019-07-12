@@ -162,7 +162,7 @@ Client::set_connection_timeout(const ConnectionId conn_id,
                                const std::chrono::seconds timeout, HandlerCb cb)
 {
     auto& conn_context = connections_[conn_id];
-    if (!conn_context.connection){
+    if (logger_ && !conn_context.connection){
         logger_->e("[http::client] [connection:%i] closed, can't timeout", conn_id);
         return;
     }
@@ -199,10 +199,9 @@ Client::async_resolve(const std::string host, const std::string service, Handler
             const asio::error_code& ec,
             asio::ip::tcp::resolver::results_type endpoints)
     {
-        if (ec){
-            if (logger_)
-                logger_->e("[http::client] [resolve %s:%s] error resolving: %s",
-                           host.c_str(), service.c_str(), ec.message().c_str());
+        if (ec and logger_){
+            logger_->e("[http::client] [resolve %s:%s] error resolving: %s",
+                       host.c_str(), service.c_str(), ec.message().c_str());
         }
         else {
             for (auto it = endpoints.begin(); it != endpoints.end(); ++it){
@@ -283,7 +282,8 @@ Client::async_connect(ConnectionCb cb)
                                                                     const asio::ip::tcp::endpoint& endpoint){
         // only reacts if all endpoints fail
         if (ec){
-            logger_->e("[http::client] [connection] failed to connect to any endpoints");
+            if (logger_)
+                logger_->e("[http::client] [connection] failed to connect to any endpoints");
             close_connection(conn->id());
             if (cb)
                 cb(nullptr);

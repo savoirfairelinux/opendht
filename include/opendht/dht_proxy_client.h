@@ -291,6 +291,7 @@ private:
 
     void opFailed();
 
+    void handleExpireListener(const asio::error_code &ec, const InfoHash& key);
     bool doCancelListen(const InfoHash& key, size_t token);
 
     struct Listener;
