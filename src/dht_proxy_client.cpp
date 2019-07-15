@@ -401,33 +401,38 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb,
         auto refreshTimer = std::make_unique<asio::steady_timer>(httpContext_,
             std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
         auto ok = std::make_shared<std::atomic_bool>(false);
-        // define refresh timer handler
-        refreshTimer->async_wait([this, key, id, ok](const asio::error_code& ec){
-            if (ec){
-                if (logger_)
-                    logger_->e("[proxy:client] [listener:refresh] error key=%s", key.toString().c_str());
-                return;
-            }
-            std::lock_guard<std::mutex> lock(searchLock_);
-            auto s = searches_.find(key);
-            if (s != searches_.end()) {
-                auto p = s->second.puts.find(id);
-                if (p != s->second.puts.end()) {
-                    doPut(key, p->second.value, [ok]
-                    (bool result, const std::vector<std::shared_ptr<dht::Node> >&){
-                        *ok = result;
-                    }, time_point::max(), true);
-                    p->second.refreshTimer->expires_at(std::chrono::steady_clock::now() +
-                        proxy::OP_TIMEOUT - proxy::OP_MARGIN);
-                }
-            }
-        });
+        refreshTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, id, ok));
         search.puts.erase(id);
         search.puts.emplace(std::piecewise_construct,
             std::forward_as_tuple(id),
             std::forward_as_tuple(val, std::move(refreshTimer), ok));
     }
     doPut(key, val, std::move(cb), created, permanent);
+}
+void
+DhtProxyClient::handleRefreshPut(const asio::error_code &ec, const InfoHash& key, const Value::Id id,
+                                 std::shared_ptr<std::atomic_bool> ok)
+{
+    if (ec){
+        if (logger_)
+            logger_->e("[proxy:client] [listener [refresh %s] %s", key.toString().c_str(), ec.message().c_str());
+        return;
+    }
+    if (logger_)
+        logger_->d("[proxy:client] [put] [refresh %s]", key.to_c_str());
+    std::lock_guard<std::mutex> lock(searchLock_);
+    auto search = searches_.find(key);
+    if (search != searches_.end()) {
+        auto p = search->second.puts.find(id);
+        if (p != search->second.puts.end()){
+            doPut(key, p->second.value, [ok](bool result, const std::vector<std::shared_ptr<dht::Node>>&){
+                *ok = result;
+            }, time_point::max(), true);
+            p->second.refreshTimer->expires_at(std::chrono::steady_clock::now() +
+                                               proxy::OP_TIMEOUT - proxy::OP_MARGIN);
+            p->second.refreshTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, id, ok));
+        }
+    }
 }
 
 void

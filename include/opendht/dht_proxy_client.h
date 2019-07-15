@@ -308,6 +308,8 @@ private:
                     ListenMethod method = ListenMethod::LISTEN);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
+    void handleRefreshPut(const asio::error_code &ec, const InfoHash& key, const Value::Id id,
+                          std::shared_ptr<std::atomic_bool> ok);
 
     /**
      * Initialize statusIpvX_
