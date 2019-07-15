@@ -761,12 +761,12 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
             listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
             listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this));
         }
-        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() +
-            std::chrono::minutes(15));
+        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(15));
+        nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::confirmProxy, this));
     }
     else if (newStatus == NodeStatus::Disconnected) {
-        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() +
-            std::chrono::minutes(1));
+        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(1));
+        nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::confirmProxy, this));
     }
     loopSignal_();
 }
