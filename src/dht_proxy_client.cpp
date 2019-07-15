@@ -122,7 +122,6 @@ DhtProxyClient::startProxy()
     nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::confirmProxy, this));
 
     listenerRestartTimer_ = std::make_shared<asio::steady_timer>(httpContext_);
-    listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this));
 
     loopSignal_();
 }
@@ -760,6 +759,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
     if (newStatus == NodeStatus::Connected) {
         if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
             listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
+            listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this));
         }
         nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() +
             std::chrono::minutes(15));
