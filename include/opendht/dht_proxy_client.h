@@ -284,15 +284,13 @@ private:
      */
     struct InfoState;
     void getProxyInfos();
-    void handleProxyStatus(const asio::error_code &ec,
-                           std::shared_ptr<InfoState> infoState);
+    void handleProxyStatus(const asio::error_code &ec, std::shared_ptr<InfoState> infoState);
     void onProxyInfos(const Json::Value& val, sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
     void opFailed();
 
     void handleExpireListener(const asio::error_code &ec, const InfoHash& key);
-    bool doCancelListen(const InfoHash& key, size_t token);
 
     struct Listener;
     struct ListenState;
