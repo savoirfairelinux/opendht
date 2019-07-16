@@ -102,7 +102,7 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
 
     printStatsTimer_ = std::make_unique<asio::steady_timer>(
         httpServer_->io_context(), PRINT_STATS_PERIOD);
-    printStatsTimer_->async_wait(std::bind(&DhtProxyServer::asyncPrintStats, this));
+    printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -172,8 +172,14 @@ DhtProxyServer::updateStats() const
 }
 
 void
-DhtProxyServer::asyncPrintStats()
+DhtProxyServer::handlePrintStats(const asio::error_code &ec)
 {
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if (ec){
+        if (logger_)
+            logger_->e("[proxy:server] [stats] error printing: %s", ec.message().c_str());
+    }
     if (httpServer_->io_context().stopped())
         return;
 
@@ -189,7 +195,7 @@ DhtProxyServer::asyncPrintStats()
             logger_->d("[proxy:server] [stats] %s", str.c_str());
     }
     printStatsTimer_->expires_at(printStatsTimer_->expiry() + PRINT_STATS_PERIOD);
-    printStatsTimer_->async_wait(std::bind(&DhtProxyServer::asyncPrintStats, this));
+    printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
 
 template <typename HttpResponse>
@@ -518,28 +524,25 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                 return true;
             }
         );
-        // Init & set timers
-        auto &ctx = httpServer_->io_context();
-        listener.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
-        listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx,
-                                        timeout - proxy::OP_MARGIN);
         // Launch timers
-        listener.expireTimer->async_wait(std::bind(
-            &DhtProxyServer::cancelPushListen, this, pushToken, infoHash, clientId));
-
-        listener.expireNotifyTimer->async_wait(
-        [this, infoHash, pushToken, isAndroid, clientId](const asio::error_code &ec){
-            if (logger_)
-                logger_->d("[proxy:server] [subscribe] sending refresh %s", infoHash.toString().c_str());
-            if (ec){
-                if (logger_)
-                    logger_->d("[proxy:server] [subscribe] error sending refresh: %s", ec.message().c_str());
-            }
-            Json::Value json;
-            json["timeout"] = infoHash.toString();
-            json["to"] = clientId;
-            sendPushNotification(pushToken, std::move(json), isAndroid);
-        });
+        auto &ctx = httpServer_->io_context();
+        // expire notify
+        if (!listener.expireNotifyTimer)
+            listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx, timeout - proxy::OP_MARGIN);
+        else
+            listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
+        Json::Value json;
+        json["timeout"] = infoHash.toString();
+        json["to"] = clientId;
+        listener.expireNotifyTimer->async_wait(std::bind(&DhtProxyServer::handleNotifyPushListenExpire, this,
+                                               std::placeholders::_1, pushToken, json, isAndroid));
+        // cancel push listen
+        if (!listener.expireTimer)
+            listener.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
+        else
+            listener.expireTimer->expires_at(timeout);
+        listener.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPushListen, this,
+                                         std::placeholders::_1, pushToken, infoHash, clientId));
         auto response = this->initHttpResponse(request->create_response());
         response.set_body("{}\n");
         return response.done();
@@ -569,6 +572,8 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
+    if (logger_)
+        logger_->d("[proxy:server] [unsubscribe %s]", infoHash.toString().c_str());
 
     try {
         std::string err;
@@ -588,7 +593,7 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
             return restinio::request_handling_status_t::rejected;
         auto clientId = root["client_id"].asString();
 
-        cancelPushListen(pushToken, infoHash, clientId);
+        handleCancelPushListen(asio::error_code() /*success*/, pushToken, infoHash, clientId);
         auto response = this->initHttpResponse(request->create_response());
         return response.done();
     }
@@ -601,10 +606,33 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 }
 
 void
-DhtProxyServer::cancelPushListen(const std::string& pushToken, const dht::InfoHash& key, const std::string& clientId)
+DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
+                                             Json::Value json, const bool isAndroid)
 {
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if (ec){
+        if (logger_)
+            logger_->e("[proxy:server] [subscribe] error sending put refresh: %s", ec.message().c_str());
+    }
     if (logger_)
-        logger_->d("[proxy:server] [listen:push %s] cancelled for  %s",
+        logger_->d("[proxy:server] [subscribe] sending put refresh to %s token", pushToken.c_str());
+    sendPushNotification(pushToken, std::move(json), isAndroid);
+}
+
+void
+DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::string pushToken,
+                                       const dht::InfoHash key, const std::string clientId)
+{
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if (ec){
+        if (logger_)
+            logger_->e("[proxy:server] [listen:push %s] error cancel: %s",
+                        key.toString().c_str(), ec.message().c_str());
+    }
+    if (logger_)
+        logger_->d("[proxy:server] [listen:push %s] cancelled for %s",
                    key.toString().c_str(), clientId.c_str());
     std::lock_guard<std::mutex> lock(*lockListener_);
 
@@ -710,10 +738,16 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
 void
-DhtProxyServer::cancelPut(const InfoHash& key, Value::Id vid)
+DhtProxyServer::handleCancelPermamentPut(const asio::error_code &ec, const InfoHash& key, Value::Id vid)
 {
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if (ec){
+        if (logger_)
+            logger_->e("[proxy:server] [put:permament] error sending put refresh: %s", ec.message().c_str());
+    }
     if (logger_)
-        logger_->d("[proxy:server] [put %s] cancel put %i", key.toString().c_str(), vid);
+        logger_->d("[proxy:server] [put %s] cancel permament put %i", key.toString().c_str(), vid);
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
         return;
@@ -781,36 +815,29 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 auto& pput = r.first->second;
                 if (r.second){
                     auto &ctx = httpServer_->io_context();
-                    pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
-                    pput.expireTimer->async_wait([this, infoHash, vid](const asio::error_code &ec){
-                        if (logger_)
-                            logger_->d("[proxy:server] [put %s] permanent expired: %i", infoHash.toString().c_str(), vid);
-                        if (ec){
-                            if (logger_)
-                                logger_->e("[proxy:server] error in permanent put: %s", ec.message().c_str());
-                        }
-                        cancelPut(infoHash, vid);
-                    });
+                    // cancel permanent put
+                    if (!pput.expireTimer)
+                        pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
+                    else
+                        pput.expireTimer->expires_at(timeout);
+                    pput.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
+                                                 std::placeholders::_1, infoHash, vid));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                     if (not pushToken.empty()){
+                        // notify push listen expire
                         bool isAndroid = platform == "android";
-                        pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx,
-                                                    timeout - proxy::OP_MARGIN);
-                        pput.expireNotifyTimer->async_wait(
-                        [this, infoHash, vid, pushToken, clientId, isAndroid](const asio::error_code &ec)
-                        {
-                            if (logger_)
-                                logger_->d("[proxy:server] [put %s] refresh: %i", infoHash.toString().c_str(), vid);
-                            if (ec){
-                                if (logger_)
-                                    logger_->e("[proxy:server] error in refresh put: %s", ec.message().c_str());
-                            }
-                            Json::Value json;
-                            json["timeout"] = infoHash.toString();
-                            json["to"] = clientId;
-                            json["vid"] = std::to_string(vid);
-                            sendPushNotification(pushToken, std::move(json), isAndroid);
-                        });
+                        Json::Value json;
+                        json["timeout"] = infoHash.toString();
+                        json["to"] = clientId;
+                        json["vid"] = std::to_string(vid);
+                        if (!pput.expireNotifyTimer)
+                            pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx,
+                                                     timeout - proxy::OP_MARGIN);
+                        else
+                            pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
+                        pput.expireNotifyTimer->async_wait(std::bind(
+                            &DhtProxyServer::handleNotifyPushListenExpire, this,
+                            std::placeholders::_1, pushToken, json, isAndroid));
                     }
 #endif
                 } else {

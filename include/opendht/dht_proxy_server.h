@@ -217,7 +217,7 @@ private:
     RequestStatus put(restinio::request_handle_t request,
                       restinio::router::route_params_t params);
 
-    void cancelPut(const InfoHash& key, Value::Id vid);
+    void handleCancelPermamentPut(const asio::error_code &ec, const InfoHash& key, Value::Id vid);
 
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
     /**
@@ -300,16 +300,28 @@ private:
     void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
 
     /**
+     * Send push notification with an expire timeout.
+     * @param ec
+     * @param pushToken
+     * @param json
+     * @param isAndroid
+     */
+    void handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
+                                      Json::Value json, const bool isAndroid);
+
+    /**
      * Remove a push listener between a client and a hash
+     * @param ec
      * @param pushToken
      * @param key
      * @param clientId
      */
-    void cancelPushListen(const std::string& pushToken, const InfoHash& key, const std::string& clientId);
+    void handleCancelPushListen(const asio::error_code &ec, const std::string pushToken,
+                                const InfoHash key, const std::string clientId);
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
-    void asyncPrintStats();
+    void handlePrintStats(const asio::error_code &ec);
 
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
