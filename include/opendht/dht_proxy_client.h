@@ -306,6 +306,8 @@ private:
                     const ValueCallback &cb,
                     const Sp<ListenState> &state, Listener &listener,
                     ListenMethod method = ListenMethod::LISTEN);
+    void handleResubscribe(const asio::error_code &ec, const InfoHash& key,
+                           const size_t token, std::shared_ptr<ListenState> state);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
     void handleRefreshPut(const asio::error_code &ec, const InfoHash& key, const Value::Id id,
@@ -377,7 +379,7 @@ private:
     /**
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
-    void confirmProxy();
+    void handleProxyConfirm(const asio::error_code &ec);
     Sp<asio::steady_timer> nextProxyConfirmationTimer_;
     Sp<asio::steady_timer> listenerRestartTimer_;
 
@@ -390,7 +392,7 @@ private:
      * Refresh a listen via a token
      * @param token
      */
-    void resubscribe(const InfoHash& key, Listener& listener);
+    void resubscribe(const InfoHash& key, const size_t token, Listener& listener);
 
     /**
      * If we want to use push notifications by default.
