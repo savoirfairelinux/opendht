@@ -580,7 +580,6 @@ main(int argc, char **argv)
 
     node->shutdown([&]()
     {
-        std::lock_guard<std::mutex> lk(m);
         done = true;
         cv.notify_all();
     });
