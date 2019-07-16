@@ -134,6 +134,12 @@ DhtProxyClient::handleProxyConfirm(const asio::error_code &ec)
 
 DhtProxyClient::~DhtProxyClient()
 {
+    stop();
+}
+
+void
+DhtProxyClient::stop()
+{
     isDestroying_ = true;
     cancelAllOperations();
     cancelAllListeners();
@@ -200,8 +206,7 @@ DhtProxyClient::cancelAllListeners()
 void
 DhtProxyClient::shutdown(ShutdownCallback cb)
 {
-    cancelAllOperations();
-    cancelAllListeners();
+    stop();
     if (cb)
         cb();
 }

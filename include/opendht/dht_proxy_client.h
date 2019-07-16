@@ -277,6 +277,7 @@ private:
      * Start the connection with a server.
      */
     void startProxy();
+    void stop();
 
     /**
      * Get informations from the proxy node
