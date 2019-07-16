@@ -636,7 +636,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     if (pushServer_.empty())
         return;
 
-    httpClient_->async_connect([this, &token, json=std::move(json), isAndroid](std::shared_ptr<http::Connection> conn)
+    httpClient_->async_connect([this, token, json=std::move(json), isAndroid](std::shared_ptr<http::Connection> conn)
     {
         if (!conn){
             logger_->e("[proxy:server] [notification] invalid connection");
