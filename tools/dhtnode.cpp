@@ -578,15 +578,19 @@ main(int argc, char **argv)
     std::mutex m;
     bool done {false};
 
-    node->shutdown([&]()
-    {
-        done = true;
+    node->shutdown([&]() {
+        {
+            std::lock_guard<std::mutex> lk(m);
+            done = true;
+        }
         cv.notify_all();
     });
 
     // wait for shutdown
-    std::unique_lock<std::mutex> lk(m);
-    cv.wait(lk, [&](){ return done; });
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [&](){ return done; });
+    }
 
     node->join();
 #ifdef WIN32_NATIVE
