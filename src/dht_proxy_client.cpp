@@ -297,7 +297,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
         if (logger_)
             context->logger = logger_;
         std::weak_ptr<GetContext> wcontext = context;
-        context->cb = [this, key, wcontext, cb](const dht::Sp<dht::Value> value) -> bool {
+        context->cb = [this, wcontext, cb](const dht::Sp<dht::Value> value) -> bool {
             auto context = wcontext.lock();
             {
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
@@ -310,7 +310,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb,
             loopSignal_();
             return context->ok;
         };
-        context->donecb = [this, key, donecb](bool ok){
+        context->donecb = [this, donecb](bool ok){
             {
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
                 callbacks_.emplace_back([=](){
@@ -663,8 +663,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<In
                 if (logger_)
                     context->logger = logger_;
                 std::weak_ptr<StatusContext> wcontext = context;
-                context->cb = [this, wcontext](Json::Value infos)
-                {
+                context->cb = [wcontext](Json::Value infos) {
                     auto context = wcontext.lock();
                     if (context->family == AF_INET)
                         context->infoState->ipv4++;
