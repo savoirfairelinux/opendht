@@ -24,8 +24,8 @@ constexpr char HTTP_HEADER_CONTENT_LENGTH[] = "Content-Length:";
 
 // connection
 
-Connection::Connection(const ConnectionId id, asio::ip::tcp::socket socket):
-    id_(id), socket_(std::move(socket))
+Connection::Connection(asio::ip::tcp::socket socket, std::shared_ptr<dht::Logger> logger):
+    id_(++ids_), socket_(std::move(socket)), logger_(logger)
 {}
 
 Connection::~Connection(){
@@ -48,6 +48,29 @@ Connection::is_v6(){
 }
 
 void
+Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
+{
+    if (!is_open()){
+        if (logger_)
+            logger_->e("[connection:%i] closed, can't timeout", id_);
+        return;
+    }
+    if (!timeout_timer_)
+        timeout_timer_ = std::make_unique<asio::steady_timer>(io_context());
+    timeout_timer_->expires_at(std::chrono::steady_clock::now() + timeout);
+    timeout_timer_->async_wait([this, cb](const asio::error_code &ec){
+        if (ec == asio::error_code::operation_aborted)
+            return;
+        else if (ec){
+            if (logger_)
+                logger_->e("[connection:%i] timeout error: %s", id_, ec.message().c_str());
+        }
+        if (cb)
+            cb(ec);
+    });
+}
+
+void
 Connection::close(){
     socket_.close();
 }
@@ -64,7 +87,8 @@ ConnectionListener::ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
 {}
 
 ConnectionListener::~ConnectionListener()
-{}
+{
+}
 
 void
 ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
@@ -107,109 +131,64 @@ ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
     return result;
 }
 
-// client
+// request
 
-Client::Client(asio::io_context& ctx, const std::string host, const std::string service,
-               std::shared_ptr<dht::Logger> logger, const bool resolve):
-        resolver_(ctx), logger_(logger)
+Request::Request(asio::io_context& ctx, const std::string host, const std::string service,
+                 const bool resolve, std::shared_ptr<dht::Logger> logger):
+        id_(++ids_), resolver_(ctx), logger_(logger)
 {
     if (resolve)
-        async_resolve(host, service);
+        resolve(host, service);
 }
 
-asio::io_context&
-Client::io_context()
+Request::~Request()
 {
-    return resolver_.get_io_context();
+    terminate();
 }
 
 void
-Client::set_logger(std::shared_ptr<dht::Logger> logger)
+Request::set_logger(std::shared_ptr<dht::Logger> logger)
 {
     logger_ = logger;
 }
 
-bool
-Client::active_connection(const ConnectionId conn_id)
-{
-    auto conn_context = connections_.find(conn_id);
-    if (conn_context == connections_.end())
-        return false;
-    return conn_context->second.connection->is_open();
-}
-
 void
-Client::close_connection(const ConnectionId conn_id)
+Request::terminate()
 {
-    auto& conn_context = connections_[conn_id];
-    if (conn_context.parser)
-        // ensure on_message_complete is fired
-        http_parser_execute(conn_context.parser.get(),
-                            conn_context.parser_settings.get(), "", 0);
-    if (conn_context.connection){
-        // close the socket
-        if (conn_context.connection->is_open())
-            conn_context.connection->close();
-    }
-    // remove from active requests
-    connections_.erase(conn_id);
+    if (parser_)
+        // ensure on_message_complete callback is called
+        http_parser_execute(parser_.get(), parser_s_.get(), "", 0);
     if (logger_)
-        logger_->d("[http::client] [connection:%i] closed", conn_id);
-}
-
-void
-Client::set_connection_timeout(const ConnectionId conn_id,
-                               const std::chrono::seconds timeout, HandlerCb cb)
-{
-    auto& conn_context = connections_[conn_id];
-    if (logger_ && !conn_context.connection){
-        logger_->e("[http::client] [connection:%i] closed, can't timeout", conn_id);
-        return;
-    }
-    if (!conn_context.timeout_timer)
-        conn_context.timeout_timer = std::make_unique<asio::steady_timer>(io_context());
-    // define or overwrites existing
-    conn_context.timeout_timer->expires_at(std::chrono::steady_clock::now() + timeout);
-    // define timeout
-    conn_context.timeout_timer->async_wait([this, conn_id, cb](const asio::error_code &ec){
-        if (ec){
-            if (logger_)
-                logger_->e("[http::client] [connection:%i] timeout error: %s",
-                           conn_id, ec.message().c_str());
-        }
-        if (cb)
-            cb(ec);
-    });
+        logger_->d("[http:request:%i] done", id_);
 }
 
 bool
-Client::resolved()
+Request::resolved()
 {
     return !endpoints_.empty();
 }
 
 void
-Client::async_resolve(const std::string host, const std::string service, HandlerCb cb)
+Request::resolve(const std::string host, const std::string service, HandlerCb cb)
 {
     // build the query
     asio::ip::tcp::resolver::query query(host, service);
 
     // resolve the query to the server
-    resolver_.async_resolve(query, [this, host, service, cb](
-            const asio::error_code& ec,
-            asio::ip::tcp::resolver::results_type endpoints)
+    resolver_.async_resolve(query, [this, host, service, cb]
+        (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
     {
-        if (ec and logger_){
-            logger_->e("[http::client] [resolve %s:%s] error resolving: %s",
-                       host.c_str(), service.c_str(), ec.message().c_str());
+        if (ec){
+            if (logger_)
+                logger_->e("[http:request:%i] error resolving %s:%s: %s",
+                           id_, host.c_str(), service.c_str(), ec.message().c_str());
         }
         else {
             for (auto it = endpoints.begin(); it != endpoints.end(); ++it){
                 if (logger_){
                     asio::ip::tcp::endpoint endpoint = *it;
-                    logger_->d("[http::client] [resolve %s:%s] address=%s ipv%i",
-                        host.c_str(), service.c_str(),
-                        endpoint.address().to_string().c_str(),
+                    logger_->d("[http:request:%i] resolved %s:%s: address=%s ipv%i",
+                        id_, host.c_str(), service.c_str(), endpoint.address().to_string().c_str(),
                         endpoint.address().is_v6() ? 6 : 4);
                 }
             }
@@ -221,10 +200,9 @@ Client::async_resolve(const std::string host, const std::string service, Handler
 }
 
 std::string
-Client::create_request(const restinio::http_request_header_t header,
-                       const restinio::http_header_fields_t header_fields,
-                       const restinio::http_connection_header_t connection,
-                       const std::string body)
+Request::build(const restinio::http_request_header_t header,
+               const restinio::http_header_fields_t header_fields,
+               const restinio::http_connection_header_t connection, const std::string body)
 {
     std::stringstream request;
 
@@ -263,160 +241,147 @@ Client::create_request(const restinio::http_request_header_t header,
 }
 
 void
-Client::async_connect(ConnectionCb cb)
+Request::connect(ConnectionCb cb)
 {
     if (endpoints_.empty()){
         if (logger_)
-            logger_->e("[http::client] host not resolved, can't send request");
+            logger_->e("[http:request] [connect] host not resolved");
         if (cb)
-            cb(nullptr);
+            cb(asio::error::connection_aborted, nullptr);
         return;
     }
-    auto conn = std::make_shared<Connection>(connId_++,
-        std::move(asio::ip::tcp::socket{resolver_.get_io_context()}));
-    if (logger_)
-        logger_->d("[http::client] [connection:%i] created", conn->id());
+    auto socket = asio::ip::tcp::socket{resolver_.get_io_context()};
+    conn_ = std::make_shared<Connection>(std::move(socket));
 
     // try to connect to any until one works
-    asio::async_connect(conn->socket_, endpoints_, [this, conn, cb](const asio::error_code& ec,
-                                                                    const asio::ip::tcp::endpoint& endpoint){
-        // only reacts if all endpoints fail
-        if (ec){
+    asio::async_connect(conn_->socket_, endpoints_, [this, conn, cb]
+                       (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
+        if (ec){ // all endpoints failed
             if (logger_)
-                logger_->e("[http::client] [connection] failed to connect to any endpoints");
-            close_connection(conn->id());
-            if (cb)
-                cb(nullptr);
-            return;
+                logger_->e("[http:request:%i] [connect] failed to connect to any endpoints", id_);
         }
-        // save the associated endpoint
-        conn->endpoint_ = endpoint;
-        // make the connection context and save it
-        connections_[conn->id()].connection = conn;
-        // get back to user
+        else {
+            if (logger_)
+                logger_->d("[http:request:%i] [connect] success", id_);
+            // save the associated endpoint
+            conn_->endpoint_ = endpoint;
+        }
         if (cb)
-            cb(conn);
+            cb(ec, conn_);
     });
 }
 
 void
-Client::async_request(std::shared_ptr<Connection> conn, std::string request,
-                      std::unique_ptr<http_parser> parser,
-                      std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb)
+Request::send(std::string request, std::unique_ptr<http_parser> parser,
+              std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb)
 {
     if (endpoints_.empty()){
         if (logger_)
-            logger_->e("[http::client] host not resolved, can't send request");
+            logger_->e("[http:request:%i] [send] unresolved destination", id_);
         if (cb)
             cb(asio::error::addrinfo_errors::service_not_found);
-        return;
     }
-    if (!conn){
+    if (!conn_){
         if (logger_)
-            logger_->e("[http::client] invalid connection, can't post request:\n%s", request.c_str());
+            logger_->e("[http:request:%i] [send] uninitialized connection", id_);
         if (cb)
             cb(asio::error::not_connected);
-        return;
     }
-    else if (!conn->is_open()){
+    else if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http::client] closed connection, can't post request");
-        close_connection(conn->id());
+            logger_->e("[http:request] [send] closed connection");
         if (cb)
             cb(asio::error::not_connected);
-        return;
     }
-    // save the request context
-    auto& conn_context = connections_[conn->id()];
-    conn_context.request = request;
-    conn_context.parser = std::move(parser);
-    conn_context.parser_settings = std::move(parser_s);
+    else {
+        // save the request context
+        request_ = request;
+        parser_ = std::move(parser);
+        parser_s_ = std::move(parser_s);
 
-    // write the request to buffer
-    std::ostream request_stream(&conn->request_);
-    request_stream << request;
+        // write the request to buffer
+        std::ostream request_stream(&conn_->request_);
+        request_stream << request;
 
-    // send the request
-    asio::async_write(conn->socket_, conn->request_,
-        std::bind(&Client::handle_request, this, std::placeholders::_1, conn, cb));
+        // send the request
+        asio::async_write(conn_->socket_, conn_->request_,
+            std::bind(&Request::handle_request, this, std::placeholders::_1, cb));
+    }
 }
 
 void
-Client::handle_request(const asio::error_code& ec, std::shared_ptr<Connection> conn, HandlerCb cb)
+Request::handle_request(const asio::error_code& ec, HandlerCb cb)
 {
-    if (!conn->is_open()){
+    if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http::client] closed connection, can't handle request");
-        close_connection(conn->id());
+            logger_->e("[http:request:%i] [write] closed connection", id_);
+        terminate();
         if (cb)
             cb(asio::error::not_connected);
         return;
     }
     if (ec and ec != asio::error::eof){
         if (logger_)
-            logger_->e("[http::client] [connection:%i] error handling request: %s",
-                       conn->id(), ec.message().c_str());
-        close_connection(conn->id());
+            logger_->e("[http:request:%i] [write] error: %s", id_, ec.message().c_str());
+        terminate();
         if (cb)
             cb(ec);
         return;
     }
     if (logger_)
-        logger_->d("[http::client] [connection:%i] request write", conn->id());
+        logger_->d("[http:request:%i] [write] success", id_);
 
     // read response
-    asio::async_read_until(conn->socket_, conn->response_chunk_, "\r\n\r\n",
-        std::bind(&Client::handle_response_header, this,
-            std::placeholders::_1, std::placeholders::_2, conn, cb));
+    asio::async_read_until(conn_->socket_, conn_->response_chunk_, "\r\n\r\n",
+        std::bind(&Request::handle_response_header, this,
+                  std::placeholders::_1, std::placeholders::_2, cb));
 }
 
 void
-Client::handle_response_header(const asio::error_code& ec, const size_t bytes,
-                               std::shared_ptr<Connection> conn, HandlerCb cb)
+Request::handle_response_header(const asio::error_code& ec, const size_t bytes, HandlerCb cb)
 {
-    if (!conn->is_open()){
+    if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http::client] closed connection, can't handle response header");
-        close_connection(conn->id());
+            logger_->e("[http:request:%i] [read:header] closed connection", id_);
+        terminate();
         if (cb)
             cb(asio::error::not_connected);
         return;
     }
     if (ec && ec != asio::error::eof){
         if (logger_)
-            logger_->e("[http::client] [connection:%i] error handling response header: %s",
-                       conn->id(), ec.message().c_str());
-        close_connection(conn->id());
+            logger_->e("[http:request:%i] [read:header] error: %s", id_, ec.message().c_str());
+        terminate();
         if (cb)
             cb(ec);
         return;
     }
     else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
-        close_connection(conn->id());
+        terminate();
         if (cb)
             cb(ec);
         return;
     }
     // read the response buffer
     std::ostringstream str_s;
-    str_s << &conn->response_chunk_;
+    str_s << &conn_->response_chunk_;
     auto chunk = str_s.str();
     auto header = chunk.substr(0, bytes);
     if (logger_)
-        logger_->d("[http::client] [connection:%i] response header read:\n%s", conn->id(), header.c_str());
+        logger_->d("[http:request:%i] [read:header]:\n%s", id_, header.c_str());
     // parse the header right away
-    parse_request(header, conn->id());
+    parse_request(header, conn_->id());
 
     unsigned int content_length = get_content_length(header);
     // has body size
     if (content_length){
         // append current body chunk
         auto body_chunk = chunk.substr(bytes, std::string::npos);
-        conn->response_body_.append(body_chunk);
+        conn_->response_body_.append(body_chunk);
         // read the rest of body
-        asio::async_read(conn->socket_, conn->response_chunk_,
+        asio::async_read(conn_->socket_, conn_->response_chunk_,
             asio::transfer_exactly(content_length - (body_chunk.size())),
-            std::bind(&Client::handle_response_body, this,
+            std::bind(&Request::handle_response_body, this,
                 std::placeholders::_1, content_length, conn, cb));
         return;
     }
@@ -424,80 +389,76 @@ Client::handle_response_header(const asio::error_code& ec, const size_t bytes,
     else if (header.find("Content-Type: application/json") != std::string::npos){
         auto body_chunk = chunk.substr(bytes, std::string::npos);
         if (!body_chunk.empty()){
-            parse_request(body_chunk, conn->id());
+            parse_request(body_chunk, conn_->id());
         }
         // keep reading
-        asio::async_read(conn->socket_, conn->response_chunk_, asio::transfer_at_least(1),
-            std::bind(&Client::handle_response_body, this,
+        asio::async_read(conn_->socket_, conn_->response_chunk_, asio::transfer_at_least(1),
+            std::bind(&Request::handle_response_body, this,
                 std::placeholders::_1, std::placeholders::_2, conn, cb));
     }
 }
 
 void
-Client::handle_response_body(const asio::error_code& ec, const size_t bytes,
+Request::handle_response_body(const asio::error_code& ec, const size_t bytes,
                              std::shared_ptr<Connection> conn, HandlerCb cb)
 {
-    if (!conn->is_open()){
+    if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http::client] closed connection, can't handle response body");
-        close_connection(conn->id());
+            logger_->e("[http:request] [read:body] closed connection");
+        terminate();
         if (cb)
             cb(asio::error::not_connected);
         return;
     }
     if (ec && ec != asio::error::eof){
         if (logger_)
-            logger_->e("[http::client] [connection:%i] error handling response body: %s",
-                       conn->id(), ec.message().c_str());
-        close_connection(conn->id());
+            logger_->e("[http:request:%i] [read:body] error: %s", id_, ec.message().c_str());
+        terminate();
         if (cb)
             cb(ec);
         return;
     }
     else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
-        close_connection(conn->id());
+        terminate();
         if (cb)
             cb(ec);
         return;
     }
     std::string body;
-    if (!conn->response_body_.empty()){
+    if (!conn_->response_body_.empty()){
         // append previous incomplete chunk from header
-        body.append(conn->response_body_);
+        body.append(conn_->response_body_);
     }
     // read the response buffer
     std::ostringstream str_s;
-    str_s << &conn->response_chunk_;
+    str_s << &conn_->response_chunk_;
     body.append(str_s.str().substr(0, bytes));
     if (logger_)
-        logger_->d("[http::client] [connection:%i] response body read:\n%s", conn->id(), body.c_str());
-    // parse the body
-    parse_request(body, conn->id());
-    // clear the read body
-    conn->response_body_.clear();
-    // keep reading line by line
-    asio::async_read(conn->socket_, conn->response_chunk_, asio::transfer_at_least(1),
-        std::bind(&Client::handle_response_body, this,
+        logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
+
+    parse_request(body);
+    conn_->response_body_.clear();
+
+    asio::async_read(conn_->socket_, conn_->response_chunk_, asio::transfer_at_least(1),
+        std::bind(&Request::handle_response_body, this,
             std::placeholders::_1, std::placeholders::_2, conn, cb));
 }
 
 void
-Client::parse_request(const std::string request, const ConnectionId conn_id)
+Request::parse_request(const std::string request)
 {
-    auto& conn_context = connections_[conn_id];
-    http_parser_execute(conn_context.parser.get(), conn_context.parser_settings.get(),
-                        request.c_str(), request.size());
+    http_parser_execute(parser_.get(), parser_s_.get(), request.c_str(), request.size());
     // detect parsing errors
-    if (HPE_OK != conn_context.parser->http_errno && HPE_PAUSED != conn_context.parser->http_errno){
+    if (HPE_OK != parser_->http_errno && HPE_PAUSED != parser_->http_errno){
         if (logger_){
-            auto err = HTTP_PARSER_ERRNO(conn_context.parser.get());
-            logger_->e("[http::client] [connection:%i] error parsing: %s", conn_id, http_errno_name(err));
+            auto err = HTTP_PARSER_ERRNO(parser_.get());
+            logger_->e("[http:request:%i] [parse] error: %s", id_, http_errno_name(err));
         }
     }
 }
 
 size_t
-Client::get_content_length(const std::string str, const ConnectionId conn_id)
+Request::get_content_length(const std::string str)
 {
     size_t content_length = 0;
     auto content_length_i = str.find(HTTP_HEADER_CONTENT_LENGTH);
@@ -509,8 +470,8 @@ Client::get_content_length(const std::string str, const ConnectionId conn_id)
         }
         catch (const std::exception& e){
             if (logger_)
-                logger_->d("[http::client] [connection:%i] invalid content-length '%s': %s",
-                           conn_id, content_length_str.c_str(), e.what());
+                logger_->d("[http:request:%i] [content-length] invalid '%s': %s",
+                           id_, content_length_str.c_str(), e.what());
         }
     }
     return content_length;

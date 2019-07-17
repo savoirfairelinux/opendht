@@ -28,28 +28,43 @@
 
 namespace http {
 
-using ConnectionId = unsigned int;
+class Connection;
+
+// basic types
+using Id = unsigned int;
+
+// asio handlers callbacks
+using HandlerCb = std::function<void(const asio::error_code& ec)>;
+using ConnectionCb = std::function<void(const asio::error_code& ec, std::shared_ptr<Connection>)>;
 
 class OPENDHT_PUBLIC Connection
 {
 public:
-    Connection(const ConnectionId id, asio::ip::tcp::socket socket);
+    Connection(asio::ip::tcp::socket socket, std::shared_ptr<dht::Logger> logger = {});
     ~Connection();
 
-    ConnectionId id();
+    Id id();
     bool is_open();
     bool is_v6();
+    void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
+    // TODO abort to silence error in request?
     void close();
 
 private:
     friend class Client;
 
-    ConnectionId id_;
+    Id id_;
+    static Id ids_;
+    std::shared_ptr<dht::Logger> logger_;
+
     asio::ip::tcp::socket socket_;
+    asio::ip::tcp::endpoint endpoint_;
+
     asio::streambuf request_;
     std::string response_body_;
     asio::streambuf response_chunk_;
-    asio::ip::tcp::endpoint endpoint_;
+
+    std::unique_ptr<asio::steady_timer> timeout_timer_;
 };
 
 /**
@@ -61,19 +76,6 @@ struct ListenerSession
     dht::InfoHash hash;
     std::future<size_t> token;
     std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
-};
-
-/**
- * Context of an active connection allowing it to parse responses etc.
- */
-struct ConnectionContext
-{
-    // TODO store multiple requests
-    std::string request;
-    std::unique_ptr<http_parser> parser;
-    std::unique_ptr<http_parser_settings> parser_settings;
-    std::shared_ptr<Connection> connection;
-    std::unique_ptr<asio::steady_timer> timeout_timer;
 };
 
 class ConnectionListener
@@ -98,74 +100,57 @@ private:
     std::shared_ptr<std::mutex> lock_;
     std::shared_ptr<std::map<restinio::connection_id_t,
                              http::ListenerSession>> listeners_;
+
     std::shared_ptr<dht::Logger> logger_;
 };
 
-class OPENDHT_PUBLIC Client
+class OPENDHT_PUBLIC Request
 {
 public:
-    using HandlerCb = std::function<void(const asio::error_code& ec)>;
-    using ConnectionCb = std::function<void(std::shared_ptr<Connection>)>;
-
-    Client(asio::io_context& ctx, const std::string host, const std::string service = "80",
-           std::shared_ptr<dht::Logger> logger = {}, const bool resolve = true);
-
-    asio::io_context& io_context();
+    Request(asio::io_context& ctx, const std::string host, const std::string service = "80",
+            const bool resolve = true, std::shared_ptr<dht::Logger> logger = {});
+    ~Request();
 
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
-    bool active_connection(const ConnectionId conn_id);
-    void close_connection(const ConnectionId conn_id);
-    void set_connection_timeout(const ConnectionId conn_id, const std::chrono::seconds timeout,
-                                HandlerCb cb = {});
+    void terminate();
 
+    void resolve(const std::string host, const std::string service, HandlerCb cb = {});
     bool resolved();
-    void async_resolve(const std::string host, const std::string service, HandlerCb cb = {});
 
-    void async_connect(ConnectionCb cb);
+    void connect(ConnectionCb cb = {});
 
-    std::string create_request(const restinio::http_request_header_t header,
-                               const restinio::http_header_fields_t header_fields,
-                               const restinio::http_connection_header_t connection,
-                               const std::string body);
+    std::string build(const restinio::http_request_header_t header,
+                      const restinio::http_header_fields_t header_fields,
+                      const restinio::http_connection_header_t connection, const std::string body);
 
-    void async_request(std::shared_ptr<http::Connection> conn,
-                       std::string request, std::unique_ptr<http_parser> parser,
-                       std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb = {});
+    void send(std::string request, std::unique_ptr<http_parser> parser,
+              std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb = {});
 
 private:
-    std::shared_ptr<Connection> create_connection();
+    void handle_request(const asio::error_code& ec, HandlerCb cb = {});
 
-    void handle_resolve(const asio::error_code& ec,
-                        asio::ip::tcp::resolver::iterator endpoint_it,
-                        std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+    void handle_response_header(const asio::error_code& ec, const size_t bytes, HandlerCb cb = {});
 
-    void handle_request(const asio::error_code& ec,
-                        std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+    void handle_response_body(const asio::error_code& ec, const size_t bytes, HandlerCb cb = {});
 
-    void handle_response_header(const asio::error_code& ec, const size_t bytes,
-                                std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+    void parse_request(const std::string request);
 
-    void handle_response_body(const asio::error_code& ec, const size_t bytes,
-                              std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
-
-    void parse_request(const std::string request, const ConnectionId conn_id = 0);
-
-    size_t get_content_length(const std::string str, const ConnectionId conn_id = 0);
+    size_t get_content_length(const std::string str);
 
     std::string service_;
     std::string host_;
 
-    // contains the io_context
     asio::ip::tcp::resolver resolver_;
-    // resolved endpoint
     asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
 
-    ConnectionId connId_ {1};
-    /*
-     * An association between an active connection and its context.
-     */
-    std::map<ConnectionId, ConnectionContext> connections_;
+    Id id_;
+    static Id ids_;
+    std::shared_ptr<Connection> conn_;
+
+    std::string request_;
+    std::unique_ptr<http_parser> parser_;
+    std::unique_ptr<http_parser_settings> parser_s_;
 
     std::shared_ptr<dht::Logger> logger_;
 };
