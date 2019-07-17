@@ -42,7 +42,8 @@ namespace Json {
 }
 
 namespace http {
-    class Client;
+    class Resolver;
+    class Request;
 }
 
 namespace dht {
@@ -56,7 +57,7 @@ public:
                             const std::string& pushClientId = "",
                             std::shared_ptr<dht::Logger> logger = {});
 
-    restinio::http_header_fields_t initHeaderFields();
+    void setHeaderFields(std::shared_ptr<http::Request> request);
 
     virtual void setPushNotificationToken(const std::string& token) {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -294,7 +295,7 @@ private:
     void handleExpireListener(const asio::error_code &ec, const InfoHash& key);
 
     struct Listener;
-    struct ListenState;
+    struct OperationState;
     enum class ListenMethod {
         LISTEN,
         SUBSCRIBE,
@@ -303,15 +304,13 @@ private:
     /**
      * Send Listen with httpClient_
      */
-    void sendListen(const restinio::http_request_header_t header,
-                    const ValueCallback &cb,
-                    const Sp<ListenState> &state, Listener &listener,
-                    ListenMethod method = ListenMethod::LISTEN);
-    void handleResubscribe(const asio::error_code &ec, const InfoHash& key,
-                           const size_t token, std::shared_ptr<ListenState> state);
+    void sendListen(const restinio::http_request_header_t header, const ValueCallback& cb,
+                    const Sp<OperationState>& state, Listener& listener, ListenMethod method = ListenMethod::LISTEN);
+    void handleResubscribe(const asio::error_code& ec, const InfoHash& key,
+                           const size_t token, std::shared_ptr<OperationState> state);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
-    void handleRefreshPut(const asio::error_code &ec, const InfoHash& key, const Value::Id id,
+    void handleRefreshPut(const asio::error_code& ec, const InfoHash& key, const Value::Id id,
                           std::shared_ptr<std::atomic_bool> ok);
 
     /**
@@ -335,10 +334,8 @@ private:
      * Note: Each context is used in one thread only
      */
     asio::io_context httpContext_;
-    /*
-     * http::Client instance used on http io_context
-     */
-    std::unique_ptr<http::Client> httpClient_;
+    std::shared_ptr<http::Resolver> resolver_;
+    std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
     /*
      * Thread for executing the http io_context.run() blocking call
      */

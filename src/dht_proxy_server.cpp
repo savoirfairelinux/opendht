@@ -81,10 +81,8 @@ DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
         restinio::own_io_context(),
         std::forward<ServerSettings>(settings)
     ));
-    // build http client
-    auto pushHostPort = splitPort(pushServer_);
-    httpClient_.reset(new http::Client(httpServer_->io_context(),
-                      pushHostPort.first, pushHostPort.second));
+    // define http request destination
+    pushHostPort_ = splitPort(pushServer_);
     // run http server
     httpServerThread_ = std::thread([this](){
         try {
@@ -659,80 +657,65 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid) const
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid)
 {
     if (pushServer_.empty())
         return;
 
-    httpClient_->async_connect([this, token, json=std::move(json), isAndroid](std::shared_ptr<http::Connection> conn)
-    {
-        if (!conn){
-            logger_->e("[proxy:server] [notification] invalid connection");
-            return;
-        }
-        try {
-            restinio::http_request_header_t header;
-            header.request_target("/api/push");
-            header.method(restinio::http_method_post());
+    auto request = std::make_shared<http::Request>(httpServer_->io_context(), pushHostPort_.first,
+                                                   pushHostPort_.second, logger_);
+    auto reqid = request->id();
+    try {
+        restinio::http_request_header_t header;
+        header.request_target("/api/push");
+        header.method(restinio::http_method_post());
+        request->set_header(header);
 
-            restinio::http_header_fields_t header_fields;
-            header_fields.append_field(restinio::http_field_t::host, pushServer_.c_str());
-            header_fields.append_field(restinio::http_field_t::user_agent, "RESTinio client");
-            header_fields.append_field(restinio::http_field_t::accept, "*/*");
-            header_fields.append_field(restinio::http_field_t::content_type, "application/json");
+        request->set_header_field(restinio::http_field_t::host, pushServer_.c_str());
+        request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
+        request->set_header_field(restinio::http_field_t::accept, "*/*");
+        request->set_header_field(restinio::http_field_t::content_type, "application/json");
 
-            // NOTE: see https://github.com/appleboy/gorush
-            Json::Value notification(Json::objectValue);
-            Json::Value tokens(Json::arrayValue);
-            tokens[0] = token;
-            notification["tokens"] = std::move(tokens);
-            notification["platform"] = isAndroid ? 2 : 1;
-            notification["data"] = std::move(json);
-            notification["priority"] = "high";
-            notification["time_to_live"] = 600;
+        // NOTE: see https://github.com/appleboy/gorush
+        Json::Value notification(Json::objectValue);
+        Json::Value tokens(Json::arrayValue);
+        tokens[0] = token;
+        notification["tokens"] = std::move(tokens);
+        notification["platform"] = isAndroid ? 2 : 1;
+        notification["data"] = std::move(json);
+        notification["priority"] = "high";
+        notification["time_to_live"] = 600;
 
-            Json::Value notifications(Json::arrayValue);
-            notifications[0] = notification;
+        Json::Value notifications(Json::arrayValue);
+        notifications[0] = notification;
 
-            Json::Value content;
-            content["notifications"] = std::move(notifications);
+        Json::Value content;
+        content["notifications"] = std::move(notifications);
 
-            Json::StreamWriterBuilder wbuilder;
-            wbuilder["commentStyle"] = "None";
-            wbuilder["indentation"] = "";
-            auto body = Json::writeString(wbuilder, content);
+        Json::StreamWriterBuilder wbuilder;
+        wbuilder["commentStyle"] = "None";
+        wbuilder["indentation"] = "";
 
-            auto parser = std::make_unique<http_parser>();
-            http_parser_init(parser.get(), HTTP_RESPONSE);
+        auto body = Json::writeString(wbuilder, content);
+        request->set_body(body);
 
-            struct PushContext {
-                std::shared_ptr<Logger> logger;
-            };
-            auto context = std::make_shared<PushContext>();
-            if (logger_)
-                context->logger = logger_;
-            parser->data = static_cast<void*>(context.get());
-
-            auto parser_s = std::make_unique<http_parser_settings>();
-            http_parser_settings_init(parser_s.get());
-            parser_s->on_status = [](http_parser*  parser, const char* /*at*/, size_t /*length*/) -> int {
-                auto context = static_cast<PushContext*>(parser->data);
-                if (parser->status_code == 200)
-                    return 0;
-                if (context->logger)
-                    context->logger->e("[proxy:server] [notification] error send push: %i", parser->status_code);
-                return 1;
-            };
-            auto request = httpClient_->create_request(header, header_fields,
-                restinio::http_connection_header_t::close, body);
-
-            httpClient_->async_request(conn, request, std::move(parser), std::move(parser_s));
-        }
-        catch (const std::exception &e){
-            if (logger_)
-                logger_->e("[proxy:server] [notification] error send push: %i", e.what());
-        }
-    });
+        request->add_on_message_complete_callback([this, reqid](const http::Response response){
+            if (response.status_code != 200)
+                if (logger_)
+                    logger_->e("[proxy:server] [notification] push failed: %i", response.status_code);
+        });
+        request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
+            if (state == http::Request::State::DONE)
+                requests_.erase(reqid);
+        });
+        request->send();
+        requests_[reqid] = request;
+    }
+    catch (const std::exception &e){
+        if (logger_)
+            logger_->e("[proxy:server] [notification] error send push: %i", e.what());
+        requests_.erase(reqid);
+    }
 }
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS

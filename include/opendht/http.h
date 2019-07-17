@@ -28,28 +28,40 @@
 
 namespace http {
 
-using ConnectionId = unsigned int;
+using HandlerCb = std::function<void(const asio::error_code& ec)>;
 
 class OPENDHT_PUBLIC Connection
 {
 public:
-    Connection(const ConnectionId id, asio::ip::tcp::socket socket);
+    Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> logger = {});
     ~Connection();
 
-    ConnectionId id();
+    unsigned int id();
     bool is_open();
     bool is_v6();
+
+    void set_endpoint(const asio::ip::tcp::endpoint& endpoint);
+
+    asio::streambuf& input();
+    asio::streambuf& data();
+    asio::ip::tcp::socket& socket();
+
+    void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
+
     void close();
 
 private:
-    friend class Client;
+    unsigned int id_;
+    static unsigned int ids_;
 
-    ConnectionId id_;
     asio::ip::tcp::socket socket_;
-    asio::streambuf request_;
-    std::string response_body_;
-    asio::streambuf response_chunk_;
     asio::ip::tcp::endpoint endpoint_;
+
+    asio::streambuf write_buf_;
+    asio::streambuf read_buf_;
+
+    std::unique_ptr<asio::steady_timer> timeout_timer_;
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 /**
@@ -61,19 +73,6 @@ struct ListenerSession
     dht::InfoHash hash;
     std::future<size_t> token;
     std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
-};
-
-/**
- * Context of an active connection allowing it to parse responses etc.
- */
-struct ConnectionContext
-{
-    // TODO store multiple requests
-    std::string request;
-    std::unique_ptr<http_parser> parser;
-    std::unique_ptr<http_parser_settings> parser_settings;
-    std::shared_ptr<Connection> connection;
-    std::unique_ptr<asio::steady_timer> timeout_timer;
 };
 
 class ConnectionListener
@@ -96,76 +95,152 @@ private:
 
     std::shared_ptr<dht::DhtRunner> dht_;
     std::shared_ptr<std::mutex> lock_;
-    std::shared_ptr<std::map<restinio::connection_id_t,
-                             http::ListenerSession>> listeners_;
+    std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners_;
+
     std::shared_ptr<dht::Logger> logger_;
 };
 
-class OPENDHT_PUBLIC Client
+/* @class Resolver
+ * @brief The purpose is to only resolve once to avoid mutliple dns requests per operation.
+ */
+class OPENDHT_PUBLIC Resolver
 {
 public:
-    using HandlerCb = std::function<void(const asio::error_code& ec)>;
-    using ConnectionCb = std::function<void(std::shared_ptr<Connection>)>;
+    using ResolverCb = std::function<void(const asio::error_code& ec,
+                                          const asio::ip::basic_resolver_results<asio::ip::tcp> results)>;
 
-    Client(asio::io_context& ctx, const std::string host, const std::string service = "80",
-           std::shared_ptr<dht::Logger> logger = {}, const bool resolve = true);
+    Resolver(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
+             std::shared_ptr<dht::Logger> logger = {});
 
-    asio::io_context& io_context();
+    // use already resolved endpoints with classes using this resolver
+    Resolver(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::ip::tcp> endpoints,
+             std::shared_ptr<dht::Logger> logger = {});
+
+    ~Resolver();
+
+    void add_callback(ResolverCb cb);
+
+private:
+    void resolve(const std::string host, const std::string service);
+
+    std::mutex mutex_;
+
+    asio::error_code ec_;
+    asio::ip::tcp::resolver resolver_;
+    asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
+
+    bool completed_ {false};
+    std::queue<ResolverCb> cbs_;
+
+    std::shared_ptr<dht::Logger> logger_;
+};
+
+struct Response
+{
+    unsigned int status_code;
+    std::map<std::string, std::string> headers;
+    std::string body;
+};
+
+class OPENDHT_PUBLIC Request
+{
+public:
+    enum class State {
+        CREATED,
+        SENDING,
+        HEADER_RECEIVED,
+        RECEIVING,
+        DONE
+    };
+    using OnStateChangeCb = std::function<void(const State state)>;
+    using OnStatusCb = std::function<void(unsigned int status_code)>;
+    using OnDataCb = std::function<void(const char* at, size_t length)>;
+    using OnMessageCompleteCb = std::function<void(const Response response)>;
+
+    // resolves implicitly
+    Request(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
+            std::shared_ptr<dht::Logger> logger = {});
+
+    // user defined resolver
+    Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger = {});
+
+    // user defined resolved endpoints
+    Request(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints,
+            std::shared_ptr<dht::Logger> logger = {});
+
+    ~Request();
+
+    unsigned int id() const;
+    std::shared_ptr<Connection> get_connection() const;
 
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
-    bool active_connection(const ConnectionId conn_id);
-    void close_connection(const ConnectionId conn_id);
-    void set_connection_timeout(const ConnectionId conn_id, const std::chrono::seconds timeout,
-                                HandlerCb cb = {});
+    void set_header(const restinio::http_request_header_t header);
+    void set_header_field(const restinio::http_field_t field, const std::string& value);
+    void set_connection_type(const restinio::http_connection_header_t connection);
+    void set_body(const std::string& body);
 
-    bool resolved();
-    void async_resolve(const std::string host, const std::string service, HandlerCb cb = {});
+    void add_on_state_changed_callback(OnStateChangeCb cb);
+    void add_on_status_callback(OnStatusCb cb);
+    void add_on_body_callback(OnDataCb cb);
+    void add_on_message_complete_callback(OnMessageCompleteCb cb);
 
-    void async_connect(ConnectionCb cb);
-
-    std::string create_request(const restinio::http_request_header_t header,
-                               const restinio::http_header_fields_t header_fields,
-                               const restinio::http_connection_header_t connection,
-                               const std::string body);
-
-    void async_request(std::shared_ptr<http::Connection> conn,
-                       std::string request, std::unique_ptr<http_parser> parser,
-                       std::unique_ptr<http_parser_settings> parser_s, HandlerCb cb = {});
+    void send();
+    void end();
 
 private:
-    std::shared_ptr<Connection> create_connection();
+    struct Callbacks {
+        Callbacks(){}
 
-    void handle_resolve(const asio::error_code& ec,
-                        asio::ip::tcp::resolver::iterator endpoint_it,
-                        std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+        OnStatusCb on_status;
+        OnDataCb on_header_field;
+        OnDataCb on_header_value;
+        OnDataCb on_body;
+        OnMessageCompleteCb on_message_complete;
 
-    void handle_request(const asio::error_code& ec,
-                        std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+        OnStateChangeCb on_state_changed;
+    };
 
-    void handle_response_header(const asio::error_code& ec, const size_t bytes,
-                                std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+    void notify_state_changed(const State state);
 
-    void handle_response_body(const asio::error_code& ec, const size_t bytes,
-                              std::shared_ptr<Connection> conn = {}, HandlerCb cb = {});
+    void build();
+    void init_parser();
 
-    void parse_request(const std::string request, const ConnectionId conn_id = 0);
+    void connect(asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints, HandlerCb cb = {});
 
-    size_t get_content_length(const std::string str, const ConnectionId conn_id = 0);
+    void terminate(const asio::error_code& ec);
+
+    void post();
+
+    void handle_request(const asio::error_code& ec);
+
+    void handle_response_header(const asio::error_code& ec, const size_t bytes);
+
+    void handle_response_body(const asio::error_code& ec, const size_t bytes, const std::string chunk);
+
+    void parse_request(const std::string request);
+
+    restinio::http_request_header_t header_;
+    std::map<restinio::http_field_t, std::string> headers_;
+    restinio::http_connection_header_t connection_type_;
+    std::string body_;
+
+    std::mutex cbs_mutex_;
+    std::unique_ptr<Callbacks> cbs_;
 
     std::string service_;
     std::string host_;
 
-    // contains the io_context
-    asio::ip::tcp::resolver resolver_;
-    // resolved endpoint
-    asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
+    unsigned int id_;
+    static unsigned int ids_;
+    asio::io_context& ctx_;
+    std::shared_ptr<Connection> conn_;
+    std::shared_ptr<Resolver> resolver_;
 
-    ConnectionId connId_ {1};
-    /*
-     * An association between an active connection and its context.
-     */
-    std::map<ConnectionId, ConnectionContext> connections_;
+    Response response_ {};
+    std::string request_;
+    std::unique_ptr<http_parser> parser_;
+    std::unique_ptr<http_parser_settings> parser_s_;
 
     std::shared_ptr<dht::Logger> logger_;
 };

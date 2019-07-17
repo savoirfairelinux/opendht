@@ -39,7 +39,7 @@
 #endif
 
 namespace http {
-    class Client;
+    class Request;
     class opendht_logger_t;
     struct ListenerSession;
     class ConnectionListener;
@@ -297,7 +297,7 @@ private:
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
+    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid);
 
     /**
      * Send push notification with an expire timeout.
@@ -330,9 +330,13 @@ private:
     std::shared_ptr<dht::Logger> logger_;
     Json::StreamWriterBuilder jsonBuilder_;
 
+    // http server
     std::thread httpServerThread_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
-    std::unique_ptr<http::Client> httpClient_;
+
+    // http client
+    std::pair<std::string, std::string> pushHostPort_;
+    std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
 
     mutable std::mutex statsMutex_;
     mutable ServerStats stats_;
