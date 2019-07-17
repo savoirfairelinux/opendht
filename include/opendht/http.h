@@ -104,6 +104,22 @@ private:
     std::shared_ptr<dht::Logger> logger_;
 };
 
+
+class Resolver {
+    Resolver(asio::io_context& ctx, const std::string& host, const std::string& service = "80");
+
+    using ResolvedCb = std::function<void(const asio::error_code&, const asio::ip::basic_resolver_results<asio::ip::tcp>&)>;
+    void addOnResolved(ResolvedCb cb);
+
+private:
+    std::mutex cbsMutex_;
+    asio::ip::tcp::resolver resolver_;
+    asio::error_code error_;
+    asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
+    std::queue<ResolvedCb> cbs_;
+    bool completed_ {false};
+};
+
 class OPENDHT_PUBLIC Request
 {
 public:
@@ -138,12 +154,13 @@ private:
 
     size_t get_content_length(const std::string str);
 
-    std::string service_;
+    Resolver resolver_;
+    /* std::string service_;
     std::string host_;
 
     asio::ip::tcp::resolver resolver_;
     asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
-
+*/
     Id id_;
     static Id ids_;
     std::shared_ptr<Connection> conn_;

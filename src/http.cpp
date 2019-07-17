@@ -477,4 +477,43 @@ Request::get_content_length(const std::string str)
     return content_length;
 }
 
+
+Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::string& service)
+{
+    resolver_.async_resolve({host, service}, [this]
+        (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
+    {
+        std::lock_guard<std::mutex> lock(cbsMutex_);
+        while (not cbs_.empty()) {
+            cbs_.front()(ec, endpoints);
+            cbs_.pop();
+        }
+        error_ = ec;
+        endpoints_ = endpoints;
+        completed_ = true;
+    }
+}
+
+void
+Resolver::addOnResolved(ResolvedCb cb)
+{
+    std::lock_guard<std::mutex> lock(cbsMutex_);
+    if (completed_) {
+        cb(error_, endpoints_);
+    } else {
+        cbs_.push(std::move(cb));
+    }
+}
+
+/*
+private:
+    std::mutex cbsMutex_;
+    std::queue<ResolvedCb> cbs_;
+
+    asio::ip::tcp::resolver resolver_;
+    asio::error_code error_;
+    asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
+} */
+
+
 } // namespace http
