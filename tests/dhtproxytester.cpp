@@ -43,8 +43,15 @@ DhtProxyTester::setUp() {
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(
         nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 
+    dht::DhtRunner::Config config {};
+    config.dht_config.node_config.maintain_storage = false;
+    config.threaded = true;
+    config.push_node_id = "dhtnode";
+    dht::DhtRunner::Context context {};
+    context.logger = logger;
+
     nodeClient = std::make_shared<dht::DhtRunner>();
-    nodeClient->run(0, /*identity*/{}, /*threaded*/true);
+    nodeClient->run(0, config, std::move(context));
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true); // creates DhtProxyClient
