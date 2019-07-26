@@ -630,6 +630,8 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
             asio::async_read(conn_->socket(), conn_->data(), asio::transfer_at_least(1),
                 std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2, ""));
     }
+    else if (connection_type_ == restinio::http_connection_header_t::close)
+        terminate(asio::error::eof);
 }
 
 void
@@ -685,11 +687,14 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes, co
         response_.body = body;
         parse_request(body);
     }
+
     // server wants to keep sending
     if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE){
         asio::async_read(conn_->socket(), conn_->data(), asio::transfer_at_least(1),
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2, ""));
     }
+    else if (connection_type_ == restinio::http_connection_header_t::close)
+        terminate(asio::error::eof);
 }
 
 void
