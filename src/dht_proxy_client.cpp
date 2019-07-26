@@ -147,7 +147,6 @@ DhtProxyClient::stop()
         infoState_->cancel = true;
     if (statusTimer_)
         statusTimer_->cancel();
-    httpContext_.stop();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
 }
@@ -190,13 +189,8 @@ DhtProxyClient::cancelAllListeners()
                 return;
             if (l->second.request->get_connection()->is_open()){
                 l->second.opstate->stop.store(true);
-                try {
-                    l->second.request.reset();
-                } catch (const std::exception& e) {
-                    if (logger_)
-                        logger_->e("[proxy:client] [listeners:cancel:all] error closing socket: %s", e.what());
-                }
             }
+            // implicit request.reset()
             s.second.listeners.erase(token);
         });
     }

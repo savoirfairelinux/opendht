@@ -276,6 +276,11 @@ Request::Request(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::i
 
 Request::~Request()
 {
+}
+
+void
+Request::end()
+{
     terminate(asio::error::eof);
 }
 
@@ -432,6 +437,9 @@ Request::init_parser()
         if (on_body_cb)
             on_body_cb(at, length);
     };
+    cbs_->on_message_complete = [this](){
+        terminate(asio::error::eof);
+    };
 
     // http_parser raw c callback (note: no context can be passed into them)
     parser_s_->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
@@ -456,6 +464,12 @@ Request::init_parser()
         auto cbs = static_cast<Callbacks*>(parser->data);
         if (cbs->on_body)
             cbs->on_body(at, length);
+        return 0;
+    };
+    parser_s_->on_message_complete = [](http_parser* parser) -> int {
+        auto cbs = static_cast<Callbacks*>(parser->data);
+        if (cbs->on_message_complete)
+            cbs->on_message_complete();
         return 0;
     };
 }

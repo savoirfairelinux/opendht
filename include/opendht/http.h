@@ -185,8 +185,11 @@ public:
     void add_on_state_change_callback(OnStateChangeCb cb);
 
     void send();
+    void end();
 
 private:
+    using OnCompleteCb = std::function<void()>;
+
     struct Callbacks {
         Callbacks(){}
 
@@ -194,6 +197,7 @@ private:
         OnDataCb on_header_field;
         OnDataCb on_header_value;
         OnDataCb on_body;
+        OnCompleteCb on_message_complete;
 
         OnStateChangeCb on_state_change;
     };
