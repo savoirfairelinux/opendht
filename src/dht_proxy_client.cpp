@@ -1101,7 +1101,7 @@ DhtProxyClient::restartListeners()
             auto& listener = l.second;
             if (auto opstate = listener.opstate)
                 opstate->stop = true;
-            listener.request->end();
+            listener.request.reset();
         }
     }
     for (auto& search: searches_) {
@@ -1222,8 +1222,8 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
 
     auto opstate = listener.opstate;
     opstate->stop = true;
-    if (listener.request) {
-        listener.request->end();
+    if (listener.request){
+        listener.request.reset();
     }
     opstate.reset(new OperationState());
 

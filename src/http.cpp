@@ -276,12 +276,7 @@ Request::Request(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::i
 
 Request::~Request()
 {
-}
-
-void
-Request::end()
-{
-    conn_.reset();
+    terminate(asio::error::eof);
 }
 
 unsigned int
@@ -390,7 +385,7 @@ Request::add_on_state_change_callback(OnStateChangeCb cb)
 void
 Request::notify_state_change(const State state)
 {
-
+    state_ = state;
     std::lock_guard<std::mutex> lock(cbs_mutex_);
     if (cbs_->on_state_change)
         cbs_->on_state_change(state, response_);
@@ -551,6 +546,14 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
+    if (state_ == State::FINISHING or state_ == State::DONE)
+        return;
+
+    notify_state_change(State::FINISHING);
+
+    // destroy the socket with the io_context to cancel all its scheduled operations
+    conn_.reset();
+
     // set response outcome, ignore enf of file and abort
     if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
         response_.status_code = 200;

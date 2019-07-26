@@ -150,6 +150,7 @@ public:
         SENDING,
         HEADER_RECEIVED,
         RECEIVING,
+        FINISHING,
         DONE
     };
     using OnStatusCb = std::function<void(unsigned int status_code)>;
@@ -184,7 +185,6 @@ public:
     void add_on_state_change_callback(OnStateChangeCb cb);
 
     void send();
-    void end();
 
 private:
     struct Callbacks {
@@ -224,6 +224,7 @@ private:
 
     std::mutex cbs_mutex_;
     std::unique_ptr<Callbacks> cbs_;
+    State state_;
 
     std::string service_;
     std::string host_;
