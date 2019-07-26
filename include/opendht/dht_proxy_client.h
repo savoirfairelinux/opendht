@@ -305,9 +305,9 @@ private:
      * Send Listen with httpClient_
      */
     void sendListen(const restinio::http_request_header_t header, const ValueCallback& cb,
-                    const Sp<OperationState>& state, Listener& listener, ListenMethod method = ListenMethod::LISTEN);
+                    const Sp<OperationState>& opstate, Listener& listener, ListenMethod method = ListenMethod::LISTEN);
     void handleResubscribe(const asio::error_code& ec, const InfoHash& key,
-                           const size_t token, std::shared_ptr<OperationState> state);
+                           const size_t token, std::shared_ptr<OperationState> opstate);
 
     void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
     void handleRefreshPut(const asio::error_code& ec, const InfoHash& key, const Value::Id id,

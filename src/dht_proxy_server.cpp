@@ -699,14 +699,13 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         auto body = Json::writeString(wbuilder, content);
         request->set_body(body);
 
-        request->add_on_message_complete_callback([this, reqid](const http::Response response){
-            if (response.status_code != 200)
-                if (logger_)
+        request->add_on_state_change_callback([this, reqid]
+                                              (const http::Request::State state, const http::Response response){
+            if (state == http::Request::State::DONE){
+                if (logger_ and response.status_code != 200)
                     logger_->e("[proxy:server] [notification] push failed: %i", response.status_code);
-        });
-        request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
-            if (state == http::Request::State::DONE)
                 requests_.erase(reqid);
+            }
         });
         request->send();
         requests_[reqid] = request;

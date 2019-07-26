@@ -367,13 +367,6 @@ Request::build()
 }
 
 void
-Request::add_on_state_changed_callback(OnStateChangeCb cb)
-{
-    std::lock_guard<std::mutex> lock(cbs_mutex_);
-    cbs_->on_state_changed = std::move(cb);
-}
-
-void
 Request::add_on_status_callback(OnStatusCb cb)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
@@ -388,19 +381,19 @@ Request::add_on_body_callback(OnDataCb cb)
 }
 
 void
-Request::add_on_message_complete_callback(OnMessageCompleteCb cb)
+Request::add_on_state_change_callback(OnStateChangeCb cb)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
-    cbs_->on_message_complete = std::move(cb);
+    cbs_->on_state_change = std::move(cb);
 }
 
 void
-Request::notify_state_changed(const State state)
+Request::notify_state_change(const State state)
 {
 
     std::lock_guard<std::mutex> lock(cbs_mutex_);
-    if (cbs_->on_state_changed)
-        cbs_->on_state_changed(state);
+    if (cbs_->on_state_change)
+        cbs_->on_state_change(state, response_);
 }
 
 void
@@ -444,11 +437,6 @@ Request::init_parser()
         if (on_body_cb)
             on_body_cb(at, length);
     };
-    auto on_message_complete_cb = cbs_->on_message_complete;
-    cbs_->on_message_complete = [this, on_message_complete_cb](const Response){
-        if (on_message_complete_cb)
-            on_message_complete_cb(response_);
-    };
 
     // http_parser raw c callback (note: no context can be passed into them)
     parser_s_->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
@@ -473,12 +461,6 @@ Request::init_parser()
         auto cbs = static_cast<Callbacks*>(parser->data);
         if (cbs->on_body)
             cbs->on_body(at, length);
-        return 0;
-    };
-    parser_s_->on_message_complete = [](http_parser* parser) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_message_complete)
-            cbs->on_message_complete(Response{});
         return 0;
     };
 }
@@ -519,7 +501,7 @@ Request::connect(asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints, Ha
 void
 Request::send()
 {
-    notify_state_changed(State::CREATED);
+    notify_state_change(State::CREATED);
 
     resolver_->add_callback([this](const asio::error_code& ec,
                                    asio::ip::tcp::resolver::results_type endpoints){
@@ -561,7 +543,7 @@ Request::post()
     request_stream << request_;
 
     // send the request
-    notify_state_changed(State::SENDING);
+    notify_state_change(State::SENDING);
     asio::async_write(conn_->socket(), conn_->input(),
         std::bind(&Request::handle_request, this, std::placeholders::_1));
 }
@@ -575,15 +557,10 @@ Request::terminate(const asio::error_code& ec)
     else
         response_.status_code = 0;
 
-    // ensure on_message_complete callback is called
-    if (parser_){
-        std::lock_guard<std::mutex> lock(cbs_mutex_);
-        http_parser_execute(parser_.get(), parser_s_.get(), "", 0);
-    }
     if (logger_)
         logger_->d("[http:request:%i] done", id_);
 
-    notify_state_changed(State::DONE);
+    notify_state_change(State::DONE);
 }
 
 void
@@ -605,7 +582,7 @@ Request::handle_request(const asio::error_code& ec)
         logger_->d("[http:request:%i] [write] success", id_);
 
     // read response
-    notify_state_changed(State::RECEIVING);
+    notify_state_change(State::RECEIVING);
     asio::async_read_until(conn_->socket(), conn_->data(), "\r\n\r\n",
         std::bind(&Request::handle_response_header, this,
                   std::placeholders::_1, std::placeholders::_2));
@@ -638,7 +615,7 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
         logger_->d("[http:request:%i] [read:header]\n%s", id_, headers.c_str());
     // parse the header right away
     parse_request(headers);
-    notify_state_changed(State::HEADER_RECEIVED);
+    notify_state_change(State::HEADER_RECEIVED);
 
     // server wants to keep sending or we have content-length defined
     if ((response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE) or
@@ -646,16 +623,13 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
     {
         // pass along body in the header
         auto body = str_s.str().substr(bytes, std::string::npos);
-        notify_state_changed(State::RECEIVING);
+        notify_state_change(State::RECEIVING);
         if (!body.empty())
             handle_response_body(asio::error_code(), body.size(), body);
         else
             asio::async_read(conn_->socket(), conn_->data(), asio::transfer_at_least(1),
                 std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2, ""));
     }
-    // user wants to close the connection
-    else if (connection_type_ == restinio::http_connection_header_t::close)
-        terminate(asio::error::eof);
 }
 
 void
@@ -716,8 +690,6 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes, co
         asio::async_read(conn_->socket(), conn_->data(), asio::transfer_at_least(1),
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2, ""));
     }
-    else if (connection_type_ == restinio::http_connection_header_t::close)
-        terminate(asio::error::eof);
 }
 
 void

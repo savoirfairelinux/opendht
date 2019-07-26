@@ -152,10 +152,9 @@ public:
         RECEIVING,
         DONE
     };
-    using OnStateChangeCb = std::function<void(const State state)>;
     using OnStatusCb = std::function<void(unsigned int status_code)>;
     using OnDataCb = std::function<void(const char* at, size_t length)>;
-    using OnMessageCompleteCb = std::function<void(const Response response)>;
+    using OnStateChangeCb = std::function<void(const State state, const Response response)>;
 
     // resolves implicitly
     Request(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
@@ -180,10 +179,9 @@ public:
     void set_connection_type(const restinio::http_connection_header_t connection);
     void set_body(const std::string& body);
 
-    void add_on_state_changed_callback(OnStateChangeCb cb);
     void add_on_status_callback(OnStatusCb cb);
     void add_on_body_callback(OnDataCb cb);
-    void add_on_message_complete_callback(OnMessageCompleteCb cb);
+    void add_on_state_change_callback(OnStateChangeCb cb);
 
     void send();
     void end();
@@ -196,12 +194,11 @@ private:
         OnDataCb on_header_field;
         OnDataCb on_header_value;
         OnDataCb on_body;
-        OnMessageCompleteCb on_message_complete;
 
-        OnStateChangeCb on_state_changed;
+        OnStateChangeCb on_state_change;
     };
 
-    void notify_state_changed(const State state);
+    void notify_state_change(const State state);
 
     void build();
     void init_parser();

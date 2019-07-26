@@ -44,7 +44,7 @@ struct DhtProxyClient::Listener
     unsigned callbackId;
     OpValueCache cache;
     ValueCallback cb;
-    Sp<OperationState> state;
+    Sp<OperationState> opstate;
     std::shared_ptr<http::Request> request;
     std::unique_ptr<asio::steady_timer> refreshSubscriberTimer;
 };
@@ -189,7 +189,7 @@ DhtProxyClient::cancelAllListeners()
             if (l == s.second.listeners.end())
                 return;
             if (l->second.request->get_connection()->is_open()){
-                l->second.state->stop.store(true);
+                l->second.opstate->stop.store(true);
                 try {
                     l->second.request.reset();
                 } catch (const std::exception& e) {
@@ -273,23 +273,24 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     auto request = std::make_shared<http::Request>(httpContext_, resolver_, logger_);
     auto reqid = request->id();
     try {
+        request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         restinio::http_request_header_t header;
         header.request_target("/" + key.toString());
         header.method(restinio::http_method_get());
         request->set_header(header);
         setHeaderFields(request);
 
-        auto state = std::make_shared<OperationState>();
+        auto opstate = std::make_shared<OperationState>();
         Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
 
-        request->add_on_status_callback([this, key, state](unsigned int status_code){
+        request->add_on_status_callback([this, key, opstate](unsigned int status_code){
             if (status_code != 200){
                 if (logger_)
                     logger_->e("[proxy:client] [get %s] status error: %i", key.to_c_str(), status_code);
-                state->ok.store(false);
+                opstate->ok.store(false);
             }
         });
-        request->add_on_body_callback([this, key, state, filter, cb](const char* at, size_t length){
+        request->add_on_body_callback([this, key, opstate, filter, cb](const char* at, size_t length){
             try {
                 Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
@@ -297,13 +298,13 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 // one value per body line
                 std::string data_line;
                 std::stringstream body_stream(body);
-                while (std::getline(body_stream, data_line, '\n') and !(state->stop.load())){
+                while (std::getline(body_stream, data_line, '\n') and !(opstate->stop.load())){
                     std::string err;
                     Json::Value json;
                     auto* char_data = static_cast<const char*>(&data_line[0]);
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     if (!reader->parse(char_data, char_data + data_line.size(), &json, &err)){
-                        state->ok.store(false);
+                        opstate->ok.store(false);
                         return;
                     }
                     auto value = std::make_shared<Value>(json);
@@ -311,9 +312,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                     if ((not filter or filter(*value)) and cb){
                         {
                             std::lock_guard<std::mutex> lock(lockCallbacks_);
-                            callbacks_.emplace_back([state, cb, value](){
-                                if (not state->stop.load() and not cb({value})){
-                                    state->stop.store(true);
+                            callbacks_.emplace_back([opstate, cb, value](){
+                                if (not opstate->stop.load() and not cb({value})){
+                                    opstate->stop.store(true);
                                 }
                             });
                         }
@@ -323,34 +324,28 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
             } catch(const std::exception& e) {
                 if (logger_)
                     logger_->e("[proxy:client] [get %s] body parsing error: %s", key.to_c_str(), e.what());
-                state->ok.store(false);
+                opstate->ok.store(false);
             }
         });
-        request->add_on_message_complete_callback([this, key, state, donecb, reqid](const http::Response response){
-            if (response.status_code != 200){
-                logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
-                state->ok.store(false);
-            }
-            else {
-                try {
-                    if (donecb){
-                        {
-                            std::lock_guard<std::mutex> lock(lockCallbacks_);
-                            callbacks_.emplace_back([donecb, state](){
-                                donecb(state->ok, {});
-                            });
-                        }
-                        loopSignal_();
-                    }
-                } catch(const std::exception& e) {
+        request->add_on_state_change_callback([this, reqid, opstate, donecb, key]
+                                              (const http::Request::State state, const http::Response response){
+            if (state == http::Request::State::DONE){
+                if (response.status_code != 200){
                     if (logger_)
-                        logger_->e("[proxy:client] [get %s] message complete parsing error", key.to_c_str());
+                        logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
+                    opstate->ok.store(false);
                 }
-            }
-        });
-        request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
-            if (state == http::Request::State::DONE)
+                if (donecb){
+                    {
+                        std::lock_guard<std::mutex> lock(lockCallbacks_);
+                        callbacks_.emplace_back([donecb, opstate](){
+                            donecb(opstate->ok, {});
+                        });
+                    }
+                    loopSignal_();
+                }
                 requests_.erase(reqid);
+            }
         });
         request->send();
         requests_[reqid] = request;
@@ -469,30 +464,23 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             }
             return 0;
         });
-        request->add_on_message_complete_callback([this, key, ok, cb, reqid](const http::Response response){
-            if (response.status_code != 200){
-                if (logger_)
-                    logger_->e("[proxy:client] [put %s] message complete error: %i",
-                               key.to_c_str(), response.status_code);
-            }
-            else {
-                try {
-                    if (cb){
-                        {
-                            std::lock_guard<std::mutex> lock(lockCallbacks_);
-                            callbacks_.emplace_back([cb, ok](){
-                                cb(ok->load(), {});
-                            });
-                        }
-                        loopSignal_();
+        request->add_on_state_change_callback([this, reqid, ok, cb, key]
+                                              (const http::Request::State state, const http::Response response){
+            if (state == http::Request::State::DONE){
+                if (response.status_code != 200)
+                    if (logger_)
+                        logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
+                if (cb){
+                    {
+                        std::lock_guard<std::mutex> lock(lockCallbacks_);
+                        callbacks_.emplace_back([cb, ok](){
+                            cb(ok->load(), {});
+                        });
                     }
-                } catch(const std::exception& e) {
+                    loopSignal_();
                 }
-            }
-        });
-        request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
-            if (state == http::Request::State::DONE)
                 requests_.erase(reqid);
+            }
         });
         request->send();
         requests_[reqid] = request;
@@ -644,14 +632,14 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<In
                 ok->store(false);
             }
         });
-        request->add_on_message_complete_callback([this](const http::Response response){
-            if (response.status_code != 200)
-                if (logger_)
-                    logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
-        });
-        request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
-            if (state == http::Request::State::DONE)
+        request->add_on_state_change_callback([this, reqid]
+                                              (const http::Request::State state, const http::Response response){
+            if (state == http::Request::State::DONE){
+                if (response.status_code != 200)
+                    if (logger_)
+                        logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
                 requests_.erase(reqid);
+            }
         });
 
         if (infoState->cancel.load())
@@ -770,14 +758,14 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
                     std::forward_as_tuple(token),
                     std::forward_as_tuple(std::move(cb))).first;
         } else {
-            if (l->second.state)
-                l->second.state->stop = true;
+            if (l->second.opstate)
+                l->second.opstate->stop = true;
         }
         // Add cache callback
-        auto state = std::make_shared<OperationState>();
-        l->second.state = state;
-        l->second.cb = [this,key,token,state](const std::vector<Sp<Value>>& values, bool expired){
-            if (state->stop)
+        auto opstate = std::make_shared<OperationState>();
+        l->second.opstate = opstate;
+        l->second.cb = [this,key,token,opstate](const std::vector<Sp<Value>>& values, bool expired){
+            if (opstate->stop)
                 return false;
             std::lock_guard<std::mutex> lock(searchLock_);
             auto s = searches_.find(key);
@@ -799,7 +787,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             l->second.refreshSubscriberTimer->expires_at(std::chrono::steady_clock::now() +
                                                          proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             l->second.refreshSubscriberTimer->async_wait(std::bind(&DhtProxyClient::handleResubscribe, this,
-                                                         std::placeholders::_1, key, token, state));
+                                                         std::placeholders::_1, key, token, opstate));
         }
         ListenMethod method;
         restinio::http_request_header_t header;
@@ -813,14 +801,14 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             header.method(restinio::http_method_subscribe());
             header.request_target("/" + key.toString());
         }
-        sendListen(header, l->second.cb, state, l->second, method);
+        sendListen(header, l->second.cb, opstate, l->second, method);
         return token;
     });
 }
 
 void
 DhtProxyClient::handleResubscribe(const asio::error_code &ec, const InfoHash& key,
-                                  const size_t token, std::shared_ptr<OperationState> state)
+                                  const size_t token, std::shared_ptr<OperationState> opstate)
 {
     if (ec == asio::error::operation_aborted)
         return;
@@ -829,7 +817,7 @@ DhtProxyClient::handleResubscribe(const asio::error_code &ec, const InfoHash& ke
             logger_->e("[proxy:client] [resubscribe %s] %s", key.toString().c_str(), ec.message().c_str());
         return;
     }
-    if (state->stop)
+    if (opstate->stop)
         return;
     std::lock_guard<std::mutex> lock(searchLock_);
     auto s = searches_.find(key);
@@ -893,7 +881,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
             return;
 
         auto& listener = it->second;
-        listener.state->stop = true;
+        listener.opstate->stop = true;
 
         if (not deviceKey_.empty()) {
             // UNSUBSCRIBE
@@ -922,15 +910,15 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                             logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
                                        key.to_c_str(), status_code);
                 });
-                request->add_on_message_complete_callback([this, key, reqid](const http::Response response){
-                    if (response.status_code != 200)
-                        if (logger_)
-                            logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
-                                       key.to_c_str(), response.status_code);
-                });
-                request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
-                    if (state == http::Request::State::DONE)
+                request->add_on_state_change_callback([this, reqid, key]
+                                                      (const http::Request::State state, const http::Response response){
+                    if (state == http::Request::State::DONE){
+                        if (response.status_code != 200)
+                            if (logger_)
+                                logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
+                                           key.to_c_str(), response.status_code);
                         requests_.erase(reqid);
+                    }
                 });
                 request->send();
                 requests_[reqid] = request;
@@ -962,7 +950,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
 void
 DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                            const ValueCallback& cb,
-                           const Sp<OperationState>& state,
+                           const Sp<OperationState>& opstate,
                            Listener& listener, ListenMethod method)
 {
     auto request = std::make_shared<http::Request>(httpContext_, resolver_, logger_);
@@ -980,14 +968,14 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 #endif
         request->set_body(body);
 
-        request->add_on_status_callback([this, reqid, state](unsigned int status_code){
+        request->add_on_status_callback([this, reqid, opstate](unsigned int status_code){
             if (status_code != 200){
                 if (logger_)
                     logger_->e("[proxy:client] [listen:send] %i status error: %i", reqid, status_code);
-                state->ok.store(false);
+                opstate->ok.store(false);
             }
         });
-        request->add_on_body_callback([this, reqid, state, cb](const char* at, size_t length){
+        request->add_on_body_callback([this, reqid, opstate, cb](const char* at, size_t length){
             try {
                 Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
@@ -995,26 +983,26 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                 // one value per body line
                 std::string data_line;
                 std::stringstream body_stream(body);
-                while (std::getline(body_stream, data_line, '\n') and !state->stop){
+                while (std::getline(body_stream, data_line, '\n') and !opstate->stop){
                     std::string err;
                     Json::Value json;
                     auto* char_data = static_cast<const char*>(&data_line[0]);
                     auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
                     if (!reader->parse(char_data, char_data + data_line.size(), &json, &err)){
-                        state->ok.store(false);
+                        opstate->ok.store(false);
                         return;
                     }
                     if (json.size() == 0){ // it's the end
-                        state->stop.store(true);
+                        opstate->stop.store(true);
                     }
                     auto value = std::make_shared<Value>(json);
                     if (cb){
                         auto expired = json.get("expired", Json::Value(false)).asBool();
                         {
                             std::lock_guard<std::mutex> lock(lockCallbacks_);
-                            callbacks_.emplace_back([cb, value, state, expired]() {
-                                if (not state->stop.load() and not cb({value}, expired))
-                                    state->stop.store(true);
+                            callbacks_.emplace_back([cb, value, opstate, expired]() {
+                                if (not opstate->stop.load() and not cb({value}, expired))
+                                    opstate->stop.store(true);
                             });
                         }
                         loopSignal_();
@@ -1023,18 +1011,18 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             } catch(const std::exception& e) {
                 if (logger_)
                     logger_->e("[proxy:client] [listen:send] %i error in parsing: %s", reqid, e.what());
-                state->ok.store(false);
+                opstate->ok.store(false);
             }
         });
-        request->add_on_message_complete_callback([this, reqid](const http::Response response){
-            if (response.status_code != 200)
-                if (logger_)
-                    logger_->e("[proxy:client] [listen:send] %i failed with code=%i",
-                               reqid, response.status_code);
-        });
-        request->add_on_state_changed_callback([this, reqid](const http::Request::State state){
-            if (state == http::Request::State::DONE)
+        request->add_on_state_change_callback([this, reqid]
+                                              (const http::Request::State state, const http::Response response){
+            if (state == http::Request::State::DONE){
+                if (response.status_code != 200)
+                    if (logger_)
+                        logger_->e("[proxy:client] [listen:send] %i failed with code=%i",
+                                   reqid, response.status_code);
                 requests_.erase(reqid);
+            }
         });
         request->send();
         requests_[reqid] = request;
@@ -1102,7 +1090,7 @@ DhtProxyClient::restartListeners()
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
-                if (!listener.second.state->ok)
+                if (!listener.second.opstate->ok)
                     resubscribe(search.first, listener.first, listener.second);
         return;
     }
@@ -1111,25 +1099,25 @@ DhtProxyClient::restartListeners()
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
-            if (auto state = listener.state)
-                state->stop = true;
+            if (auto opstate = listener.opstate)
+                opstate->stop = true;
             listener.request->end();
         }
     }
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
-            auto state = listener.state;
+            auto opstate = listener.opstate;
             // Redo listen
-            state->stop.store(false);
-            state->ok.store(true);
+            opstate->stop.store(false);
+            opstate->ok.store(true);
             auto cb = listener.cb;
             // define header
             restinio::http_request_header_t header;
             header.method(restinio::custom_http_methods_t::from_nodejs(
                           restinio::method_listen.raw_id()));
             header.request_target("/" + search.first.toString());
-            sendListen(header, cb, state, listener, ListenMethod::LISTEN);
+            sendListen(header, cb, opstate, listener, ListenMethod::LISTEN);
         }
     }
 }
@@ -1169,13 +1157,13 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             auto key = InfoHash(notification.at("key"));
             auto& search = searches_.at(key);
             for (auto& list : search.listeners) {
-                if (list.second.state->stop)
+                if (list.second.opstate->stop)
                     continue;
                 if (logger_)
                     logger_->d("[proxy:client] [push:received] [search %s] handling", key.to_c_str());
                 auto expired = notification.find("exp");
                 auto token = list.first;
-                auto state = list.second.state;
+                auto opstate = list.second.opstate;
                 if (expired == notification.end()) {
                     auto cb = list.second.cb;
                     auto oldValues = list.second.cache.getValues();
@@ -1196,8 +1184,8 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                     }
                     {
                         std::lock_guard<std::mutex> lock(lockCallbacks_);
-                        callbacks_.emplace_back([this, key, token, state, ids]() {
-                            if (state->stop)
+                        callbacks_.emplace_back([this, key, token, opstate, ids]() {
+                            if (opstate->stop)
                                 return;
                             std::lock_guard<std::mutex> lock(searchLock_);
                             auto s = searches_.find(key);
@@ -1206,8 +1194,8 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                             auto l = s->second.listeners.find(token);
                             if (l == s->second.listeners.end())
                                 return;
-                            if (not state->stop and not l->second.cache.onValuesExpired(ids))
-                                state->stop = true;
+                            if (not opstate->stop and not l->second.cache.onValuesExpired(ids))
+                                opstate->stop = true;
                         });
                     }
                     loopSignal_();
@@ -1232,12 +1220,12 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
     if (logger_)
         logger_->d("[proxy:client] [resubscribe] [search %s] resubscribe push listener", key.to_c_str());
 
-    auto state = listener.state;
-    state->stop = true;
+    auto opstate = listener.opstate;
+    opstate->stop = true;
     if (listener.request) {
         listener.request->end();
     }
-    state.reset(new OperationState());
+    opstate.reset(new OperationState());
 
     restinio::http_request_header_t header;
     header.method(restinio::http_method_subscribe());
@@ -1248,9 +1236,9 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
     listener.refreshSubscriberTimer->expires_at(std::chrono::steady_clock::now() +
                                                 proxy::OP_TIMEOUT - proxy::OP_MARGIN);
     listener.refreshSubscriberTimer->async_wait(std::bind(&DhtProxyClient::handleResubscribe, this,
-                                                std::placeholders::_1, key, token, state));
+                                                std::placeholders::_1, key, token, opstate));
     auto vcb = listener.cb;
-    sendListen(header, vcb, state, listener, ListenMethod::RESUBSCRIBE);
+    sendListen(header, vcb, opstate, listener, ListenMethod::RESUBSCRIBE);
 #else
     (void) key;
     (void) listener;
