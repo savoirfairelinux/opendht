@@ -576,28 +576,61 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<In
     if (logger_)
         logger_->d("[proxy:client] [status] sending request");
 
-    auto request = std::make_shared<http::Request>(httpContext_, resolver_, logger_);
+    resolver_->add_callback([this, infoState](const asio::error_code& ec,
+                                              std::vector<asio::ip::tcp::endpoint> endpoints)
+    {
+        if (ec){
+            if (logger_)
+                logger_->e("[proxy:client] [status] resolve error: %s", ec.message().c_str());
+            return;
+        }
+        std::vector<asio::ip::tcp::endpoint> endpointsIpv4;
+        std::vector<asio::ip::tcp::endpoint> endpointsIpv6;
+
+        for (auto& endpoint: endpoints){
+            try {
+                if (endpoint.address().is_v6())
+                    endpointsIpv6.push_back(endpoint);
+                if (endpoint.address().is_v4())
+                    endpointsIpv4.push_back(endpoint);
+            } catch (const std::exception&){};
+        }
+        // avoiding nested add_callback call
+        if (!endpointsIpv4.empty())
+            queryProxyInfo(infoState, AF_INET, std::move(endpointsIpv4));
+        if (!endpointsIpv6.empty())
+            queryProxyInfo(infoState, AF_INET6, std::move(endpointsIpv6));
+    });
+}
+
+void
+DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_family_t family,
+                               std::vector<asio::ip::tcp::endpoint>&& endpoints)
+{
+    if (logger_)
+        logger_->d("[proxy:client] [status:ipv%i] query info", family == AF_INET ? 4 : 6);
+    auto request = std::make_shared<http::Request>(httpContext_, std::move(endpoints), logger_);
     auto reqid = request->id();
     try {
         // make an http header
+        request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         restinio::http_request_header_t header;
         header.request_target("/");
         header.method(restinio::http_method_get());
         request->set_header(header);
         setHeaderFields(request);
 
-        std::weak_ptr<http::Request> wreq = request;
         auto ok = std::make_shared<std::atomic_bool>();
         ok->store(true);
 
-        request->add_on_status_callback([this, ok](unsigned int status_code){
+        request->add_on_status_callback([this, ok, family](unsigned int status_code){
             if (status_code != 200){
                 if (logger_)
-                    logger_->e("[proxy:client] [status] error: %i", status_code);
+                    logger_->e("[proxy:client] [status:ipv%i] status code error: %i", family, status_code);
                 ok->store(false);
             }
         });
-        request->add_on_body_callback([this, ok, infoState, wreq](const char* at, size_t length){
+        request->add_on_body_callback([this, ok, infoState, family](const char* at, size_t length){
             try{
                 std::string err;
                 Json::Value proxyInfos;
@@ -609,14 +642,6 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<In
                     ok->store(false);
                     return;
                 }
-                auto req = wreq.lock();
-                unsigned int family = req->get_connection()->is_v6() ? AF_INET6 : AF_INET;
-                if (family == AF_INET){
-                    infoState->ipv4++;
-                }
-                else if (family == AF_INET6){
-                    infoState->ipv6++;
-                }
                 if (not infoState->cancel)
                     onProxyInfos(proxyInfos, family);
             }
@@ -626,12 +651,20 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<In
                 ok->store(false);
             }
         });
-        request->add_on_state_change_callback([this, reqid]
+        request->add_on_state_change_callback([this, reqid, family, infoState]
                                               (const http::Request::State state, const http::Response response){
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200)
                     if (logger_)
-                        logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
+                        logger_->e("[proxy:client] [status:ipv%i] failed with code=%i",
+                                    family == AF_INET ? 4 : 6, response.status_code);
+                if (!infoState->cancel.load()){
+                    // pass along the failures
+                    if (family == AF_INET and infoState->ipv4 == 0)
+                        onProxyInfos(Json::Value{}, AF_INET);
+                    if (family == AF_INET6 and infoState->ipv6 == 0)
+                    onProxyInfos(Json::Value{}, AF_INET6);
+                }
                 requests_.erase(reqid);
             }
         });
@@ -650,7 +683,7 @@ DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<In
 }
 
 void
-DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, sa_family_t family)
+DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t family)
 {
     if (isDestroying_)
         return;

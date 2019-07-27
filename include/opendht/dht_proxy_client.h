@@ -287,7 +287,9 @@ private:
     struct InfoState;
     void getProxyInfos();
     void handleProxyStatus(const asio::error_code &ec, std::shared_ptr<InfoState> infoState);
-    void onProxyInfos(const Json::Value& val, sa_family_t family);
+    void queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_family_t family,
+                        std::vector<asio::ip::tcp::endpoint>&& endpoints);
+    void onProxyInfos(const Json::Value& val, const sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
     void opFailed();

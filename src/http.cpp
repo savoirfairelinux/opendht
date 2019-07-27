@@ -175,11 +175,11 @@ Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::st
     resolve(host, service);
 }
 
-Resolver::Resolver(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::ip::tcp> endpoints,
+Resolver::Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
                    std::shared_ptr<dht::Logger> logger)
     : resolver_(ctx), logger_(logger)
 {
-    endpoints_ = endpoints;
+    endpoints_ = std::move(endpoints);
     completed_ = true;
 }
 
@@ -233,14 +233,14 @@ Resolver::resolve(const std::string host, const std::string service)
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ec_ = ec;
-            endpoints_ = endpoints;
+            endpoints_ = std::vector<asio::ip::tcp::endpoint>{endpoints.begin(), endpoints.end()};
             completed_ = true;
             cbs = std::move(cbs_);
         }
         while (not cbs.empty()){
             auto cb = cbs.front();
             if (cb)
-                cb(ec, endpoints);
+                cb(ec, endpoints_);
             cbs.pop();
         }
     });
@@ -265,8 +265,7 @@ Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std:
     resolver_ = resolver;
 }
 
-// user defined resolved endpoints
-Request::Request(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints,
+Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints,
                  std::shared_ptr<dht::Logger> logger)
     : id_(Request::ids_++), ctx_(ctx), logger_(logger)
 {
@@ -475,7 +474,7 @@ Request::init_parser()
 }
 
 void
-Request::connect(asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints, HandlerCb cb)
+Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
 {
     if (endpoints.empty()){
         if (logger_)
@@ -484,9 +483,12 @@ Request::connect(asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints, Ha
             cb(asio::error::connection_aborted);
         return;
     }
-    if (logger_)
-        logger_->d("[http:request:%i] [connect] begin", id_);
-
+    if (logger_){
+        std::string eps = "";
+        for (auto& endpoint : endpoints)
+            eps.append(endpoint.address().to_string());
+        logger_->d("[http:request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
+    }
     conn_ = std::make_shared<Connection>(ctx_);
 
     // try to connect to any until one works
@@ -513,7 +515,7 @@ Request::send()
     notify_state_change(State::CREATED);
 
     resolver_->add_callback([this](const asio::error_code& ec,
-                                   asio::ip::tcp::resolver::results_type endpoints){
+                                   std::vector<asio::ip::tcp::endpoint> endpoints){
         if (ec){
             if (logger_)
                 logger_->e("[http:request:%i] [send] resolve error: %s", id_, ec.message().c_str());

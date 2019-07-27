@@ -107,13 +107,13 @@ class OPENDHT_PUBLIC Resolver
 {
 public:
     using ResolverCb = std::function<void(const asio::error_code& ec,
-                                          const asio::ip::basic_resolver_results<asio::ip::tcp> results)>;
+                                          std::vector<asio::ip::tcp::endpoint> endpoints)>;
 
     Resolver(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
              std::shared_ptr<dht::Logger> logger = {});
 
     // use already resolved endpoints with classes using this resolver
-    Resolver(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::ip::tcp> endpoints,
+    Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
              std::shared_ptr<dht::Logger> logger = {});
 
     ~Resolver();
@@ -127,7 +127,7 @@ private:
 
     asio::error_code ec_;
     asio::ip::tcp::resolver resolver_;
-    asio::ip::basic_resolver_results<asio::ip::tcp> endpoints_;
+    std::vector<asio::ip::tcp::endpoint> endpoints_;
 
     bool completed_ {false};
     std::queue<ResolverCb> cbs_;
@@ -165,7 +165,7 @@ public:
     Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger = {});
 
     // user defined resolved endpoints
-    Request(asio::io_context& ctx, asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints,
+    Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints,
             std::shared_ptr<dht::Logger> logger = {});
 
     ~Request();
@@ -207,7 +207,7 @@ private:
     void build();
     void init_parser();
 
-    void connect(asio::ip::basic_resolver_results<asio::ip::tcp>&& endpoints, HandlerCb cb = {});
+    void connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb = {});
 
     void terminate(const asio::error_code& ec);
 
