@@ -150,7 +150,7 @@ public:
         SENDING,
         HEADER_RECEIVED,
         RECEIVING,
-        FINISHING,
+        MESSAGE_COMPLETE,
         DONE
     };
     using OnStatusCb = std::function<void(unsigned int status_code)>;
@@ -197,6 +197,7 @@ private:
         OnDataCb on_header_field;
         OnDataCb on_header_value;
         OnDataCb on_body;
+        OnCompleteCb on_headers_complete;
         OnCompleteCb on_message_complete;
 
         OnStateChangeCb on_state_change;

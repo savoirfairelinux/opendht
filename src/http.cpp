@@ -390,7 +390,6 @@ void
 Request::notify_state_change(const State state)
 {
     state_ = state;
-    std::lock_guard<std::mutex> lock(cbs_mutex_);
     if (cbs_->on_state_change)
         cbs_->on_state_change(state, response_);
 }
@@ -406,40 +405,44 @@ Request::init_parser()
     if (!parser_s_)
         parser_s_ = std::make_unique<http_parser_settings>();
     http_parser_settings_init(parser_s_.get());
-
-    // user registered callbacks wrappers to store its data in the response
-    auto on_status_cb = cbs_->on_status;
-    cbs_->on_status = [this, on_status_cb](unsigned int status_code){
-        response_.status_code = status_code;
-        if (on_status_cb)
-            on_status_cb(status_code);
-    };
-    auto header_field = std::make_shared<std::string>("");
-    auto on_header_field_cb = cbs_->on_header_field;
-    cbs_->on_header_field = [this, header_field, on_header_field_cb](const char* at, size_t length){
-        header_field->erase();
-        auto field = std::string(at, length);
-        header_field->append(field);
-        if (on_header_field_cb)
-            on_header_field_cb(at, length);
-    };
-    auto on_header_value_cb = cbs_->on_header_value;
-    cbs_->on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length){
-        response_.headers[*header_field] = std::string(at, length);
-        if (on_header_value_cb)
-            on_header_value_cb(at, length);
-    };
-    auto on_body_cb = cbs_->on_body;
-    cbs_->on_body = [this, on_body_cb](const char* at, size_t length){
-        auto content = std::string(at, length);
-        response_.body.append(content);
-        if (on_body_cb)
-            on_body_cb(at, length);
-    };
-    cbs_->on_message_complete = [this](){
-        terminate(asio::error::eof);
-    };
-
+    {
+        std::lock_guard<std::mutex> lock(cbs_mutex_);
+        // user registered callbacks wrappers to store its data in the response
+        auto on_status_cb = cbs_->on_status;
+        cbs_->on_status = [this, on_status_cb](unsigned int status_code){
+            response_.status_code = status_code;
+            if (on_status_cb)
+                on_status_cb(status_code);
+        };
+        auto header_field = std::make_shared<std::string>("");
+        auto on_header_field_cb = cbs_->on_header_field;
+        cbs_->on_header_field = [this, header_field, on_header_field_cb](const char* at, size_t length){
+            header_field->erase();
+            auto field = std::string(at, length);
+            header_field->append(field);
+            if (on_header_field_cb)
+                on_header_field_cb(at, length);
+        };
+        auto on_header_value_cb = cbs_->on_header_value;
+        cbs_->on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length){
+            response_.headers[*header_field] = std::string(at, length);
+            if (on_header_value_cb)
+                on_header_value_cb(at, length);
+        };
+        cbs_->on_headers_complete = [this](){
+            notify_state_change(State::HEADER_RECEIVED);
+        };
+        auto on_body_cb = cbs_->on_body;
+        cbs_->on_body = [this, on_body_cb](const char* at, size_t length){
+            auto content = std::string(at, length);
+            response_.body.append(content);
+            if (on_body_cb)
+                on_body_cb(at, length);
+        };
+        cbs_->on_message_complete = [this](){
+            notify_state_change(State::MESSAGE_COMPLETE);
+        };
+    }
     // http_parser raw c callback (note: no context can be passed into them)
     parser_s_->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
         auto cbs = static_cast<Callbacks*>(parser->data);
@@ -463,6 +466,12 @@ Request::init_parser()
         auto cbs = static_cast<Callbacks*>(parser->data);
         if (cbs->on_body)
             cbs->on_body(at, length);
+        return 0;
+    };
+    parser_s_->on_headers_complete = [](http_parser* parser) -> int {
+        auto cbs = static_cast<Callbacks*>(parser->data);
+        if (cbs->on_headers_complete)
+            cbs->on_headers_complete();
         return 0;
     };
     parser_s_->on_message_complete = [](http_parser* parser) -> int {
@@ -562,13 +571,9 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
-    if (state_ == State::FINISHING or state_ == State::DONE)
-        return;
-
-    notify_state_change(State::FINISHING);
-
-    // destroy the socket with the io_context to cancel all its scheduled operations
     conn_.reset();
+    parser_.reset();
+    parser_s_.reset();
 
     // set response outcome, ignore enf of file and abort
     if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
@@ -634,7 +639,12 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
         logger_->d("[http:request:%i] [read:header]\n%s", id_, headers.c_str());
     // parse the header right away
     parse_request(headers);
-    notify_state_change(State::HEADER_RECEIVED);
+
+    // should be executed after each parse_request who can trigger this state on_message_complete
+    if (state_ == Request::State::MESSAGE_COMPLETE){
+        terminate(asio::error::eof);
+        return;
+    }
 
     // server wants to keep sending or we have content-length defined
     if ((response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE) or
@@ -706,6 +716,11 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes, co
         response_.body = body;
         parse_request(body);
     }
+    // should be executed after each parse_request who can trigger this state on_message_complete
+    if (state_ == Request::State::MESSAGE_COMPLETE){
+        terminate(asio::error::eof);
+        return;
+    }
 
     // server wants to keep sending
     if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE){
@@ -721,14 +736,6 @@ Request::parse_request(const std::string request)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
     http_parser_execute(parser_.get(), parser_s_.get(), request.c_str(), request.size());
-
-    // detect parsing errors
-    if (HPE_OK != parser_->http_errno && HPE_PAUSED != parser_->http_errno){
-        if (logger_){
-            auto err = HTTP_PARSER_ERRNO(parser_.get());
-            logger_->e("[http:request:%i] [parse] error: %s", id_, http_errno_name(err));
-        }
-    }
 }
 
 } // namespace http
