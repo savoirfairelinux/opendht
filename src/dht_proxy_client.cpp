@@ -658,7 +658,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
                     if (logger_)
                         logger_->e("[proxy:client] [status:ipv%i] failed with code=%i",
                                     family == AF_INET ? 4 : 6, response.status_code);
-                if (!infoState->cancel.load()){
+                if (infoState->cancel.load()){
                     // pass along the failures
                     if (family == AF_INET and infoState->ipv4 == 0)
                         onProxyInfos(Json::Value{}, AF_INET);
@@ -692,8 +692,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
     if (not proxyInfos.isMember("node_id")) {
         if (logger_)
-            logger_->e("[proxy:client] [info] request failed for %s",
-                       family == AF_INET ? "ipv4" : "ipv6");
+            logger_->e("[proxy:client] [info] request failed for %s", family == AF_INET ? "ipv4" : "ipv6");
         status = NodeStatus::Disconnected;
     } else {
         if (logger_)
