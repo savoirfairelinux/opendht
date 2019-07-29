@@ -187,9 +187,7 @@ DhtProxyClient::cancelAllListeners()
             auto l = s.second.listeners.find(token);
             if (l == s.second.listeners.end())
                 return;
-            if (l->second.request->get_connection()->is_open()){
-                l->second.opstate->stop.store(true);
-            }
+            l->second.opstate->stop.store(true);
             // implicit request.reset()
             s.second.listeners.erase(token);
         });
