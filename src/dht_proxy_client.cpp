@@ -188,6 +188,7 @@ DhtProxyClient::cancelAllListeners()
             if (l == s.second.listeners.end())
                 return;
             l->second.opstate->stop.store(true);
+            l->second.request->cancel();
             // implicit request.reset()
             s.second.listeners.erase(token);
         });
@@ -266,10 +267,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     auto reqid = request->id();
     try {
         request->set_connection_type(restinio::http_connection_header_t::keep_alive);
-        restinio::http_request_header_t header;
-        header.request_target("/" + key.toString());
-        header.method(restinio::http_method_get());
-        request->set_header(header);
+        request->set_target("/" + key.toString());
+        request->set_method(restinio::http_method_get());
         setHeaderFields(request);
 
         auto opstate = std::make_shared<OperationState>();
@@ -419,10 +418,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     auto request = std::make_shared<http::Request>(httpContext_, resolver_, logger_);
     auto reqid = request->id();
     try {
-        restinio::http_request_header_t header;
-        header.request_target("/" + key.toString());
-        header.method(restinio::http_method_post());
-        request->set_header(header);
+        request->set_target("/" + key.toString());
+        request->set_method(restinio::http_method_post());
         setHeaderFields(request);
 
         auto json = val->toJson();
@@ -610,12 +607,9 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
     auto request = std::make_shared<http::Request>(httpContext_, std::move(endpoints), logger_);
     auto reqid = request->id();
     try {
-        // make an http header
         request->set_connection_type(restinio::http_connection_header_t::keep_alive);
-        restinio::http_request_header_t header;
-        header.request_target("/");
-        header.method(restinio::http_method_get());
-        request->set_header(header);
+        request->set_target("/");
+        request->set_method(restinio::http_method_get());
         setHeaderFields(request);
 
         auto ok = std::make_shared<std::atomic_bool>();
@@ -912,10 +906,8 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
             auto request = std::make_shared<http::Request>(httpContext_, resolver_, logger_);
             auto reqid = request->id();
             try {
-                restinio::http_request_header_t header;
-                header.request_target("/" + key.toString());
-                header.method(restinio::http_method_unsubscribe());
-                request->set_header(header);
+                request->set_target("/" + key.toString());
+                request->set_method(restinio::http_method_unsubscribe());
                 setHeaderFields(request);
 
                 Json::Value body;
@@ -1125,6 +1117,7 @@ DhtProxyClient::restartListeners()
             auto& listener = l.second;
             if (auto opstate = listener.opstate)
                 opstate->stop = true;
+            listener.request->cancel();
             listener.request.reset();
         }
     }

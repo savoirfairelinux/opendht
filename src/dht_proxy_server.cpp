@@ -666,10 +666,8 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
                                                    pushHostPort_.second, logger_);
     auto reqid = request->id();
     try {
-        restinio::http_request_header_t header;
-        header.request_target("/api/push");
-        header.method(restinio::http_method_post());
-        request->set_header(header);
+        request->set_target("/api/push");
+        request->set_method(restinio::http_method_post());
 
         request->set_header_field(restinio::http_field_t::host, pushServer_.c_str());
         request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");

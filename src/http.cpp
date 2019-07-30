@@ -216,6 +216,8 @@ Resolver::resolve(const std::string host, const std::string service)
     resolver_.async_resolve(query_, [this, host, service]
         (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
     {
+        if (ec == asio::error::operation_aborted)
+            return;
         if (logger_){
             if (ec)
                 logger_->e("[http:resolver] error for %s:%s: %s",
@@ -278,9 +280,8 @@ Request::~Request()
 }
 
 void
-Request::end()
+Request::cancel()
 {
-    notify_state_change(State::MESSAGE_COMPLETE);
     terminate(asio::error::eof);
 }
 
@@ -306,6 +307,18 @@ void
 Request::set_header(const restinio::http_request_header_t header)
 {
     header_ = header;
+}
+
+void
+Request::set_method(const restinio::http_method_id_t method)
+{
+    header_.method(method);
+}
+
+void
+Request::set_target(const std::string target)
+{
+    header_.request_target(target);
 }
 
 void
@@ -441,7 +454,7 @@ Request::init_parser()
                 on_body_cb(at, length);
         };
         cbs_->on_message_complete = [this](){
-            notify_state_change(State::MESSAGE_COMPLETE);
+            message_complete_.store(true);
         };
     }
     // http_parser raw c callback (note: no context can be passed into them)
@@ -504,7 +517,9 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
     // try to connect to any until one works
     asio::async_connect(conn_->socket(), std::move(endpoints), [this, cb]
                        (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
-        if (ec){
+        if (ec == asio::error::operation_aborted)
+            return;
+        else if (ec){
             if (logger_)
                 logger_->e("[http:request:%i] [connect] failed with all endpoints", id_);
         }
@@ -533,10 +548,12 @@ Request::send()
         }
         else if (!conn_ or !conn_->is_open()){
             connect(std::move(endpoints), [this](const asio::error_code &ec){
-                if (!ec)
-                    post();
-                else
+                if (ec == asio::error::operation_aborted)
+                    return;
+                else if (ec)
                     terminate(asio::error::not_connected);
+                else
+                    post();
             });
         }
         else
@@ -572,9 +589,6 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
-    if (ec == asio::error::eof and state_ != State::MESSAGE_COMPLETE)
-        notify_state_change(State::MESSAGE_COMPLETE);
-
     if (ec != asio::error::eof and ec != asio::error::operation_aborted)
         if (logger_)
             logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
@@ -600,16 +614,18 @@ Request::terminate(const asio::error_code& ec)
 void
 Request::handle_request(const asio::error_code& ec)
 {
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if (ec and ec != asio::error::eof){
+        if (logger_)
+            logger_->e("[http:request:%i] [write] error: %s", id_, ec.message().c_str());
+        terminate(ec);
+        return;
+    }
     if (!conn_->is_open()){
         if (logger_)
             logger_->e("[http:request:%i] [write] closed connection", id_);
         terminate(asio::error::not_connected);
-        return;
-    }
-    if (ec and ec != asio::error::eof){
-        if (logger_)
-            logger_->e("[http:request:%i] [write] error: %s", id_, ec.message().c_str());
-        terminate(ec);
         return;
     }
     if (logger_)
@@ -618,15 +634,15 @@ Request::handle_request(const asio::error_code& ec)
     // read response
     notify_state_change(State::RECEIVING);
     asio::async_read_until(conn_->socket(), conn_->data(), "\r\n\r\n",
-        std::bind(&Request::handle_response_header, this,
-                  std::placeholders::_1, std::placeholders::_2));
+        std::bind(&Request::handle_response_header, this, std::placeholders::_1, std::placeholders::_2));
 }
 
 void
 Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
 {
-    if ((ec == asio::error::operation_aborted) or (ec == asio::error::eof) or
-                                                  (ec == asio::error::connection_reset)){
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if ((ec == asio::error::eof) or (ec == asio::error::connection_reset)){
         if (logger_)
             logger_->e("[http:request:%i] [read:header] error: %s", id_, ec.message().c_str());
         terminate(ec);
@@ -650,9 +666,8 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
         logger_->d("[http:request:%i] [read:header]\n%s", id_, headers.c_str());
     // parse the header right away
     parse_request(headers);
-
-    // should be executed after each parse_request who can trigger this state on_message_complete
-    if (state_ == Request::State::MESSAGE_COMPLETE){
+    // should be executed after each parse_request who can trigger http_parser on_message_complete
+    if (message_complete_.load()){
         terminate(asio::error::eof);
         return;
     }
@@ -677,8 +692,9 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
 void
 Request::handle_response_body(const asio::error_code& ec, const size_t bytes, const std::string chunk)
 {
-    if ((ec == asio::error::operation_aborted) or (ec == asio::error::eof) or
-                                                  (ec == asio::error::connection_reset)){
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if ((ec == asio::error::eof) or (ec == asio::error::connection_reset)){
         terminate(ec);
         return;
     }
@@ -728,8 +744,8 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes, co
         if (logger_ and nparsed > 0)
             logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
     }
-    // should be executed after each parse_request who can trigger this state on_message_complete
-    if (state_ == Request::State::MESSAGE_COMPLETE){
+    // should be executed after each parse_request who can trigger http_parser on_message_complete
+    if (message_complete_.load()){
         terminate(asio::error::eof);
         return;
     }

@@ -150,7 +150,6 @@ public:
         SENDING,
         HEADER_RECEIVED,
         RECEIVING,
-        MESSAGE_COMPLETE,
         DONE
     };
     using OnStatusCb = std::function<void(unsigned int status_code)>;
@@ -175,7 +174,12 @@ public:
 
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
+    /**
+     * Define the HTTP header/body as per https://tools.ietf.org/html/rfc7230.
+     */
     void set_header(const restinio::http_request_header_t header);
+    void set_method(const restinio::http_method_id_t method);
+    void set_target(const std::string target);
     void set_header_field(const restinio::http_field_t field, const std::string& value);
     void set_connection_type(const restinio::http_connection_header_t connection);
     void set_body(const std::string& body);
@@ -185,7 +189,11 @@ public:
     void add_on_state_change_callback(OnStateChangeCb cb);
 
     void send();
-    void end();
+
+    /**
+     * User action to cancel the Request and call the completion callbacks.
+     */
+    void cancel();
 
 private:
     using OnCompleteCb = std::function<void()>;
@@ -251,6 +259,7 @@ private:
 
     Response response_ {};
     std::string request_;
+    std::atomic<bool> message_complete_ {false};
     std::unique_ptr<http_parser> parser_;
     std::unique_ptr<http_parser_settings> parser_s_;
 
