@@ -43,15 +43,13 @@ DhtProxyTester::setUp() {
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(
         nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 
-    dht::DhtRunner::Config config {};
-    config.dht_config.node_config.maintain_storage = false;
-    config.threaded = true;
-    config.push_node_id = "dhtnode";
-    dht::DhtRunner::Context context {};
-    context.logger = logger;
+    clientConfig.dht_config.node_config.maintain_storage = false;
+    clientConfig.threaded = true;
+    clientConfig.push_node_id = "dhtnode";
+    clientContext.logger = logger;
 
     nodeClient = std::make_shared<dht::DhtRunner>();
-    nodeClient->run(0, config, std::move(context));
+    nodeClient->run(0, clientConfig, std::move(clientContext));
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true); // creates DhtProxyClient
@@ -78,7 +76,6 @@ DhtProxyTester::testGetPut() {
     auto key = dht::InfoHash::get("GLaDOs");
     dht::Value val {"Hey! It's been a long time. How have you been?"};
     auto val_data = val.data;
-
     {
         std::unique_lock<std::mutex> lk(cv_m);
         nodePeer.put(key, std::move(val), [&](bool) {
@@ -175,7 +172,7 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // Reboot node (to avoid cache)
     nodeClient->join();
-    nodeClient->run(0, {}, true);
+    nodeClient->run(0, clientConfig, std::move(clientContext));
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true);
