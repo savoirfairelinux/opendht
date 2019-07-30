@@ -206,6 +206,10 @@ private:
     void notify_state_change(const State state);
 
     void build();
+
+    /**
+     * Initialized and wraps the http_parser callbacks with our user defined callbacks.
+     */
     void init_parser();
 
     void connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb = {});
@@ -220,7 +224,12 @@ private:
 
     void handle_response_body(const asio::error_code& ec, const size_t bytes, const std::string chunk);
 
-    void parse_request(const std::string request);
+    /**
+     * Parse the request with http_parser.
+     * Return how many bytes were parsed.
+     * Note: we pass requerst.size()==0 to signal that EOF has been received.
+     */
+    size_t parse_request(const std::string request);
 
     restinio::http_request_header_t header_;
     std::map<restinio::http_field_t, std::string> headers_;

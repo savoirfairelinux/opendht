@@ -407,8 +407,8 @@ Request::init_parser()
         parser_s_ = std::make_unique<http_parser_settings>();
     http_parser_settings_init(parser_s_.get());
     {
-        std::lock_guard<std::mutex> lock(cbs_mutex_);
         // user registered callbacks wrappers to store its data in the response
+        std::lock_guard<std::mutex> lock(cbs_mutex_);
         auto on_status_cb = cbs_->on_status;
         cbs_->on_status = [this, on_status_cb](unsigned int status_code){
             response_.status_code = status_code;
@@ -572,11 +572,20 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
+    if (ec == asio::error::eof and state_ != State::MESSAGE_COMPLETE)
+        notify_state_change(State::MESSAGE_COMPLETE);
+
+    if (ec != asio::error::eof and ec != asio::error::operation_aborted)
+        if (logger_)
+            logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
+
+    // close the connection cancelling the scheduled socket operations on the io_context
     conn_->close();
+    // reset the http_parser holding the data pointer to the user callbacks
     parser_.reset();
     parser_s_.reset();
 
-    // set response outcome, ignore enf of file and abort
+    // set response outcome, ignore end of file and abort
     if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
         response_.status_code = 200;
     else
@@ -616,13 +625,8 @@ Request::handle_request(const asio::error_code& ec)
 void
 Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
 {
-    if (!conn_->is_open()){
-        if (logger_)
-            logger_->e("[http:request:%i] [read:header] closed connection", id_);
-        terminate(asio::error::not_connected);
-        return;
-    }
-    if (ec && ec != asio::error::eof){
+    if ((ec == asio::error::operation_aborted) or (ec == asio::error::eof) or
+                                                  (ec == asio::error::connection_reset)){
         if (logger_)
             logger_->e("[http:request:%i] [read:header] error: %s", id_, ec.message().c_str());
         terminate(ec);
@@ -630,6 +634,12 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
     }
     else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
         terminate(ec);
+        return;
+    }
+    if (!conn_->is_open()){
+        if (logger_)
+            logger_->e("[http:request:%i] [read:header] closed connection", id_);
+        terminate(asio::error::not_connected);
         return;
     }
     // read the response buffer
@@ -667,20 +677,21 @@ Request::handle_response_header(const asio::error_code& ec, const size_t bytes)
 void
 Request::handle_response_body(const asio::error_code& ec, const size_t bytes, const std::string chunk)
 {
-    if (!conn_->is_open()){
-        if (logger_)
-            logger_->e("[http:request] [read:body] closed connection");
-        terminate(asio::error::not_connected);
+    if ((ec == asio::error::operation_aborted) or (ec == asio::error::eof) or
+                                                  (ec == asio::error::connection_reset)){
+        terminate(ec);
         return;
     }
-    if (ec && ec != asio::error::eof){
+    else if (ec && ec != asio::error::eof){
         if (logger_)
             logger_->e("[http:request:%i] [read:body] error: %s", id_, ec.message().c_str());
         terminate(ec);
         return;
     }
-    else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
-        terminate(ec);
+    if (!conn_->is_open()){
+        if (logger_)
+            logger_->e("[http:request] [read:body] closed connection");
+        terminate(asio::error::not_connected);
         return;
     }
     // append previous chunk if such
@@ -705,17 +716,17 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes, co
         }
         // body fully transfered
         else if (content_length == body.size()){
-            if (logger_)
-                logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
             response_.body = body;
-            parse_request(body);
+            auto nparsed = parse_request(body);
+            if (logger_ and nparsed > 0)
+                logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
         }
     }
     else if (!body.empty()){
-        if (logger_)
-            logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
         response_.body = body;
-        parse_request(body);
+        auto nparsed = parse_request(body);
+        if (logger_ and nparsed > 0)
+            logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
     }
     // should be executed after each parse_request who can trigger this state on_message_complete
     if (state_ == Request::State::MESSAGE_COMPLETE){
@@ -732,11 +743,11 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes, co
         terminate(asio::error::eof);
 }
 
-void
+size_t
 Request::parse_request(const std::string request)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
-    http_parser_execute(parser_.get(), parser_s_.get(), request.c_str(), request.size());
+    return http_parser_execute(parser_.get(), parser_s_.get(), request.c_str(), request.size());
 }
 
 } // namespace http
