@@ -280,6 +280,7 @@ Request::~Request()
 void
 Request::end()
 {
+    notify_state_change(State::MESSAGE_COMPLETE);
     terminate(asio::error::eof);
 }
 
@@ -348,11 +349,11 @@ Request::build()
         conn_str = "keep-alive";
         break;
     case restinio::http_connection_header_t::close:
-    default:
         conn_str = "close";
         connection_type_ = restinio::http_connection_header_t::close;
     }
-    request << "Connection: " << conn_str << "\r\n";
+    if (!conn_str.empty())
+        request << "Connection: " << conn_str << "\r\n";
 
     // body & content-length
     if (!body_.empty()){
@@ -495,7 +496,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
     if (logger_){
         std::string eps = "";
         for (auto& endpoint : endpoints)
-            eps.append(endpoint.address().to_string());
+            eps.append(endpoint.address().to_string() + " ");
         logger_->d("[http:request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
     }
     conn_ = std::make_shared<Connection>(ctx_);
@@ -571,7 +572,7 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
-    conn_.reset();
+    conn_->close();
     parser_.reset();
     parser_s_.reset();
 
