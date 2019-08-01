@@ -285,7 +285,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
             try {
                 Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
-                std::vector<dht::Sp<dht::Value>> values;
                 // one value per body line
                 std::string data_line;
                 std::stringstream body_stream(body);
@@ -299,7 +298,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                         return;
                     }
                     auto value = std::make_shared<Value>(json);
-                    values.push_back(value);
                     if ((not filter or filter(*value)) and cb){
                         {
                             std::lock_guard<std::mutex> lock(lockCallbacks_);
@@ -331,6 +329,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                         std::lock_guard<std::mutex> lock(lockCallbacks_);
                         callbacks_.emplace_back([donecb, opstate](){
                             donecb(opstate->ok, {});
+                            opstate->stop.store(true);
                         });
                     }
                     loopSignal_();

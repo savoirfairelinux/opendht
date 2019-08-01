@@ -44,6 +44,9 @@ public:
 
     asio::streambuf& input();
     asio::streambuf& data();
+
+    std::string read_until(const char delim);
+
     asio::ip::tcp::socket& socket();
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
@@ -228,9 +231,9 @@ private:
 
     void handle_request(const asio::error_code& ec);
 
-    void handle_response_header(const asio::error_code& ec, const size_t bytes);
+    void handle_response_header(const asio::error_code& ec);
 
-    void handle_response_body(const asio::error_code& ec, const size_t bytes, const std::string chunk);
+    void handle_response_body(const asio::error_code& ec);
 
     /**
      * Parse the request with http_parser.
