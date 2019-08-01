@@ -78,6 +78,14 @@ Connection::data()
 }
 
 std::string
+Connection::read_bytes(const size_t bytes)
+{
+    std::ostringstream str_s;
+    str_s << &read_buf_;
+    return str_s.str().substr(0, bytes);
+}
+
+std::string
 Connection::read_until(const char delim)
 {
     std::string content;
@@ -460,7 +468,6 @@ Request::init_parser()
         auto on_body_cb = cbs_->on_body;
         cbs_->on_body = [this, on_body_cb](const char* at, size_t length){
             auto content = std::string(at, length);
-            response_.body.append(content);
             if (on_body_cb)
                 on_body_cb(at, length);
         };
@@ -683,25 +690,37 @@ Request::handle_response_header(const asio::error_code& ec)
     // parse the headers
     parse_request(headers);
 
-    // should be executed after each parse_request who can trigger http_parser on_message_complete
-    if (message_complete_.load()){
-        terminate(asio::error::eof);
-        return;
+    // has content-length
+    auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
+    if (content_length_it != response_.headers.end())
+    {
+        std::getline(is, response_.body);
+        unsigned int content_length = atoi(content_length_it->second.c_str());
+        // full body already in the header
+        if ((response_.body.size() + 1) == (content_length)){
+            response_.body.append("\n");
+            parse_request(response_.body);
+            if (message_complete_.load())
+                terminate(asio::error::eof);
+        }
+        else { // more chunks to come (don't add the missing \n from std::getline)
+            asio::async_read(conn_->socket(), conn_->data(),
+                asio::transfer_exactly(content_length - response_.body.size()),
+                std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+        }
     }
-
     // server wants to keep sending or we have content-length defined
-    if ((response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE) or
-        (response_.headers.find(HTTP_HEADER_CONTENT_LENGTH) != response_.headers.end()))
+    else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
         asio::async_read_until(conn_->socket(), conn_->data(), JSON_VALUE_DELIM,
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1));
+            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
         terminate(asio::error::eof);
 }
 
 void
-Request::handle_response_body(const asio::error_code& ec)
+Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
 {
     if (ec == asio::error::operation_aborted)
         return;
@@ -721,30 +740,40 @@ Request::handle_response_body(const asio::error_code& ec)
         terminate(asio::error::not_connected);
         return;
     }
-    // read the body
-    std::string body = conn_->read_until(JSON_VALUE_DELIM) + '\n';
-    if (logger_)
-        logger_->d("[http:request:%i] [read:body] success:\n%s", id_, body.c_str());
+    unsigned int content_length;
+    auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
 
-    // parse the body
-    parse_request(body);
+    // read the content-length body
+    if (content_length_it != response_.headers.end() and !response_.body.empty()){
+        response_.body.append(conn_->read_bytes(bytes));
+        // extract the content-length
+        content_length = atoi(content_length_it->second.c_str());
+        // check if fully parsed
+        if (response_.body.size() == content_length)
+            parse_request(response_.body);
+    }
+    // read and parse the chunked encoding fragment
+    else {
+        auto body = conn_->read_until(JSON_VALUE_DELIM) + '\n';
+        response_.body = body;
+        parse_request(body);
+    }
+    if (logger_)
+        logger_->d("[http:request:%i] [read:body] success:\n%s", id_, response_.body.c_str());
 
     // should be executed after each parse_request who can trigger http_parser on_message_complete
     if (message_complete_.load()){
         terminate(asio::error::eof);
-        return;
     }
     // has content-length
-    auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
-    if (content_length_it != response_.headers.end()){
-        unsigned int content_length = atoi(content_length_it->second.c_str());
-        asio::async_read(conn_->socket(), conn_->data(), asio::transfer_exactly(content_length),
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1));
-    }
+    else if (content_length_it != response_.headers.end() and response_.body.size() != content_length)
+        asio::async_read(conn_->socket(), conn_->data(),
+            asio::transfer_exactly(content_length - response_.body.size()),
+            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     // server wants to keep sending
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE){
         asio::async_read_until(conn_->socket(), conn_->data(), JSON_VALUE_DELIM,
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1));
+            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
         terminate(asio::error::eof);

@@ -45,6 +45,7 @@ public:
     asio::streambuf& input();
     asio::streambuf& data();
 
+    std::string read_bytes(const size_t bytes);
     std::string read_until(const char delim);
 
     asio::ip::tcp::socket& socket();
@@ -233,7 +234,7 @@ private:
 
     void handle_response_header(const asio::error_code& ec);
 
-    void handle_response_body(const asio::error_code& ec);
+    void handle_response_body(const asio::error_code& ec, const size_t bytes);
 
     /**
      * Parse the request with http_parser.
