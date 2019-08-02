@@ -833,6 +833,16 @@ DhtRunner::bootstrap(const std::string& host, const std::string& service)
 }
 
 void
+DhtRunner::bootstrap(const std::string& hostService)
+{
+    std::lock_guard<std::mutex> lck(bootstrap_mtx);
+    auto host_service = splitPort(hostService);
+    bootstrap_nodes_all.emplace_back(host_service.first, host_service.second);
+    bootstrap_nodes.emplace_back(std::move(host_service.first), std::move(host_service.second));
+    tryBootstrapContinuously();
+}
+
+void
 DhtRunner::clearBootstrap()
 {
     std::lock_guard<std::mutex> lck(bootstrap_mtx);

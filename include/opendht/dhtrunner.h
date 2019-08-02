@@ -271,6 +271,7 @@ public:
      * to the DHT network is established.
      */
     void bootstrap(const std::string& host, const std::string& service);
+    void bootstrap(const std::string& hostService);
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
