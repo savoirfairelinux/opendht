@@ -204,12 +204,12 @@ public:
     /**
      * Get data currently being put at the given hash.
      */
-    std::vector<Sp<Value>> getPut(const InfoHash&) const;
+    std::vector<Sp<Value>> getPut(const InfoHash&) const override;
 
     /**
      * Get data currently being put at the given hash with the given id.
      */
-    Sp<Value> getPut(const InfoHash&, const Value::Id&) const;
+    Sp<Value> getPut(const InfoHash&, const Value::Id&) const override;
 
     /**
      * Stop any put/announce operation at the given location,
@@ -217,7 +217,7 @@ public:
      */
     bool cancelPut(const InfoHash&, const Value::Id&);
 
-    void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& /*cb*/={}) { }
+    void pingNode(SockAddr, DoneCallbackSimple&& /*cb*/={}) override { }
 
     virtual void registerType(const ValueType& type) {
         types.registerType(type);
@@ -226,16 +226,15 @@ public:
         return types.getType(type_id);
     }
 
-    std::vector<Sp<Value>> getLocal(const InfoHash& k, const Value::Filter& filter) const;
-    Sp<Value> getLocalById(const InfoHash& k, Value::Id id) const;
+    std::vector<Sp<Value>> getLocal(const InfoHash& k, const Value::Filter& filter) const override;
+    Sp<Value> getLocalById(const InfoHash& k, Value::Id id) const override;
 
     /**
      * NOTE: The following methods will not be implemented because the
      * DhtProxyClient doesn't have any storage nor synchronization process
      */
-    void insertNode(const InfoHash&, const SockAddr&) { }
-    void insertNode(const InfoHash&, const sockaddr*, socklen_t) { }
-    void insertNode(const NodeExport&) { }
+    void insertNode(const InfoHash&, const SockAddr&) override { }
+    void insertNode(const NodeExport&) override { }
     std::pair<size_t, size_t> getStoreSize() const { return {}; }
     std::vector<NodeExport> exportNodes() const { return {}; }
     std::vector<ValuesExport> exportValues() const { return {}; }

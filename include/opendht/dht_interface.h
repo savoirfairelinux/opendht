@@ -74,10 +74,9 @@ public:
      * used to bootstrap efficiently from previously known nodes.
      */
     virtual void insertNode(const InfoHash& id, const SockAddr&) = 0;
-    virtual void insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen) = 0;
     virtual void insertNode(const NodeExport& n) = 0;
 
-    virtual void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={}) = 0;
+    virtual void pingNode(SockAddr, DoneCallbackSimple&& cb={}) = 0;
 
     virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr) = 0;
     virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) = 0;

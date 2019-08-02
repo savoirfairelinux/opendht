@@ -2070,13 +2070,13 @@ Dht::insertNode(const InfoHash& id, const SockAddr& addr)
 }
 
 void
-Dht::pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb)
+Dht::pingNode(SockAddr sa, DoneCallbackSimple&& cb)
 {
     scheduler.syncTime();
-    DHT_LOG.d("Sending ping to %s", print_addr(sa, salen).c_str());
-    auto& count = sa->sa_family == AF_INET ? pending_pings4 : pending_pings6;
+    DHT_LOG.d("Sending ping to %s", sa.toString().c_str());
+    auto& count = sa.getFamily() == AF_INET ? pending_pings4 : pending_pings6;
     count++;
-    network_engine.sendPing(sa, salen, [&count,cb](const net::Request&, net::RequestAnswer&&) {
+    network_engine.sendPing(std::move(sa), [&count,cb](const net::Request&, net::RequestAnswer&&) {
         count--;
         if (cb)
             cb(true);

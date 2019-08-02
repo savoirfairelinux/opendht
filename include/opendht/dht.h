@@ -113,14 +113,11 @@ public:
      * used to bootstrap efficiently from previously known nodes.
      */
     void insertNode(const InfoHash& id, const SockAddr&) override;
-    void insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen) override {
-        insertNode(id, SockAddr(sa, salen));
-    }
     void insertNode(const NodeExport& n) override {
         insertNode(n.id, SockAddr(n.ss, n.sslen));
     }
 
-    void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={}) override;
+    void pingNode(SockAddr, DoneCallbackSimple&& cb={}) override;
 
     time_point periodic(const uint8_t *buf, size_t buflen, SockAddr) override;
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) override {

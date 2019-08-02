@@ -255,7 +255,7 @@ public:
      * Insert known nodes to the routing table, without necessarly ping them.
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
-    void bootstrap(const std::vector<SockAddr>& nodes, DoneCallbackSimple&& cb={});
+    void bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb={});
     void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
 
     /**
@@ -365,7 +365,7 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port = 4222, const crypto::Identity& identity = {}, bool threaded = true, NetId network = 0) {
+    void run(in_port_t port = dht::net::DHT_DEFAULT_PORT, const crypto::Identity& identity = {}, bool threaded = true, NetId network = 0) {
         Config config;
         config.dht_config.node_config.network = network;
         config.dht_config.id = identity;

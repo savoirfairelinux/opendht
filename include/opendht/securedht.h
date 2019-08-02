@@ -219,14 +219,11 @@ public:
     void insertNode(const InfoHash& id, const SockAddr& sa) override {
         dht_->insertNode(id, sa);
     }
-    void insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen) override {
-        dht_->insertNode(id, sa, salen);
-    }
     void insertNode(const NodeExport& n) override {
         dht_->insertNode(n);
     }
-    void pingNode(const sockaddr* sa, socklen_t salen, DoneCallbackSimple&& cb={}) override {
-        dht_->pingNode(sa, salen, std::move(cb));
+    void pingNode(SockAddr sa, DoneCallbackSimple&& cb={}) override {
+        dht_->pingNode(std::move(sa), std::move(cb));
     }
     void query(const InfoHash& key, QueryCallback cb, DoneCallback done_cb = {}, Query&& q = {}) override {
         dht_->query(key, cb, done_cb, std::move(q));

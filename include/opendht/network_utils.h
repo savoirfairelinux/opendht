@@ -40,6 +40,8 @@
 namespace dht {
 namespace net {
 
+static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
+
 int bindSocket(const SockAddr& addr, SockAddr& bound);
 
 bool setNonblocking(int fd, bool nonblocking = true);

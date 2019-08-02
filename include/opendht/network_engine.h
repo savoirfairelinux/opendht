@@ -275,8 +275,8 @@ public:
      * @return the request with information concerning its success.
      */
     Sp<Request>
-        sendPing(const sockaddr* sa, socklen_t salen, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-            return sendPing(std::make_shared<Node>(zeroes, sa, salen),
+        sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+            return sendPing(std::make_shared<Node>(zeroes, std::move(sa)),
                     std::forward<RequestCb>(on_done),
                     std::forward<RequestExpiredCb>(on_expired));
         }

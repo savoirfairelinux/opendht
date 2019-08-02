@@ -840,19 +840,22 @@ DhtRunner::clearBootstrap()
 }
 
 void
-DhtRunner::bootstrap(const std::vector<SockAddr>& nodes, DoneCallbackSimple&& cb)
+DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) mutable {
         auto rem = cb ? std::make_shared<std::pair<size_t, bool>>(nodes.size(), false) : nullptr;
-        for (const auto& node : nodes)
-            dht.pingNode(node.get(), node.getLength(), cb ? [rem,cb](bool ok) {
+        for (auto& node : nodes) {
+            if (node.getPort() == 0)
+                node.setPort(net::DHT_DEFAULT_PORT);
+            dht.pingNode(std::move(node), cb ? [rem,cb](bool ok) {
                 auto& r = *rem;
                 r.first--;
                 r.second |= ok;
                 if (not r.first)
                     cb(r.second);
             } : DoneCallbackSimple{});
+        }
     });
     cv.notify_all();
 }
@@ -861,8 +864,8 @@ void
 DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([addr,cb](SecureDht& dht) mutable {
-        dht.pingNode(addr.get(), addr.getLength(), std::move(cb));
+    pending_ops_prio.emplace([addr, cb](SecureDht& dht) mutable {
+        dht.pingNode(std::move(addr), std::move(cb));
     });
     cv.notify_all();
 }
