@@ -196,7 +196,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             try {
                 auto addr = splitPort(idstr);
                 if (not addr.first.empty() and addr.second.empty())
-                    addr.second = std::to_string(DHT_DEFAULT_PORT);
+                    addr.second = std::to_string(dht::net::DHT_DEFAULT_PORT);
                 node->bootstrap(addr.first.c_str(), addr.second.c_str());
             } catch (const std::exception& e) {
                 std::cerr << e.what() << std::endl;

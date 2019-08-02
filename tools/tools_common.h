@@ -24,6 +24,7 @@
 #include <opendht.h>
 #include <opendht/log.h>
 #include <opendht/crypto.h>
+#include <opendht/network_utils.h>
 #ifndef WIN32_NATIVE
 #include <getopt.h>
 #include <readline/readline.h>
@@ -105,8 +106,6 @@ loadFile(const std::string& path)
         throw std::runtime_error("Can't load file: "+path);
     return buffer;
 }
-
-static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
 
 struct dht_params {
     bool help {false}; // print help and exit
@@ -200,7 +199,7 @@ parseArgs(int argc, char **argv) {
         case 'b':
             params.bootstrap = dht::splitPort((optarg[0] == '=') ? optarg+1 : optarg);
             if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
-                params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
+                params.bootstrap.second = std::to_string(dht::net::DHT_DEFAULT_PORT);
             }
             break;
         case 'V':
