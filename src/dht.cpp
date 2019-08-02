@@ -1202,7 +1202,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
 
     StorageBucket* store_bucket {nullptr};
     if (sa)
-        store_bucket = &store_quota.emplace(sa, StorageBucket{}).first->second;
+        store_bucket = &store_quota[sa];
 
     auto store = st->second.store(id, value, created, expiration, store_bucket);
     if (auto vs = store.first) {
