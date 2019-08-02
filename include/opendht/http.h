@@ -19,9 +19,13 @@
 #pragma once
 
 #include <asio.hpp>
+#ifdef OPENDHT_PROXY_OPENSSL
+#include "asio/ssl.hpp"
+#endif
 #include <json/json.h>
 #include <http_parser.h>
 #include <restinio/all.hpp>
+#include <restinio/impl/tls_socket.hpp>
 #include <opendht.h>
 #include <opendht/def.h>
 #include <opendht/log.h>
@@ -30,10 +34,22 @@ namespace http {
 
 using HandlerCb = std::function<void(const asio::error_code& ec)>;
 
+#ifdef OPENDHT_PROXY_OPENSSL
+using socket_t = restinio::impl::tls_socket_t;
+//using socket_t = asio::ssl::stream<asio::ip::tcp::socket>;
+#else
+using socket_t = asio::ip::tcp::socket;
+#endif
+
 class OPENDHT_PUBLIC Connection
 {
 public:
-    Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> logger = {});
+#ifdef OPENDHT_PROXY_OPENSSL
+    Connection(asio::io_context& ctx, asio::ssl::context_base::method&& ssl_method,
+               std::shared_ptr<dht::Logger> l = {});
+#else
+    Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l = {});
+#endif
     ~Connection();
 
     unsigned int id();
@@ -48,7 +64,11 @@ public:
     std::string read_bytes(const size_t bytes);
     std::string read_until(const char delim);
 
-    asio::ip::tcp::socket& socket();
+#ifdef OPENDHT_PROXY_OPENSSL
+    socket_t& get_socket();
+#else
+    socket_t& get_socket();
+#endif
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
 
@@ -58,7 +78,13 @@ private:
     unsigned int id_;
     static unsigned int ids_;
 
-    asio::ip::tcp::socket socket_;
+    asio::io_context& ctx_;
+    std::unique_ptr<socket_t> socket_;
+#ifdef OPENDHT_PROXY_OPENSSL
+    std::unique_ptr<asio::ssl::context> ssl_ctx_;
+    asio::ssl::context::options ssl_options_;
+#endif
+
     asio::ip::tcp::endpoint endpoint_;
 
     asio::streambuf write_buf_;
@@ -174,6 +200,7 @@ public:
     ~Request();
 
     unsigned int id() const;
+    void set_connection(std::shared_ptr<Connection> connection);
     std::shared_ptr<Connection> get_connection() const;
 
     void set_logger(std::shared_ptr<dht::Logger> logger);

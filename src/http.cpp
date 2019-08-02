@@ -32,13 +32,31 @@ constexpr char JSON_VALUE_DELIM = '\n';
 
 unsigned int Connection::ids_ = 1;
 
-Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> logger):
-    id_(Connection::ids_++), socket_(ctx), logger_(logger)
+#ifdef OPENDHT_PROXY_OPENSSL
+Connection::Connection(asio::io_context& ctx, asio::ssl::context_base::method&& ssl_method,
+                       std::shared_ptr<dht::Logger> l)
+    : id_(Connection::ids_++), ctx_(ctx), logger_(l)
+{
+    ssl_ctx_ = std::make_unique<asio::ssl::context>(std::move(ssl_method));
+    ssl_ctx_->set_default_verify_paths();
+    ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+    /*
+    ssl_ctx_->use_certificate_chain_file(chain_file);
+    ssl_ctx_->use_private_key_file(key_file, asio::ssl::context::pem);
+    get_socket().set_verify_callback(asio::ssl::rfc2818_verification(host_name));
+    socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_.get());
+    */
+}
+#else
+Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l)
+    : id_(Connection::ids_++), ctx_(ctx), socket_(new socket_t(ctx)), logger_(l)
 {}
+#endif
 
 Connection::~Connection()
 {
     close();
+    socket_.reset();
 }
 
 unsigned int
@@ -50,7 +68,7 @@ Connection::id()
 bool
 Connection::is_open()
 {
-    return socket_.is_open();
+    return get_socket().is_open();
 }
 
 bool
@@ -94,11 +112,19 @@ Connection::read_until(const char delim)
     return content;
 }
 
-asio::ip::tcp::socket&
-Connection::socket()
+#ifdef OPENDHT_PROXY_OPENSSL
+socket_t&
+Connection::get_socket()
 {
-    return socket_;
+    return *socket_;
 }
+#else
+socket_t&
+Connection::get_socket()
+{
+    return *socket_;
+}
+#endif
 
 void
 Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
@@ -109,7 +135,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
         return;
     }
     if (!timeout_timer_)
-        timeout_timer_ = std::make_unique<asio::steady_timer>(socket_.get_io_context());
+        timeout_timer_ = std::make_unique<asio::steady_timer>(ctx_);
     timeout_timer_->expires_at(std::chrono::steady_clock::now() + timeout);
     timeout_timer_->async_wait([this, cb](const asio::error_code &ec){
         if (ec == asio::error::operation_aborted)
@@ -126,7 +152,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 void
 Connection::close()
 {
-    socket_.close();
+    get_socket().close();
 }
 
 // connection listener
@@ -308,6 +334,12 @@ unsigned int
 Request::id() const
 {
     return id_;
+}
+
+void
+Request::set_connection(std::shared_ptr<Connection> connection)
+{
+    conn_ = connection;
 }
 
 std::shared_ptr<Connection>
@@ -530,11 +562,23 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             eps.append(endpoint.address().to_string() + " ");
         logger_->d("[http:request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
     }
-    conn_ = std::make_shared<Connection>(ctx_);
 
+#ifdef OPENDHT_PROXY_OPENSSL
+    if (service_ == "https" or service_ == "443"){
+        if (!conn_){
+            logger_->e("[http:request:%i] [connect] undefined SSL connection", id_);
+            terminate(asio::error::connection_aborted);
+        }
+    }
+    conn_ = std::make_shared<Connection>(ctx_, asio::ssl::context::sslv23);
+    asio::async_connect(conn_->get_socket().lowest_layer(),
+#else
+    conn_ = std::make_shared<Connection>(ctx_);
+    asio::async_connect(conn_->get_socket(),
+#endif
+                        std::move(endpoints), [this, cb]
+                        (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
     // try to connect to any until one works
-    asio::async_connect(conn_->socket(), std::move(endpoints), [this, cb]
-                       (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
         if (ec == asio::error::operation_aborted)
             return;
         else if (ec){
@@ -600,7 +644,7 @@ Request::post()
 
     // send the request
     notify_state_change(State::SENDING);
-    asio::async_write(conn_->socket(), conn_->input(),
+    asio::async_write(conn_->get_socket(), conn_->input(),
         std::bind(&Request::handle_request, this, std::placeholders::_1));
 }
 
@@ -651,7 +695,7 @@ Request::handle_request(const asio::error_code& ec)
 
     // read response
     notify_state_change(State::RECEIVING);
-    asio::async_read_until(conn_->socket(), conn_->data(), HTTP_HEADER_DELIM,
+    asio::async_read_until(conn_->get_socket(), conn_->data(), HTTP_HEADER_DELIM,
         std::bind(&Request::handle_response_header, this, std::placeholders::_1));
 }
 
@@ -704,7 +748,7 @@ Request::handle_response_header(const asio::error_code& ec)
                 terminate(asio::error::eof);
         }
         else { // more chunks to come (don't add the missing \n from std::getline)
-            asio::async_read(conn_->socket(), conn_->data(),
+            asio::async_read(conn_->get_socket(), conn_->data(),
                 asio::transfer_exactly(content_length - response_.body.size()),
                 std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
         }
@@ -712,7 +756,7 @@ Request::handle_response_header(const asio::error_code& ec)
     // server wants to keep sending or we have content-length defined
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
-        asio::async_read_until(conn_->socket(), conn_->data(), JSON_VALUE_DELIM,
+        asio::async_read_until(conn_->get_socket(), conn_->data(), JSON_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
@@ -767,12 +811,12 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
     // has content-length
     else if (content_length_it != response_.headers.end() and response_.body.size() != content_length)
-        asio::async_read(conn_->socket(), conn_->data(),
+        asio::async_read(conn_->get_socket(), conn_->data(),
             asio::transfer_exactly(content_length - response_.body.size()),
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     // server wants to keep sending
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE){
-        asio::async_read_until(conn_->socket(), conn_->data(), JSON_VALUE_DELIM,
+        asio::async_read_until(conn_->get_socket(), conn_->data(), JSON_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)

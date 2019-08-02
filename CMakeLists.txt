@@ -20,6 +20,7 @@ option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restinio and jsoncpp"
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
+option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
 
@@ -68,6 +69,22 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
     if (NOT Jsoncpp_FOUND)
         message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
     endif()
+    if (OPENDHT_PROXY_OPENSSL)
+        find_package(OpenSSL REQUIRED)
+        if (NOT OpenSSL_FOUND)
+            message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+        else ()
+            message("OpenSSL found")
+            add_library(ssl SHARED IMPORTED)
+            add_definitions(-DOPENDHT_PROXY_OPENSSL)
+            find_package(Crypto REQUIRED)
+            if (NOT Crypto_FOUND)
+                message(SEND_ERROR "libcrypto is required for openssl")
+            else ()
+                add_library(crypto SHARED IMPORTED)
+            endif()
+        endif()
+    endif()
 endif()
 
 # Build flags
@@ -111,6 +128,9 @@ if (Restinio_INCLUDE_DIR)
 endif ()
 if (Jsoncpp_INCLUDE_DIRS)
     include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
+endif ()
+if (OpenSSL_INCLUDE_DIR)
+    include_directories (SYSTEM "${OpenSSL_INCLUDE_DIR}")
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 link_directories (${Jsoncpp_LIBRARY_DIRS})
@@ -267,7 +287,8 @@ if (OPENDHT_STATIC)
     target_link_libraries(opendht-static
         PRIVATE  ${argon2_LIBRARIES}
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-               ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+               ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+               ${Crypto_LIBRARIES} ${OpenSSL_LIBRARY})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -288,7 +309,7 @@ if (OPENDHT_SHARED)
     target_link_libraries(opendht
         PUBLIC ${CMAKE_THREAD_LIBS_INIT}
         PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                ${Jsoncpp_LIBRARIES}
+                ${Jsoncpp_LIBRARIES} ${Crypto_LIBRARIES} ${OpenSSL_LIBRARY}
                 ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
