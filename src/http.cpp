@@ -37,15 +37,10 @@ Connection::Connection(asio::io_context& ctx, asio::ssl::context_base::method&& 
                        std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), logger_(l)
 {
-    ssl_ctx_ = std::make_unique<asio::ssl::context>(std::move(ssl_method));
+    ssl_ctx_ = std::make_shared<asio::ssl::context>(std::move(ssl_method));
     ssl_ctx_->set_default_verify_paths();
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-    /*
-    ssl_ctx_->use_certificate_chain_file(chain_file);
-    ssl_ctx_->use_private_key_file(key_file, asio::ssl::context::pem);
-    get_socket().set_verify_callback(asio::ssl::rfc2818_verification(host_name));
-    socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_.get());
-    */
+    socket_ = std::make_unique<socket_t>(ctx_, ssl_ctx_);
 }
 #else
 Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l)
@@ -55,7 +50,13 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l)
 
 Connection::~Connection()
 {
-    close();
+    if (is_open()){
+#ifdef OPENDHT_PROXY_OPENSSL
+        get_socket().cancel();
+        get_socket().shutdown(asio::ip::tcp::socket::shutdown_both);
+#endif
+        get_socket().close();
+    }
     socket_.reset();
 }
 
@@ -112,17 +113,35 @@ Connection::read_until(const char delim)
     return content;
 }
 
-#ifdef OPENDHT_PROXY_OPENSSL
 socket_t&
 Connection::get_socket()
 {
     return *socket_;
 }
-#else
-socket_t&
-Connection::get_socket()
+
+void
+Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb)
 {
-    return *socket_;
+#ifdef OPENDHT_PROXY_OPENSSL
+    asio::async_connect(get_socket().lowest_layer(),
+#else
+    asio::async_connect(get_socket(),
+#endif
+                        std::move(endpoints), cb);
+}
+
+#ifdef OPENDHT_PROXY_OPENSSL
+void
+Connection::set_verify_certificate(const std::string hostname, const asio::ssl::verify_mode verify_mode)
+{
+    socket_->asio_ssl_stream().set_verify_mode(verify_mode);
+    socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
+}
+
+void
+Connection::async_handshake(HandlerCb cb)
+{
+    socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client, cb);
 }
 #endif
 
@@ -147,12 +166,6 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
         if (cb)
             cb(ec);
     });
-}
-
-void
-Connection::close()
-{
-    get_socket().close();
 }
 
 // connection listener
@@ -571,12 +584,10 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         }
     }
     conn_ = std::make_shared<Connection>(ctx_, asio::ssl::context::sslv23);
-    asio::async_connect(conn_->get_socket().lowest_layer(),
 #else
     conn_ = std::make_shared<Connection>(ctx_);
-    asio::async_connect(conn_->get_socket(),
 #endif
-                        std::move(endpoints), [this, cb]
+    conn_->async_connect(std::move(endpoints), [this, cb]
                         (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
     // try to connect to any until one works
         if (ec == asio::error::operation_aborted)
@@ -591,8 +602,24 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             // save the associated endpoint
             conn_->set_endpoint(endpoint);
         }
+#ifdef OPENDHT_PROXY_OPENSSL
+        conn_->set_verify_certificate(endpoint.address().to_string(), asio::ssl::stream_base::client);
+        conn_->async_handshake([this, cb](const asio::error_code& ec){
+            if (ec){
+                if (logger_)
+                    logger_->e("[http:request:%i] [connect:ssl] error: %s", id_, ec.message().c_str());
+            }
+            else {
+                if (logger_)
+                    logger_->d("[http:request:%i] [connect:ssl] secure channel established", id_);
+            }
+            if (cb)
+                cb(ec);
+        });
+#else
         if (cb)
             cb(ec);
+#endif
     });
 }
 
@@ -644,8 +671,12 @@ Request::post()
 
     // send the request
     notify_state_change(State::SENDING);
-    asio::async_write(conn_->get_socket(), conn_->input(),
-        std::bind(&Request::handle_request, this, std::placeholders::_1));
+#ifdef OPENDHT_PROXY_OPENSSL
+    asio::async_write(conn_->get_socket(),
+#else
+    asio::async_write(conn_->get_socket(),
+#endif
+                      conn_->input(), std::bind(&Request::handle_request, this, std::placeholders::_1));
 }
 
 void
@@ -656,7 +687,7 @@ Request::terminate(const asio::error_code& ec)
             logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
 
     // close the connection cancelling the scheduled socket operations on the io_context
-    conn_->close();
+    conn_.reset();
     // reset the http_parser holding the data pointer to the user callbacks
     parser_.reset();
     parser_s_.reset();

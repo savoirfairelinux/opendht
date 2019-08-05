@@ -70,19 +70,14 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
         message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
     endif()
     if (OPENDHT_PROXY_OPENSSL)
-        find_package(OpenSSL REQUIRED)
-        if (NOT OpenSSL_FOUND)
-            message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
-        else ()
-            message("OpenSSL found")
-            add_library(ssl SHARED IMPORTED)
+        # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
+        pkg_search_module(OPENSSL REQUIRED openssl)
+        if (OPENSSL_FOUND)
+            message(STATUS "Found OpenSSL ${OPENSSL_VERSION}")
+            include_directories(${OPENSSL_INCLUDE_DIRS})
             add_definitions(-DOPENDHT_PROXY_OPENSSL)
-            find_package(Crypto REQUIRED)
-            if (NOT Crypto_FOUND)
-                message(SEND_ERROR "libcrypto is required for openssl")
-            else ()
-                add_library(crypto SHARED IMPORTED)
-            endif()
+        else ()
+            message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
         endif()
     endif()
 endif()
@@ -288,7 +283,7 @@ if (OPENDHT_STATIC)
         PRIVATE  ${argon2_LIBRARIES}
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
-               ${Crypto_LIBRARIES} ${OpenSSL_LIBRARY})
+               ${OPENSSL_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -307,9 +302,9 @@ if (OPENDHT_SHARED)
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT}
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
         PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                ${Jsoncpp_LIBRARIES} ${Crypto_LIBRARIES} ${OpenSSL_LIBRARY}
+                ${Jsoncpp_LIBRARIES}
                 ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
@@ -381,6 +376,7 @@ if (OPENDHT_TESTS)
        ${CMAKE_THREAD_LIBS_INIT}
        ${CPPUNIT_LIBRARIES}
        ${GNUTLS_LIBRARIES}
+       ssl crypto
     )
     enable_testing()
     add_test(TEST opendht_unit_tests)

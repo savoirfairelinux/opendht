@@ -33,10 +33,11 @@
 namespace http {
 
 using HandlerCb = std::function<void(const asio::error_code& ec)>;
+using ConnectHandlerCb = std::function<void(const asio::error_code& ec,
+                                            const asio::ip::tcp::endpoint& endpoint)>;
 
 #ifdef OPENDHT_PROXY_OPENSSL
 using socket_t = restinio::impl::tls_socket_t;
-//using socket_t = asio::ssl::stream<asio::ip::tcp::socket>;
 #else
 using socket_t = asio::ip::tcp::socket;
 #endif
@@ -57,6 +58,9 @@ public:
     bool is_v6();
 
     void set_endpoint(const asio::ip::tcp::endpoint& endpoint);
+#ifdef OPENDHT_PROXY_OPENSSL
+    void set_verify_certificate(const std::string hostname, const asio::ssl::verify_mode verify_mode);
+#endif
 
     asio::streambuf& input();
     asio::streambuf& data();
@@ -64,15 +68,14 @@ public:
     std::string read_bytes(const size_t bytes);
     std::string read_until(const char delim);
 
+    socket_t& get_socket();
+
+    void async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb);
 #ifdef OPENDHT_PROXY_OPENSSL
-    socket_t& get_socket();
-#else
-    socket_t& get_socket();
+    void async_handshake(HandlerCb cb);
 #endif
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
-
-    void close();
 
 private:
     unsigned int id_;
@@ -81,7 +84,7 @@ private:
     asio::io_context& ctx_;
     std::unique_ptr<socket_t> socket_;
 #ifdef OPENDHT_PROXY_OPENSSL
-    std::unique_ptr<asio::ssl::context> ssl_ctx_;
+    std::shared_ptr<asio::ssl::context> ssl_ctx_;
     asio::ssl::context::options ssl_options_;
 #endif
 
