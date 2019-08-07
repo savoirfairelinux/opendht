@@ -225,11 +225,16 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
                 unsigned int port = std::stoi(idstr);
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
+                    new DhtProxyServer(
+#ifdef OPENDHT_PROXY_OPENSSL
+                        params.id, /* dht::crypto::Identity */
+#endif
+                        node, port
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, port, pushServer)));
-#else
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, port)));
-#endif // OPENDHT_PUSH_NOTIFICATIONS
+                        ,pushServer
+#endif
+                )));
             } catch (...) { }
             continue;
         } else if (op == "psp") {
@@ -554,7 +559,12 @@ main(int argc, char **argv)
 #endif
         if (params.proxyserver != 0) {
 #ifdef OPENDHT_PROXY_SERVER
-            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, params.proxyserver, params.pushserver, context.logger)));
+            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
+                new DhtProxyServer(
+#ifdef OPENDHT_PROXY_OPENSSL
+                    params.id, /* dht::crypto::Identity */
+#endif
+                    node, params.proxyserver, params.pushserver, context.logger)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);

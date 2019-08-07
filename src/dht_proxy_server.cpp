@@ -46,9 +46,12 @@ constexpr char RESP_MSG_PUT_FAILED[] = "{\"err\":\"Put failed\"}";
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
-DhtProxyServer::DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port,
-                              const std::string& pushServer,
-                              std::shared_ptr<dht::Logger> logger
+DhtProxyServer::DhtProxyServer(
+#ifdef OPENDHT_PROXY_OPENSSL
+                               dht::crypto::Identity& identity,
+#endif
+                               std::shared_ptr<DhtRunner> dht, in_port_t port,
+                               const std::string& pushServer, std::shared_ptr<dht::Logger> logger
 ):
         dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),

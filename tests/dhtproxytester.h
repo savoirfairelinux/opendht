@@ -66,6 +66,10 @@ class DhtProxyTester : public CppUnit::TestFixture {
 
     std::shared_ptr<dht::DhtRunner> nodeClient;
     std::shared_ptr<dht::DhtRunner> nodeProxy;
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    dht::crypto::Identity serverIdentity;
+#endif
     std::unique_ptr<dht::DhtProxyServer> serverProxy;
 
     dht::DhtRunner::Context clientContext {};
