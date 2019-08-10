@@ -48,15 +48,14 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
 DhtProxyServer::DhtProxyServer(
 #ifdef OPENDHT_PROXY_OPENSSL
-                               dht::crypto::Identity& identity,
+    dht::crypto::Identity& identity,
 #endif
-                               std::shared_ptr<DhtRunner> dht, in_port_t port,
-                               const std::string& pushServer, std::shared_ptr<dht::Logger> logger
+    std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
+    std::shared_ptr<dht::Logger> logger
 ):
         dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
-        connListener_(std::make_shared<http::ConnectionListener>(
-                        dht, listeners_, lockListener_, logger)),
+        connListener_(std::make_shared<http::ConnectionListener>(dht, listeners_, lockListener_, logger)),
         pushServer_(pushServer)
 {
     if (not dht_)
@@ -80,6 +79,33 @@ DhtProxyServer::DhtProxyServer(
     // build http server
     auto settings = makeHttpServerSettings();
     settings.port(port);
+
+#ifdef OPENDHT_PROXY_OPENSSL
+    // define tls context
+    asio::ssl::context tls_context { asio::ssl::context::sslv23 };
+    tls_context.set_options(asio::ssl::context::default_workarounds
+                            | asio::ssl::context::no_sslv2
+                            | asio::ssl::context::single_dh_use);
+    // save keys in memory & set in tls context
+    asio::error_code ec;
+    // node private key
+    auto pk = identity.first->serialize(); // returns Blob
+    pk_ = std::make_unique<const asio::const_buffer>(static_cast<void*>(pk.data()),
+                                                    (std::size_t) pk.size());
+    tls_context.use_private_key(*pk_, asio::ssl::context::file_format::pem, ec);
+    if (ec)
+        throw std::runtime_error("Error setting Node private key: " + ec.message());
+    // certificate chain
+    auto cc = identity.second->toString(true/*chain*/);
+    auto ccb = dht::Blob(cc.begin(), cc.end());
+    cc_ = std::make_unique<const asio::const_buffer>(static_cast<void*>(ccb.data()),
+                                                    (std::size_t) ccb.size());
+    tls_context.use_certificate_chain(*cc_, ec);
+    if (ec)
+        throw std::runtime_error("Error setting CA chain file: " + ec.message());
+    settings.tls_context(std::move(tls_context));
+#endif
+
     httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
         restinio::own_io_context(),
         std::forward<ServerSettings>(settings)

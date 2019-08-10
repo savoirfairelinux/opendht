@@ -228,7 +228,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
                     new DhtProxyServer(
 #ifdef OPENDHT_PROXY_OPENSSL
-                        params.id, /* dht::crypto::Identity */
+                        params.id,
 #endif
                         node, port
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -512,16 +512,19 @@ main(int argc, char **argv)
     setupSignals();
 
     auto node = std::make_shared<DhtRunner>();
-
     try {
+#ifndef OPENDHT_PROXY_SERVER
         if (not params.id.first and params.generate_identity) {
-            auto ca_tmp = dht::crypto::generateEcIdentity("DHT Node CA");
-            params.id = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+#endif
+            auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
+            params.id = dht::crypto::generateIdentity("DHT Node", *node_ca);
             if (not params.save_identity.empty()) {
-                dht::crypto::saveIdentity(ca_tmp, params.save_identity + "_ca", params.privkey_pwd);
+                dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
                 dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
             }
+#ifndef OPENDHT_PROXY_SERVER
         }
+#endif
 
         dht::DhtRunner::Config config {};
         config.dht_config.node_config.network = params.network;
@@ -562,7 +565,7 @@ main(int argc, char **argv)
             proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
                 new DhtProxyServer(
 #ifdef OPENDHT_PROXY_OPENSSL
-                    params.id, /* dht::crypto::Identity */
+                    params.id,
 #endif
                     node, params.proxyserver, params.pushserver, context.logger)));
 #else

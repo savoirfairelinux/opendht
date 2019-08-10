@@ -31,7 +31,11 @@
 
 #include <memory>
 #include <mutex>
+
 #include <restinio/all.hpp>
+#ifdef OPENDHT_PROXY_OPENSSL
+#include <restinio/tls.hpp>
+#endif
 #include "http.h"
 
 #ifdef OPENDHT_JSONCPP
@@ -51,7 +55,12 @@ namespace restinio {
 }
 
 using RestRouter = restinio::router::express_router_t<>;
+
+#ifdef OPENDHT_PROXY_OPENSSL
+struct RestRouterTraits : public restinio::default_tls_traits_t
+#else
 struct RestRouterTraits : public restinio::default_traits_t
+#endif
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
     using http_methods_mapper_t = restinio::custom_http_methods_t;
@@ -88,10 +97,10 @@ public:
      */
     DhtProxyServer(
 #ifdef OPENDHT_PROXY_OPENSSL
-                   dht::crypto::Identity& identity,
+       dht::crypto::Identity& identity,
 #endif
-                   std::shared_ptr<DhtRunner> dht, in_port_t port = 8000,
-                   const std::string& pushServer = "", std::shared_ptr<dht::Logger> logger = {});
+       std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "",
+       std::shared_ptr<dht::Logger> logger = {});
 
     virtual ~DhtProxyServer();
 
@@ -337,6 +346,10 @@ private:
     // http server
     std::thread httpServerThread_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
+#ifdef OPENDHT_PROXY_OPENSSL
+    std::unique_ptr<const asio::const_buffer> pk_;
+    std::unique_ptr<const asio::const_buffer> cc_;
+#endif
 
     // http client
     std::pair<std::string, std::string> pushHostPort_;
