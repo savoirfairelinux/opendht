@@ -53,7 +53,6 @@ Connection::~Connection()
     if (is_open()){
 #ifdef OPENDHT_PROXY_OPENSSL
         get_socket().cancel();
-        get_socket().shutdown(asio::ip::tcp::socket::shutdown_both);
 #endif
         get_socket().close();
     }
@@ -682,9 +681,14 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
+    if (finishing_.load())
+        return;
+
     if (ec != asio::error::eof and ec != asio::error::operation_aborted)
         if (logger_)
             logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
+
+    finishing_.store(true);
 
     // close the connection cancelling the scheduled socket operations on the io_context
     conn_.reset();

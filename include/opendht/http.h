@@ -294,6 +294,7 @@ private:
     Response response_ {};
     std::string request_;
     std::atomic<bool> message_complete_ {false};
+    std::atomic<bool> finishing_ {false};
     std::unique_ptr<http_parser> parser_;
     std::unique_ptr<http_parser_settings> parser_s_;
 
