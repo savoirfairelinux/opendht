@@ -45,11 +45,10 @@ using socket_t = asio::ip::tcp::socket;
 class OPENDHT_PUBLIC Connection
 {
 public:
-#ifdef OPENDHT_PROXY_OPENSSL
-    Connection(asio::io_context& ctx, asio::ssl::context_base::method&& ssl_method,
-               std::shared_ptr<dht::Logger> l = {});
-#else
     Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l = {});
+#ifdef OPENDHT_PROXY_OPENSSL
+    Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
+               std::shared_ptr<dht::Logger> l = {});
 #endif
     ~Connection();
 
@@ -57,10 +56,11 @@ public:
     bool is_open();
     bool is_v6();
 
-    void set_endpoint(const asio::ip::tcp::endpoint& endpoint);
+    void set_endpoint(const asio::ip::tcp::endpoint& endpoint
 #ifdef OPENDHT_PROXY_OPENSSL
-    void set_verify_certificate(const std::string hostname, const asio::ssl::verify_mode verify_mode);
+                      , const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none
 #endif
+    );
 
     asio::streambuf& input();
     asio::streambuf& data();
@@ -84,8 +84,8 @@ private:
     asio::io_context& ctx_;
     std::unique_ptr<socket_t> socket_;
 #ifdef OPENDHT_PROXY_OPENSSL
+    std::unique_ptr<asio::const_buffer> certificate_;
     std::shared_ptr<asio::ssl::context> ssl_ctx_;
-    asio::ssl::context::options ssl_options_;
 #endif
 
     asio::ip::tcp::endpoint endpoint_;
@@ -205,6 +205,9 @@ public:
     unsigned int id() const;
     void set_connection(std::shared_ptr<Connection> connection);
     std::shared_ptr<Connection> get_connection() const;
+#ifdef OPENDHT_PROXY_OPENSSL
+    void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
+#endif
 
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
@@ -282,6 +285,9 @@ private:
     std::unique_ptr<Callbacks> cbs_;
     State state_;
 
+#ifdef OPENDHT_PROXY_OPENSSL
+    std::shared_ptr<dht::crypto::Certificate> certificate_;
+#endif
     std::string service_;
     std::string host_;
 

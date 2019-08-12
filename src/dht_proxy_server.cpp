@@ -90,19 +90,16 @@ DhtProxyServer::DhtProxyServer(
     asio::error_code ec;
     // node private key
     auto pk = identity.first->serialize(); // returns Blob
-    pk_ = std::make_unique<const asio::const_buffer>(static_cast<void*>(pk.data()),
-                                                    (std::size_t) pk.size());
+    pk_ = std::make_unique<asio::const_buffer>(static_cast<void*>(pk.data()), (std::size_t) pk.size());
     tls_context.use_private_key(*pk_, asio::ssl::context::file_format::pem, ec);
     if (ec)
-        throw std::runtime_error("Error setting Node private key: " + ec.message());
+        throw std::runtime_error("Error setting node's private key: " + ec.message());
     // certificate chain
     auto cc = identity.second->toString(true/*chain*/);
-    auto ccb = dht::Blob(cc.begin(), cc.end());
-    cc_ = std::make_unique<const asio::const_buffer>(static_cast<void*>(ccb.data()),
-                                                    (std::size_t) ccb.size());
+    cc_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(cc.data()), (std::size_t) cc.size());
     tls_context.use_certificate_chain(*cc_, ec);
     if (ec)
-        throw std::runtime_error("Error setting CA chain file: " + ec.message());
+        throw std::runtime_error("Error setting certificate chain: " + ec.message());
     settings.tls_context(std::move(tls_context));
 #endif
 

@@ -32,21 +32,37 @@ constexpr char JSON_VALUE_DELIM = '\n';
 
 unsigned int Connection::ids_ = 1;
 
+Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l)
+    : id_(Connection::ids_++), ctx_(ctx), logger_(l)
+{
 #ifdef OPENDHT_PROXY_OPENSSL
-Connection::Connection(asio::io_context& ctx, asio::ssl::context_base::method&& ssl_method,
+    ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
+    ssl_ctx_->set_default_verify_paths();
+    ssl_ctx_->set_verify_mode(asio::ssl::verify_peer);
+    socket_ = std::make_unique<socket_t>(ctx_, ssl_ctx_);
+#else
+    socket_ = std::make_unique<socket_t>(new socket_t(ctx));
+#endif
+}
+
+Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
                        std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), logger_(l)
 {
-    ssl_ctx_ = std::make_shared<asio::ssl::context>(std::move(ssl_method));
+    ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
     ssl_ctx_->set_default_verify_paths();
+
+    asio::error_code ec;
+    auto cert = certificate->toString(false/*chain*/);
+    certificate_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(cert.data()),
+                                                       (std::size_t) cert.size());
+    ssl_ctx_->use_certificate(*certificate_, asio::ssl::context::file_format::pem, ec);
+    if (ec)
+        throw std::runtime_error("Error setting certificate: " + ec.message());
+
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     socket_ = std::make_unique<socket_t>(ctx_, ssl_ctx_);
 }
-#else
-Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l)
-    : id_(Connection::ids_++), ctx_(ctx), socket_(new socket_t(ctx)), logger_(l)
-{}
-#endif
 
 Connection::~Connection()
 {
@@ -78,9 +94,17 @@ Connection::is_v6()
 }
 
 void
-Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint)
-{
+Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint
+#ifdef OPENDHT_PROXY_OPENSSL
+                         , const asio::ssl::verify_mode verify_mode
+#endif
+){
     endpoint_ = endpoint;
+#ifdef OPENDHT_PROXY_OPENSSL
+    auto hostname = endpoint_.address().to_string();
+    socket_->asio_ssl_stream().set_verify_mode(verify_mode);
+    socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
+#endif
 }
 
 asio::streambuf&
@@ -130,13 +154,6 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 }
 
 #ifdef OPENDHT_PROXY_OPENSSL
-void
-Connection::set_verify_certificate(const std::string hostname, const asio::ssl::verify_mode verify_mode)
-{
-    socket_->asio_ssl_stream().set_verify_mode(verify_mode);
-    socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
-}
-
 void
 Connection::async_handshake(HandlerCb cb)
 {
@@ -360,6 +377,14 @@ Request::get_connection() const
     return conn_;
 }
 
+#ifdef OPENDHT_PROXY_OPENSSL
+void
+Request::set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate)
+{
+    certificate_ = certificate;
+}
+#endif
+
 void
 Request::set_logger(std::shared_ptr<dht::Logger> logger)
 {
@@ -574,21 +599,14 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             eps.append(endpoint.address().to_string() + " ");
         logger_->d("[http:request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
     }
+    if (certificate_)
+        conn_ = std::make_shared<Connection>(ctx_, certificate_);
+    else
+        conn_ = std::make_shared<Connection>(ctx_);
 
-#ifdef OPENDHT_PROXY_OPENSSL
-    if (service_ == "https" or service_ == "443"){
-        if (!conn_){
-            logger_->e("[http:request:%i] [connect] undefined SSL connection", id_);
-            terminate(asio::error::connection_aborted);
-        }
-    }
-    conn_ = std::make_shared<Connection>(ctx_, asio::ssl::context::sslv23);
-#else
-    conn_ = std::make_shared<Connection>(ctx_);
-#endif
+    // try to connect to any until one works
     conn_->async_connect(std::move(endpoints), [this, cb]
                         (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
-    // try to connect to any until one works
         if (ec == asio::error::operation_aborted)
             return;
         else if (ec){
@@ -598,11 +616,16 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         else {
             if (logger_)
                 logger_->d("[http:request:%i] [connect] success", id_);
-            // save the associated endpoint
-            conn_->set_endpoint(endpoint);
+            // save & verify the endpoint
+            if (!certificate_)
+                conn_->set_endpoint(endpoint);
+#ifdef OPENDHT_PROXY_OPENSSL
+            else if (certificate_)
+                conn_->set_endpoint(endpoint, asio::ssl::verify_peer
+                                              | asio::ssl::verify_fail_if_no_peer_cert);
+#endif
         }
 #ifdef OPENDHT_PROXY_OPENSSL
-        conn_->set_verify_certificate(endpoint.address().to_string(), asio::ssl::stream_base::client);
         conn_->async_handshake([this, cb](const asio::error_code& ec){
             if (ec){
                 if (logger_)

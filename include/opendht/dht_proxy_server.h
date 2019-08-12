@@ -347,8 +347,8 @@ private:
     std::thread httpServerThread_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
 #ifdef OPENDHT_PROXY_OPENSSL
-    std::unique_ptr<const asio::const_buffer> pk_;
-    std::unique_ptr<const asio::const_buffer> cc_;
+    std::unique_ptr<asio::const_buffer> pk_;
+    std::unique_ptr<asio::const_buffer> cc_;
 #endif
 
     // http client
