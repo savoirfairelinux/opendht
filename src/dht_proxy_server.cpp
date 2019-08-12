@@ -81,6 +81,8 @@ DhtProxyServer::DhtProxyServer(
     settings.port(port);
 
 #ifdef OPENDHT_PROXY_OPENSSL
+    // save self-signed certificate for Request client
+    serverCertificate_ = identity.second;
     // define tls context
     asio::ssl::context tls_context { asio::ssl::context::sslv23 };
     tls_context.set_options(asio::ssl::context::default_workarounds
@@ -731,6 +733,9 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
                 requests_.erase(reqid);
             }
         });
+#ifdef OPENDHT_PROXY_OPENSSL
+        request->set_certificate(serverCertificate_);
+#endif
         request->send();
         requests_[reqid] = request;
     }

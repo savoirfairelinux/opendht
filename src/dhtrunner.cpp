@@ -965,15 +965,20 @@ DhtRunner::enableProxy(bool proxify)
     if (proxify) {
         // Init the proxy client
         auto dht_via_proxy = std::unique_ptr<DhtInterface>(
-            new DhtProxyClient([this]{
-                if (config_.threaded) {
-                    {
-                        std::lock_guard<std::mutex> lck(storage_mtx);
-                        pending_ops_prio.emplace([=](SecureDht&) mutable {});
+            new DhtProxyClient(
+#ifdef OPENDHT_PROXY_OPENSSL
+                config_.dht_config.id.second,
+#endif
+                [this]{
+                    if (config_.threaded) {
+                        {
+                            std::lock_guard<std::mutex> lck(storage_mtx);
+                            pending_ops_prio.emplace([=](SecureDht&) mutable {});
+                        }
+                        cv.notify_all();
                     }
-                    cv.notify_all();
-                }
-            }, config_.proxy_server, config_.push_node_id, logger_)
+                },
+                config_.proxy_server, config_.push_node_id, logger_)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS

@@ -69,9 +69,17 @@ struct DhtProxyClient::ProxySearch {
 
 DhtProxyClient::DhtProxyClient() {}
 
-DhtProxyClient::DhtProxyClient(std::function<void()> signal, const std::string& serverHost,
-                               const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
-    : pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
+DhtProxyClient::DhtProxyClient(
+#ifdef OPENDHT_PROXY_OPENSSL
+    std::shared_ptr<dht::crypto::Certificate> certificate,
+#endif
+        std::function<void()> signal, const std::string& serverHost,
+        const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
+    :
+#ifdef OPENDHT_PROXY_OPENSSL
+        serverCertificate_(certificate),
+#endif
+        pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
 {
     // build http client
     serverHostService_ = splitPort(serverHost);
@@ -337,6 +345,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 requests_.erase(reqid);
             }
         });
+#ifdef OPENDHT_PROXY_OPENSSL
+        request->set_certificate(serverCertificate_);
+#endif
         request->send();
         requests_[reqid] = request;
     }
@@ -470,6 +481,9 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
                 requests_.erase(reqid);
             }
         });
+#ifdef OPENDHT_PROXY_OPENSSL
+        request->set_certificate(serverCertificate_);
+#endif
         request->send();
         requests_[reqid] = request;
     }
@@ -663,6 +677,9 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
         if (infoState->cancel.load())
             return;
 
+#ifdef OPENDHT_PROXY_OPENSSL
+        request->set_certificate(serverCertificate_);
+#endif
         request->send();
         requests_[reqid] = request;
     }
@@ -935,6 +952,9 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                         requests_.erase(reqid);
                     }
                 });
+#ifdef OPENDHT_PROXY_OPENSSL
+                request->set_certificate(serverCertificate_);
+#endif
                 request->send();
                 requests_[reqid] = request;
             }
@@ -1039,6 +1059,9 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                 requests_.erase(reqid);
             }
         });
+#ifdef OPENDHT_PROXY_OPENSSL
+        request->set_certificate(serverCertificate_);
+#endif
         request->send();
         requests_[reqid] = request;
     }

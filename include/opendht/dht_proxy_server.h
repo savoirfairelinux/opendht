@@ -349,6 +349,7 @@ private:
 #ifdef OPENDHT_PROXY_OPENSSL
     std::unique_ptr<asio::const_buffer> pk_;
     std::unique_ptr<asio::const_buffer> cc_;
+    std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
 #endif
 
     // http client
