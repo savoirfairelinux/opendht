@@ -38,11 +38,16 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
     if (ssl){
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
         ssl_ctx_->set_default_verify_paths();
-        ssl_ctx_->set_verify_mode(asio::ssl::verify_peer);
+        ssl_ctx_->set_verify_mode(asio::ssl::verify_none);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
+        if (logger_)
+            logger_->d("[http:connection:%i] [ssl] https init", id_);
     }
-    else
+    else {
         socket_ = std::make_unique<socket_t>(ctx);
+        if (logger_)
+            logger_->d("[http:connection:%i] http init", id_);
+    }
 }
 
 Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
@@ -62,6 +67,8 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
 
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
+    if (logger_)
+        logger_->d("[http:connection:%i] [ssl] https init", id_);
 }
 
 Connection::~Connection()
@@ -99,14 +106,22 @@ Connection::is_v6()
     return endpoint_.address().is_v6();
 }
 
+bool
+Connection::is_ssl()
+{
+    return ssl_ctx_ ? true : false;
+}
+
 void
 Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
 {
     endpoint_ = endpoint;
-    if (ssl_ctx_){
+    if (ssl_ctx_ and verify_mode != asio::ssl::verify_none){
         auto hostname = endpoint_.address().to_string();
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         ssl_socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
+        if (logger_)
+            logger_->d("[http:connection:%i] [ssl] verify %s rfc2818 compliance", id_, hostname.c_str());
     }
 }
 
@@ -189,7 +204,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 {
     if (!is_open()){
         if (logger_)
-            logger_->e("[connection:%i] closed, can't timeout", id_);
+            logger_->e("[http:connection:%i] closed, can't timeout", id_);
         return;
     }
     if (!timeout_timer_)
@@ -200,7 +215,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
             return;
         else if (ec){
             if (logger_)
-                logger_->e("[connection:%i] timeout error: %s", id_, ec.message().c_str());
+                logger_->e("[http:connection:%i] timeout error: %s", id_, ec.message().c_str());
         }
         if (cb)
             cb(ec);
@@ -269,6 +284,7 @@ Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::st
                    std::shared_ptr<dht::Logger> logger)
     : resolver_(ctx), logger_(logger)
 {
+    service_ = service;
     resolve(host, service);
 }
 
@@ -293,6 +309,12 @@ Resolver::~Resolver()
             cb(asio::error::operation_aborted, {});
         cbs.pop();
     }
+}
+
+std::string
+Resolver::get_service() const
+{
+    return service_;
 }
 
 void
@@ -400,13 +422,11 @@ Request::get_connection() const
     return conn_;
 }
 
-#ifdef OPENDHT_PROXY_OPENSSL
 void
 Request::set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate)
 {
     certificate_ = certificate;
 }
-#endif
 
 void
 Request::set_logger(std::shared_ptr<dht::Logger> logger)
@@ -623,48 +643,42 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         logger_->d("[http:request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
     }
     if (certificate_)
-        conn_ = std::make_shared<Connection>(ctx_, certificate_);
+        conn_ = std::make_shared<Connection>(ctx_, certificate_, logger_);
+    else if (resolver_->get_service() == "https" or resolver_->get_service() == "443")
+        conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
     else
-        conn_ = std::make_shared<Connection>(ctx_);
+        conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
 
     // try to connect to any until one works
     conn_->async_connect(std::move(endpoints), [this, cb]
                         (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
         if (ec == asio::error::operation_aborted)
             return;
-        else if (ec){
-            if (logger_)
-                logger_->e("[http:request:%i] [connect] failed with all endpoints", id_);
-        }
+        else if (ec and logger_)
+            logger_->e("[http:request:%i] [connect] failed with all endpoints", id_);
         else {
             if (logger_)
                 logger_->d("[http:request:%i] [connect] success", id_);
-            // save & verify the endpoint
+
             if (!certificate_)
-                conn_->set_endpoint(endpoint);
-#ifdef OPENDHT_PROXY_OPENSSL
-            else if (certificate_)
+                conn_->set_endpoint(endpoint, asio::ssl::verify_none);
+            else
                 conn_->set_endpoint(endpoint, asio::ssl::verify_peer
                                               | asio::ssl::verify_fail_if_no_peer_cert);
-#endif
+            if (conn_->is_ssl()){
+                conn_->async_handshake([this, cb](const asio::error_code& ec){
+                    if (ec and logger_)
+                        logger_->e("[http:request:%i] [ssl:handshake] error: %s", id_, ec.message().c_str());
+                    else if (logger_)
+                        logger_->d("[http:request:%i] [ssl:handshake] secure channel established", id_);
+                    if (cb)
+                        cb(ec);
+                });
+                return;
+            }
         }
-#ifdef OPENDHT_PROXY_OPENSSL
-        conn_->async_handshake([this, cb](const asio::error_code& ec){
-            if (ec){
-                if (logger_)
-                    logger_->e("[http:request:%i] [connect:ssl] error: %s", id_, ec.message().c_str());
-            }
-            else {
-                if (logger_)
-                    logger_->d("[http:request:%i] [connect:ssl] secure channel established", id_);
-            }
-            if (cb)
-                cb(ec);
-        });
-#else
         if (cb)
             cb(ec);
-#endif
     });
 }
 

@@ -54,9 +54,7 @@ public:
     DhtProxyClient();
 
     explicit DhtProxyClient(
-#ifdef OPENDHT_PROXY_OPENSSL
         std::shared_ptr<dht::crypto::Certificate> certificate,
-#endif
         std::function<void()> loopSignal, const std::string& serverHost,
         const std::string& pushClientId = "", std::shared_ptr<dht::Logger> logger = {});
 
@@ -331,9 +329,7 @@ private:
      */
     void cancelAllOperations();
 
-#ifdef OPENDHT_PROXY_OPENSSL
     std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
-#endif
     std::pair<std::string, std::string> serverHostService_;
     std::string pushClientId_;
 

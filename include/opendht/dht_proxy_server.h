@@ -33,9 +33,7 @@
 #include <mutex>
 
 #include <restinio/all.hpp>
-#ifdef OPENDHT_PROXY_OPENSSL
 #include <restinio/tls.hpp>
-#endif
 #include "http.h"
 
 #ifdef OPENDHT_JSONCPP
@@ -96,9 +94,7 @@ public:
      * it will fails silently
      */
     DhtProxyServer(
-#ifdef OPENDHT_PROXY_OPENSSL
-       dht::crypto::Identity& identity,
-#endif
+       std::shared_ptr<dht::crypto::Identity> identity,
        std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "",
        std::shared_ptr<dht::Logger> logger = {});
 
@@ -340,21 +336,20 @@ private:
     using time_point = clock::time_point;
 
     std::shared_ptr<DhtRunner> dht_;
-    std::shared_ptr<dht::Logger> logger_;
     Json::StreamWriterBuilder jsonBuilder_;
 
     // http server
     std::thread httpServerThread_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
-#ifdef OPENDHT_PROXY_OPENSSL
     std::unique_ptr<asio::const_buffer> pk_;
     std::unique_ptr<asio::const_buffer> cc_;
-    std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
-#endif
+    std::shared_ptr<dht::crypto::Identity> serverIdentity_;
 
     // http client
     std::pair<std::string, std::string> pushHostPort_;
     std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
+
+    std::shared_ptr<dht::Logger> logger_;
 
     mutable std::mutex statsMutex_;
     mutable ServerStats stats_;

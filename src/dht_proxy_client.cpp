@@ -70,21 +70,20 @@ struct DhtProxyClient::ProxySearch {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(
-#ifdef OPENDHT_PROXY_OPENSSL
-    std::shared_ptr<dht::crypto::Certificate> certificate,
-#endif
+        std::shared_ptr<dht::crypto::Certificate> certificate,
         std::function<void()> signal, const std::string& serverHost,
         const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
     :
-#ifdef OPENDHT_PROXY_OPENSSL
         serverCertificate_(certificate),
-#endif
         pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
 {
     // build http client
     serverHostService_ = splitPort(serverHost);
     serverHostService_.second = serverHostService_.second.empty() ? "80" :
                                 serverHostService_.second;
+    if (serverCertificate_ and logger_)
+        logger_->d("[proxy:client] using server certificate for ssl:\n%s",
+                   serverCertificate_->toString(false/*chain*/).c_str());
     // resolve once
     resolver_ = std::make_shared<http::Resolver>(httpContext_, serverHostService_.first,
                                                  serverHostService_.second, logger_);
@@ -345,9 +344,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 requests_.erase(reqid);
             }
         });
-#ifdef OPENDHT_PROXY_OPENSSL
+        if (serverCertificate_)
+            request->set_certificate(serverCertificate_);
         request->set_certificate(serverCertificate_);
-#endif
         request->send();
         requests_[reqid] = request;
     }
@@ -481,9 +480,9 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
                 requests_.erase(reqid);
             }
         });
-#ifdef OPENDHT_PROXY_OPENSSL
+        if (serverCertificate_)
+            request->set_certificate(serverCertificate_);
         request->set_certificate(serverCertificate_);
-#endif
         request->send();
         requests_[reqid] = request;
     }
@@ -677,9 +676,8 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
         if (infoState->cancel.load())
             return;
 
-#ifdef OPENDHT_PROXY_OPENSSL
-        request->set_certificate(serverCertificate_);
-#endif
+        if (serverCertificate_)
+            request->set_certificate(serverCertificate_);
         request->send();
         requests_[reqid] = request;
     }
@@ -952,9 +950,8 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                         requests_.erase(reqid);
                     }
                 });
-#ifdef OPENDHT_PROXY_OPENSSL
-                request->set_certificate(serverCertificate_);
-#endif
+                if (serverCertificate_)
+                    request->set_certificate(serverCertificate_);
                 request->send();
                 requests_[reqid] = request;
             }
@@ -1059,9 +1056,8 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                 requests_.erase(reqid);
             }
         });
-#ifdef OPENDHT_PROXY_OPENSSL
-        request->set_certificate(serverCertificate_);
-#endif
+        if (serverCertificate_)
+            request->set_certificate(serverCertificate_);
         request->send();
         requests_[reqid] = request;
     }

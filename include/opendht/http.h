@@ -51,10 +51,10 @@ public:
     unsigned int id();
     bool is_open();
     bool is_v6();
+    bool is_ssl();
 
     void set_endpoint(const asio::ip::tcp::endpoint& endpoint,
-                      const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none
-    );
+                      const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none);
 
     asio::streambuf& input();
     asio::streambuf& data();
@@ -143,6 +143,8 @@ public:
 
     ~Resolver();
 
+    std::string get_service() const;
+
     void add_callback(ResolverCb cb);
 
 private:
@@ -151,6 +153,7 @@ private:
     std::mutex mutex_;
 
     asio::error_code ec_;
+    std::string service_;
     asio::ip::tcp::resolver resolver_;
     std::vector<asio::ip::tcp::endpoint> endpoints_;
 
@@ -277,9 +280,7 @@ private:
     std::unique_ptr<Callbacks> cbs_;
     State state_;
 
-#ifdef OPENDHT_PROXY_OPENSSL
     std::shared_ptr<dht::crypto::Certificate> certificate_;
-#endif
     std::string service_;
     std::string host_;
 
