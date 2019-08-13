@@ -54,11 +54,7 @@ namespace restinio {
 
 using RestRouter = restinio::router::express_router_t<>;
 
-#ifdef OPENDHT_PROXY_OPENSSL
-struct RestRouterTraits : public restinio::default_tls_traits_t
-#else
-struct RestRouterTraits : public restinio::default_traits_t
-#endif
+struct RestRouterTraitsTls : public restinio::default_tls_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
     using http_methods_mapper_t = restinio::custom_http_methods_t;
@@ -66,7 +62,14 @@ struct RestRouterTraits : public restinio::default_traits_t
     using request_handler_t = RestRouter;
     using connection_state_listener_t = http::ConnectionListener;
 };
-using ServerSettings = restinio::run_on_this_thread_settings_t<RestRouterTraits>;
+struct RestRouterTraits : public restinio::default_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+    using logger_t = restinio::opendht_logger_t;
+    using request_handler_t = RestRouter;
+    using connection_state_listener_t = http::ConnectionListener;
+};
 using RequestStatus = restinio::request_handling_status_t;
 using ResponseByParts = restinio::chunked_output_t;
 using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
@@ -164,8 +167,9 @@ private:
     template <typename HttpResponse>
     HttpResponse initHttpResponse(HttpResponse response) const;
 
-    ServerSettings makeHttpServerSettings(
-        const unsigned int max_pipelined_requests = 16);
+    template< typename ServerSettings >
+    void addServerSettings(ServerSettings& serverSettings,
+                           const unsigned int max_pipelined_requests = 16);
 
     std::unique_ptr<RestRouter> createRestRouter();
 
@@ -340,7 +344,7 @@ private:
 
     // http server
     std::thread httpServerThread_;
-    std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
+    std::unique_ptr<asio::io_context> serverCtx_;
     std::unique_ptr<asio::const_buffer> pk_;
     std::unique_ptr<asio::const_buffer> cc_;
     std::shared_ptr<dht::crypto::Identity> serverIdentity_;

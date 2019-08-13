@@ -74,10 +74,6 @@ DhtProxyServer::DhtProxyServer(
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
-    // build http server
-    auto settings = makeHttpServerSettings();
-    settings.port(port);
-
     if (identity){
         // define tls context
         asio::ssl::context tls_context { asio::ssl::context::sslv23 };
@@ -100,32 +96,44 @@ DhtProxyServer::DhtProxyServer(
             throw std::runtime_error("Error setting certificate chain: " + ec.message());
         if (logger_)
             logger_->d("[proxy:server] using certificate chain for ssl:\n%s", cc.c_str());
+        // build http server
+        auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>();
+        addServerSettings(settings);
+        settings.port(port);
         settings.tls_context(std::move(tls_context));
+        auto server = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
+            restinio::own_io_context(),
+            std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(settings)
+        );
+        serverCtx_.reset(&server->io_context());
+        // define http request destination
+        pushHostPort_ = splitPort(pushServer_);
+        // run http server
+        httpServerThread_ = std::thread([this, server=std::move(server)](){
+            server->open_async([]{/*ok*/}, [](std::exception_ptr){});
+            serverCtx_->run();
+        });
     }
-
-    httpServer_.reset(new restinio::http_server_t<RestRouterTraits>(
-        restinio::own_io_context(),
-        std::forward<ServerSettings>(settings)
-    ));
-    // define http request destination
-    pushHostPort_ = splitPort(pushServer_);
-    // run http server
-    httpServerThread_ = std::thread([this](){
-        try {
-            httpServer_->open_async([]{/*Ok.*/}, [](std::exception_ptr ex){
-                std::rethrow_exception(ex);
-            });
-            httpServer_->io_context().run();
-        }
-        catch(const std::exception &ex){
-            if (logger_)
-                logger_->e("[proxy:server] run error: %s", ex.what());
-        }
-    });
+    else {
+        auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraits>();
+        addServerSettings(settings);
+        settings.port(port);
+        auto server = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
+            restinio::own_io_context(),
+            std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(settings)
+        );
+        serverCtx_.reset(&server->io_context());
+        // define http request destination
+        pushHostPort_ = splitPort(pushServer_);
+        // run http server
+        httpServerThread_ = std::thread([this, server=std::move(server)](){
+            server->open_async([]{/*ok*/}, [](std::exception_ptr){});
+            serverCtx_->run();
+        });
+    }
     dht->forwardAllMessages(true);
 
-    printStatsTimer_ = std::make_unique<asio::steady_timer>(
-        httpServer_->io_context(), PRINT_STATS_PERIOD);
+    printStatsTimer_ = std::make_unique<asio::steady_timer>(*serverCtx_, PRINT_STATS_PERIOD);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
 
@@ -134,11 +142,11 @@ DhtProxyServer::~DhtProxyServer()
     stop();
 }
 
-ServerSettings
-DhtProxyServer::makeHttpServerSettings(const unsigned int max_pipelined_requests)
+template< typename ServerSettings >
+void
+DhtProxyServer::addServerSettings(ServerSettings& settings, const unsigned int max_pipelined_requests)
 {
     using namespace std::chrono;
-    auto settings = ServerSettings();
     /**
      * If max_pipelined_requests is greater than 1 then RESTinio will continue
      * to read from the socket after parsing the first request.
@@ -163,7 +171,6 @@ DhtProxyServer::makeHttpServerSettings(const unsigned int max_pipelined_requests
         options.set_option(asio::ip::tcp::no_delay{true});
     });
     settings.connection_state_listener(connListener_);
-    return settings;
 }
 
 void
@@ -171,8 +178,8 @@ DhtProxyServer::stop()
 {
     if (logger_)
         logger_->d("[proxy:server] closing http server async operations");
-    httpServer_->io_context().reset();
-    httpServer_->io_context().stop();
+    serverCtx_->reset();
+    serverCtx_->stop();
     if (httpServerThread_.joinable())
         httpServerThread_.join();
     if (logger_)
@@ -204,7 +211,7 @@ DhtProxyServer::handlePrintStats(const asio::error_code &ec)
         if (logger_)
             logger_->e("[proxy:server] [stats] error printing: %s", ec.message().c_str());
     }
-    if (httpServer_->io_context().stopped())
+    if (serverCtx_->stopped())
         return;
 
     if (dht_){
@@ -549,7 +556,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             }
         );
         // Launch timers
-        auto &ctx = httpServer_->io_context();
+        auto &ctx = *serverCtx_;
         // expire notify
         if (!listener.expireNotifyTimer)
             listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx, timeout - proxy::OP_MARGIN);
@@ -688,7 +695,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     if (pushServer_.empty())
         return;
 
-    auto request = std::make_shared<http::Request>(httpServer_->io_context(), pushHostPort_.first,
+    auto request = std::make_shared<http::Request>(*serverCtx_, pushHostPort_.first,
                                                    pushHostPort_.second, logger_);
     auto reqid = request->id();
     try {
@@ -820,7 +827,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
                 auto& pput = r.first->second;
                 if (r.second){
-                    auto &ctx = httpServer_->io_context();
+                    auto &ctx = *serverCtx_;
                     // cancel permanent put
                     if (!pput.expireTimer)
                         pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
