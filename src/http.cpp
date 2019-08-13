@@ -32,17 +32,17 @@ constexpr char JSON_VALUE_DELIM = '\n';
 
 unsigned int Connection::ids_ = 1;
 
-Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l)
+Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), logger_(l)
 {
-#ifdef OPENDHT_PROXY_OPENSSL
-    ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
-    ssl_ctx_->set_default_verify_paths();
-    ssl_ctx_->set_verify_mode(asio::ssl::verify_peer);
-    socket_ = std::make_unique<socket_t>(ctx_, ssl_ctx_);
-#else
-    socket_ = std::make_unique<socket_t>(new socket_t(ctx));
-#endif
+    if (ssl){
+        ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
+        ssl_ctx_->set_default_verify_paths();
+        ssl_ctx_->set_verify_mode(asio::ssl::verify_peer);
+        ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
+    }
+    else
+        socket_ = std::make_unique<socket_t>(ctx);
 }
 
 Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
@@ -61,16 +61,19 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         throw std::runtime_error("Error setting certificate: " + ec.message());
 
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-    socket_ = std::make_unique<socket_t>(ctx_, ssl_ctx_);
+    ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
 }
 
 Connection::~Connection()
 {
     if (is_open()){
-#ifdef OPENDHT_PROXY_OPENSSL
-        get_socket().cancel();
-#endif
-        get_socket().close();
+        if (ssl_ctx_){
+            ssl_socket_->cancel();
+            ssl_socket_->close();
+        }
+        else {
+            socket_->close();
+        }
     }
     socket_.reset();
 }
@@ -84,7 +87,10 @@ Connection::id()
 bool
 Connection::is_open()
 {
-    return get_socket().is_open();
+    if (ssl_ctx_)
+        return ssl_socket_->is_open();
+    else
+        return socket_->is_open();
 }
 
 bool
@@ -94,17 +100,14 @@ Connection::is_v6()
 }
 
 void
-Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint
-#ifdef OPENDHT_PROXY_OPENSSL
-                         , const asio::ssl::verify_mode verify_mode
-#endif
-){
+Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
+{
     endpoint_ = endpoint;
-#ifdef OPENDHT_PROXY_OPENSSL
-    auto hostname = endpoint_.address().to_string();
-    socket_->asio_ssl_stream().set_verify_mode(verify_mode);
-    socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
-#endif
+    if (ssl_ctx_){
+        auto hostname = endpoint_.address().to_string();
+        ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
+        ssl_socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
+    }
 }
 
 asio::streambuf&
@@ -136,30 +139,50 @@ Connection::read_until(const char delim)
     return content;
 }
 
-socket_t&
-Connection::get_socket()
-{
-    return *socket_;
-}
-
 void
 Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb)
 {
-#ifdef OPENDHT_PROXY_OPENSSL
-    asio::async_connect(get_socket().lowest_layer(),
-#else
-    asio::async_connect(get_socket(),
-#endif
-                        std::move(endpoints), cb);
+    if (ssl_ctx_)
+        asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), cb);
+    else
+        asio::async_connect(*socket_, std::move(endpoints), cb);
 }
 
-#ifdef OPENDHT_PROXY_OPENSSL
 void
 Connection::async_handshake(HandlerCb cb)
 {
-    socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client, cb);
+    if (ssl_ctx_)
+        ssl_socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client, cb);
+    else if (socket_)
+        cb(asio::error::no_protocol_option);
 }
-#endif
+
+void
+Connection::async_write(BytesHandlerCb cb)
+{
+    if (ssl_ctx_)
+        asio::async_write(*ssl_socket_, write_buf_, cb);
+    else
+        asio::async_write(*socket_, write_buf_, cb);
+}
+
+void
+Connection::async_read_until(const char* delim, BytesHandlerCb cb)
+{
+    if (ssl_ctx_)
+        asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
+    else
+        asio::async_read_until(*socket_, read_buf_, delim, cb);
+}
+
+void
+Connection::async_read(const size_t bytes, BytesHandlerCb cb)
+{
+    if (ssl_socket_)
+        asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), cb);
+    else
+        asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), cb);
+}
 
 void
 Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
@@ -693,12 +716,7 @@ Request::post()
 
     // send the request
     notify_state_change(State::SENDING);
-#ifdef OPENDHT_PROXY_OPENSSL
-    asio::async_write(conn_->get_socket(),
-#else
-    asio::async_write(conn_->get_socket(),
-#endif
-                      conn_->input(), std::bind(&Request::handle_request, this, std::placeholders::_1));
+    conn_->async_write(std::bind(&Request::handle_request, this, std::placeholders::_1));
 }
 
 void
@@ -753,8 +771,8 @@ Request::handle_request(const asio::error_code& ec)
 
     // read response
     notify_state_change(State::RECEIVING);
-    asio::async_read_until(conn_->get_socket(), conn_->data(), HTTP_HEADER_DELIM,
-        std::bind(&Request::handle_response_header, this, std::placeholders::_1));
+    conn_->async_read_until(HTTP_HEADER_DELIM, std::bind(&Request::handle_response_header,
+                                                        this, std::placeholders::_1));
 }
 
 void
@@ -806,15 +824,14 @@ Request::handle_response_header(const asio::error_code& ec)
                 terminate(asio::error::eof);
         }
         else { // more chunks to come (don't add the missing \n from std::getline)
-            asio::async_read(conn_->get_socket(), conn_->data(),
-                asio::transfer_exactly(content_length - response_.body.size()),
+            conn_->async_read(content_length - response_.body.size(),
                 std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
         }
     }
     // server wants to keep sending or we have content-length defined
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
-        asio::async_read_until(conn_->get_socket(), conn_->data(), JSON_VALUE_DELIM,
+        conn_->async_read_until(&JSON_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
@@ -869,12 +886,11 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
     // has content-length
     else if (content_length_it != response_.headers.end() and response_.body.size() != content_length)
-        asio::async_read(conn_->get_socket(), conn_->data(),
-            asio::transfer_exactly(content_length - response_.body.size()),
+        conn_->async_read(content_length - response_.body.size(),
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     // server wants to keep sending
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE){
-        asio::async_read_until(conn_->get_socket(), conn_->data(), JSON_VALUE_DELIM,
+        conn_->async_read_until(&JSON_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)

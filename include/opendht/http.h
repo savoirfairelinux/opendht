@@ -33,33 +33,27 @@
 namespace http {
 
 using HandlerCb = std::function<void(const asio::error_code& ec)>;
+using BytesHandlerCb = std::function<void(const asio::error_code& ec, const size_t bytes)>;
 using ConnectHandlerCb = std::function<void(const asio::error_code& ec,
                                             const asio::ip::tcp::endpoint& endpoint)>;
 
-#ifdef OPENDHT_PROXY_OPENSSL
-using socket_t = restinio::impl::tls_socket_t;
-#else
+using ssl_socket_t = restinio::impl::tls_socket_t;
 using socket_t = asio::ip::tcp::socket;
-#endif
 
 class OPENDHT_PUBLIC Connection
 {
 public:
-    Connection(asio::io_context& ctx, std::shared_ptr<dht::Logger> l = {});
-#ifdef OPENDHT_PROXY_OPENSSL
+    Connection(asio::io_context& ctx, const bool ssl = true, std::shared_ptr<dht::Logger> l = {});
     Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
                std::shared_ptr<dht::Logger> l = {});
-#endif
     ~Connection();
 
     unsigned int id();
     bool is_open();
     bool is_v6();
 
-    void set_endpoint(const asio::ip::tcp::endpoint& endpoint
-#ifdef OPENDHT_PROXY_OPENSSL
-                      , const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none
-#endif
+    void set_endpoint(const asio::ip::tcp::endpoint& endpoint,
+                      const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none
     );
 
     asio::streambuf& input();
@@ -68,12 +62,11 @@ public:
     std::string read_bytes(const size_t bytes);
     std::string read_until(const char delim);
 
-    socket_t& get_socket();
-
     void async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb);
-#ifdef OPENDHT_PROXY_OPENSSL
     void async_handshake(HandlerCb cb);
-#endif
+    void async_write(BytesHandlerCb cb);
+    void async_read_until(const char* delim, BytesHandlerCb cb);
+    void async_read(const size_t bytes, BytesHandlerCb cb);
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
 
@@ -83,10 +76,9 @@ private:
 
     asio::io_context& ctx_;
     std::unique_ptr<socket_t> socket_;
-#ifdef OPENDHT_PROXY_OPENSSL
-    std::unique_ptr<asio::const_buffer> certificate_;
     std::shared_ptr<asio::ssl::context> ssl_ctx_;
-#endif
+    std::unique_ptr<ssl_socket_t> ssl_socket_;
+    std::unique_ptr<asio::const_buffer> certificate_;
 
     asio::ip::tcp::endpoint endpoint_;
 
