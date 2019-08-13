@@ -247,9 +247,11 @@ DhtProxyServer::createRestRouter()
     // **************************** LEGACY ROUTES ****************************
     // node.info
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
     // node.stats
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_stats.raw_id()),
                         "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
+#endif
     // key.options
     router->add_handler(restinio::http_method_options(),
                         "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
@@ -257,9 +259,11 @@ DhtProxyServer::createRestRouter()
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
     // key.listen
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_listen.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::listen, this, _1, _2));
+#endif
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     // key.subscribe
     router->add_handler(restinio::http_method_subscribe(),
@@ -269,12 +273,14 @@ DhtProxyServer::createRestRouter()
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
     // key.sign
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_sign.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
     // key.encrypt
     router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_encrypt.raw_id()),
                         "/:hash", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
+#endif
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     // **************************** NEW ROUTES ****************************

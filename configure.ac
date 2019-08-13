@@ -151,6 +151,14 @@ AS_IF([test "x$have_openssl" = "xyes"], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
 
+AC_ARG_WITH([http_parser_fork], AS_HELP_STRING([--with-http-parser-fork], [Build with http_parser fork to support old API]))
+AS_IF([test "x$with_http_parser_fork" != "xno"],[
+    AC_MSG_NOTICE([Using http_parser fork])
+    CPPFLAGS+=" -DOPENDHT_PROXY_HTTP_PARSER_FORK"
+], [
+    AC_MSG_NOTICE([Not using http_parser fork])
+])
+
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     PKG_CHECK_MODULES([Asio], [fmt >= 1.12.2])
     PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0])

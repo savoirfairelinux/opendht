@@ -337,6 +337,7 @@ private:
     std::shared_ptr<dht::Logger> m_logger;
 };
 
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
 /* Custom HTTP-methods for RESTinio > 0.5.0.
  * https://github.com/Stiffstream/restinio/issues/26
  */
@@ -360,5 +361,5 @@ struct custom_http_methods_t
             return restinio::default_http_methods_t::from_nodejs(m);
     }
 };
-
+#endif
 } // namespace restinio
