@@ -19,9 +19,7 @@
 #pragma once
 
 #include <asio.hpp>
-#ifdef OPENDHT_PROXY_OPENSSL
 #include "asio/ssl.hpp"
-#endif
 #include <json/json.h>
 #include <http_parser.h>
 #include <restinio/all.hpp>
@@ -200,10 +198,8 @@ public:
     unsigned int id() const;
     void set_connection(std::shared_ptr<Connection> connection);
     std::shared_ptr<Connection> get_connection() const;
-#ifdef OPENDHT_PROXY_OPENSSL
-    void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
-#endif
 
+    void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
     /**

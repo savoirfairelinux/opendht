@@ -147,7 +147,6 @@ AS_IF([test "x$with_openssl" != "xno"],
       [have_openssl=no])
 AS_IF([test "x$have_openssl" = "xyes"], [
     AC_MSG_NOTICE([Using OpenSSL])
-    CPPFLAGS+=" -DOPENDHT_PROXY_OPENSSL=1"
 ], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
