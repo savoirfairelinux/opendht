@@ -48,10 +48,10 @@ DhtProxyTester::setUp() {
 
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(
         new dht::DhtProxyServer(
-            serverIdentity,
+            /*http*/nullptr,///*https*/serverIdentity,
             nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 
-    clientConfig.dht_config.id = *serverIdentity;
+    //clientConfig.dht_config.id = *serverIdentity;
     clientConfig.dht_config.node_config.maintain_storage = false;
     clientConfig.threaded = true;
     clientConfig.push_node_id = "dhtnode";
@@ -71,7 +71,7 @@ DhtProxyTester::tearDown() {
     nodeClient->join();
     logger->d("[tester:proxy] stopping proxy server");
     serverProxy->stop();
-    serverProxy = nullptr;
+    //serverProxy.reset(nullptr);
     logger->d("[tester:proxy] stopping proxy node");
     nodeProxy->join();
 }

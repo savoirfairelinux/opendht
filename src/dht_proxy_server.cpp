@@ -178,7 +178,6 @@ DhtProxyServer::stop()
 {
     if (logger_)
         logger_->d("[proxy:server] closing http server async operations");
-    serverCtx_->reset();
     serverCtx_->stop();
     if (httpServerThread_.joinable())
         httpServerThread_.join();
