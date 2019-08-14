@@ -134,7 +134,7 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
                 X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
                 X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
                 if (logger_)
-                    logger_->e("[http::connection:%i] [ssl] verifying %s", subject_name);
+                    logger_->d("[http::connection:%i] [ssl] verifying %s", id_, subject_name);
                 // run the verification
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);

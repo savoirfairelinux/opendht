@@ -341,7 +341,6 @@ private:
 
     // http server
     std::thread serverThread_;
-    std::unique_ptr<asio::io_context> serverCtx_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraitsTls>> httpsServer_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
     std::unique_ptr<asio::const_buffer> pk_;

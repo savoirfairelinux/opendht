@@ -219,7 +219,7 @@ DhtProxyServer::handlePrintStats(const asio::error_code &ec)
         if (logger_)
             logger_->e("[proxy:server] [stats] error printing: %s", ec.message().c_str());
     }
-    if (serverCtx_->stopped())
+    if (io_context().stopped())
         return;
 
     if (dht_){
