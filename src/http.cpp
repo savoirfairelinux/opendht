@@ -26,7 +26,7 @@ constexpr char HTTP_HEADER_CONTENT_LENGTH[] = "Content-Length";
 constexpr char HTTP_HEADER_CONTENT_TYPE[] = "Content-Type";
 constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
 constexpr char HTTP_HEADER_DELIM[] = "\r\n\r\n";
-constexpr char JSON_VALUE_DELIM = '\n';
+constexpr char JSON_VALUE_DELIM[] = "\n";
 
 // connection
 
@@ -65,7 +65,7 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     if (ec)
         throw std::runtime_error("Error setting certificate: " + ec.message());
     else if (logger_)
-        logger_->d("[http:connection:%i] [ssl] using certificate:\n%s", id_, cert.c_str());
+        logger_->d("[http:connection:%i] [ssl] using %s certificate", id_, certificate->getUID().c_str());
 
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
@@ -75,15 +75,20 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
 
 Connection::~Connection()
 {
+    asio::error_code ec;
     if (is_open()){
         if (ssl_ctx_){
-            ssl_socket_->cancel();
-            ssl_socket_->close();
+            ssl_socket_->cancel(ec);
+            ssl_socket_->close(ec);
         }
         else {
-            socket_->close();
+            socket_->cancel(ec);
+            socket_->close(ec);
         }
+        if (ec and logger_)
+            logger_->e("[http:connection:%i] error closing: %s", id_, ec.message().c_str());
     }
+    ssl_socket_.reset();
     socket_.reset();
 }
 
@@ -816,7 +821,7 @@ Request::handle_request(const asio::error_code& ec)
     // read response
     notify_state_change(State::RECEIVING);
     conn_->async_read_until(HTTP_HEADER_DELIM, std::bind(&Request::handle_response_header,
-                                                        this, std::placeholders::_1));
+                                                         this, std::placeholders::_1));
 }
 
 void
@@ -875,7 +880,7 @@ Request::handle_response_header(const asio::error_code& ec)
     // server wants to keep sending or we have content-length defined
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
-        conn_->async_read_until(&JSON_VALUE_DELIM,
+        conn_->async_read_until(JSON_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
@@ -917,7 +922,7 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
     // read and parse the chunked encoding fragment
     else {
-        auto body = conn_->read_until(JSON_VALUE_DELIM) + '\n';
+        auto body = conn_->read_until(JSON_VALUE_DELIM[0]) + '\n';
         response_.body = body;
         parse_request(body);
     }
@@ -934,7 +939,7 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     // server wants to keep sending
     else if (response_.headers[HTTP_HEADER_CONNECTION] == HTTP_HEADER_CONNECTION_KEEP_ALIVE){
-        conn_->async_read_until(&JSON_VALUE_DELIM,
+        conn_->async_read_until(JSON_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
