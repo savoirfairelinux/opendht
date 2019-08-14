@@ -158,11 +158,6 @@ public:
 
     std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
-    /**
-     * Stop the DhtProxyServer
-     */
-    void stop();
-
 private:
     template <typename HttpResponse>
     HttpResponse initHttpResponse(HttpResponse response) const;
@@ -336,6 +331,8 @@ private:
 
     void handlePrintStats(const asio::error_code &ec);
 
+    asio::io_context& io_context() const;
+
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
@@ -343,8 +340,10 @@ private:
     Json::StreamWriterBuilder jsonBuilder_;
 
     // http server
-    std::thread httpServerThread_;
+    std::thread serverThread_;
     std::unique_ptr<asio::io_context> serverCtx_;
+    std::unique_ptr<restinio::http_server_t<RestRouterTraitsTls>> httpsServer_;
+    std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
     std::unique_ptr<asio::const_buffer> pk_;
     std::unique_ptr<asio::const_buffer> cc_;
     std::shared_ptr<dht::crypto::Identity> serverIdentity_;

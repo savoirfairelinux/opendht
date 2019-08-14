@@ -71,8 +71,7 @@ DhtProxyTester::tearDown() {
     nodePeer.join();
     nodeClient->join();
     logger->d("[tester:proxy] stopping proxy server");
-    serverProxy->stop();
-    //serverProxy.reset(nullptr);
+    serverProxy.reset(nullptr);
     logger->d("[tester:proxy] stopping proxy node");
     nodeProxy->join();
 }

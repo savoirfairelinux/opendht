@@ -101,45 +101,66 @@ DhtProxyServer::DhtProxyServer(
         addServerSettings(settings);
         settings.port(port);
         settings.tls_context(std::move(tls_context));
-        auto server = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
+        httpsServer_ = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
             restinio::own_io_context(),
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(settings)
         );
-        serverCtx_.reset(&server->io_context());
         // define http request destination
         pushHostPort_ = splitPort(pushServer_);
         // run http server
-        httpServerThread_ = std::thread([this, server=std::move(server)](){
-            server->open_async([]{/*ok*/}, [](std::exception_ptr){});
-            serverCtx_->run();
+        serverThread_ = std::thread([this]{
+            httpsServer_->open_async([]{/*ok*/}, [](std::exception_ptr ex){
+                std::rethrow_exception(ex);
+            });
+            httpsServer_->io_context().run();
         });
     }
     else {
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraits>();
         addServerSettings(settings);
         settings.port(port);
-        auto server = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
+        httpServer_ = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
             restinio::own_io_context(),
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(settings)
         );
-        serverCtx_.reset(&server->io_context());
         // define http request destination
         pushHostPort_ = splitPort(pushServer_);
         // run http server
-        httpServerThread_ = std::thread([this, server=std::move(server)](){
-            server->open_async([]{/*ok*/}, [](std::exception_ptr){});
-            serverCtx_->run();
+        serverThread_ = std::thread([this](){
+            httpServer_->open_async([]{/*ok*/}, [](std::exception_ptr ex){
+                std::rethrow_exception(ex);
+            });
+            httpServer_->io_context().run();
         });
     }
     dht->forwardAllMessages(true);
 
-    printStatsTimer_ = std::make_unique<asio::steady_timer>(*serverCtx_, PRINT_STATS_PERIOD);
+    printStatsTimer_ = std::make_unique<asio::steady_timer>(io_context(), PRINT_STATS_PERIOD);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
+}
+
+
+asio::io_context&
+DhtProxyServer::io_context() const
+{
+    if (httpsServer_)
+        return httpsServer_->io_context();
+    else if (httpServer_)
+        return httpServer_->io_context();
 }
 
 DhtProxyServer::~DhtProxyServer()
 {
-    stop();
+    if (logger_)
+        logger_->d("[proxy:server] closing http server");
+    if (httpServer_)
+        httpServer_->io_context().stop();
+    if (httpsServer_)
+        httpsServer_->io_context().stop();
+    if (serverThread_.joinable())
+        serverThread_.join();
+    if (logger_)
+        logger_->d("[proxy:server] http server closed");
 }
 
 template< typename ServerSettings >
@@ -171,18 +192,6 @@ DhtProxyServer::addServerSettings(ServerSettings& settings, const unsigned int m
         options.set_option(asio::ip::tcp::no_delay{true});
     });
     settings.connection_state_listener(connListener_);
-}
-
-void
-DhtProxyServer::stop()
-{
-    if (logger_)
-        logger_->d("[proxy:server] closing http server async operations");
-    serverCtx_->stop();
-    if (httpServerThread_.joinable())
-        httpServerThread_.join();
-    if (logger_)
-        logger_->d("[proxy:server] http server closed");
 }
 
 void
@@ -561,7 +570,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             }
         );
         // Launch timers
-        auto &ctx = *serverCtx_;
+        auto &ctx = io_context();
         // expire notify
         if (!listener.expireNotifyTimer)
             listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx, timeout - proxy::OP_MARGIN);
@@ -700,7 +709,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     if (pushServer_.empty())
         return;
 
-    auto request = std::make_shared<http::Request>(*serverCtx_, pushHostPort_.first,
+    auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first,
                                                    pushHostPort_.second, logger_);
     auto reqid = request->id();
     try {
@@ -832,7 +841,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 auto r = sPuts->second.puts.emplace(vid, PermanentPut{});
                 auto& pput = r.first->second;
                 if (r.second){
-                    auto &ctx = *serverCtx_;
+                    auto &ctx = io_context();
                     // cancel permanent put
                     if (!pput.expireTimer)
                         pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
