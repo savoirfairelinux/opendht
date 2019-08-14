@@ -52,28 +52,6 @@ namespace restinio {
     struct custom_http_methods_t;
 }
 
-using RestRouter = restinio::router::express_router_t<>;
-
-struct RestRouterTraitsTls : public restinio::default_tls_traits_t
-{
-    using timer_manager_t = restinio::asio_timer_manager_t;
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-    using logger_t = restinio::opendht_logger_t;
-    using request_handler_t = RestRouter;
-    using connection_state_listener_t = http::ConnectionListener;
-};
-struct RestRouterTraits : public restinio::default_traits_t
-{
-    using timer_manager_t = restinio::asio_timer_manager_t;
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-    using logger_t = restinio::opendht_logger_t;
-    using request_handler_t = RestRouter;
-    using connection_state_listener_t = http::ConnectionListener;
-};
-using RequestStatus = restinio::request_handling_status_t;
-using ResponseByParts = restinio::chunked_output_t;
-using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
-
 namespace Json {
     class Value;
 }
@@ -81,6 +59,13 @@ namespace Json {
 namespace dht {
 
 class DhtRunner;
+
+using RestRouter = restinio::router::express_router_t<>;
+struct RestRouterTraitsTls;
+struct RestRouterTraits;
+using RequestStatus = restinio::request_handling_status_t;
+using ResponseByParts = restinio::chunked_output_t;
+using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
 
 /**
  * Describes the REST API

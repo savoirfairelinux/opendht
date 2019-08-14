@@ -46,6 +46,27 @@ constexpr char RESP_MSG_PUT_FAILED[] = "{\"err\":\"Put failed\"}";
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
+struct RestRouterTraitsTls : public restinio::default_tls_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+#endif
+    using logger_t = restinio::opendht_logger_t;
+    using request_handler_t = RestRouter;
+    using connection_state_listener_t = http::ConnectionListener;
+};
+struct RestRouterTraits : public restinio::default_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+#endif
+    using logger_t = restinio::opendht_logger_t;
+    using request_handler_t = RestRouter;
+    using connection_state_listener_t = http::ConnectionListener;
+};
+
 DhtProxyServer::DhtProxyServer(
     std::shared_ptr<dht::crypto::Identity> identity,
     std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
