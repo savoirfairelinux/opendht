@@ -18,15 +18,20 @@
 
 #pragma once
 
+#include "def.h"
+#include "log.h"
+
 #include <asio.hpp>
-#include "asio/ssl.hpp"
+#include <asio/ssl.hpp>
+
 #include <json/json.h>
-#include <http_parser.h>
 #include <restinio/all.hpp>
 #include <restinio/impl/tls_socket.hpp>
-#include <opendht.h>
-#include <opendht/def.h>
-#include <opendht/log.h>
+
+extern "C" {
+struct http_parser;
+struct http_parser_settings;
+}
 
 namespace http {
 
@@ -341,25 +346,10 @@ private:
 /* Custom HTTP-methods for RESTinio > 0.5.0.
  * https://github.com/Stiffstream/restinio/issues/26
  */
-constexpr const restinio::http_method_id_t method_listen{HTTP_LISTEN, "LISTEN"};
-constexpr const restinio::http_method_id_t method_stats{HTTP_STATS, "STATS"};
-constexpr const restinio::http_method_id_t method_sign{HTTP_SIGN, "SIGN"};
-constexpr const restinio::http_method_id_t method_encrypt{HTTP_ENCRYPT, "ENCRYPT"};
-
-struct custom_http_methods_t
-{
-    static constexpr restinio::http_method_id_t from_nodejs(int m) noexcept {
-        if(m == method_listen.raw_id())
-            return method_listen;
-        else if(m == method_stats.raw_id())
-            return method_stats;
-        else if(m == method_sign.raw_id())
-            return method_sign;
-        else if(m == method_encrypt.raw_id())
-            return method_encrypt;
-        else
-            return restinio::default_http_methods_t::from_nodejs(m);
-    }
-};
+constexpr const restinio::http_method_id_t method_listen {HTTP_LISTEN, "LISTEN"};
+constexpr const restinio::http_method_id_t method_stats {HTTP_STATS, "STATS"};
+constexpr const restinio::http_method_id_t method_sign {HTTP_SIGN, "SIGN"};
+constexpr const restinio::http_method_id_t method_encrypt {HTTP_ENCRYPT, "ENCRYPT"};
 #endif
+
 } // namespace restinio

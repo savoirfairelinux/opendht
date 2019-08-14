@@ -27,23 +27,22 @@
 #include "def.h"
 #include "dht_interface.h"
 #include "proxy.h"
+#include "http.h"
 
 #include <restinio/all.hpp>
-#include <http_parser.h>
 #include <json/json.h>
-#include "http.h"
 
 #include <chrono>
 #include <vector>
 #include <functional>
 
 namespace Json {
-    class Value;
+class Value;
 }
 
 namespace http {
-    class Resolver;
-    class Request;
+class Resolver;
+class Request;
 }
 
 namespace dht {

@@ -33,6 +33,26 @@
 
 using namespace std::placeholders;
 
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
+namespace restinio {
+struct custom_http_methods_t
+{
+    static constexpr restinio::http_method_id_t from_nodejs(int m) noexcept {
+        if(m == method_listen.raw_id())
+            return method_listen;
+        else if(m == method_stats.raw_id())
+            return method_stats;
+        else if(m == method_sign.raw_id())
+            return method_sign;
+        else if(m == method_encrypt.raw_id())
+            return method_encrypt;
+        else
+            return restinio::default_http_methods_t::from_nodejs(m);
+    }
+};
+}
+#endif
+
 namespace dht {
 
 constexpr char RESP_MSG_DESTINATION_NOT_FOUND[] = "{\"err\":\"No destination found\"}";

@@ -27,33 +27,30 @@
 #include "scheduler.h"
 #include "sockaddr.h"
 #include "value.h"
-#include "dht_proxy_client.h"
-
-#include <memory>
-#include <mutex>
+#include "http.h"
 
 #include <restinio/all.hpp>
 #include <restinio/tls.hpp>
-#include "http.h"
 
 #ifdef OPENDHT_JSONCPP
 #include <json/json.h>
 #endif
 
+#include <memory>
+#include <mutex>
+
 namespace http {
-    class Request;
-    class opendht_logger_t;
-    struct ListenerSession;
-    class ConnectionListener;
+class Request;
+struct ListenerSession;
+class ConnectionListener;
 }
 
 namespace restinio {
-    class opendht_logger_t;
-    struct custom_http_methods_t;
+class opendht_logger_t;
 }
 
 namespace Json {
-    class Value;
+class Value;
 }
 
 namespace dht {

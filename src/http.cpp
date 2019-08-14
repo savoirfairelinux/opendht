@@ -18,6 +18,8 @@
 
 #include "http.h"
 
+#include <http_parser.h>
+
 namespace http {
 
 constexpr char HTTP_HEADER_CONNECTION[] = "Connection";
