@@ -225,11 +225,14 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
                 unsigned int port = std::stoi(idstr);
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
+                    new DhtProxyServer(
+                        params.generate_identity ? std::make_shared<dht::crypto::Identity>(params.id) : nullptr,
+                        node, port
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, port, pushServer)));
-#else
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, port)));
-#endif // OPENDHT_PUSH_NOTIFICATIONS
+                        ,pushServer
+#endif
+                )));
             } catch (...) { }
             continue;
         } else if (op == "psp") {
@@ -507,16 +510,19 @@ main(int argc, char **argv)
     setupSignals();
 
     auto node = std::make_shared<DhtRunner>();
-
     try {
+#ifndef OPENDHT_PROXY_SERVER
         if (not params.id.first and params.generate_identity) {
-            auto ca_tmp = dht::crypto::generateEcIdentity("DHT Node CA");
-            params.id = dht::crypto::generateIdentity("DHT Node", ca_tmp);
+#endif
+            auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
+            params.id = dht::crypto::generateIdentity("DHT Node", *node_ca);
             if (not params.save_identity.empty()) {
-                dht::crypto::saveIdentity(ca_tmp, params.save_identity + "_ca", params.privkey_pwd);
+                dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
                 dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
             }
+#ifndef OPENDHT_PROXY_SERVER
         }
+#endif
 
         dht::DhtRunner::Config config {};
         config.dht_config.node_config.network = params.network;
@@ -540,11 +546,12 @@ main(int argc, char **argv)
             else
                 context.logger = log::getStdLogger();
         }
-
         node->run(params.port, config, std::move(context));
+        if (context.logger)
+            log::enableLogging(*node);
 
         if (not params.bootstrap.first.empty()) {
-            //std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;
+            std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;
             node->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
         }
 
@@ -553,7 +560,10 @@ main(int argc, char **argv)
 #endif
         if (params.proxyserver != 0) {
 #ifdef OPENDHT_PROXY_SERVER
-            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(new DhtProxyServer(node, params.proxyserver, params.pushserver)));
+            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
+                new DhtProxyServer(
+                    params.generate_identity ? std::make_shared<dht::crypto::Identity>(params.id) : nullptr,
+                    node, params.proxyserver, params.pushserver, context.logger)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);
@@ -579,7 +589,6 @@ main(int argc, char **argv)
 
     node->shutdown([&]()
     {
-        std::lock_guard<std::mutex> lk(m);
         done = true;
         cv.notify_all();
     });

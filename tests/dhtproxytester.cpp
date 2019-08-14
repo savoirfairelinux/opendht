@@ -2,6 +2,7 @@
  *  Copyright (C) 2019 Savoir-faire Linux Inc.
  *
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,26 +33,46 @@ CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
 
 void
 DhtProxyTester::setUp() {
-    nodePeer.run(0);
+    logger = dht::log::getStdLogger();
+
+    nodePeer.run(0, /*identity*/{}, /*threaded*/true);
+
     nodeProxy = std::make_shared<dht::DhtRunner>();
-    nodeClient = std::make_shared<dht::DhtRunner>();
-
-    nodeProxy->run(0);
+    nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
     nodeProxy->bootstrap(nodePeer.getBound());
-    server = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(nodeProxy, 8080));
 
-    nodeClient->run(0);
+    serverCAIdentity = std::make_unique<dht::crypto::Identity>(
+        dht::crypto::generateEcIdentity("DHT Node CA"));
+    serverIdentity = std::make_shared<dht::crypto::Identity>(
+        dht::crypto::generateIdentity("DHT Node", *serverCAIdentity));
+
+    serverProxy = std::unique_ptr<dht::DhtProxyServer>(
+        new dht::DhtProxyServer(
+            ///*http*/nullptr,
+            /*https*/serverIdentity,
+            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
+
+    clientConfig.client_cert = serverIdentity->second;
+    clientConfig.dht_config.node_config.maintain_storage = false;
+    clientConfig.threaded = true;
+    clientConfig.push_node_id = "dhtnode";
+    clientContext.logger = logger;
+
+    nodeClient = std::make_shared<dht::DhtRunner>();
+    nodeClient->run(0, clientConfig, std::move(clientContext));
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
-    nodeClient->enableProxy(true);
+    nodeClient->enableProxy(true); // creates DhtProxyClient
 }
 
 void
 DhtProxyTester::tearDown() {
+    logger->d("[tester:proxy] stopping peer node");
     nodePeer.join();
     nodeClient->join();
-    server->stop();
-    server = nullptr;
+    logger->d("[tester:proxy] stopping proxy server");
+    serverProxy.reset(nullptr);
+    logger->d("[tester:proxy] stopping proxy node");
     nodeProxy->join();
 }
 
@@ -64,7 +85,6 @@ DhtProxyTester::testGetPut() {
     auto key = dht::InfoHash::get("GLaDOs");
     dht::Value val {"Hey! It's been a long time. How have you been?"};
     auto val_data = val.data;
-
     {
         std::unique_lock<std::mutex> lk(cv_m);
         nodePeer.put(key, std::move(val), [&](bool) {
@@ -161,7 +181,7 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // Reboot node (to avoid cache)
     nodeClient->join();
-    nodeClient->run(42242, {}, true);
+    nodeClient->run(0, clientConfig, std::move(clientContext));
     nodeClient->bootstrap(nodePeer.getBound());
     nodeClient->setProxyServer("127.0.0.1:8080");
     nodeClient->enableProxy(true);

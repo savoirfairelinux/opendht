@@ -114,6 +114,9 @@ DhtRunner::run(const Config& config, Context&& context)
     if (running)
         return;
 
+    if (context.logger)
+        logger_ = context.logger;
+
     context.sock->setOnReceive([&] (std::unique_ptr<net::ReceivedPacket>&& pkt) {
         {
             std::lock_guard<std::mutex> lck(sock_mtx);
@@ -975,15 +978,18 @@ DhtRunner::enableProxy(bool proxify)
     if (proxify) {
         // Init the proxy client
         auto dht_via_proxy = std::unique_ptr<DhtInterface>(
-            new DhtProxyClient([this]{
-                if (config_.threaded) {
-                    {
-                        std::lock_guard<std::mutex> lck(storage_mtx);
-                        pending_ops_prio.emplace([=](SecureDht&) mutable {});
+            new DhtProxyClient(
+                config_.client_cert,
+                [this]{
+                    if (config_.threaded) {
+                        {
+                            std::lock_guard<std::mutex> lck(storage_mtx);
+                            pending_ops_prio.emplace([=](SecureDht&) mutable {});
+                        }
+                        cv.notify_all();
                     }
-                    cv.notify_all();
-                }
-            }, config_.proxy_server, config_.push_node_id)
+                },
+                config_.proxy_server, config_.push_node_id, logger_)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS

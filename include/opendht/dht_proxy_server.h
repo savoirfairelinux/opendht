@@ -2,6 +2,7 @@
  *  Copyright (C) 2017-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,15 +27,52 @@
 #include "scheduler.h"
 #include "sockaddr.h"
 #include "value.h"
+#include "dht_proxy_client.h"
 
-#include <thread>
 #include <memory>
 #include <mutex>
-#include <restbed>
+
+#include <restinio/all.hpp>
+#include <restinio/tls.hpp>
+#include "http.h"
 
 #ifdef OPENDHT_JSONCPP
 #include <json/json.h>
 #endif
+
+namespace http {
+    class Request;
+    class opendht_logger_t;
+    struct ListenerSession;
+    class ConnectionListener;
+}
+
+namespace restinio {
+    class opendht_logger_t;
+    struct custom_http_methods_t;
+}
+
+using RestRouter = restinio::router::express_router_t<>;
+
+struct RestRouterTraitsTls : public restinio::default_tls_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+    using logger_t = restinio::opendht_logger_t;
+    using request_handler_t = RestRouter;
+    using connection_state_listener_t = http::ConnectionListener;
+};
+struct RestRouterTraits : public restinio::default_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+    using logger_t = restinio::opendht_logger_t;
+    using request_handler_t = RestRouter;
+    using connection_state_listener_t = http::ConnectionListener;
+};
+using RequestStatus = restinio::request_handling_status_t;
+using ResponseByParts = restinio::chunked_output_t;
+using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
 
 namespace Json {
     class Value;
@@ -43,7 +81,6 @@ namespace Json {
 namespace dht {
 
 class DhtRunner;
-class ThreadPool;
 
 /**
  * Describes the REST API
@@ -59,7 +96,11 @@ public:
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "");
+    DhtProxyServer(
+       std::shared_ptr<dht::crypto::Identity> identity,
+       std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "",
+       std::shared_ptr<dht::Logger> logger = {});
+
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;
@@ -117,12 +158,16 @@ public:
 
     std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
-    /**
-     * Stop the DhtProxyServer
-     */
-    void stop();
-
 private:
+    template <typename HttpResponse>
+    HttpResponse initHttpResponse(HttpResponse response) const;
+
+    template< typename ServerSettings >
+    void addServerSettings(ServerSettings& serverSettings,
+                           const unsigned int max_pipelined_requests = 16);
+
+    std::unique_ptr<RestRouter> createRestRouter();
+
     /**
      * Return the PublicKey id, the node id and node stats
      * Method: GET "/"
@@ -130,7 +175,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void getNodeInfo(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus getNodeInfo(restinio::request_handle_t request,
+                               restinio::router::route_params_t params) const;
 
     /**
      * Return ServerStats in JSON format
@@ -138,7 +184,8 @@ private:
      * Result: HTTP 200, body: Node infos in JSON format
      * @param session
      */
-    void getStats(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus getStats(restinio::request_handle_t request,
+                           restinio::router::route_params_t params);
 
     /**
      * Return Values of an infoHash
@@ -150,7 +197,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void get(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus get(restinio::request_handle_t request,
+                       restinio::router::route_params_t params);
 
     /**
      * Listen incoming Values of an infoHash.
@@ -162,7 +210,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void listen(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus listen(restinio::request_handle_t request,
+                         restinio::router::route_params_t params);
 
     /**
      * Put a value on the DHT
@@ -173,9 +222,10 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json or HTTP 502 if put fails
      * @param session
      */
-    void put(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus put(restinio::request_handle_t request,
+                      restinio::router::route_params_t params);
 
-    void cancelPut(const InfoHash& key, Value::Id vid);
+    void handleCancelPermamentPut(const asio::error_code &ec, const InfoHash& key, Value::Id vid);
 
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
     /**
@@ -187,7 +237,8 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    void putSigned(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus putSigned(restinio::request_handle_t request,
+                            restinio::router::route_params_t params) const;
 
     /**
      * Put a value to encrypt by the proxy on the DHT
@@ -198,7 +249,9 @@ private:
      * HTTP 400, body: {"err":"xxxx"} if bad json
      * @param session
      */
-    void putEncrypted(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus putEncrypted(restinio::request_handle_t request,
+                               restinio::router::route_params_t params);
+
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     /**
@@ -211,7 +264,8 @@ private:
      * On error: HTTP 503, body: {"err":"xxxx"}
      * @param session
      */
-    void getFiltered(const std::shared_ptr<restbed::Session>& session) const;
+    RequestStatus getFiltered(restinio::request_handle_t request,
+                              restinio::router::route_params_t params);
 
     /**
      * Respond allowed Methods
@@ -220,13 +274,8 @@ private:
      * See https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods/OPTIONS
      * @param session
      */
-    void handleOptionsMethod(const std::shared_ptr<restbed::Session>& session) const;
-
-    /**
-     * Remove finished listeners
-     * @param testSession if we remove the listener only if the session is closed
-     */
-    void removeClosedListeners(bool testSession = true);
+    RequestStatus options(restinio::request_handle_t request,
+                           restinio::router::route_params_t params);
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     /**
@@ -238,7 +287,9 @@ private:
      * so you need to refresh the operation each six hours.
      * @param session
      */
-    void subscribe(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus subscribe(restinio::request_handle_t request,
+                            restinio::router::route_params_t params);
+
     /**
      * Unsubscribe to push notifications for an iOS or Android device.
      * Method: UNSUBSCRIBE "/{InfoHash: .*}"
@@ -246,57 +297,86 @@ private:
      * Return: nothing
      * @param session
      */
-    void unsubscribe(const std::shared_ptr<restbed::Session>& session);
+    RequestStatus unsubscribe(restinio::request_handle_t request,
+                              restinio::router::route_params_t params);
+
     /**
      * Send a push notification via a gorush push gateway
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid) const;
+    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid);
+
+    /**
+     * Send push notification with an expire timeout.
+     * @param ec
+     * @param pushToken
+     * @param json
+     * @param isAndroid
+     */
+    void handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
+                                      Json::Value json, const bool isAndroid);
 
     /**
      * Remove a push listener between a client and a hash
+     * @param ec
      * @param pushToken
      * @param key
      * @param clientId
      */
-    void cancelPushListen(const std::string& pushToken, const InfoHash& key, const std::string& clientId);
-
+    void handleCancelPushListen(const asio::error_code &ec, const std::string pushToken,
+                                const InfoHash key, const std::string clientId);
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
+
+    void handlePrintStats(const asio::error_code &ec);
+
+    asio::io_context& io_context() const;
 
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
-    std::thread server_thread {};
-    std::unique_ptr<restbed::Service> service_;
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
 
-    std::mutex schedulerLock_;
-    std::condition_variable schedulerCv_;
-    Scheduler scheduler_;
-    std::thread schedulerThread_;
-    std::unique_ptr<ThreadPool> threadPool_;
+    // http server
+    std::thread serverThread_;
+    std::unique_ptr<restinio::http_server_t<RestRouterTraitsTls>> httpsServer_;
+    std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
+    std::unique_ptr<asio::const_buffer> pk_;
+    std::unique_ptr<asio::const_buffer> cc_;
+    std::shared_ptr<dht::crypto::Identity> serverIdentity_;
 
-    Sp<Scheduler::Job> printStatsJob_;
+    // http client
+    std::pair<std::string, std::string> pushHostPort_;
+    std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
+
+    std::shared_ptr<dht::Logger> logger_;
+
     mutable std::mutex statsMutex_;
+    mutable ServerStats stats_;
     mutable NodeInfo nodeInfo_ {};
+    std::unique_ptr<asio::steady_timer> printStatsTimer_;
 
-    // Handle client quit for listen.
-    // NOTE: can be simplified when we will supports restbed 5.0
-    std::thread listenThread_;
-    struct SessionToHashToken {
-        std::shared_ptr<restbed::Session> session;
-        InfoHash hash;
-        std::future<size_t> token;
+    // Thread-safe access to listeners map.
+    std::shared_ptr<std::mutex> lockListener_;
+    // Shared with connection listener.
+    std::shared_ptr<std::map<restinio::connection_id_t,
+                             http::ListenerSession>> listeners_;
+    // Connection Listener observing conn state changes.
+    std::shared_ptr<http::ConnectionListener> connListener_;
+
+    struct PermanentPut {
+        time_point expiration;
+        std::string pushToken;
+        std::string clientId;
+        std::unique_ptr<asio::steady_timer> expireTimer;
+        std::unique_ptr<asio::steady_timer> expireNotifyTimer;
     };
-    std::vector<SessionToHashToken> currentListeners_;
-    std::mutex lockListener_;
-    std::atomic_bool stopListeners {false};
-
-    struct PermanentPut;
-    struct SearchPuts;
+    struct SearchPuts {
+        std::map<dht::Value::Id, PermanentPut> puts;
+    };
+    std::mutex lockSearchPuts_;
     std::map<InfoHash, SearchPuts> puts_;
 
     mutable std::atomic<size_t> requestNum_ {0};
@@ -304,11 +384,16 @@ private:
 
     const std::string pushServer_;
 
-    mutable ServerStats stats_;
-
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    struct Listener;
-    struct PushListener;
+    struct Listener {
+        std::string clientId;
+        std::future<size_t> internalToken;
+        std::unique_ptr<asio::steady_timer> expireTimer;
+        std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+    };
+    struct PushListener {
+        std::map<InfoHash, std::vector<Listener>> listeners;
+    };
     std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
     proxy::ListenToken tokenPushNotif_ {0};

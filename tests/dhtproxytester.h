@@ -25,6 +25,7 @@
 
 #include <opendht/dhtrunner.h>
 #include <opendht/dht_proxy_server.h>
+#include <opendht/log.h>
 
 namespace test {
 
@@ -61,11 +62,20 @@ class DhtProxyTester : public CppUnit::TestFixture {
    void testResubscribeGetValues();
 
  private:
-    dht::DhtRunner nodePeer {};
+    dht::DhtRunner nodePeer;
 
     std::shared_ptr<dht::DhtRunner> nodeClient;
     std::shared_ptr<dht::DhtRunner> nodeProxy;
-    std::unique_ptr<dht::DhtProxyServer> server;
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    std::shared_ptr<dht::crypto::Identity> serverIdentity;
+    std::unique_ptr<dht::crypto::Identity> serverCAIdentity;
+#endif
+    std::unique_ptr<dht::DhtProxyServer> serverProxy;
+
+    dht::DhtRunner::Context clientContext {};
+    dht::DhtRunner::Config clientConfig {};
+    std::shared_ptr<dht::Logger> logger {};
 };
 
 }  // namespace test

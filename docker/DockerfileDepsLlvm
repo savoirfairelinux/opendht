@@ -1,23 +1,46 @@
 FROM ubuntu:16.04
 MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 RUN apt-get update \
-	&& apt-get install -y llvm llvm-dev clang make cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev libmsgpack-dev libjsoncpp-dev libasio-dev cython3 python3-dev python3-setuptools libcppunit-dev \
-	&& apt-get remove -y gcc g++ && apt-get autoremove -y && apt-get clean
+    && apt-get install -y llvm llvm-dev clang make cmake git wget libncurses5-dev libreadline-dev nettle-dev libgnutls28-dev libuv1-dev libmsgpack-dev libjsoncpp-dev libasio-dev cython3 python3-dev python3-setuptools libcppunit-dev python3-pip \
+    && apt-get remove -y gcc g++ && apt-get autoremove -y && apt-get clean
 
 ENV CC cc
 ENV CXX c++
 
-# build restbed from sources
-RUN git clone --recursive https://github.com/corvusoft/restbed.git \
-	&& cd restbed && mkdir build && cd build \
-	&& cmake -DBUILD_TESTS=NO -DBUILD_EXAMPLES=NO -DBUILD_SSL=NO -DBUILD_SHARED=YES -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib .. \
-	&& make -j8 install \
-	&& cd .. && rm -rf restbed
+#patch for https://github.com/Stiffstream/restinio-conan-example/issues/2
+RUN apt-get update && apt-get install -y \
+        python3-pip libasio-dev
+RUN pip3 install --upgrade cmake
+#install conan & add restinio remotes
+RUN pip3 install conan && \
+    conan remote add stiffstream https://api.bintray.com/conan/stiffstream/public && \
+    conan remote add public-conan https://api.bintray.com/conan/bincrafters/public-conan
+#setup restinio docker project
+RUN mkdir restinio-conan
+COPY conan/restinio/conanfile.txt restinio-conan/conanfile.txt
+COPY conan/restinio/conanfile.py restinio-conan/conanfile.py
+#build restinio from source
+RUN echo "*** Installing RESTinio & dependencies ***" \
+    && cd restinio-conan \
+    && conan source .  \
+    && conan install -o restinio:boost_libs=none --build=missing . \
+    && conan package . -pf /usr/local \
+    && cd ../ && rm -rf restinio*
+#installing dependencies
+RUN echo "*** Installing asio & fmt dependencies ***" \
+    && cp -r ~/.conan/data/asio/*/bincrafters/stable/package/*/include/* /usr/local/include/ \
+    && cp -r ~/.conan/data/fmt/*/bincrafters/stable/package/*/lib/* /usr/local/lib/ \
+    && cp -r ~/.conan/data/fmt/*/bincrafters/stable/package/*/include/* /usr/local/include/
+#build http_parser fork
+RUN echo "*** Building http_parser dependency for custom HTTP methods ***" \
+    && git clone https://github.com/eao197/http-parser.git \
+    && cd http-parser && make -j8 && make install PREFIX=/usr \
+    && cd ../ && rm -rf restinio-conan/
 
 #build msgpack from source
 RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz \
-	&& tar -xzf msgpack-2.1.5.tar.gz \
-	&& cd msgpack-2.1.5 && mkdir build && cd build \
-	&& cmake -DMSGPACK_CXX11=ON -DMSGPACK_BUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=/usr .. \
-	&& make -j8 && make install \
-	&& cd ../.. && rm -rf msgpack-2.1.5 msgpack-2.1.5.tar.gz
+    && tar -xzf msgpack-2.1.5.tar.gz \
+    && cd msgpack-2.1.5 && mkdir build && cd build \
+    && cmake -DMSGPACK_CXX11=ON -DMSGPACK_BUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=/usr .. \
+    && make -j8 && make install \
+    && cd ../.. && rm -rf msgpack-2.1.5 msgpack-2.1.5.tar.gz

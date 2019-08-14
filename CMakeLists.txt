@@ -16,10 +16,12 @@ option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
-option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" OFF)
+option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
-option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
+option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
+option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
+option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
 
@@ -58,14 +60,33 @@ if (Jsoncpp_FOUND)
 endif()
 
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
-    find_package(Restbed REQUIRED)
+    find_package(Restinio REQUIRED)
+    if (Restinio_FOUND)
+        find_library(FMT_LIBRARY fmt)
+        add_library(fmt SHARED IMPORTED)
+        find_library(HTTP_PARSER_LIBRARY http_parser)
+        add_library(http_parser SHARED IMPORTED)
+    endif()
     if (NOT Jsoncpp_FOUND)
         message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
+    endif()
+    if (OPENDHT_PROXY_OPENSSL)
+        # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
+        pkg_search_module(OPENSSL REQUIRED openssl)
+        if (OPENSSL_FOUND)
+            message(STATUS "Found OpenSSL ${OPENSSL_VERSION}")
+            include_directories(${OPENSSL_INCLUDE_DIRS})
+        else ()
+            message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+        endif()
+    endif()
+    if (OPENDHT_PROXY_HTTP_PARSER_FORK)
+        add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
     endif()
 endif()
 
 # Build flags
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
 if (OPENDHT_SANITIZE)
@@ -100,11 +121,14 @@ endif ()
 if (Nettle_INCLUDE_DIRS)
     include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
 endif ()
-if (Restbed_INCLUDE_DIR)
-    include_directories (SYSTEM "${Restbed_INCLUDE_DIR}")
+if (Restinio_INCLUDE_DIR)
+    include_directories (SYSTEM "${Restinio_INCLUDE_DIR}")
 endif ()
 if (Jsoncpp_INCLUDE_DIRS)
     include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
+endif ()
+if (OpenSSL_INCLUDE_DIR)
+    include_directories (SYSTEM "${OpenSSL_INCLUDE_DIR}")
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 link_directories (${Jsoncpp_LIBRARY_DIRS})
@@ -222,6 +246,10 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
   endif ()
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h
+    include/opendht/http.h
+  )
+  list (APPEND opendht_SOURCES
+    src/http.cpp
   )
 endif ()
 
@@ -255,8 +283,10 @@ if (OPENDHT_STATIC)
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht-static
-        PRIVATE ${Restbed_LIBRARY} ${argon2_LIBRARIES}
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Jsoncpp_LIBRARIES})
+        PRIVATE  ${argon2_LIBRARIES}
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+               ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+               ${OPENSSL_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -274,7 +304,12 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARY} ${Jsoncpp_LIBRARIES})
+    target_link_libraries(opendht
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
+        PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+                ${Jsoncpp_LIBRARIES}
+                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -344,6 +379,7 @@ if (OPENDHT_TESTS)
        ${CMAKE_THREAD_LIBS_INIT}
        ${CPPUNIT_LIBRARIES}
        ${GNUTLS_LIBRARIES}
+       ssl crypto
     )
     enable_testing()
     add_test(TEST opendht_unit_tests)

@@ -4,7 +4,7 @@
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
-A lightweight C++11 Distributed Hash Table implementation.
+A lightweight C++14 Distributed Hash Table implementation.
 
 OpenDHT provides an easy to use distributed in-memory data store.
 Every node in the network can read and write values to the store.
@@ -14,7 +14,7 @@ Values are distributed over the network, with redundancy.
  * High resilience to network disruption
  * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
  * IPv4 and IPv6 support
- * Clean and powerful C++11 map API
+ * Clean and powerful C++14 map API
  * Python 3 bindings
  * REST API
 
@@ -27,7 +27,7 @@ Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-
 
 #### How-to build a simple client app
 ```bash
-g++ main.cpp -std=c++11 -lopendht -lgnutls
+g++ main.cpp -std=c++14 -lopendht -lgnutls
 ```
 
 ## Examples
@@ -96,7 +96,7 @@ for r in results:
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.3+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
-- (optional) restbed used for the REST API. commit fb84213e170bc171fecd825a8e47ed9f881a12cd (https://github.com/AmarOk1412/restbed/tree/async_read_until)
+- (optional) restinio used for the REST API.
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
 - Build tested with GCC 5.2+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
 - Build tested with Microsoft Visual Studio 2015
