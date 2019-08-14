@@ -41,12 +41,12 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
         ssl_ctx_->set_verify_mode(asio::ssl::verify_none);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
-            logger_->d("[http:connection:%i] [ssl] https init", id_);
+            logger_->d("[http:client]  [connection:%i] [ssl] https init", id_);
     }
     else {
         socket_ = std::make_unique<socket_t>(ctx);
         if (logger_)
-            logger_->d("[http:connection:%i] http init", id_);
+            logger_->d("[http:client]  [connection:%i] http init", id_);
     }
 }
 
@@ -65,12 +65,12 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     if (ec)
         throw std::runtime_error("Error setting certificate: " + ec.message());
     else if (logger_)
-        logger_->d("[http:connection:%i] [ssl] using %s certificate", id_, certificate->getUID().c_str());
+        logger_->d("[http:client]  [connection:%i] [ssl] using %s certificate", id_, certificate->getUID().c_str());
 
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
     if (logger_)
-        logger_->d("[http:connection:%i] [ssl] https init", id_);
+        logger_->d("[http:client]  [connection:%i] [ssl] https init", id_);
 }
 
 Connection::~Connection()
@@ -86,7 +86,7 @@ Connection::~Connection()
             socket_->close(ec);
         }
         if (ec and logger_)
-            logger_->e("[http:connection:%i] error closing: %s", id_, ec.message().c_str());
+            logger_->e("[http:client]  [connection:%i] error closing: %s", id_, ec.message().c_str());
     }
     ssl_socket_.reset();
     socket_.reset();
@@ -134,7 +134,7 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
                 X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
                 X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
                 if (logger_)
-                    logger_->d("[http::connection:%i] [ssl] verifying %s", id_, subject_name);
+                    logger_->d("[http:client]  [connection:%i] [ssl] verifying %s", id_, subject_name);
                 // run the verification
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);
@@ -146,7 +146,7 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
             }
         );
         if (logger_)
-            logger_->d("[http:connection:%i] [ssl] verifying %s compliance to RFC 2818", id_, hostname.c_str());
+            logger_->d("[http:client]  [connection:%i] [ssl] verifying %s compliance to RFC 2818", id_, hostname.c_str());
     }
 }
 
@@ -197,9 +197,9 @@ Connection::async_handshake(HandlerCb cb)
         {
             auto verify_ec = SSL_get_verify_result(ssl_socket_->asio_ssl_stream().native_handle());
             if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/ and logger_)
-                logger_->d("[http:connection:%i] [handshake:ssl] allowing self-signed certificate", id_);
+                logger_->d("[http:client]  [connection:%i] [handshake:ssl] allowing self-signed certificate", id_);
             else if (verify_ec != X509_V_OK and logger_)
-                logger_->e("[http:connection:%i] [handshake:ssl] verify error: %i", id_, verify_ec);
+                logger_->e("[http:client]  [connection:%i] [handshake:ssl] verify error: %i", id_, verify_ec);
             if (cb)
                 cb(ec);
         });
@@ -239,7 +239,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 {
     if (!is_open()){
         if (logger_)
-            logger_->e("[http:connection:%i] closed, can't timeout", id_);
+            logger_->e("[http:client]  [connection:%i] closed, can't timeout", id_);
         return;
     }
     if (!timeout_timer_)
@@ -250,7 +250,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
             return;
         else if (ec){
             if (logger_)
-                logger_->e("[http:connection:%i] timeout error: %s", id_, ec.message().c_str());
+                logger_->e("[http:client]  [connection:%i] timeout error: %s", id_, ec.message().c_str());
         }
         if (cb)
             cb(ec);
@@ -374,12 +374,12 @@ Resolver::resolve(const std::string host, const std::string service)
             return;
         if (logger_){
             if (ec)
-                logger_->e("[http:resolver] error for %s:%s: %s",
+                logger_->e("[http:client]  [resolver] error for %s:%s: %s",
                            host.c_str(), service.c_str(), ec.message().c_str());
             else {
                 for (auto it = endpoints.begin(); it != endpoints.end(); ++it){
                     asio::ip::tcp::endpoint endpoint = *it;
-                    logger_->d("[http:resolver] resolved %s:%s: address=%s ipv%i",
+                    logger_->d("[http:client]  [resolver] resolved %s:%s: address=%s ipv%i",
                         host.c_str(), service.c_str(), endpoint.address().to_string().c_str(),
                         endpoint.address().is_v6() ? 6 : 4);
                 }
@@ -666,7 +666,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
 {
     if (endpoints.empty()){
         if (logger_)
-            logger_->e("[http:request:%i] [connect] no endpoints provided", id_);
+            logger_->e("[http:client]  [request:%i] [connect] no endpoints provided", id_);
         if (cb)
             cb(asio::error::connection_aborted);
         return;
@@ -675,7 +675,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         std::string eps = "";
         for (auto& endpoint : endpoints)
             eps.append(endpoint.address().to_string() + " ");
-        logger_->d("[http:request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
+        logger_->d("[http:client]  [request:%i] [connect] begin endpoints { %s}", id_, eps.c_str());
     }
     if (certificate_)
         conn_ = std::make_shared<Connection>(ctx_, certificate_, logger_);
@@ -690,10 +690,10 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         if (ec == asio::error::operation_aborted)
             return;
         else if (ec and logger_)
-            logger_->e("[http:request:%i] [connect] failed with all endpoints", id_);
+            logger_->e("[http:client]  [request:%i] [connect] failed with all endpoints", id_);
         else {
             if (logger_)
-                logger_->d("[http:request:%i] [connect] success", id_);
+                logger_->d("[http:client]  [request:%i] [connect] success", id_);
 
             if (!certificate_)
                 conn_->set_endpoint(endpoint, asio::ssl::verify_none);
@@ -703,9 +703,9 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             if (conn_->is_ssl()){
                 conn_->async_handshake([this, cb](const asio::error_code& ec){
                     if (ec and logger_)
-                        logger_->e("[http:request:%i] [ssl:handshake] error: %s", id_, ec.message().c_str());
+                        logger_->e("[http:client]  [request:%i] [ssl:handshake] error: %s", id_, ec.message().c_str());
                     else if (logger_)
-                        logger_->d("[http:request:%i] [ssl:handshake] secure channel established", id_);
+                        logger_->d("[http:client]  [request:%i] [ssl:handshake] secure channel established", id_);
                     if (cb)
                         cb(ec);
                 });
@@ -726,7 +726,7 @@ Request::send()
                                    std::vector<asio::ip::tcp::endpoint> endpoints){
         if (ec){
             if (logger_)
-                logger_->e("[http:request:%i] [send] resolve error: %s", id_, ec.message().c_str());
+                logger_->e("[http:client]  [request:%i] [send] resolve error: %s", id_, ec.message().c_str());
             terminate(asio::error::connection_aborted);
         }
         else if (!conn_ or !conn_->is_open()){
@@ -749,7 +749,7 @@ Request::post()
 {
     if (!conn_ or !conn_->is_open()){
         if (logger_)
-            logger_->e("[http:request:%i] [post] closed connection", id_);
+            logger_->e("[http:client]  [request:%i] [post] closed connection", id_);
         terminate(asio::error::not_connected);
         return;
     }
@@ -757,7 +757,7 @@ Request::post()
     init_parser();
 
     if (logger_)
-        logger_->d("[http:request:%i] [post]\n%s", id_, request_.c_str());
+        logger_->d("[http:client]  [request:%i] [post]\n%s", id_, request_.c_str());
 
     // write the request to buffer
     std::ostream request_stream(&conn_->input());
@@ -776,7 +776,7 @@ Request::terminate(const asio::error_code& ec)
 
     if (ec != asio::error::eof and ec != asio::error::operation_aborted)
         if (logger_)
-            logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
+            logger_->e("[http:client]  [request:%i] end with error: %s", id_, ec.message().c_str());
 
     finishing_.store(true);
 
@@ -793,7 +793,7 @@ Request::terminate(const asio::error_code& ec)
         response_.status_code = 0;
 
     if (logger_)
-        logger_->d("[http:request:%i] done", id_);
+        logger_->d("[http:client]  [request:%i] done", id_);
 
     notify_state_change(State::DONE);
 }
@@ -805,18 +805,18 @@ Request::handle_request(const asio::error_code& ec)
         return;
     else if (ec and ec != asio::error::eof){
         if (logger_)
-            logger_->e("[http:request:%i] [write] error: %s", id_, ec.message().c_str());
+            logger_->e("[http:client]  [request:%i] [write] error: %s", id_, ec.message().c_str());
         terminate(ec);
         return;
     }
     if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http:request:%i] [write] closed connection", id_);
+            logger_->e("[http:client]  [request:%i] [write] closed connection", id_);
         terminate(asio::error::not_connected);
         return;
     }
     if (logger_)
-        logger_->d("[http:request:%i] [write] success", id_);
+        logger_->d("[http:client]  [request:%i] [write] success", id_);
 
     // read response
     notify_state_change(State::RECEIVING);
@@ -831,7 +831,7 @@ Request::handle_response_header(const asio::error_code& ec)
         return;
     else if ((ec == asio::error::eof) or (ec == asio::error::connection_reset)){
         if (logger_)
-            logger_->e("[http:request:%i] [read:header] error: %s", id_, ec.message().c_str());
+            logger_->e("[http:client]  [request:%i] [read:header] error: %s", id_, ec.message().c_str());
         terminate(ec);
         return;
     }
@@ -841,7 +841,7 @@ Request::handle_response_header(const asio::error_code& ec)
     }
     if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http:request:%i] [read:header] closed connection", id_);
+            logger_->e("[http:client]  [request:%i] [read:header] closed connection", id_);
         terminate(asio::error::not_connected);
         return;
     }
@@ -854,7 +854,7 @@ Request::handle_response_header(const asio::error_code& ec)
     }
     headers.append("\n");
     if (logger_)
-        logger_->d("[http:request:%i] [read:header]\n%s", id_, headers.c_str());
+        logger_->d("[http:client]  [request:%i] [read:header]\n%s", id_, headers.c_str());
 
     // parse the headers
     parse_request(headers);
@@ -898,13 +898,13 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
     else if (ec && ec != asio::error::eof){
         if (logger_)
-            logger_->e("[http:request:%i] [read:body] error: %s", id_, ec.message().c_str());
+            logger_->e("[http:client]  [request:%i] [read:body] error: %s", id_, ec.message().c_str());
         terminate(ec);
         return;
     }
     if (!conn_->is_open()){
         if (logger_)
-            logger_->e("[http:request] [read:body] closed connection");
+            logger_->e("[http:client]  [request] [read:body] closed connection");
         terminate(asio::error::not_connected);
         return;
     }
@@ -927,7 +927,7 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
         parse_request(body);
     }
     if (logger_)
-        logger_->d("[http:request:%i] [read:body] success:\n%s", id_, response_.body.c_str());
+        logger_->d("[http:client]  [request:%i] [read:body] success:\n%s", id_, response_.body.c_str());
 
     // should be executed after each parse_request who can trigger http_parser on_message_complete
     if (message_complete_.load()){
