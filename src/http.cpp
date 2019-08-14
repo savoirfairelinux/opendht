@@ -64,6 +64,8 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     ssl_ctx_->use_certificate(*certificate_, asio::ssl::context::file_format::pem, ec);
     if (ec)
         throw std::runtime_error("Error setting certificate: " + ec.message());
+    else if (logger_)
+        logger_->d("[http:connection:%i] [ssl] using certificate:\n%s", id_, cert.c_str());
 
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
@@ -119,9 +121,27 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
     if (ssl_ctx_ and verify_mode != asio::ssl::verify_none){
         auto hostname = endpoint_.address().to_string();
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
-        ssl_socket_->asio_ssl_stream().set_verify_callback(asio::ssl::rfc2818_verification(hostname));
+        ssl_socket_->asio_ssl_stream().set_verify_callback(
+            [this, hostname](bool preverified, asio::ssl::verify_context& ctx) -> bool
+            {
+                // extract cert info prior to verification
+                char subject_name[256];
+                X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
+                X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
+                if (logger_)
+                    logger_->e("[http::connection:%i] [ssl] verifying %s", subject_name);
+                // run the verification
+                auto verifier = asio::ssl::rfc2818_verification(hostname);
+                bool verified = verifier(preverified, ctx);
+                // post verification, codes: https://www.openssl.org/docs/man1.0.2/man1/verify.html
+                auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
+                if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
+                    verified = true;
+                return verified;
+            }
+        );
         if (logger_)
-            logger_->d("[http:connection:%i] [ssl] verify %s rfc2818 compliance", id_, hostname.c_str());
+            logger_->d("[http:connection:%i] [ssl] verifying %s compliance to RFC 2818", id_, hostname.c_str());
     }
 }
 
@@ -167,7 +187,17 @@ void
 Connection::async_handshake(HandlerCb cb)
 {
     if (ssl_ctx_)
-        ssl_socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client, cb);
+        ssl_socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client,
+                                    [this, cb](const asio::error_code& ec)
+        {
+            auto verify_ec = SSL_get_verify_result(ssl_socket_->asio_ssl_stream().native_handle());
+            if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/ and logger_)
+                logger_->d("[http:connection:%i] [handshake:ssl] allowing self-signed certificate", id_);
+            else if (verify_ec != X509_V_OK and logger_)
+                logger_->e("[http:connection:%i] [handshake:ssl] verify error: %i", id_, verify_ec);
+            if (cb)
+                cb(ec);
+        });
     else if (socket_)
         cb(asio::error::no_protocol_option);
 }

@@ -62,6 +62,7 @@ public:
         std::string push_node_id {};
         bool peer_discovery {false};
         bool peer_publish {false};
+        std::shared_ptr<dht::crypto::Certificate> client_cert;
     };
 
     struct Context {
