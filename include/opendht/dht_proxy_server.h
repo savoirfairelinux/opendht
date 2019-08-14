@@ -79,7 +79,7 @@ public:
      * it will fails silently
      */
     DhtProxyServer(
-       std::shared_ptr<dht::crypto::Identity> identity,
+       dht::crypto::Identity identity,
        std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "",
        std::shared_ptr<dht::Logger> logger = {});
 
@@ -327,7 +327,6 @@ private:
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
     std::unique_ptr<asio::const_buffer> pk_;
     std::unique_ptr<asio::const_buffer> cc_;
-    std::shared_ptr<dht::crypto::Identity> serverIdentity_;
 
     // http client
     std::pair<std::string, std::string> pushHostPort_;

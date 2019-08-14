@@ -227,8 +227,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 unsigned int port = std::stoi(idstr);
                 proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
                     new DhtProxyServer(
-                        params.generate_identity ? std::make_shared<dht::crypto::Identity>(params.id) : nullptr,
-                        node, port
+                        params.generate_identity ? params.id : dht::crypto::Identity{}, node, port
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                         ,pushServer
 #endif
@@ -562,7 +561,7 @@ main(int argc, char **argv)
 #ifdef OPENDHT_PROXY_SERVER
             proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
                 new DhtProxyServer(
-                    params.generate_identity ? std::make_shared<dht::crypto::Identity>(params.id) : nullptr,
+                    params.generate_identity ? params.id : dht::crypto::Identity{},
                     node, params.proxyserver, params.pushserver, context.logger)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;

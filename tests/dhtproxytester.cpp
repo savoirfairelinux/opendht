@@ -41,10 +41,8 @@ DhtProxyTester::setUp() {
     nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
     nodeProxy->bootstrap(nodePeer.getBound());
 
-    serverCAIdentity = std::make_unique<dht::crypto::Identity>(
-        dht::crypto::generateEcIdentity("DHT Node CA"));
-    serverIdentity = std::make_shared<dht::crypto::Identity>(
-        dht::crypto::generateIdentity("DHT Node", *serverCAIdentity));
+    auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
+    auto serverIdentity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
 
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(
         new dht::DhtProxyServer(
@@ -52,7 +50,7 @@ DhtProxyTester::setUp() {
             /*https*/serverIdentity,
             nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 
-    clientConfig.client_cert = serverIdentity->second;
+    clientConfig.client_cert = serverIdentity.second;
     clientConfig.dht_config.node_config.maintain_storage = false;
     clientConfig.threaded = true;
     clientConfig.push_node_id = "dhtnode";

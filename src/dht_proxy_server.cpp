@@ -88,11 +88,11 @@ struct RestRouterTraits : public restinio::default_traits_t
 };
 
 DhtProxyServer::DhtProxyServer(
-    std::shared_ptr<dht::crypto::Identity> identity,
+    dht::crypto::Identity identity,
     std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
     std::shared_ptr<dht::Logger> logger
 )
-    :   dht_(dht), serverIdentity_(identity), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
+    :   dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
         connListener_(std::make_shared<http::ConnectionListener>(dht, listeners_, lockListener_, logger)),
         pushServer_(pushServer)
@@ -115,7 +115,7 @@ DhtProxyServer::DhtProxyServer(
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
-    if (identity){
+    if (identity.first and identity.second) {
         // define tls context
         asio::ssl::context tls_context { asio::ssl::context::sslv23 };
         tls_context.set_options(asio::ssl::context::default_workarounds
@@ -124,13 +124,13 @@ DhtProxyServer::DhtProxyServer(
         // save keys in memory & set in tls context
         asio::error_code ec;
         // node private key
-        auto pk = identity->first->serialize(); // returns Blob
+        auto pk = identity.first->serialize(); // returns Blob
         pk_ = std::make_unique<asio::const_buffer>(static_cast<void*>(pk.data()), (std::size_t) pk.size());
         tls_context.use_private_key(*pk_, asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error setting node's private key: " + ec.message());
         // certificate chain
-        auto cc = identity->second->toString(true/*chain*/);
+        auto cc = identity.second->toString(true/*chain*/);
         cc_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(cc.data()), (std::size_t) cc.size());
         tls_context.use_certificate_chain(*cc_, ec);
         if (ec)
