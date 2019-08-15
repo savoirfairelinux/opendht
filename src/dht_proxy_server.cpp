@@ -144,7 +144,7 @@ DhtProxyServer::DhtProxyServer(
         settings.tls_context(std::move(tls_context));
         httpsServer_ = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
             restinio::own_io_context(),
-            std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(settings)
+            std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(std::move(settings))
         );
         // define http request destination
         pushHostPort_ = splitPort(pushServer_);
@@ -162,7 +162,7 @@ DhtProxyServer::DhtProxyServer(
         settings.port(port);
         httpServer_ = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
             restinio::own_io_context(),
-            std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(settings)
+            std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(std::move(settings))
         );
         // define http request destination
         pushHostPort_ = splitPort(pushServer_);
