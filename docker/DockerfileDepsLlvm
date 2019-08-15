@@ -7,35 +7,33 @@ RUN apt-get update \
 ENV CC cc
 ENV CXX c++
 
+RUN echo "*** Installing libssl, libasio & libhttp-parser ***" \
+    && apt-get update && apt-get install -y libasio-dev libssl-dev libhttp-parser-dev \
+    && apt-get clean
+
+RUN echo "*** Installing libfmt ***" \
+    && wget https://github.com/fmtlib/fmt/archive/5.3.0.tar.gz \
+    && tar -xzf 5.3.0.tar.gz && cd fmt-5.3.0/ && ls -l \
+    && cmake -j8 -DCMAKE_INSTALL_PREFIX=/usr . \
+    && make install
+
 #patch for https://github.com/Stiffstream/restinio-conan-example/issues/2
-RUN apt-get update && apt-get install -y \
-        python3-pip libasio-dev
-RUN pip3 install --upgrade cmake
-#install conan & add restinio remotes
-RUN pip3 install conan && \
-    conan remote add stiffstream https://api.bintray.com/conan/stiffstream/public && \
-    conan remote add public-conan https://api.bintray.com/conan/bincrafters/public-conan
-#setup restinio docker project
-RUN mkdir restinio-conan
-COPY conan/restinio/conanfile.txt restinio-conan/conanfile.txt
-COPY conan/restinio/conanfile.py restinio-conan/conanfile.py
-#build restinio from source
-RUN echo "*** Installing RESTinio & dependencies ***" \
-    && cd restinio-conan \
-    && conan source .  \
-    && conan install -o restinio:boost_libs=none --build=missing . \
-    && conan package . -pf /usr/local \
-    && cd ../ && rm -rf restinio*
-#installing dependencies
-RUN echo "*** Installing asio & fmt dependencies ***" \
-    && cp -r ~/.conan/data/asio/*/bincrafters/stable/package/*/include/* /usr/local/include/ \
-    && cp -r ~/.conan/data/fmt/*/bincrafters/stable/package/*/lib/* /usr/local/lib/ \
-    && cp -r ~/.conan/data/fmt/*/bincrafters/stable/package/*/include/* /usr/local/include/
-#build http_parser fork
-RUN echo "*** Building http_parser dependency for custom HTTP methods ***" \
-    && git clone https://github.com/eao197/http-parser.git \
-    && cd http-parser && make -j8 && make install PREFIX=/usr \
-    && cd ../ && rm -rf restinio-conan/
+RUN apt-get update && apt-get install -y python3-pip \
+    && pip3 install --upgrade cmake
+
+RUN echo "*** Downloading RESTinio ***" \
+    && mkdir restinio && cd restinio \
+    && wget https://github.com/Stiffstream/restinio/archive/v.0.5.1.tar.gz \
+    && ls -l && tar -xzf v.0.5.1.tar.gz \
+    && cd restinio-v.0.5.1/dev \
+    && sed -i.bak '/find_package(Boost*/d' CMakeLists.txt \
+	&& sed -i.bak '/find_package(PCRE)/d' CMakeLists.txt \
+	&& sed -i.bak '/find_package(PCRE2)/d' CMakeLists.txt \
+	&& sed -i.bak '/add_subdirectory(so_5)/d' CMakeLists.txt \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
+             -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
+             -DRESTINIO_FIND_DEPS=ON -DRESTINIO_USE_BOOST_ASIO=none . \
+    && cd ../../ && rm -rf restinio*
 
 #build msgpack from source
 RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz \
