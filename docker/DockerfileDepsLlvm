@@ -23,16 +23,12 @@ RUN apt-get update && apt-get install -y python3-pip \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/Stiffstream/restinio/archive/v.0.5.1.tar.gz \
-    && ls -l && tar -xzf v.0.5.1.tar.gz \
-    && cd restinio-v.0.5.1/dev \
-    && sed -i.bak '/find_package(Boost*/d' CMakeLists.txt \
-	&& sed -i.bak '/find_package(PCRE)/d' CMakeLists.txt \
-	&& sed -i.bak '/find_package(PCRE2)/d' CMakeLists.txt \
-	&& sed -i.bak '/add_subdirectory(so_5)/d' CMakeLists.txt \
+    && wget https://github.com/Stiffstream/restinio/archive/v.0.5.1.1.tar.gz \
+    && ls -l && tar -xzf v.0.5.1.1.tar.gz \
+    && cd restinio-v.0.5.1.1/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
              -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
-             -DRESTINIO_FIND_DEPS=ON -DRESTINIO_USE_BOOST_ASIO=none . \
+             -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
     && cd ../../ && rm -rf restinio*
 
 #build msgpack from source
