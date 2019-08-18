@@ -116,15 +116,18 @@ DhtProxyServer::DhtProxyServer(
     jsonBuilder_["indentation"] = "";
 
     if (identity.first and identity.second) {
+        asio::error_code ec;
         // define tls context
         asio::ssl::context tls_context { asio::ssl::context::sslv23 };
         tls_context.set_options(asio::ssl::context::default_workarounds
                                 | asio::ssl::context::no_sslv2
-                                | asio::ssl::context::single_dh_use);
-        // save keys in memory & set in tls context
-        asio::error_code ec;
+                                | asio::ssl::context::single_dh_use, ec);
+        if (ec)
+            throw std::runtime_error("Error setting tls context options: " + ec.message());
+        // add more security options
+        SSL_CTX_set_options(tls_context.native_handle(), SSL_OP_NO_RENEGOTIATION); // CVE-2009-3555
         // node private key
-        auto pk = identity.first->serialize(); // returns Blob
+        auto pk = identity.first->serialize();
         pk_ = std::make_unique<asio::const_buffer>(static_cast<void*>(pk.data()), (std::size_t) pk.size());
         tls_context.use_private_key(*pk_, asio::ssl::context::file_format::pem, ec);
         if (ec)
