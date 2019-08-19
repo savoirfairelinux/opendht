@@ -93,12 +93,12 @@ DhtProxyClient::DhtProxyClient(
     httpClientThread_ = std::thread([this](){
         try {
             if (logger_)
-                logger_->d("[proxy:client] starting io context");
+                logger_->d("[proxy:client] starting io_context");
             // Ensures the httpContext_ won't run out of work
             auto work = asio::make_work_guard(httpContext_);
             httpContext_.run();
             if (logger_)
-                logger_->d("[proxy:client] http client io context stopped");
+                logger_->d("[proxy:client] http client io_context stopped");
         }
         catch(const std::exception& ex){
             if (logger_)
@@ -116,7 +116,7 @@ DhtProxyClient::startProxy()
         return;
 
     if (logger_)
-        logger_->d("[proxy:client] staring proxy with %s", serverHostService_.first.c_str());
+        logger_->d("[proxy:client] start proxy with %s", serverHostService_.first.c_str());
 
     nextProxyConfirmationTimer_ = std::make_shared<asio::steady_timer>(httpContext_, std::chrono::steady_clock::now());
     nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
@@ -190,7 +190,7 @@ DhtProxyClient::cancelAllListeners()
 {
     std::lock_guard<std::mutex> lock(searchLock_);
     if (logger_)
-        logger_->d("[proxy:client] [listeners:cancel:all] [%zu searches]", searches_.size());
+        logger_->d("[proxy:client] [listeners] [%zu searches] cancel all", searches_.size());
     for (auto& s: searches_) {
         s.second.ops.cancelAll([&](size_t token){
             auto l = s.second.listeners.find(token);
@@ -535,7 +535,7 @@ DhtProxyClient::cancelPut(const InfoHash& key, const Value::Id& id)
     if (search == searches_.end())
         return false;
     if (logger_)
-        logger_->d("[proxy:client] [put:cancel] [search %s]", key.to_c_str());
+        logger_->d("[proxy:client] [put] [search %s] cancel", key.to_c_str());
     return search->second.puts.erase(id) > 0;
 }
 
@@ -617,7 +617,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
                                std::vector<asio::ip::tcp::endpoint>&& endpoints)
 {
     if (logger_)
-        logger_->d("[proxy:client] [status:ipv%i] query info", family == AF_INET ? 4 : 6);
+        logger_->d("[proxy:client] [status] query ipv%i info", family == AF_INET ? 4 : 6);
     auto request = std::make_shared<http::Request>(httpContext_, std::move(endpoints), logger_);
     auto reqid = request->id();
     try {
@@ -632,7 +632,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
         request->add_on_status_callback([this, ok, family](unsigned int status_code){
             if (status_code != 200){
                 if (logger_)
-                    logger_->e("[proxy:client] [status:ipv%i] status code error: %i", family, status_code);
+                    logger_->e("[proxy:client] [status] ipv%i status code error: %i", family, status_code);
                 ok->store(false);
             }
         });
@@ -662,7 +662,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200)
                     if (logger_)
-                        logger_->e("[proxy:client] [status:ipv%i] failed with code=%i",
+                        logger_->e("[proxy:client] [status] ipv%i failed with code=%i",
                                     family == AF_INET ? 4 : 6, response.status_code);
                 if (infoState->cancel.load()){
                     // pass along the failures
@@ -1010,7 +1010,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
         request->add_on_status_callback([this, reqid, opstate](unsigned int status_code){
             if (status_code != 200){
                 if (logger_)
-                    logger_->e("[proxy:client] [listen:send] %i status error: %i", reqid, status_code);
+                    logger_->e("[proxy:client] [listen] send request #%i status error: %i", reqid, status_code);
                 opstate->ok.store(false);
             }
         });
@@ -1049,7 +1049,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                 }
             } catch(const std::exception& e) {
                 if (logger_)
-                    logger_->e("[proxy:client] [listen:send] %i error in parsing: %s", reqid, e.what());
+                    logger_->e("[proxy:client] [listen] request #%i error in parsing: %s", reqid, e.what());
                 opstate->ok.store(false);
             }
         });
@@ -1058,7 +1058,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200)
                     if (logger_)
-                        logger_->e("[proxy:client] [listen:send] %i failed with code=%i",
+                        logger_->e("[proxy:client] [listen] send request #%i failed with code=%i",
                                    reqid, response.status_code);
                 requests_.erase(reqid);
             }
@@ -1070,7 +1070,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     }
     catch (const std::exception &e){
         if (logger_)
-            logger_->e("[proxy:client] [listen:send] %i failed: %s", reqid, e.what());
+            logger_->e("[proxy:client] [listen] request #%i failed: %s", reqid, e.what());
         requests_.erase(reqid);
     }
 }
@@ -1104,7 +1104,7 @@ DhtProxyClient::restartListeners()
     if (isDestroying_)
         return;
     if (logger_)
-        logger_->d("[proxy:client] [listeners:restart] refresh permanent puts");
+        logger_->d("[proxy:client] [listeners] refresh permanent puts");
 
     std::lock_guard<std::mutex> lock(searchLock_);
     for (auto& search : searches_) {
@@ -1127,7 +1127,7 @@ DhtProxyClient::restartListeners()
     }
     if (not deviceKey_.empty()) {
         if (logger_)
-            logger_->d("[proxy:client] [listeners:restart] resubscribe due to a connectivity change");
+            logger_->d("[proxy:client] [listeners] resubscribe due to a connectivity change");
         // Connectivity changed, refresh all subscribe
         for (auto& search : searches_)
             for (auto& listener : search.second.listeners)
@@ -1136,7 +1136,7 @@ DhtProxyClient::restartListeners()
         return;
     }
     if (logger_)
-        logger_->d("[proxy:client] [listeners:restart] restarting listeners");
+        logger_->d("[proxy:client] [listeners] restarting listeners");
     for (auto& search: searches_) {
         for (auto& l: search.second.listeners) {
             auto& listener = l.second;
@@ -1206,7 +1206,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 if (list.second.opstate->stop)
                     continue;
                 if (logger_)
-                    logger_->d("[proxy:client] [push:received] [search %s] handling", key.to_c_str());
+                    logger_->d("[proxy:client] [push] [search %s] received", key.to_c_str());
                 auto expired = notification.find("exp");
                 auto token = list.first;
                 auto opstate = list.second.opstate;
@@ -1250,7 +1250,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
         }
     } catch (const std::exception& e) {
         if (logger_)
-            logger_->e("[proxy:client] [push:received] error handling: %s", e.what());
+            logger_->e("[proxy:client] [push] receive error: %s", e.what());
     }
 #else
     (void) notification;
@@ -1264,7 +1264,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
     if (deviceKey_.empty())
         return;
     if (logger_)
-        logger_->d("[proxy:client] [resubscribe] [search %s] resubscribe push listener", key.to_c_str());
+        logger_->d("[proxy:client] [resubscribe] [search %s]", key.to_c_str());
 
     auto opstate = listener.opstate;
     opstate->stop = true;
