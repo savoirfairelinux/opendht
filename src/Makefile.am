@@ -73,7 +73,8 @@ endif
 
 libopendht_la_SOURCES += base64.h base64.cpp
 if PROXY_CLIENT_OR_SERVER
-nobase_include_HEADERS += ../include/opendht/proxy.h
+libopendht_la_SOURCES += http.cpp
+nobase_include_HEADERS += ../include/opendht/proxy.h ../include/opendht/http.h
 endif
 
 if ENABLE_INDEXATION

@@ -123,7 +123,7 @@ AM_COND_IF([ENABLE_TESTS], [
 	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
 ])
 
-AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes | test x$proxy_server == xyes)
+AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes || test x$proxy_server == xyes)
 
 PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
@@ -142,25 +142,26 @@ AS_IF([test "x$have_jsoncpp" = "xyes"], [
 ])
 
 AC_ARG_WITH([openssl], AS_HELP_STRING([--with-openssl], [Build with OpenSSL support]))
-AS_IF([test "x$with_openssl" != "xno"],
+AS_IF([test "x$with_openssl" = "xyes"],
       [PKG_CHECK_MODULES([OpenSSL], [openssl >= 1.1], [have_openssl=yes], [have_openssl=no])],
       [have_openssl=no])
 AS_IF([test "x$have_openssl" = "xyes"], [
+    LDFLAGS="${LDFLAGS} -lssl"
     AC_MSG_NOTICE([Using OpenSSL])
 ], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
 
 AC_ARG_WITH([http_parser_fork], AS_HELP_STRING([--with-http-parser-fork], [Build with http_parser fork to support old API]))
-AS_IF([test "x$with_http_parser_fork" != "xno"],[
+AS_IF([test "x$with_http_parser_fork" = "xyes"],[
     AC_MSG_NOTICE([Using http_parser fork])
-    CPPFLAGS+=" -DOPENDHT_PROXY_HTTP_PARSER_FORK"
+    CPPFLAGS+=" -DOPENDHT_PROXY_HTTP_PARSER_FORK=1"
 ], [
     AC_MSG_NOTICE([Not using http_parser fork])
 ])
 
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
-    PKG_CHECK_MODULES([Asio], [fmt >= 1.12.2])
+    AC_CHECK_HEADERS([asio.hpp], exit,, AC_MSG_ERROR([Missing Asio header files]))
     PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0])
     # http_parser has no pkgconfig, instead we check with:
     AC_CHECK_LIB(http_parser, exit,, AC_MSG_ERROR([Missing HttpParser library files]))
@@ -201,6 +202,7 @@ AM_COND_IF([ENABLE_TOOLS], [
 
 AM_COND_IF(ENABLE_PROXY_SERVER, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER"], [])
 AM_COND_IF(ENABLE_PROXY_CLIENT, [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT"], [])
+AM_COND_IF(PROXY_CLIENT_OR_SERVER, [CPPFLAGS+=" -DPROXY_CLIENT_OR_SERVER"], [])
 AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS"], [])
 AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
 
