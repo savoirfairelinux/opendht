@@ -31,6 +31,13 @@ RUN echo "*** Downloading RESTinio ***" \
              -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
     && cd ../../ && rm -rf restinio*
 
+# build restbed from sources
+RUN git clone --recursive https://github.com/corvusoft/restbed.git \
+	&& cd restbed && mkdir build && cd build \
+	&& cmake -DBUILD_TESTS=NO -DBUILD_EXAMPLES=NO -DBUILD_SSL=NO -DBUILD_SHARED=YES -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib .. \
+	&& make -j8 install \
+	&& cd .. && rm -rf restbed
+
 #build msgpack from source
 RUN wget https://github.com/msgpack/msgpack-c/releases/download/cpp-2.1.5/msgpack-2.1.5.tar.gz \
     && tar -xzf msgpack-2.1.5.tar.gz \
