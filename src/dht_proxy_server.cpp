@@ -225,7 +225,7 @@ DhtProxyServer::addServerSettings(ServerSettings& settings, const unsigned int m
     settings.separate_accept_and_create_connect(true);
     settings.logger(logger_);
     settings.protocol(restinio::asio_ns::ip::tcp::v6());
-    settings.request_handler(std::move(this->createRestRouter()));
+    settings.request_handler(createRestRouter());
     // time limits                                              // ~ 0.8 month
     std::chrono::milliseconds timeout_request(std::numeric_limits<int>::max());
     settings.read_next_http_message_timelimit(timeout_request);
