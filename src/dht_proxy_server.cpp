@@ -230,7 +230,9 @@ DhtProxyServer::DhtProxyServer(
         if (ec)
             throw std::runtime_error("Error setting tls context options: " + ec.message());
         // add more security options
+#ifdef SSL_OP_NO_RENEGOTIATION
         SSL_CTX_set_options(tls_context.native_handle(), SSL_OP_NO_RENEGOTIATION); // CVE-2009-3555
+#endif
         // node private key
         auto pk = identity.first->serialize();
         pk_ = std::make_unique<asio::const_buffer>(static_cast<void*>(pk.data()), (std::size_t) pk.size());
