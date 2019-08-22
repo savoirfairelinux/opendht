@@ -13,7 +13,7 @@ ENV CXX c++
 RUN echo "*** Installing libfmt ***" \
     && wget https://github.com/fmtlib/fmt/archive/5.3.0.tar.gz \
     && tar -xzf 5.3.0.tar.gz && cd fmt-5.3.0/ \
-    && cmake -DCMAKE_INSTALL_PREFIX=/usr . \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_SHARED_LIBS=On . \
     && make -j8 && make install \
     && cd ../ && rm -rf fmt*
 
