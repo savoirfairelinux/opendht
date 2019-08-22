@@ -66,25 +66,130 @@ constexpr char RESP_MSG_PUT_FAILED[] = "{\"err\":\"Put failed\"}";
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
-struct RestRouterTraitsTls : public restinio::default_tls_traits_t
+class opendht_logger_t
 {
-    using timer_manager_t = restinio::asio_timer_manager_t;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-#endif
-    using logger_t = restinio::opendht_logger_t;
-    using request_handler_t = RestRouter;
-    using connection_state_listener_t = http::ConnectionListener;
+public:
+    opendht_logger_t(std::shared_ptr<dht::Logger> logger = {}){
+        if (logger)
+            m_logger = logger;
+    }
+
+    template <typename Builder>
+    void trace(Builder && msg_builder){
+        if (m_logger)
+            m_logger->d("[proxy:server] %s", msg_builder().c_str());
+    }
+
+    template <typename Builder>
+    void info(Builder && msg_builder){
+        if (m_logger)
+            m_logger->d("[proxy:server] %s", msg_builder().c_str());
+    }
+
+    template <typename Builder>
+    void warn(Builder && msg_builder){
+        if (m_logger)
+            m_logger->w("[proxy:server] %s", msg_builder().c_str());
+    }
+
+    template <typename Builder>
+    void error(Builder && msg_builder){
+        if (m_logger)
+            m_logger->e("[proxy:server] %s", msg_builder().c_str());
+    }
+
+private:
+    std::shared_ptr<dht::Logger> m_logger;
 };
-struct RestRouterTraits : public restinio::default_traits_t
+
+// connection listener
+
+class DhtProxyServer::ConnectionListener
+{
+public:
+    ConnectionListener() {};
+    ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
+        std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
+        std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger):
+        dht_(dht), lock_(lock), listeners_(listeners), logger_(logger) {};
+    ~ConnectionListener() {};
+
+    /**
+     * Connection state change used to handle Listeners disconnects.
+     * RESTinio >= 0.5.1 https://github.com/Stiffstream/restinio/issues/28
+     */
+    void state_changed(const restinio::connection_state::notice_t& notice) noexcept;
+
+private:
+    std::string to_str( restinio::connection_state::cause_t cause ) noexcept;
+
+    std::shared_ptr<dht::DhtRunner> dht_;
+    std::shared_ptr<std::mutex> lock_;
+    std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners_;
+
+    std::shared_ptr<dht::Logger> logger_;
+};
+
+void
+DhtProxyServer::ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
+{
+    std::lock_guard<std::mutex> lock(*lock_);
+    auto id = notice.connection_id();
+    auto cause = to_str(notice.cause());
+
+    if (listeners_->find(id) != listeners_->end()){
+        if (notice.cause() == restinio::connection_state::cause_t::closed){
+            if (logger_)
+                logger_->d("[proxy:server] [connection:%li] cancelling listener", id);
+            dht_->cancelListen(listeners_->at(id).hash,
+                               std::move(listeners_->at(id).token));
+            listeners_->erase(id);
+            if (logger_)
+                logger_->d("[proxy:server] %li listeners are connected", listeners_->size());
+        }
+    }
+}
+
+std::string
+DhtProxyServer::ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
+{
+    std::string result;
+    switch(cause)
+    {
+    case restinio::connection_state::cause_t::accepted:
+        result = "accepted";
+        break;
+    case restinio::connection_state::cause_t::closed:
+        result = "closed";
+        break;
+    case restinio::connection_state::cause_t::upgraded_to_websocket:
+        result = "upgraded";
+        break;
+    default:
+        result = "unknown";
+    }
+    return result;
+}
+
+struct DhtProxyServer::RestRouterTraitsTls : public restinio::default_tls_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
 #ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
     using http_methods_mapper_t = restinio::custom_http_methods_t;
 #endif
-    using logger_t = restinio::opendht_logger_t;
+    using logger_t = opendht_logger_t;
     using request_handler_t = RestRouter;
-    using connection_state_listener_t = http::ConnectionListener;
+    using connection_state_listener_t = ConnectionListener;
+};
+struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
+{
+    using timer_manager_t = restinio::asio_timer_manager_t;
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
+    using http_methods_mapper_t = restinio::custom_http_methods_t;
+#endif
+    using logger_t = opendht_logger_t;
+    using request_handler_t = RestRouter;
+    using connection_state_listener_t = ConnectionListener;
 };
 
 DhtProxyServer::DhtProxyServer(
@@ -94,7 +199,7 @@ DhtProxyServer::DhtProxyServer(
 )
     :   dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
-        connListener_(std::make_shared<http::ConnectionListener>(dht, listeners_, lockListener_, logger)),
+        connListener_(std::make_shared<ConnectionListener>(dht, listeners_, lockListener_, logger)),
         pushServer_(pushServer)
 {
     if (not dht_)

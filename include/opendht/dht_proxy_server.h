@@ -42,11 +42,6 @@
 namespace http {
 class Request;
 struct ListenerSession;
-class ConnectionListener;
-}
-
-namespace restinio {
-class opendht_logger_t;
 }
 
 namespace Json {
@@ -58,8 +53,6 @@ namespace dht {
 class DhtRunner;
 
 using RestRouter = restinio::router::express_router_t<>;
-struct RestRouterTraitsTls;
-struct RestRouterTraits;
 using RequestStatus = restinio::request_handling_status_t;
 using ResponseByParts = restinio::chunked_output_t;
 using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
@@ -141,6 +134,10 @@ public:
     std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
 private:
+    class ConnectionListener;
+    struct RestRouterTraitsTls;
+    struct RestRouterTraits;
+
     template <typename HttpResponse>
     HttpResponse initHttpResponse(HttpResponse response) const;
 
@@ -345,7 +342,7 @@ private:
     std::shared_ptr<std::map<restinio::connection_id_t,
                              http::ListenerSession>> listeners_;
     // Connection Listener observing conn state changes.
-    std::shared_ptr<http::ConnectionListener> connListener_;
+    std::shared_ptr<ConnectionListener> connListener_;
 
     struct PermanentPut {
         time_point expiration;

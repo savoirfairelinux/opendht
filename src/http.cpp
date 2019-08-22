@@ -17,9 +17,12 @@
  */
 
 #include "http.h"
+#include "log_enable.h"
+#include "crypto.h"
 
 #include <http_parser.h>
 
+namespace dht {
 namespace http {
 
 constexpr char HTTP_HEADER_CONNECTION[] = "Connection";
@@ -255,62 +258,6 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
         if (cb)
             cb(ec);
     });
-}
-
-// connection listener
-
-ConnectionListener::ConnectionListener()
-{}
-
-ConnectionListener::ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
-    std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
-    std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger):
-        dht_(dht), lock_(lock), listeners_(listeners), logger_(logger)
-{}
-
-ConnectionListener::~ConnectionListener()
-{
-}
-
-void
-ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
-{
-    std::lock_guard<std::mutex> lock(*lock_);
-    auto id = notice.connection_id();
-    auto cause = to_str(notice.cause());
-
-    if (listeners_->find(id) != listeners_->end()){
-        if (notice.cause() == restinio::connection_state::cause_t::closed){
-            if (logger_)
-                logger_->d("[proxy:server] [connection:%li] cancelling listener", id);
-            dht_->cancelListen(listeners_->at(id).hash,
-                               std::move(listeners_->at(id).token));
-            listeners_->erase(id);
-            if (logger_)
-                logger_->d("[proxy:server] %li listeners are connected", listeners_->size());
-        }
-    }
-}
-
-std::string
-ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
-{
-    std::string result;
-    switch(cause)
-    {
-    case restinio::connection_state::cause_t::accepted:
-        result = "accepted";
-        break;
-    case restinio::connection_state::cause_t::closed:
-        result = "closed";
-        break;
-    case restinio::connection_state::cause_t::upgraded_to_websocket:
-        result = "upgraded";
-        break;
-    default:
-        result = "unknown";
-    }
-    return result;
 }
 
 // Resolver
@@ -938,3 +885,4 @@ Request::parse_request(const std::string request)
 }
 
 } // namespace http
+} // namespace dht

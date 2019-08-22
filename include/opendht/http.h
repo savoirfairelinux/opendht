@@ -19,18 +19,26 @@
 #pragma once
 
 #include "def.h"
-#include "log.h"
+#include "infohash.h"
 
 #include <asio.hpp>
 #include <asio/ssl.hpp>
 
-#include <json/json.h>
 #include <restinio/all.hpp>
 #include <restinio/impl/tls_socket.hpp>
+
+#include <queue>
 
 extern "C" {
 struct http_parser;
 struct http_parser_settings;
+}
+
+namespace dht {
+struct Logger;
+
+namespace crypto {
+class Certificate;
 }
 
 namespace http {
@@ -101,31 +109,6 @@ struct ListenerSession
     dht::InfoHash hash;
     std::future<size_t> token;
     std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
-};
-
-class ConnectionListener
-{
-public:
-    ConnectionListener();
-    ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
-        std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
-        std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger);
-    ~ConnectionListener();
-
-    /**
-     * Connection state change used to handle Listeners disconnects.
-     * RESTinio >= 0.5.1 https://github.com/Stiffstream/restinio/issues/28
-     */
-    void state_changed(const restinio::connection_state::notice_t& notice) noexcept;
-
-private:
-    std::string to_str( restinio::connection_state::cause_t cause ) noexcept;
-
-    std::shared_ptr<dht::DhtRunner> dht_;
-    std::shared_ptr<std::mutex> lock_;
-    std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners_;
-
-    std::shared_ptr<dht::Logger> logger_;
 };
 
 /* @class Resolver
@@ -302,47 +285,11 @@ private:
 };
 
 } // namespace http
-
-namespace restinio
-{
-
-class opendht_logger_t
-{
-public:
-    opendht_logger_t(std::shared_ptr<dht::Logger> logger = {}){
-        if (logger)
-            m_logger = logger;
-    }
-
-    template <typename Builder>
-    void trace(Builder && msg_builder){
-        if (m_logger)
-            m_logger->d("[proxy:server] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void info(Builder && msg_builder){
-        if (m_logger)
-            m_logger->d("[proxy:server] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void warn(Builder && msg_builder){
-        if (m_logger)
-            m_logger->w("[proxy:server] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void error(Builder && msg_builder){
-        if (m_logger)
-            m_logger->e("[proxy:server] %s", msg_builder().c_str());
-    }
-
-private:
-    std::shared_ptr<dht::Logger> m_logger;
-};
+} // namespace dht
 
 #ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
+namespace restinio
+{
 /* Custom HTTP-methods for RESTinio > 0.5.0.
  * https://github.com/Stiffstream/restinio/issues/26
  */
@@ -350,6 +297,5 @@ constexpr const restinio::http_method_id_t method_listen {HTTP_LISTEN, "LISTEN"}
 constexpr const restinio::http_method_id_t method_stats {HTTP_STATS, "STATS"};
 constexpr const restinio::http_method_id_t method_sign {HTTP_SIGN, "SIGN"};
 constexpr const restinio::http_method_id_t method_encrypt {HTTP_ENCRYPT, "ENCRYPT"};
-#endif
-
 } // namespace restinio
+#endif

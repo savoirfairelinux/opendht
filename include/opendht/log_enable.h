@@ -24,6 +24,8 @@
 
 #include "infohash.h"
 
+#include <cstdarg>
+
 #ifndef OPENDHT_LOG
 #define OPENDHT_LOG true
 #endif

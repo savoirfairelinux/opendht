@@ -18,6 +18,7 @@
  */
 
 #include "log.h"
+#include "dhtrunner.h"
 
 #ifndef _WIN32
 #include <syslog.h>

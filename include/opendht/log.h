@@ -19,11 +19,15 @@
 
 #pragma once
 
-#include "dhtrunner.h"
+#include "def.h"
+#include "log_enable.h"
 
 #include <iostream>
+#include <memory>
 
 namespace dht {
+
+class DhtRunner;
 
 /**
  * Logging-related functions
