@@ -25,13 +25,19 @@
 #include <asio/ssl.hpp>
 
 #include <restinio/all.hpp>
-#include <restinio/impl/tls_socket.hpp>
 
+#include <memory>
 #include <queue>
 
 extern "C" {
 struct http_parser;
 struct http_parser_settings;
+}
+
+namespace restinio {
+namespace impl {
+class tls_socket_t;
+}
 }
 
 namespace dht {

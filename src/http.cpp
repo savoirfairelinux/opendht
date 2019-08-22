@@ -20,6 +20,7 @@
 #include "log_enable.h"
 #include "crypto.h"
 
+#include <restinio/impl/tls_socket.hpp>
 #include <http_parser.h>
 
 namespace dht {
