@@ -24,7 +24,7 @@ RUN echo "*** Building nodejs/http_parser dependency ***" \
     && PREFIX=/usr make -j8 && make install \
     && cd ../ && rm -rf http-parser*
 
-# libaio (1.10.6-3) is too old
+# libasio-dev (1.10.6-3) is too old
 RUN echo "** Building a recent version of asio ***" \
     && wget https://github.com/chriskohlhoff/asio/archive/asio-1-12-2.tar.gz \
     && tar -xvf asio-1-12-2.tar.gz && cd asio-asio-1-12-2/asio \
