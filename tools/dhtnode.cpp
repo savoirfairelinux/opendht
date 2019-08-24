@@ -40,7 +40,7 @@ void print_version() {
 }
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port] [--proxyserverssl local_port]" << std::endl << std::endl;
     print_info();
 }
 
@@ -79,6 +79,7 @@ void print_help() {
               << "  pst [port] <pushServer> Start the proxy interface on port." << std::endl
 #else
               << "  pst [port]              Start the proxy interface on port." << std::endl
+              << "  psx [port]              Start the proxy ssl interface on port." << std::endl
 #endif // OPENDHT_PUSH_NOTIFICATIONS
               << "  psp [port]              Stop the proxy interface on port." << std::endl;
 #endif //OPENDHT_PROXY_SERVER
@@ -218,6 +219,23 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         }
 #ifdef OPENDHT_PROXY_SERVER
         else if (op == "pst") {
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+                iss >> idstr >> pushServer;
+#else
+                iss >> idstr;
+#endif // OPENDHT_PUSH_NOTIFICATIONS
+            try {
+                unsigned int port = std::stoi(idstr);
+                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
+                    new DhtProxyServer(
+                        dht::crypto::Identity{}, node, port
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+                        ,pushServer
+#endif
+                )));
+            } catch (...) { }
+            continue;
+        } else if (op == "psx") {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                 iss >> idstr >> pushServer;
 #else
@@ -557,11 +575,17 @@ main(int argc, char **argv)
 #ifdef OPENDHT_PROXY_SERVER
         std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
 #endif
-        if (params.proxyserver != 0) {
+        if (params.proxyserverssl != 0) {
 #ifdef OPENDHT_PROXY_SERVER
-            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
+            proxies.emplace(params.proxyserverssl, std::unique_ptr<DhtProxyServer>(
                 new DhtProxyServer(
                     params.generate_identity ? params.id : dht::crypto::Identity{},
+                    node, params.proxyserverssl, params.pushserver, context.logger)));
+        }
+        if (params.proxyserver != 0) {
+            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
+                new DhtProxyServer(
+                    dht::crypto::Identity{},
                     node, params.proxyserver, params.pushserver, context.logger)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
