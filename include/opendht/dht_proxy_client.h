@@ -359,7 +359,6 @@ private:
     /**
      * Store listen requests.
      */
-    struct Listener;
     struct ProxySearch;
 
     size_t listenerToken_ {0};
