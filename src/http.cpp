@@ -92,8 +92,6 @@ Connection::~Connection()
         if (ec and logger_)
             logger_->e("[http:client]  [connection:%i] error closing: %s", id_, ec.message().c_str());
     }
-    ssl_socket_.reset();
-    socket_.reset();
 }
 
 unsigned int
@@ -726,8 +724,6 @@ Request::terminate(const asio::error_code& ec)
 
     finishing_.store(true);
 
-    // close the connection cancelling the scheduled socket operations on the io_context
-    conn_.reset();
     // reset the http_parser holding the data pointer to the user callbacks
     parser_.reset();
     parser_s_.reset();
