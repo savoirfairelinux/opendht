@@ -197,6 +197,8 @@ Connection::async_handshake(HandlerCb cb)
         ssl_socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client,
                                     [this, cb](const asio::error_code& ec)
         {
+            if (ec == asio::error::operation_aborted)
+                return;
             auto verify_ec = SSL_get_verify_result(ssl_socket_->asio_ssl_stream().native_handle());
             if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/ and logger_)
                 logger_->d("[http:client]  [connection:%i] allow self-signed certificate in handshake", id_);
@@ -648,6 +650,8 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                                               | asio::ssl::verify_fail_if_no_peer_cert);
             if (conn_->is_ssl()){
                 conn_->async_handshake([this, cb](const asio::error_code& ec){
+                    if (ec == asio::error::operation_aborted)
+                        return;
                     if (ec and logger_)
                         logger_->e("[http:client]  [request:%i] handshake error: %s", id_, ec.message().c_str());
                     else if (logger_)
