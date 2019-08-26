@@ -1,8 +1,8 @@
 lib_LTLIBRARIES = libopendht.la
 
-libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@
-libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@
-libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
+libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@ @OpenSSL_CFLAGS@
+libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@ @OpenSSL_LIBS@
+libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@ @OpenSSL_LDFLAGS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
 libopendht_la_SOURCES  = \
         dht.cpp \
         storage.h \

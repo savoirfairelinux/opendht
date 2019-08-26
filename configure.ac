@@ -146,7 +146,9 @@ AS_IF([test "x$with_openssl" != "xno"],
       [PKG_CHECK_MODULES([OpenSSL], [openssl >= 1.1], [have_openssl=yes], [have_openssl=no])],
       [have_openssl=no])
 AS_IF([test "x$have_openssl" = "xyes"], [
-    LDFLAGS="${LDFLAGS} -lssl"
+    AC_SUBST(OpenSSL_CFLAGS, "")
+    AC_SUBST(OpenSSL_LIBS, "")
+    AC_SUBST(OpenSSL_LDFLAGS, "-lssl")
     AC_MSG_NOTICE([Using OpenSSL])
 ], [
     AC_MSG_NOTICE([Not using OpenSSL])
