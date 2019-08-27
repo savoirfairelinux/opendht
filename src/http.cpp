@@ -214,6 +214,8 @@ Connection::async_handshake(HandlerCb cb)
 void
 Connection::async_write(BytesHandlerCb cb)
 {
+    if (!is_open())
+        return;
     if (ssl_ctx_)
         asio::async_write(*ssl_socket_, write_buf_, cb);
     else
@@ -223,6 +225,8 @@ Connection::async_write(BytesHandlerCb cb)
 void
 Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
+    if (!is_open())
+        return;
     if (ssl_ctx_)
         asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
     else
@@ -232,6 +236,8 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 void
 Connection::async_read(const size_t bytes, BytesHandlerCb cb)
 {
+    if (!is_open())
+        return;
     if (ssl_socket_)
         asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), cb);
     else
