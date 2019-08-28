@@ -362,6 +362,8 @@ if (OPENDHT_TESTS)
     )
     if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
       list (APPEND test_FILES
+        tests/httptester.h
+        tests/httptester.cpp
         tests/dhtproxytester.h
         tests/dhtproxytester.cpp
       )

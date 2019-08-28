@@ -57,6 +57,19 @@ using ConnectHandlerCb = std::function<void(const asio::error_code& ec,
 using ssl_socket_t = restinio::impl::tls_socket_t;
 using socket_t = asio::ip::tcp::socket;
 
+class OPENDHT_PUBLIC Url
+{
+public:
+    Url(){};
+    Url(const std::string& url);
+    std::string url;
+    std::string protocol {"http"};
+    std::string host;
+    std::string service {"80"};
+    std::string target {"/"};
+    std::string query;
+};
+
 class OPENDHT_PUBLIC Connection
 {
 public:
@@ -126,6 +139,7 @@ public:
     using ResolverCb = std::function<void(const asio::error_code& ec,
                                           std::vector<asio::ip::tcp::endpoint> endpoints)>;
 
+    Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Resolver(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
              std::shared_ptr<dht::Logger> logger = {});
 

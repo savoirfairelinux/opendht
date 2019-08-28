@@ -34,6 +34,36 @@ constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
 constexpr char HTTP_HEADER_DELIM[] = "\r\n\r\n";
 constexpr char JSON_VALUE_DELIM[] = "\n";
 
+Url::Url(const std::string& url): url(url)
+{
+    size_t addr_begin = 0;
+    // protocol
+    const size_t proto_end = url.find("://");
+    if (proto_end != std::string::npos){
+        addr_begin = proto_end + 3;
+        if (url.substr(0, proto_end) == "https")
+            protocol = "https";
+    }
+    // host and service
+    size_t addr_size = url.substr(addr_begin).find("/");
+    if (addr_size == std::string::npos)
+        addr_size = url.size() - addr_begin;
+    auto host_service = splitPort(url.substr(addr_begin, addr_size));
+    host = host_service.first;
+    if (!host_service.second.empty())
+        service = host_service.second;
+    // target, query
+    size_t query_begin = url.find("?");
+    auto addr_end = addr_begin + addr_size;
+    if (addr_end < url.size()){
+        if (query_begin == std::string::npos)
+            target = url.substr(addr_end);
+        else
+            target = url.substr(addr_end, query_begin - addr_end);
+    }
+    query = url.substr(query_begin + 1);
+}
+
 // connection
 
 unsigned int Connection::ids_ = 1;
@@ -268,6 +298,14 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 }
 
 // Resolver
+
+Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
+    : resolver_(ctx), logger_(logger)
+{
+    dht::http::Url http_url(url);
+    service_ = http_url.service;
+    resolve(http_url.host, http_url.service);
+}
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
                    std::shared_ptr<dht::Logger> logger)
