@@ -150,7 +150,9 @@ public:
 
     ~Resolver();
 
-    Url get_url() const;
+    inline const Url& get_url() const {
+        return url_;
+    };
     std::string get_service() const;
 
     void add_callback(ResolverCb cb);
@@ -209,7 +211,9 @@ public:
     unsigned int id() const;
     void set_connection(std::shared_ptr<Connection> connection);
     std::shared_ptr<Connection> get_connection() const;
-    Url get_url() const;
+    inline const Url& get_url() const {
+        return resolver_->get_url();
+    };
 
     void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
     void set_logger(std::shared_ptr<dht::Logger> logger);
