@@ -34,6 +34,7 @@ class HttpTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(test_parse_url_no_prefix_no_target);
     CPPUNIT_TEST(test_parse_url_target);
     CPPUNIT_TEST(test_parse_url_query);
+    CPPUNIT_TEST(test_parse_url_fragment);
     CPPUNIT_TEST(test_parse_url_ipv4);
     CPPUNIT_TEST(test_parse_url_no_prefix_no_target_ipv4);
     CPPUNIT_TEST(test_parse_url_target_ipv4);
@@ -59,6 +60,7 @@ class HttpTester : public CppUnit::TestFixture {
    void test_parse_url_no_prefix_no_target();
    void test_parse_url_target();
    void test_parse_url_query();
+   void test_parse_url_fragment();
     /**
      * Test parse urls (ipv4)
      */
