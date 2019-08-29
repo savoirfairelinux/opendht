@@ -142,7 +142,7 @@ public:
 
     Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Resolver(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
-             std::shared_ptr<dht::Logger> logger = {});
+             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     // use already resolved endpoints with classes using this resolver
     Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
@@ -160,11 +160,10 @@ private:
 
     std::mutex mutex_;
 
+    Url url_;
     asio::error_code ec_;
-    std::string service_;
     asio::ip::tcp::resolver resolver_;
     std::vector<asio::ip::tcp::endpoint> endpoints_;
-    Url url_;
 
     bool completed_ {false};
     std::queue<ResolverCb> cbs_;
@@ -196,7 +195,7 @@ public:
     // resolves implicitly
     Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
-            std::shared_ptr<dht::Logger> logger = {});
+            const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     // user defined resolver
     Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger = {});

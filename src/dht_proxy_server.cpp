@@ -860,8 +860,8 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     if (pushServer_.empty())
         return;
 
-    auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first,
-                                                   pushHostPort_.second, logger_);
+    auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second,
+                                                                 httpsServer_ ? true : false, logger_);
     auto reqid = request->id();
     try {
         request->set_target("/api/push");

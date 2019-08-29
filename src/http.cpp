@@ -306,26 +306,26 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 // Resolver
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : resolver_(ctx), url_(url), logger_(logger)
+    : url_(url), resolver_(ctx), logger_(logger)
 {
-    service_ = url_.service;
     resolve(url_.host, url_.service);
 }
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
-                   std::shared_ptr<dht::Logger> logger)
+                   const bool ssl, std::shared_ptr<dht::Logger> logger)
     : resolver_(ctx), logger_(logger)
 {
-    service_ = service;
-    resolve(host, service);
+    url_.host = host;
+    url_.service = service;
+    url_.protocol = (ssl ? "https" : "http");
+    resolve(url_.host, url_.service);
 }
 
 Resolver::Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints, const bool ssl,
                    std::shared_ptr<dht::Logger> logger)
     : resolver_(ctx), logger_(logger)
 {
-    if (ssl)
-        url_.protocol = "https";
+    url_.protocol = (ssl ? "https" : "http");
     endpoints_ = std::move(endpoints);
     completed_ = true;
 }
@@ -349,12 +349,6 @@ Url
 Resolver::get_url() const
 {
     return url_;
-}
-
-std::string
-Resolver::get_service() const
-{
-    return service_;
 }
 
 void
@@ -420,11 +414,11 @@ Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<
 }
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
-                 std::shared_ptr<dht::Logger> logger)
+                 const bool ssl, std::shared_ptr<dht::Logger> logger)
     : id_(Request::ids_++), ctx_(ctx), logger_(logger)
 {
     cbs_ = std::make_unique<Callbacks>();
-    resolver_ = std::make_shared<Resolver>(ctx, host, service, logger_);
+    resolver_ = std::make_shared<Resolver>(ctx, host, service, ssl, logger_);
     set_target(resolver_->get_url().target);
 }
 
