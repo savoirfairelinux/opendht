@@ -416,6 +416,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<
 {
     cbs_ = std::make_unique<Callbacks>();
     resolver_ = std::make_shared<Resolver>(ctx, url, logger_);
+    set_target(resolver_->get_url().target);
 }
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
@@ -424,6 +425,7 @@ Request::Request(asio::io_context& ctx, const std::string& host, const std::stri
 {
     cbs_ = std::make_unique<Callbacks>();
     resolver_ = std::make_shared<Resolver>(ctx, host, service, logger_);
+    set_target(resolver_->get_url().target);
 }
 
 Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger)
@@ -431,6 +433,7 @@ Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std:
 {
     cbs_ = std::make_unique<Callbacks>();
     resolver_ = resolver;
+    set_target(resolver_->get_url().target);
 }
 
 Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints, const bool ssl,
@@ -439,6 +442,7 @@ Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& e
 {
     cbs_ = std::make_unique<Callbacks>();
     resolver_ = std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger_);
+    set_target(resolver_->get_url().target);
 }
 
 Request::~Request()
