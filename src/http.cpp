@@ -52,7 +52,7 @@ Url::Url(const std::string& url): url(url)
     host = host_service.first;
     if (!host_service.second.empty())
         service = host_service.second;
-    // target, query
+    // target, query fragment
     size_t query_begin = url.find("?");
     auto addr_end = addr_begin + addr_size;
     if (addr_end < url.size()){
@@ -61,7 +61,13 @@ Url::Url(const std::string& url): url(url)
         else
             target = url.substr(addr_end, query_begin - addr_end);
     }
-    query = url.substr(query_begin + 1);
+    size_t fragment_begin = url.find("#");
+    if (fragment_begin == std::string::npos)
+        query = url.substr(query_begin + 1);
+    else{
+        query = url.substr(query_begin + 1, fragment_begin - query_begin - 1);
+        fragment = url.substr(fragment_begin);
+    }
 }
 
 // connection

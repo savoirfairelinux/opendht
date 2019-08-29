@@ -97,6 +97,22 @@ HttpTester::test_parse_url_query() {
 }
 
 void
+HttpTester::test_parse_url_fragment() {
+    // Arrange
+    std::string url = "http://google.com/?key=1#some-important-id";
+    // Act
+    dht::http::Url parsed (url);
+    // Assert
+    CPPUNIT_ASSERT(parsed.url == url);
+    CPPUNIT_ASSERT(parsed.protocol == "http");
+    CPPUNIT_ASSERT(parsed.host == "google.com");
+    CPPUNIT_ASSERT(parsed.service == "80");
+    CPPUNIT_ASSERT(parsed.target == "/");
+    CPPUNIT_ASSERT(parsed.query == "key=1");
+    CPPUNIT_ASSERT(parsed.fragment == "#some-important-id");
+}
+
+void
 HttpTester::test_parse_url_ipv4() {
     // Arrange
     std::string url = "http://172.217.13.132/";

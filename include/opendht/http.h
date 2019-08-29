@@ -68,6 +68,7 @@ public:
     std::string service {"80"};
     std::string target {"/"};
     std::string query;
+    std::string fragment;
 };
 
 class OPENDHT_PUBLIC Connection
