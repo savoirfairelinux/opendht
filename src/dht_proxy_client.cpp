@@ -87,8 +87,7 @@ DhtProxyClient::DhtProxyClient(
         logger_->d("[proxy:client] using server certificate for ssl:\n%s",
                    serverCertificate_->toString(false/*chain*/).c_str());
     // resolve once
-    resolver_ = std::make_shared<http::Resolver>(httpContext_, serverHostService_.first,
-                                                 serverHostService_.second, logger_);
+    resolver_ = std::make_shared<http::Resolver>(httpContext_, serverHost, logger_);
     // run http client
     httpClientThread_ = std::thread([this](){
         try {
@@ -618,7 +617,8 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
 {
     if (logger_)
         logger_->d("[proxy:client] [status] query ipv%i info", family == AF_INET ? 4 : 6);
-    auto request = std::make_shared<http::Request>(httpContext_, std::move(endpoints), logger_);
+    auto request = std::make_shared<http::Request>(httpContext_, std::move(endpoints),
+        resolver_->get_url().protocol == "https" ? /*ssl*/ true : false, logger_);
     auto reqid = request->id();
     try {
         request->set_connection_type(restinio::http_connection_header_t::keep_alive);

@@ -59,7 +59,7 @@ DhtProxyTester::setUp() {
     nodeClient = std::make_shared<dht::DhtRunner>();
     nodeClient->run(0, clientConfig, std::move(clientContext));
     nodeClient->bootstrap(nodePeer.getBound());
-    nodeClient->setProxyServer("127.0.0.1:8080");
+    nodeClient->setProxyServer("https://127.0.0.1:8080");
     nodeClient->enableProxy(true); // creates DhtProxyClient
 }
 
@@ -181,7 +181,7 @@ DhtProxyTester::testResubscribeGetValues() {
     nodeClient->join();
     nodeClient->run(0, clientConfig, std::move(clientContext));
     nodeClient->bootstrap(nodePeer.getBound());
-    nodeClient->setProxyServer("127.0.0.1:8080");
+    nodeClient->setProxyServer("https://127.0.0.1:8080");
     nodeClient->enableProxy(true);
     nodeClient->setPushNotificationToken("atlas");
 

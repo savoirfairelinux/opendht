@@ -145,10 +145,11 @@ public:
 
     // use already resolved endpoints with classes using this resolver
     Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
-             std::shared_ptr<dht::Logger> logger = {});
+             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     ~Resolver();
 
+    Url get_url() const;
     std::string get_service() const;
 
     void add_callback(ResolverCb cb);
@@ -162,6 +163,7 @@ private:
     std::string service_;
     asio::ip::tcp::resolver resolver_;
     std::vector<asio::ip::tcp::endpoint> endpoints_;
+    Url url_;
 
     bool completed_ {false};
     std::queue<ResolverCb> cbs_;
@@ -191,6 +193,7 @@ public:
     using OnStateChangeCb = std::function<void(const State state, const Response response)>;
 
     // resolves implicitly
+    Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
             std::shared_ptr<dht::Logger> logger = {});
 
@@ -199,13 +202,14 @@ public:
 
     // user defined resolved endpoints
     Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints,
-            std::shared_ptr<dht::Logger> logger = {});
+            const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     ~Request();
 
     unsigned int id() const;
     void set_connection(std::shared_ptr<Connection> connection);
     std::shared_ptr<Connection> get_connection() const;
+    Url get_url() const;
 
     void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
     void set_logger(std::shared_ptr<dht::Logger> logger);
