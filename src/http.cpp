@@ -300,11 +300,10 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 // Resolver
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : resolver_(ctx), logger_(logger)
+    : resolver_(ctx), url_(url), logger_(logger)
 {
-    dht::http::Url http_url(url);
-    service_ = http_url.service;
-    resolve(http_url.host, http_url.service);
+    service_ = url_.service;
+    resolve(url_.host, url_.service);
 }
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
@@ -315,10 +314,12 @@ Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::st
     resolve(host, service);
 }
 
-Resolver::Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
+Resolver::Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints, const bool ssl,
                    std::shared_ptr<dht::Logger> logger)
     : resolver_(ctx), logger_(logger)
 {
+    if (ssl)
+        url_.protocol = "https";
     endpoints_ = std::move(endpoints);
     completed_ = true;
 }
@@ -336,6 +337,12 @@ Resolver::~Resolver()
             cb(asio::error::operation_aborted, {});
         cbs.pop();
     }
+}
+
+Url
+Resolver::get_url() const
+{
+    return url_;
 }
 
 std::string
@@ -398,6 +405,13 @@ Resolver::resolve(const std::string host, const std::string service)
 
 unsigned int Request::ids_ = 1;
 
+Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
+    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+{
+    cbs_ = std::make_unique<Callbacks>();
+    resolver_ = std::make_shared<Resolver>(ctx, url, logger_);
+}
+
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
                  std::shared_ptr<dht::Logger> logger)
     : id_(Request::ids_++), ctx_(ctx), logger_(logger)
@@ -413,12 +427,12 @@ Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std:
     resolver_ = resolver;
 }
 
-Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints,
+Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints, const bool ssl,
                  std::shared_ptr<dht::Logger> logger)
     : id_(Request::ids_++), ctx_(ctx), logger_(logger)
 {
     cbs_ = std::make_unique<Callbacks>();
-    resolver_ = std::make_shared<Resolver>(ctx, std::move(endpoints), logger_);
+    resolver_ = std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger_);
 }
 
 Request::~Request()
@@ -435,6 +449,12 @@ unsigned int
 Request::id() const
 {
     return id_;
+}
+
+Url
+Request::get_url() const
+{
+    return resolver_->get_url();
 }
 
 void
@@ -669,10 +689,12 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             eps.append(endpoint.address().to_string() + " ");
         logger_->d("[http:client]  [request:%i] connect begin: %s", id_, eps.c_str());
     }
-    if (certificate_)
-        conn_ = std::make_shared<Connection>(ctx_, certificate_, logger_);
-    else if (resolver_->get_service() == "https" or resolver_->get_service() == "443")
-        conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
+    if (get_url().protocol == "https"){
+        if (certificate_)
+            conn_ = std::make_shared<Connection>(ctx_, certificate_, logger_);
+        else
+            conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
+    }
     else
         conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
 
@@ -687,24 +709,28 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             if (logger_)
                 logger_->d("[http:client]  [request:%i] connect success", id_);
 
-            if (!certificate_)
-                conn_->set_endpoint(endpoint, asio::ssl::verify_none);
-            else
-                conn_->set_endpoint(endpoint, asio::ssl::verify_peer
-                                              | asio::ssl::verify_fail_if_no_peer_cert);
-            if (conn_->is_ssl()){
-                conn_->async_handshake([this, cb](const asio::error_code& ec){
-                    if (ec == asio::error::operation_aborted)
-                        return;
-                    if (ec and logger_)
-                        logger_->e("[http:client]  [request:%i] handshake error: %s", id_, ec.message().c_str());
-                    else if (logger_)
-                        logger_->d("[http:client]  [request:%i] handshake success", id_);
-                    if (cb)
-                        cb(ec);
-                });
+            if (get_url().protocol == "https"){
+                if (certificate_)
+                    conn_->set_endpoint(endpoint, asio::ssl::verify_peer
+                                                  | asio::ssl::verify_fail_if_no_peer_cert);
+                if (conn_ and conn_->is_open() and conn_->is_ssl()){
+                    conn_->async_handshake([this, cb](const asio::error_code& ec){
+                        if (ec == asio::error::operation_aborted)
+                            return;
+                        if (ec and logger_)
+                            logger_->e("[http:client]  [request:%i] handshake error: %s", id_, ec.message().c_str());
+                        else if (logger_)
+                            logger_->d("[http:client]  [request:%i] handshake success", id_);
+                        if (cb)
+                            cb(ec);
+                    });
+                }
+                else if (cb)
+                    cb(asio::error::operation_aborted);
                 return;
             }
+            else
+                conn_->set_endpoint(endpoint, asio::ssl::verify_none);
         }
         if (cb)
             cb(ec);
