@@ -345,12 +345,6 @@ Resolver::~Resolver()
     }
 }
 
-Url
-Resolver::get_url() const
-{
-    return url_;
-}
-
 void
 Resolver::add_callback(ResolverCb cb)
 {
@@ -453,12 +447,6 @@ unsigned int
 Request::id() const
 {
     return id_;
-}
-
-Url
-Request::get_url() const
-{
-    return resolver_->get_url();
 }
 
 void
