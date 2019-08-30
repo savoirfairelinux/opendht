@@ -59,7 +59,7 @@ public:
 
     void setHeaderFields(std::shared_ptr<http::Request> request);
 
-    virtual void setPushNotificationToken(const std::string& token) {
+    virtual void setPushNotificationToken(const std::string& token) override {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         deviceKey_ = token;
 #else
@@ -72,20 +72,20 @@ public:
     /**
      * Get the ID of the node.
      */
-    inline const InfoHash& getNodeId() const { return myid; }
+    inline const InfoHash& getNodeId() const override { return myid; }
 
     /**
      * Get the current status of the node for the given family.
      */
-    NodeStatus getStatus(sa_family_t af) const;
-    NodeStatus getStatus() const {
+    NodeStatus getStatus(sa_family_t af) const override;
+    NodeStatus getStatus() const override {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
     }
 
     /**
      * Performs final operations before quitting.
      */
-    void shutdown(ShutdownCallback cb);
+    void shutdown(ShutdownCallback cb) override;
 
     /**
      * Returns true if the node is running (have access to an open socket).
@@ -93,7 +93,7 @@ public:
      *  af: address family. If non-zero, will return true if the node
      *      is running for the provided family.
      */
-    bool isRunning(sa_family_t af = 0) const;
+    bool isRunning(sa_family_t af = 0) const override;
 
     /**
      * Get a value by asking the proxy and call the provided get callback when
@@ -105,14 +105,14 @@ public:
                      cb and donecb won't be called again afterward.
      * @param f a filter function used to prefilter values.
      */
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {});
-    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) {
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override;
+    virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
         get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) {
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
         get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) {
+    virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) override {
         get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
@@ -127,12 +127,12 @@ public:
             Sp<Value>,
             DoneCallback cb=nullptr,
             time_point created=time_point::max(),
-            bool permanent = false);
+            bool permanent = false) override;
     void put(const InfoHash& key,
             const Sp<Value>& v,
             DoneCallbackSimple cb,
             time_point created=time_point::max(),
-            bool permanent = false)
+            bool permanent = false) override
     {
         put(key, v, bindDoneCb(cb), created, permanent);
     }
@@ -141,7 +141,7 @@ public:
             Value&& v,
             DoneCallback cb=nullptr,
             time_point created=time_point::max(),
-            bool permanent = false)
+            bool permanent = false) override
     {
         put(key, std::make_shared<Value>(std::move(v)), cb, created, permanent);
     }
@@ -149,7 +149,7 @@ public:
             Value&& v,
             DoneCallbackSimple cb,
             time_point created=time_point::max(),
-            bool permanent = false)
+            bool permanent = false) override
     {
         put(key, std::forward<Value>(v), bindDoneCb(cb), created, permanent);
     }
@@ -158,13 +158,13 @@ public:
      * @param  af the socket family
      * @return node stats from the proxy
      */
-    NodeStats getNodesStats(sa_family_t af) const;
+    NodeStats getNodesStats(sa_family_t af) const override;
 
     /**
      * @param  family the socket family
      * @return public address
      */
-    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0);
+    std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override;
 
     /**
      * Listen on the network for any changes involving a specified hash.
@@ -173,32 +173,32 @@ public:
      *
      * @return a token to cancel the listener later.
      */
-    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where={});
+    virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where={}) override;
 
-    virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f={}, Where w={}) {
+    virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f={}, Where w={}) override {
         return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
             if (not expired)
                 return cb(vals);
             return true;
         }, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) {
+    virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) override {
         return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     /*
      * This function relies on the cache implementation.
      * It means that there are no true cancel here, it keeps the caching in higher priority.
      */
-    virtual bool cancelListen(const InfoHash& key, size_t token);
+    virtual bool cancelListen(const InfoHash& key, size_t token) override;
 
     /**
      * Call linked callback with a push notification
      * @param notification to process
      */
-    void pushNotificationReceived(const std::map<std::string, std::string>& notification);
+    void pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
 
-    time_point periodic(const uint8_t*, size_t, SockAddr);
-    time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen) {
+    time_point periodic(const uint8_t*, size_t, SockAddr) override;
+    time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen) override {
         return periodic(buf, buflen, SockAddr(from, fromlen));
     }
 
@@ -212,8 +212,8 @@ public:
      * @param q a query used to filter values on the remotes before they send a
      *          response.
      */
-    virtual void query(const InfoHash& /*key*/, QueryCallback /*cb*/, DoneCallback /*done_cb*/ = {}, Query&& /*q*/ = {}) { }
-    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) {
+    virtual void query(const InfoHash& /*key*/, QueryCallback /*cb*/, DoneCallback /*done_cb*/ = {}, Query&& /*q*/ = {}) override { }
+    virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override {
         query(key, cb, bindDoneCb(done_cb), std::forward<Query>(q));
     }
 
@@ -231,14 +231,14 @@ public:
      * Stop any put/announce operation at the given location,
      * for the value with the given id.
      */
-    bool cancelPut(const InfoHash&, const Value::Id&);
+    bool cancelPut(const InfoHash&, const Value::Id&) override;
 
     void pingNode(SockAddr, DoneCallbackSimple&& /*cb*/={}) override { }
 
-    virtual void registerType(const ValueType& type) {
+    virtual void registerType(const ValueType& type) override {
         types.registerType(type);
     }
-    const ValueType& getType(ValueType::Id type_id) const {
+    const ValueType& getType(ValueType::Id type_id) const override {
         return types.getType(type_id);
     }
 
@@ -251,22 +251,22 @@ public:
      */
     void insertNode(const InfoHash&, const SockAddr&) override { }
     void insertNode(const NodeExport&) override { }
-    std::pair<size_t, size_t> getStoreSize() const { return {}; }
-    std::vector<NodeExport> exportNodes() const { return {}; }
-    std::vector<ValuesExport> exportValues() const { return {}; }
-    void importValues(const std::vector<ValuesExport>&) {}
-    std::string getStorageLog() const { return {}; }
-    std::string getStorageLog(const InfoHash&) const { return {}; }
-    std::string getRoutingTablesLog(sa_family_t) const { return {}; }
-    std::string getSearchesLog(sa_family_t) const { return {}; }
-    std::string getSearchLog(const InfoHash&, sa_family_t) const { return {}; }
-    void dumpTables() const {}
-    std::vector<unsigned> getNodeMessageStats(bool) { return {}; }
-    void setStorageLimit(size_t) {}
-    void connectivityChanged(sa_family_t) {
+    std::pair<size_t, size_t> getStoreSize() const override { return {}; }
+    std::vector<NodeExport> exportNodes() const override { return {}; }
+    std::vector<ValuesExport> exportValues() const override { return {}; }
+    void importValues(const std::vector<ValuesExport>&) override {}
+    std::string getStorageLog() const override { return {}; }
+    std::string getStorageLog(const InfoHash&) const override { return {}; }
+    std::string getRoutingTablesLog(sa_family_t) const override { return {}; }
+    std::string getSearchesLog(sa_family_t) const override { return {}; }
+    std::string getSearchLog(const InfoHash&, sa_family_t) const override { return {}; }
+    void dumpTables() const override {}
+    std::vector<unsigned> getNodeMessageStats(bool) override { return {}; }
+    void setStorageLimit(size_t) override {}
+    void connectivityChanged(sa_family_t) override {
         restartListeners();
     }
-    void connectivityChanged() {
+    void connectivityChanged() override {
         getProxyInfos();
         restartListeners();
         loopSignal_();
@@ -357,7 +357,7 @@ private:
     TypeStore types;
 
     /**
-     * Store listen requests.
+     * Store listen requests.fconnectivityChanged
      */
     struct ProxySearch;
 
