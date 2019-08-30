@@ -356,7 +356,7 @@ Resolver::add_callback(ResolverCb cb)
 }
 
 void
-Resolver::resolve(const std::string host, const std::string service)
+Resolver::resolve(const std::string& host, const std::string& service)
 {
     asio::ip::tcp::resolver::query query_(host, service);
 
@@ -486,15 +486,15 @@ Request::set_method(const restinio::http_method_id_t method)
 }
 
 void
-Request::set_target(const std::string target)
+Request::set_target(std::string target)
 {
-    header_.request_target(target);
+    header_.request_target(std::move(target));
 }
 
 void
-Request::set_header_field(const restinio::http_field_t field, const std::string& value)
+Request::set_header_field(const restinio::http_field_t field, std::string value)
 {
-    headers_[field] = value;
+    headers_[field] = std::move(value);
 }
 
 void
@@ -504,9 +504,9 @@ Request::set_connection_type(const restinio::http_connection_header_t connection
 }
 
 void
-Request::set_body(const std::string& body)
+Request::set_body(std::string body)
 {
-    body_ = body;
+    body_ = std::move(body);
 }
 
 void
@@ -600,7 +600,7 @@ Request::init_parser()
         };
         auto header_field = std::make_shared<std::string>("");
         auto on_header_field_cb = cbs_->on_header_field;
-        cbs_->on_header_field = [this, header_field, on_header_field_cb](const char* at, size_t length){
+        cbs_->on_header_field = [header_field, on_header_field_cb](const char* at, size_t length) {
             header_field->erase();
             auto field = std::string(at, length);
             header_field->append(field);
@@ -608,7 +608,7 @@ Request::init_parser()
                 on_header_field_cb(at, length);
         };
         auto on_header_value_cb = cbs_->on_header_value;
-        cbs_->on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length){
+        cbs_->on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length) {
             response_.headers[*header_field] = std::string(at, length);
             if (on_header_value_cb)
                 on_header_value_cb(at, length);
@@ -617,8 +617,7 @@ Request::init_parser()
             notify_state_change(State::HEADER_RECEIVED);
         };
         auto on_body_cb = cbs_->on_body;
-        cbs_->on_body = [this, on_body_cb](const char* at, size_t length){
-            auto content = std::string(at, length);
+        cbs_->on_body = [on_body_cb](const char* at, size_t length) {
             if (on_body_cb)
                 on_body_cb(at, length);
         };
@@ -863,7 +862,7 @@ Request::handle_response_header(const asio::error_code& ec)
         std::getline(is, response_.body);
         unsigned int content_length = atoi(content_length_it->second.c_str());
         // full body already in the header
-        if ((response_.body.size() + 1) == (content_length)){
+        if (response_.body.size() + 1 == content_length) {
             response_.body.append("\n");
             parse_request(response_.body);
             if (message_complete_.load())
@@ -941,7 +940,7 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
 }
 
 size_t
-Request::parse_request(const std::string request)
+Request::parse_request(const std::string& request)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
     return http_parser_execute(parser_.get(), parser_s_.get(), request.c_str(), request.size());

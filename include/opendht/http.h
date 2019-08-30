@@ -158,7 +158,7 @@ public:
     void add_callback(ResolverCb cb);
 
 private:
-    void resolve(const std::string host, const std::string service);
+    void resolve(const std::string& host, const std::string& service);
 
     std::mutex mutex_;
 
@@ -223,10 +223,10 @@ public:
      */
     void set_header(const restinio::http_request_header_t header);
     void set_method(const restinio::http_method_id_t method);
-    void set_target(const std::string target);
-    void set_header_field(const restinio::http_field_t field, const std::string& value);
+    void set_target(std::string target);
+    void set_header_field(const restinio::http_field_t field, std::string value);
     void set_connection_type(const restinio::http_connection_header_t connection);
-    void set_body(const std::string& body);
+    void set_body(std::string body);
 
     void add_on_status_callback(OnStatusCb cb);
     void add_on_body_callback(OnDataCb cb);
@@ -281,7 +281,7 @@ private:
      * Return how many bytes were parsed.
      * Note: we pass requerst.size()==0 to signal that EOF has been received.
      */
-    size_t parse_request(const std::string request);
+    size_t parse_request(const std::string& request);
 
     restinio::http_request_header_t header_;
     std::map<restinio::http_field_t, std::string> headers_;
