@@ -703,6 +703,17 @@ CertificateRequest::pack() const
     return ret;
 }
 
+std::string
+CertificateRequest::toString() const 
+{
+    gnutls_datum_t dat {nullptr, 0};
+    if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
+        throw CryptoException(std::string("Can't export certificate request: ") + gnutls_strerror(err));
+    std::string ret(dat.data, dat.data + dat.size);
+    gnutls_free(dat.data);
+    return ret;
+}
+
 // Certificate
 
 static std::string

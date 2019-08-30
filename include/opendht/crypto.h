@@ -283,6 +283,7 @@ public:
     bool verify() const;
 
     Blob pack() const;
+    std::string toString() const;
 
     gnutls_x509_crq_t get() const { return request; }
 private:
