@@ -54,15 +54,17 @@ struct custom_http_methods_t
 #endif
 
 namespace dht {
-
-constexpr char RESP_MSG_DESTINATION_NOT_FOUND[] = "{\"err\":\"No destination found\"}";
-constexpr char RESP_MSG_NO_TOKEN[] = "{\"err\":\"No token\"}";
-constexpr char RESP_MSG_JSON_NOT_ENABLED[] = "{\"err\":\"JSON not enabled on this instance\"}";
 constexpr char RESP_MSG_JSON_INCORRECT[] = "{\"err:\":\"Incorrect JSON\"}";
 constexpr char RESP_MSG_SERVICE_UNAVAILABLE[] = "{\"err\":\"Incorrect DhtRunner\"}";
 constexpr char RESP_MSG_INTERNAL_SERVER_ERRROR[] = "{\"err\":\"Internal server error\"}";
 constexpr char RESP_MSG_MISSING_PARAMS[] = "{\"err\":\"Missing parameters\"}";
 constexpr char RESP_MSG_PUT_FAILED[] = "{\"err\":\"Put failed\"}";
+#ifdef OPENDHT_PROXY_SERVER_IDENTITY
+constexpr char RESP_MSG_DESTINATION_NOT_FOUND[] = "{\"err\":\"No destination found\"}";
+#endif
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+constexpr char RESP_MSG_NO_TOKEN[] = "{\"err\":\"No token\"}";
+#endif
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
@@ -298,6 +300,7 @@ DhtProxyServer::io_context() const
         return httpsServer_->io_context();
     else if (httpServer_)
         return httpServer_->io_context();
+    throw std::runtime_error("No available server");
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -501,17 +504,10 @@ DhtProxyServer::getStats(restinio::request_handle_t request,
     requestNum_++;
     try {
         if (dht_){
-#ifdef OPENDHT_JSONCPP
             auto output = Json::writeString(jsonBuilder_, stats_.toJson()) + "\n";
             auto response = this->initHttpResponse(request->create_response());
             response.append_body(output);
             response.done();
-#else
-            auto response = this->initHttpResponse(
-                request->create_response(restinio::status_not_found()));
-            response.set_body(RESP_MSG_JSON_NOT_ENABLED);
-            return response.done();
-#endif
         } else {
             auto response = this->initHttpResponse(
                 request->create_response(restinio::status_service_unavailable()));

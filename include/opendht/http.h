@@ -44,7 +44,7 @@ namespace dht {
 struct Logger;
 
 namespace crypto {
-class Certificate;
+struct Certificate;
 }
 
 namespace http {
