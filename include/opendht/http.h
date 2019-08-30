@@ -140,7 +140,7 @@ public:
                                           std::vector<asio::ip::tcp::endpoint> endpoints)>;
 
     Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
-    Resolver(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
+    Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
              const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     // use already resolved endpoints with classes using this resolver
@@ -152,7 +152,6 @@ public:
     inline const Url& get_url() const {
         return url_;
     };
-    std::string get_service() const;
 
     void add_callback(ResolverCb cb);
 
@@ -191,11 +190,11 @@ public:
     };
     using OnStatusCb = std::function<void(unsigned int status_code)>;
     using OnDataCb = std::function<void(const char* at, size_t length)>;
-    using OnStateChangeCb = std::function<void(const State state, const Response response)>;
+    using OnStateChangeCb = std::function<void(State state, const Response& response)>;
 
     // resolves implicitly
     Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
-    Request(asio::io_context& ctx, const std::string& host, const std::string& service = "80",
+    Request(asio::io_context& ctx, const std::string& host, const std::string& service,
             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     // user defined resolver

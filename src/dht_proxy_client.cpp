@@ -325,7 +325,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
             }
         });
         request->add_on_state_change_callback([this, reqid, opstate, donecb, key]
-                                              (const http::Request::State state, const http::Response response){
+                                              (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200){
                     if (logger_)
@@ -464,7 +464,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             return 0;
         });
         request->add_on_state_change_callback([this, reqid, ok, cb, key]
-                                              (const http::Request::State state, const http::Response response){
+                                              (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200)
                     if (logger_)
@@ -658,7 +658,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
             }
         });
         request->add_on_state_change_callback([this, reqid, family, infoState]
-                                              (const http::Request::State state, const http::Response response){
+                                              (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200)
                     if (logger_)
@@ -948,7 +948,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                                        key.to_c_str(), status_code);
                 });
                 request->add_on_state_change_callback([this, reqid, key]
-                                                      (const http::Request::State state, const http::Response response){
+                                                      (http::Request::State state, const http::Response& response){
                     if (state == http::Request::State::DONE){
                         if (response.status_code != 200)
                             if (logger_)
@@ -1054,7 +1054,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             }
         });
         request->add_on_state_change_callback([this, reqid]
-                                              (const http::Request::State state, const http::Response response){
+                                              (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
                 if (response.status_code != 200)
                     if (logger_)

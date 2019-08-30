@@ -19,7 +19,9 @@
 #include "http.h"
 #include "log_enable.h"
 #include "crypto.h"
+#include "base64.h"
 
+#include <asio.hpp>
 #include <restinio/impl/tls_socket.hpp>
 #include <http_parser.h>
 
@@ -367,12 +369,12 @@ Resolver::resolve(const std::string& host, const std::string& service)
             return;
         if (logger_){
             if (ec)
-                logger_->e("[http:client]  [resolver] error for %s:%s: %s",
+                logger_->e("[http:client] [resolver] error for %s:%s: %s",
                            host.c_str(), service.c_str(), ec.message().c_str());
             else {
                 for (auto it = endpoints.begin(); it != endpoints.end(); ++it){
                     asio::ip::tcp::endpoint endpoint = *it;
-                    logger_->d("[http:client]  [resolver] %s:%s endpoint (ipv%i): %s",
+                    logger_->d("[http:client] [resolver] %s:%s endpoint (ipv%i): %s",
                         host.c_str(), service.c_str(), endpoint.address().is_v6() ? 6 : 4,
                         endpoint.address().to_string().c_str());
                 }
