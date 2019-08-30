@@ -257,12 +257,12 @@ DhtProxyClient::periodic(const uint8_t*, size_t, SockAddr)
 }
 
 void
-DhtProxyClient::setHeaderFields(std::shared_ptr<http::Request> request){
-    request->set_header_field(restinio::http_field_t::host,
-                             (serverHostService_.first + ":" + serverHostService_.second).c_str());
-    request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
-    request->set_header_field(restinio::http_field_t::accept, "*/*");
-    request->set_header_field(restinio::http_field_t::content_type, "application/json");
+DhtProxyClient::setHeaderFields(http::Request& request){
+    request.set_header_field(restinio::http_field_t::host,
+                             serverHostService_.first + ":" + serverHostService_.second);
+    request.set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
+    request.set_header_field(restinio::http_field_t::accept, "*/*");
+    request.set_header_field(restinio::http_field_t::content_type, "application/json");
 }
 
 void
@@ -277,7 +277,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         request->set_target("/" + key.toString());
         request->set_method(restinio::http_method_get());
-        setHeaderFields(request);
+        setHeaderFields(*request);
 
         auto opstate = std::make_shared<OperationState>();
         Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
@@ -430,7 +430,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
     try {
         request->set_target("/" + key.toString());
         request->set_method(restinio::http_method_post());
-        setHeaderFields(request);
+        setHeaderFields(*request);
 
         auto json = val->toJson();
         if (permanent) {
@@ -624,7 +624,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
         request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         request->set_target("/");
         request->set_method(restinio::http_method_get());
-        setHeaderFields(request);
+        setHeaderFields(*request);
 
         auto ok = std::make_shared<std::atomic_bool>();
         ok->store(true);
@@ -929,7 +929,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
             try {
                 request->set_target("/" + key.toString());
                 request->set_method(restinio::http_method_unsubscribe());
-                setHeaderFields(request);
+                setHeaderFields(*request);
 
                 Json::Value body;
                 body["key"] = deviceKey_;
@@ -997,7 +997,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     auto reqid = request->id();
     try {
         request->set_header(header);
-        setHeaderFields(request);
+        setHeaderFields(*request);
         if (method == ListenMethod::LISTEN)
             request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         std::string body;

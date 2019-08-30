@@ -57,7 +57,7 @@ public:
         std::function<void()> loopSignal, const std::string& serverHost,
         const std::string& pushClientId = "", std::shared_ptr<dht::Logger> logger = {});
 
-    void setHeaderFields(std::shared_ptr<http::Request> request);
+    void setHeaderFields(http::Request& request);
 
     virtual void setPushNotificationToken(const std::string& token) override {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
