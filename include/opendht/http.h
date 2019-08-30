@@ -21,10 +21,9 @@
 #include "def.h"
 #include "infohash.h"
 
-#include <asio.hpp>
-#include <asio/ssl.hpp>
-
-#include <restinio/all.hpp>
+#include <asio/ssl/context.hpp>
+#include <restinio/http_headers.hpp>
+#include <restinio/message_builders.hpp>
 
 #include <memory>
 #include <queue>
@@ -221,12 +220,13 @@ public:
     /**
      * Define the HTTP header/body as per https://tools.ietf.org/html/rfc7230.
      */
-    void set_header(const restinio::http_request_header_t header);
-    void set_method(const restinio::http_method_id_t method);
+    void set_header(restinio::http_request_header_t header);
+    void set_method(restinio::http_method_id_t method);
     void set_target(std::string target);
-    void set_header_field(const restinio::http_field_t field, std::string value);
-    void set_connection_type(const restinio::http_connection_header_t connection);
+    void set_header_field(restinio::http_field_t field, std::string value);
+    void set_connection_type(restinio::http_connection_header_t connection);
     void set_body(std::string body);
+    void set_auth(const std::string& username, const std::string& password);
 
     void add_on_status_callback(OnStatusCb cb);
     void add_on_body_callback(OnDataCb cb);

@@ -474,13 +474,13 @@ Request::set_logger(std::shared_ptr<dht::Logger> logger)
 }
 
 void
-Request::set_header(const restinio::http_request_header_t header)
+Request::set_header(restinio::http_request_header_t header)
 {
     header_ = header;
 }
 
 void
-Request::set_method(const restinio::http_method_id_t method)
+Request::set_method(restinio::http_method_id_t method)
 {
     header_.method(method);
 }
@@ -492,13 +492,13 @@ Request::set_target(std::string target)
 }
 
 void
-Request::set_header_field(const restinio::http_field_t field, std::string value)
+Request::set_header_field(restinio::http_field_t field, std::string value)
 {
     headers_[field] = std::move(value);
 }
 
 void
-Request::set_connection_type(const restinio::http_connection_header_t connection)
+Request::set_connection_type(restinio::http_connection_header_t connection)
 {
     connection_type_ = connection;
 }
@@ -507,6 +507,17 @@ void
 Request::set_body(std::string body)
 {
     body_ = std::move(body);
+}
+
+void
+Request::set_auth(const std::string& username, const std::string& password)
+{
+    std::vector<uint8_t> creds;
+    creds.reserve(username.size() + password.size() + 1);
+    creds.insert(creds.end(), username.begin(), username.end());
+    creds.emplace_back(':');
+    creds.insert(creds.end(), password.begin(), password.end());
+    set_header_field(restinio::http_field_t::authorization, "Basic " + base64_encode(creds));
 }
 
 void
