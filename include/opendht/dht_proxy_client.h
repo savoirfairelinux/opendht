@@ -357,7 +357,7 @@ private:
     TypeStore types;
 
     /**
-     * Store listen requests.fconnectivityChanged
+     * Store listen requests.
      */
     struct ProxySearch;
 
