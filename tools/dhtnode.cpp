@@ -242,14 +242,18 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 iss >> idstr;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
-                unsigned int port = std::stoi(idstr);
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
-                    new DhtProxyServer(
-                        params.generate_identity ? params.id : dht::crypto::Identity{}, node, port
+                if (params.id.first and params.id.second){
+                    unsigned int port = std::stoi(idstr);
+                    proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
+                        new DhtProxyServer(params.id, node, port
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-                        ,pushServer
+                                           ,pushServer
 #endif
-                )));
+                    )));
+                }
+                else {
+                    std::cerr << "Missing Identity private key or certificate" << std::endl;
+                }
             } catch (...) { }
             continue;
         } else if (op == "psp") {
@@ -528,18 +532,14 @@ main(int argc, char **argv)
 
     auto node = std::make_shared<DhtRunner>();
     try {
-#ifndef OPENDHT_PROXY_SERVER
         if (not params.id.first and params.generate_identity) {
-#endif
             auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
             params.id = dht::crypto::generateIdentity("DHT Node", *node_ca);
             if (not params.save_identity.empty()) {
                 dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
                 dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
             }
-#ifndef OPENDHT_PROXY_SERVER
         }
-#endif
 
         dht::DhtRunner::Config config {};
         config.dht_config.node_config.network = params.network;
@@ -575,14 +575,13 @@ main(int argc, char **argv)
 #ifdef OPENDHT_PROXY_SERVER
         std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
 #endif
-        if (params.proxyserverssl != 0) {
+        if (params.proxyserverssl and params.id.first and params.id.second){
 #ifdef OPENDHT_PROXY_SERVER
             proxies.emplace(params.proxyserverssl, std::unique_ptr<DhtProxyServer>(
-                new DhtProxyServer(
-                    params.generate_identity ? params.id : dht::crypto::Identity{},
-                    node, params.proxyserverssl, params.pushserver, context.logger)));
+                new DhtProxyServer(params.id,
+                                   node, params.proxyserverssl, params.pushserver, context.logger)));
         }
-        if (params.proxyserver != 0) {
+        if (params.proxyserver) {
             proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
                 new DhtProxyServer(
                     dht::crypto::Identity{},
