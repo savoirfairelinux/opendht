@@ -127,34 +127,39 @@ struct dht_params {
     std::string devicekey {};
     std::string persist_path {};
     dht::crypto::Identity id {};
+    dht::crypto::Identity proxy_id {};
     std::string privkey_pwd {};
+    std::string proxy_privkey_pwd {};
     std::string save_identity {};
 };
 
 static const constexpr struct option long_options[] = {
-    {"help",             no_argument      , nullptr, 'h'},
-    {"port",             required_argument, nullptr, 'p'},
-    {"net",              required_argument, nullptr, 'n'},
-    {"bootstrap",        required_argument, nullptr, 'b'},
-    {"identity",         no_argument      , nullptr, 'i'},
-    {"save-identity",    required_argument, nullptr, 'I'},
-    {"certificate",      required_argument, nullptr, 'c'},
-    {"privkey",          required_argument, nullptr, 'k'},
-    {"privkey-password", required_argument, nullptr, 'm'},
-    {"verbose",          no_argument      , nullptr, 'v'},
-    {"daemonize",        no_argument      , nullptr, 'd'},
-    {"service",          no_argument      , nullptr, 's'},
-    {"peer-discovery",   no_argument      , nullptr, 'D'},
-    {"persist",          required_argument, nullptr, 'f'},
-    {"logfile",          required_argument, nullptr, 'l'},
-    {"syslog",           no_argument      , nullptr, 'L'},
-    {"proxyserver",      required_argument, nullptr, 'S'},
-    {"proxyserverssl",   required_argument, nullptr, 'e'},
-    {"proxyclient",      required_argument, nullptr, 'C'},
-    {"pushserver",       required_argument, nullptr, 'y'},
-    {"devicekey",        required_argument, nullptr, 'z'},
-    {"version",          no_argument      , nullptr, 'V'},
-    {nullptr,            0                , nullptr,  0}
+    {"help",                    no_argument      , nullptr, 'h'},
+    {"port",                    required_argument, nullptr, 'p'},
+    {"net",                     required_argument, nullptr, 'n'},
+    {"bootstrap",               required_argument, nullptr, 'b'},
+    {"identity",                no_argument      , nullptr, 'i'},
+    {"save-identity",           required_argument, nullptr, 'I'},
+    {"certificate",             required_argument, nullptr, 'c'},
+    {"privkey",                 required_argument, nullptr, 'k'},
+    {"privkey-password",        required_argument, nullptr, 'm'},
+    {"verbose",                 no_argument      , nullptr, 'v'},
+    {"daemonize",               no_argument      , nullptr, 'd'},
+    {"service",                 no_argument      , nullptr, 's'},
+    {"peer-discovery",          no_argument      , nullptr, 'D'},
+    {"persist",                 required_argument, nullptr, 'f'},
+    {"logfile",                 required_argument, nullptr, 'l'},
+    {"syslog",                  no_argument      , nullptr, 'L'},
+    {"proxyserver",             required_argument, nullptr, 'S'},
+    {"proxyserverssl",          required_argument, nullptr, 'e'},
+    {"proxy-certificate",       required_argument, nullptr, 'w'},
+    {"proxy-privkey",           required_argument, nullptr, 'K'},
+    {"proxy-privkey-password",  required_argument, nullptr, 'M'},
+    {"proxyclient",             required_argument, nullptr, 'C'},
+    {"pushserver",              required_argument, nullptr, 'y'},
+    {"devicekey",               required_argument, nullptr, 'z'},
+    {"version",                 no_argument      , nullptr, 'V'},
+    {nullptr,                   0                , nullptr,  0}
 };
 
 dht_params
@@ -162,6 +167,7 @@ parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
     std::string privkey;
+    std::string proxy_privkey;
     while ((opt = getopt_long(argc, argv, "hidsvDp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
@@ -245,11 +251,25 @@ parseArgs(int argc, char **argv) {
             }
             break;
         }
+        case 'w': {
+            try {
+                params.proxy_id.second = std::make_shared<dht::crypto::Certificate>(loadFile(optarg));
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::string("Error loading proxy certificate: ") + e.what());
+            }
+            break;
+        }
         case 'k':
             privkey = optarg;
             break;
+        case 'K':
+            proxy_privkey = optarg;
+            break;
         case 'm':
             params.privkey_pwd = optarg;
+            break;
+        case 'M':
+            params.proxy_privkey_pwd = optarg;
             break;
         case 'I':
             params.save_identity = optarg;
@@ -260,9 +280,18 @@ parseArgs(int argc, char **argv) {
     }
     if (not privkey.empty()) {
         try {
-            params.id.first = std::make_shared<dht::crypto::PrivateKey>(loadFile(privkey), params.privkey_pwd);
+            params.id.first = std::make_shared<dht::crypto::PrivateKey>(loadFile(privkey),
+                                                                        params.privkey_pwd);
         } catch (const std::exception& e) {
             throw std::runtime_error(std::string("Error loading private key: ") + e.what());
+        }
+    }
+    if (not proxy_privkey.empty()) {
+        try {
+            params.proxy_id.first = std::make_shared<dht::crypto::PrivateKey>(loadFile(proxy_privkey),
+                                                                              params.proxy_privkey_pwd);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("Error loading proxy private key: ") + e.what());
         }
     }
     if (params.save_identity.empty())

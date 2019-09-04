@@ -242,10 +242,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 iss >> idstr;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
-                if (params.id.first and params.id.second){
+                if (params.proxy_id.first and params.proxy_id.second){
                     unsigned int port = std::stoi(idstr);
                     proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
-                        new DhtProxyServer(params.id, node, port
+                        new DhtProxyServer(params.proxy_id, node, port
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                                            ,pushServer
 #endif
@@ -575,10 +575,10 @@ main(int argc, char **argv)
 #ifdef OPENDHT_PROXY_SERVER
         std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
 #endif
-        if (params.proxyserverssl and params.id.first and params.id.second){
+        if (params.proxyserverssl and params.proxy_id.first and params.proxy_id.second){
 #ifdef OPENDHT_PROXY_SERVER
             proxies.emplace(params.proxyserverssl, std::unique_ptr<DhtProxyServer>(
-                new DhtProxyServer(params.id,
+                new DhtProxyServer(params.proxy_id,
                                    node, params.proxyserverssl, params.pushserver, context.logger)));
         }
         if (params.proxyserver) {
