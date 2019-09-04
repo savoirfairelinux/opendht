@@ -197,7 +197,7 @@ struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
 DhtProxyServer::DhtProxyServer(
     dht::crypto::Identity identity,
     std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
-    std::shared_ptr<dht::Logger> logger
+    const std::string& client_certificate, std::shared_ptr<dht::Logger> logger
 )
     :   dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
         listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
@@ -241,6 +241,14 @@ DhtProxyServer::DhtProxyServer(
                                 | asio::ssl::context::single_dh_use, ec);
         if (ec)
             throw std::runtime_error("Error setting tls context options: " + ec.message());
+        // verify client auth
+        if (!client_certificate.empty()){
+            tls_context.set_verify_mode(asio::ssl::context::verify_fail_if_no_peer_cert
+                                        | asio::ssl::context::verify_peer, ec);
+            tls_context.load_verify_file(client_certificate);
+        }
+        if (ec)
+            throw std::runtime_error("Error setting tls verify peer options: " + ec.message());
         // add more security options
 #ifdef SSL_OP_NO_RENEGOTIATION
         SSL_CTX_set_options(tls_context.native_handle(), SSL_OP_NO_RENEGOTIATION); // CVE-2009-3555

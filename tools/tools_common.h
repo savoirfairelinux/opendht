@@ -127,10 +127,11 @@ struct dht_params {
     std::string devicekey {};
     std::string persist_path {};
     dht::crypto::Identity id {};
-    dht::crypto::Identity proxy_id {};
     std::string privkey_pwd {};
-    std::string proxy_privkey_pwd {};
     std::string save_identity {};
+    dht::crypto::Identity proxy_id {};
+    std::string proxy_privkey_pwd {};
+    std::string proxy_client_certificate {};
 };
 
 static const constexpr struct option long_options[] = {
@@ -155,6 +156,7 @@ static const constexpr struct option long_options[] = {
     {"proxy-certificate",       required_argument, nullptr, 'w'},
     {"proxy-privkey",           required_argument, nullptr, 'K'},
     {"proxy-privkey-password",  required_argument, nullptr, 'M'},
+    {"proxy-client-certificate",required_argument, nullptr, 'P'},
     {"proxyclient",             required_argument, nullptr, 'C'},
     {"pushserver",              required_argument, nullptr, 'y'},
     {"devicekey",               required_argument, nullptr, 'z'},
@@ -273,6 +275,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'I':
             params.save_identity = optarg;
+            break;
+        case 'P':
+            params.proxy_client_certificate = optarg;
             break;
         default:
             break;

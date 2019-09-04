@@ -249,6 +249,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                                            ,pushServer
 #endif
+                                           ,params.proxy_client_certificate
                     )));
                 }
                 else {
@@ -582,14 +583,15 @@ main(int argc, char **argv)
         if (params.proxyserverssl and params.proxy_id.first and params.proxy_id.second){
 #ifdef OPENDHT_PROXY_SERVER
             proxies.emplace(params.proxyserverssl, std::unique_ptr<DhtProxyServer>(
-                new DhtProxyServer(params.proxy_id,
-                                   node, params.proxyserverssl, params.pushserver, context.logger)));
+                new DhtProxyServer(
+                    params.proxy_id, node, params.proxyserverssl, params.pushserver,
+                    params.proxy_client_certificate, context.logger)));
         }
         if (params.proxyserver) {
             proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
                 new DhtProxyServer(
-                    dht::crypto::Identity{},
-                    node, params.proxyserver, params.pushserver, context.logger)));
+                    dht::crypto::Identity{}, node, params.proxyserver, params.pushserver,
+                    "", context.logger)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);
