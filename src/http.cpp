@@ -352,7 +352,7 @@ Resolver::add_callback(ResolverCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!completed_)
-        cbs_.push(std::move(cb));
+        cbs_.emplace(std::move(cb));
     else
         cb(ec_, endpoints_);
 }
@@ -587,7 +587,7 @@ void
 Request::notify_state_change(const State state)
 {
     state_ = state;
-    if (cbs_->on_state_change)
+    if (cbs_ and cbs_->on_state_change)
         cbs_->on_state_change(state, response_);
 }
 
