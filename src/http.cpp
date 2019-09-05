@@ -169,18 +169,9 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
         auto hostname = endpoint_.address().to_string();
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         ssl_socket_->asio_ssl_stream().set_verify_callback(
-            [this, hostname](bool preverified, asio::ssl::verify_context& ctx) -> bool
-            {
-                // extract cert info prior to verification
-                char subject_name[256];
-                X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
-                X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
-                if (logger_)
-                    logger_->d("[http:client]  [connection:%i] verify certificate: %s", id_, subject_name);
-                // run the verification
+            [this, hostname](bool preverified, asio::ssl::verify_context& ctx) -> bool {
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);
-                // post verification, codes: https://www.openssl.org/docs/man1.0.2/man1/verify.html
                 auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                 if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
                     verified = true;
