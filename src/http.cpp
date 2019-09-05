@@ -707,8 +707,10 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
     // try to connect to any until one works
     conn_->async_connect(std::move(endpoints), [this, cb]
                         (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
-        if (ec == asio::error::operation_aborted)
+        if (ec == asio::error::operation_aborted){
+            terminate(ec);
             return;
+        }
         else if (ec and logger_)
             logger_->e("[http:client]  [request:%i] connect: failed with all endpoints", id_);
         else {
@@ -757,9 +759,7 @@ Request::send()
         }
         else if (!conn_ or !conn_->is_open()){
             connect(std::move(endpoints), [this](const asio::error_code &ec){
-                if (ec == asio::error::operation_aborted)
-                    return;
-                else if (ec)
+                if (ec)
                     terminate(asio::error::not_connected);
                 else
                     post();
@@ -822,9 +822,7 @@ Request::terminate(const asio::error_code& ec)
 void
 Request::handle_request(const asio::error_code& ec)
 {
-    if (ec == asio::error::operation_aborted)
-        return;
-    else if (ec and ec != asio::error::eof){
+    if (ec and ec != asio::error::eof){
         terminate(ec);
         return;
     }
@@ -843,13 +841,7 @@ Request::handle_request(const asio::error_code& ec)
 void
 Request::handle_response_header(const asio::error_code& ec)
 {
-    if (ec == asio::error::operation_aborted)
-        return;
-    else if ((ec == asio::error::eof) or (ec == asio::error::connection_reset)){
-        terminate(ec);
-        return;
-    }
-    else if ((ec == asio::error::eof) || (ec == asio::error::connection_reset)){
+    if (ec && ec != asio::error::eof){
         terminate(ec);
         return;
     }
@@ -901,15 +893,7 @@ Request::handle_response_header(const asio::error_code& ec)
 void
 Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
 {
-    if (ec == asio::error::operation_aborted){
-        terminate(ec);
-        return;
-    }
-    else if ((ec == asio::error::eof) or (ec == asio::error::connection_reset)){
-        terminate(ec);
-        return;
-    }
-    else if (ec && ec != asio::error::eof){
+    if (ec && ec != asio::error::eof){
         terminate(ec);
         return;
     }
