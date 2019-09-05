@@ -117,19 +117,21 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
 
 Connection::~Connection()
 {
+    close();
+}
+
+void
+Connection::close()
+{
+    if (!is_open())
+        return;
     asio::error_code ec;
-    if (is_open()){
-        if (ssl_ctx_){
-            ssl_socket_->cancel(ec);
-            ssl_socket_->close(ec);
-        }
-        else {
-            socket_->cancel(ec);
-            socket_->close(ec);
-        }
-        if (ec and logger_)
-            logger_->e("[http:client]  [connection:%i] error closing: %s", id_, ec.message().c_str());
-    }
+    if (ssl_ctx_)
+        ssl_socket_->close(ec);
+    else
+        socket_->close(ec);
+    if (ec and logger_)
+        logger_->e("[http:client]  [connection:%i] error closing: %s", id_, ec.message().c_str());
 }
 
 unsigned int
@@ -442,7 +444,7 @@ Request::~Request()
 void
 Request::cancel()
 {
-    terminate(asio::error::eof);
+    conn_->close();
 }
 
 unsigned int
@@ -899,8 +901,10 @@ Request::handle_response_header(const asio::error_code& ec)
 void
 Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
 {
-    if (ec == asio::error::operation_aborted)
+    if (ec == asio::error::operation_aborted){
+        terminate(ec);
         return;
+    }
     else if ((ec == asio::error::eof) or (ec == asio::error::connection_reset)){
         terminate(ec);
         return;
