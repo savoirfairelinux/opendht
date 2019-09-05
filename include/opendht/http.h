@@ -99,6 +99,7 @@ public:
     void async_read(const size_t bytes, BytesHandlerCb cb);
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
+    void close();
 
 private:
     unsigned int id_;
