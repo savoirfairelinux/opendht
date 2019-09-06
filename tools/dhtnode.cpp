@@ -532,15 +532,19 @@ main(int argc, char **argv)
 
     auto node = std::make_shared<DhtRunner>();
     try {
+#ifndef OPENDHT_PROXY_SERVER
         if (not params.id.first and params.generate_identity) {
+#endif
+
             auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
             params.id = dht::crypto::generateIdentity("DHT Node", *node_ca);
             if (not params.save_identity.empty()) {
                 dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
                 dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
             }
+#ifndef OPENDHT_PROXY_SERVER
         }
-
+#endif
         dht::DhtRunner::Config config {};
         config.dht_config.node_config.network = params.network;
         config.dht_config.node_config.maintain_storage = false;
