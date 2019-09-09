@@ -71,23 +71,11 @@
     <ClCompile Include="..\src\thread_pool.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\http.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\base64.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\listener.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\request.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\search.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\storage.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\opendht.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -169,6 +157,24 @@
       <Filter>Header Files\opendht</Filter>
     </ClInclude>
     <ClInclude Include="..\src\thread_pool.h">
+      <Filter>Header Files\opendht</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\listener.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\base64.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\search.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\request.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\storage.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\opendht\http.h">
       <Filter>Header Files\opendht</Filter>
     </ClInclude>
   </ItemGroup>
