@@ -164,6 +164,7 @@ private:
     Url url_;
     asio::error_code ec_;
     asio::ip::tcp::resolver resolver_;
+    std::shared_ptr<bool> destroyed_;
     std::vector<asio::ip::tcp::endpoint> endpoints_;
 
     bool completed_ {false};
