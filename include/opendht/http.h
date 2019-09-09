@@ -21,6 +21,13 @@
 #include "def.h"
 #include "infohash.h"
 
+// some libraries may try to redefine snprintf
+// but restinio will use it in std namespace
+#ifdef _MSC_VER
+#   undef snprintf
+#   define snprintf snprintf
+#endif
+
 #include <asio/ssl/context.hpp>
 #include <restinio/http_headers.hpp>
 #include <restinio/message_builders.hpp>

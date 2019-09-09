@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\dht_proxy_client.cpp" />
+    <ClCompile Include="..\src\http.cpp" />
     <ClCompile Include="..\src\network_utils.cpp" />
     <ClCompile Include="..\src\op_cache.cpp" />
     <ClCompile Include="..\src\peer_discovery.cpp" />
@@ -50,6 +51,7 @@
     <ClCompile Include="..\src\value.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\include\opendht\http.h" />
     <ClInclude Include="..\src\network_utils.h" />
     <ClInclude Include="..\src\thread_pool.h" />
     <ClInclude Include="unistd.h" />
@@ -158,10 +160,10 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\openssl\inc32;$(ProjectDir)..\..\asio\asio\include;$(ProjectDir)..\..\restinio\dev;$(ProjectDir)..\..\fmt\include;$(ProjectDir)..\..\http_parser</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;4273;</DisableSpecificWarnings>
-      <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS  %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-D_SCL_SECURE_NO_WARNING;%(AdditionalOptions)</AdditionalOptions>
       <SuppressStartupBanner>false</SuppressStartupBanner>
       <ProgramDataBaseFileName>$(OutDir)lib\$(PlatformTarget)\$(TargetName).pdb</ProgramDataBaseFileName>
     </ClCompile>
@@ -182,10 +184,10 @@ copy ..\include\opendht.h $(OutDir)\include\</Command>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\openssl\inc32;$(ProjectDir)..\..\asio\asio\include;$(ProjectDir)..\..\restinio\dev;$(ProjectDir)..\..\fmt\include;$(ProjectDir)..\..\http_parser</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;4273;</DisableSpecificWarnings>
-      <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS  %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-D_SCL_SECURE_NO_WARNING;%(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(OutDir)lib\$(PlatformTarget)\$(TargetName).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <PostBuildEvent>
@@ -207,10 +209,10 @@ copy ..\include\opendht.h $(OutDir)\include\</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\openssl\inc32;$(ProjectDir)..\..\asio\asio\include;$(ProjectDir)..\..\restinio\dev;$(ProjectDir)..\..\fmt\include;$(ProjectDir)..\..\http_parser</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;4273;</DisableSpecificWarnings>
-      <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS  %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-D_SCL_SECURE_NO_WARNING;%(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(OutDir)lib\$(PlatformTarget)\$(TargetName).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
@@ -237,10 +239,10 @@ copy ..\include\opendht.h $(OutDir)\include\</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\restbed\source</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;_MBCS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\include;$(ProjectDir)..\include\opendht;$(ProjectDir)..\..\..\msvc\include;$(ProjectDir)..\..\include;$(ProjectDir)..\..\argon2\include;$(ProjectDir)..\..\msgpack-c\include;$(ProjectDir)..\..\jsoncpp\include;$(ProjectDir)..\..\openssl\inc32;$(ProjectDir)..\..\asio\asio\include;$(ProjectDir)..\..\restinio\dev;$(ProjectDir)..\..\fmt\include;$(ProjectDir)..\..\http_parser</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>OPENDHT_JSONCPP;OPENDHT_PROXY_CLIENT;OPENDHT_PROXY_SERVER;OPENDHT_PUSH_NOTIFICATIONS;_WINSOCK_DEPRECATED_NO_WARNINGS;_CRT_SECURE_NO_WARNINGS;WIN32_NATIVE;WIN32_LEAN_AND_MEAN;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;4273;</DisableSpecificWarnings>
-      <AdditionalOptions>-D_SCL_SECURE_NO_WARNINGS  %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-D_SCL_SECURE_NO_WARNING;%(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(OutDir)lib\$(PlatformTarget)\$(TargetName).pdb</ProgramDataBaseFileName>
     </ClCompile>
     <Link>
