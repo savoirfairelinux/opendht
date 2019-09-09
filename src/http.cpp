@@ -301,14 +301,14 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 // Resolver
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : url_(url), resolver_(ctx), logger_(logger)
+    : url_(url), resolver_(ctx), destroyed_(std::make_shared<bool>(false)), logger_(logger)
 {
     resolve(url_.host, url_.service);
 }
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
                    const bool ssl, std::shared_ptr<dht::Logger> logger)
-    : resolver_(ctx), logger_(logger)
+    : resolver_(ctx), destroyed_(std::make_shared<bool>(false)), logger_(logger)
 {
     url_.host = host;
     url_.service = service;
@@ -318,7 +318,7 @@ Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::st
 
 Resolver::Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints, const bool ssl,
                    std::shared_ptr<dht::Logger> logger)
-    : resolver_(ctx), logger_(logger)
+    : resolver_(ctx), destroyed_(std::make_shared<bool>(false)), logger_(logger)
 {
     url_.protocol = (ssl ? "https" : "http");
     endpoints_ = std::move(endpoints);
@@ -338,6 +338,7 @@ Resolver::~Resolver()
             cb(asio::error::operation_aborted, {});
         cbs.pop();
     }
+    *destroyed_ = true;
 }
 
 void
@@ -355,10 +356,10 @@ Resolver::resolve(const std::string& host, const std::string& service)
 {
     asio::ip::tcp::resolver::query query_(host, service);
 
-    resolver_.async_resolve(query_, [this, host, service]
+    resolver_.async_resolve(query_, [this, host, service, destroyed = destroyed_]
         (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
     {
-        if (ec == asio::error::operation_aborted)
+        if (ec == asio::error::operation_aborted or *destroyed)
             return;
         if (logger_){
             if (ec)
