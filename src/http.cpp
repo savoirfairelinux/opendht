@@ -173,7 +173,8 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);
                 auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
-                if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
+                if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
+                    || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
                     verified = true;
                 return verified;
             }
@@ -231,10 +232,13 @@ Connection::async_handshake(HandlerCb cb)
             if (ec == asio::error::operation_aborted)
                 return;
             auto verify_ec = SSL_get_verify_result(ssl_socket_->asio_ssl_stream().native_handle());
-            if (verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/ and logger_)
-                logger_->d("[http:client]  [connection:%i] allow self-signed certificate in handshake", id_);
-            else if (verify_ec != X509_V_OK and logger_)
-                logger_->e("[http:client]  [connection:%i] verify handshake error: %i", id_, verify_ec);
+            if (logger_){
+                if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
+                    || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
+                    logger_->d("[http:client]  [connection:%i] allow self-signed certificate in handshake", id_);
+                else if (verify_ec != X509_V_OK)
+                    logger_->e("[http:client]  [connection:%i] verify handshake error: %i", id_, verify_ec);
+            }
             if (cb)
                 cb(ec);
         });
@@ -520,14 +524,18 @@ void
 Request::build()
 {
     std::stringstream request;
+    bool append_body = true;
 
     // first header
     request << header_.method().c_str() << " " << header_.request_target() << " " <<
                "HTTP/" << header_.http_major() << "." << header_.http_minor() << "\r\n";
 
     // other headers
-    for (auto header: headers_)
+    for (auto header: headers_){
         request << restinio::field_to_string(header.first) << ": " << header.second << "\r\n";
+        if (header.first == restinio::http_field_t::expect and header.second == "100-continue")
+            append_body = false;
+    }
 
     // last connection header
     std::string conn_str = "";
@@ -546,13 +554,11 @@ Request::build()
         request << "Connection: " << conn_str << "\r\n";
 
     // body & content-length
-    if (!body_.empty()){
+    if (!body_.empty())
         request << "Content-Length: " << body_.size() << "\r\n\r\n";
-        request << body_;
-    }
-
     // last delim
-    request << "\r\n";
+    if (append_body)
+        request << body_ << "\r\n";
     request_ = request.str();
 }
 
@@ -713,6 +719,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                 if (certificate_)
                     conn_->set_endpoint(endpoint, asio::ssl::verify_peer
                                                   | asio::ssl::verify_fail_if_no_peer_cert);
+
                 if (conn_ and conn_->is_open() and conn_->is_ssl()){
                     conn_->async_handshake([this, cb](const asio::error_code& ec){
                         if (ec == asio::error::operation_aborted)
@@ -851,8 +858,16 @@ Request::handle_response_header(const asio::error_code& ec)
         headers.append(header + "\n");
     }
     headers.append("\n");
-    // parse the headers
     parse_request(headers);
+
+    if (headers_[restinio::http_field_t::expect] == "100-continue" and response_.status_code != 200){
+        notify_state_change(State::SENDING);
+        request_.append(body_);
+        std::ostream request_stream(&conn_->input());
+        request_stream << body_ << "\r\n";
+        conn_->async_write(std::bind(&Request::handle_request, this, std::placeholders::_1));
+        return;
+    }
 
     // has content-length
     auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
