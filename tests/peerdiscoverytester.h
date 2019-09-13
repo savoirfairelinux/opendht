@@ -29,7 +29,7 @@ namespace test {
 class OPENDHT_PUBLIC PeerDiscoveryTester : public CppUnit::TestFixture {
 
     CPPUNIT_TEST_SUITE(PeerDiscoveryTester);
-    CPPUNIT_TEST(testTransmission);
+    CPPUNIT_TEST(testMulticastToTwoNodes);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -42,9 +42,9 @@ class OPENDHT_PUBLIC PeerDiscoveryTester : public CppUnit::TestFixture {
      */
     void tearDown();
     /**
-     * Test Multicast Transmission Ipv4
+     * Test Multicast on two nodes
      */
-    void testTransmission();
+    void testMulticastToTwoNodes();
 };
 
 }  // namespace test

@@ -1,6 +1,7 @@
 /*
  *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Mingrui Zhang <mingrui.zhang@savoirfairelinux.com>
+ *              Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -81,7 +82,7 @@ public:
     /**
      * Configure the sockopt to be able to listen multicast group
     */
-    static void socketJoinMulticast(int sockfd, sa_family_t family);
+    static void joinMulticast(int sockfd, sa_family_t family);
 
     /**
      * Join the threads

@@ -22,14 +22,17 @@
 
 namespace test {
 
-struct NodeInsertion {
+constexpr int MULTICAST_PORT = 2222;
+const std::string DHT_NODE_NAME {"dht"};
+const std::string JAMI_NODE_NAME {"jami"};
+
+struct DhtNode {
     dht::InfoHash nodeid;
     in_port_t node_port;
     dht::NetId nid;
     MSGPACK_DEFINE(nodeid, node_port, nid)
 };
-
-struct TestPack {
+struct JamiNode {
     int num;
     char cha;
     std::string str;
@@ -40,70 +43,66 @@ CPPUNIT_TEST_SUITE_REGISTRATION(PeerDiscoveryTester);
 
 void PeerDiscoveryTester::setUp(){}
 
-void PeerDiscoveryTester::testTransmission()
+void PeerDiscoveryTester::testMulticastToTwoNodes()
 {
-    // Node for getnode id
-    const std::string type {"dht"};
-    const std::string test_type {"pdd"};
-    constexpr int MULTICAST_PORT = 2222;
+    DhtNode dhtNode;
+    dhtNode.nid = 10;
+    dhtNode.node_port = 50000;
+    dhtNode.nodeid = dht::InfoHash::get("opendht01");
 
-    NodeInsertion adc;
-    adc.nid = 10;
-    adc.node_port = 50000;
-    adc.nodeid = dht::InfoHash::get("applepin");
-
-    TestPack pdd;
-    pdd.num = 100;
-    pdd.cha = 'a';
-    pdd.str = "apple";
+    JamiNode jamiNode;
+    jamiNode.num = 100;
+    jamiNode.cha = 'a';
+    jamiNode.str = "jami01";
 
     std::mutex lock;
     std::condition_variable cv;
-    unsigned count_node {0};
-    unsigned count_test {0};
-
+    unsigned countDht {0};
+    unsigned countJami {0};
     {
         std::unique_lock<std::mutex> l(lock);
-        dht::PeerDiscovery test_n(MULTICAST_PORT);
-        dht::PeerDiscovery test_s(MULTICAST_PORT);
+        dht::PeerDiscovery testDht(MULTICAST_PORT);
+        dht::PeerDiscovery testJami(MULTICAST_PORT);
 
-        test_s.startDiscovery<NodeInsertion>(type,[&](NodeInsertion&& v, dht::SockAddr&& add){
-            CPPUNIT_ASSERT_EQUAL(adc.node_port, v.node_port);
-            CPPUNIT_ASSERT_EQUAL(adc.nodeid, v.nodeid);
-            CPPUNIT_ASSERT_EQUAL(adc.nid, v.nid);
+        testJami.startDiscovery<DhtNode>(DHT_NODE_NAME,[&](DhtNode&& v, dht::SockAddr&&){
+            CPPUNIT_ASSERT_EQUAL(dhtNode.node_port, v.node_port);
+            CPPUNIT_ASSERT_EQUAL(dhtNode.nodeid, v.nodeid);
+            CPPUNIT_ASSERT_EQUAL(dhtNode.nid, v.nid);
             {
                 std::lock_guard<std::mutex> l(lock);
-                count_node++;
+                countDht++;
             }
             cv.notify_all();
         });
 
-        test_s.startDiscovery(test_type,[&](msgpack::object&& obj, dht::SockAddr&& add){
-            auto v = obj.as<TestPack>();
-            CPPUNIT_ASSERT_EQUAL(pdd.num, v.num);
-            CPPUNIT_ASSERT_EQUAL(pdd.cha, v.cha);
-            CPPUNIT_ASSERT_EQUAL(pdd.str, v.str);
+        testJami.startDiscovery(JAMI_NODE_NAME,[&](msgpack::object&& obj, dht::SockAddr&&){
+            auto v = obj.as<JamiNode>();
+            CPPUNIT_ASSERT_EQUAL(jamiNode.num, v.num);
+            CPPUNIT_ASSERT_EQUAL(jamiNode.cha, v.cha);
+            CPPUNIT_ASSERT_EQUAL(jamiNode.str, v.str);
             {
                 std::lock_guard<std::mutex> l(lock);
-                count_test++;
+                countJami++;
             }
             cv.notify_all();
         });
 
-        test_n.startPublish(type, adc);
+        testDht.startPublish(DHT_NODE_NAME, dhtNode);
         CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
-            return count_node > 0;
+            return countDht > 0;
         }));
 
-        test_n.startPublish(test_type, pdd);
+        testDht.startPublish(JAMI_NODE_NAME, jamiNode);
         CPPUNIT_ASSERT(cv.wait_for(l, std::chrono::seconds(5), [&]{
-            return count_node > 1 and count_test > 0;
+            return countDht > 1 and countJami > 0;
         }));
+        // we don't verify count values since its a continious multicasting
+
         l.unlock();
-        test_n.stopPublish(type);
-        test_n.stopPublish(test_type);
-        test_s.stopDiscovery(type);
-        test_s.stopDiscovery(test_type);
+        testDht.stopPublish(DHT_NODE_NAME);
+        testDht.stopPublish(JAMI_NODE_NAME);
+        testJami.stopDiscovery(DHT_NODE_NAME);
+        testJami.stopDiscovery(JAMI_NODE_NAME);
     }
 }
 
