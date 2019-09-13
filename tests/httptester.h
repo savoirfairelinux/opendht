@@ -31,6 +31,7 @@ namespace test {
 class HttpTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(HttpTester);
     CPPUNIT_TEST(test_parse_url);
+    CPPUNIT_TEST(test_parse_https_url_no_service);
     CPPUNIT_TEST(test_parse_url_no_prefix_no_target);
     CPPUNIT_TEST(test_parse_url_target);
     CPPUNIT_TEST(test_parse_url_query);
@@ -57,6 +58,7 @@ class HttpTester : public CppUnit::TestFixture {
      * Test parse urls
      */
    void test_parse_url();
+   void test_parse_https_url_no_service();
    void test_parse_url_no_prefix_no_target();
    void test_parse_url_target();
    void test_parse_url_query();

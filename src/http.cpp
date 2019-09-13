@@ -43,8 +43,10 @@ Url::Url(const std::string& url): url(url)
     const size_t proto_end = url.find("://");
     if (proto_end != std::string::npos){
         addr_begin = proto_end + 3;
-        if (url.substr(0, proto_end) == "https")
+        if (url.substr(0, proto_end) == "https"){
             protocol = "https";
+            service = protocol;
+        }
     }
     // host and service
     size_t addr_size = url.substr(addr_begin).find("/");
