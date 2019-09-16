@@ -54,6 +54,20 @@ HttpTester::test_parse_url() {
 }
 
 void
+HttpTester::test_parse_https_url_no_service() {
+    // Arrange
+    std::string url = "https://jami.net/";
+    // Act
+    dht::http::Url parsed (url);
+    // Assert
+    CPPUNIT_ASSERT(parsed.url == url);
+    CPPUNIT_ASSERT(parsed.protocol == "https");
+    CPPUNIT_ASSERT(parsed.host == "jami.net");
+    CPPUNIT_ASSERT(parsed.service == "https");
+    CPPUNIT_ASSERT(parsed.target == "/");
+}
+
+void
 HttpTester::test_parse_url_no_prefix_no_target() {
     // Arrange
     std::string url = "google.com";

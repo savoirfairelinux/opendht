@@ -221,6 +221,9 @@ public:
     inline const Url& get_url() const {
         return resolver_->get_url();
     };
+    inline std::string& to_string() {
+        return request_;
+    }
 
     void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
     void set_logger(std::shared_ptr<dht::Logger> logger);
