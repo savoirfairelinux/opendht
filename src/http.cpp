@@ -637,6 +637,8 @@ Request::init_parser()
                 on_body_cb(at, length);
         };
         cbs_->on_message_complete = [this](){
+            if (logger_)
+                logger_->d("[http:client]  [request:%i] response: message complete", id_);
             message_complete_.store(true);
         };
     }
@@ -912,6 +914,11 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
     if (logger_)
         logger_->d("[http:client]  [request:%i] response body: %i bytes received", id_, bytes);
+
+    if (bytes == 0){
+        terminate(asio::error::eof);
+        return;
+    }
 
     unsigned int content_length;
     auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
