@@ -360,7 +360,7 @@ private:
     mutable std::atomic<size_t> requestNum_ {0};
     mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
 
-    const std::string pushServer_;
+    std::string pushServer_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     struct Listener {

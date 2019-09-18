@@ -222,6 +222,16 @@ DhtProxyServer::DhtProxyServer(
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
+    if (!pushServer.empty()){
+        // no host delim, assume port only
+        if (pushServer.find(":") == std::string::npos)
+            pushServer_ =  "localhost:" + pushServer_;
+        // define http request destination for push notifications
+        pushHostPort_ = splitPort(pushServer_);
+        if (logger_)
+            logger_->d("Using push server for notifications: %s:%s", pushHostPort_.first.c_str(),
+                                                                     pushHostPort_.second.c_str());
+    }
     if (identity.first and identity.second) {
         asio::error_code ec;
         // define tls context
@@ -258,8 +268,6 @@ DhtProxyServer::DhtProxyServer(
             restinio::own_io_context(),
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(std::move(settings))
         );
-        // define http request destination
-        pushHostPort_ = splitPort(pushServer_);
         // run http server
         serverThread_ = std::thread([this]{
             httpsServer_->open_async([]{/*ok*/}, [](std::exception_ptr ex){
@@ -276,8 +284,6 @@ DhtProxyServer::DhtProxyServer(
             restinio::own_io_context(),
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(std::move(settings))
         );
-        // define http request destination
-        pushHostPort_ = splitPort(pushServer_);
         // run http server
         serverThread_ = std::thread([this](){
             httpServer_->open_async([]{/*ok*/}, [](std::exception_ptr ex){
