@@ -40,6 +40,7 @@ typedef uint16_t in_port_t;
 #include <string>
 #include <memory>
 #include <vector>
+#include <stdexcept>
 #include <stdlib.h>
 
 #include <cstring>

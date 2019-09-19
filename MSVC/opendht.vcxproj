@@ -244,6 +244,7 @@ copy ..\include\opendht.h $(OutDir)\include\</Command>
       <DisableSpecificWarnings>4804;4800;4101;4267;4244;4503;4273;</DisableSpecificWarnings>
       <AdditionalOptions>-D_SCL_SECURE_NO_WARNING;%(AdditionalOptions)</AdditionalOptions>
       <ProgramDataBaseFileName>$(OutDir)lib\$(PlatformTarget)\$(TargetName).pdb</ProgramDataBaseFileName>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
