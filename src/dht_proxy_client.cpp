@@ -1031,9 +1031,10 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                         opstate->ok.store(false);
                         return;
                     }
-                    if (json.size() == 0){ // it's the end
-                        opstate->stop.store(true);
+                    if (json.size() == 0) { // it's the end
+                        break;
                     }
+
                     auto value = std::make_shared<Value>(json);
                     if (cb){
                         auto expired = json.get("expired", Json::Value(false)).asBool();
