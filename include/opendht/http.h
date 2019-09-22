@@ -63,6 +63,7 @@ using HandlerCb = std::function<void(const asio::error_code& ec)>;
 using BytesHandlerCb = std::function<void(const asio::error_code& ec, const size_t bytes)>;
 using ConnectHandlerCb = std::function<void(const asio::error_code& ec,
                                             const asio::ip::tcp::endpoint& endpoint)>;
+using SSLVerifyCb = std::function<bool(bool preverified, asio::ssl::verify_context& ctx)>;
 
 using ssl_socket_t = restinio::impl::tls_socket_t;
 using socket_t = asio::ip::tcp::socket;
@@ -91,11 +92,10 @@ public:
 
     unsigned int id();
     bool is_open();
-    bool is_v6();
     bool is_ssl();
 
-    void set_endpoint(const asio::ip::tcp::endpoint& endpoint,
-                      const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none);
+    void set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode);
+    void set_ssl_verification(SSLVerifyCb verify_cb, const asio::ssl::verify_mode verify_mode);
 
     asio::streambuf& input();
     asio::streambuf& data();
@@ -121,8 +121,6 @@ private:
     std::shared_ptr<asio::ssl::context> ssl_ctx_;
     std::unique_ptr<ssl_socket_t> ssl_socket_;
     std::unique_ptr<asio::const_buffer> certificate_;
-
-    asio::ip::tcp::endpoint endpoint_;
 
     asio::streambuf write_buf_;
     asio::streambuf read_buf_;
@@ -248,6 +246,7 @@ public:
 
     void add_on_status_callback(OnStatusCb cb);
     void add_on_body_callback(OnDataCb cb);
+    void add_on_ssl_verify_callback(SSLVerifyCb cb);
     void add_on_state_change_callback(OnStateChangeCb cb);
 
     void send();
@@ -270,6 +269,7 @@ private:
         OnCompleteCb on_headers_complete;
         OnCompleteCb on_message_complete;
 
+        SSLVerifyCb ssl_verify;
         OnStateChangeCb on_state_change;
     };
 
