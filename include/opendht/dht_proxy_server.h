@@ -83,6 +83,8 @@ public:
     DhtProxyServer& operator=(const DhtProxyServer& other) = delete;
     DhtProxyServer& operator=(DhtProxyServer&& other) = delete;
 
+    asio::io_context& io_context() const;
+
     struct ServerStats {
         /** Current number of listen operations */
         size_t listenCount;
@@ -309,8 +311,6 @@ private:
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
     void handlePrintStats(const asio::error_code &ec);
-
-    asio::io_context& io_context() const;
 
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;

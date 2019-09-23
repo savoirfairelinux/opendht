@@ -46,7 +46,7 @@ DhtProxyTester::setUp() {
 
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(
         new dht::DhtProxyServer(
-            ///*http*/nullptr,
+            ///*http*/dht::crypto::Identity{},
             /*https*/serverIdentity,
             nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 

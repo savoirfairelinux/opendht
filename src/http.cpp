@@ -401,11 +401,42 @@ Resolver::resolve(const std::string& host, const std::string& service)
 
 unsigned int Request::ids_ = 1;
 
+
+Request::Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
+                 std::shared_ptr<dht::Logger> logger)
+    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+{
+    cbs_ = std::make_unique<Callbacks>();
+    resolver_ = std::make_shared<Resolver>(ctx, url, logger_);
+
+    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
+    set_target(resolver_->get_url().target);
+    set_header_field(restinio::http_field_t::content_type, "application/json");
+    set_header_field(restinio::http_field_t::accept, "application/json");
+    Json::StreamWriterBuilder wbuilder;
+    set_body(Json::writeString(wbuilder, json));
+
+    add_on_state_change_callback([this, jsoncb](State state, const Response& response){
+        if (state != Request::State::DONE)
+            return;
+        Json::Value json;
+        std::string err;
+        Json::CharReaderBuilder rbuilder;
+        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
+            logger_->e("[http:client]  [request:%i] can't parse response to json", id_, err.c_str());
+        if (jsoncb)
+            jsoncb(json, response.status_code);
+    });
+}
+
 Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
     : id_(Request::ids_++), ctx_(ctx), logger_(logger)
 {
     cbs_ = std::make_unique<Callbacks>();
     resolver_ = std::make_shared<Resolver>(ctx, url, logger_);
+
+    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
     set_target(resolver_->get_url().target);
 }
 
