@@ -807,10 +807,6 @@ Request::terminate(const asio::error_code& ec)
 
     finishing_.store(true);
 
-    // reset the http_parser holding the data pointer to the user callbacks
-    parser_.reset();
-    parser_s_.reset();
-
     // set response outcome, ignore end of file and abort
     if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
         response_.status_code = 200;
