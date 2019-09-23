@@ -382,7 +382,7 @@ if (OPENDHT_TESTS)
        ${CMAKE_THREAD_LIBS_INIT}
        ${CPPUNIT_LIBRARIES}
        ${GNUTLS_LIBRARIES}
-       ssl crypto
+       ssl crypto jsoncpp
     )
     enable_testing()
     add_test(TEST opendht_unit_tests)

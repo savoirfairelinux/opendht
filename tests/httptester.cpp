@@ -33,10 +33,27 @@ CPPUNIT_TEST_SUITE_REGISTRATION(HttpTester);
 void
 HttpTester::setUp() {
     logger = dht::log::getStdLogger();
+
+    nodePeer.run(0, /*identity*/{}, /*threaded*/true);
+
+    nodeProxy = std::make_shared<dht::DhtRunner>();
+    nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
+    nodeProxy->bootstrap(nodePeer.getBound());
+
+    serverProxy = std::unique_ptr<dht::DhtProxyServer>(
+        new dht::DhtProxyServer(
+            /*http*/dht::crypto::Identity{}, nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
+
 }
 
 void
 HttpTester::tearDown() {
+    logger->d("[tester:http] stopping peer node");
+    nodePeer.join();
+    logger->d("[tester:http] stopping proxy server");
+    serverProxy.reset(nullptr);
+    logger->d("[tester:http] stopping proxy node");
+    nodeProxy->join();
 }
 
 void
@@ -208,6 +225,40 @@ HttpTester::test_parse_url_target_ipv6() {
     CPPUNIT_ASSERT(parsed.host == "2607:f8b0:4006:804::2004");
     CPPUNIT_ASSERT(parsed.service == "666");
     CPPUNIT_ASSERT(parsed.target == "/going/under");
+}
+
+void
+HttpTester::test_send_json() {
+    // Arrange
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    bool done = false;
+
+    dht::Value val {"hey"};
+    auto json = val.toJson();
+    json["permanent"] = false;
+    std::cout << "[test_send_json] sending:\n" << json << std::endl;
+    Json::Value resp_val;
+    unsigned int status = 0;
+    std::string url = "http://127.0.0.1:8080/key";
+    // Act
+    auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(), url, json,
+                   [this, &cv, &done, &status, &resp_val](Json::Value value, unsigned int status_code){
+        if (status_code != 200 and logger)
+            logger->e("[tester] [status] failed with code=%i", status_code);
+        std::cout << "[tester] got response:\n" << value << std::endl;
+        resp_val = value;
+        status = status_code;
+        done = true;
+        cv.notify_all();
+    }, logger);
+    request->set_method(restinio::http_method_post());
+    request->send();
+    // Assert
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(status == 200);
+    CPPUNIT_ASSERT(resp_val["data"] == val.toJson()["data"]);
 }
 
 }  // namespace test

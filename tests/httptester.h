@@ -23,13 +23,18 @@
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 
+#include <opendht/value.h>
 #include <opendht/log.h>
 #include <opendht/http.h>
+
+#include <opendht/dhtrunner.h>
+#include <opendht/dht_proxy_server.h>
 
 namespace test {
 
 class HttpTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(HttpTester);
+    // parse_url
     CPPUNIT_TEST(test_parse_url);
     CPPUNIT_TEST(test_parse_https_url_no_service);
     CPPUNIT_TEST(test_parse_url_no_prefix_no_target);
@@ -42,6 +47,8 @@ class HttpTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(test_parse_url_ipv6);
     CPPUNIT_TEST(test_parse_url_no_prefix_no_target_ipv6);
     CPPUNIT_TEST(test_parse_url_target_ipv6);
+    // send
+    CPPUNIT_TEST(test_send_json);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -75,9 +82,17 @@ class HttpTester : public CppUnit::TestFixture {
    void test_parse_url_ipv6();
    void test_parse_url_no_prefix_no_target_ipv6();
    void test_parse_url_target_ipv6();
+    /**
+     * Test send(json)
+     */
+   void test_send_json();
 
  private:
     std::shared_ptr<dht::Logger> logger {};
+
+    dht::DhtRunner nodePeer;
+    std::shared_ptr<dht::DhtRunner> nodeProxy;
+    std::unique_ptr<dht::DhtProxyServer> serverProxy;
 };
 
 }  // namespace test

@@ -34,6 +34,7 @@
 
 #include <memory>
 #include <queue>
+#include <json/json.h>
 
 extern "C" {
 struct http_parser;
@@ -200,8 +201,11 @@ public:
     using OnStatusCb = std::function<void(unsigned int status_code)>;
     using OnDataCb = std::function<void(const char* at, size_t length)>;
     using OnStateChangeCb = std::function<void(State state, const Response& response)>;
+    using OnJsonCb = std::function<void(Json::Value value, unsigned int status_code)>;
 
     // resolves implicitly
+    Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
+            std::shared_ptr<dht::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& host, const std::string& service,
             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
