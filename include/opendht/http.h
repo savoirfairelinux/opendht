@@ -274,6 +274,7 @@ private:
 
     void build();
 
+    void init_default_headers();
     /**
      * Initialized and wraps the http_parser callbacks with our user defined callbacks.
      */
