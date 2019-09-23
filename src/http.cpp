@@ -404,18 +404,14 @@ unsigned int Request::ids_ = 1;
 
 Request::Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
                  std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, url, logger)), logger_(logger)
 {
-    cbs_ = std::make_unique<Callbacks>();
-    resolver_ = std::make_shared<Resolver>(ctx, url, logger_);
-
-    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
-    set_target(resolver_->get_url().target);
+    init_default_headers();
     set_header_field(restinio::http_field_t::content_type, "application/json");
     set_header_field(restinio::http_field_t::accept, "application/json");
     Json::StreamWriterBuilder wbuilder;
     set_body(Json::writeString(wbuilder, json));
-
     add_on_state_change_callback([this, jsoncb](State state, const Response& response){
         if (state != Request::State::DONE)
             return;
@@ -431,43 +427,43 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
 }
 
 Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, url, logger)), logger_(logger)
 {
-    cbs_ = std::make_unique<Callbacks>();
-    resolver_ = std::make_shared<Resolver>(ctx, url, logger_);
-
-    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
-    set_target(resolver_->get_url().target);
+    init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
                  const bool ssl, std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, host, service, ssl, logger)), logger_(logger)
 {
-    cbs_ = std::make_unique<Callbacks>();
-    resolver_ = std::make_shared<Resolver>(ctx, host, service, ssl, logger_);
-    set_target(resolver_->get_url().target);
+    init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx), resolver_(resolver), logger_(logger)
 {
-    cbs_ = std::make_unique<Callbacks>();
-    resolver_ = resolver;
-    set_target(resolver_->get_url().target);
+    init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints, const bool ssl,
                  std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx), logger_(logger)
+    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger)), logger_(logger)
 {
-    cbs_ = std::make_unique<Callbacks>();
-    resolver_ = std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger_);
-    set_target(resolver_->get_url().target);
+    init_default_headers();
 }
 
 Request::~Request()
 {
+}
+
+void
+Request::init_default_headers()
+{
+    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
+    set_target(resolver_->get_url().target);
 }
 
 void
