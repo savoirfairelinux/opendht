@@ -34,7 +34,10 @@
 
 #include <memory>
 #include <queue>
-#include <json/json.h>
+
+namespace Json {
+class Value;
+}
 
 extern "C" {
 struct http_parser;
