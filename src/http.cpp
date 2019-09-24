@@ -24,6 +24,7 @@
 #include <asio.hpp>
 #include <restinio/impl/tls_socket.hpp>
 #include <http_parser.h>
+#include <json/json.h>
 
 namespace dht {
 namespace http {
