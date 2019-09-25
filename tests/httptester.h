@@ -49,6 +49,7 @@ class HttpTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(test_parse_url_target_ipv6);
     // send
     CPPUNIT_TEST(test_send_json);
+    CPPUNIT_TEST(test_ssl_verify_callback);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -86,6 +87,10 @@ class HttpTester : public CppUnit::TestFixture {
      * Test send(json)
      */
    void test_send_json();
+   /**
+    *  Test client SSL verify callback
+    */
+   void test_ssl_verify_callback();
 
  private:
     std::shared_ptr<dht::Logger> logger {};
