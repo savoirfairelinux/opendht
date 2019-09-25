@@ -20,6 +20,7 @@
 
 #include "def.h"
 #include "infohash.h"
+#include "crypto.h"
 
 // some libraries may try to redefine snprintf
 // but restinio will use it in std namespace
@@ -85,17 +86,15 @@ class OPENDHT_PUBLIC Connection
 {
 public:
     Connection(asio::io_context& ctx, const bool ssl = true, std::shared_ptr<dht::Logger> l = {});
-    Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
-               std::shared_ptr<dht::Logger> l = {});
+    Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> server_ca,
+               const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l = {});
     ~Connection();
 
     unsigned int id();
     bool is_open();
-    bool is_v6();
     bool is_ssl();
 
-    void set_endpoint(const asio::ip::tcp::endpoint& endpoint,
-                      const asio::ssl::verify_mode verify_mode = asio::ssl::verify_none);
+    void set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode);
 
     asio::streambuf& input();
     asio::streambuf& data();
@@ -120,7 +119,9 @@ private:
     std::unique_ptr<socket_t> socket_;
     std::shared_ptr<asio::ssl::context> ssl_ctx_;
     std::unique_ptr<ssl_socket_t> ssl_socket_;
-    std::unique_ptr<asio::const_buffer> certificate_;
+    std::unique_ptr<asio::const_buffer> server_ca_;
+    std::unique_ptr<asio::const_buffer> client_key_;
+    std::unique_ptr<asio::const_buffer> client_cert_;
 
     asio::ip::tcp::endpoint endpoint_;
 
@@ -232,7 +233,8 @@ public:
         return request_;
     }
 
-    void set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate);
+    void set_certificate_authority(std::shared_ptr<dht::crypto::Certificate> certificate);
+    void set_identity(const dht::crypto::Identity& identity);
     void set_logger(std::shared_ptr<dht::Logger> logger);
 
     /**
@@ -311,7 +313,8 @@ private:
     std::unique_ptr<Callbacks> cbs_;
     State state_;
 
-    std::shared_ptr<dht::crypto::Certificate> certificate_;
+    dht::crypto::Identity client_identity_;
+    std::shared_ptr<dht::crypto::Certificate> server_ca_;
     std::string service_;
     std::string host_;
 

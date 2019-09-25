@@ -72,20 +72,25 @@ struct DhtProxyClient::ProxySearch {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(
-        std::shared_ptr<dht::crypto::Certificate> certificate,
+        std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
         std::function<void()> signal, const std::string& serverHost,
         const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
     :
-        serverCertificate_(certificate),
+        clientIdentity_(clientIdentity), serverCertificate_(serverCA),
         pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
 {
     // build http client
     serverHostService_ = splitPort(serverHost);
     serverHostService_.second = serverHostService_.second.empty() ? "80" :
                                 serverHostService_.second;
-    if (serverCertificate_ and logger_)
-        logger_->d("[proxy:client] using server certificate for ssl:\n%s",
-                   serverCertificate_->toString(false/*chain*/).c_str());
+    if (logger_){
+        if (serverCertificate_)
+            logger_->d("[proxy:client] using ca certificate for ssl:\n%s",
+                       serverCertificate_->toString(false/*chain*/).c_str());
+        if (clientIdentity_.first and clientIdentity_.second)
+            logger_->d("[proxy:client] using client certificate for ssl:\n%s",
+                       clientIdentity_.second->toString(false/*chain*/).c_str());
+    }
     // resolve once
     resolver_ = std::make_shared<http::Resolver>(httpContext_, serverHost, logger_);
     // run http client
@@ -346,8 +351,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
             }
         });
         if (serverCertificate_)
-            request->set_certificate(serverCertificate_);
-        request->set_certificate(serverCertificate_);
+            request->set_certificate_authority(serverCertificate_);
+        if (clientIdentity_.first and clientIdentity_.second)
+            request->set_identity(clientIdentity_);
         request->send();
         requests_[reqid] = request;
     }
@@ -482,8 +488,9 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_
             }
         });
         if (serverCertificate_)
-            request->set_certificate(serverCertificate_);
-        request->set_certificate(serverCertificate_);
+            request->set_certificate_authority(serverCertificate_);
+        if (clientIdentity_.first and clientIdentity_.second)
+            request->set_identity(clientIdentity_);
         request->send();
         requests_[reqid] = request;
     }
@@ -679,7 +686,9 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_fa
             return;
 
         if (serverCertificate_)
-            request->set_certificate(serverCertificate_);
+            request->set_certificate_authority(serverCertificate_);
+        if (clientIdentity_.first and clientIdentity_.second)
+            request->set_identity(clientIdentity_);
         request->send();
         requests_[reqid] = request;
     }
@@ -958,7 +967,9 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                     }
                 });
                 if (serverCertificate_)
-                    request->set_certificate(serverCertificate_);
+                    request->set_certificate_authority(serverCertificate_);
+                if (clientIdentity_.first and clientIdentity_.second)
+                    request->set_identity(clientIdentity_);
                 request->send();
                 requests_[reqid] = request;
             }
@@ -1065,7 +1076,9 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
             }
         });
         if (serverCertificate_)
-            request->set_certificate(serverCertificate_);
+            request->set_certificate_authority(serverCertificate_);
+        if (clientIdentity_.first and clientIdentity_.second)
+            request->set_identity(clientIdentity_);
         request->send();
         requests_[reqid] = request;
     }
