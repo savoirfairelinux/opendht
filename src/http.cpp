@@ -99,23 +99,40 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
     }
 }
 
-Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> certificate,
-                       std::shared_ptr<dht::Logger> l)
+Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> server_ca,
+                       const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), logger_(l)
 {
     ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
     ssl_ctx_->set_default_verify_paths();
-
     asio::error_code ec;
-    auto cert = certificate->toString(false/*chain*/);
-    certificate_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(cert.data()),
-                                                       (std::size_t) cert.size());
-    ssl_ctx_->use_certificate(*certificate_, asio::ssl::context::file_format::pem, ec);
-    if (ec)
-        throw std::runtime_error("Error setting certificate: " + ec.message());
-    else if (logger_)
-        logger_->d("[http:client]  [connection:%i] start https session with %s", id_, certificate->getUID().c_str());
-
+    if (server_ca){
+        auto ca = server_ca->toString(false/*chain*/);
+        server_ca_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(ca.data()),
+                                                      (std::size_t) ca.size());
+        ssl_ctx_->add_certificate_authority(*server_ca_, ec);
+        if (ec)
+            throw std::runtime_error("Error adding certificate authority: " + ec.message());
+        else if (logger_)
+            logger_->d("[http:client]  [connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
+    }
+    if (identity.first){
+        auto pk = identity.first->serialize();
+        client_key_ = std::make_unique<asio::const_buffer>(static_cast<void*>(pk.data()), (std::size_t) pk.size());
+        ssl_ctx_->use_private_key(*client_key_, asio::ssl::context::file_format::pem, ec);
+        if (ec)
+            throw std::runtime_error("Error setting client private key: " + ec.message());
+    }
+    if (identity.second){
+        auto c = identity.second->toString(false/*chain*/);
+        client_cert_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(c.data()),
+                                                    (std::size_t) c.size());
+        ssl_ctx_->use_certificate(*client_cert_, asio::ssl::context::file_format::pem, ec);
+        if (ec)
+            throw std::runtime_error("Error adding client certificate: " + ec.message());
+        else if (logger_)
+            logger_->d("[http:client]  [connection:%i] client certificate %s", id_, identity.second->getUID().c_str());
+    }
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
 }
@@ -155,32 +172,27 @@ Connection::is_open()
 }
 
 bool
-Connection::is_v6()
-{
-    return endpoint_.address().is_v6();
-}
-
-bool
 Connection::is_ssl()
 {
     return ssl_ctx_ ? true : false;
 }
 
 void
-Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
+Connection::set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
 {
-    endpoint_ = endpoint;
     if (ssl_ctx_ and verify_mode != asio::ssl::verify_none){
-        auto hostname = endpoint_.address().to_string();
+        auto hostname = endpoint.address().to_string();
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         ssl_socket_->asio_ssl_stream().set_verify_callback(
             [this, hostname](bool preverified, asio::ssl::verify_context& ctx) -> bool {
+                if (preverified)
+                    return preverified;
+                // starts from CA and goes down the presented chain
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);
                 auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
-                if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
-                    || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
-                    verified = true;
+                if (verified != 0 /*X509_V_OK*/ and logger_)
+                    logger_->e("[http::connection:%i] ssl verification error=%i", id_, verify_ec);
                 return verified;
             }
         );
@@ -494,9 +506,15 @@ Request::get_connection() const
 }
 
 void
-Request::set_certificate(std::shared_ptr<dht::crypto::Certificate> certificate)
+Request::set_certificate_authority(std::shared_ptr<dht::crypto::Certificate> certificate)
 {
-    certificate_ = certificate;
+    server_ca_ = certificate;
+}
+
+void
+Request::set_identity(const dht::crypto::Identity& identity)
+{
+    client_identity_ = identity;
 }
 
 void
@@ -728,8 +746,8 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         logger_->d("[http:client]  [request:%i] connect begin: %s", id_, eps.c_str());
     }
     if (get_url().protocol == "https"){
-        if (certificate_)
-            conn_ = std::make_shared<Connection>(ctx_, certificate_, logger_);
+        if (server_ca_)
+            conn_ = std::make_shared<Connection>(ctx_, server_ca_, client_identity_, logger_);
         else
             conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
     }
@@ -750,9 +768,9 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                 logger_->d("[http:client]  [request:%i] connect success", id_);
 
             if (get_url().protocol == "https"){
-                if (certificate_)
-                    conn_->set_endpoint(endpoint, asio::ssl::verify_peer
-                                                  | asio::ssl::verify_fail_if_no_peer_cert);
+                if (server_ca_)
+                    conn_->set_ssl_verification(endpoint, asio::ssl::verify_peer
+                                                          | asio::ssl::verify_fail_if_no_peer_cert);
 
                 if (conn_ and conn_->is_open() and conn_->is_ssl()){
                     conn_->async_handshake([this, cb](const asio::error_code& ec){
@@ -770,8 +788,6 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                     cb(asio::error::operation_aborted);
                 return;
             }
-            else
-                conn_->set_endpoint(endpoint, asio::ssl::verify_none);
         }
         if (cb)
             cb(ec);

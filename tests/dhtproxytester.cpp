@@ -46,11 +46,12 @@ DhtProxyTester::setUp() {
 
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(
         new dht::DhtProxyServer(
-            ///*http*/dht::crypto::Identity{},
-            /*https*/serverIdentity,
+            //dht::crypto::Identity{}, // http
+            serverIdentity,            // https
             nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
 
-    clientConfig.client_cert = serverIdentity.second;
+    clientConfig.server_ca = serverCAIdentity.second;
+    clientConfig.client_identity = dht::crypto::generateIdentity("DhtProxyTester");
     clientConfig.dht_config.node_config.maintain_storage = false;
     clientConfig.threaded = true;
     clientConfig.push_node_id = "dhtnode";

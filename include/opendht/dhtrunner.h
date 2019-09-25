@@ -63,7 +63,8 @@ public:
         std::string push_token {};
         bool peer_discovery {false};
         bool peer_publish {false};
-        std::shared_ptr<dht::crypto::Certificate> client_cert;
+        std::shared_ptr<dht::crypto::Certificate> server_ca;
+        dht::crypto::Identity client_identity;
     };
 
     struct Context {

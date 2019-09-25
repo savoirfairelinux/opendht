@@ -979,7 +979,8 @@ DhtRunner::enableProxy(bool proxify)
         // Init the proxy client
         auto dht_via_proxy = std::unique_ptr<DhtInterface>(
             new DhtProxyClient(
-                config_.client_cert,
+                config_.server_ca,
+                config_.client_identity,
                 [this]{
                     if (config_.threaded) {
                         {
