@@ -34,6 +34,8 @@ constexpr char HTTP_HEADER_CONNECTION_KEEP_ALIVE[] = "keep-alive";
 constexpr char HTTP_HEADER_CONTENT_LENGTH[] = "Content-Length";
 constexpr char HTTP_HEADER_CONTENT_TYPE[] = "Content-Type";
 constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
+constexpr char HTTP_HEADER_TRANSFER_ENCODING[] = "Transfer-Encoding";
+constexpr char HTTP_HEADER_TRANSFER_ENCODING_CHUNKED[] = "chunked";
 constexpr char HTTP_HEADER_DELIM[] = "\r\n\r\n";
 constexpr char JSON_VALUE_DELIM[] = "\n";
 
@@ -922,7 +924,17 @@ Request::handle_response_header(const asio::error_code& ec)
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
+    {
         terminate(asio::error::eof);
+    }
+    else if (response_.headers[HTTP_HEADER_TRANSFER_ENCODING] == HTTP_HEADER_TRANSFER_ENCODING_CHUNKED)
+    {
+        std::string chunk_size;
+        std::getline(is, chunk_size);
+        unsigned int content_length = std::stoul(chunk_size, nullptr, 16);
+        conn_->async_read(content_length,
+            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+    }
 }
 
 void
@@ -959,7 +971,13 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     // read and parse the chunked encoding fragment
     else {
         auto body = conn_->read_until(JSON_VALUE_DELIM[0]) + '\n';
-        response_.body = body;
+        response_.body += body;
+        if (body == "0\r\n"){
+            std::replace(response_.body.begin(), response_.body.end(), '\n', '\0');
+            parse_request(response_.body);
+            terminate(asio::error::eof);
+            return;
+        }
         parse_request(body);
     }
 
@@ -977,7 +995,23 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     else if (connection_type_ == restinio::http_connection_header_t::close)
+    {
         terminate(asio::error::eof);
+    }
+    else if (response_.headers[HTTP_HEADER_TRANSFER_ENCODING] == HTTP_HEADER_TRANSFER_ENCODING_CHUNKED)
+    {
+        std::istream is(&conn_->data());
+        std::string chunk_size;
+        std::getline(is, chunk_size);
+        if (chunk_size.size() == 0){
+            std::replace(response_.body.begin(), response_.body.end(), '\n', '\0');
+            parse_request(response_.body);
+            terminate(asio::error::eof);
+        }
+        else
+            conn_->async_read_until(JSON_VALUE_DELIM,
+                std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+    }
 }
 
 size_t
