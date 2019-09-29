@@ -34,6 +34,7 @@ class DhtProxyTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testResubscribeGetValues);
+    CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -54,12 +55,15 @@ class DhtProxyTester : public CppUnit::TestFixture {
      * Test listen
      */
    void testListen();
-
    /**
     * When a proxy redo a subscribe on the proxy
     * it should retrieve existant values
     */
    void testResubscribeGetValues();
+   /**
+    * Test MTU put/get on dht
+    */
+   void testPutGet40KChars();
 
  private:
     dht::DhtRunner nodePeer;
