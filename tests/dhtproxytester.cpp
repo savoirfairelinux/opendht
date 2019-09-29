@@ -207,4 +207,49 @@ DhtProxyTester::testResubscribeGetValues() {
     CPPUNIT_ASSERT(firstVal_data == values.front());
 }
 
+void
+DhtProxyTester::testPutGet40KChars()
+{
+    // Arrange
+    auto key = dht::InfoHash::get("testPutGet40KChars");
+    std::vector<std::shared_ptr<dht::Value>> values;
+    std::string mtu = "";
+    for (int i = 0; i < 40000; i++){
+        if (i % 2 == 0)
+            mtu.append("M");
+        else
+            mtu.append("T");
+    }
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    bool done_put = false;
+    bool done_get = false;
+
+    // Act
+    dht::Value val {mtu};
+    nodeClient->put(key, std::move(val), [&](bool ok) {
+        std::lock_guard<std::mutex> lk(cv_m);
+        done_put = ok;
+        cv.notify_all();
+    });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done_put; }));
+
+    nodeClient->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
+        values = vals;
+        return true;
+    },[&](bool ok){
+        std::lock_guard<std::mutex> lk(cv_m);
+        done_get = ok;
+        cv.notify_all();
+    });
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done_get; }));
+
+    // Assert
+    dht::Value mtu_val {mtu};
+    for (const auto &value: values){
+        CPPUNIT_ASSERT(value->data == mtu_val.data);
+    }
+}
+
 }  // namespace test
