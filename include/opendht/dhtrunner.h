@@ -60,6 +60,7 @@ public:
         bool threaded {true};
         std::string proxy_server {};
         std::string push_node_id {};
+        std::string push_token {};
         bool peer_discovery {false};
         bool peer_publish {false};
         std::shared_ptr<dht::crypto::Certificate> client_cert;
