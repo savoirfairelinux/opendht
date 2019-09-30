@@ -993,8 +993,8 @@ DhtRunner::enableProxy(bool proxify)
         );
         dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-        if (not pushToken_.empty())
-            dht_via_proxy_->setPushNotificationToken(pushToken_);
+        if (not config_.push_token.empty())
+            dht_via_proxy_->setPushNotificationToken(config_.push_token);
 #endif
         // add current listeners
         for (auto& l: listeners_)
@@ -1045,7 +1045,7 @@ void
 DhtRunner::setPushNotificationToken(const std::string& token) {
     std::lock_guard<std::mutex> lck(dht_mtx);
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
-    pushToken_ = token;
+    config_.push_token = token;
     if (dht_via_proxy_)
         dht_via_proxy_->setPushNotificationToken(token);
 #else

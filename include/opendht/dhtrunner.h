@@ -516,9 +516,6 @@ private:
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
-    /** Push notification token */
-    std::string pushToken_;
-
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;
 
