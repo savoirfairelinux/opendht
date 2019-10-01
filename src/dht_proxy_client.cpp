@@ -1272,7 +1272,8 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
     if (listener.request){
         listener.request.reset();
     }
-    opstate.reset(new OperationState());
+    opstate->stop = false;
+    opstate->ok = true;
 
     restinio::http_request_header_t header;
     header.method(restinio::http_method_subscribe());
