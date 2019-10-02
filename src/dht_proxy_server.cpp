@@ -246,18 +246,18 @@ DhtProxyServer::DhtProxyServer(
         SSL_CTX_set_options(tls_context.native_handle(), SSL_OP_NO_RENEGOTIATION); // CVE-2009-3555
 #endif
         // node private key
-        server_key_ = identity.first->serialize();
-        tls_context.use_private_key(asio::const_buffer{server_key_.data(), server_key_.size()},
+        auto key = identity.first->serialize();
+        tls_context.use_private_key(asio::const_buffer{key.data(), key.size()},
                                     asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error setting node's private key: " + ec.message());
         // certificate chain
-        server_certchain_ = identity.second->toString(true/*chain*/);
-        tls_context.use_certificate_chain(asio::const_buffer{server_certchain_.data(), server_certchain_.size()}, ec);
+        auto certchain = identity.second->toString(true/*chain*/);
+        tls_context.use_certificate_chain(asio::const_buffer{certchain.data(), certchain.size()}, ec);
         if (ec)
             throw std::runtime_error("Error setting certificate chain: " + ec.message());
         if (logger_)
-            logger_->d("[proxy:server] using certificate chain for ssl:\n%s", server_certchain_.c_str());
+            logger_->d("[proxy:server] using certificate chain for ssl:\n%s", certchain.c_str());
         // build http server
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>();
         addServerSettings(settings);
