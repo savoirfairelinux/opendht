@@ -107,23 +107,23 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     ssl_ctx_->set_default_verify_paths();
     asio::error_code ec;
     if (server_ca){
-        server_ca_ = server_ca->toString(false/*chain*/);
-        ssl_ctx_->add_certificate_authority(asio::const_buffer{server_ca_.data(), server_ca_.size()}, ec);
+        auto ca = server_ca->toString(false/*chain*/);
+        ssl_ctx_->add_certificate_authority(asio::const_buffer{ca.data(), ca.size()}, ec);
         if (ec)
             throw std::runtime_error("Error adding certificate authority: " + ec.message());
         else if (logger_)
             logger_->d("[http:client]  [connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
     }
     if (identity.first){
-        client_key_ = identity.first->serialize();
-        ssl_ctx_->use_private_key(asio::const_buffer{client_key_.data(), client_key_.size()},
+        auto key = identity.first->serialize();
+        ssl_ctx_->use_private_key(asio::const_buffer{key.data(), key.size()},
                                   asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error setting client private key: " + ec.message());
     }
     if (identity.second){
-        client_cert_ = identity.second->toString(false/*chain*/);
-        ssl_ctx_->use_certificate(asio::const_buffer{client_cert_.data(), client_cert_.size()},
+        auto cert = identity.second->toString(false/*chain*/);
+        ssl_ctx_->use_certificate(asio::const_buffer{cert.data(), cert.size()},
                                   asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error adding client certificate: " + ec.message());
