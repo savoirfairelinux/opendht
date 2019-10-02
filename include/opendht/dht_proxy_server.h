@@ -322,8 +322,8 @@ private:
     std::thread serverThread_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraitsTls>> httpsServer_;
     std::unique_ptr<restinio::http_server_t<RestRouterTraits>> httpServer_;
-    std::unique_ptr<asio::const_buffer> pk_;
-    std::unique_ptr<asio::const_buffer> cc_;
+    dht::Blob server_key_;
+    std::string server_certchain_;
 
     // http client
     std::pair<std::string, std::string> pushHostPort_;

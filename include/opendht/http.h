@@ -119,9 +119,9 @@ private:
     std::unique_ptr<socket_t> socket_;
     std::shared_ptr<asio::ssl::context> ssl_ctx_;
     std::unique_ptr<ssl_socket_t> ssl_socket_;
-    std::unique_ptr<asio::const_buffer> server_ca_;
-    std::unique_ptr<asio::const_buffer> client_key_;
-    std::unique_ptr<asio::const_buffer> client_cert_;
+    std::string server_ca_;
+    dht::Blob client_key_;
+    std::string client_cert_;
 
     asio::ip::tcp::endpoint endpoint_;
 
