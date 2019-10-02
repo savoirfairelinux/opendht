@@ -105,27 +105,24 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     ssl_ctx_->set_default_verify_paths();
     asio::error_code ec;
     if (server_ca){
-        auto ca = server_ca->toString(false/*chain*/);
-        server_ca_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(ca.data()),
-                                                      (std::size_t) ca.size());
-        ssl_ctx_->add_certificate_authority(*server_ca_, ec);
+        server_ca_ = server_ca->toString(false/*chain*/);
+        ssl_ctx_->add_certificate_authority(asio::const_buffer{server_ca_.data(), server_ca_.size()}, ec);
         if (ec)
             throw std::runtime_error("Error adding certificate authority: " + ec.message());
         else if (logger_)
             logger_->d("[http:client]  [connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
     }
     if (identity.first){
-        auto pk = identity.first->serialize();
-        client_key_ = std::make_unique<asio::const_buffer>(static_cast<void*>(pk.data()), (std::size_t) pk.size());
-        ssl_ctx_->use_private_key(*client_key_, asio::ssl::context::file_format::pem, ec);
+        client_key_ = identity.first->serialize();
+        ssl_ctx_->use_private_key(asio::const_buffer{client_key_.data(), client_key_.size()},
+                                  asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error setting client private key: " + ec.message());
     }
     if (identity.second){
-        auto c = identity.second->toString(false/*chain*/);
-        client_cert_ = std::make_unique<asio::const_buffer>(static_cast<const void*>(c.data()),
-                                                    (std::size_t) c.size());
-        ssl_ctx_->use_certificate(*client_cert_, asio::ssl::context::file_format::pem, ec);
+        client_cert_ = identity.second->toString(false/*chain*/);
+        ssl_ctx_->use_certificate(asio::const_buffer{client_cert_.data(), client_cert_.size()},
+                                  asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error adding client certificate: " + ec.message());
         else if (logger_)
