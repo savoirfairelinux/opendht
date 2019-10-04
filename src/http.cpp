@@ -626,8 +626,7 @@ Request::notify_state_change(const State state)
 void
 Request::init_parser()
 {
-    if (!parser_)
-        parser_ = std::make_unique<http_parser>();
+    parser_ = std::make_unique<http_parser>();
     http_parser_init(parser_.get(), HTTP_RESPONSE);
     parser_->data = static_cast<void*>(cbs_.get());
 
@@ -811,7 +810,8 @@ Request::post()
         return;
     }
     build();
-    init_parser();
+    if (!parser_)
+        init_parser();
 
     if (logger_){
         std::string header; std::getline(std::istringstream(request_), header);
@@ -890,16 +890,36 @@ Request::handle_response_header(const asio::error_code& ec)
     headers.append("\n");
     parse_request(headers);
 
-    if (headers_[restinio::http_field_t::expect] == "100-continue" and response_.status_code != 200){
-        notify_state_change(State::SENDING);
-        request_.append(body_);
-        std::ostream request_stream(&conn_->input());
-        request_stream << body_ << "\r\n";
-        conn_->async_write(std::bind(&Request::handle_request, this, std::placeholders::_1));
+    if (response_.status_code != 200 /*restinio::status_code::ok*/)
+    {
+        auto expect_it = response_.headers.find(restinio::field_to_string(restinio::http_field_t::expect));
+
+        if (response_.status_code == 301 /*restinio::status_code::moved_permanently*/)
+        {
+            auto location_it = response_.headers.find(restinio::field_to_string(restinio::http_field_t::location));
+            if (location_it == response_.headers.end()){
+                terminate(asio::error::connection_aborted);
+                if (logger_)
+                    logger_->e("[http:client]  [request:%i] got redirect without location", id_);
+            }
+            http::Url url (location_it->second);
+            std::string host = url.host + ":" + url.service;
+            set_header_field(restinio::http_field_t::host, host);
+            if (logger_)
+                logger_->d("[http:client]  [request:%i] got redirect to: %s", id_, host.c_str());
+            response_.headers.clear();
+            post();
+        }
+        else if (expect_it != response_.headers.end() and expect_it->second == "100-continue"){
+            notify_state_change(State::SENDING);
+            request_.append(body_);
+            std::ostream request_stream(&conn_->input());
+            request_stream << body_ << "\r\n";
+            conn_->async_write(std::bind(&Request::handle_request, this, std::placeholders::_1));
+        }
         return;
     }
 
-    // avoid creating non-existant headers by accessing the headers map without the presence of key
     auto connection_it = response_.headers.find(HTTP_HEADER_CONNECTION);
     auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
     auto transfer_encoding_it = response_.headers.find(HTTP_HEADER_TRANSFER_ENCODING);
@@ -936,8 +956,7 @@ Request::handle_response_header(const asio::error_code& ec)
     {
         std::string chunk_size;
         std::getline(is, chunk_size);
-        unsigned int content_length = std::stoul(chunk_size, nullptr, 16);
-        conn_->async_read(content_length,
+        conn_->async_read_until(BODY_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
 }
