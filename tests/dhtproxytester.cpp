@@ -48,7 +48,7 @@ DhtProxyTester::setUp() {
         new dht::DhtProxyServer(
             ///*http*/dht::crypto::Identity{},
             /*https*/serverIdentity,
-            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", "", logger));
+            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", {}, logger));
 
     clientConfig.client_cert = serverIdentity.second;
     clientConfig.dht_config.node_config.maintain_storage = false;

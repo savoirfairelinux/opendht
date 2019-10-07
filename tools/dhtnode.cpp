@@ -591,7 +591,7 @@ main(int argc, char **argv)
             proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
                 new DhtProxyServer(
                     dht::crypto::Identity{}, node, params.proxyserver, params.pushserver,
-                    "", context.logger)));
+                    {}, context.logger)));
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);

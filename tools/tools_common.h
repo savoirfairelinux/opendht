@@ -131,7 +131,7 @@ struct dht_params {
     std::string save_identity {};
     dht::crypto::Identity proxy_id {};
     std::string proxy_privkey_pwd {};
-    std::string proxy_client_certificate {};
+    std::shared_ptr<dht::crypto::Certificate> proxy_client_certificate {};
 };
 
 static const constexpr struct option long_options[] = {
@@ -276,9 +276,14 @@ parseArgs(int argc, char **argv) {
         case 'I':
             params.save_identity = optarg;
             break;
-        case 'P':
-            params.proxy_client_certificate = optarg;
+        case 'P': {
+            try {
+                params.proxy_client_certificate = std::make_shared<dht::crypto::Certificate>(loadFile(optarg));
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::string("Error loading proxy certificate: ") + e.what());
+            }
             break;
+        }
         default:
             break;
         }
