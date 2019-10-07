@@ -120,9 +120,8 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
             throw std::runtime_error("Error setting client private key: " + ec.message());
     }
     if (identity.second){
-        auto cert = identity.second->toString(false/*chain*/);
-        ssl_ctx_->use_certificate(asio::const_buffer{cert.data(), cert.size()},
-                                  asio::ssl::context::file_format::pem, ec);
+        auto cert = identity.second->toString(true/*chain*/);
+        ssl_ctx_->use_certificate_chain(asio::const_buffer{cert.data(), cert.size()}, ec);
         if (ec)
             throw std::runtime_error("Error adding client certificate: " + ec.message());
         else if (logger_)
