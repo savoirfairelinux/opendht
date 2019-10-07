@@ -815,7 +815,7 @@ Request::post()
 
     if (logger_){
         std::string header; std::getline(std::istringstream(request_), header);
-        logger_->d("[http:client]  [request:%i] send: %s", id_, header.c_str());
+        logger_->d("[http:client]  [request:%i] send:\n%s", id_, request_.c_str());
     }
     // write the request to buffer
     std::ostream request_stream(&conn_->input());
@@ -886,6 +886,7 @@ Request::handle_response_header(const asio::error_code& ec)
     std::istream is(&conn_->data());
     while (std::getline(is, header) && header != "\r"){
         headers.append(header + "\n");
+        std::cout << header << std::endl;
     }
     headers.append("\n");
     parse_request(headers);
@@ -894,7 +895,8 @@ Request::handle_response_header(const asio::error_code& ec)
     {
         auto expect_it = response_.headers.find(restinio::field_to_string(restinio::http_field_t::expect));
 
-        if (response_.status_code == 301 /*restinio::status_code::moved_permanently*/)
+        if (response_.status_code == 301 /*restinio::status_code::moved_permanently*/ or
+            response_.status_code == 302 /*restinio::status_code::found*/)
         {
             auto location_it = response_.headers.find(restinio::field_to_string(restinio::http_field_t::location));
             if (location_it == response_.headers.end()){
@@ -903,10 +905,10 @@ Request::handle_response_header(const asio::error_code& ec)
                     logger_->e("[http:client]  [request:%i] got redirect without location", id_);
             }
             http::Url url (location_it->second);
-            std::string host = url.host + ":" + url.service;
-            set_header_field(restinio::http_field_t::host, host);
+            set_header_field(restinio::http_field_t::host, url.host);
             if (logger_)
-                logger_->d("[http:client]  [request:%i] got redirect to: %s", id_, host.c_str());
+                logger_->d("[http:client]  [request:%i] got redirect to: %s", id_, url.host.c_str());
+            //response_.status_code = 0;
             response_.headers.clear();
             post();
         }
