@@ -31,6 +31,7 @@ namespace http {
 
 constexpr char HTTP_HEADER_CONNECTION[] = "Connection";
 constexpr char HTTP_HEADER_CONNECTION_KEEP_ALIVE[] = "keep-alive";
+constexpr char HTTP_HEADER_CONNECTION_CLOSE[] = "close";
 constexpr char HTTP_HEADER_CONTENT_LENGTH[] = "Content-Length";
 constexpr char HTTP_HEADER_CONTENT_TYPE[] = "Content-Type";
 constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
@@ -927,6 +928,12 @@ Request::handle_response_header(const asio::error_code& ec)
         conn_->async_read_until(BODY_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
+    // server wants to close the connection
+    else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
+    {
+        terminate(asio::error::eof);
+    }
+    // client wants to close the connection
     else if (connection_type_ == restinio::http_connection_header_t::close)
     {
         terminate(asio::error::eof);
@@ -1004,6 +1011,12 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
         conn_->async_read_until(BODY_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
+    // server wants to close the connection
+    else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
+    {
+        terminate(asio::error::eof);
+    }
+    // client wants to close the connection
     else if (connection_type_ == restinio::http_connection_header_t::close)
     {
         terminate(asio::error::eof);
