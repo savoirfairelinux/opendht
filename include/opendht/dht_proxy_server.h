@@ -74,7 +74,7 @@ public:
     DhtProxyServer(
        dht::crypto::Identity identity,
        std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "",
-       std::shared_ptr<dht::Logger> logger = {});
+       std::shared_ptr<dht::crypto::Certificate> client_certificate = {}, std::shared_ptr<dht::Logger> logger = {});
 
     virtual ~DhtProxyServer();
 
