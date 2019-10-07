@@ -549,10 +549,9 @@ main(int argc, char **argv)
         config.threaded = true;
         config.proxy_server = params.proxyclient;
         config.push_node_id = "dhtnode";
+        config.push_token = params.devicekey;
         config.peer_discovery = params.peer_discovery;
         config.peer_publish = params.peer_discovery;
-        if (not params.proxyclient.empty())
-            node->setPushNotificationToken(params.devicekey);
 
         dht::DhtRunner::Context context {};
         if (params.log) {
@@ -564,8 +563,6 @@ main(int argc, char **argv)
                 context.logger = log::getStdLogger();
         }
         node->run(params.port, config, std::move(context));
-        if (context.logger)
-            log::enableLogging(*node);
 
         if (not params.bootstrap.first.empty()) {
             std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;

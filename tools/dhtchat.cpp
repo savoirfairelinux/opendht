@@ -62,16 +62,37 @@ main(int argc, char **argv)
 
     DhtRunner dht;
     try {
-        dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
-
-        if (params.log) {
-            if (params.syslog)
-                log::enableSyslog(dht, "dhtnode");
-            else if (not params.logfile.empty())
-                log::enableFileLogging(dht, params.logfile);
-            else
-                log::enableLogging(dht);
+        if (not params.id.first) {
+            auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
+            params.id = dht::crypto::generateIdentity("DHT Chat Node", *node_ca);
+            if (not params.save_identity.empty()) {
+                dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
+                dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
+            }
         }
+
+        dht::DhtRunner::Config config {};
+        config.dht_config.node_config.network = params.network;
+        config.dht_config.node_config.maintain_storage = false;
+        config.dht_config.node_config.persist_path = params.persist_path;
+        config.dht_config.id = params.id;
+        config.threaded = true;
+        config.proxy_server = params.proxyclient;
+        config.push_node_id = "dhtnode";
+        config.push_token = params.devicekey;
+        config.peer_discovery = params.peer_discovery;
+        config.peer_publish = params.peer_discovery;
+
+        dht::DhtRunner::Context context {};
+        if (params.log) {
+            if (params.syslog or (params.daemonize and params.logfile.empty()))
+                context.logger = log::getSyslogLogger("dhtnode");
+            else if (not params.logfile.empty())
+                context.logger = log::getFileLogger(params.logfile);
+            else
+                context.logger = log::getStdLogger();
+        }
+        dht.run(params.port, config, std::move(context));
 
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
