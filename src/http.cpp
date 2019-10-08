@@ -156,23 +156,16 @@ Connection::is_open()
 }
 
 bool
-Connection::is_v6()
-{
-    return endpoint_.address().is_v6();
-}
-
-bool
 Connection::is_ssl()
 {
     return ssl_ctx_ ? true : false;
 }
 
 void
-Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
+Connection::set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
 {
-    endpoint_ = endpoint;
     if (ssl_ctx_ and verify_mode != asio::ssl::verify_none){
-        auto hostname = endpoint_.address().to_string();
+        auto hostname = endpoint.address().to_string();
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         ssl_socket_->asio_ssl_stream().set_verify_callback(
             [this, hostname](bool preverified, asio::ssl::verify_context& ctx) -> bool {
@@ -187,6 +180,17 @@ Connection::set_endpoint(const asio::ip::tcp::endpoint& endpoint, const asio::ss
         );
         if (logger_)
             logger_->d("[http:client]  [connection:%i] verify %s compliance to RFC 2818", id_, hostname.c_str());
+    }
+}
+
+void
+Connection::set_ssl_verification(SSLVerifyCb verify_cb, const asio::ssl::verify_mode verify_mode)
+{
+    if (ssl_ctx_ and verify_mode != asio::ssl::verify_none){
+        ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
+        ssl_socket_->asio_ssl_stream().set_verify_callback(verify_cb);
+        if (logger_)
+            logger_->d("[http:client]  [connection:%i] ssl verify callback set", id_);
     }
 }
 
@@ -610,6 +614,13 @@ Request::add_on_body_callback(OnDataCb cb)
 }
 
 void
+Request::add_on_ssl_verify_callback(SSLVerifyCb cb)
+{
+    std::lock_guard<std::mutex> lock(cbs_mutex_);
+    cbs_->ssl_verify = std::move(cb);
+}
+
+void
 Request::add_on_state_change_callback(OnStateChangeCb cb)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
@@ -751,9 +762,11 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                 logger_->d("[http:client]  [request:%i] connect success", id_);
 
             if (get_url().protocol == "https"){
-                if (certificate_)
-                    conn_->set_endpoint(endpoint, asio::ssl::verify_peer
-                                                  | asio::ssl::verify_fail_if_no_peer_cert);
+                auto verify_mode = asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert;
+                if (cbs_->ssl_verify)
+                    conn_->set_ssl_verification(cbs_->ssl_verify, verify_mode);
+                else if (certificate_)
+                    conn_->set_ssl_verification(endpoint, verify_mode);
 
                 if (conn_ and conn_->is_open() and conn_->is_ssl()){
                     conn_->async_handshake([this, cb](const asio::error_code& ec){
@@ -771,8 +784,6 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                     cb(asio::error::operation_aborted);
                 return;
             }
-            else
-                conn_->set_endpoint(endpoint, asio::ssl::verify_none);
         }
         if (cb)
             cb(ec);

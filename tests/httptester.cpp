@@ -238,16 +238,16 @@ HttpTester::test_send_json() {
     dht::Value val {"hey"};
     auto json = val.toJson();
     json["permanent"] = false;
-    std::cout << "[test_send_json] sending:\n" << json << std::endl;
     Json::Value resp_val;
     unsigned int status = 0;
     std::string url = "http://127.0.0.1:8080/key";
     // Act
+    std::cout << "[test_send_json] sending:\n" << json << std::endl;
     auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(), url, json,
                    [this, &cv, &done, &status, &resp_val](Json::Value value, unsigned int status_code){
         if (status_code != 200 and logger)
-            logger->e("[tester] [status] failed with code=%i", status_code);
-        std::cout << "[tester] got response:\n" << value << std::endl;
+            logger->e("[test_send_json] failed with status=%i", status_code);
+        std::cout << "[test_send_json] got response:\n" << value << std::endl;
         resp_val = value;
         status = status_code;
         done = true;
@@ -259,6 +259,58 @@ HttpTester::test_send_json() {
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     CPPUNIT_ASSERT(status == 200);
     CPPUNIT_ASSERT(resp_val["data"] == val.toJson()["data"]);
+}
+
+void
+HttpTester::test_ssl_verify_callback()
+{
+    // Arrange
+    // ssl server
+    auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
+    auto serverIdentity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
+    serverProxy = std::unique_ptr<dht::DhtProxyServer>(new dht::DhtProxyServer(
+        serverIdentity, nodeProxy, 10000, "", logger));
+    // request
+    std::condition_variable cv;
+    std::mutex cv_m;
+    std::unique_lock<std::mutex> lk(cv_m);
+    bool verified = false;
+    bool done = false;
+    unsigned int status = 0;
+    std::string url = "https://127.0.0.1:10000/";
+    // Act
+    std::cout << "[test_ssl_verify_callback] sending..." << std::endl;
+    auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(), url, logger);
+    request->add_on_ssl_verify_callback([this, &verified]
+                                        (bool preverified, asio::ssl::verify_context& ctx) -> bool
+    {
+        auto verifier = asio::ssl::rfc2818_verification("127.0.0.1");
+        verified = verifier(preverified, ctx);
+        auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
+        if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
+            || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
+            verified = true;
+        logger->w("[[test_ssl_verify_callback]] got verified=%i with error_code=%i", verified, verify_ec);
+        return verified;
+    });
+    request->add_on_state_change_callback([this, &cv, &done, &status]
+                                          (dht::http::Request::State state, const dht::http::Response& resp){
+        if (state != dht::http::Request::State::DONE)
+            return;
+        if (resp.status_code != 200 and logger)
+            logger->e("[test_ssl_verify_callback] failed with status=%i", resp.status_code);
+        logger->w("[[test_ssl_verify_callback]] got response status=%i", resp.status_code);
+        status = resp.status_code;
+        done = true;
+        cv.notify_all();
+    });
+    request->set_method(restinio::http_method_get());
+    request->set_certificate(serverIdentity.second);
+    request->send();
+    // Assert
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(verified == true);
+    CPPUNIT_ASSERT(status == 200);
 }
 
 }  // namespace test
