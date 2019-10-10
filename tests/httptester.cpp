@@ -123,7 +123,7 @@ HttpTester::test_parse_url_query() {
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "google.com");
     CPPUNIT_ASSERT(parsed.service == "80");
-    CPPUNIT_ASSERT(parsed.target == "/");
+    CPPUNIT_ASSERT(parsed.target == "/?key=1");
     CPPUNIT_ASSERT(parsed.query == "key=1");
 }
 
@@ -138,7 +138,7 @@ HttpTester::test_parse_url_fragment() {
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "google.com");
     CPPUNIT_ASSERT(parsed.service == "80");
-    CPPUNIT_ASSERT(parsed.target == "/");
+    CPPUNIT_ASSERT(parsed.target == "/?key=1");
     CPPUNIT_ASSERT(parsed.query == "key=1");
     CPPUNIT_ASSERT(parsed.fragment == "#some-important-id");
 }

@@ -60,19 +60,16 @@ Url::Url(const std::string& url): url(url)
     host = host_service.first;
     if (!host_service.second.empty())
         service = host_service.second;
-    // target, query fragment
+    // target, query and fragment
     size_t query_begin = url.find("?");
     auto addr_end = addr_begin + addr_size;
-    if (addr_end < url.size()){
-        if (query_begin == std::string::npos)
-            target = url.substr(addr_end);
-        else
-            target = url.substr(addr_end, query_begin - addr_end);
-    }
+    if (addr_end < url.size())
+        target = url.substr(addr_end);
     size_t fragment_begin = url.find("#");
-    if (fragment_begin == std::string::npos)
+    if (fragment_begin == std::string::npos){
         query = url.substr(query_begin + 1);
-    else{
+    } else {
+        target = url.substr(addr_end, fragment_begin - addr_end);
         query = url.substr(query_begin + 1, fragment_begin - query_begin - 1);
         fragment = url.substr(fragment_begin);
     }
