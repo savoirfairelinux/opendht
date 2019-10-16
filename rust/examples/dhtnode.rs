@@ -28,10 +28,11 @@ struct Handler {
 fn main() {
     println!("{}", InfoHash::random());
     println!("{}", InfoHash::new());
-    println!("{}", InfoHash::get("toto"));
+    println!("{}", InfoHash::get("alice"));
 
     let mut dht = DhtRunner::new();
     dht.run(1412);
+    // TODO take slice in boostrap
     dht.bootstrap(
         &CString::new("bootstrap.jami.net").unwrap(),
         &CString::new("4222").unwrap()
@@ -41,9 +42,11 @@ fn main() {
         _data: 8,
     };
     loop {
-        println!("Get /toto");
+        println!("Get /alice");
         let ptr = &mut handler as *mut _ as *mut c_void;
-        dht.get(&InfoHash::get("toto"), get_cb, done_cb, ptr);
+        dht.get(&InfoHash::get("alice"), get_cb, done_cb, ptr);
+        let v = Value::new("hi!");
+        dht.put(&InfoHash::get("bob"), Box::into_raw(v), done_cb, ptr);
         thread::sleep(ten_secs);
     }
 }
