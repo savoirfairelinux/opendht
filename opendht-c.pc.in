@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+Name: OpenDHT (C Wrapper)
+Description: Distributed Hash Table library (C Wrapper)
+Version: @VERSION@
+Libs: -L${libdir} -lopendht-c
+Requires.private: opendht gnutls >= 3.1 @argon2_lib@
+Cflags: -I${includedir}

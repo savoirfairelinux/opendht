@@ -322,6 +322,13 @@ if (OPENDHT_C)
     )
     target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
     target_link_libraries(opendht-c opendht)
+    # PkgConfig module
+    configure_file (
+        opendht-c.pc.in
+        opendht-c.pc
+        @ONLY
+    )
+    install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht-c.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif ()
 
 if (OPENDHT_TOOLS)
