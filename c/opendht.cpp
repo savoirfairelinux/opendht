@@ -1,6 +1,8 @@
 #include "opendht_c.h"
 #include "opendht.h"
 
+using ValueSp = std::shared_ptr<dht::Value>;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -11,9 +13,17 @@ const char* dht_infohash_print(const dht_infohash* h)
     return reinterpret_cast<const dht::InfoHash*>(h)->to_c_str();
 }
 
+void dht_infohash_zero(dht_infohash* h) {
+    *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash{};
+}
+
 void dht_infohash_random(dht_infohash* h)
 {
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::getRandom();
+}
+
+bool dht_infohash_is_zero(const dht_infohash* h) {
+    return static_cast<bool>(*reinterpret_cast<const dht::InfoHash*>(h));
 }
 
 const char* dht_pkid_print(const dht_pkid* h)
@@ -38,10 +48,23 @@ dht_data_view dht_blob_get_data(const dht_blob* data)
 // dht::Value
 dht_data_view dht_value_get_data(const dht_value* data)
 {
+    const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
     dht_data_view view;
-    view.data = reinterpret_cast<const dht::Value*>(data)->data.data();
-    view.size = reinterpret_cast<const dht::Value*>(data)->data.size();
+    view.data = vsp->data.data();
+    view.size = vsp->data.size();
     return view;
+}
+
+dht_value* dht_value_new(const uint8_t* data, size_t size) {
+    return reinterpret_cast<dht_value*>(new ValueSp(std::make_shared<dht::Value>(data, size)));
+}
+
+dht_value* dht_value_ref(const dht_value* v) {
+    return reinterpret_cast<dht_value*>(new ValueSp(*reinterpret_cast<const ValueSp*>(v)));
+}
+
+void dht_value_unref(dht_value* v) {
+    delete reinterpret_cast<ValueSp*>(v);
 }
 
 // dht::crypto::PublicKey
@@ -140,7 +163,7 @@ void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_don
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     runner->get(*hash, [cb,cb_user_data](std::shared_ptr<dht::Value> value){
-        return cb(reinterpret_cast<dht_value*>(value.get()), cb_user_data);
+        return cb(reinterpret_cast<const dht_value*>(&value), cb_user_data);
     }, [done_cb, cb_user_data](bool ok){
         done_cb(ok, cb_user_data);
     });
@@ -153,7 +176,7 @@ dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_
     auto fret = new std::future<size_t>;
     *fret = runner->listen(*hash, [cb,cb_user_data](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         for (const auto& value : values) {
-            if (not cb(reinterpret_cast<dht_value*>(value.get()), expired, cb_user_data))
+            if (not cb(reinterpret_cast<const dht_value*>(&value), expired, cb_user_data))
                 return false;
         }
         return true;
@@ -161,13 +184,20 @@ dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_
     return (dht_op_token*)fret;
 }
 
-void
-dht_runner_cancel_listen(dht_runner* r, const dht_infohash* h, dht_op_token* t)
+void dht_runner_cancel_listen(dht_runner* r, const dht_infohash* h, dht_op_token* t)
 {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto token = reinterpret_cast<std::future<size_t>*>(t);
     runner->cancelListen(*hash, std::move(*token));
+}
+
+void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_data)
+{
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    runner->shutdown([done_cb, cb_user_data](){
+        done_cb(cb_user_data);
+    });
 }
 
 #ifdef __cplusplus
