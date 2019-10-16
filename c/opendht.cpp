@@ -2,6 +2,8 @@
 #include "opendht.h"
 
 using ValueSp = std::shared_ptr<dht::Value>;
+using PrivkeySp = std::shared_ptr<dht::crypto::PrivateKey>;
+using CertSp = std::shared_ptr<dht::crypto::Certificate>;
 
 #ifdef __cplusplus
 extern "C" {
@@ -119,23 +121,30 @@ dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_
 dht_privatekey* dht_privatekey_generate(unsigned key_length_bits) {
     if (key_length_bits == 0)
         key_length_bits = 4096;
-    return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dht::crypto::PrivateKey::generate(key_length_bits)));
+    return reinterpret_cast<dht_privatekey*>(new PrivkeySp(std::make_shared<dht::crypto::PrivateKey>(dht::crypto::PrivateKey::generate(key_length_bits))));
 }
 
 dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password) {
     try {
-        return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dat, dat_size, password));
+        return reinterpret_cast<dht_privatekey*>(new PrivkeySp(std::make_shared<dht::crypto::PrivateKey>(dat, dat_size, password)));
     } catch (const dht::crypto::CryptoException& e) {
         return nullptr;
     }
 }
 
-dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* key) {
-    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(reinterpret_cast<const dht::crypto::PrivateKey*>(key)->getPublicKey()));
+dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
+    const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
+    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(key->getPublicKey()));
 }
 
 void dht_privatekey_delete(dht_privatekey* pk) {
-    delete reinterpret_cast<dht::crypto::PrivateKey*>(pk);
+    delete reinterpret_cast<PrivkeySp*>(pk);
+}
+
+// config
+void dht_runner_config_default(dht_runner_config* config) {
+    bzero(config, sizeof(dht_runner_config));
+    config->threaded = true;
 }
 
 // dht::DhtRunner
@@ -150,6 +159,30 @@ void dht_runner_delete(dht_runner* runner) {
 void dht_runner_run(dht_runner* r, in_port_t port) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->run(port, {}, true);
+}
+
+void dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config* conf) {
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.is_bootstrap = conf->dht_config.node_config.is_bootstrap;
+    config.dht_config.node_config.maintain_storage = conf->dht_config.node_config.maintain_storage;
+    config.dht_config.node_config.node_id = *reinterpret_cast<const dht::InfoHash*>(&conf->dht_config.node_config.node_id);
+    config.dht_config.node_config.network = conf->dht_config.node_config.network;
+    config.dht_config.node_config.persist_path = conf->dht_config.node_config.persist_path;
+
+    if (conf->dht_config.id.privkey)
+        config.dht_config.id.first = *reinterpret_cast<const PrivkeySp*>(conf->dht_config.id.privkey);
+
+    if (conf->dht_config.id.certificate)
+        config.dht_config.id.second = *reinterpret_cast<const CertSp*>(conf->dht_config.id.certificate);
+
+    config.threaded = conf->threaded;
+    config.proxy_server = conf->proxy_server;
+    config.push_node_id = conf->push_node_id;
+    config.push_token = conf->push_token;
+    config.peer_discovery = conf->peer_discovery;
+    config.peer_publish = conf->peer_publish;
+    runner->run(port, config);
 }
 
 void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len) {

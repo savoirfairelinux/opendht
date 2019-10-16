@@ -70,6 +70,12 @@ OPENDHT_C_PUBLIC void dht_privatekey_delete(dht_privatekey*);
 struct OPENDHT_C_PUBLIC dht_certificate;
 typedef struct dht_certificate dht_certificate;
 
+struct OPENDHT_PUBLIC dht_identity {
+    dht_privatekey* privkey;
+    dht_certificate* certificate;
+};
+typedef struct dht_identity dht_identity;
+
 // callbacks
 typedef bool (*dht_get_cb)(const dht_value* value, void* user_data);
 typedef bool (*dht_value_cb)(const dht_value* value, bool expired, void* user_data);
@@ -80,12 +86,44 @@ struct OPENDHT_C_PUBLIC dht_op_token;
 typedef struct dht_op_token dht_op_token;
 OPENDHT_C_PUBLIC void dht_op_token_delete(dht_op_token* token);
 
+// config
+struct OPENDHT_PUBLIC dht_node_config {
+    dht_infohash node_id;
+    uint32_t network;
+    bool is_bootstrap;
+    bool maintain_storage;
+    const char* persist_path;
+};
+typedef struct dht_node_config dht_node_config;
+
+struct OPENDHT_PUBLIC dht_secure_config
+{
+    dht_node_config node_config;
+    dht_identity id;
+};
+typedef struct dht_secure_config dht_secure_config;
+
+struct OPENDHT_PUBLIC dht_runner_config {
+    dht_secure_config dht_config;
+    bool threaded;
+    const char* proxy_server;
+    const char* push_node_id;
+    const char* push_token;
+    bool peer_discovery;
+    bool peer_publish;
+    dht_certificate* server_ca;
+    dht_identity client_identity;
+};
+typedef struct dht_runner_config dht_runner_config;
+OPENDHT_C_PUBLIC void dht_runner_config_default(dht_runner_config* config);
+
 // dht::DhtRunner
 struct OPENDHT_C_PUBLIC dht_runner;
 typedef struct dht_runner dht_runner;
 OPENDHT_C_PUBLIC dht_runner* dht_runner_new();
 OPENDHT_C_PUBLIC void dht_runner_delete(dht_runner* runner);
 OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
+OPENDHT_C_PUBLIC void dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);
 OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len);
 OPENDHT_C_PUBLIC void dht_runner_bootstrap(dht_runner* runner, const char* host, const char* service);
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
