@@ -16,9 +16,27 @@ void dht_infohash_random(dht_infohash* h)
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::getRandom();
 }
 
+// dht::Blob
 void dht_blob_delete(dht_blob* data)
 {
-    delete reinterpret_cast<dht::Blob*>(data->ptr);
+    delete reinterpret_cast<dht::Blob*>(data);
+}
+
+dht_data_view dht_blob_get_data(const dht_blob* data)
+{
+    dht_data_view view;
+    view.data = reinterpret_cast<const dht::Blob*>(data)->data();
+    view.length = reinterpret_cast<const dht::Blob*>(data)->size();
+    return view;
+}
+
+// dht::Value
+dht_data_view dht_value_get_data(const dht_value* data)
+{
+    dht_data_view view;
+    view.data = reinterpret_cast<const dht::Value*>(data)->data.data();
+    view.length = reinterpret_cast<const dht::Value*>(data)->data.size();
+    return view;
 }
 
 // dht::crypto::PublicKey
@@ -61,15 +79,11 @@ bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, si
     return reinterpret_cast<const dht::crypto::PublicKey*>(pk)->checkSignature((const uint8_t*)data, data_size, (const uint8_t*)signature, signature_size);
 }
 
-dht_blob dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size)
+dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size)
 {
     auto rdata = new dht::Blob;
     *rdata = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->encrypt((const uint8_t*)data, data_size);
-    dht_blob ret;
-    ret.data = rdata->data();
-    ret.data_length = rdata->size();
-    ret.ptr = rdata;
-    return ret;
+    return (dht_blob*)rdata;
 }
 
 // dht::DhtRunner
@@ -91,6 +105,12 @@ void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len)
 {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->bootstrap(dht::SockAddr(addr, addr_len));
+}
+
+void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service)
+{
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    runner->bootstrap(host, service);
 }
 
 void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data)

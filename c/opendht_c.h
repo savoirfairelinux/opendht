@@ -11,17 +11,22 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 
+// Non-owning data view
+struct OPENDHT_C_PUBLIC dht_data_view {
+    const uint8_t* data;
+    size_t length;
+};
+typedef struct dht_data_view dht_data_view;
+
 // dht::Value
 struct OPENDHT_C_PUBLIC dht_value;
 typedef struct dht_value dht_value;
+OPENDHT_C_PUBLIC dht_data_view dht_value_get_data(const dht_value* data);
 
 // dht::Blob
-struct OPENDHT_C_PUBLIC dht_blob {
-    const uint8_t* data;
-    size_t data_length;
-    void* ptr;
-};
+struct OPENDHT_C_PUBLIC dht_blob;
 typedef struct dht_blob dht_blob;
+OPENDHT_C_PUBLIC dht_data_view dht_blob_get_data(const dht_blob* data);
 OPENDHT_C_PUBLIC void dht_blob_delete(dht_blob* data);
 
 // dht::InfoHash
@@ -44,7 +49,7 @@ OPENDHT_C_PUBLIC int dht_publickey_pack(dht_publickey* pk, char* out, size_t* ou
 OPENDHT_C_PUBLIC dht_infohash dht_publickey_get_id(const dht_publickey* pk);
 OPENDHT_C_PUBLIC dht_pkid dht_publickey_get_long_id(const dht_publickey* pk);
 OPENDHT_C_PUBLIC bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, size_t data_size, const char* signature, size_t signature_size);
-OPENDHT_C_PUBLIC dht_blob dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size);
+OPENDHT_C_PUBLIC dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size);
 
 // dht::crypto::PrivateKey
 struct OPENDHT_C_PUBLIC dht_privatekey;
@@ -71,6 +76,7 @@ OPENDHT_C_PUBLIC dht_runner* dht_runner_new();
 OPENDHT_C_PUBLIC void dht_runner_delete(dht_runner* runner);
 OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
 OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len);
+OPENDHT_C_PUBLIC void dht_runner_bootstrap(dht_runner* runner, const char* host, const char* service);
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_op_token* dht_runner_listen(dht_runner* runner, const dht_infohash* hash, dht_value_cb cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_cancel_listen(dht_runner* runner, const dht_infohash* hash, dht_op_token* token);
