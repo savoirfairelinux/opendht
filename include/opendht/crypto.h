@@ -96,8 +96,15 @@ struct OPENDHT_PUBLIC PublicKey
      */
     PkId getLongId() const;
 
-    bool checkSignature(const Blob& data, const Blob& signature) const;
-    Blob encrypt(const Blob&) const;
+    bool checkSignature(const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) const;
+    bool checkSignature(const Blob& data, const Blob& signature) const {
+        return checkSignature(data.data(), data.size(), signature.data(), signature.size());
+    }
+
+    Blob encrypt(const uint8_t* data, size_t data_len) const;
+    Blob encrypt(const Blob& data) const {
+        return encrypt(data.data(), data.size());
+    }
 
     void pack(Blob& b) const;
     void unpack(const uint8_t* dat, size_t dat_size);
@@ -681,7 +688,10 @@ OPENDHT_PUBLIC Blob stretchKey(const std::string& password, Blob& salt, size_t k
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
  */
-OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const Blob& key);
+OPENDHT_PUBLIC Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key);
+OPENDHT_PUBLIC inline Blob aesEncrypt(const Blob& data, const Blob& key) {
+    return aesEncrypt(data.data(), data.size(), key);
+}
 OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const std::string& password);
 
 /**

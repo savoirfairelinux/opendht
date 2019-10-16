@@ -92,12 +92,12 @@ bool aesKeySizeGood(size_t key_size)
 #define GCM_DIGEST_SIZE GCM_BLOCK_SIZE
 #endif
 
-Blob aesEncrypt(const Blob& data, const Blob& key)
+Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
 
-    Blob ret(data.size() + GCM_IV_SIZE + GCM_DIGEST_SIZE);
+    Blob ret(data_length + GCM_IV_SIZE + GCM_DIGEST_SIZE);
     {
         crypto::random_device rdev;
         std::generate_n(ret.begin(), GCM_IV_SIZE, std::bind(rand_byte, std::ref(rdev)));
@@ -105,10 +105,10 @@ Blob aesEncrypt(const Blob& data, const Blob& key)
     struct gcm_aes_ctx aes;
     gcm_aes_set_key(&aes, key.size(), key.data());
     gcm_aes_set_iv(&aes, GCM_IV_SIZE, ret.data());
-    gcm_aes_update(&aes, data.size(), data.data());
+    gcm_aes_update(&aes, data_length, data);
 
-    gcm_aes_encrypt(&aes, data.size(), ret.data() + GCM_IV_SIZE, data.data());
-    gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data.size());
+    gcm_aes_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
+    gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
     return ret;
 }
 
@@ -440,13 +440,12 @@ PublicKey::msgpack_unpack(msgpack::object o)
     }
 }
 
-bool
-PublicKey::checkSignature(const Blob& data, const Blob& signature) const
+bool PublicKey::checkSignature(const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) const
 {
     if (!pk)
         return false;
-    const gnutls_datum_t sig {(uint8_t*)signature.data(), (unsigned)signature.size()};
-    const gnutls_datum_t dat {(uint8_t*)data.data(), (unsigned)data.size()};
+    const gnutls_datum_t sig {(uint8_t*)signature, (unsigned)signature_len};
+    const gnutls_datum_t dat {(uint8_t*)data, (unsigned)data_len};
     int rc = gnutls_pubkey_verify_data2(pk, GNUTLS_SIGN_RSA_SHA512, 0, &dat, &sig);
     return rc >= 0;
 }
@@ -466,7 +465,7 @@ PublicKey::encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t
 }
 
 Blob
-PublicKey::encrypt(const Blob& data) const
+PublicKey::encrypt(const uint8_t* data, size_t data_len) const
 {
     if (!pk)
         throw CryptoException("Can't read public key !");
@@ -482,9 +481,9 @@ PublicKey::encrypt(const Blob& data) const
     const unsigned cypher_block_sz = key_len / 8;
 
     /* Use plain RSA if the data is small enough */
-    if (data.size() <= max_block_sz) {
+    if (data_len <= max_block_sz) {
         Blob ret(cypher_block_sz);
-        encryptBloc(data.data(), data.size(), ret.data(), cypher_block_sz);
+        encryptBloc(data, data_len, ret.data(), cypher_block_sz);
         return ret;
     }
 
@@ -499,7 +498,7 @@ PublicKey::encrypt(const Blob& data) const
         crypto::random_device rdev;
         std::generate_n(key.begin(), key.size(), std::bind(rand_byte, std::ref(rdev)));
     }
-    auto data_encrypted = aesEncrypt(data, key);
+    auto data_encrypted = aesEncrypt(data, data_len, key);
 
     Blob ret;
     ret.reserve(cypher_block_sz + data_encrypted.size());
