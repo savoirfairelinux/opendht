@@ -215,15 +215,14 @@ PrivateKey::PrivateKey(gnutls_x509_privkey_t k) : x509_key(k)
     }
 }
 
-PrivateKey::PrivateKey(const Blob& import, const std::string& password)
+PrivateKey::PrivateKey(const uint8_t* src, size_t src_size, const char* password_ptr)
 {
     int err = gnutls_x509_privkey_init(&x509_key);
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't initialize private key !");
 
-    const gnutls_datum_t dt {(uint8_t*)import.data(), static_cast<unsigned>(import.size())};
-    const char* password_ptr = password.empty() ? nullptr : password.c_str();
-    int flags = password.empty() ? GNUTLS_PKCS_PLAIN
+    const gnutls_datum_t dt {(uint8_t*)src, static_cast<unsigned>(src_size)};
+    int flags = password_ptr ? GNUTLS_PKCS_PLAIN
                 : ( GNUTLS_PKCS_PBES2_AES_128 | GNUTLS_PKCS_PBES2_AES_192  | GNUTLS_PKCS_PBES2_AES_256
                   | GNUTLS_PKCS_PKCS12_3DES   | GNUTLS_PKCS_PKCS12_ARCFOUR | GNUTLS_PKCS_PKCS12_RC2_40);
 

@@ -16,6 +16,11 @@ void dht_infohash_random(dht_infohash* h)
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::getRandom();
 }
 
+const char* dht_pkid_print(const dht_pkid* h)
+{
+    return reinterpret_cast<const dht::PkId*>(h)->to_c_str();
+}
+
 // dht::Blob
 void dht_blob_delete(dht_blob* data)
 {
@@ -26,7 +31,7 @@ dht_data_view dht_blob_get_data(const dht_blob* data)
 {
     dht_data_view view;
     view.data = reinterpret_cast<const dht::Blob*>(data)->data();
-    view.length = reinterpret_cast<const dht::Blob*>(data)->size();
+    view.size = reinterpret_cast<const dht::Blob*>(data)->size();
     return view;
 }
 
@@ -35,7 +40,7 @@ dht_data_view dht_value_get_data(const dht_value* data)
 {
     dht_data_view view;
     view.data = reinterpret_cast<const dht::Value*>(data)->data.data();
-    view.length = reinterpret_cast<const dht::Value*>(data)->data.size();
+    view.size = reinterpret_cast<const dht::Value*>(data)->data.size();
     return view;
 }
 
@@ -84,6 +89,23 @@ dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_
     auto rdata = new dht::Blob;
     *rdata = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->encrypt((const uint8_t*)data, data_size);
     return (dht_blob*)rdata;
+}
+
+dht_privatekey* dht_privatekey_generate(unsigned key_length_bits)
+{
+    if (key_length_bits == 0)
+        key_length_bits = 4096;
+    return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dht::crypto::PrivateKey::generate(key_length_bits)));
+}
+
+dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password)
+{
+    return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dat, dat_size, password));
+}
+
+dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* key)
+{
+    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(reinterpret_cast<const dht::crypto::PrivateKey*>(key)->getPublicKey()));
 }
 
 // dht::DhtRunner

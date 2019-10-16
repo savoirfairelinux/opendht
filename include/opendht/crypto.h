@@ -147,7 +147,8 @@ struct OPENDHT_PUBLIC PrivateKey
     PrivateKey(PrivateKey&& o) noexcept;
     PrivateKey& operator=(PrivateKey&& o) noexcept;
 
-    PrivateKey(const Blob& import, const std::string& password = {});
+    PrivateKey(const uint8_t* src, size_t src_size, const char* password = nullptr);
+    PrivateKey(const Blob& src, const std::string& password = {}) : PrivateKey(src.data(), src.size(), password.data()) {}
     ~PrivateKey();
     explicit operator bool() const { return key; }
 

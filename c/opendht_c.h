@@ -14,7 +14,7 @@ extern "C" {
 // Non-owning data view
 struct OPENDHT_C_PUBLIC dht_data_view {
     const uint8_t* data;
-    size_t length;
+    size_t size;
 };
 typedef struct dht_data_view dht_data_view;
 
@@ -38,6 +38,7 @@ OPENDHT_C_PUBLIC const char* dht_infohash_print(const dht_infohash* h);
 // dht::PkId
 struct OPENDHT_C_PUBLIC dht_pkid { uint8_t d[32]; };
 typedef struct dht_pkid dht_pkid;
+OPENDHT_C_PUBLIC const char* dht_pkid_print(const dht_pkid* h);
 
 // dht::crypto::PublicKey
 struct OPENDHT_C_PUBLIC dht_publickey;
@@ -54,6 +55,9 @@ OPENDHT_C_PUBLIC dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const 
 // dht::crypto::PrivateKey
 struct OPENDHT_C_PUBLIC dht_privatekey;
 typedef struct dht_privatekey dht_privatekey;
+OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_generate(unsigned key_length_bits);
+OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password);
+OPENDHT_C_PUBLIC dht_publickey* dht_privatekey_get_publickey(const dht_privatekey*);
 
 // dht::crypto::Certificate
 struct OPENDHT_C_PUBLIC dht_certificate;
