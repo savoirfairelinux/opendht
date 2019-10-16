@@ -118,11 +118,19 @@ dht_privatekey* dht_privatekey_generate(unsigned key_length_bits) {
 }
 
 dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password) {
-    return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dat, dat_size, password));
+    try {
+        return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dat, dat_size, password));
+    } catch (const dht::crypto::CryptoException& e) {
+        return nullptr;
+    }
 }
 
 dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* key) {
     return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(reinterpret_cast<const dht::crypto::PrivateKey*>(key)->getPublicKey()));
+}
+
+void dht_privatekey_delete(dht_privatekey* pk) {
+    delete reinterpret_cast<dht::crypto::PrivateKey*>(pk);
 }
 
 // dht::DhtRunner

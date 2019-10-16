@@ -63,6 +63,7 @@ typedef struct dht_privatekey dht_privatekey;
 OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_generate(unsigned key_length_bits);
 OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password);
 OPENDHT_C_PUBLIC dht_publickey* dht_privatekey_get_publickey(const dht_privatekey*);
+OPENDHT_C_PUBLIC void dht_privatekey_delete(dht_privatekey* pk);
 
 // dht::crypto::Certificate
 struct OPENDHT_C_PUBLIC dht_certificate;
@@ -74,11 +75,11 @@ typedef bool (*dht_value_cb)(const dht_value* value, bool expired, void* user_da
 typedef bool (*dht_done_cb)(bool ok, void* user_data);
 typedef bool (*dht_shutdown_cb)(void* user_data);
 
-// dht::DhtRunner
 struct OPENDHT_C_PUBLIC dht_op_token;
 typedef struct dht_op_token dht_op_token;
 OPENDHT_C_PUBLIC void dht_op_token_delete(dht_op_token* token);
 
+// dht::DhtRunner
 struct OPENDHT_C_PUBLIC dht_runner;
 typedef struct dht_runner dht_runner;
 OPENDHT_C_PUBLIC dht_runner* dht_runner_new();
