@@ -63,11 +63,12 @@ bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, si
 
 dht_blob dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size)
 {
+    auto rdata = new dht::Blob;
+    *rdata = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->encrypt((const uint8_t*)data, data_size);
     dht_blob ret;
-    ret.ptr = new dht::Blob;
-    *reinterpret_cast<dht::Blob*>(ret.ptr) = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->encrypt((const uint8_t*)data, data_size);
-    ret.data = reinterpret_cast<dht::Blob*>(ret.ptr)->data();
-    ret.data_length = reinterpret_cast<dht::Blob*>(ret.ptr)->size();
+    ret.data = rdata->data();
+    ret.data_length = rdata->size();
+    ret.ptr = rdata;
     return ret;
 }
 
@@ -101,6 +102,30 @@ void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_don
     }, [done_cb, cb_user_data](bool ok){
         done_cb(ok, cb_user_data);
     });
+}
+
+dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_cb cb, void* cb_user_data)
+{
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    auto hash = reinterpret_cast<const dht::InfoHash*>(h);
+    auto fret = new std::future<size_t>;
+    *fret = runner->listen(*hash, [cb,cb_user_data](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+        for (const auto& value : values) {
+            if (not cb(reinterpret_cast<dht_value*>(value.get()), expired, cb_user_data))
+                return false;
+        }
+        return true;
+    });
+    return (dht_op_token*)fret;
+}
+
+void
+dht_runner_cancel_listen(dht_runner* r, const dht_infohash* h, dht_op_token* t)
+{
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    auto hash = reinterpret_cast<const dht::InfoHash*>(h);
+    auto token = reinterpret_cast<std::future<size_t>*>(t);
+    runner->cancelListen(*hash, std::move(*token));
 }
 
 #ifdef __cplusplus

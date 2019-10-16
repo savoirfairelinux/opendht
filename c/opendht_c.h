@@ -61,6 +61,10 @@ typedef bool (*dht_done_cb)(bool ok, void* user_data);
 typedef bool (*dht_shutdown_cb)(void* user_data);
 
 // dht::DhtRunner
+struct OPENDHT_C_PUBLIC dht_op_token;
+typedef struct dht_op_token dht_op_token;
+OPENDHT_C_PUBLIC void dht_op_token_delete(dht_op_token* token);
+
 struct OPENDHT_C_PUBLIC dht_runner;
 typedef struct dht_runner dht_runner;
 OPENDHT_C_PUBLIC dht_runner* dht_runner_new();
@@ -68,6 +72,8 @@ OPENDHT_C_PUBLIC void dht_runner_delete(dht_runner* runner);
 OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
 OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len);
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
+OPENDHT_C_PUBLIC dht_op_token* dht_runner_listen(dht_runner* runner, const dht_infohash* hash, dht_value_cb cb, void* cb_user_data);
+OPENDHT_C_PUBLIC void dht_runner_cancel_listen(dht_runner* runner, const dht_infohash* hash, dht_op_token* token);
 
 #ifdef __cplusplus
 }
