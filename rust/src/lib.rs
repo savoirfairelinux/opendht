@@ -2,7 +2,10 @@ extern crate libc;
 use std::fmt;
 use std::ffi::CStr;
 use std::ffi::CString;
-use libc::{c_char, c_void, in_port_t, sockaddr, socklen_t};
+use std::ptr;
+use std::str;
+use std::slice;
+use libc::{c_char, c_void, in_port_t, size_t, uint8_t};
 
 const HASH_LEN: usize = 20;
 
@@ -13,29 +16,39 @@ pub struct InfoHash
 }
 
 #[repr(C)]
-pub struct DhtRunner;
+pub struct DhtRunner
+{
+    _opaque: [u8; 0]
+}
 
 #[repr(C)]
-pub struct Value;
+pub struct Value
+{
+    _opaque: [u8; 0]
+}
 
+#[repr(C)]
+pub struct DataView
+{
+    data: *const uint8_t,
+    size: size_t
+}
 
-// TODO remove Box?
-// TODO callbacks
-// TODO dhtnode-rust
 
 #[link(name = "opendht-c")]
-extern {
+extern {    
     fn dht_infohash_print(h: *const InfoHash) -> *mut c_char;
     fn dht_infohash_random(h: *mut InfoHash);
+    fn dht_infohash_get(h: *mut InfoHash, dat: *mut uint8_t, dat_size: size_t);
 
-
+    fn dht_value_get_data(data: *const Value) -> DataView;
 
     fn dht_runner_new() -> *mut DhtRunner;
     fn dht_runner_delete(dht: *mut DhtRunner);
     fn dht_runner_run(dht: *mut DhtRunner, port: in_port_t);
-    fn dht_runner_ping(dht: *mut DhtRunner, addr: *mut sockaddr, addr_len: socklen_t);
+    fn dht_runner_bootstrap(dht: *mut DhtRunner, host: *const c_char, service: *const c_char);
     fn dht_runner_get(dht: *mut DhtRunner, h: *const InfoHash,
-                      get_cb: extern fn(*mut Value, i32, *mut c_void),
+                      get_cb: extern fn(*mut Value, *mut c_void),
                       done_cb: extern fn(bool, *mut c_void),
                       cb_user_data: *mut c_void);
 }
@@ -54,6 +67,15 @@ impl InfoHash {
         }
         h
     }
+
+    pub fn get(data: &str) -> InfoHash {
+        let mut h = InfoHash::new();
+        unsafe {
+            let c_str = CString::new(data).unwrap();
+            dht_infohash_get(&mut h, c_str.as_ptr() as *mut u8, data.len());
+        }
+        h
+    }
 }
 
 impl fmt::Display for InfoHash {
@@ -66,6 +88,7 @@ impl fmt::Display for InfoHash {
         }
     }
 }
+
 
 impl DhtRunner {
     pub fn new() -> Box<DhtRunner> {
@@ -80,13 +103,19 @@ impl DhtRunner {
         }
     }
 
-    pub fn ping(&mut self, addr: &CString, addr_len: u32) {
+    pub fn bootstrap(&mut self, host: &CString, service: &CString) {
         unsafe {
-            let mut s = sockaddr {
-                sa_family: 0 /* TODO AF_UNSPEC */,
-                sa_data: [0; 14] /* TODO */,
-            };
-            dht_runner_ping(&mut *self, &mut s, addr_len)
+            dht_runner_bootstrap(&mut *self, host.as_ptr(), service.as_ptr())
+        }
+    }
+
+    pub fn get(&mut self, h: &InfoHash,
+                get_cb: extern fn(*mut Value, *mut c_void),
+                done_cb: extern fn(bool, *mut c_void),
+                cb_user_data: *mut c_void) {
+        
+        unsafe {
+            dht_runner_get(&mut *self, h, get_cb, done_cb, cb_user_data)
         }
     }
 }
@@ -95,6 +124,24 @@ impl Drop for DhtRunner {
     fn drop(&mut self) {
         unsafe {
             dht_runner_delete(&mut *self)
+        }
+    }
+}
+
+impl Value {
+    fn dataview(&self) -> DataView {
+        unsafe {
+            dht_value_get_data(self)
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            let dataview = self.dataview();
+            let slice = slice::from_raw_parts(dataview.data, dataview.size);
+            write!(f, "{}", str::from_utf8(slice).unwrap_or(""))
         }
     }
 }
