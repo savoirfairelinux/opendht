@@ -42,6 +42,8 @@ extern {
     fn dht_infohash_get(h: *mut InfoHash, dat: *mut uint8_t, dat_size: size_t);
 
     fn dht_value_get_data(data: *const Value) -> DataView;
+    fn dht_value_unref(data: *mut Value);
+    fn dht_value_new(data: *const uint8_t, size: size_t) -> *mut Value;
 
     fn dht_runner_new() -> *mut DhtRunner;
     fn dht_runner_delete(dht: *mut DhtRunner);
@@ -49,6 +51,9 @@ extern {
     fn dht_runner_bootstrap(dht: *mut DhtRunner, host: *const c_char, service: *const c_char);
     fn dht_runner_get(dht: *mut DhtRunner, h: *const InfoHash,
                       get_cb: extern fn(*mut Value, *mut c_void),
+                      done_cb: extern fn(bool, *mut c_void),
+                      cb_user_data: *mut c_void);
+    fn dht_runner_put(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
                       done_cb: extern fn(bool, *mut c_void),
                       cb_user_data: *mut c_void);
 }
@@ -118,6 +123,15 @@ impl DhtRunner {
             dht_runner_get(&mut *self, h, get_cb, done_cb, cb_user_data)
         }
     }
+
+    pub fn put(&mut self, h: &InfoHash, v: *const Value,
+                done_cb: extern fn(bool, *mut c_void),
+                cb_user_data: *mut c_void) {
+        
+        unsafe {
+            dht_runner_put(&mut *self, h, v, done_cb, cb_user_data)
+        }
+    }
 }
 
 impl Drop for DhtRunner {
@@ -129,9 +143,24 @@ impl Drop for DhtRunner {
 }
 
 impl Value {
+    pub fn new(data: &str) -> Box<Value> {
+        unsafe {
+            Box::from_raw(dht_value_new(data.as_bytes().as_ptr(),
+                data.as_bytes().len()))
+        }
+    }
+
     fn dataview(&self) -> DataView {
         unsafe {
             dht_value_get_data(self)
+        }
+    }
+}
+
+impl Drop for Value {
+    fn drop(&mut self) {
+        unsafe {
+            dht_value_unref(&mut *self)
         }
     }
 }
