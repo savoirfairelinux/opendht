@@ -54,8 +54,8 @@ def pong(node, h):
 	loop.call_soon_threadsafe(ping, node, h)
 	return True
 
-ping_node.listen(loc_ping, lambda v: pong(pong_node, loc_pong))
-pong_node.listen(loc_pong, lambda v: pong(ping_node, loc_ping))
+ping_node.listen(loc_ping, lambda v, e: pong(pong_node, loc_pong) if not e else True)
+pong_node.listen(loc_pong, lambda v, e: pong(ping_node, loc_ping) if not e else True)
 
 ping(pong_node, loc_ping)
 

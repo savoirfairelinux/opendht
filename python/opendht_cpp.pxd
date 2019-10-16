@@ -185,6 +185,7 @@ cdef extern from "opendht/node.h" namespace "dht":
 cdef extern from "opendht/callbacks.h" namespace "dht":
     ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
+    ctypedef bool (*ValueCallbackRaw)(shared_ptr[Value] values, bool expired, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     ctypedef void (*DoneCallbackSimpleRaw)(bool done, void *user_data)
 
@@ -192,6 +193,8 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
         ShutdownCallback() except +
     cppclass GetCallback:
         GetCallback() except +
+    cppclass ValueCallback:
+        ValueCallback() except +
     cppclass DoneCallback:
         DoneCallback() except +
     cppclass DoneCallbackSimple:
@@ -199,6 +202,7 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
 
     cdef ShutdownCallback bindShutdownCb(ShutdownCallbackRaw cb, void *user_data)
     cdef GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
+    cdef ValueCallback bindValueCb(ValueCallbackRaw cb, void *user_data)
     cdef DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
     cdef DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw cb, void *user_data)
 
@@ -234,7 +238,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         string getSearchesLog(sa_family_t af) const
         void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb, nullptr_t f, Where w)
         void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb)
-        ListenToken listen(InfoHash key, GetCallback get_cb)
+        ListenToken listen(InfoHash key, ValueCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)
         vector[unsigned] getNodeMessageStats(bool i)
 

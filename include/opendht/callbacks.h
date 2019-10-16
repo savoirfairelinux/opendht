@@ -130,9 +130,7 @@ using ShutdownCallback = std::function<void()>;
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 
 typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
-
-OPENDHT_PUBLIC GetCallbackSimple bindGetCb(const GetCallbackRaw& raw_cb, void* user_data);
-OPENDHT_PUBLIC GetCallback bindGetCb(const GetCallbackSimple& cb);
+typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data);
 
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
 typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
@@ -142,6 +140,9 @@ typedef bool (*FilterRaw)(const Value&, void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
+OPENDHT_PUBLIC GetCallbackSimple bindGetCb(const GetCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC GetCallback bindGetCb(const GetCallbackSimple& cb);
+OPENDHT_PUBLIC ValueCallback bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data);
 OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data);
 OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackSimple donecb);
 OPENDHT_PUBLIC DoneCallback bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data);

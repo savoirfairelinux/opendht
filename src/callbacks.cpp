@@ -24,6 +24,18 @@ bindGetCb(const GetCallbackSimple& cb)
     };
 }
 
+ValueCallback
+bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data)
+{
+    if (not raw_cb) return {};
+    return [=](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+        for (const auto& v : values)
+            if (not raw_cb(v, expired, user_data))
+                return false;
+        return true;
+    };
+}
+
 ShutdownCallback
 bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data)
 {

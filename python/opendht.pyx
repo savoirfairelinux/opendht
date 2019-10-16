@@ -65,6 +65,14 @@ cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with
     pv._value = value
     return cb(pv) if not f or f(pv) else True
 
+cdef inline bool value_callback(shared_ptr[cpp.Value] value, bool expired, void *user_data) with gil:
+    cbs = <object>user_data
+    cb = cbs['valcb']
+    f = cbs['filter'] if 'filter' in cbs else None
+    pv = Value()
+    pv._value = value
+    return cb(pv, expired) if not f or f(pv) else True
+
 cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
     node_ids = []
     for n in deref(nodes):
@@ -591,14 +599,14 @@ cdef class DhtRunner(_WithID):
                 while pending > 0:
                     lock.wait()
             return ok
-    def listen(self, InfoHash key, get_cb):
+    def listen(self, InfoHash key, value_cb):
         t = ListenToken()
         t._h = key._infohash
-        cb_obj = {'get':get_cb}
+        cb_obj = {'valcb':value_cb}
         t._cb['cb'] = cb_obj
         # avoid the callback being destructed if the token is destroyed
         ref.Py_INCREF(cb_obj)
-        t._t = self.thisptr.get().listen(t._h, cpp.bindGetCb(get_callback, <void*>cb_obj)).share()
+        t._t = self.thisptr.get().listen(t._h, cpp.bindValueCb(value_callback, <void*>cb_obj)).share()
         return t
     def cancelListen(self, ListenToken token):
         self.thisptr.get().cancelListen(token._h, token._t)
