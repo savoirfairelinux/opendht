@@ -85,8 +85,7 @@ int dht_publickey_unpack(dht_publickey* pk, const uint8_t* dat, size_t dat_size)
     return 0;
 }
 
-int dht_publickey_pack(dht_publickey* pk, char* out, size_t* outlen)
-{
+int dht_publickey_pack(dht_publickey* pk, char* out, size_t* outlen) {
     return gnutls_pubkey_export(reinterpret_cast<dht::crypto::PublicKey*>(pk)->pk, GNUTLS_X509_FMT_DER, out, outlen);
 }
 
@@ -102,32 +101,27 @@ dht_pkid dht_publickey_get_long_id(const dht_publickey* pk) {
     return h;
 }
 
-bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, size_t data_size, const char* signature, size_t signature_size)
-{
+bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, size_t data_size, const char* signature, size_t signature_size) {
     return reinterpret_cast<const dht::crypto::PublicKey*>(pk)->checkSignature((const uint8_t*)data, data_size, (const uint8_t*)signature, signature_size);
 }
 
-dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size)
-{
+dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size) {
     auto rdata = new dht::Blob;
     *rdata = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->encrypt((const uint8_t*)data, data_size);
     return (dht_blob*)rdata;
 }
 
-dht_privatekey* dht_privatekey_generate(unsigned key_length_bits)
-{
+dht_privatekey* dht_privatekey_generate(unsigned key_length_bits) {
     if (key_length_bits == 0)
         key_length_bits = 4096;
     return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dht::crypto::PrivateKey::generate(key_length_bits)));
 }
 
-dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password)
-{
+dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password) {
     return reinterpret_cast<dht_privatekey*>(new dht::crypto::PrivateKey(dat, dat_size, password));
 }
 
-dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* key)
-{
+dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* key) {
     return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(reinterpret_cast<const dht::crypto::PrivateKey*>(key)->getPublicKey()));
 }
 
@@ -140,26 +134,22 @@ void dht_runner_delete(dht_runner* runner) {
     delete reinterpret_cast<dht::DhtRunner*>(runner);
 }
 
-void dht_runner_run(dht_runner* r, in_port_t port)
-{
+void dht_runner_run(dht_runner* r, in_port_t port) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->run(port, {}, true);
 }
 
-void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len)
-{
+void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->bootstrap(dht::SockAddr(addr, addr_len));
 }
 
-void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service)
-{
+void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->bootstrap(host, service);
 }
 
-void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data)
-{
+void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     runner->get(*hash, [cb,cb_user_data](std::shared_ptr<dht::Value> value){
@@ -170,8 +160,7 @@ void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_don
     });
 }
 
-dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_cb cb, void* cb_user_data)
-{
+dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_cb cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto fret = new std::future<size_t>;
@@ -185,16 +174,18 @@ dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_
     return (dht_op_token*)fret;
 }
 
-void dht_runner_cancel_listen(dht_runner* r, const dht_infohash* h, dht_op_token* t)
-{
+void dht_runner_cancel_listen(dht_runner* r, const dht_infohash* h, dht_op_token* t) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto token = reinterpret_cast<std::future<size_t>*>(t);
     runner->cancelListen(*hash, std::move(*token));
 }
 
-void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data)
-{
+void dht_op_token_delete(dht_op_token* token) {
+    delete reinterpret_cast<std::future<size_t>*>(token);
+}
+
+void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto value = reinterpret_cast<const ValueSp*>(v);
@@ -204,8 +195,7 @@ void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dh
     });
 }
 
-void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_data)
-{
+void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->shutdown([done_cb, cb_user_data](){
         if (done_cb)
