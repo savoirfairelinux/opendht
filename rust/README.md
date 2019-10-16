@@ -13,3 +13,9 @@ cargo build
 ```
 cargo test
 ```
+
+## Run dht node
+
+```
+cargo run --example dhtnode
+```
