@@ -89,6 +89,7 @@ OPENDHT_C_PUBLIC void dht_runner_bootstrap(dht_runner* runner, const char* host,
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_op_token* dht_runner_listen(dht_runner* runner, const dht_infohash* hash, dht_value_cb cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_cancel_listen(dht_runner* runner, const dht_infohash* hash, dht_op_token* token);
+OPENDHT_C_PUBLIC void dht_runner_put(dht_runner* runner, const dht_infohash* hash, const dht_value* value, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_shutdown(dht_runner* runner, dht_shutdown_cb done_cb, void* cb_user_data);
 
 #ifdef __cplusplus

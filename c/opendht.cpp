@@ -165,7 +165,8 @@ void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_don
     runner->get(*hash, [cb,cb_user_data](std::shared_ptr<dht::Value> value){
         return cb(reinterpret_cast<const dht_value*>(&value), cb_user_data);
     }, [done_cb, cb_user_data](bool ok){
-        done_cb(ok, cb_user_data);
+        if (done_cb)
+            done_cb(ok, cb_user_data);
     });
 }
 
@@ -192,11 +193,23 @@ void dht_runner_cancel_listen(dht_runner* r, const dht_infohash* h, dht_op_token
     runner->cancelListen(*hash, std::move(*token));
 }
 
+void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data)
+{
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    auto hash = reinterpret_cast<const dht::InfoHash*>(h);
+    auto value = reinterpret_cast<const ValueSp*>(v);
+    runner->put(*hash, *value, [done_cb, cb_user_data](bool ok){
+        if (done_cb)
+            done_cb(ok, cb_user_data);
+    });
+}
+
 void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_data)
 {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     runner->shutdown([done_cb, cb_user_data](){
-        done_cb(cb_user_data);
+        if (done_cb)
+            done_cb(cb_user_data);
     });
 }
 
