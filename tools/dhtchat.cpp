@@ -109,6 +109,8 @@ main(int argc, char **argv)
 
         bool connected {false};
         InfoHash room;
+        std::future<size_t> token;
+
         const InfoHash myid = dht.getId();
 
 #ifndef WIN32_NATIVE
@@ -139,7 +141,7 @@ main(int argc, char **argv)
                         std::cout << "Joining h(" << idstr << ") = " << room << std::endl;
                     }
 
-                    dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
+                    token = dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
                         if (msg.from != myid)
                             std::cout << msg.from.toString() << " at " << printTime(msg.date)
                                       << " (took " << print_dt(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
@@ -153,6 +155,7 @@ main(int argc, char **argv)
             } else {
                 auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 if (op == "d") {
+                    dht.cancelListen(room, std::move(token));
                     connected = false;
                     continue;
                 } else if (op == "e") {
