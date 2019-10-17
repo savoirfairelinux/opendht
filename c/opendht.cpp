@@ -30,7 +30,7 @@ void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size)
 }
 
 bool dht_infohash_is_zero(const dht_infohash* h) {
-    return static_cast<bool>(*reinterpret_cast<const dht::InfoHash*>(h));
+    return !static_cast<bool>(*reinterpret_cast<const dht::InfoHash*>(h));
 }
 
 const char* dht_pkid_print(const dht_pkid* h)
