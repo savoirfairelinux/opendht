@@ -36,6 +36,12 @@ impl Value {
             dht_value_get_data(self)
         }
     }
+
+    pub fn boxed(&mut self) -> Box<Value> {
+        unsafe {
+            Box::from_raw(dht_value_ref(self))
+        }
+    }
 }
 
 impl Drop for Value {

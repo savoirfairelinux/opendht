@@ -19,9 +19,42 @@
 use crate::ffi::*;
 use libc::c_void;
 use std::ffi::CString;
-use std::fmt;
 
 pub use crate::ffi::{ DhtRunner, OpToken, Value };
+
+struct GetHandler<'a>
+{
+    get_cb: &'a mut (dyn FnMut(Box<Value>)),
+    done_cb: &'a mut (dyn FnMut(bool))
+}
+
+impl<'a> GetHandler<'a>
+{
+    fn get_cb(&mut self, v: Box<Value>) {
+        (self.get_cb)(v)
+    }
+
+    fn done_cb(&mut self, ok: bool) {
+        (self.done_cb)(ok)
+    }
+}
+
+
+extern fn get_handler_cb(v: *mut Value, ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+    let handler: &mut GetHandler = unsafe { &mut *(ptr as *mut GetHandler) };
+    unsafe {
+        handler.get_cb((*v).boxed());
+        println!("{}", *v);
+    }
+}
+
+extern fn done_handler_cb(ok: bool, ptr: *mut c_void) {
+    let handler: &mut GetHandler = unsafe { &mut *(ptr as *mut GetHandler) };
+    (*handler.done_cb)(ok)
+}
 
 impl DhtRunner {
     pub fn new() -> Box<DhtRunner> {
@@ -53,6 +86,33 @@ impl DhtRunner {
             dht_runner_get(&mut *self, h, get_cb, done_cb, cb_user_data)
         }
     }
+
+    /*pub fn get2<'a>(&mut self, h: &InfoHash,
+                get_cb: impl Fn(Box<Value>) + 'a,
+                done_cb: impl Fn(bool) + 'a) {
+        let mut handler = GetHandler {
+            get_cb: Box::new(get_cb),
+            done_cb: Box::new(done_cb),
+        };
+        let ptr = &mut handler as *mut _ as *mut c_void;
+        unsafe {
+            dht_runner_get(&mut *self, h, get_handler_cb, done_handler_cb, ptr)
+        }
+    }*/
+
+    pub fn get2<'a>(&mut self, h: &InfoHash,
+                get_cb: &'a mut(dyn FnMut(Box<Value>)),
+                done_cb: &'a mut(dyn FnMut(bool))) {
+        let mut handler = GetHandler {
+            get_cb,
+            done_cb,
+        };
+        let ptr = &mut handler as *mut _ as *mut c_void;
+        unsafe {
+            dht_runner_get(&mut *self, h, get_handler_cb, done_handler_cb, ptr)
+        }
+    }
+
 
     pub fn put(&mut self, h: &InfoHash, v: Box<Value>,
                done_cb: extern fn(bool, *mut c_void),

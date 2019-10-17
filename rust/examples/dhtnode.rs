@@ -21,8 +21,14 @@ extern crate opendht;
 use std::{thread, time};
 use libc::c_void;
 
+use std::rc::Rc;
+use std::cell::RefCell;
+
 use opendht::{InfoHash,DhtRunner,Value};
 
+use std::sync::{Arc, Mutex};
+
+/*
 extern fn get_cb(v: *mut Value, ptr: *mut c_void) {
     if ptr.is_null() {
         return;
@@ -46,13 +52,7 @@ extern fn value_cb(v: *mut Value, expired: bool, ptr: *mut c_void) {
 extern fn done_cb(ok: bool, ptr: *mut c_void) {
     let _handler: &mut Handler = unsafe { &mut *(ptr as *mut Handler) };
     println!("In done - {}", ok);
-}
-
-struct Handler {
-    _data: u8,
-}
-
-
+}*/
 fn main() {
     println!("{}", InfoHash::random());
     println!("{}", InfoHash::new());
@@ -64,23 +64,37 @@ fn main() {
     let mut dht = DhtRunner::new();
     dht.run(1412);
     dht.bootstrap("bootstrap.jami.net", 4222);
-    let ten_secs = time::Duration::from_secs(10);
-    // TODO lambda instead
-    let mut handler = Handler {
-        _data: 8,
-    };
-    let ptr = &mut handler as *mut _ as *mut c_void;
 
+
+    let data = 42;
+    let mut get_cb = |v: Box<Value>| {
+        println!("GET CB - data: {:?} - v: {}", data, v);
+    };
+    let mut done_cb = |ok: bool| { 
+        println!("DONE CB - data: {:?} - ok: {}", data, ok);
+    };
+    
+    dht.get2(&InfoHash::get("alice"), &mut get_cb, &mut done_cb);
+
+    loop {}
+
+
+    //let ten_secs = time::Duration::from_secs(10);
+    // TODO lambda instead
+    //let mut handler = Handler {
+    //    _data: 8,
+    //};
+    //let ptr = &mut handler as *mut _ as *mut c_void;
     //println!("Start listening /foo");
     //let token = dht.listen(&InfoHash::get("foo"), value_cb, ptr);
     //thread::sleep(ten_secs);
     //println!("Stop listening /foo");
     //dht.cancel_listen(&InfoHash::get("foo"), token);
     //loop {
-        println!("Get /alice");
-        dht.get(&InfoHash::get("alice"), get_cb, done_cb, ptr);
-        let v = Value::new("hi!");
-        dht.put(&InfoHash::get("bob"), v, done_cb, ptr);
+        //println!("Get /alice");
+        //dht.get(&InfoHash::get("alice"), get_cb, done_cb, ptr);
+        //let v = Value::new("hi!");
+        //dht.put(&InfoHash::get("bob"), v, done_cb, ptr);
         //thread::sleep(ten_secs);
     //}
 }
