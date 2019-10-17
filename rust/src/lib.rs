@@ -96,9 +96,11 @@ impl DhtRunner {
         }
     }
 
-    pub fn bootstrap(&mut self, host: &CString, service: &CString) {
+    pub fn bootstrap(&mut self, host: &str, service: u16) {
         unsafe {
-            dht_runner_bootstrap(&mut *self, host.as_ptr(), service.as_ptr())
+            dht_runner_bootstrap(&mut *self,
+                CString::new(host).unwrap().as_ptr(),
+                CString::new(service.to_string()).unwrap().as_ptr())
         }
     }
 
@@ -280,21 +282,5 @@ impl Drop for PrivateKey {
         unsafe {
             dht_privatekey_delete(&mut *self)
         }
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-
-    #[test]
-    fn print_random_infohash() {
-        unsafe {
-            let h = InfoHash {};
-            println!("{:?}", dht_infohash_print(&h));
-        }
-        //println!("{:?}", InfoHash::print(&*InfoHash::new()));
     }
 }

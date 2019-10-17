@@ -45,11 +45,7 @@ fn main() {
 
     let mut dht = DhtRunner::new();
     dht.run(1412);
-    // TODO take slice in boostrap
-    dht.bootstrap(
-        &CString::new("bootstrap.jami.net").unwrap(),
-        &CString::new("4222").unwrap()
-    );
+    dht.bootstrap("bootstrap.jami.net", 4222);
     let ten_secs = time::Duration::from_secs(10);
     // TODO lambda instead
     let mut handler = Handler {
