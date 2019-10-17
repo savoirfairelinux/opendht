@@ -21,38 +21,8 @@ extern crate opendht;
 use std::{thread, time};
 use libc::c_void;
 
-use std::rc::Rc;
-use std::cell::RefCell;
-
 use opendht::{InfoHash,DhtRunner,Value};
 
-use std::sync::{Arc, Mutex};
-
-/*
-extern fn get_cb(v: *mut Value, ptr: *mut c_void) {
-    if ptr.is_null() {
-        return;
-    }
-    let _handler: &mut Handler = unsafe { &mut *(ptr as *mut Handler) };
-    unsafe {
-        println!("Got data: {}", *v);
-    }
-}
-
-extern fn value_cb(v: *mut Value, expired: bool, ptr: *mut c_void) {
-    if ptr.is_null() {
-        return;
-    }
-    let _handler: &mut Handler = unsafe { &mut *(ptr as *mut Handler) };
-    unsafe {
-        println!("Got data: {} - expired: {}", *v, expired);
-    }
-}
-
-extern fn done_cb(ok: bool, ptr: *mut c_void) {
-    let _handler: &mut Handler = unsafe { &mut *(ptr as *mut Handler) };
-    println!("In done - {}", ok);
-}*/
 fn main() {
     println!("{}", InfoHash::random());
     println!("{}", InfoHash::new());
