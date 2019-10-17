@@ -19,13 +19,13 @@
 extern crate opendht;
 // TODO remove dead code warning
 use libc::c_void;
+use std::{ thread, time };
 
-use opendht::{InfoHash,DhtRunner,Value};
+use opendht::{ InfoHash, DhtRunner, Value };
 
 fn main() {
     println!("{}", InfoHash::random());
     println!("{}", InfoHash::new());
-    // TODO inverted is_zero
     println!("{}", InfoHash::new().is_zero());
     println!("{}", InfoHash::get("alice"));
     println!("{}", InfoHash::get("alice").is_zero());
@@ -38,33 +38,25 @@ fn main() {
     let /* mut */ data = 42;
     let mut get_cb = |v: Box<Value>| {
         //data += 1;
-        println!("GET CB - data: {:?} - v: {}", data, v);
+        println!("GET: VALUE CB - data: {} - v: {}", data, v);
     };
-    let mut done_cb = |ok: bool| { 
-        println!("DONE CB - data: {:?} - ok: {}", data, ok);
+    let mut done_cb = |ok: bool| {
+        println!("GET: DONE CB - data: {} - ok: {}", data, ok);
     };
     
     dht.get(&InfoHash::get("alice"), &mut get_cb, &mut done_cb);
 
-    loop {}
+    let mut put_done_cb = |ok: bool| {
+        println!("PUT: DONE CB - data: {} - ok: {}", data, ok);
+    };
+    dht.put(&InfoHash::get("bob"), Value::new("hi!"), &mut put_done_cb);
 
-
-    //let ten_secs = time::Duration::from_secs(10);
-    // TODO lambda instead
-    //let mut handler = Handler {
-    //    _data: 8,
-    //};
-    //let ptr = &mut handler as *mut _ as *mut c_void;
-    //println!("Start listening /foo");
-    //let token = dht.listen(&InfoHash::get("foo"), value_cb, ptr);
-    //thread::sleep(ten_secs);
-    //println!("Stop listening /foo");
-    //dht.cancel_listen(&InfoHash::get("foo"), token);
-    //loop {
-        //println!("Get /alice");
-        //dht.get(&InfoHash::get("alice"), get_cb, done_cb, ptr);
-        //let v = Value::new("hi!");
-        //dht.put(&InfoHash::get("bob"), v, done_cb, ptr);
-        //thread::sleep(ten_secs);
-    //}
+    println!("Start listening /foo");
+    let mut value_cb = |v, expired| {
+        println!("LISTEN: DONE CB - data: {} - v: {} - expired: {}", data, v, expired);
+    };
+    let token = dht.listen(&InfoHash::get("foo"), &mut value_cb);
+    let one_min = time::Duration::from_secs(60);
+    thread::sleep(one_min);
+    dht.cancel_listen(&InfoHash::get("foo"), token);
 }
