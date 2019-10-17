@@ -112,12 +112,12 @@ impl DhtRunner {
         }
     }
 
-    pub fn put(&mut self, h: &InfoHash, v: *const Value,
+    pub fn put(&mut self, h: &InfoHash, v: Box<Value>,
                done_cb: extern fn(bool, *mut c_void),
                cb_user_data: *mut c_void) {
 
         unsafe {
-            dht_runner_put(&mut *self, h, v, done_cb, cb_user_data)
+            dht_runner_put(&mut *self, h, &*v, done_cb, cb_user_data)
         }
     }
 
