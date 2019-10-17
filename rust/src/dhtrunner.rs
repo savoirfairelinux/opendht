@@ -39,21 +39,59 @@ impl<'a> GetHandler<'a>
     }
 }
 
-
 extern fn get_handler_cb(v: *mut Value, ptr: *mut c_void) {
     if ptr.is_null() {
         return;
     }
-    let handler: &mut GetHandler = unsafe { &mut *(ptr as *mut GetHandler) };
     unsafe {
-        handler.get_cb((*v).boxed());
-        println!("{}", *v);
+        let handler = ptr as *mut GetHandler;
+        (*handler).get_cb((*v).boxed())
     }
 }
 
 extern fn done_handler_cb(ok: bool, ptr: *mut c_void) {
-    let handler: &mut GetHandler = unsafe { &mut *(ptr as *mut GetHandler) };
-    (*handler.done_cb)(ok)
+    unsafe {
+        let handler = Box::from_raw(ptr as *mut GetHandler);
+        (*handler.done_cb)(ok)
+    }
+}
+
+struct PutHandler<'a>
+{
+    done_cb: &'a mut(dyn FnMut(bool))
+}
+
+impl<'a> PutHandler<'a>
+{
+    fn done_cb(&mut self, ok: bool) {
+        (self.done_cb)(ok)
+    }
+}
+
+extern fn put_handler_done(ok: bool, ptr: *mut c_void) {
+    unsafe {
+        let handler = Box::from_raw(ptr as *mut PutHandler);
+        (*handler.done_cb)(ok)
+    }
+}
+
+struct ListenHandler<'a>
+{
+    cb: &'a mut(dyn FnMut(Box<Value>, bool))
+}
+
+impl<'a> ListenHandler<'a>
+{
+    fn cb(&mut self, v: Box<Value>, expired: bool) {
+        (self.cb)(v, expired)
+    }
+}
+
+extern fn listen_handler(v: *mut Value, expired: bool, ptr: *mut c_void) {
+    unsafe {
+        let handler = ptr as *mut ListenHandler;
+        (*handler).cb((*v).boxed(), expired)
+    }
 }
 
 impl DhtRunner {
@@ -80,36 +118,41 @@ impl DhtRunner {
     pub fn get<'a>(&mut self, h: &InfoHash,
                 get_cb: &'a mut(dyn FnMut(Box<Value>)),
                 done_cb: &'a mut(dyn FnMut(bool))) {
-        let mut handler = GetHandler {
+        let mut handler = Box::new(GetHandler {
             get_cb,
             done_cb,
-        };
-        let ptr = &mut handler as *mut _ as *mut c_void;
+        });
+        let mut handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_get(&mut *self, h, get_handler_cb, done_handler_cb, ptr)
+            dht_runner_get(&mut *self, h, get_handler_cb, done_handler_cb, handler)
         }
     }
 
-
-    pub fn put(&mut self, h: &InfoHash, v: Box<Value>,
-               done_cb: extern fn(bool, *mut c_void),
-               cb_user_data: *mut c_void) {
-
+    pub fn put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
+                done_cb: &'a mut(dyn FnMut(bool))) {
+        let mut handler = Box::new(PutHandler {
+            done_cb,
+        });
+        let mut handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put(&mut *self, h, &*v, done_cb, cb_user_data)
+            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler)
         }
     }
 
-    pub fn listen(&mut self, h: &InfoHash,
-                  cb: extern fn(*mut Value, bool, *mut c_void),
-                  cb_user_data: *mut c_void) -> Box<OpToken> {
+    pub fn listen<'a>(&mut self, h: &InfoHash,
+                cb: &'a mut(dyn FnMut(Box<Value>, bool))) -> Box<OpToken> {
+        let mut handler = Box::new(ListenHandler {
+            cb,
+        });
+        let mut handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            Box::from_raw(dht_runner_listen(&mut *self, h, cb, cb_user_data))
+            Box::from_raw(dht_runner_listen(&mut *self, h, listen_handler, handler))
         }
     }
 
     pub fn cancel_listen(&mut self, h: &InfoHash, token: Box<OpToken>) {
-
+        // TODO: handler is not dropped!
+        // NOTE: MEMORY LEAK!
         unsafe {
             dht_runner_cancel_listen(&mut *self, h, &*token)
         }
