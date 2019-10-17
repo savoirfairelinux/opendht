@@ -24,8 +24,8 @@ pub use crate::ffi::{ DhtRunner, OpToken, Value };
 
 struct GetHandler<'a>
 {
-    get_cb: &'a mut (dyn FnMut(Box<Value>)),
-    done_cb: &'a mut (dyn FnMut(bool))
+    get_cb: &'a mut(dyn FnMut(Box<Value>)),
+    done_cb: &'a mut(dyn FnMut(bool))
 }
 
 impl<'a> GetHandler<'a>
@@ -77,30 +77,7 @@ impl DhtRunner {
         }
     }
 
-    pub fn get(&mut self, h: &InfoHash,
-               get_cb: extern fn(*mut Value, *mut c_void),
-               done_cb: extern fn(bool, *mut c_void),
-               cb_user_data: *mut c_void) {
-
-        unsafe {
-            dht_runner_get(&mut *self, h, get_cb, done_cb, cb_user_data)
-        }
-    }
-
-    /*pub fn get2<'a>(&mut self, h: &InfoHash,
-                get_cb: impl Fn(Box<Value>) + 'a,
-                done_cb: impl Fn(bool) + 'a) {
-        let mut handler = GetHandler {
-            get_cb: Box::new(get_cb),
-            done_cb: Box::new(done_cb),
-        };
-        let ptr = &mut handler as *mut _ as *mut c_void;
-        unsafe {
-            dht_runner_get(&mut *self, h, get_handler_cb, done_handler_cb, ptr)
-        }
-    }*/
-
-    pub fn get2<'a>(&mut self, h: &InfoHash,
+    pub fn get<'a>(&mut self, h: &InfoHash,
                 get_cb: &'a mut(dyn FnMut(Box<Value>)),
                 done_cb: &'a mut(dyn FnMut(bool))) {
         let mut handler = GetHandler {

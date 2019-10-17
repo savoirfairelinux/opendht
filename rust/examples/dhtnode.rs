@@ -18,7 +18,6 @@
 
 extern crate opendht;
 // TODO remove dead code warning
-use std::{thread, time};
 use libc::c_void;
 
 use opendht::{InfoHash,DhtRunner,Value};
@@ -36,15 +35,16 @@ fn main() {
     dht.bootstrap("bootstrap.jami.net", 4222);
 
 
-    let data = 42;
+    let /* mut */ data = 42;
     let mut get_cb = |v: Box<Value>| {
+        //data += 1;
         println!("GET CB - data: {:?} - v: {}", data, v);
     };
     let mut done_cb = |ok: bool| { 
         println!("DONE CB - data: {:?} - ok: {}", data, ok);
     };
     
-    dht.get2(&InfoHash::get("alice"), &mut get_cb, &mut done_cb);
+    dht.get(&InfoHash::get("alice"), &mut get_cb, &mut done_cb);
 
     loop {}
 
