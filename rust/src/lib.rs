@@ -2,7 +2,7 @@ extern crate libc;
 
 mod ffi;
 use ffi::*;
-pub use ffi::{ DhtRunner, InfoHash, Value};
+pub use ffi::{ DhtRunner, InfoHash, Value };
 
 use std::fmt;
 use std::ffi::CStr;
@@ -10,6 +10,8 @@ use std::ffi::CString;
 use std::str;
 use std::slice;
 use libc::c_void;
+
+// TODO separate into files
 
 impl InfoHash {
     pub fn new() -> InfoHash {
@@ -34,6 +36,12 @@ impl InfoHash {
         }
         h
     }
+
+    pub fn is_zero(&self) -> bool {
+        unsafe {
+            dht_infohash_is_zero(self)
+        }
+    }
 }
 
 impl fmt::Display for InfoHash {
@@ -41,6 +49,33 @@ impl fmt::Display for InfoHash {
         unsafe {
             let self_str = CStr::from_ptr(
                     dht_infohash_print(self)
+                ).to_str().unwrap_or("");
+            write!(f, "{}", self_str)
+        }
+    }
+}
+
+impl Blob {
+    pub fn data(&self) -> DataView {
+        unsafe {
+            dht_blob_get_data(self)
+        }
+    }
+}
+
+impl Drop for Blob {
+    fn drop(&mut self) {
+        unsafe {
+            dht_blob_delete(&mut *self)
+        }
+    }
+}
+
+impl fmt::Display for PkId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            let self_str = CStr::from_ptr(
+                    dht_pkid_print(self)
                 ).to_str().unwrap_or("");
             write!(f, "{}", self_str)
         }
@@ -68,9 +103,9 @@ impl DhtRunner {
     }
 
     pub fn get(&mut self, h: &InfoHash,
-                get_cb: extern fn(*mut Value, *mut c_void),
-                done_cb: extern fn(bool, *mut c_void),
-                cb_user_data: *mut c_void) {
+               get_cb: extern fn(*mut Value, *mut c_void),
+               done_cb: extern fn(bool, *mut c_void),
+               cb_user_data: *mut c_void) {
 
         unsafe {
             dht_runner_get(&mut *self, h, get_cb, done_cb, cb_user_data)
@@ -78,8 +113,8 @@ impl DhtRunner {
     }
 
     pub fn put(&mut self, h: &InfoHash, v: *const Value,
-                done_cb: extern fn(bool, *mut c_void),
-                cb_user_data: *mut c_void) {
+               done_cb: extern fn(bool, *mut c_void),
+               cb_user_data: *mut c_void) {
 
         unsafe {
             dht_runner_put(&mut *self, h, v, done_cb, cb_user_data)
@@ -87,17 +122,26 @@ impl DhtRunner {
     }
 
     pub fn listen(&mut self, h: &InfoHash,
-                cb: extern fn(*mut Value, bool, *mut c_void),
-                cb_user_data: *mut c_void) -> *const OpToken {
+                  cb: extern fn(*mut Value, bool, *mut c_void),
+                  cb_user_data: *mut c_void) -> Box<OpToken> {
         unsafe {
-            dht_runner_listen(&mut *self, h, cb, cb_user_data)
+            Box::from_raw(dht_runner_listen(&mut *self, h, cb, cb_user_data))
         }
     }
 
-    pub fn cancel_listen(&mut self, h: &InfoHash, token: *const OpToken) {
+    pub fn cancel_listen(&mut self, h: &InfoHash, token: Box<OpToken>) {
 
         unsafe {
-            dht_runner_cancel_listen(&mut *self, h, token)
+            dht_runner_cancel_listen(&mut *self, h, &*token)
+        }
+    }
+
+    pub fn shutdown(&mut self,
+                    done_cb: extern fn(bool, *mut c_void),
+                    cb_user_data: *mut c_void)
+    {
+        unsafe {
+            dht_runner_shutdown(&mut *self, done_cb, cb_user_data)
         }
     }
 }
@@ -139,6 +183,102 @@ impl fmt::Display for Value {
             let dataview = self.dataview();
             let slice = slice::from_raw_parts(dataview.data, dataview.size);
             write!(f, "{}", str::from_utf8(slice).unwrap_or(""))
+        }
+    }
+}
+
+impl Drop for OpToken {
+    fn drop(&mut self) {
+        unsafe {
+            dht_op_token_delete(&mut *self)
+        }
+    }
+}
+
+impl PublicKey {
+    pub fn new() -> Box<PublicKey> {
+        unsafe {
+            Box::from_raw(dht_publickey_new())
+        }
+    }
+
+    pub fn unpack(&mut self, data: Vec<u8>) -> i32 {
+        unsafe {
+            dht_publickey_unpack(&mut *self, data.as_ptr(), data.len())
+        }
+    }
+
+    // TODO slice instead of CString
+    pub fn pack(&mut self, data: &CString) -> i32 {
+        unsafe {
+            dht_publickey_pack(&mut *self,
+                data.as_ptr(),
+                data.as_bytes().len())
+        }
+    }
+
+    pub fn id(&self) -> InfoHash {
+        unsafe {
+            dht_publickey_get_id(self)
+        }
+    }
+
+    pub fn long_id(&self) -> PkId {
+        unsafe {
+            dht_publickey_get_long_id(self)
+        }
+    }
+
+    pub fn check_signature(&self, data: &CString, signature: &CString) -> bool {
+        unsafe {
+            dht_publickey_check_signature(self,
+                data.as_ptr(), data.as_bytes().len(),
+                signature.as_ptr(), signature.as_bytes().len())
+        }
+    }
+
+    pub fn encrypt(&self, data: &CString) -> Box<Blob> {
+        unsafe {
+            Box::from_raw(dht_publickey_encrypt(self,
+                data.as_ptr(), data.as_bytes().len()))
+        }
+    }
+}
+
+impl Drop for PublicKey {
+    fn drop(&mut self) {
+        unsafe {
+            dht_publickey_delete(&mut *self)
+        }
+    }
+}
+
+impl PrivateKey {
+    pub fn new(key_length_bits: u32) -> Box<PrivateKey> {
+        unsafe {
+            Box::from_raw(dht_privatekey_generate(key_length_bits))
+        }
+    }
+
+    pub fn import(data: &str, password: &CString) -> Box<PrivateKey> {
+        unsafe {
+            Box::from_raw(dht_privatekey_import(data.as_ptr(),
+                data.as_bytes().len(), password.as_ptr()))
+        }
+    }
+
+    pub fn public_key(&self) -> Box<PublicKey> {
+        unsafe {
+            Box::from_raw(dht_privatekey_get_publickey(self))
+        }
+    }
+
+}
+
+impl Drop for PrivateKey {
+    fn drop(&mut self) {
+        unsafe {
+            dht_privatekey_delete(&mut *self)
         }
     }
 }

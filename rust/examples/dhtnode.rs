@@ -38,7 +38,10 @@ struct Handler {
 fn main() {
     println!("{}", InfoHash::random());
     println!("{}", InfoHash::new());
+    // TODO inverted is_zero
+    println!("{}", InfoHash::new().is_zero());
     println!("{}", InfoHash::get("alice"));
+    println!("{}", InfoHash::get("alice").is_zero());
 
     let mut dht = DhtRunner::new();
     dht.run(1412);
@@ -48,6 +51,7 @@ fn main() {
         &CString::new("4222").unwrap()
     );
     let ten_secs = time::Duration::from_secs(10);
+    // TODO lambda instead
     let mut handler = Handler {
         _data: 8,
     };
@@ -58,11 +62,13 @@ fn main() {
     thread::sleep(ten_secs);
     println!("Stop listening /foo");
     dht.cancel_listen(&InfoHash::get("foo"), token);
-    loop {
+    //loop {
         println!("Get /alice");
         dht.get(&InfoHash::get("alice"), get_cb, done_cb, ptr);
         let v = Value::new("hi!");
+        // TODO put value
+        // TODO check drop
         dht.put(&InfoHash::get("bob"), Box::into_raw(v), done_cb, ptr);
-        thread::sleep(ten_secs);
-    }
+        //thread::sleep(ten_secs);
+    //}
 }
