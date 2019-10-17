@@ -16,18 +16,19 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-extern crate libc;
+use crate::ffi::*;
+use std::ffi::CStr;
+use std::fmt;
 
-mod blob;
-pub mod crypto;
-mod dhtrunner;
-mod ffi;
-mod infohash;
-mod pkid;
-mod value;
+pub use crate::ffi::PkId;
 
-pub use blob::Blob;
-pub use dhtrunner::{ DhtRunner, OpToken };
-pub use infohash::InfoHash;
-pub use pkid::PkId;
-pub use value::{ DataView, Value };
+impl fmt::Display for PkId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            let self_str = CStr::from_ptr(
+                    dht_pkid_print(self)
+                ).to_str().unwrap_or("");
+            write!(f, "{}", self_str)
+        }
+    }
+}

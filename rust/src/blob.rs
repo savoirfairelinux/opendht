@@ -16,18 +16,22 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-extern crate libc;
+use crate::ffi::*;
 
-mod blob;
-pub mod crypto;
-mod dhtrunner;
-mod ffi;
-mod infohash;
-mod pkid;
-mod value;
+pub use crate::ffi::Blob;
 
-pub use blob::Blob;
-pub use dhtrunner::{ DhtRunner, OpToken };
-pub use infohash::InfoHash;
-pub use pkid::PkId;
-pub use value::{ DataView, Value };
+impl Blob {
+    pub fn data(&self) -> DataView {
+        unsafe {
+            dht_blob_get_data(self)
+        }
+    }
+}
+
+impl Drop for Blob {
+    fn drop(&mut self) {
+        unsafe {
+            dht_blob_delete(&mut *self)
+        }
+    }
+}
