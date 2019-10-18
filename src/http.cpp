@@ -917,8 +917,8 @@ Request::handle_response_header(const asio::error_code& ec)
     // has content-length
     if (content_length_it != response_.headers.end())
     {
-        std::getline(is, response_.body);
         unsigned int content_length = atoi(content_length_it->second.c_str());
+        response_.body.append(conn_->read_bytes(content_length));
         // full body already in the header
         if (response_.body.size() + 1 == content_length) {
             response_.body.append("\n");
@@ -985,9 +985,9 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     // read the content-length body
     unsigned int content_length;
     if (content_length_it != response_.headers.end() and !response_.body.empty()){
-        response_.body.append(conn_->read_bytes(bytes));
         // extract the content-length
         content_length = atoi(content_length_it->second.c_str());
+        response_.body.append(conn_->read_bytes(bytes));
         // check if fully parsed
         if (response_.body.size() == content_length)
             parse_request(response_.body);
