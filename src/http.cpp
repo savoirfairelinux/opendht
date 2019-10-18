@@ -210,9 +210,12 @@ Connection::data()
 std::string
 Connection::read_bytes(const size_t bytes)
 {
-    std::ostringstream str_s;
-    str_s << &read_buf_;
-    return str_s.str().substr(0, bytes);
+    std::string content;
+    std::istream is(&read_buf_);
+    content.resize(bytes);
+    auto rb = is.readsome(&content[0], bytes);
+    content.resize(rb);
+    return content;
 }
 
 std::string
