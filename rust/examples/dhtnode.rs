@@ -17,8 +17,6 @@
  */
 
 extern crate opendht;
-// TODO remove dead code warning
-use libc::c_void;
 use std::{ thread, time };
 
 use opendht::{ InfoHash, DhtRunner, Value };
@@ -43,7 +41,7 @@ fn main() {
     let mut done_cb = |ok: bool| {
         println!("GET: DONE CB - data: {} - ok: {}", data, ok);
     };
-    
+
     dht.get(&InfoHash::get("alice"), &mut get_cb, &mut done_cb);
 
     let mut put_done_cb = |ok: bool| {
