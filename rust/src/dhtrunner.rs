@@ -16,6 +16,8 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#![allow(dead_code)]
+
 use crate::ffi::*;
 use libc::c_void;
 use std::ffi::CString;
@@ -118,11 +120,11 @@ impl DhtRunner {
     pub fn get<'a>(&mut self, h: &InfoHash,
                 get_cb: &'a mut(dyn FnMut(Box<Value>)),
                 done_cb: &'a mut(dyn FnMut(bool))) {
-        let mut handler = Box::new(GetHandler {
+        let handler = Box::new(GetHandler {
             get_cb,
             done_cb,
         });
-        let mut handler = Box::into_raw(handler) as *mut c_void;
+        let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
             dht_runner_get(&mut *self, h, get_handler_cb, done_handler_cb, handler)
         }
@@ -130,10 +132,10 @@ impl DhtRunner {
 
     pub fn put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
                 done_cb: &'a mut(dyn FnMut(bool))) {
-        let mut handler = Box::new(PutHandler {
+        let handler = Box::new(PutHandler {
             done_cb,
         });
-        let mut handler = Box::into_raw(handler) as *mut c_void;
+        let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
             dht_runner_put(&mut *self, h, &*v, put_handler_done, handler)
         }
@@ -141,10 +143,10 @@ impl DhtRunner {
 
     pub fn listen<'a>(&mut self, h: &InfoHash,
                 cb: &'a mut(dyn FnMut(Box<Value>, bool))) -> Box<OpToken> {
-        let mut handler = Box::new(ListenHandler {
+        let handler = Box::new(ListenHandler {
             cb,
         });
-        let mut handler = Box::into_raw(handler) as *mut c_void;
+        let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
             Box::from_raw(dht_runner_listen(&mut *self, h, listen_handler, handler))
         }

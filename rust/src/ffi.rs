@@ -16,6 +16,8 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#![allow(dead_code)]
+
 use libc::{c_char, c_int, c_uint, c_void, in_port_t, size_t};
 
 const HASH_LEN: usize = 20;
