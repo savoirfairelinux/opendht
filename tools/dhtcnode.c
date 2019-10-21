@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
 
 struct op_context {
     dht_runner* runner;
@@ -36,6 +37,27 @@ bool op_context_free(void* user_data)
     free(ctx);
 }
 
+char* print_addr(const struct sockaddr* addr) {
+    char* s = NULL;
+    switch(addr->sa_family) {
+    case AF_INET: {
+        struct sockaddr_in *addr_in = (struct sockaddr_in *)addr;
+        s = malloc(INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &(addr_in->sin_addr), s, INET_ADDRSTRLEN);
+        break;
+    }
+    case AF_INET6: {
+        struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)addr;
+        s = malloc(INET6_ADDRSTRLEN);
+        inet_ntop(AF_INET6, &(addr_in6->sin6_addr), s, INET6_ADDRSTRLEN);
+        break;
+    }
+    default:
+        break;
+    }
+    return s;
+}
+
 int main()
 {
     dht_runner* runner = dht_runner_new();
@@ -62,6 +84,20 @@ int main()
     dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, op_context_free, ctx);
 
     sleep(1);
+
+    dht_runner_bootstrap(runner, "bootstrap.jami.net", NULL);
+
+    sleep(2);
+
+    struct sockaddr** addrs = dht_runner_get_public_address(runner);
+    for (struct sockaddr** addrIt = addrs; *addrIt; addrIt++) {
+        struct sockaddr* addr = *addrIt;
+        char* addr_str = print_addr(addr);
+        free(addr);
+        printf("Found public address: %s\n", addr_str);
+        free(addr_str);
+    }
+    free(addrs);
 
     dht_runner_cancel_listen(runner, &h, token);
     dht_op_token_delete(token);

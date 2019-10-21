@@ -193,7 +193,10 @@ void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len) {
 
 void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
-    runner->bootstrap(host, service);
+    if (service)
+        runner->bootstrap(host, service);
+    else
+        runner->bootstrap(host);
 }
 
 void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data) {
@@ -294,16 +297,15 @@ dht_infohash dht_runner_get_id(const dht_runner* r) {
     return ret;
 }
 
-const struct sockaddr** dht_runner_get_public_address(const dht_runner* r)
-{
+struct sockaddr** dht_runner_get_public_address(const dht_runner* r) {
     auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
     auto addrs = const_cast<dht::DhtRunner*>(runner)->getPublicAddress();
     if (addrs.empty())
         return nullptr;
-    auto ret = (const struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
+    auto ret = (struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
     for (size_t i=0; i<addrs.size(); i++) {
         if (auto len = addrs[i].getLength()) {
-            ret[i] = (const struct sockaddr*)malloc(len);
+            ret[i] = (struct sockaddr*)malloc(len);
             memcpy((struct sockaddr*)ret[i], addrs[i].get(), len);
         } else {
             ret[i] = nullptr;
