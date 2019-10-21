@@ -27,7 +27,7 @@ mod pkid;
 mod value;
 
 pub use blob::Blob;
-pub use dhtrunner::{ DhtRunner, OpToken };
+pub use dhtrunner::{ DhtRunner, DhtRunnerConfig, OpToken };
 pub use infohash::InfoHash;
 pub use pkid::PkId;
 pub use value::{ DataView, Value };

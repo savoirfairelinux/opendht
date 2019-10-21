@@ -18,11 +18,67 @@
 
 #![allow(dead_code)]
 
-use crate::ffi::*;
 use libc::c_void;
 use std::ffi::CString;
+use std::ptr;
 
-pub use crate::ffi::{ DhtRunner, OpToken, Value };
+pub use crate::ffi::*;
+
+impl DhtRunnerConfig {
+
+    pub fn new() -> Box<DhtRunnerConfig> {
+        let mut config: Box<DhtRunnerConfig> = Box::new(DhtRunnerConfig {
+            dht_config: DhtSecureConfig {
+                node_config: DhtNodeConfig {
+                    node_id: InfoHash::new(),
+                    network: 0,
+                    is_bootstrap: false,
+                    maintain_storage: false,
+                    persist_path: ptr::null(),
+                },
+                id: DhtIdentity {
+                    privkey: ptr::null_mut(),
+                    certificate: ptr::null_mut(),
+                },
+            },
+            threaded: false,
+            proxy_server: ptr::null(),
+            push_node_id: ptr::null(),
+            push_token: ptr::null(),
+            peer_discovery: false,
+            peer_publish: false,
+            server_ca: ptr::null_mut(),
+            client_identity: DhtIdentity {
+                privkey: ptr::null_mut(),
+                certificate: ptr::null_mut(),
+            },
+        });
+        unsafe {
+            dht_runner_config_default(&mut *config);
+        }
+        config
+    }
+
+    pub fn set_proxy_server(&mut self, proxy_server: &str) {
+        self.proxy_server = CString::new(proxy_server).unwrap().as_ptr();
+    }
+
+    pub fn set_push_node_id(&mut self, push_node_id: &str) {
+        self.push_node_id = CString::new(push_node_id).unwrap().as_ptr();
+    }
+
+    pub fn set_push_token(&mut self, push_token: &str) {
+        self.push_token = CString::new(push_token).unwrap().as_ptr();
+    }
+
+}
+
+impl DhtNodeConfig
+{
+    pub fn set_persist_path(&mut self, persist_path: &str) {
+        self.persist_path = CString::new(persist_path).unwrap().as_ptr();
+    }
+}
 
 struct GetHandler<'a>
 {
@@ -96,6 +152,12 @@ extern fn listen_handler(v: *mut Value, expired: bool, ptr: *mut c_void) {
     }
 }
 
+extern fn listen_handler_done(ptr: *mut c_void) {
+    unsafe {
+        let handler = Box::from_raw(ptr as *mut ListenHandler);
+    }
+}
+
 impl DhtRunner {
     pub fn new() -> Box<DhtRunner> {
         unsafe {
@@ -106,6 +168,12 @@ impl DhtRunner {
     pub fn run(&mut self, port: u16) {
         unsafe {
             dht_runner_run(&mut *self, port)
+        }
+    }
+
+    pub fn run_config(&mut self, port: u16, config: Box<DhtRunnerConfig>) {
+        unsafe {
+            dht_runner_run_config(&mut *self, port, &*config)
         }
     }
 
@@ -148,13 +216,11 @@ impl DhtRunner {
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            Box::from_raw(dht_runner_listen(&mut *self, h, listen_handler, handler))
+            Box::from_raw(dht_runner_listen(&mut *self, h, listen_handler, listen_handler_done, handler))
         }
     }
 
     pub fn cancel_listen(&mut self, h: &InfoHash, token: Box<OpToken>) {
-        // TODO: handler is not dropped!
-        // NOTE: MEMORY LEAK!
         unsafe {
             dht_runner_cancel_listen(&mut *self, h, &*token)
         }
