@@ -11,6 +11,8 @@ extern "C" {
 #include <stdint.h>
 #include <stddef.h>
 
+struct sockaddr;
+
 // Non-owning data view
 struct OPENDHT_C_PUBLIC dht_data_view {
     const uint8_t* data;
@@ -137,6 +139,7 @@ OPENDHT_C_PUBLIC void dht_runner_cancel_put(dht_runner* runner, const dht_infoha
 OPENDHT_C_PUBLIC void dht_runner_shutdown(dht_runner* runner, dht_shutdown_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_node_id(const dht_runner* runner);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_id(const dht_runner* runner);
+OPENDHT_C_PUBLIC const struct sockaddr** dht_runner_get_public_address(const dht_runner* runner);
 
 #ifdef __cplusplus
 }

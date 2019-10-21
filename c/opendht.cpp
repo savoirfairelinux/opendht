@@ -294,6 +294,25 @@ dht_infohash dht_runner_get_id(const dht_runner* r) {
     return ret;
 }
 
+const struct sockaddr** dht_runner_get_public_address(const dht_runner* r)
+{
+    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
+    auto addrs = const_cast<dht::DhtRunner*>(runner)->getPublicAddress();
+    if (addrs.empty())
+        return nullptr;
+    auto ret = (const struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
+    for (size_t i=0; i<addrs.size(); i++) {
+        if (auto len = addrs[i].getLength()) {
+            ret[i] = (const struct sockaddr*)malloc(len);
+            memcpy((struct sockaddr*)ret[i], addrs[i].get(), len);
+        } else {
+            ret[i] = nullptr;
+        }
+    }
+    ret[addrs.size()] = nullptr;
+    return ret;
+}
+
 #ifdef __cplusplus
 }
 #endif
