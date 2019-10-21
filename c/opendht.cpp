@@ -10,8 +10,7 @@ extern "C" {
 #endif
 
 // dht::InfoHash
-const char* dht_infohash_print(const dht_infohash* h)
-{
+const char* dht_infohash_print(const dht_infohash* h) {
     return reinterpret_cast<const dht::InfoHash*>(h)->to_c_str();
 }
 
@@ -19,13 +18,11 @@ void dht_infohash_zero(dht_infohash* h) {
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash{};
 }
 
-void dht_infohash_random(dht_infohash* h)
-{
+void dht_infohash_random(dht_infohash* h) {
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::getRandom();
 }
 
-void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size)
-{
+void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size) {
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::get(dat, dat_size);
 }
 
@@ -33,19 +30,16 @@ bool dht_infohash_is_zero(const dht_infohash* h) {
     return !static_cast<bool>(*reinterpret_cast<const dht::InfoHash*>(h));
 }
 
-const char* dht_pkid_print(const dht_pkid* h)
-{
+const char* dht_pkid_print(const dht_pkid* h) {
     return reinterpret_cast<const dht::PkId*>(h)->to_c_str();
 }
 
 // dht::Blob
-void dht_blob_delete(dht_blob* data)
-{
+void dht_blob_delete(dht_blob* data) {
     delete reinterpret_cast<dht::Blob*>(data);
 }
 
-dht_data_view dht_blob_get_data(const dht_blob* data)
-{
+dht_data_view dht_blob_get_data(const dht_blob* data) {
     dht_data_view view;
     view.data = reinterpret_cast<const dht::Blob*>(data)->data();
     view.size = reinterpret_cast<const dht::Blob*>(data)->size();
@@ -53,13 +47,17 @@ dht_data_view dht_blob_get_data(const dht_blob* data)
 }
 
 // dht::Value
-dht_data_view dht_value_get_data(const dht_value* data)
-{
+dht_data_view dht_value_get_data(const dht_value* data) {
     const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
     dht_data_view view;
     view.data = vsp->data.data();
     view.size = vsp->data.size();
     return view;
+}
+
+dht_value_id dht_value_get_id(const dht_value* data) {
+    const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
+    return vsp->id;
 }
 
 dht_value* dht_value_new(const uint8_t* data, size_t size) {
@@ -254,6 +252,22 @@ void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dh
         if (done_cb)
             done_cb(ok, cb_user_data);
     });
+}
+
+void dht_runner_put_permanent(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data) {
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    auto hash = reinterpret_cast<const dht::InfoHash*>(h);
+    auto value = reinterpret_cast<const ValueSp*>(v);
+    runner->put(*hash, *value, [done_cb, cb_user_data](bool ok){
+        if (done_cb)
+            done_cb(ok, cb_user_data);
+    }, dht::time_point::max(), true);
+}
+
+void dht_runner_cancel_put(dht_runner* r, const dht_infohash* h, dht_value_id value_id) {
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    auto hash = reinterpret_cast<const dht::InfoHash*>(h);
+    runner->cancelPut(*hash, value_id);
 }
 
 void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_data) {
