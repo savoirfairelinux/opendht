@@ -135,6 +135,8 @@ OPENDHT_C_PUBLIC void dht_runner_put(dht_runner* runner, const dht_infohash* has
 OPENDHT_C_PUBLIC void dht_runner_put_permanent(dht_runner* runner, const dht_infohash* hash, const dht_value* value, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_cancel_put(dht_runner* runner, const dht_infohash* hash, dht_value_id value_id);
 OPENDHT_C_PUBLIC void dht_runner_shutdown(dht_runner* runner, dht_shutdown_cb done_cb, void* cb_user_data);
+OPENDHT_C_PUBLIC dht_infohash dht_runner_get_node_id(const dht_runner* runner);
+OPENDHT_C_PUBLIC dht_infohash dht_runner_get_id(const dht_runner* runner);
 
 #ifdef __cplusplus
 }

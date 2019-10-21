@@ -95,14 +95,16 @@ int dht_publickey_pack(dht_publickey* pk, char* out, size_t* outlen) {
 }
 
 dht_infohash dht_publickey_get_id(const dht_publickey* pk) {
+    auto pkey = reinterpret_cast<const dht::crypto::PublicKey*>(pk);
     dht_infohash h;
-    *reinterpret_cast<dht::InfoHash*>(&h) = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->getId();
+    *reinterpret_cast<dht::InfoHash*>(&h) = pkey->getId();
     return h;
 }
 
 dht_pkid dht_publickey_get_long_id(const dht_publickey* pk) {
+    auto pkey = reinterpret_cast<const dht::crypto::PublicKey*>(pk);
     dht_pkid h;
-    *reinterpret_cast<dht::PkId*>(&h) = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->getLongId();
+    *reinterpret_cast<dht::PkId*>(&h) = pkey->getLongId();
     return h;
 }
 
@@ -276,6 +278,20 @@ void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_d
         if (done_cb)
             done_cb(cb_user_data);
     });
+}
+
+dht_infohash dht_runner_get_node_id(const dht_runner* r) {
+    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
+    dht_infohash ret;
+    *reinterpret_cast<dht::InfoHash*>(&ret) = runner->getNodeId();
+    return ret;
+}
+
+dht_infohash dht_runner_get_id(const dht_runner* r) {
+    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
+    dht_infohash ret;
+    *reinterpret_cast<dht::InfoHash*>(&ret) = runner->getId();
+    return ret;
 }
 
 #ifdef __cplusplus
