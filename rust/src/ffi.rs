@@ -19,6 +19,7 @@
 #![allow(dead_code)]
 
 use libc::{c_char, c_int, c_uint, c_void, in_port_t, size_t};
+use os_socketaddr::OsSocketAddr;
 
 const HASH_LEN: usize = 20;
 const PKID_LEN: usize = 32;
@@ -126,6 +127,7 @@ pub struct DhtRunnerConfig
 #[link(name = "opendht-c")]
 extern {
     // dht::Value
+    pub fn dht_value_get_id(data: *const Value) -> u64;
     pub fn dht_value_get_data(data: *const Value) -> DataView;
     pub fn dht_value_new(data: *const u8, size: size_t) -> *mut Value;
     pub fn dht_value_ref(data: *const Value) -> *mut Value;
@@ -166,6 +168,8 @@ extern {
     // dht::DhtRunner
     pub fn dht_runner_config_default(config: *mut DhtRunnerConfig);
     pub fn dht_runner_new() -> *mut DhtRunner;
+    pub fn dht_runner_get_id(dht: *const DhtRunner) -> InfoHash;
+    pub fn dht_runner_get_node_id(dht: *const DhtRunner) -> InfoHash;
     pub fn dht_runner_delete(dht: *mut DhtRunner);
     pub fn dht_runner_run(dht: *mut DhtRunner, port: in_port_t);
     pub fn dht_runner_run_config(dht: *mut DhtRunner, port: in_port_t, config: *const DhtRunnerConfig);
@@ -177,6 +181,10 @@ extern {
     pub fn dht_runner_put(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
                       done_cb: extern fn(bool, *mut c_void),
                       cb_user_data: *mut c_void);
+    pub fn dht_runner_put_permanent(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
+                      done_cb: extern fn(bool, *mut c_void),
+                      cb_user_data: *mut c_void);
+    pub fn dht_runner_cancel_put(dht: *mut DhtRunner, h: *const InfoHash, vid: u64);
     pub fn dht_runner_listen(dht: *mut DhtRunner, h: *const InfoHash,
                       cb: extern fn(*mut Value, bool, *mut c_void),
                       done_cb: extern fn(*mut c_void),
@@ -185,4 +193,5 @@ extern {
                       token: *const OpToken);
     pub fn dht_runner_shutdown(dht: *mut DhtRunner, done_cb: extern fn(bool, *mut c_void),
                       cb_user_data: *mut c_void);
+    pub fn dht_runner_get_public_address(dht: *const DhtRunner) -> *mut *mut OsSocketAddr;
 }

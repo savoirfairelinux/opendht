@@ -31,6 +31,12 @@ impl Value {
         }
     }
 
+    pub fn id(&self) -> u64 {
+        unsafe {
+            dht_value_get_id(self)
+        }
+    }
+
     fn dataview(&self) -> DataView {
         unsafe {
             dht_value_get_data(self)
