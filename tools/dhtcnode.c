@@ -3,10 +3,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
+
+struct op_context {
+    dht_runner* runner;
+    int d;
+};
 
 bool dht_value_callback(const dht_value* value, bool expired, void* user_data)
 {
-    dht_runner* runner = (dht_runner*)user_data;
     dht_data_view data = dht_value_get_data(value);
     printf("Value callback %s: %.*s.\n", expired ? "expired" : "new", (int)data.size, data.data);
 }
@@ -22,6 +27,13 @@ bool dht_done_callback(bool ok, void* user_data)
 {
     dht_runner* runner = (dht_runner*)user_data;
     printf("Done callback. %s\n", ok ? "Success !" : "Failure :-(");
+}
+
+bool op_context_free(void* user_data)
+{
+    struct op_context* ctx = (struct op_context*)user_data;
+    printf("op_context_free %d.\n", ctx->d);
+    free(ctx);
 }
 
 int main()
@@ -44,7 +56,10 @@ int main()
     dht_runner_get(runner, &h, dht_get_callback, dht_done_callback, runner);
 
     // Listen for data
-    dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, NULL, runner);
+    struct op_context* ctx = malloc(sizeof(struct op_context));
+    ctx->runner = runner;
+    ctx->d = 42;
+    dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, op_context_free, ctx);
 
     sleep(1);
 
