@@ -206,11 +206,25 @@ void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_don
     });
 }
 
-dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_cb cb, void* cb_user_data) {
+struct ScopeGuardCb {
+    ScopeGuardCb(dht_shutdown_cb cb, void* data)
+     : onDestroy(cb), userData(data) {}
+
+    ~ScopeGuardCb() {
+        if (onDestroy)
+            onDestroy((void*)userData);
+    }
+private:
+    const dht_shutdown_cb onDestroy;
+    void const* userData;
+};
+
+dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_cb cb, dht_shutdown_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto fret = new std::future<size_t>;
-    *fret = runner->listen(*hash, [cb,cb_user_data](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+    auto guard = done_cb ? std::make_shared<ScopeGuardCb>(done_cb, cb_user_data) : std::shared_ptr<ScopeGuardCb>{};
+    *fret = runner->listen(*hash, [cb,cb_user_data, guard](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         for (const auto& value : values) {
             if (not cb(reinterpret_cast<const dht_value*>(&value), expired, cb_user_data))
                 return false;

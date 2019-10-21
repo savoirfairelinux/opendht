@@ -44,7 +44,7 @@ int main()
     dht_runner_get(runner, &h, dht_get_callback, dht_done_callback, runner);
 
     // Listen for data
-    dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, runner);
+    dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, NULL, runner);
 
     sleep(1);
 
