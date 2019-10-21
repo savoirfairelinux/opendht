@@ -23,6 +23,8 @@ use std::ffi::CString;
 use std::ptr;
 
 pub use crate::ffi::*;
+use std::net::SocketAddr;
+use os_socketaddr::OsSocketAddr;
 
 impl DhtRunnerConfig {
 
@@ -154,7 +156,7 @@ extern fn listen_handler(v: *mut Value, expired: bool, ptr: *mut c_void) {
 
 extern fn listen_handler_done(ptr: *mut c_void) {
     unsafe {
-        let handler = Box::from_raw(ptr as *mut ListenHandler);
+        Box::from_raw(ptr as *mut ListenHandler);
     }
 }
 
@@ -185,6 +187,18 @@ impl DhtRunner {
         }
     }
 
+    pub fn node_id(&self) -> InfoHash {
+        unsafe {
+            dht_runner_get_node_id(&*self)
+        }
+    }
+
+    pub fn id(&self) -> InfoHash {
+        unsafe {
+            dht_runner_get_id(&*self)
+        }
+    }
+
     pub fn get<'a>(&mut self, h: &InfoHash,
                 get_cb: &'a mut(dyn FnMut(Box<Value>)),
                 done_cb: &'a mut(dyn FnMut(bool))) {
@@ -206,6 +220,23 @@ impl DhtRunner {
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
             dht_runner_put(&mut *self, h, &*v, put_handler_done, handler)
+        }
+    }
+
+    pub fn permanent_put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
+                done_cb: &'a mut(dyn FnMut(bool))) {
+        let handler = Box::new(PutHandler {
+            done_cb,
+        });
+        let handler = Box::into_raw(handler) as *mut c_void;
+        unsafe {
+            dht_runner_put_permanent(&mut *self, h, &*v, put_handler_done, handler)
+        }
+    }
+
+    pub fn cancel_put<'a>(&mut self, h: &InfoHash, vid: u64) {
+        unsafe {
+            dht_runner_cancel_put(&mut *self, h, vid)
         }
     }
 
@@ -233,6 +264,21 @@ impl DhtRunner {
         unsafe {
             dht_runner_shutdown(&mut *self, done_cb, cb_user_data)
         }
+    }
+
+    pub fn public_addresses(&self) -> Vec<SocketAddr> {
+        let mut result = Vec::new();
+        unsafe {
+            let mut addresses = dht_runner_get_public_address(&*self);
+            while !addresses.is_null() && !(*addresses).is_null() {
+                let sock = (*(*addresses)).into_addr();
+                if sock.is_some() {
+                    result.push(sock.unwrap());
+                }
+                addresses = (addresses as usize + std::mem::size_of::<*mut OsSocketAddr>()) as *mut *mut OsSocketAddr;
+            }
+        }
+        result
     }
 }
 

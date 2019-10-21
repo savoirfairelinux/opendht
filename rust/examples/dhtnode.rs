@@ -49,12 +49,14 @@ fn main() {
     };
     dht.put(&InfoHash::get("bob"), Value::new("hi!"), &mut put_done_cb);
 
+
     println!("Start listening /foo");
     let mut value_cb = |v, expired| {
         println!("LISTEN: DONE CB - data: {} - v: {} - expired: {}", data, v, expired);
     };
     let token = dht.listen(&InfoHash::get("foo"), &mut value_cb);
-    let one_min = time::Duration::from_secs(60);
+    let one_min = time::Duration::from_secs(10);
     thread::sleep(one_min);
     dht.cancel_listen(&InfoHash::get("foo"), token);
+    println!("Public ips: {:#?}", dht.public_addresses());
 }

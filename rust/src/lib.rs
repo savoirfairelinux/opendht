@@ -17,6 +17,7 @@
  */
 
 extern crate libc;
+extern crate os_socketaddr;
 
 mod blob;
 pub mod crypto;
