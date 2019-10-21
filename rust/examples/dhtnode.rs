@@ -19,7 +19,7 @@
 extern crate opendht;
 use std::{ thread, time };
 
-use opendht::{ InfoHash, DhtRunner, Value };
+use opendht::{ InfoHash, DhtRunner, DhtRunnerConfig, Value };
 
 fn main() {
     println!("{}", InfoHash::random());
@@ -29,9 +29,9 @@ fn main() {
     println!("{}", InfoHash::get("alice").is_zero());
 
     let mut dht = DhtRunner::new();
-    dht.run(1412);
+    let config = DhtRunnerConfig::new();
+    dht.run_config(1412, config);
     dht.bootstrap("bootstrap.jami.net", 4222);
-
 
     let /* mut */ data = 42;
     let mut get_cb = |v: Box<Value>| {

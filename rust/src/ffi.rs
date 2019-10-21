@@ -78,6 +78,50 @@ pub struct DhtRunner
     _opaque: [u8; 0]
 }
 
+#[repr(C)]
+pub struct DhtNodeConfig
+{
+    pub node_id: InfoHash,
+    pub network: u32,
+    pub is_bootstrap: bool,
+    pub maintain_storage: bool,
+    pub persist_path: *const c_char,
+}
+
+#[repr(C)]
+pub struct DhtCertificate
+{
+    _opaque: [u8; 0]
+}
+
+#[repr(C)]
+pub struct DhtIdentity
+{
+    pub privkey: *mut PrivateKey,
+    pub certificate: *mut DhtCertificate,
+}
+
+#[repr(C)]
+pub struct DhtSecureConfig
+{
+    pub node_config: DhtNodeConfig,
+    pub id: DhtIdentity,
+}
+
+#[repr(C)]
+pub struct DhtRunnerConfig
+{
+    pub dht_config: DhtSecureConfig,
+    pub threaded: bool,
+    pub proxy_server: *const c_char,
+    pub push_node_id: *const c_char,
+    pub push_token: *const c_char,
+    pub peer_discovery: bool,
+    pub peer_publish: bool,
+    pub server_ca: *mut DhtCertificate,
+    pub client_identity: DhtIdentity,
+}
+
 
 #[link(name = "opendht-c")]
 extern {
@@ -120,9 +164,11 @@ extern {
     pub fn dht_op_token_delete(token: *mut OpToken);
 
     // dht::DhtRunner
+    pub fn dht_runner_config_default(config: *mut DhtRunnerConfig);
     pub fn dht_runner_new() -> *mut DhtRunner;
     pub fn dht_runner_delete(dht: *mut DhtRunner);
     pub fn dht_runner_run(dht: *mut DhtRunner, port: in_port_t);
+    pub fn dht_runner_run_config(dht: *mut DhtRunner, port: in_port_t, config: *const DhtRunnerConfig);
     pub fn dht_runner_bootstrap(dht: *mut DhtRunner, host: *const c_char, service: *const c_char);
     pub fn dht_runner_get(dht: *mut DhtRunner, h: *const InfoHash,
                       get_cb: extern fn(*mut Value, *mut c_void),
@@ -133,6 +179,7 @@ extern {
                       cb_user_data: *mut c_void);
     pub fn dht_runner_listen(dht: *mut DhtRunner, h: *const InfoHash,
                       cb: extern fn(*mut Value, bool, *mut c_void),
+                      done_cb: extern fn(*mut c_void),
                       cb_user_data: *mut c_void) -> *mut OpToken;
     pub fn dht_runner_cancel_listen(dht: *mut DhtRunner, h: *const InfoHash,
                       token: *const OpToken);
