@@ -34,16 +34,28 @@ CryptoTester::testSignatureEncryption() {
     auto key = dht::crypto::PrivateKey::generate();
     auto public_key = key.getPublicKey();
 
-    std::vector<uint8_t> data {5, 10};
-    std::vector<uint8_t> signature = key.sign(data);
+    std::vector<uint8_t> data1 {5, 10};
+    std::vector<uint8_t> data2(64 * 1024, 10);
+
+    std::vector<uint8_t> signature1 = key.sign(data1);
+    std::vector<uint8_t> signature2 = key.sign(data2);
 
     // check signature
-    CPPUNIT_ASSERT(public_key.checkSignature(data, signature));
+    CPPUNIT_ASSERT(public_key.checkSignature(data1, signature1));
+    CPPUNIT_ASSERT(public_key.checkSignature(data2, signature2));
 
     // encrypt data
-    std::vector<uint8_t> encrypted = public_key.encrypt(data);
-    std::vector<uint8_t> decrypted = key.decrypt(encrypted);
-    CPPUNIT_ASSERT(data == decrypted);
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data1);
+        std::vector<uint8_t> decrypted = key.decrypt(encrypted);
+        CPPUNIT_ASSERT(data1 == decrypted);
+    }
+
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data2);
+        std::vector<uint8_t> decrypted = key.decrypt(encrypted);
+        CPPUNIT_ASSERT(data2 == decrypted);
+    }
 }
 
 void
