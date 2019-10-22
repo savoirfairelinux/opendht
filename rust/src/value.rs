@@ -30,6 +30,12 @@ impl Value {
                 data.as_bytes().len()))
         }
     }
+    pub fn from_bytes(data: &Vec<u8>) -> Box<Value> {
+        unsafe {
+            Box::from_raw(dht_value_new(data.as_ptr(),
+                data.len()))
+        }
+    }
 
     pub fn id(&self) -> u64 {
         unsafe {
