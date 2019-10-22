@@ -56,6 +56,19 @@ CryptoTester::testSignatureEncryption() {
         std::vector<uint8_t> decrypted = key.decrypt(encrypted);
         CPPUNIT_ASSERT(data2 == decrypted);
     }
+
+    // encrypt data (invalid)
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data1);
+        encrypted[1]++;
+        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), dht::crypto::DecryptError);
+    }
+
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data2);
+        encrypted[2]++;
+        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), dht::crypto::DecryptError);
+    }
 }
 
 void
