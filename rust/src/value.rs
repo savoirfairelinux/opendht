@@ -49,6 +49,14 @@ impl Value {
         }
     }
 
+    pub fn as_bytes(&self) -> Vec<u8> {
+        unsafe {
+            let dv = dht_value_get_data(self);
+            let slice = slice::from_raw_parts_mut(dv.data as *mut _, dv.size);
+            slice.to_vec()
+        }
+    }
+
     pub fn boxed(&mut self) -> Box<Value> {
         unsafe {
             Box::from_raw(dht_value_ref(self))
