@@ -47,6 +47,14 @@ impl InfoHash {
         h
     }
 
+    pub fn from_bytes(data: &Vec<u8>) -> InfoHash {
+        let mut h = InfoHash::new();
+        unsafe {
+            dht_infohash_get(&mut h, data.as_ptr() as *mut u8, data.len());
+        }
+        h
+    }
+
     pub fn is_zero(&self) -> bool {
         unsafe {
             dht_infohash_is_zero(self)
