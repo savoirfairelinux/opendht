@@ -71,12 +71,19 @@ OPENDHT_C_PUBLIC void dht_privatekey_delete(dht_privatekey*);
 // dht::crypto::Certificate
 struct OPENDHT_C_PUBLIC dht_certificate;
 typedef struct dht_certificate dht_certificate;
+OPENDHT_C_PUBLIC dht_certificate* dht_certificate_import(const uint8_t* dat, size_t dat_size);
+OPENDHT_C_PUBLIC dht_infohash dht_certificate_get_id(const dht_certificate*);
+OPENDHT_C_PUBLIC dht_pkid dht_certificate_get_long_id(const dht_certificate*);
+OPENDHT_C_PUBLIC dht_publickey* dht_certificate_get_publickey(const dht_certificate*);
+OPENDHT_C_PUBLIC void dht_certificate_delete(dht_certificate*);
 
 struct OPENDHT_PUBLIC dht_identity {
-    dht_privatekey* privkey;
+    dht_privatekey* privatekey;
     dht_certificate* certificate;
 };
 typedef struct dht_identity dht_identity;
+OPENDHT_C_PUBLIC dht_identity dht_identity_generate(const char* common_name, const dht_identity* ca);
+OPENDHT_C_PUBLIC void dht_identity_delete(dht_identity*);
 
 // callbacks
 typedef bool (*dht_get_cb)(const dht_value* value, void* user_data);

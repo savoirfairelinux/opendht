@@ -34,6 +34,18 @@ const char* dht_pkid_print(const dht_pkid* h) {
     return reinterpret_cast<const dht::PkId*>(h)->to_c_str();
 }
 
+inline dht_infohash dht_infohash_to_c(const dht::InfoHash& h) {
+    dht_infohash ret;
+    *reinterpret_cast<dht::InfoHash*>(&ret) = h;
+    return ret;
+}
+
+inline dht_pkid dht_pkid_to_c(const dht::PkId& h) {
+    dht_pkid ret;
+    *reinterpret_cast<dht::PkId*>(&ret) = h;
+    return ret;
+}
+
 // dht::Blob
 void dht_blob_delete(dht_blob* data) {
     delete reinterpret_cast<dht::Blob*>(data);
@@ -96,16 +108,12 @@ int dht_publickey_pack(dht_publickey* pk, char* out, size_t* outlen) {
 
 dht_infohash dht_publickey_get_id(const dht_publickey* pk) {
     auto pkey = reinterpret_cast<const dht::crypto::PublicKey*>(pk);
-    dht_infohash h;
-    *reinterpret_cast<dht::InfoHash*>(&h) = pkey->getId();
-    return h;
+    return dht_infohash_to_c(pkey->getId());
 }
 
 dht_pkid dht_publickey_get_long_id(const dht_publickey* pk) {
     auto pkey = reinterpret_cast<const dht::crypto::PublicKey*>(pk);
-    dht_pkid h;
-    *reinterpret_cast<dht::PkId*>(&h) = pkey->getLongId();
-    return h;
+    return dht_pkid_to_c(pkey->getLongId());
 }
 
 bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, size_t data_size, const char* signature, size_t signature_size) {
@@ -118,6 +126,7 @@ dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_
     return (dht_blob*)rdata;
 }
 
+// dht::crypto::PrivateKey
 dht_privatekey* dht_privatekey_generate(unsigned key_length_bits) {
     if (key_length_bits == 0)
         key_length_bits = 4096;
@@ -139,6 +148,66 @@ dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
 
 void dht_privatekey_delete(dht_privatekey* pk) {
     delete reinterpret_cast<PrivkeySp*>(pk);
+}
+
+// dht::crypto::Certificate
+dht_certificate* dht_certificate_import(const uint8_t* dat, size_t dat_size) {
+    try {
+        return reinterpret_cast<dht_certificate*>(new CertSp(std::make_shared<dht::crypto::Certificate>(dat, dat_size)));
+    } catch (const dht::crypto::CryptoException& e) {
+        return nullptr;
+    }
+}
+
+void dht_certificate_delete(dht_certificate* c) {
+    delete reinterpret_cast<CertSp*>(c);
+}
+
+dht_infohash dht_certificate_get_id(const dht_certificate* c) {
+    const auto& cert = *reinterpret_cast<const CertSp*>(c);
+    return dht_infohash_to_c(cert->getId());
+}
+
+dht_pkid dht_certificate_get_long_id(const dht_certificate* c) {
+    const auto& cert = *reinterpret_cast<const CertSp*>(c);
+    return dht_pkid_to_c(cert->getLongId());
+}
+
+dht_publickey* dht_certificate_get_publickey(const dht_certificate* c) {
+    const auto& cert = *reinterpret_cast<const CertSp*>(c);
+    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(cert->getPublicKey()));
+}
+
+// dht::crypto::Identity
+inline dht::crypto::Identity dht_identity_from_c(const dht_identity* cid) {
+    dht::crypto::Identity id {};
+    if (cid and cid->privatekey)
+        id.first = *reinterpret_cast<const PrivkeySp*>(cid->privatekey);
+    if (cid and cid->certificate)
+        id.second = *reinterpret_cast<const CertSp*>(cid->certificate);
+    return id;
+}
+
+inline dht_identity dht_identity_to_c(const dht::crypto::Identity& id) {
+    dht_identity cid {};
+    cid.privatekey = id.first ? reinterpret_cast<dht_privatekey*>(new PrivkeySp(id.first)) : NULL;
+    cid.certificate = id.second ? reinterpret_cast<dht_certificate*>(new CertSp(id.second)) : NULL;
+    return cid;
+}
+
+OPENDHT_C_PUBLIC dht_identity dht_identity_generate(const char* common_name, const dht_identity* ca) {
+    return dht_identity_to_c(dht::crypto::generateIdentity(common_name, dht_identity_from_c(ca)));
+}
+
+OPENDHT_C_PUBLIC void dht_identity_delete(dht_identity* id) {
+    if (id->certificate) {
+        dht_certificate_delete(id->certificate);
+        id->certificate = NULL;
+    }
+    if (id->privatekey) {
+        dht_privatekey_delete(id->privatekey);
+        id->privatekey = NULL;
+    }
 }
 
 // config
@@ -171,8 +240,8 @@ void dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_confi
     config.dht_config.node_config.persist_path = conf->dht_config.node_config.persist_path
         ? std::string(conf->dht_config.node_config.persist_path) : std::string{};
 
-    if (conf->dht_config.id.privkey)
-        config.dht_config.id.first = *reinterpret_cast<const PrivkeySp*>(conf->dht_config.id.privkey);
+    if (conf->dht_config.id.privatekey)
+        config.dht_config.id.first = *reinterpret_cast<const PrivkeySp*>(conf->dht_config.id.privatekey);
 
     if (conf->dht_config.id.certificate)
         config.dht_config.id.second = *reinterpret_cast<const CertSp*>(conf->dht_config.id.certificate);
