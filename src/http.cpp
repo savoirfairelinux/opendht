@@ -142,9 +142,9 @@ Connection::close()
     if (!is_open())
         return;
     asio::error_code ec;
-    if (ssl_ctx_)
+    if (ssl_socket_)
         ssl_socket_->close(ec);
-    else
+    else if (socket_)
         socket_->close(ec);
     if (ec and logger_)
         logger_->e("[http:client]  [connection:%i] error closing: %s", id_, ec.message().c_str());
@@ -159,9 +159,9 @@ Connection::id()
 bool
 Connection::is_open()
 {
-    if (ssl_ctx_)
+    if (ssl_socket_)
         return ssl_socket_->is_open();
-    else
+    else if (socket_)
         return socket_->is_open();
 }
 
@@ -174,7 +174,7 @@ Connection::is_ssl()
 void
 Connection::set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
 {
-    if (ssl_ctx_ and verify_mode != asio::ssl::verify_none){
+    if (ssl_socket_ and verify_mode != asio::ssl::verify_none){
         auto hostname = endpoint.address().to_string();
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         ssl_socket_->asio_ssl_stream().set_verify_callback(
@@ -230,16 +230,16 @@ Connection::read_until(const char delim)
 void
 Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb)
 {
-    if (ssl_ctx_)
+    if (ssl_socket_)
         asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), cb);
-    else
+    else if (socket_)
         asio::async_connect(*socket_, std::move(endpoints), cb);
 }
 
 void
 Connection::async_handshake(HandlerCb cb)
 {
-    if (ssl_ctx_)
+    if (ssl_socket_)
         ssl_socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client,
                                     [this, cb](const asio::error_code& ec)
         {
@@ -265,9 +265,9 @@ Connection::async_write(BytesHandlerCb cb)
 {
     if (!is_open())
         return;
-    if (ssl_ctx_)
+    if (ssl_socket_)
         asio::async_write(*ssl_socket_, write_buf_, cb);
-    else
+    else if (socket_)
         asio::async_write(*socket_, write_buf_, cb);
 }
 
@@ -276,9 +276,9 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
     if (!is_open())
         return;
-    if (ssl_ctx_)
+    if (ssl_socket_)
         asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
-    else
+    else if (socket_)
         asio::async_read_until(*socket_, read_buf_, delim, cb);
 }
 
@@ -289,7 +289,7 @@ Connection::async_read(const size_t bytes, BytesHandlerCb cb)
         return;
     if (ssl_socket_)
         asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), cb);
-    else
+    else if (socket_)
         asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), cb);
 }
 
