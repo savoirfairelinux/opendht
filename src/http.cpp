@@ -163,6 +163,8 @@ Connection::is_open()
         return ssl_socket_->is_open();
     else if (socket_)
         return socket_->is_open();
+    else
+        return false;
 }
 
 bool
@@ -234,6 +236,8 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
         asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), cb);
     else if (socket_)
         asio::async_connect(*socket_, std::move(endpoints), cb);
+    else if (cb)
+        cb(asio::error::operation_aborted, {});
 }
 
 void
@@ -258,6 +262,8 @@ Connection::async_handshake(HandlerCb cb)
         });
     else if (socket_)
         cb(asio::error::no_protocol_option);
+    else if (cb)
+        cb(asio::error::operation_aborted);
 }
 
 void
@@ -269,6 +275,8 @@ Connection::async_write(BytesHandlerCb cb)
         asio::async_write(*ssl_socket_, write_buf_, cb);
     else if (socket_)
         asio::async_write(*socket_, write_buf_, cb);
+    else if (cb)
+        cb(asio::error::operation_aborted, 0);
 }
 
 void
@@ -280,6 +288,8 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
         asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
     else if (socket_)
         asio::async_read_until(*socket_, read_buf_, delim, cb);
+    else if (cb)
+        cb(asio::error::operation_aborted, 0);
 }
 
 void
@@ -291,6 +301,8 @@ Connection::async_read(const size_t bytes, BytesHandlerCb cb)
         asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), cb);
     else if (socket_)
         asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), cb);
+    else if (cb)
+        cb(asio::error::operation_aborted, 0);
 }
 
 void
@@ -299,6 +311,8 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
     if (!is_open()){
         if (logger_)
             logger_->e("[http:client]  [connection:%i] closed, can't timeout", id_);
+        if (cb)
+            cb(asio::error::operation_aborted);
         return;
     }
     if (!timeout_timer_)
