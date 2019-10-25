@@ -89,13 +89,13 @@ impl DhtNodeConfig
 
 struct GetHandler<'a>
 {
-    get_cb: &'a mut(dyn FnMut(Box<Value>)),
+    get_cb: &'a mut(dyn FnMut(Box<Value>) -> bool),
     done_cb: &'a mut(dyn FnMut(bool))
 }
 
 impl<'a> GetHandler<'a>
 {
-    fn get_cb(&mut self, v: Box<Value>) {
+    fn get_cb(&mut self, v: Box<Value>) -> bool{
         (self.get_cb)(v)
     }
 
@@ -104,9 +104,9 @@ impl<'a> GetHandler<'a>
     }
 }
 
-extern fn get_handler_cb(v: *mut Value, ptr: *mut c_void) {
+extern fn get_handler_cb(v: *mut Value, ptr: *mut c_void) -> bool {
     if ptr.is_null() {
-        return;
+        return true;
     }
     unsafe {
         let handler = ptr as *mut GetHandler;
@@ -142,17 +142,17 @@ extern fn put_handler_done(ok: bool, ptr: *mut c_void) {
 
 struct ListenHandler<'a>
 {
-    cb: &'a mut(dyn FnMut(Box<Value>, bool))
+    cb: &'a mut(dyn FnMut(Box<Value>, bool) -> bool)
 }
 
 impl<'a> ListenHandler<'a>
 {
-    fn cb(&mut self, v: Box<Value>, expired: bool) {
+    fn cb(&mut self, v: Box<Value>, expired: bool) -> bool {
         (self.cb)(v, expired)
     }
 }
 
-extern fn listen_handler(v: *mut Value, expired: bool, ptr: *mut c_void) {
+extern fn listen_handler(v: *mut Value, expired: bool, ptr: *mut c_void) -> bool {
     unsafe {
         let handler = ptr as *mut ListenHandler;
         (*handler).cb((*v).boxed(), expired)
@@ -205,7 +205,7 @@ impl DhtRunner {
     }
 
     pub fn get<'a>(&mut self, h: &InfoHash,
-                get_cb: &'a mut(dyn FnMut(Box<Value>)),
+                get_cb: &'a mut(dyn FnMut(Box<Value>) -> bool),
                 done_cb: &'a mut(dyn FnMut(bool))) {
         let handler = Box::new(GetHandler {
             get_cb,
@@ -246,7 +246,7 @@ impl DhtRunner {
     }
 
     pub fn listen<'a>(&mut self, h: &InfoHash,
-                cb: &'a mut(dyn FnMut(Box<Value>, bool))) -> Box<OpToken> {
+                cb: &'a mut(dyn FnMut(Box<Value>, bool) -> bool)) -> Box<OpToken> {
         let handler = Box::new(ListenHandler {
             cb,
         });

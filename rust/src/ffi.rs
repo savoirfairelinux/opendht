@@ -185,7 +185,7 @@ extern {
     pub fn dht_runner_run_config(dht: *mut DhtRunner, port: in_port_t, config: *const DhtRunnerConfig);
     pub fn dht_runner_bootstrap(dht: *mut DhtRunner, host: *const c_char, service: *const c_char);
     pub fn dht_runner_get(dht: *mut DhtRunner, h: *const InfoHash,
-                      get_cb: extern fn(*mut Value, *mut c_void),
+                      get_cb: extern fn(*mut Value, *mut c_void) -> bool,
                       done_cb: extern fn(bool, *mut c_void),
                       cb_user_data: *mut c_void);
     pub fn dht_runner_put(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
@@ -196,7 +196,7 @@ extern {
                       cb_user_data: *mut c_void);
     pub fn dht_runner_cancel_put(dht: *mut DhtRunner, h: *const InfoHash, vid: u64);
     pub fn dht_runner_listen(dht: *mut DhtRunner, h: *const InfoHash,
-                      cb: extern fn(*mut Value, bool, *mut c_void),
+                      cb: extern fn(*mut Value, bool, *mut c_void) -> bool,
                       done_cb: extern fn(*mut c_void),
                       cb_user_data: *mut c_void) -> *mut OpToken;
     pub fn dht_runner_cancel_listen(dht: *mut DhtRunner, h: *const InfoHash,
