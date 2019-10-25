@@ -20,7 +20,7 @@ extern crate opendht;
 use std::{ thread, time };
 
 use opendht::{ InfoHash, DhtRunner, DhtRunnerConfig, Value };
-use opendht::crypto::*;
+// use opendht::crypto::*;
 
 fn main() {
     println!("{}", InfoHash::random());
@@ -31,7 +31,7 @@ fn main() {
 
 
     let mut dht = DhtRunner::new();
-    let mut config = DhtRunnerConfig::new();
+    let /*mut*/ config = DhtRunnerConfig::new();
     //// If you want to inject a certificate, uncomment the following lines and previous mut.
     //// Note: you can generate a certificate with
     //// openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes -keyout example.key -out example.crt -subj /CN=example.com
@@ -46,6 +46,7 @@ fn main() {
     let mut get_cb = |v: Box<Value>| {
         //data += 1;
         println!("GET: VALUE CB - data: {} - v: {}", data, v);
+        true
     };
     let mut done_cb = |ok: bool| {
         println!("GET: DONE CB - data: {} - ok: {}", data, ok);
@@ -62,6 +63,7 @@ fn main() {
     println!("Start listening /foo");
     let mut value_cb = |v, expired| {
         println!("LISTEN: DONE CB - data: {} - v: {} - expired: {}", data, v, expired);
+        true
     };
     let token = dht.listen(&InfoHash::get("foo"), &mut value_cb);
     let one_min = time::Duration::from_secs(10);

@@ -23,6 +23,7 @@ use std::ffi::CString;
 use std::io;
 use std::io::prelude::*;
 use std::fs::File;
+use std::ptr;
 
 impl PublicKey {
     pub fn new() -> Box<PublicKey> {
@@ -154,6 +155,12 @@ impl Drop for DhtCertificate {
 }
 
 impl DhtIdentity {
+    pub fn new(common_name: &str) -> DhtIdentity {
+        unsafe {
+            DhtIdentity::generate(common_name, Box::from_raw(ptr::null_mut()))
+        }
+    }
+
     pub fn generate(common_name: &str, ca: Box<DhtIdentity>) -> DhtIdentity {
         let common_name = CString::new(common_name).unwrap();
         unsafe {
