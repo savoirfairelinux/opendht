@@ -20,6 +20,7 @@ extern crate opendht;
 use std::{ thread, time };
 
 use opendht::{ InfoHash, DhtRunner, DhtRunnerConfig, Value };
+use opendht::crypto::*;
 
 fn main() {
     println!("{}", InfoHash::random());
@@ -28,10 +29,18 @@ fn main() {
     println!("{}", InfoHash::get("alice"));
     println!("{}", InfoHash::get("alice").is_zero());
 
+
     let mut dht = DhtRunner::new();
-    let config = DhtRunnerConfig::new();
+    let mut config = DhtRunnerConfig::new();
+    //// If you want to inject a certificate, uncomment the following lines and previous mut.
+    //// Note: you can generate a certificate with
+    //// openssl req -x509 -newkey rsa:4096 -sha256 -days 3650 -nodes -keyout example.key -out example.crt -subj /CN=example.com
+    //let cert = DhtCertificate::import("example.crt").ok().expect("Invalid cert file");
+    //let pk = PrivateKey::import("example.key", "");
+    //config.set_identity(cert, pk);
     dht.run_config(1412, config);
     dht.bootstrap("bootstrap.jami.net", 4222);
+    println!("Current node id: {}", dht.node_id());
 
     let /* mut */ data = 42;
     let mut get_cb = |v: Box<Value>| {

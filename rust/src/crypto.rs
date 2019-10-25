@@ -18,8 +18,11 @@
 
 #![allow(dead_code)]
 
-use crate::ffi::*;
+pub use crate::ffi::*;
 use std::ffi::CString;
+use std::io;
+use std::io::prelude::*;
+use std::fs::File;
 
 impl PublicKey {
     pub fn new() -> Box<PublicKey> {
@@ -109,6 +112,60 @@ impl Drop for PrivateKey {
     fn drop(&mut self) {
         unsafe {
             dht_privatekey_delete(&mut *self)
+        }
+    }
+}
+
+impl DhtCertificate {
+    pub fn import(file: &str) -> io::Result<Box<DhtCertificate>> {
+        let mut f = File::open(file)?;
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer)?;
+        unsafe {
+            Ok(Box::from_raw(dht_certificate_import((&*buffer).as_ptr(), buffer.len())))
+        }
+    }
+
+    pub fn id(&self) -> InfoHash {
+        unsafe {
+            dht_certificate_get_id(&*self)
+        }
+    }
+
+    pub fn long_id(&self) -> PkId {
+        unsafe {
+            dht_certificate_get_long_id(&*self)
+        }
+    }
+
+    pub fn publickey(&self) -> Box<PublicKey> {
+        unsafe {
+            Box::from_raw(dht_certificate_get_publickey(&*self))
+        }
+    }
+}
+
+impl Drop for DhtCertificate {
+    fn drop(&mut self) {
+        unsafe {
+            dht_certificate_delete(&mut *self)
+        }
+    }
+}
+
+impl DhtIdentity {
+    pub fn generate(common_name: &str, ca: Box<DhtIdentity>) -> DhtIdentity {
+        let common_name = CString::new(common_name).unwrap();
+        unsafe {
+            dht_identity_generate(common_name.as_ptr(), &*ca)
+        }
+    }
+}
+
+impl Drop for DhtIdentity {
+    fn drop(&mut self) {
+        unsafe {
+            dht_identity_delete(&mut *self)
         }
     }
 }

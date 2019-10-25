@@ -39,7 +39,7 @@ impl DhtRunnerConfig {
                     persist_path: ptr::null(),
                 },
                 id: DhtIdentity {
-                    privkey: ptr::null_mut(),
+                    privatekey: ptr::null_mut(),
                     certificate: ptr::null_mut(),
                 },
             },
@@ -51,7 +51,7 @@ impl DhtRunnerConfig {
             peer_publish: false,
             server_ca: ptr::null_mut(),
             client_identity: DhtIdentity {
-                privkey: ptr::null_mut(),
+                privatekey: ptr::null_mut(),
                 certificate: ptr::null_mut(),
             },
         });
@@ -71,6 +71,11 @@ impl DhtRunnerConfig {
 
     pub fn set_push_token(&mut self, push_token: &str) {
         self.push_token = CString::new(push_token).unwrap().as_ptr();
+    }
+
+    pub fn set_identity(&mut self, certificate: Box<DhtCertificate>, privatekey: Box<PrivateKey>) {
+        self.dht_config.id.privatekey = Box::into_raw(privatekey);
+        self.dht_config.id.certificate = Box::into_raw(certificate);
     }
 
 }

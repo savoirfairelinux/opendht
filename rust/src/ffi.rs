@@ -98,7 +98,7 @@ pub struct DhtCertificate
 #[repr(C)]
 pub struct DhtIdentity
 {
-    pub privkey: *mut PrivateKey,
+    pub privatekey: *mut PrivateKey,
     pub certificate: *mut DhtCertificate,
 }
 
@@ -161,6 +161,16 @@ extern {
     pub fn dht_privatekey_import(dat: *const u8, data_size: size_t, password: *const c_char) -> *mut PrivateKey;
     pub fn dht_privatekey_get_publickey(pk: *const PrivateKey) -> *mut PublicKey;
     pub fn dht_privatekey_delete(pk: *mut PrivateKey);
+
+    // dht::crypto::Certificate
+    pub fn dht_certificate_import(dat: *const u8, dat_size: size_t) -> *mut DhtCertificate;
+    pub fn dht_certificate_get_id(cert: *const DhtCertificate) -> InfoHash;
+    pub fn dht_certificate_get_long_id(cert: *const DhtCertificate) -> PkId;
+    pub fn dht_certificate_get_publickey(cert: *const DhtCertificate) -> *mut PublicKey;
+    pub fn dht_certificate_delete(cert: *mut DhtCertificate);
+
+    pub fn dht_identity_generate(common_name: *const c_char, ca: *const DhtIdentity) -> DhtIdentity;
+    pub fn dht_identity_delete(ca: *mut DhtIdentity);
 
     // dht::OpToken
     pub fn dht_op_token_delete(token: *mut OpToken);
