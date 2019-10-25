@@ -131,6 +131,12 @@ impl DhtCertificate {
         }
     }
 
+    pub fn from_slice(buffer: &str) -> Box<DhtCertificate> {
+        unsafe {
+            Box::from_raw(dht_certificate_import((&*buffer).as_ptr(), buffer.len()))
+        }
+    }
+
     pub fn id(&self) -> InfoHash {
         unsafe {
             dht_certificate_get_id(&*self)
