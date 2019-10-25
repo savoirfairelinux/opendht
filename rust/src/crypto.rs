@@ -122,8 +122,12 @@ impl DhtCertificate {
         let mut f = File::open(file)?;
         let mut buffer = Vec::new();
         f.read_to_end(&mut buffer)?;
+        Ok(DhtCertificate::from_bytes(&buffer))
+    }
+
+    pub fn from_bytes(buffer: &Vec<u8>) -> Box<DhtCertificate> {
         unsafe {
-            Ok(Box::from_raw(dht_certificate_import((&*buffer).as_ptr(), buffer.len())))
+            Box::from_raw(dht_certificate_import((&*buffer).as_ptr(), buffer.len()))
         }
     }
 
