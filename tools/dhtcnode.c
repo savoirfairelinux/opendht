@@ -15,6 +15,7 @@ bool dht_value_callback(const dht_value* value, bool expired, void* user_data)
 {
     dht_data_view data = dht_value_get_data(value);
     printf("Value callback %s: %.*s.\n", expired ? "expired" : "new", (int)data.size, data.data);
+    return true;
 }
 
 bool dht_get_callback(const dht_value* value, void* user_data)
@@ -22,15 +23,16 @@ bool dht_get_callback(const dht_value* value, void* user_data)
     dht_runner* runner = (dht_runner*)user_data;
     dht_data_view data = dht_value_get_data(value);
     printf("Get callback: %.*s.\n", (int)data.size, data.data);
+    return true;
 }
 
-bool dht_done_callback(bool ok, void* user_data)
+void dht_done_callback(bool ok, void* user_data)
 {
     dht_runner* runner = (dht_runner*)user_data;
     printf("Done callback. %s\n", ok ? "Success !" : "Failure :-(");
 }
 
-bool op_context_free(void* user_data)
+void op_context_free(void* user_data)
 {
     struct op_context* ctx = (struct op_context*)user_data;
     printf("op_context_free %d.\n", ctx->d);

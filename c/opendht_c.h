@@ -88,8 +88,8 @@ OPENDHT_C_PUBLIC void dht_identity_delete(dht_identity*);
 // callbacks
 typedef bool (*dht_get_cb)(const dht_value* value, void* user_data);
 typedef bool (*dht_value_cb)(const dht_value* value, bool expired, void* user_data);
-typedef bool (*dht_done_cb)(bool ok, void* user_data);
-typedef bool (*dht_shutdown_cb)(void* user_data);
+typedef void (*dht_done_cb)(bool ok, void* user_data);
+typedef void (*dht_shutdown_cb)(void* user_data);
 
 struct OPENDHT_C_PUBLIC dht_op_token;
 typedef struct dht_op_token dht_op_token;
