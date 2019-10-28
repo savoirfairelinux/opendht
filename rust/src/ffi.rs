@@ -127,11 +127,14 @@ pub struct DhtRunnerConfig
 #[link(name = "opendht-c")]
 extern {
     // dht::Value
-    pub fn dht_value_get_id(data: *const Value) -> u64;
-    pub fn dht_value_get_data(data: *const Value) -> DataView;
     pub fn dht_value_new(data: *const u8, size: size_t) -> *mut Value;
     pub fn dht_value_ref(data: *const Value) -> *mut Value;
     pub fn dht_value_unref(data: *mut Value);
+    pub fn dht_value_get_data(data: *const Value) -> DataView;
+    pub fn dht_value_get_id(data: *const Value) -> u64;
+    pub fn dht_value_get_owner(data: *const Value) -> *mut PublicKey;
+    pub fn dht_value_get_recipient(data: *const Value) -> InfoHash;
+    pub fn dht_value_get_user_type(data: *const Value) -> *const c_char;
 
     // dht::Blob
     pub fn dht_blob_get_data(data: *const Blob) -> DataView;
@@ -147,7 +150,7 @@ extern {
     pub fn dht_pkid_print(h: *const PkId) -> *const c_char;
 
     // dht::crypto::PublicKey
-    pub fn dht_publickey_new() -> *mut PublicKey;
+    pub fn dht_publickey_import(dat: *const u8, dat_size: size_t) -> *mut PublicKey;
     pub fn dht_publickey_delete(pk: *mut PublicKey);
     pub fn dht_publickey_unpack(pk: *mut PublicKey, dat: *const u8, dat_size: size_t) -> c_int;
     pub fn dht_publickey_pack(pk: *mut PublicKey, out: *const c_char, out_size: size_t) -> c_int;
@@ -185,12 +188,22 @@ extern {
     pub fn dht_runner_run_config(dht: *mut DhtRunner, port: in_port_t, config: *const DhtRunnerConfig);
     pub fn dht_runner_bootstrap(dht: *mut DhtRunner, host: *const c_char, service: *const c_char);
     pub fn dht_runner_get(dht: *mut DhtRunner, h: *const InfoHash,
-                      get_cb: extern fn(*mut Value, *mut c_void) -> bool,
-                      done_cb: extern fn(bool, *mut c_void),
-                      cb_user_data: *mut c_void);
+                          get_cb: extern fn(*mut Value, *mut c_void) -> bool,
+                          done_cb: extern fn(bool, *mut c_void),
+                          cb_user_data: *mut c_void);
     pub fn dht_runner_put(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
-                      done_cb: extern fn(bool, *mut c_void),
-                      cb_user_data: *mut c_void);
+                          done_cb: extern fn(bool, *mut c_void),
+                          cb_user_data: *mut c_void,
+                          permanent: bool);
+    pub fn dht_runner_put_signed(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
+                                 done_cb: extern fn(bool, *mut c_void),
+                                 cb_user_data: *mut c_void,
+                                 permanent: bool);
+    pub fn dht_runner_put_encrypted(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
+                                    to: *const InfoHash,
+                                    done_cb: extern fn(bool, *mut c_void),
+                                    cb_user_data: *mut c_void,
+                                    permanent: bool);
     pub fn dht_runner_put_permanent(dht: *mut DhtRunner, h: *const InfoHash, v: *const Value,
                       done_cb: extern fn(bool, *mut c_void),
                       cb_user_data: *mut c_void);

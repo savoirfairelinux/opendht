@@ -218,24 +218,24 @@ impl DhtRunner {
     }
 
     pub fn put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
-                done_cb: &'a mut(dyn FnMut(bool))) {
+                   done_cb: &'a mut(dyn FnMut(bool))) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler)
+            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, false)
         }
     }
 
     pub fn permanent_put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
-                done_cb: &'a mut(dyn FnMut(bool))) {
+                             done_cb: &'a mut(dyn FnMut(bool))) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put_permanent(&mut *self, h, &*v, put_handler_done, handler)
+            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, true)
         }
     }
 

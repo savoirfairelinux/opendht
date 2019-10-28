@@ -15,9 +15,11 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+#![allow(dead_code)]
 
 use crate::ffi::*;
 use std::fmt;
+use std::ffi::{ CString, IntoStringError };
 use std::str;
 use std::slice;
 
@@ -60,6 +62,28 @@ impl Value {
     pub fn boxed(&mut self) -> Box<Value> {
         unsafe {
             Box::from_raw(dht_value_ref(self))
+        }
+    }
+
+    fn recipient(&self) -> InfoHash {
+        unsafe {
+            dht_value_get_recipient(self)
+        }
+    }
+
+    pub fn owner(&self) -> Option<Box<PublicKey>> {
+        unsafe {
+            let ptr = dht_value_get_owner(self);
+            if ptr.is_null() {
+                return None;
+            }
+            Some(Box::from_raw(ptr))
+        }
+    }
+
+    pub fn user_type(&self) -> Result<String, IntoStringError> {
+        unsafe {
+            CString::from_raw(dht_value_get_user_type(self) as *mut _).into_string()
         }
     }
 }
