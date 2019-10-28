@@ -57,7 +57,7 @@ fn main() {
     let mut put_done_cb = |ok: bool| {
         println!("PUT: DONE CB - data: {} - ok: {}", data, ok);
     };
-    dht.put(&InfoHash::get("bob"), Value::new("hi!"), &mut put_done_cb);
+    dht.put(&InfoHash::get("bob"), Value::new("hi!"), &mut put_done_cb, false);
 
 
     println!("Start listening /foo");

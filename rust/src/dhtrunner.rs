@@ -217,37 +217,37 @@ impl DhtRunner {
         }
     }
 
-    pub fn put<'a, T: Into<Option<bool>>>(&mut self, h: &InfoHash, v: Box<Value>,
-                   done_cb: &'a mut(dyn FnMut(bool)), permanent: T) {
+    pub fn put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
+                   done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, permanent.into().unwrap_or(false))
+            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, permanent)
         }
     }
 
-    pub fn put_signed<'a, T: Into<Option<bool>>>(&mut self, h: &InfoHash, v: Box<Value>,
-                                                 done_cb: &'a mut(dyn FnMut(bool)), permanent: T) {
+    pub fn put_signed<'a>(&mut self, h: &InfoHash, v: Box<Value>,
+                                                 done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put_signed(&mut *self, h, &*v, put_handler_done, handler, permanent.into().unwrap_or(false))
+            dht_runner_put_signed(&mut *self, h, &*v, put_handler_done, handler, permanent)
         }
     }
 
-    pub fn put_encrypted<'a, T: Into<Option<bool>>>(&mut self, h: &InfoHash, v: Box<Value>,
+    pub fn put_encrypted<'a>(&mut self, h: &InfoHash, v: Box<Value>,
                                                     to: &InfoHash,
-                                                    done_cb: &'a mut(dyn FnMut(bool)), permanent: T) {
+                                                    done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put_encrypted(&mut *self, h, &*v, to, put_handler_done, handler, permanent.into().unwrap_or(false))
+            dht_runner_put_encrypted(&mut *self, h, &*v, to, put_handler_done, handler, permanent)
         }
     }
 
