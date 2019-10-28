@@ -341,24 +341,24 @@ void dht_op_token_delete(dht_op_token* token) {
     delete reinterpret_cast<std::future<size_t>*>(token);
 }
 
-void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data) {
+void dht_runner_put(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data, bool permanent) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto value = reinterpret_cast<const ValueSp*>(v);
     runner->put(*hash, *value, [done_cb, cb_user_data](bool ok){
         if (done_cb)
             done_cb(ok, cb_user_data);
-    });
+    }, dht::time_point::max(), permanent);
 }
 
-void dht_runner_put_permanent(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data) {
+void dht_runner_put_signed(dht_runner* r, const dht_infohash* h, const dht_value* v, dht_done_cb done_cb, void* cb_user_data, bool permanent) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto value = reinterpret_cast<const ValueSp*>(v);
-    runner->put(*hash, *value, [done_cb, cb_user_data](bool ok){
+    runner->putSigned(*hash, *value, [done_cb, cb_user_data](bool ok){
         if (done_cb)
             done_cb(ok, cb_user_data);
-    }, dht::time_point::max(), true);
+    }, permanent);
 }
 
 void dht_runner_cancel_put(dht_runner* r, const dht_infohash* h, dht_value_id value_id) {

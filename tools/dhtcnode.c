@@ -89,7 +89,7 @@ int main()
     // Put data
     const char* data_str = "yo, this is some data";
     dht_value* val = dht_value_new(data_str, strlen(data_str));
-    dht_runner_put(runner, &h, val, dht_done_callback, runner);
+    dht_runner_put(runner, &h, val, dht_done_callback, runner, false);
     dht_value_unref(val);
 
     // Get data
