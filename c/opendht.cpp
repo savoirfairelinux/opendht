@@ -84,7 +84,7 @@ dht_value_id dht_value_get_id(const dht_value* data) {
 
 dht_publickey* dht_value_get_owner(const dht_value* data) {
     const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
-    return reinterpret_cast<dht_publickey*>(new PubkeySp(vsp->owner));
+    return vsp->owner ? reinterpret_cast<dht_publickey*>(new PubkeySp(vsp->owner)) : nullptr;
 }
 
 dht_infohash dht_value_get_recipient(const dht_value* data) {
