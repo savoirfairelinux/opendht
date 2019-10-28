@@ -217,25 +217,37 @@ impl DhtRunner {
         }
     }
 
-    pub fn put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
-                   done_cb: &'a mut(dyn FnMut(bool))) {
+    pub fn put<'a, T: Into<Option<bool>>>(&mut self, h: &InfoHash, v: Box<Value>,
+                   done_cb: &'a mut(dyn FnMut(bool)), permanent: T) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, false)
+            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, permanent.into().unwrap_or(false))
         }
     }
 
-    pub fn permanent_put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
-                             done_cb: &'a mut(dyn FnMut(bool))) {
+    pub fn put_signed<'a, T: Into<Option<bool>>>(&mut self, h: &InfoHash, v: Box<Value>,
+                                                 done_cb: &'a mut(dyn FnMut(bool)), permanent: T) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, true)
+            dht_runner_put_signed(&mut *self, h, &*v, put_handler_done, handler, permanent.into().unwrap_or(false))
+        }
+    }
+
+    pub fn put_encrypted<'a, T: Into<Option<bool>>>(&mut self, h: &InfoHash, v: Box<Value>,
+                                                    to: &InfoHash,
+                                                    done_cb: &'a mut(dyn FnMut(bool)), permanent: T) {
+        let handler = Box::new(PutHandler {
+            done_cb,
+        });
+        let handler = Box::into_raw(handler) as *mut c_void;
+        unsafe {
+            dht_runner_put_encrypted(&mut *self, h, &*v, to, put_handler_done, handler, permanent.into().unwrap_or(false))
         }
     }
 
