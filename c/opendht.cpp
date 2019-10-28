@@ -361,6 +361,17 @@ void dht_runner_put_signed(dht_runner* r, const dht_infohash* h, const dht_value
     }, permanent);
 }
 
+void dht_runner_put_encrypted(dht_runner* r, const dht_infohash* h, const dht_infohash* to, const dht_value* v, dht_done_cb done_cb, void* cb_user_data, bool permanent) {
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+    auto hash = reinterpret_cast<const dht::InfoHash*>(h);
+    auto toHash = reinterpret_cast<const dht::InfoHash*>(to);
+    auto value = reinterpret_cast<const ValueSp*>(v);
+    runner->putEncrypted(*hash, *toHash, *value, [done_cb, cb_user_data](bool ok){
+        if (done_cb)
+            done_cb(ok, cb_user_data);
+    }, permanent);
+}
+
 void dht_runner_cancel_put(dht_runner* r, const dht_infohash* h, dht_value_id value_id) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);

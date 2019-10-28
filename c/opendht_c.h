@@ -143,6 +143,7 @@ OPENDHT_C_PUBLIC dht_op_token* dht_runner_listen(dht_runner* runner, const dht_i
 OPENDHT_C_PUBLIC void dht_runner_cancel_listen(dht_runner* runner, const dht_infohash* hash, dht_op_token* token);
 OPENDHT_C_PUBLIC void dht_runner_put(dht_runner* runner, const dht_infohash* hash, const dht_value* value, dht_done_cb done_cb, void* cb_user_data, bool permanent);
 OPENDHT_C_PUBLIC void dht_runner_put_signed(dht_runner* runner, const dht_infohash* hash, const dht_value* value, dht_done_cb done_cb, void* cb_user_data, bool permanent);
+OPENDHT_C_PUBLIC void dht_runner_put_encrypted(dht_runner* runner, const dht_infohash* hash, const dht_infohash* to, const dht_value* value, dht_done_cb done_cb, void* cb_user_data, bool permanent);
 OPENDHT_C_PUBLIC void dht_runner_cancel_put(dht_runner* runner, const dht_infohash* hash, dht_value_id value_id);
 OPENDHT_C_PUBLIC void dht_runner_shutdown(dht_runner* runner, dht_shutdown_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_node_id(const dht_runner* runner);
