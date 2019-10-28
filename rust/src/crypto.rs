@@ -26,9 +26,9 @@ use std::fs::File;
 use std::ptr;
 
 impl PublicKey {
-    pub fn new() -> Box<PublicKey> {
+    pub fn new(data: &str) -> Box<PublicKey> {
         unsafe {
-            Box::from_raw(dht_publickey_new())
+            Box::from_raw(dht_publickey_import(data.as_ptr(), data.len()))
         }
     }
 
