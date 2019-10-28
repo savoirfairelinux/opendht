@@ -374,9 +374,9 @@ PublicKey::PublicKey()
         throw CryptoException(std::string("Can't initialize public key: ") + gnutls_strerror(err));
 }
 
-PublicKey::PublicKey(const Blob& dat) : PublicKey()
+PublicKey::PublicKey(const uint8_t* dat, size_t dat_size) : PublicKey()
 {
-    unpack(dat.data(), dat.size());
+    unpack(dat, dat_size);
 }
 
 PublicKey::~PublicKey()

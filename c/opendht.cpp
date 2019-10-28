@@ -3,6 +3,7 @@
 
 using ValueSp = std::shared_ptr<dht::Value>;
 using PrivkeySp = std::shared_ptr<dht::crypto::PrivateKey>;
+using PubkeySp = std::shared_ptr<const dht::crypto::PublicKey>;
 using CertSp = std::shared_ptr<dht::crypto::Certificate>;
 
 #ifdef __cplusplus
@@ -10,6 +11,19 @@ extern "C" {
 #endif
 
 // dht::InfoHash
+
+inline dht_infohash dht_infohash_to_c(const dht::InfoHash& h) {
+    dht_infohash ret;
+    *reinterpret_cast<dht::InfoHash*>(&ret) = h;
+    return ret;
+}
+
+inline dht_pkid dht_pkid_to_c(const dht::PkId& h) {
+    dht_pkid ret;
+    *reinterpret_cast<dht::PkId*>(&ret) = h;
+    return ret;
+}
+
 const char* dht_infohash_print(const dht_infohash* h) {
     return reinterpret_cast<const dht::InfoHash*>(h)->to_c_str();
 }
@@ -26,24 +40,20 @@ void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size) {
     *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::get(dat, dat_size);
 }
 
+void dht_infohash_get_from_string(dht_infohash* h, const char* dat) {
+    *reinterpret_cast<dht::InfoHash*>(h) = dht::InfoHash::get((const uint8_t*)dat, (size_t)strlen(dat));
+}
+
 bool dht_infohash_is_zero(const dht_infohash* h) {
     return !static_cast<bool>(*reinterpret_cast<const dht::InfoHash*>(h));
 }
 
+void dht_infohash_from_hex(dht_infohash* h, const char* dat) {
+    *h = dht_infohash_to_c(dht::InfoHash(std::string(dat, HASH_LEN*2)));
+}
+
 const char* dht_pkid_print(const dht_pkid* h) {
     return reinterpret_cast<const dht::PkId*>(h)->to_c_str();
-}
-
-inline dht_infohash dht_infohash_to_c(const dht::InfoHash& h) {
-    dht_infohash ret;
-    *reinterpret_cast<dht::InfoHash*>(&ret) = h;
-    return ret;
-}
-
-inline dht_pkid dht_pkid_to_c(const dht::PkId& h) {
-    dht_pkid ret;
-    *reinterpret_cast<dht::PkId*>(&ret) = h;
-    return ret;
 }
 
 // dht::Blob
@@ -72,6 +82,21 @@ dht_value_id dht_value_get_id(const dht_value* data) {
     return vsp->id;
 }
 
+dht_publickey* dht_value_get_owner(const dht_value* data) {
+    const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
+    return reinterpret_cast<dht_publickey*>(new PubkeySp(vsp->owner));
+}
+
+dht_infohash dht_value_get_recipient(const dht_value* data) {
+    const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
+    return dht_infohash_to_c(vsp->recipient);
+}
+
+const char* dht_value_get_user_type(const dht_value* data) {
+    const ValueSp& vsp(*reinterpret_cast<const ValueSp*>(data));
+    return vsp->user_type.c_str();
+}
+
 dht_value* dht_value_new(const uint8_t* data, size_t size) {
     return reinterpret_cast<dht_value*>(new ValueSp(std::make_shared<dht::Value>(data, size)));
 }
@@ -85,44 +110,42 @@ void dht_value_unref(dht_value* v) {
 }
 
 // dht::crypto::PublicKey
-dht_publickey* dht_publickey_new() {
-    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey);
+dht_publickey* dht_publickey_import(const uint8_t* dat, size_t dat_size) {
+    try {
+        return reinterpret_cast<dht_publickey*>(new PubkeySp(std::make_shared<const dht::crypto::PublicKey>(dat, dat_size)));
+    } catch (const dht::crypto::CryptoException& e) {
+        return nullptr;
+    }
 }
 
 void dht_publickey_delete(dht_publickey* pk) {
-    delete reinterpret_cast<dht::crypto::PublicKey*>(pk);
-}
-
-int dht_publickey_unpack(dht_publickey* pk, const uint8_t* dat, size_t dat_size) {
-    try {
-        reinterpret_cast<dht::crypto::PublicKey*>(pk)->unpack(dat, dat_size);
-    } catch (const dht::crypto::CryptoException& e) {
-        return -1;
-    }
-    return 0;
+    delete reinterpret_cast<PubkeySp*>(pk);
 }
 
 int dht_publickey_pack(dht_publickey* pk, char* out, size_t* outlen) {
-    return gnutls_pubkey_export(reinterpret_cast<dht::crypto::PublicKey*>(pk)->pk, GNUTLS_X509_FMT_DER, out, outlen);
+    const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
+    return gnutls_pubkey_export(pkey->pk, GNUTLS_X509_FMT_DER, out, outlen);
 }
 
 dht_infohash dht_publickey_get_id(const dht_publickey* pk) {
-    auto pkey = reinterpret_cast<const dht::crypto::PublicKey*>(pk);
+    const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
     return dht_infohash_to_c(pkey->getId());
 }
 
 dht_pkid dht_publickey_get_long_id(const dht_publickey* pk) {
-    auto pkey = reinterpret_cast<const dht::crypto::PublicKey*>(pk);
+    const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
     return dht_pkid_to_c(pkey->getLongId());
 }
 
 bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, size_t data_size, const char* signature, size_t signature_size) {
-    return reinterpret_cast<const dht::crypto::PublicKey*>(pk)->checkSignature((const uint8_t*)data, data_size, (const uint8_t*)signature, signature_size);
+    const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
+    return pkey->checkSignature((const uint8_t*)data, data_size, (const uint8_t*)signature, signature_size);
 }
 
 dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size) {
+    const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
     auto rdata = new dht::Blob;
-    *rdata = reinterpret_cast<const dht::crypto::PublicKey*>(pk)->encrypt((const uint8_t*)data, data_size);
+    *rdata = pkey->encrypt((const uint8_t*)data, data_size);
     return (dht_blob*)rdata;
 }
 
@@ -143,7 +166,7 @@ dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const
 
 dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
     const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
-    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(key->getPublicKey()));
+    return reinterpret_cast<dht_publickey*>(new PubkeySp(std::make_shared<dht::crypto::PublicKey>(key->getPublicKey())));
 }
 
 void dht_privatekey_delete(dht_privatekey* pk) {
@@ -175,7 +198,7 @@ dht_pkid dht_certificate_get_long_id(const dht_certificate* c) {
 
 dht_publickey* dht_certificate_get_publickey(const dht_certificate* c) {
     const auto& cert = *reinterpret_cast<const CertSp*>(c);
-    return reinterpret_cast<dht_publickey*>(new dht::crypto::PublicKey(cert->getPublicKey()));
+    return reinterpret_cast<dht_publickey*>(new PubkeySp(std::make_shared<dht::crypto::PublicKey>(cert->getPublicKey())));
 }
 
 // dht::crypto::Identity

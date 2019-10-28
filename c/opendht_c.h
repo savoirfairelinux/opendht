@@ -18,16 +18,6 @@ struct OPENDHT_C_PUBLIC dht_data_view {
 };
 typedef struct dht_data_view dht_data_view;
 
-// dht::Value
-struct OPENDHT_C_PUBLIC dht_value;
-typedef struct dht_value dht_value;
-typedef uint64_t dht_value_id;
-OPENDHT_C_PUBLIC dht_data_view dht_value_get_data(const dht_value* data);
-OPENDHT_C_PUBLIC dht_value_id dht_value_get_id(const dht_value* data);
-OPENDHT_C_PUBLIC dht_value* dht_value_new(const uint8_t* data, size_t size);
-OPENDHT_C_PUBLIC dht_value* dht_value_ref(const dht_value*);
-OPENDHT_C_PUBLIC void dht_value_unref(dht_value*);
-
 // dht::Blob
 struct OPENDHT_C_PUBLIC dht_blob;
 typedef struct dht_blob dht_blob;
@@ -39,7 +29,9 @@ struct OPENDHT_C_PUBLIC dht_infohash { uint8_t d[HASH_LEN]; };
 typedef struct dht_infohash dht_infohash;
 OPENDHT_C_PUBLIC void dht_infohash_zero(dht_infohash* h);
 OPENDHT_C_PUBLIC void dht_infohash_random(dht_infohash* h);
+OPENDHT_C_PUBLIC void dht_infohash_from_hex(dht_infohash* h, const char* dat);
 OPENDHT_C_PUBLIC void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size);
+OPENDHT_C_PUBLIC void dht_infohash_get_from_string(dht_infohash* h, const char* str);
 OPENDHT_C_PUBLIC const char* dht_infohash_print(const dht_infohash* h);
 OPENDHT_C_PUBLIC bool dht_infohash_is_zero(const dht_infohash* h);
 
@@ -51,9 +43,8 @@ OPENDHT_C_PUBLIC const char* dht_pkid_print(const dht_pkid* h);
 // dht::crypto::PublicKey
 struct OPENDHT_C_PUBLIC dht_publickey;
 typedef struct dht_publickey dht_publickey;
-OPENDHT_C_PUBLIC dht_publickey* dht_publickey_new();
+OPENDHT_C_PUBLIC dht_publickey* dht_publickey_import(const uint8_t* dat, size_t dat_size);
 OPENDHT_C_PUBLIC void dht_publickey_delete(dht_publickey* pk);
-OPENDHT_C_PUBLIC int dht_publickey_unpack(dht_publickey* pk, const uint8_t* dat, size_t dat_size);
 OPENDHT_C_PUBLIC int dht_publickey_pack(dht_publickey* pk, char* out, size_t* out_size);
 OPENDHT_C_PUBLIC dht_infohash dht_publickey_get_id(const dht_publickey* pk);
 OPENDHT_C_PUBLIC dht_pkid dht_publickey_get_long_id(const dht_publickey* pk);
@@ -85,6 +76,19 @@ typedef struct dht_identity dht_identity;
 OPENDHT_C_PUBLIC dht_identity dht_identity_generate(const char* common_name, const dht_identity* ca);
 OPENDHT_C_PUBLIC void dht_identity_delete(dht_identity*);
 
+// dht::Value
+struct OPENDHT_C_PUBLIC dht_value;
+typedef struct dht_value dht_value;
+typedef uint64_t dht_value_id;
+OPENDHT_C_PUBLIC dht_value* dht_value_new(const uint8_t* data, size_t size);
+OPENDHT_C_PUBLIC dht_value* dht_value_ref(const dht_value*);
+OPENDHT_C_PUBLIC void dht_value_unref(dht_value*);
+OPENDHT_C_PUBLIC dht_data_view dht_value_get_data(const dht_value* data);
+OPENDHT_C_PUBLIC dht_value_id dht_value_get_id(const dht_value* data);
+OPENDHT_C_PUBLIC dht_publickey* dht_value_get_owner(const dht_value* data);
+OPENDHT_C_PUBLIC dht_infohash dht_value_get_recipient(const dht_value* data);
+OPENDHT_C_PUBLIC const char* dht_value_get_user_type(const dht_value* data);
+
 // callbacks
 typedef bool (*dht_get_cb)(const dht_value* value, void* user_data);
 typedef bool (*dht_value_cb)(const dht_value* value, bool expired, void* user_data);
@@ -105,8 +109,7 @@ struct OPENDHT_PUBLIC dht_node_config {
 };
 typedef struct dht_node_config dht_node_config;
 
-struct OPENDHT_PUBLIC dht_secure_config
-{
+struct OPENDHT_PUBLIC dht_secure_config {
     dht_node_config node_config;
     dht_identity id;
 };

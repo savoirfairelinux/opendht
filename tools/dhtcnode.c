@@ -62,6 +62,22 @@ char* print_addr(const struct sockaddr* addr) {
 
 int main()
 {
+    dht_identity id = dht_identity_generate("testNode", NULL);
+    dht_infohash cert_id = dht_certificate_get_id(id.certificate);
+    printf("Cert ID: %s\n", dht_infohash_print(&cert_id));
+
+    dht_publickey* pk = dht_certificate_get_publickey(id.certificate);
+    dht_infohash pk_id = dht_publickey_get_id(pk);
+    printf("PK ID: %s\n", dht_infohash_print(&pk_id));
+    dht_publickey_delete(pk);
+
+    pk = dht_privatekey_get_publickey(id.privatekey);
+    pk_id = dht_publickey_get_id(pk);
+    printf("Key ID: %s\n", dht_infohash_print(&pk_id));
+    dht_publickey_delete(pk);
+
+    dht_identity_delete(&id);
+
     dht_runner* runner = dht_runner_new();
     dht_runner_run(runner, 4040);
 
