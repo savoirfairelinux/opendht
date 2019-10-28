@@ -232,27 +232,27 @@ public:
 
     void cancelPut(const InfoHash& h, const Value::Id& id);
 
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={});
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
-        putSigned(hash, value, bindDoneCb(cb));
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
+        putSigned(hash, value, bindDoneCb(cb), permanent);
     }
 
-    void putSigned(InfoHash hash, Value&& value, DoneCallback cb={});
-    void putSigned(InfoHash hash, Value&& value, DoneCallbackSimple cb) {
-        putSigned(hash, std::forward<Value>(value), bindDoneCb(cb));
+    void putSigned(InfoHash hash, Value&& value, DoneCallback cb={}, bool permanent = false);
+    void putSigned(InfoHash hash, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
+        putSigned(hash, std::forward<Value>(value), bindDoneCb(cb), permanent);
     }
-    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb={});
+    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb={}, bool permanent = false);
 
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
-        putEncrypted(hash, to, value, bindDoneCb(cb));
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
+        putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
     }
 
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb) {
-        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb));
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb={}, bool permanent = false);
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
+        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb), permanent);
     }
-    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
+    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={}, bool permanent = false);
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
