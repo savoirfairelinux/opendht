@@ -44,6 +44,7 @@ pub struct Blob
 }
 
 #[repr(C)]
+#[derive(PartialEq)]
 pub struct InfoHash
 {
     pub d: [u8; HASH_LEN],
@@ -144,6 +145,7 @@ extern {
     pub fn dht_infohash_print(h: *const InfoHash) -> *const c_char;
     pub fn dht_infohash_random(h: *mut InfoHash);
     pub fn dht_infohash_get(h: *mut InfoHash, dat: *mut u8, dat_size: size_t);
+    pub fn dht_infohash_from_hex(h: *mut InfoHash, dat: *const c_char);
     pub fn dht_infohash_is_zero(j: *const InfoHash) -> bool;
 
     // dht::PkId

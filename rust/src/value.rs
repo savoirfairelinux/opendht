@@ -65,7 +65,7 @@ impl Value {
         }
     }
 
-    fn recipient(&self) -> InfoHash {
+    pub fn recipient(&self) -> InfoHash {
         unsafe {
             dht_value_get_recipient(self)
         }

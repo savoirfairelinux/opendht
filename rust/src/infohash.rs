@@ -55,6 +55,15 @@ impl InfoHash {
         h
     }
 
+    pub fn from_hex(data: &str) -> InfoHash {
+        let mut h = InfoHash::new();
+        unsafe {
+            let c_str = CString::new(data).unwrap();
+            dht_infohash_from_hex(&mut h, c_str.as_ptr());
+        }
+        h
+    }
+
     pub fn is_zero(&self) -> bool {
         unsafe {
             dht_infohash_is_zero(self)
