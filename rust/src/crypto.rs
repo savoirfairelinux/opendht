@@ -93,11 +93,17 @@ impl PrivateKey {
         }
     }
 
-    pub fn import(data: &str, password: &str) -> Box<PrivateKey> {
-        let password = CString::new(password).unwrap();
+    pub fn import(file: &str, password: &str) -> io::Result<Box<PrivateKey>> {
+        let mut f = File::open(file)?;
+        let mut buffer = Vec::new();
+        f.read_to_end(&mut buffer)?;
+        Ok(PrivateKey::from_bytes(&buffer, password))
+    }
+
+    pub fn from_bytes(buffer: &Vec<u8>, password: &str) -> Box<PrivateKey> {
         unsafe {
-            Box::from_raw(dht_privatekey_import(data.as_ptr(),
-                data.as_bytes().len(), password.as_ptr()))
+            Box::from_raw(dht_privatekey_import((&*buffer).as_ptr(), buffer.len(),
+                password.as_ptr() as *const i8))
         }
     }
 
