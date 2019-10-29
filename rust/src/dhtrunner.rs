@@ -239,15 +239,14 @@ impl DhtRunner {
         }
     }
 
-    pub fn put_encrypted<'a>(&mut self, h: &InfoHash, v: Box<Value>,
-                                                    to: &InfoHash,
-                                                    done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
+    pub fn put_encrypted<'a>(&mut self, h: &InfoHash, to: &InfoHash, v: Box<Value>,
+                             done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
         let handler = Box::new(PutHandler {
             done_cb,
         });
         let handler = Box::into_raw(handler) as *mut c_void;
         unsafe {
-            dht_runner_put_encrypted(&mut *self, h, &*v, to, put_handler_done, handler, permanent)
+            dht_runner_put_encrypted(&mut *self, h, to, &*v, put_handler_done, handler, permanent)
         }
     }
 
