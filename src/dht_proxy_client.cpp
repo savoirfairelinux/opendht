@@ -157,8 +157,6 @@ DhtProxyClient::stop()
     cancelAllListeners();
     if (infoState_)
         infoState_->cancel = true;
-    if (statusTimer_)
-        statusTimer_->cancel();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
 }
@@ -284,7 +282,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 
         request->add_on_body_callback([this, key, opstate, filter, cb](const char* at, size_t length){
             try {
-                Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
                 // one value per body line
                 std::string data_line;
@@ -293,7 +290,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                     std::string err;
                     Json::Value json;
                     auto* char_data = static_cast<const char*>(&data_line[0]);
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
                     if (!reader->parse(char_data, char_data + data_line.size(), &json, &err)){
                         opstate->ok.store(false);
                         return;
@@ -543,37 +540,16 @@ DhtProxyClient::getProxyInfos()
 {
     if (logger_)
         logger_->d("[proxy:client] [info] requesting proxy server node information");
-    std::lock_guard<std::mutex> l(statusLock_);
-
     auto infoState = std::make_shared<InfoState>();
-    if (infoState_)
-        infoState_->cancel = true;
-    infoState_ = infoState;
     {
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+        if (infoState_)
+            infoState_->cancel = true;
+        infoState_ = infoState;
         if (statusIpv4_ == NodeStatus::Disconnected)
             statusIpv4_ = NodeStatus::Connecting;
         if (statusIpv6_ == NodeStatus::Disconnected)
             statusIpv6_ = NodeStatus::Connecting;
-    }
-    // Try to contact the proxy and set the status to connected when done.
-    // will change the connectivity status
-    if (!statusTimer_)
-        statusTimer_ = std::make_shared<asio::steady_timer>(httpContext_);
-    statusTimer_->expires_at(std::chrono::steady_clock::now());
-    statusTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyStatus, this,
-                             std::placeholders::_1, infoState));
-}
-
-void
-DhtProxyClient::handleProxyStatus(const asio::error_code& ec, std::shared_ptr<InfoState> infoState)
-{
-    if (ec == asio::error::operation_aborted)
-        return;
-    else if (ec){
-        if (logger_)
-            logger_->e("[proxy:client] [status] handling error: %s", ec.message().c_str());
-        return;
     }
     if (logger_)
         logger_->d("[proxy:client] [status] sending request");
@@ -599,7 +575,6 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
             if (state == http::Request::State::DONE) {
                 if (infoState->cancel.load())
                     return;
-                //ok->store(false);
                 if (response.status_code != 200) {
                     if (logger_)
                         logger_->e("[proxy:client] [status] ipv%i failed with code=%i",
@@ -610,10 +585,8 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
                 } else {
                     std::string err;
                     Json::Value proxyInfos;
-                    Json::CharReaderBuilder rbuilder;
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
                     if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
-                        //ok->store(false);
                         onProxyInfos(Json::Value{}, family);
                         return;
                     }
@@ -946,7 +919,6 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 
         request->add_on_body_callback([this, reqid, opstate, cb](const char* at, size_t length){
             try {
-                Json::CharReaderBuilder rbuilder;
                 auto body = std::string(at, length);
                 // one value per body line
                 std::string data_line;
@@ -955,7 +927,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                     std::string err;
                     Json::Value json;
                     auto* char_data = static_cast<const char*>(&data_line[0]);
-                    auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+                    auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
                     if (!reader->parse(char_data, char_data + data_line.size(), &json, &err)){
                         opstate->ok.store(false);
                         return;

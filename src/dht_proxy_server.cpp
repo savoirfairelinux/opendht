@@ -633,9 +633,8 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
     try {
         std::string err;
         Json::Value root;
-        Json::CharReaderBuilder rbuilder;
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
         if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             auto response = this->initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
@@ -775,9 +774,8 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
     try {
         std::string err;
         Json::Value root;
-        Json::CharReaderBuilder rbuilder;
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
 
         if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             auto response = this->initHttpResponse(
@@ -968,9 +966,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
     try {
         std::string err;
         Json::Value root;
-        Json::CharReaderBuilder rbuilder;
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
 
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             auto value = std::make_shared<dht::Value>(root);
@@ -1082,9 +1079,8 @@ RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
     try {
         std::string err;
         Json::Value root;
-        Json::CharReaderBuilder rbuilder;
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
 
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
 
@@ -1145,9 +1141,8 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
     try {
         std::string err;
         Json::Value root;
-        Json::CharReaderBuilder rbuilder;
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+        auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
 
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             InfoHash to(root["to"].asString());

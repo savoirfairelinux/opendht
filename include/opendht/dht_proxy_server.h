@@ -317,6 +317,7 @@ private:
 
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
+    Json::CharReaderBuilder jsonReaderBuilder_;
 
     // http server
     std::thread serverThread_;

@@ -285,7 +285,6 @@ private:
      */
     struct InfoState;
     void getProxyInfos();
-    void handleProxyStatus(const asio::error_code &ec, std::shared_ptr<InfoState> infoState);
     void queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t family, std::shared_ptr<http::Resolver> resolver);
     void onProxyInfos(const Json::Value& val, const sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
@@ -373,8 +372,6 @@ private:
     std::mutex lockCallbacks_;
 
     Sp<InfoState> infoState_;
-    Sp<asio::steady_timer> statusTimer_;
-    mutable std::mutex statusLock_;
 
     /**
      * Retrieve if we can connect to the proxy (update statusIpvX_)
@@ -410,6 +407,7 @@ private:
     std::atomic_bool isDestroying_ {false};
 
     Json::StreamWriterBuilder jsonBuilder_;
+    Json::CharReaderBuilder jsonReaderBuilder_;
     std::shared_ptr<dht::Logger> logger_;
 
     std::shared_ptr<http::Request> buildRequest(const std::string& target = {});
