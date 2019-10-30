@@ -230,7 +230,8 @@ public:
     }
     void put(const std::string& key, Value&& value, DoneCallbackSimple cb={}, time_point created=time_point::max(), bool permanent = false);
 
-    void cancelPut(const InfoHash& h, const Value::Id& id);
+    void cancelPut(const InfoHash& h, Value::Id id);
+    void cancelPut(const InfoHash& h, const std::shared_ptr<Value>& value);
 
     void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
     void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {

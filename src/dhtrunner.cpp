@@ -708,12 +708,24 @@ DhtRunner::put(const std::string& key, Value&& value, DoneCallbackSimple cb, tim
 }
 
 void
-DhtRunner::cancelPut(const InfoHash& h , const Value::Id& id)
+DhtRunner::cancelPut(const InfoHash& h, Value::Id id)
 {
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops.emplace([=](SecureDht& dht) {
             dht.cancelPut(h, id);
+        });
+    }
+    cv.notify_all();
+}
+
+void
+DhtRunner::cancelPut(const InfoHash& h, const std::shared_ptr<Value>& value)
+{
+    {
+        std::lock_guard<std::mutex> lck(storage_mtx);
+        pending_ops.emplace([=](SecureDht& dht) {
+            dht.cancelPut(h, value->id);
         });
     }
     cv.notify_all();
