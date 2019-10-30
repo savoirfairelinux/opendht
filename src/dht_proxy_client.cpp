@@ -411,9 +411,12 @@ DhtProxyClient::handleRefreshPut(const asio::error_code &ec, const InfoHash& key
 std::shared_ptr<http::Request>
 DhtProxyClient::buildRequest(const std::string& target)
 {
+    auto resolver = resolver_;
+    if (not resolver)
+        resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
     auto request = target.empty() 
-        ? std::make_shared<http::Request>(httpContext_, resolver_)
-        : std::make_shared<http::Request>(httpContext_, resolver_, target);
+        ? std::make_shared<http::Request>(httpContext_, resolver)
+        : std::make_shared<http::Request>(httpContext_, resolver, target);
     if (serverCertificate_)
         request->set_certificate_authority(serverCertificate_);
     if (clientIdentity_.first and clientIdentity_.second)
