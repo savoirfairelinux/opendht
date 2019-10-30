@@ -373,14 +373,35 @@ Resolver::~Resolver()
     *destroyed_ = true;
 }
 
+inline
+std::vector<asio::ip::tcp::endpoint>
+filter(const std::vector<asio::ip::tcp::endpoint>& epts, sa_family_t family)
+{
+    if (family == AF_UNSPEC)
+        return epts;
+    std::vector<asio::ip::tcp::endpoint> ret;
+    for (const auto& ep : epts) {
+        if (family == AF_INET && ep.address().is_v4())
+            ret.emplace_back(ep);
+        else if (family == AF_INET6 && ep.address().is_v6())
+            ret.emplace_back(ep);
+    }
+    return ret;
+}
+
 void
-Resolver::add_callback(ResolverCb cb)
+Resolver::add_callback(ResolverCb cb, sa_family_t family)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!completed_)
-        cbs_.emplace(std::move(cb));
+        cbs_.emplace(family == AF_UNSPEC ? std::move(cb) : [cb, family](const asio::error_code& ec, const std::vector<asio::ip::tcp::endpoint>& endpoints){
+            if (ec)
+                cb(ec, endpoints);
+            else
+                cb(ec, filter(endpoints, family));
+        });
     else
-        cb(ec_, endpoints_);
+        cb(ec_, family == AF_UNSPEC ? endpoints_ : filter(endpoints_, family));
 }
 
 void
@@ -397,14 +418,6 @@ Resolver::resolve(const std::string& host, const std::string& service)
             if (ec)
                 logger_->e("[http:client] [resolver] error for %s:%s: %s",
                            host.c_str(), service.c_str(), ec.message().c_str());
-            else {
-                for (auto it = endpoints.begin(); it != endpoints.end(); ++it){
-                    asio::ip::tcp::endpoint endpoint = *it;
-                    logger_->d("[http:client] [resolver] %s:%s endpoint (ipv%i): %s",
-                        host.c_str(), service.c_str(), endpoint.address().is_v6() ? 6 : 4,
-                        endpoint.address().to_string().c_str());
-                }
-            }
         }
         decltype(cbs_) cbs;
         {
@@ -430,7 +443,7 @@ unsigned int Request::ids_ = 1;
 
 Request::Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
                  std::shared_ptr<dht::Logger> logger)
-    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+    : id_(Request::ids_++), ctx_(ctx),
       resolver_(std::make_shared<Resolver>(ctx, url, logger)), logger_(logger)
 {
     init_default_headers();
@@ -453,7 +466,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
 }
 
 Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+    : id_(Request::ids_++), ctx_(ctx),
       resolver_(std::make_shared<Resolver>(ctx, url, logger)), logger_(logger)
 {
     init_default_headers();
@@ -461,24 +474,31 @@ Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
                  const bool ssl, std::shared_ptr<dht::Logger> logger)
-    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+    : id_(Request::ids_++), ctx_(ctx),
       resolver_(std::make_shared<Resolver>(ctx, host, service, ssl, logger)), logger_(logger)
 {
     init_default_headers();
 }
 
-Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger)
-    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx), resolver_(resolver), logger_(logger)
+Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, sa_family_t family)
+    : id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver), logger_(resolver->getLogger())
 {
     init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints, const bool ssl,
                  std::shared_ptr<dht::Logger> logger)
-    : cbs_(std::make_unique<Callbacks>()), id_(Request::ids_++), ctx_(ctx),
+    : id_(Request::ids_++), ctx_(ctx),
       resolver_(std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger)), logger_(logger)
 {
     init_default_headers();
+}
+
+Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, const std::string& target, sa_family_t family)
+    : id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver), logger_(resolver->getLogger())
+{
+    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
+    set_target(target);
 }
 
 Request::~Request()
@@ -488,8 +508,9 @@ Request::~Request()
 void
 Request::init_default_headers()
 {
-    set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
-    set_target(resolver_->get_url().target);
+    const auto& url = resolver_->get_url();
+    set_header_field(restinio::http_field_t::host, url.host + ":" + url.service);
+    set_target(url.target);
 }
 
 void
@@ -627,29 +648,29 @@ void
 Request::add_on_status_callback(OnStatusCb cb)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
-    cbs_->on_status = std::move(cb);
+    cbs_.on_status = std::move(cb);
 }
 
 void
 Request::add_on_body_callback(OnDataCb cb)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
-    cbs_->on_body = std::move(cb);
+    cbs_.on_body = std::move(cb);
 }
 
 void
 Request::add_on_state_change_callback(OnStateChangeCb cb)
 {
     std::lock_guard<std::mutex> lock(cbs_mutex_);
-    cbs_->on_state_change = std::move(cb);
+    cbs_.on_state_change = std::move(cb);
 }
 
 void
 Request::notify_state_change(const State state)
 {
     state_ = state;
-    if (cbs_ and cbs_->on_state_change)
-        cbs_->on_state_change(state, response_);
+    if (cbs_.on_state_change)
+        cbs_.on_state_change(state, response_);
 }
 
 void
@@ -658,7 +679,7 @@ Request::init_parser()
     if (!parser_)
         parser_ = std::make_unique<http_parser>();
     http_parser_init(parser_.get(), HTTP_RESPONSE);
-    parser_->data = static_cast<void*>(cbs_.get());
+    parser_->data = static_cast<void*>(&cbs_);
 
     if (!parser_s_)
         parser_s_ = std::make_unique<http_parser_settings>();
@@ -666,36 +687,36 @@ Request::init_parser()
     {
         // user registered callbacks wrappers to store its data in the response
         std::lock_guard<std::mutex> lock(cbs_mutex_);
-        auto on_status_cb = cbs_->on_status;
-        cbs_->on_status = [this, on_status_cb](unsigned int status_code){
+        auto on_status_cb = cbs_.on_status;
+        cbs_.on_status = [this, on_status_cb](unsigned int status_code){
             response_.status_code = status_code;
             if (on_status_cb)
                 on_status_cb(status_code);
         };
         auto header_field = std::make_shared<std::string>("");
-        auto on_header_field_cb = cbs_->on_header_field;
-        cbs_->on_header_field = [header_field, on_header_field_cb](const char* at, size_t length) {
+        auto on_header_field_cb = cbs_.on_header_field;
+        cbs_.on_header_field = [header_field, on_header_field_cb](const char* at, size_t length) {
             header_field->erase();
             auto field = std::string(at, length);
             header_field->append(field);
             if (on_header_field_cb)
                 on_header_field_cb(at, length);
         };
-        auto on_header_value_cb = cbs_->on_header_value;
-        cbs_->on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length) {
+        auto on_header_value_cb = cbs_.on_header_value;
+        cbs_.on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length) {
             response_.headers[*header_field] = std::string(at, length);
             if (on_header_value_cb)
                 on_header_value_cb(at, length);
         };
-        cbs_->on_headers_complete = [this](){
+        cbs_.on_headers_complete = [this](){
             notify_state_change(State::HEADER_RECEIVED);
         };
-        auto on_body_cb = cbs_->on_body;
-        cbs_->on_body = [on_body_cb](const char* at, size_t length) {
+        auto on_body_cb = cbs_.on_body;
+        cbs_.on_body = [on_body_cb](const char* at, size_t length) {
             if (on_body_cb)
                 on_body_cb(at, length);
         };
-        cbs_->on_message_complete = [this](){
+        cbs_.on_message_complete = [this](){
             if (logger_)
                 logger_->d("[http:client]  [request:%i] response: message complete", id_);
             message_complete_.store(true);
@@ -827,7 +848,7 @@ Request::send()
         }
         else
             post();
-    });
+    }, family_);
 }
 
 void

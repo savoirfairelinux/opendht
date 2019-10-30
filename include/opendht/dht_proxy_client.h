@@ -286,8 +286,7 @@ private:
     struct InfoState;
     void getProxyInfos();
     void handleProxyStatus(const asio::error_code &ec, std::shared_ptr<InfoState> infoState);
-    void queryProxyInfo(std::shared_ptr<InfoState> infoState, const sa_family_t family,
-                        std::vector<asio::ip::tcp::endpoint>&& endpoints);
+    void queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t family, std::shared_ptr<http::Resolver> resolver);
     void onProxyInfos(const Json::Value& val, const sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 
@@ -327,9 +326,10 @@ private:
      */
     void cancelAllOperations();
 
+    std::string proxyUrl_;
     dht::crypto::Identity clientIdentity_;
     std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
-    std::pair<std::string, std::string> serverHostService_;
+    //std::pair<std::string, std::string> serverHostService_;
     std::string pushClientId_;
 
     /*
@@ -409,7 +409,10 @@ private:
 
     std::atomic_bool isDestroying_ {false};
 
+    Json::StreamWriterBuilder jsonBuilder_;
     std::shared_ptr<dht::Logger> logger_;
+
+    std::shared_ptr<http::Request> buildRequest(const std::string& target = {});
 };
 
 }

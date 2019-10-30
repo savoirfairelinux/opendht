@@ -147,7 +147,7 @@ class OPENDHT_PUBLIC Resolver
 {
 public:
     using ResolverCb = std::function<void(const asio::error_code& ec,
-                                          std::vector<asio::ip::tcp::endpoint> endpoints)>;
+                                          const std::vector<asio::ip::tcp::endpoint>& endpoints)>;
 
     Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
@@ -156,14 +156,20 @@ public:
     // use already resolved endpoints with classes using this resolver
     Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
              const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
+    Resolver(asio::io_context& ctx, const std::string& url, std::vector<asio::ip::tcp::endpoint> endpoints,
+            std::shared_ptr<dht::Logger> logger = {});
 
     ~Resolver();
 
     inline const Url& get_url() const {
         return url_;
-    };
+    }
 
-    void add_callback(ResolverCb cb);
+    void add_callback(ResolverCb cb, sa_family_t family = AF_UNSPEC);
+
+    std::shared_ptr<Logger> getLogger() const {
+        return logger_;
+    }
 
 private:
     void resolve(const std::string& host, const std::string& service);
@@ -212,7 +218,8 @@ public:
             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
 
     // user defined resolver
-    Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, std::shared_ptr<dht::Logger> logger = {});
+    Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, sa_family_t family = AF_UNSPEC);
+    Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, const std::string& target, sa_family_t family = AF_UNSPEC);
 
     // user defined resolved endpoints
     Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints,
@@ -307,7 +314,7 @@ private:
     std::string body_;
 
     std::mutex cbs_mutex_;
-    std::unique_ptr<Callbacks> cbs_;
+    Callbacks cbs_;
     State state_;
 
     dht::crypto::Identity client_identity_;
@@ -316,8 +323,9 @@ private:
     std::string host_;
 
     unsigned int id_;
-    static unsigned int ids_;
     asio::io_context& ctx_;
+    sa_family_t family_ = AF_UNSPEC;
+    static unsigned int ids_;
     std::shared_ptr<Connection> conn_;
     std::shared_ptr<Resolver> resolver_;
 
