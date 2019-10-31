@@ -110,10 +110,7 @@ class DhtProxyServer::ConnectionListener
 {
 public:
     ConnectionListener() {};
-    ConnectionListener(std::shared_ptr<dht::DhtRunner> dht,
-        std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners,
-        std::shared_ptr<std::mutex> lock, std::shared_ptr<dht::Logger> logger):
-        dht_(dht), lock_(lock), listeners_(listeners), logger_(logger) {};
+    ConnectionListener(std::function<void(restinio::connection_id_t)> onClosed) : onClosed_(std::move(onClosed)) {};
     ~ConnectionListener() {};
 
     /**
@@ -123,54 +120,31 @@ public:
     void state_changed(const restinio::connection_state::notice_t& notice) noexcept;
 
 private:
-    std::string to_str( restinio::connection_state::cause_t cause ) noexcept;
-
-    std::shared_ptr<dht::DhtRunner> dht_;
-    std::shared_ptr<std::mutex> lock_;
-    std::shared_ptr<std::map<restinio::connection_id_t, http::ListenerSession>> listeners_;
-
-    std::shared_ptr<dht::Logger> logger_;
+    std::function<void(restinio::connection_id_t)> onClosed_;
 };
 
 void
 DhtProxyServer::ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
 {
-    std::lock_guard<std::mutex> lock(*lock_);
-    auto id = notice.connection_id();
-    auto cause = to_str(notice.cause());
-
-    if (listeners_->find(id) != listeners_->end()){
-        if (notice.cause() == restinio::connection_state::cause_t::closed){
-            if (logger_)
-                logger_->d("[proxy:server] [connection:%li] cancelling listener", id);
-            dht_->cancelListen(listeners_->at(id).hash,
-                               std::move(listeners_->at(id).token));
-            listeners_->erase(id);
-            if (logger_)
-                logger_->d("[proxy:server] %li listeners are connected", listeners_->size());
-        }
+    if (restinio::holds_alternative<restinio::connection_state::cause_t>(notice.cause())) {
+        onClosed_(notice.connection_id());
     }
 }
 
-std::string
-DhtProxyServer::ConnectionListener::to_str(restinio::connection_state::cause_t cause) noexcept
+void
+DhtProxyServer::onConnectionClosed(restinio::connection_id_t id)
 {
-    std::string result;
-    switch(cause)
-    {
-    case restinio::connection_state::cause_t::accepted:
-        result = "accepted";
-        break;
-    case restinio::connection_state::cause_t::closed:
-        result = "closed";
-        break;
-    case restinio::connection_state::cause_t::upgraded_to_websocket:
-        result = "upgraded";
-        break;
-    default:
-        result = "unknown";
+    std::lock_guard<std::mutex> lock(lockListener_);
+    auto it = listeners_.find(id);
+    if (it != listeners_.end()) {
+        if (logger_)
+            logger_->d("[proxy:server] [connection:%li] cancelling listener", id);
+        dht_->cancelListen(it->second.hash,
+                            std::move(it->second.token));
+        listeners_.erase(it);
+        if (logger_)
+            logger_->d("[proxy:server] %li listeners are connected", listeners_.size());
     }
-    return result;
 }
 
 struct DhtProxyServer::RestRouterTraitsTls : public restinio::default_tls_traits_t
@@ -199,9 +173,8 @@ DhtProxyServer::DhtProxyServer(
     std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
     std::shared_ptr<dht::Logger> logger
 )
-    :   dht_(dht), logger_(logger), lockListener_(std::make_shared<std::mutex>()),
-        listeners_(std::make_shared<std::map<restinio::connection_id_t, http::ListenerSession>>()),
-        connListener_(std::make_shared<ConnectionListener>(dht, listeners_, lockListener_, logger)),
+    :   dht_(dht), logger_(logger),
+        connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
         pushServer_(pushServer)
 {
     if (not dht_)
@@ -365,7 +338,7 @@ DhtProxyServer::updateStats() const
     stats_.pushListenersCount = pushListeners_.size();
 #endif
     stats_.putCount = puts_.size();
-    stats_.listenCount = listeners_->size();
+    stats_.listenCount = listeners_.size();
     stats_.nodeInfo = nodeInfo_;
 }
 
@@ -585,9 +558,9 @@ DhtProxyServer::listen(restinio::request_handle_t request,
         this->initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
-        std::lock_guard<std::mutex> lock(*lockListener_);
+        std::lock_guard<std::mutex> lock(lockListener_);
         // save the listener to handle a disconnect
-        auto &session = (*listeners_)[request->connection_id()];
+        auto &session = listeners_[request->connection_id()];
         session.hash = infoHash;
         session.response = response;
         session.token = dht_->listen(infoHash, [this, response]
@@ -829,7 +802,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
     if (logger_)
         logger_->d("[proxy:server] [listen:push %s] cancelled for %s",
                    key.toString().c_str(), clientId.c_str());
-    std::lock_guard<std::mutex> lock(*lockListener_);
+    std::lock_guard<std::mutex> lock(lockListener_);
 
     auto pushListener = pushListeners_.find(pushToken);
     if (pushListener == pushListeners_.end())

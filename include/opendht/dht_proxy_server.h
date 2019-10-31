@@ -149,6 +149,8 @@ private:
 
     std::unique_ptr<RestRouter> createRestRouter();
 
+    void onConnectionClosed(restinio::connection_id_t);
+
     /**
      * Return the PublicKey id, the node id and node stats
      * Method: GET "/"
@@ -336,10 +338,9 @@ private:
     std::unique_ptr<asio::steady_timer> printStatsTimer_;
 
     // Thread-safe access to listeners map.
-    std::shared_ptr<std::mutex> lockListener_;
+    std::mutex lockListener_;
     // Shared with connection listener.
-    std::shared_ptr<std::map<restinio::connection_id_t,
-                             http::ListenerSession>> listeners_;
+    std::map<restinio::connection_id_t, http::ListenerSession> listeners_;
     // Connection Listener observing conn state changes.
     std::shared_ptr<ConnectionListener> connListener_;
 
