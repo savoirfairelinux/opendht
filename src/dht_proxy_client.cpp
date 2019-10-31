@@ -379,7 +379,7 @@ DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_po
     doPut(key, val, [this, cb, ok](bool result){
         if (ok)
             *ok = result;
-        {
+        if (cb) {
             std::lock_guard<std::mutex> lock(lockCallbacks_);
             callbacks_.emplace_back([cb, result](){
                 cb(result, {});
@@ -469,9 +469,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
                     if (response.status_code == 0)
                         opFailed();
                 }
-                if (cb){
+                if (cb)
                     cb(ok);
-                }
                 requests_.erase(reqid);
             }
         });
