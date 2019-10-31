@@ -921,8 +921,7 @@ Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point cr
     }
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
-        std::uniform_int_distribution<Value::Id> rand_id {};
-        val->id = rand_id(rdev);
+        val->id = std::uniform_int_distribution<Value::Id>{1}(rdev);
     }
     scheduler.syncTime();
     const auto& now = scheduler.time();

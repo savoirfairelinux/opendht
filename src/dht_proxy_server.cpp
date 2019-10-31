@@ -951,14 +951,12 @@ DhtProxyServer::put(restinio::request_handle_t request,
         infoHash = dht::InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
-            request->create_response(restinio::status_service_unavailable()));
+        auto response = initHttpResponse(request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
     else if (request->body().empty()){
-        auto response = this->initHttpResponse(
-            request->create_response(restinio::status_bad_request()));
+        auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
         response.set_body(RESP_MSG_MISSING_PARAMS);
         return response.done();
     }

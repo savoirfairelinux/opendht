@@ -308,9 +308,8 @@ private:
     void handleResubscribe(const asio::error_code& ec, const InfoHash& key,
                            const size_t token, std::shared_ptr<OperationState> opstate);
 
-    void doPut(const InfoHash&, Sp<Value>, DoneCallback, time_point created, bool permanent);
-    void handleRefreshPut(const asio::error_code& ec, const InfoHash& key, const Value::Id id,
-                          std::shared_ptr<std::atomic_bool> ok);
+    void doPut(const InfoHash&, Sp<Value>, DoneCallbackSimple, time_point created, bool permanent);
+    void handleRefreshPut(const asio::error_code& ec, InfoHash key, Value::Id id);
 
     /**
      * Initialize statusIpvX_
