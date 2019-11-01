@@ -55,13 +55,13 @@ DhtProxyTester::setUp() {
     clientConfig.dht_config.node_config.maintain_storage = false;
     clientConfig.threaded = true;
     clientConfig.push_node_id = "dhtnode";
+    clientConfig.proxy_server = "https://127.0.0.1:8080";
+
+    dht::DhtRunner::Context clientContext {};
     clientContext.logger = logger;
 
     nodeClient = std::make_shared<dht::DhtRunner>();
     nodeClient->run(0, clientConfig, std::move(clientContext));
-    nodeClient->bootstrap(nodePeer.getBound());
-    nodeClient->setProxyServer("https://127.0.0.1:8080");
-    nodeClient->enableProxy(true); // creates DhtProxyClient
 }
 
 void
@@ -159,12 +159,13 @@ DhtProxyTester::testResubscribeGetValues() {
     std::unique_lock<std::mutex> lk(cv_m);
     auto key = dht::InfoHash::get("GLaDOs");
 
-    // If a peer send a value, the listen operation from the client
+    // If a peer sent a value, the listen operation from the client
     // should retrieve this value
     dht::Value firstVal {"Hey! It's been a long time. How have you been?"};
     auto firstVal_data = firstVal.data;
-    nodePeer.put(key, std::move(firstVal), [&](bool) {
+    nodePeer.put(key, std::move(firstVal), [&](bool ok) {
         std::lock_guard<std::mutex> lk(cv_m);
+        CPPUNIT_ASSERT(ok);
         done = true;
         cv.notify_all();
     });
@@ -180,11 +181,11 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // Reboot node (to avoid cache)
     nodeClient->join();
+    clientConfig.push_token = "atlas";
+
+    dht::DhtRunner::Context clientContext {};
+    clientContext.logger = logger;
     nodeClient->run(0, clientConfig, std::move(clientContext));
-    nodeClient->bootstrap(nodePeer.getBound());
-    nodeClient->setProxyServer("https://127.0.0.1:8080");
-    nodeClient->enableProxy(true);
-    nodeClient->setPushNotificationToken("atlas");
 
     // For the second subscribe, the proxy will return the value in the body
     auto values = std::vector<dht::Blob>();
