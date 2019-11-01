@@ -126,7 +126,7 @@ private:
 void
 DhtProxyServer::ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
 {
-    if (restinio::holds_alternative<restinio::connection_state::cause_t>(notice.cause())) {
+    if (restinio::holds_alternative<restinio::connection_state::closed_t>(notice.cause())) {
         onClosed_(notice.connection_id());
     }
 }
@@ -137,13 +137,10 @@ DhtProxyServer::onConnectionClosed(restinio::connection_id_t id)
     std::lock_guard<std::mutex> lock(lockListener_);
     auto it = listeners_.find(id);
     if (it != listeners_.end()) {
-        if (logger_)
-            logger_->d("[proxy:server] [connection:%li] cancelling listener", id);
-        dht_->cancelListen(it->second.hash,
-                            std::move(it->second.token));
+        dht_->cancelListen(it->second.hash, std::move(it->second.token));
         listeners_.erase(it);
         if (logger_)
-            logger_->d("[proxy:server] %li listeners are connected", listeners_.size());
+            logger_->d("[proxy:server] [connection:%li] listener cancelled, %li still connected", id, listeners_.size());
     }
 }
 
