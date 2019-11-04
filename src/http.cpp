@@ -516,7 +516,8 @@ Request::init_default_headers()
 void
 Request::cancel()
 {
-    conn_->close();
+    if (auto c = conn_)
+        c->close();
 }
 
 unsigned int
