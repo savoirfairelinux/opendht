@@ -877,13 +877,11 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
-    if (finishing_.load())
+    if (finishing_.exchange(true))
         return;
 
     if (ec != asio::error::eof and ec != asio::error::operation_aborted and logger_)
         logger_->e("[http:client]  [request:%i] end with error: %s", id_, ec.message().c_str());
-
-    finishing_.store(true);
 
     // set response outcome, ignore end of file and abort
     if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
