@@ -688,34 +688,28 @@ Request::init_parser()
     {
         // user registered callbacks wrappers to store its data in the response
         std::lock_guard<std::mutex> lock(cbs_mutex_);
-        auto on_status_cb = cbs_.on_status;
-        cbs_.on_status = [this, on_status_cb](unsigned int status_code){
+        cbs_.on_status = [this, statusCb = std::move(cbs_.on_status)](unsigned int status_code){
             response_.status_code = status_code;
-            if (on_status_cb)
-                on_status_cb(status_code);
+            if (statusCb)
+                statusCb(status_code);
         };
-        auto header_field = std::make_shared<std::string>("");
-        auto on_header_field_cb = cbs_.on_header_field;
-        cbs_.on_header_field = [header_field, on_header_field_cb](const char* at, size_t length) {
-            header_field->erase();
-            auto field = std::string(at, length);
-            header_field->append(field);
-            if (on_header_field_cb)
-                on_header_field_cb(at, length);
+        auto header_field = std::make_shared<std::string>();
+        cbs_.on_header_field = [header_field, headerFieldCb = std::move(cbs_.on_header_field)](const char* at, size_t length) {
+            *header_field = std::string(at, length);
+            if (headerFieldCb)
+                headerFieldCb(at, length);
         };
-        auto on_header_value_cb = cbs_.on_header_value;
-        cbs_.on_header_value = [this, header_field, on_header_value_cb](const char* at, size_t length) {
+        cbs_.on_header_value = [this, header_field, headerValueCb = std::move(cbs_.on_header_value)](const char* at, size_t length) {
             response_.headers[*header_field] = std::string(at, length);
-            if (on_header_value_cb)
-                on_header_value_cb(at, length);
+            if (headerValueCb)
+                headerValueCb(at, length);
         };
         cbs_.on_headers_complete = [this](){
             notify_state_change(State::HEADER_RECEIVED);
         };
-        auto on_body_cb = cbs_.on_body;
-        cbs_.on_body = [on_body_cb](const char* at, size_t length) {
-            if (on_body_cb)
-                on_body_cb(at, length);
+        cbs_.on_body = [bodyCb = std::move(cbs_.on_body)](const char* at, size_t length) {
+            if (bodyCb)
+                bodyCb(at, length);
         };
         cbs_.on_message_complete = [this](){
             if (logger_)
@@ -725,39 +719,27 @@ Request::init_parser()
     }
     // http_parser raw c callback (note: no context can be passed into them)
     parser_s_->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_status)
-            cbs->on_status(parser->status_code);
+        static_cast<Callbacks*>(parser->data)->on_status(parser->status_code);
         return 0;
     };
     parser_s_->on_header_field = [](http_parser* parser, const char* at, size_t length) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_header_field)
-            cbs->on_header_field(at, length);
+        static_cast<Callbacks*>(parser->data)->on_header_field(at, length);
         return 0;
     };
     parser_s_->on_header_value = [](http_parser* parser, const char* at, size_t length) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_header_value)
-            cbs->on_header_value(at, length);
+        static_cast<Callbacks*>(parser->data)->on_header_value(at, length);
         return 0;
     };
     parser_s_->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_body)
-            cbs->on_body(at, length);
+        static_cast<Callbacks*>(parser->data)->on_body(at, length);
         return 0;
     };
     parser_s_->on_headers_complete = [](http_parser* parser) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_headers_complete)
-            cbs->on_headers_complete();
+        static_cast<Callbacks*>(parser->data)->on_headers_complete();
         return 0;
     };
     parser_s_->on_message_complete = [](http_parser* parser) -> int {
-        auto cbs = static_cast<Callbacks*>(parser->data);
-        if (cbs->on_message_complete)
-            cbs->on_message_complete();
+        static_cast<Callbacks*>(parser->data)->on_message_complete();
         return 0;
     };
 }
@@ -774,7 +756,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
     }
     if (logger_){
         std::string eps = "";
-        for (auto& endpoint : endpoints)
+        for (const auto& endpoint : endpoints)
             eps.append(endpoint.address().to_string() + " ");
         logger_->d("[http:client]  [request:%i] connect begin: %s", id_, eps.c_str());
     }
