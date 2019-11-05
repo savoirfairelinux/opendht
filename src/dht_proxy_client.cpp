@@ -981,6 +981,8 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 void
 DhtProxyClient::opFailed()
 {
+    if (isDestroying_)
+        return;
     if (logger_)
         logger_->e("[proxy:client] proxy request failed");
     {

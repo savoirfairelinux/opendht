@@ -330,18 +330,6 @@ private:
     //std::pair<std::string, std::string> serverHostService_;
     std::string pushClientId_;
 
-    /*
-     * ASIO I/O Context for sockets in httpClient_
-     * Note: Each context is used in one thread only
-     */
-    asio::io_context httpContext_;
-    std::shared_ptr<http::Resolver> resolver_;
-    std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
-    /*
-     * Thread for executing the http io_context.run() blocking call
-     */
-    std::thread httpClientThread_;
-
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
@@ -355,20 +343,32 @@ private:
     // registred types
     TypeStore types;
 
+    /*
+     * ASIO I/O Context for sockets in httpClient_
+     * Note: Each context is used in one thread only
+     */
+    asio::io_context httpContext_;
+    std::shared_ptr<http::Resolver> resolver_;
+    std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
+    /*
+     * Thread for executing the http io_context.run() blocking call
+     */
+    std::thread httpClientThread_;
+
     /**
      * Store listen requests.
      */
     struct ProxySearch;
 
+    mutable std::mutex searchLock_;
     size_t listenerToken_ {0};
     std::map<InfoHash, ProxySearch> searches_;
-    mutable std::mutex searchLock_;
 
     /**
      * Callbacks should be executed in the main thread.
      */
-    std::vector<std::function<void()>> callbacks_;
     std::mutex lockCallbacks_;
+    std::vector<std::function<void()>> callbacks_;
 
     Sp<InfoState> infoState_;
 
