@@ -31,6 +31,7 @@ class CryptoTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testSignatureEncryption);
     CPPUNIT_TEST(testCertificateRevocation);
     CPPUNIT_TEST(testCertificateRequest);
+    CPPUNIT_TEST(testCertificateSerialNumber);
     CPPUNIT_TEST_SUITE_END();
 
  public:
