@@ -135,6 +135,32 @@ CryptoTester::testCertificateRequest()
     CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
 }
 
+void CryptoTester::testCertificateSerialNumber()
+{
+    std::string cert_pem = "-----BEGIN CERTIFICATE-----"
+"MIICDjCCAZSgAwIBAgIIS90uAKp+u/swCgYIKoZIzj0EAwMwTDEQMA4GA1UEAxMH"
+"ZGh0bm9kZTE4MDYGCgmSJomT8ixkAQETKDBlNDQxZTA4YWJmYTQzYTc3ZTVjZDBm"
+"Y2QzMzAzMTc4MjYxMTk0MzIwHhcNMTkxMTA3MDA0MTMwWhcNMjkxMTA0MDA0MTMw"
+"WjBMMRAwDgYDVQQDEwdkaHRub2RlMTgwNgYKCZImiZPyLGQBARMoMGU0NDFlMDhh"
+"YmZhNDNhNzdlNWNkMGZjZDMzMDMxNzgyNjExOTQzMjB2MBAGByqGSM49AgEGBSuB"
+"BAAiA2IABCZ7sBp0Pu+b5yIifoNXchU9crv9won0in++COWynvM4GCLF2Gk6QGhh"
+"YLDxNGsyQjGR7z5AGibvYhNLU0JA4RbmxYWHw4g3wBrPA1jm9hGZ8y5Y8R97d0Hl"
+"VpyreEMjRKNDMEEwHQYDVR0OBBYEFA5EHgir+kOnflzQ/NMwMXgmEZQyMA8GA1Ud"
+"EwEB/wQFMAMBAf8wDwYDVR0PAQH/BAUDAwcGADAKBggqhkjOPQQDAwNoADBlAjEA"
+"kKF/6WReNytwSrJ8JSTToc7xWS5SvAa23Fnla4mywZUxUFS4VSxCMQTjQCknO3iZ"
+"AjBgxXyXYqn0d7vz7S6oAY5TdaD5YFT5MD2c1MAAp8pxQSwdPa9k0ZSoGIEn31Z0"
+"GxU="
+"-----END CERTIFICATE-----";
+    auto identity = dht::crypto::generateIdentity();
+    identity.second = std::make_shared<dht::crypto::Certificate>(cert_pem);
+    /*
+     * $ openssl x509 -in cert.pem  -noout -serial
+     * serial=4BDD2E00AA7EBBFB
+     */
+    std::string serialNumber = "4bdd2e00aa7ebbfb";
+    CPPUNIT_ASSERT_EQUAL(serialNumber, identity.second->getSerialNumber());
+}
+
 void
 CryptoTester::tearDown() {
 
