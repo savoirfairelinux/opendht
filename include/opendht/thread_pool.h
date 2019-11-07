@@ -43,9 +43,15 @@ public:
     template<class T>
     std::future<T> get(std::function<T()>&& cb) {
         auto ret = std::make_shared<std::promise<T>>();
-        run(std::bind([=](std::function<T()>& mcb) mutable {
-                ret->set_value(mcb());
-            }, std::move(cb)));
+        run([cb = std::move(cb), ret]() mutable {
+            try {
+                ret->set_value(cb());
+            } catch (...) {
+                try {
+                    ret->set_exception(std::current_exception());
+                } catch(...) {}
+            }
+        });
         return ret->get_future();
     }
     template<class T>
