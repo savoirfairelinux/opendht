@@ -1,6 +1,7 @@
 /*
  *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -529,8 +530,11 @@ struct OPENDHT_PUBLIC Certificate {
 
     gnutls_digest_algorithm_t getPreferredDigest() const;
 
+    unsigned int getOcspResponseCertificateStatus() const;
+
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
+    std::vector<uint8_t>/*binary*/ ocsp_response;
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
