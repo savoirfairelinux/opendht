@@ -1,6 +1,7 @@
 /*
  *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +26,7 @@ extern "C" {
 #include <gnutls/x509.h>
 #include <nettle/gcm.h>
 #include <nettle/aes.h>
+#include <gnutls/ocsp.h>
 
 #include <argon2.h>
 }
@@ -1021,6 +1023,31 @@ gnutls_digest_algorithm_t
 Certificate::getPreferredDigest() const
 {
     return getPublicKey().getPreferredDigest();
+}
+
+unsigned int
+Certificate::getOcspResponseCertificateStatus() const
+{
+    if (ocsp_response.empty())
+        throw CryptoException("Empty OCSP Response");
+    int ret;
+    unsigned int status;
+    gnutls_ocsp_resp_t resp;
+    gnutls_datum_t data = {(unsigned char*)ocsp_response.data(),(unsigned int)ocsp_response.size()};
+    // Load request
+    ret = gnutls_ocsp_resp_init(&resp);
+    if (ret < 0)
+        goto end;
+    ret = gnutls_ocsp_resp_import(resp, &data);
+    if (ret < 0)
+        goto end;
+    // Load status
+    ret = gnutls_ocsp_resp_get_single(resp, 0, NULL, NULL, NULL, NULL, &status, NULL, NULL, NULL, NULL);
+end:
+    gnutls_ocsp_resp_deinit(resp);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    return status;
 }
 
 // PrivateKey
