@@ -53,6 +53,10 @@ class CryptoTester : public CppUnit::TestFixture {
      * Test certificate requests
      */
     void testCertificateRequest();
+    /**
+     * Test certificate serial number extraction
+     */
+    void testCertificateSerialNumber();
 };
 
 }  // namespace test
