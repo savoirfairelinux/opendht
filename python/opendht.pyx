@@ -458,6 +458,9 @@ cdef class DhtConfig(object):
         self._config.dht_config.node_config.network = netid
     def setMaintainStorage(self, bool maintain_storage):
         self._config.dht_config.node_config.maintain_storage = maintain_storage
+    def setRateLimit(self, ssize_t max_req_per_sec, ssize_t max_peer_req_per_sec):
+        self._config.dht_config.node_config.max_req_per_sec = max_req_per_sec
+        self._config.dht_config.node_config.max_peer_req_per_sec = max_peer_req_per_sec
 
 cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr

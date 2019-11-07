@@ -211,6 +211,9 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
         uint32_t network
         bool is_bootstrap
         bool maintain_storage
+        string persist_path
+        size_t max_req_per_sec
+        size_t max_peer_req_per_sec
     cppclass SecureDhtConfig:
         Config node_config
         Identity id

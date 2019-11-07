@@ -106,6 +106,12 @@ struct OPENDHT_PUBLIC Config {
 
     /** If set, the dht will load its state from this file on start and save its state in this file on shutdown */
     std::string persist_path {};
+
+    /** If non-0, overrides the default global rate-limit.-1 means no limit. */
+    ssize_t max_req_per_sec {0};
+
+    /** If non-0, overrides the default per-IP address rate-limit. -1 means no limit. */
+    ssize_t max_peer_req_per_sec {0};
 };
 
 /**

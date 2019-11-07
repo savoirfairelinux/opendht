@@ -41,7 +41,6 @@ constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
 const std::string NetworkEngine::my_v {"RNG1"};
-constexpr size_t NetworkEngine::MAX_REQUESTS_PER_SEC;
 
 static constexpr uint8_t v4prefix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0};
 
@@ -100,10 +99,10 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 {}
 
 NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
-    : myid(zeroes), dht_socket(std::move(sock)), DHT_LOG(log), scheduler(scheduler)
+    : myid(zeroes), dht_socket(std::move(sock)), DHT_LOG(log), rate_limiter((size_t)-1), scheduler(scheduler)
 {}
 
-NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError)&& onError,
         decltype(NetworkEngine::onNewNode)&& onNewNode,
         decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -122,7 +121,9 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, std::unique_ptr<Datagram
     onListen(std::move(onListen)),
     onAnnounce(std::move(onAnnounce)),
     onRefresh(std::move(onRefresh)),
-    myid(myid), network(net), dht_socket(std::move(sock)), DHT_LOG(log), scheduler(scheduler)
+    myid(myid), config(c), dht_socket(std::move(sock)), DHT_LOG(log),
+    rate_limiter(config.max_req_per_sec),
+    scheduler(scheduler)
 {}
 
 NetworkEngine::~NetworkEngine() {
@@ -148,7 +149,7 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
     pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
@@ -165,8 +166,8 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
     pk.pack(KEY_TID); pk.pack(socket_id);
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     // send response
@@ -178,7 +179,7 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
     pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
@@ -195,8 +196,8 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
     pk.pack(KEY_TID); pk.pack(socket_id);
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     // send response
@@ -300,7 +301,7 @@ NetworkEngine::rateLimit(const SockAddr& addr)
     const auto& now = scheduler.time();
 
     // occasional IP limiter maintenance (a few times every second at max rate)
-    if (limiter_maintenance++ == MAX_REQUESTS_PER_SEC/8) {
+    if (limiter_maintenance++ == config.max_peer_req_per_sec) {
         for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
             if (it->second.maintain(now) == 0)
                 address_rate_limiter.erase(it++);
@@ -311,7 +312,11 @@ NetworkEngine::rateLimit(const SockAddr& addr)
     }
 
     // invoke per IP, then global rate limiter
-    return address_rate_limiter[addr].limit(now) and rate_limiter.limit(now);
+    return (config.max_peer_req_per_sec < 0
+            or address_rate_limiter
+                .emplace(addr, config.max_peer_req_per_sec).first->second
+                .limit(now))
+            and rate_limiter.limit(now);
 }
 
 bool
@@ -380,8 +385,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         return;
     }
 
-    if (msg->network != network) {
-        DHT_LOG.d("Received message from other network %u", msg->network);
+    if (msg->network != config.network) {
+        DHT_LOG.d("Received message from other config.network %u", msg->network);
         return;
     }
 
@@ -619,7 +624,7 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
     TransId tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     pk.pack(KEY_A); pk.pack_map(1);
      pk.pack(KEY_REQ_ID); pk.pack(myid);
@@ -629,8 +634,8 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
                               pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Ping, tid.toInt(), node,
@@ -656,7 +661,7 @@ void
 NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
     pk.pack(KEY_R); pk.pack_map(2);
       pk.pack(KEY_REQ_ID); pk.pack(myid);
@@ -667,8 +672,8 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
                                pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     send(addr, buffer.data(), buffer.size());
@@ -680,7 +685,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     pk.pack(KEY_A); pk.pack_map(2 + (want>0?1:0));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
@@ -697,8 +702,8 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::FindNode, tid.toInt(), n,
@@ -726,7 +731,7 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     pk.pack(KEY_A);  pk.pack_map(2 +
                                 (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0) +
@@ -746,8 +751,8 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::GetValues, tid.toInt(), n,
@@ -861,9 +866,9 @@ NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals
             end = std::min(start + MTU, v.size());
             buffer.clear();
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
-            pk.pack_map(3+(network?1:0));
-            if (network) {
-                pk.pack(KEY_NETID); pk.pack(network);
+            pk.pack_map(3+(config.network?1:0));
+            if (config.network) {
+                pk.pack(KEY_NETID); pk.pack(config.network);
             }
             pk.pack(KEY_Y); pk.pack(KEY_V);
             pk.pack(KEY_TID); pk.pack_bin(tid.size());
@@ -886,7 +891,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
     pk.pack(KEY_R);
     pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
@@ -927,8 +932,8 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
                       pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     // send response
@@ -1017,7 +1022,7 @@ NetworkEngine::sendListen(Sp<Node> n,
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     auto has_query = query.where.getFilter() or not query.select.getSelection().empty();
     pk.pack(KEY_A); pk.pack_map(4 + has_query);
@@ -1035,8 +1040,8 @@ NetworkEngine::sendListen(Sp<Node> n,
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Listen, tid.toInt(), n,
@@ -1060,7 +1065,7 @@ void
 NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
     pk.pack(KEY_R); pk.pack_map(2);
       pk.pack(KEY_REQ_ID); pk.pack(myid);
@@ -1071,8 +1076,8 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
                                pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     send(addr, buffer.data(), buffer.size());
@@ -1090,7 +1095,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
@@ -1107,8 +1112,8 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
                       pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
     pk.pack(KEY_UA);  pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid.toInt(), n,
@@ -1148,7 +1153,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     pk.pack(KEY_A); pk.pack_map(4);
       pk.pack(KEY_REQ_ID);       pk.pack(myid);
@@ -1161,8 +1166,8 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Refresh, tid.toInt(), n,
@@ -1193,7 +1198,7 @@ void
 NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
     pk.pack(KEY_R); pk.pack_map(3);
       pk.pack(KEY_REQ_ID);  pk.pack(myid);
@@ -1205,8 +1210,8 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) 
                                pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     send(addr, buffer.data(), buffer.size());
@@ -1237,8 +1242,8 @@ NetworkEngine::sendError(const SockAddr& addr,
                                pk.pack_bin_body((const char*)t.data(), t.size());
     pk.pack(KEY_Y); pk.pack(KEY_E);
     pk.pack(KEY_UA); pk.pack(my_v);
-    if (network) {
-        pk.pack(KEY_NETID); pk.pack(network);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     send(addr, buffer.data(), buffer.size());

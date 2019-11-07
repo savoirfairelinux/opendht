@@ -48,6 +48,12 @@ struct TransId;
 #define MSG_CONFIRM 0
 #endif
 
+struct NetworkConfig {
+    NetId network {0};
+    ssize_t max_req_per_sec {0};
+    ssize_t max_peer_req_per_sec {0};
+};
+
 class DhtProtocolException : public DhtException {
 public:
     // sent to another peer (http-like).
@@ -207,7 +213,12 @@ public:
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
     NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
-    NetworkEngine(InfoHash& myid, NetId net, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
+    NetworkEngine(
+            InfoHash& myid,
+            NetworkConfig config,
+            std::unique_ptr<DatagramSocket>&& sock,
+            Logger& log,
+            Scheduler& scheduler,
             decltype(NetworkEngine::onError)&& onError,
             decltype(NetworkEngine::onNewNode)&& onNewNode,
             decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -425,7 +436,6 @@ private:
     /***************
      *  Constants  *
      ***************/
-    static constexpr size_t MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
     static const constexpr size_t NODE4_INFO_BUF_LEN {HASH_LEN + sizeof(in_addr) + sizeof(in_port_t)};
     /* the length of a node info buffer in ipv6 format */
@@ -513,17 +523,17 @@ private:
 
     /* DHT info */
     const InfoHash& myid;
-    const NetId network {0};
+    const NetworkConfig config {};
     const std::unique_ptr<DatagramSocket> dht_socket;
     const Logger& DHT_LOG;
 
     NodeCache cache {};
 
     // global limiting should be triggered by at least 8 different IPs
-    using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
+    using IpLimiter = RateLimiter;
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
-    IpLimiterMap address_rate_limiter {};
-    RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
+    IpLimiterMap address_rate_limiter;
+    RateLimiter rate_limiter;
     size_t limiter_maintenance {0};
 
     // requests handling

@@ -39,6 +39,7 @@ constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
+static constexpr size_t MAX_REQUESTS_PER_SEC {1600};
 
 NodeStatus
 Dht::getStatus(sa_family_t af) const
@@ -1688,11 +1689,21 @@ Dht::~Dht()
         s.second->clear();
 }
 
+net::NetworkConfig
+fromDhtConfig(const Config& config)
+{
+    net::NetworkConfig netConf;
+    netConf.network = config.network;
+    netConf.max_req_per_sec = config.max_req_per_sec ? config.max_req_per_sec : MAX_REQUESTS_PER_SEC;
+    netConf.max_peer_req_per_sec = config.max_peer_req_per_sec ? config.max_peer_req_per_sec : MAX_REQUESTS_PER_SEC/8;
+    return netConf;
+}
+
 Dht::Dht() : store(), network_engine(DHT_LOG, scheduler, {}) {}
 
 Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l)
     : DhtInterface(l), myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
-    network_engine(myid, config.network, std::move(sock), DHT_LOG, scheduler,
+    network_engine(myid, fromDhtConfig(config), std::move(sock), DHT_LOG, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),

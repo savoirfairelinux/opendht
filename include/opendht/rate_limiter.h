@@ -23,19 +23,23 @@
 
 namespace dht {
 
-template<size_t Quota, unsigned long Period=1>
 class RateLimiter {
 public:
+    RateLimiter() = delete;
+    RateLimiter(size_t quota) : quota_(quota) {}
+
     /** Clear outdated records and return current quota usage */
     size_t maintain(const time_point& now) {
-        auto limit = now - std::chrono::seconds(Period);
+        auto limit = now - std::chrono::seconds(1);
         while (not records.empty() and records.front() < limit)
             records.pop();
         return records.size();
     }
     /** Return false if quota is reached, insert record and return true otherwise. */
     bool limit(const time_point& now) {
-        if (maintain(now) >= Quota)
+        if (quota_ == (size_t)-1)
+            return true;
+        if (maintain(now) >= quota_)
             return false;
         records.emplace(now);
         return true;
@@ -43,7 +47,11 @@ public:
     bool empty() const {
         return records.empty();
     }
+    size_t quota() const {
+        return quota_;
+    }
 private:
+    const size_t quota_;
     std::queue<time_point> records {};
 };
 

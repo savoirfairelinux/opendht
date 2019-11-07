@@ -19,13 +19,16 @@ import opendht as dht
 import time
 import asyncio
 
+config = dht.DhtConfig()
+config.setRateLimit(-1, -1)
+
 ping_node = dht.DhtRunner()
-ping_node.run()
+ping_node.run(config=config)
 #ping_node.enableLogging()
 #ping_node.bootstrap("bootstrap.ring.cx", "4222")
 
 pong_node = dht.DhtRunner()
-pong_node.run()
+pong_node.run(config=config)
 #pong_node.enableLogging()
 pong_node.ping(ping_node.getBound())
 
@@ -42,7 +45,6 @@ def done(h, ok):
 
 def ping(node, h):
 	global i
-	time.sleep(0.0075)
 	i += 1
 	if i < MAX:
 		node.put(h, dht.Value(b"hey"), lambda ok, nodes: done(node.getNodeId().decode(), ok))
