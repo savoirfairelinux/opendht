@@ -167,7 +167,7 @@ struct OPENDHT_PUBLIC Value
         static Filter chain(Filter&& f1, Filter&& f2) {
             if (not f1) return std::move(f2);
             if (not f2) return std::move(f1);
-            return [f1,f2](const Value& v) {
+            return [f1 = std::move(f1), f2 = std::move(f2)](const Value& v) {
                 return f1(v) and f2(v);
             };
         }
@@ -180,12 +180,12 @@ struct OPENDHT_PUBLIC Value
         }
         static Filter chainAll(std::vector<Filter>&& set) {
             if (set.empty()) return {};
-            return std::bind([](const Value& v, std::vector<Filter>& s) {
-                for (const auto& f : s)
+            return [set = std::move(set)](const Value& v) {
+                for (const auto& f : set)
                     if (f and not f(v))
                         return false;
                 return true;
-            }, std::placeholders::_1, std::move(set));
+            };
         }
         static Filter chain(std::initializer_list<Filter> l) {
             return chainAll(std::vector<Filter>(l.begin(), l.end()));
