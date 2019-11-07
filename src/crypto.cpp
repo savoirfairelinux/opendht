@@ -862,6 +862,23 @@ Certificate::getLongId() const
 }
 
 std::string
+Certificate::getSerialNumber() const
+{
+    if (not cert)
+        return {};
+    // extract from certificate
+    unsigned char serial[64];
+    auto size = sizeof(serial);
+    gnutls_x509_crt_get_serial(cert, &serial, &size);
+    // convert binary to hexadecimal
+    std::stringstream ss;
+    ss << std::hex;
+    for (size_t i = 0; i < size; i++)
+        ss << std::setw(2) << std::setfill('0') << (int)serial[i];
+    return ss.str();
+}
+
+std::string
 Certificate::getName() const
 {
     return getDN(cert, GNUTLS_OID_X520_COMMON_NAME);

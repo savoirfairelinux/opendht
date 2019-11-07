@@ -426,6 +426,8 @@ struct OPENDHT_PUBLIC Certificate {
     /** Same as getPublicKey().getLongId() */
     PkId getLongId() const;
 
+    std::string getSerialNumber() const;
+
     /** Read certificate Common Name (CN) */
     std::string getName() const;
 
