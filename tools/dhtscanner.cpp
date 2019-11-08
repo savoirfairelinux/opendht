@@ -85,16 +85,8 @@ main(int argc, char **argv)
 
     DhtRunner dht;
     try {
-        dht.run(params.port, {}, true, params.network);
-
-        if (params.log) {
-            if (params.syslog)
-                log::enableSyslog(dht, "dhtnode");
-            else if (not params.logfile.empty())
-                log::enableFileLogging(dht, params.logfile);
-            else
-                log::enableLogging(dht);
-        }
+        auto dhtConf = getDhtConfig(params);
+        dht.run(params.port, dhtConf.first, std::move(dhtConf.second));
 
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());

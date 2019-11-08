@@ -134,6 +134,46 @@ struct dht_params {
     bool no_rate_limit {false};
 };
 
+std::pair<dht::DhtRunner::Config, dht::DhtRunner::Context>
+getDhtConfig(dht_params& params)
+{
+    if (not params.id.first and params.generate_identity) {
+        auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
+        params.id = dht::crypto::generateIdentity("DHT Node", *node_ca);
+        if (not params.save_identity.empty()) {
+            dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
+            dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
+        }
+    }
+
+    dht::DhtRunner::Config config {};
+    config.dht_config.node_config.network = params.network;
+    config.dht_config.node_config.maintain_storage = false;
+    config.dht_config.node_config.persist_path = params.persist_path;
+    config.dht_config.id = params.id;
+    config.threaded = true;
+    config.proxy_server = params.proxyclient;
+    config.push_node_id = "dhtnode";
+    config.push_token = params.devicekey;
+    config.peer_discovery = params.peer_discovery;
+    config.peer_publish = params.peer_discovery;
+    if (params.no_rate_limit) {
+        config.dht_config.node_config.max_req_per_sec = -1;
+        config.dht_config.node_config.max_peer_req_per_sec = -1;
+    }
+
+    dht::DhtRunner::Context context {};
+    if (params.log) {
+        if (params.syslog or (params.daemonize and params.logfile.empty()))
+            context.logger = dht::log::getSyslogLogger("dhtnode");
+        else if (not params.logfile.empty())
+            context.logger = dht::log::getFileLogger(params.logfile);
+        else
+            context.logger = dht::log::getStdLogger();
+    }
+    return {std::move(config), std::move(context)};
+}
+
 static const constexpr struct option long_options[] = {
     {"help",                    no_argument      , nullptr, 'h'},
     {"port",                    required_argument, nullptr, 'p'},
