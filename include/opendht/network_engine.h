@@ -534,7 +534,7 @@ private:
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
     IpLimiterMap address_rate_limiter;
     RateLimiter rate_limiter;
-    size_t limiter_maintenance {0};
+    ssize_t limiter_maintenance {0};
 
     // requests handling
     std::map<Tid, Sp<Request>> requests {};
