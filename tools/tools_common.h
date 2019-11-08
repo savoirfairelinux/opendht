@@ -174,6 +174,18 @@ getDhtConfig(dht_params& params)
     return {std::move(config), std::move(context)};
 }
 
+void print_node_info(const dht::DhtRunner& node, const dht_params& params) {
+    std::cout << "OpenDHT node " << node.getNodeId() << " running on ";
+    auto port4 = node.getBoundPort(AF_INET);
+    auto port6 = node.getBoundPort(AF_INET6);
+    if (port4 == port6)
+        std::cout << "port " << port4 << std::endl;
+    else
+        std::cout << "IPv4 port " << port4 << ", IPv6 port " << port6 << std::endl;
+    if (params.id.first)
+        std::cout << "Public key ID " << node.getId() << std::endl;
+}
+
 static const constexpr struct option long_options[] = {
     {"help",                    no_argument      , nullptr, 'h'},
     {"port",                    required_argument, nullptr, 'p'},

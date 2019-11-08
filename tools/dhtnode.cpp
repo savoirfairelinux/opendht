@@ -48,18 +48,6 @@ void print_id_req() {
     std::cout << "An identity is required to perform this operation (run with -i)" << std::endl;
 }
 
-void print_node_info(const std::shared_ptr<DhtRunner>& node, const dht_params& params) {
-    std::cout << "OpenDHT node " << node->getNodeId() << " running on ";
-    auto port4 = node->getBoundPort(AF_INET);
-    auto port6 = node->getBoundPort(AF_INET6);
-    if (port4 == port6)
-        std::cout << "port " << port4 << std::endl;
-    else
-        std::cout << "IPv4 port " << port4 << ", IPv6 port " << port6 << std::endl;
-    if (params.id.first)
-        std::cout << "Public key ID " << node->getId() << std::endl;
-}
-
 void print_help() {
     std::cout << "OpenDHT command line interface (CLI)" << std::endl;
     std::cout << "Possible commands:" << std::endl
@@ -123,7 +111,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #endif
 )
 {
-    print_node_info(node, params);
+    print_node_info(*node, params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
 #ifndef WIN32_NATIVE
@@ -152,7 +140,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             print_help();
             continue;
         } else if (op == "ll") {
-            print_node_info(node, params);
+            print_node_info(*node, params);
             std::cout << "IPv4 stats:" << std::endl;
             std::cout << node->getNodesStats(AF_INET).toString() << std::endl;
             std::cout << "IPv6 stats:" << std::endl;

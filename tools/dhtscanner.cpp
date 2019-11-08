@@ -91,7 +91,7 @@ main(int argc, char **argv)
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
-        std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
+        print_node_info(dht, params);
         std::cout << "Scanning network..." << std::endl;
         auto all_nodes = std::make_shared<NodeSet>();
 

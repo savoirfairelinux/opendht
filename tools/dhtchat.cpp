@@ -37,11 +37,6 @@ const std::string printTime(const std::time_t& now) {
     return buf;
 }
 
-void print_node_info(const DhtRunner& dht, const dht_params&) {
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  dht.getBoundPort() << std::endl;
-    std::cout << "Public key ID " << dht.getId() << std::endl;
-}
-
 void print_usage() {
     std::cout << "Usage: dhtchat [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
     std::cout << "dhtchat, a simple OpenDHT command line chat client." << std::endl;
