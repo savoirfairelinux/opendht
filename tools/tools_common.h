@@ -131,6 +131,7 @@ struct dht_params {
     std::string privkey_pwd {};
     std::string proxy_privkey_pwd {};
     std::string save_identity {};
+    bool no_rate_limit {false};
 };
 
 static const constexpr struct option long_options[] = {
@@ -147,6 +148,7 @@ static const constexpr struct option long_options[] = {
     {"daemonize",               no_argument      , nullptr, 'd'},
     {"service",                 no_argument      , nullptr, 's'},
     {"peer-discovery",          no_argument      , nullptr, 'D'},
+    {"no-rate-limit",           no_argument      , nullptr, 'U'},
     {"persist",                 required_argument, nullptr, 'f'},
     {"logfile",                 required_argument, nullptr, 'l'},
     {"syslog",                  no_argument      , nullptr, 'L'},
@@ -168,7 +170,7 @@ parseArgs(int argc, char **argv) {
     int opt;
     std::string privkey;
     std::string proxy_privkey;
-    while ((opt = getopt_long(argc, argv, "hidsvDp:n:b:f:l:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidsvDUp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -211,6 +213,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'n':
             params.network = strtoul(optarg, nullptr, 0);
+            break;
+        case 'U':
+            params.no_rate_limit = true;
             break;
         case 'b':
             params.bootstrap = dht::splitPort((optarg[0] == '=') ? optarg+1 : optarg);

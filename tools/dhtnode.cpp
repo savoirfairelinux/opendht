@@ -552,6 +552,10 @@ main(int argc, char **argv)
         config.push_token = params.devicekey;
         config.peer_discovery = params.peer_discovery;
         config.peer_publish = params.peer_discovery;
+        if (params.no_rate_limit) {
+            config.dht_config.node_config.max_req_per_sec = -1;
+            config.dht_config.node_config.max_peer_req_per_sec = -1;
+        }
 
         dht::DhtRunner::Context context {};
         if (params.log) {
