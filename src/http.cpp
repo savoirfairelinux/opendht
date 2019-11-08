@@ -669,9 +669,10 @@ Request::add_on_state_change_callback(OnStateChangeCb cb)
 void
 Request::notify_state_change(const State state)
 {
-    state_ = state;
+    if (state_)
+        state_ = std::make_unique<State>(state);
     if (cbs_.on_state_change)
-        cbs_.on_state_change(state, response_);
+        cbs_.on_state_change(state, response_ ? *response_ : http::Response {});
 }
 
 void
@@ -689,7 +690,7 @@ Request::init_parser()
         // user registered callbacks wrappers to store its data in the response
         std::lock_guard<std::mutex> lock(cbs_mutex_);
         cbs_.on_status = [this, statusCb = std::move(cbs_.on_status)](unsigned int status_code){
-            response_.status_code = status_code;
+            response_->status_code = status_code;
             if (statusCb)
                 statusCb(status_code);
         };
@@ -700,7 +701,7 @@ Request::init_parser()
                 headerFieldCb(at, length);
         };
         cbs_.on_header_value = [this, header_field, headerValueCb = std::move(cbs_.on_header_value)](const char* at, size_t length) {
-            response_.headers[*header_field] = std::string(at, length);
+            response_->headers[*header_field] = std::string(at, length);
             if (headerValueCb)
                 headerValueCb(at, length);
         };
@@ -816,7 +817,9 @@ Request::send()
 
     resolver_->add_callback([this](const asio::error_code& ec,
                                    std::vector<asio::ip::tcp::endpoint> endpoints){
-        if (ec){
+        if (ec == asio::error::eof or ec == asio::error::operation_aborted)
+            return;
+        else if (ec){
             if (logger_)
                 logger_->e("[http:client]  [request:%i] resolve error: %s", id_, ec.message().c_str());
             terminate(asio::error::connection_aborted);
@@ -843,6 +846,7 @@ Request::post()
     }
     build();
     init_parser();
+    response_ = std::make_unique<http::Response>();
 
     if (logger_){
         std::string header; std::getline(std::istringstream(request_), header);
@@ -860,19 +864,22 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
-    if (finishing_ and finishing_.exchange(true))
+    if (finishing_.exchange(true))
         return;
 
     if (ec != asio::error::eof and ec != asio::error::operation_aborted and logger_)
         logger_->e("[http:client]  [request:%i] end with error: %s", id_, ec.message().c_str());
 
-    // set response outcome, ignore end of file and abort
-    if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
-        response_.status_code = 200;
-    else
-        response_.status_code = 0;
+    if (response_){
+        // set response outcome, ignore end of file and abort
+        if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
+            response_->status_code = 200;
+        else
+            response_->status_code = 0;
+    }
     if (logger_)
         logger_->d("[http:client]  [request:%i] done", id_);
+
     notify_state_change(State::DONE);
 }
 
@@ -918,7 +925,7 @@ Request::handle_response_header(const asio::error_code& ec)
     headers.append("\n");
     parse_request(headers);
 
-    if (headers_[restinio::http_field_t::expect] == "100-continue" and response_.status_code != 200){
+    if (headers_[restinio::http_field_t::expect] == "100-continue" and response_->status_code != 200){
         notify_state_change(State::SENDING);
         request_.append(body_);
         std::ostream request_stream(&conn_->input());
@@ -928,35 +935,35 @@ Request::handle_response_header(const asio::error_code& ec)
     }
 
     // avoid creating non-existant headers by accessing the headers map without the presence of key
-    auto connection_it = response_.headers.find(HTTP_HEADER_CONNECTION);
-    auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
-    auto transfer_encoding_it = response_.headers.find(HTTP_HEADER_TRANSFER_ENCODING);
+    auto connection_it = response_->headers.find(HTTP_HEADER_CONNECTION);
+    auto content_length_it = response_->headers.find(HTTP_HEADER_CONTENT_LENGTH);
+    auto transfer_encoding_it = response_->headers.find(HTTP_HEADER_TRANSFER_ENCODING);
 
     // has content-length
-    if (content_length_it != response_.headers.end())
+    if (content_length_it != response_->headers.end())
     {
         unsigned int content_length = atoi(content_length_it->second.c_str());
-        response_.body.append(conn_->read_bytes(content_length));
+        response_->body.append(conn_->read_bytes(content_length));
         // full body already in the header
-        if (response_.body.size() + 1 == content_length) {
-            response_.body.append("\n");
-            parse_request(response_.body);
+        if (response_->body.size() + 1 == content_length) {
+            response_->body.append("\n");
+            parse_request(response_->body);
             if (message_complete_.load())
                 terminate(asio::error::eof);
         }
         else { // more chunks to come (don't add the missing \n from std::getline)
-            conn_->async_read(content_length - response_.body.size(),
+            conn_->async_read(content_length - response_->body.size(),
                 std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
         }
     }
     // server wants to keep sending or we have content-length defined
-    else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
+    else if (connection_it != response_->headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
         conn_->async_read_until(BODY_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     // server wants to close the connection
-    else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
+    else if (connection_it != response_->headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
     {
         terminate(asio::error::eof);
     }
@@ -965,7 +972,7 @@ Request::handle_response_header(const asio::error_code& ec)
     {
         terminate(asio::error::eof);
     }
-    else if (transfer_encoding_it != response_.headers.end() and
+    else if (transfer_encoding_it != response_->headers.end() and
              transfer_encoding_it->second == HTTP_HEADER_TRANSFER_ENCODING_CHUNKED)
     {
         std::string chunk_size;
@@ -996,26 +1003,26 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
 
     // avoid creating non-existant headers by accessing the headers map without the presence of key
-    auto connection_it = response_.headers.find(HTTP_HEADER_CONNECTION);
-    auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
-    auto transfer_encoding_it = response_.headers.find(HTTP_HEADER_TRANSFER_ENCODING);
+    auto connection_it = response_->headers.find(HTTP_HEADER_CONNECTION);
+    auto content_length_it = response_->headers.find(HTTP_HEADER_CONTENT_LENGTH);
+    auto transfer_encoding_it = response_->headers.find(HTTP_HEADER_TRANSFER_ENCODING);
 
     // read the content-length body
     unsigned int content_length;
-    if (content_length_it != response_.headers.end() and !response_.body.empty()){
+    if (content_length_it != response_->headers.end() and !response_->body.empty()){
         // extract the content-length
         content_length = atoi(content_length_it->second.c_str());
-        response_.body.append(conn_->read_bytes(bytes));
+        response_->body.append(conn_->read_bytes(bytes));
         // check if fully parsed
-        if (response_.body.size() == content_length)
-            parse_request(response_.body);
+        if (response_->body.size() == content_length)
+            parse_request(response_->body);
     }
     // read and parse the chunked encoding fragment
     else {
         auto body = conn_->read_until(BODY_VALUE_DELIM[0]);
-        response_.body += body;
+        response_->body += body;
         if (body == "0\r\n"){
-            parse_request(response_.body);
+            parse_request(response_->body);
             terminate(asio::error::eof);
             return;
         }
@@ -1027,19 +1034,19 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
         terminate(asio::error::eof);
     }
     // has content-length
-    else if (content_length_it != response_.headers.end() and response_.body.size() != content_length)
+    else if (content_length_it != response_->headers.end() and response_->body.size() != content_length)
     {
-        conn_->async_read(content_length - response_.body.size(),
+        conn_->async_read(content_length - response_->body.size(),
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     // server wants to keep sending
-    else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
+    else if (connection_it != response_->headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
         conn_->async_read_until(BODY_VALUE_DELIM,
             std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
     }
     // server wants to close the connection
-    else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
+    else if (connection_it != response_->headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
     {
         terminate(asio::error::eof);
     }
@@ -1048,14 +1055,14 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     {
         terminate(asio::error::eof);
     }
-    else if (transfer_encoding_it != response_.headers.end() and
+    else if (transfer_encoding_it != response_->headers.end() and
              transfer_encoding_it->second == HTTP_HEADER_TRANSFER_ENCODING_CHUNKED)
     {
         std::istream is(&conn_->data());
         std::string chunk_size;
         std::getline(is, chunk_size);
         if (chunk_size.size() == 0){
-            parse_request(response_.body);
+            parse_request(response_->body);
             terminate(asio::error::eof);
         }
         else

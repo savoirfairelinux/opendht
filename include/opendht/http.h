@@ -190,7 +190,7 @@ private:
 
 struct Response
 {
-    unsigned int status_code;
+    unsigned int status_code = 0;
     std::map<std::string, std::string> headers;
     std::string body;
 };
@@ -266,8 +266,8 @@ public:
 private:
     using OnCompleteCb = std::function<void()>;
 
-    Response response_ {};
     std::string request_;
+    std::unique_ptr<Response> response_;
     std::atomic<bool> message_complete_ {false};
     std::atomic<bool> finishing_ {false};
     std::unique_ptr<http_parser> parser_;
@@ -323,7 +323,7 @@ private:
 
     std::mutex cbs_mutex_;
     Callbacks cbs_;
-    State state_;
+    std::unique_ptr<State> state_;
 
     dht::crypto::Identity client_identity_;
     std::shared_ptr<dht::crypto::Certificate> server_ca_;
