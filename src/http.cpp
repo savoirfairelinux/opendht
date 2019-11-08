@@ -860,7 +860,7 @@ Request::post()
 void
 Request::terminate(const asio::error_code& ec)
 {
-    if (finishing_.exchange(true))
+    if (finishing_ and finishing_.exchange(true))
         return;
 
     if (ec != asio::error::eof and ec != asio::error::operation_aborted and logger_)
@@ -871,7 +871,6 @@ Request::terminate(const asio::error_code& ec)
         response_.status_code = 200;
     else
         response_.status_code = 0;
-
     if (logger_)
         logger_->d("[http:client]  [request:%i] done", id_);
     notify_state_change(State::DONE);

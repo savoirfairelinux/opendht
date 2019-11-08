@@ -266,6 +266,13 @@ public:
 private:
     using OnCompleteCb = std::function<void()>;
 
+    Response response_ {};
+    std::string request_;
+    std::atomic<bool> message_complete_ {false};
+    std::atomic<bool> finishing_ {false};
+    std::unique_ptr<http_parser> parser_;
+    std::unique_ptr<http_parser_settings> parser_s_;
+
     struct Callbacks {
         Callbacks(){}
 
@@ -278,6 +285,7 @@ private:
 
         OnStateChangeCb on_state_change;
     };
+
 
     void notify_state_change(const State state);
 
@@ -328,13 +336,6 @@ private:
     static unsigned int ids_;
     std::shared_ptr<Connection> conn_;
     std::shared_ptr<Resolver> resolver_;
-
-    Response response_ {};
-    std::string request_;
-    std::atomic<bool> message_complete_ {false};
-    std::atomic<bool> finishing_ {false};
-    std::unique_ptr<http_parser> parser_;
-    std::unique_ptr<http_parser_settings> parser_s_;
 
     std::shared_ptr<dht::Logger> logger_;
 };
