@@ -1695,7 +1695,9 @@ fromDhtConfig(const Config& config)
     net::NetworkConfig netConf;
     netConf.network = config.network;
     netConf.max_req_per_sec = config.max_req_per_sec ? config.max_req_per_sec : MAX_REQUESTS_PER_SEC;
-    netConf.max_peer_req_per_sec = config.max_peer_req_per_sec ? config.max_peer_req_per_sec : MAX_REQUESTS_PER_SEC/8;
+    netConf.max_peer_req_per_sec = config.max_peer_req_per_sec
+        ? config.max_peer_req_per_sec
+        : netConf.max_req_per_sec/8;
     return netConf;
 }
 
