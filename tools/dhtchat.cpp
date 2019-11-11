@@ -57,18 +57,12 @@ main(int argc, char **argv)
 
     DhtRunner dht;
     try {
+        params.generate_identity = true;
         auto dhtConf = getDhtConfig(params);
         dht.run(params.port, dhtConf.first, std::move(dhtConf.second));
 
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
-
-#ifdef OPENDHT_PROXY_CLIENT
-    if (!params.proxyclient.empty()) {
-        dht.setProxyServer(params.proxyclient);
-        dht.enableProxy(true);
-    }
-#endif //OPENDHT_PROXY_CLIENT
 
         print_node_info(dht, params);
         std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;

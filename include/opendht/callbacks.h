@@ -44,6 +44,13 @@ enum class NodeStatus {
     Connected     // 1+ good nodes
 };
 
+inline constexpr const char*
+statusToStr(NodeStatus status) {
+    return status == NodeStatus::Connected  ? "connected"  : (
+           status == NodeStatus::Connecting ? "connecting" :
+                                              "disconnected");
+}
+
 struct OPENDHT_PUBLIC NodeStats {
     unsigned good_nodes {0},
              dubious_nodes {0},

@@ -171,6 +171,11 @@ getDhtConfig(dht_params& params)
         else
             context.logger = dht::log::getStdLogger();
     }
+    if (context.logger) {
+        context.statusChangedCallback = [logger = *context.logger](dht::NodeStatus status4, dht::NodeStatus status6) {
+            logger.WARN("Connectivity changed: IPv4: %s, IPv6: %s", dht::statusToStr(status4), dht::statusToStr(status6));
+        };
+    }
     return {std::move(config), std::move(context)};
 }
 
