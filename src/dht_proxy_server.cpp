@@ -71,7 +71,7 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 class opendht_logger_t
 {
 public:
-    opendht_logger_t(std::shared_ptr<dht::Logger> logger = {}){
+    opendht_logger_t(std::shared_ptr<Logger> logger = {}){
         if (logger)
             m_logger = logger;
     }
@@ -101,7 +101,7 @@ public:
     }
 
 private:
-    std::shared_ptr<dht::Logger> m_logger;
+    std::shared_ptr<Logger> m_logger;
 };
 
 // connection listener
@@ -166,9 +166,9 @@ struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
 };
 
 DhtProxyServer::DhtProxyServer(
-    dht::crypto::Identity identity,
+    crypto::Identity identity,
     std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
-    std::shared_ptr<dht::Logger> logger
+    std::shared_ptr<Logger> logger
 )
     :   dht_(dht), logger_(logger),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
@@ -460,14 +460,14 @@ DhtProxyServer::getNodeInfo(restinio::request_handle_t request,
     std::lock_guard<std::mutex> lck(statsMutex_);
     if (nodeInfo_.ipv4.good_nodes == 0 &&
         nodeInfo_.ipv6.good_nodes == 0){
-        nodeInfo_ = this->dht_->getNodeInfo();
+        nodeInfo_ = dht_->getNodeInfo();
     }
     result = nodeInfo_.toJson();
     // [ipv6:ipv4]:port or ipv4:port
     result["public_ip"] = request->remote_endpoint().address().to_string();
     auto output = Json::writeString(jsonBuilder_, result) + "\n";
 
-    auto response = this->initHttpResponse(request->create_response());
+    auto response = initHttpResponse(request->create_response());
     response.append_body(output);
     return response.done();
 }
@@ -480,17 +480,17 @@ DhtProxyServer::getStats(restinio::request_handle_t request,
     try {
         if (dht_){
             auto output = Json::writeString(jsonBuilder_, stats_.toJson()) + "\n";
-            auto response = this->initHttpResponse(request->create_response());
+            auto response = initHttpResponse(request->create_response());
             response.append_body(output);
             response.done();
         } else {
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_service_unavailable()));
             response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
             return response.done();
         }
     } catch (...){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -503,22 +503,22 @@ DhtProxyServer::get(restinio::request_handle_t request,
                     restinio::router::route_params_t params)
 {
     requestNum_++;
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
 
     auto response = std::make_shared<ResponseByPartsBuilder>(
-        this->initHttpResponse(request->create_response<ResponseByParts>()));
+        initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
-        dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+        dht_->get(infoHash, [this, response](const Sp<Value>& value){
             auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
             response->append_chunk(output);
             response->flush();
@@ -528,7 +528,7 @@ DhtProxyServer::get(restinio::request_handle_t request,
             response->done();
         });
     } catch (const std::exception& e){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -541,18 +541,18 @@ DhtProxyServer::listen(restinio::request_handle_t request,
                        restinio::router::route_params_t params)
 {
     requestNum_++;
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
     auto response = std::make_shared<ResponseByPartsBuilder>(
-        this->initHttpResponse(request->create_response<ResponseByParts>()));
+        initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
         std::lock_guard<std::mutex> lock(lockListener_);
@@ -561,7 +561,7 @@ DhtProxyServer::listen(restinio::request_handle_t request,
         session.hash = infoHash;
         session.response = response;
         session.token = dht_->listen(infoHash, [this, response]
-                (const std::vector<dht::Sp<dht::Value>>& values, bool expired){
+                (const std::vector<Sp<Value>>& values, bool expired){
             for (const auto& value: values){
                 auto jsonVal = value->toJson();
                 if (expired)
@@ -574,7 +574,7 @@ DhtProxyServer::listen(restinio::request_handle_t request,
         });
 
     } catch (const std::exception& e){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -590,12 +590,12 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 {
     requestNum_++;
 
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
@@ -606,14 +606,14 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
         auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
         if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_JSON_INCORRECT);
             return response.done();
         }
         auto pushToken = root["key"].asString();
         if (pushToken.empty()){
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_NO_TOKEN);
             return response.done();
@@ -643,11 +643,11 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                 listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                 // Send response header
                 auto response = std::make_shared<ResponseByPartsBuilder>(
-                    this->initHttpResponse(request->create_response<ResponseByParts>()));
+                    initHttpResponse(request->create_response<ResponseByParts>()));
                 response->flush();
                 // No Refresh
                 if (!root.isMember("refresh") or !root["refresh"].asBool()){
-                    dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+                    dht_->get(infoHash, [this, response](const Sp<Value>& value){
                         auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                         response->append_chunk(output);
                         response->flush();
@@ -709,12 +709,12 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             listener.expireTimer->expires_at(timeout);
         listener.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPushListen, this,
                                          std::placeholders::_1, pushToken, infoHash, clientId));
-        auto response = this->initHttpResponse(request->create_response());
+        auto response = initHttpResponse(request->create_response());
         response.set_body("{}\n");
         return response.done();
     }
     catch (...) {
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -728,12 +728,12 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 {
     requestNum_++;
 
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
@@ -748,7 +748,7 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
         auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
 
         if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_JSON_INCORRECT);
             return response.done();
@@ -759,11 +759,11 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
         auto clientId = root["client_id"].asString();
 
         handleCancelPushListen(asio::error_code() /*success*/, pushToken, infoHash, clientId);
-        auto response = this->initHttpResponse(request->create_response());
+        auto response = initHttpResponse(request->create_response());
         return response.done();
     }
     catch (...) {
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -787,7 +787,7 @@ DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const s
 
 void
 DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::string pushToken,
-                                       const dht::InfoHash key, const std::string clientId)
+                                       const InfoHash key, const std::string clientId)
 {
     if (ec == asio::error::operation_aborted)
         return;
@@ -916,9 +916,9 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     restinio::router::route_params_t params)
 {
     requestNum_++;
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
         auto response = initHttpResponse(request->create_response(restinio::status_service_unavailable()));
@@ -938,7 +938,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
         auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
 
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
-            auto value = std::make_shared<dht::Value>(root);
+            auto value = std::make_shared<Value>(root);
             bool permanent = root.isMember("permanent");
             if (logger_)
                 logger_->d("[proxy:server] [put %s] %s %s", infoHash.toString().c_str(),
@@ -994,18 +994,18 @@ DhtProxyServer::put(restinio::request_handle_t request,
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){
                     auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-                    auto response = this->initHttpResponse(request->create_response());
+                    auto response = initHttpResponse(request->create_response());
                     response.append_body(output);
                     response.done();
                 } else {
-                    auto response = this->initHttpResponse(request->create_response(
+                    auto response = initHttpResponse(request->create_response(
                         restinio::status_bad_gateway()));
                     response.set_body(RESP_MSG_PUT_FAILED);
                     response.done();
                 }
-            }, dht::time_point::max(), permanent);
+            }, time_point::max(), permanent);
         } else {
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_JSON_INCORRECT);
             return response.done();
@@ -1013,7 +1013,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
     } catch (const std::exception& e){
         if (logger_)
             logger_->d("[proxy:server] error in put: %s", e.what());
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -1023,22 +1023,23 @@ DhtProxyServer::put(restinio::request_handle_t request,
 
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
 
-RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
-                                        restinio::router::route_params_t params) const
+RequestStatus
+DhtProxyServer::putSigned(restinio::request_handle_t request,
+                          restinio::router::route_params_t params) const
 {
     requestNum_++;
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
-    if (!dht_){
-        auto response = this->initHttpResponse(
+    if (!dht_) {
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
     else if (request->body().empty()){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_bad_request()));
         response.set_body(RESP_MSG_MISSING_PARAMS);
         return response.done();
@@ -1057,18 +1058,18 @@ RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
             dht_->putSigned(infoHash, value, [this, request, value](bool ok){
                 if (ok){
                     auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-                    auto response = this->initHttpResponse(request->create_response());
+                    auto response = initHttpResponse(request->create_response());
                     response.append_body(output);
                     response.done();
                 } else {
-                    auto response = this->initHttpResponse(request->create_response(
+                    auto response = initHttpResponse(request->create_response(
                         restinio::status_bad_gateway()));
                     response.set_body(RESP_MSG_PUT_FAILED);
                     response.done();
                 }
             });
         } else {
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_JSON_INCORRECT);
             return response.done();
@@ -1076,7 +1077,7 @@ RequestStatus DhtProxyServer::putSigned(restinio::request_handle_t request,
     } catch (const std::exception& e){
         if (logger_)
             logger_->d("[proxy:server] error in put: %s", e.what());
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -1089,18 +1090,18 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
                              restinio::router::route_params_t params)
 {
     requestNum_++;
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
     else if (request->body().empty()){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_bad_request()));
         response.set_body(RESP_MSG_MISSING_PARAMS);
         return response.done();
@@ -1115,7 +1116,7 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
         if (reader->parse(char_data, char_data + request->body().size(), &root, &err)){
             InfoHash to(root["to"].asString());
             if (!to){
-                auto response = this->initHttpResponse(
+                auto response = initHttpResponse(
                     request->create_response(restinio::status_bad_request()));
                 response.set_body(RESP_MSG_DESTINATION_NOT_FOUND);
                 return response.done();
@@ -1124,18 +1125,18 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
             dht_->putEncrypted(infoHash, to, value, [this, request, value](bool ok){
                 if (ok){
                     auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-                    auto response = this->initHttpResponse(request->create_response());
+                    auto response = initHttpResponse(request->create_response());
                     response.append_body(output);
                     response.done();
                 } else {
-                    auto response = this->initHttpResponse(request->create_response(
+                    auto response = initHttpResponse(request->create_response(
                         restinio::status_bad_gateway()));
                     response.set_body(RESP_MSG_PUT_FAILED);
                     response.done();
                 }
             });
         } else {
-            auto response = this->initHttpResponse(
+            auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_JSON_INCORRECT);
             return response.done();
@@ -1143,7 +1144,7 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
     } catch (const std::exception& e){
         if (logger_)
             logger_->d("[proxy:server] error in put: %s", e.what());
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
@@ -1157,7 +1158,7 @@ RequestStatus
 DhtProxyServer::options(restinio::request_handle_t request,
                         restinio::router::route_params_t /*params*/)
 {
-    this->requestNum_++;
+    requestNum_++;
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
     const auto methods = "OPTIONS, GET, POST, LISTEN, SIGN, ENCRYPT";
 #else
@@ -1176,22 +1177,22 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
 {
     requestNum_++;
     auto value = params["value"].to_string();
-    dht::InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"].to_string());
     if (!infoHash)
-        infoHash = dht::InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"].to_string());
 
     if (!dht_){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_service_unavailable()));
         response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
         return response.done();
     }
 
     auto response = std::make_shared<ResponseByPartsBuilder>(
-        this->initHttpResponse(request->create_response<ResponseByParts>()));
+        initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
-        dht_->get(infoHash, [this, response](const dht::Sp<dht::Value>& value){
+        dht_->get(infoHash, [this, response](const Sp<Value>& value){
             auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
             response->append_chunk(output);
             response->flush();
@@ -1203,7 +1204,7 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
             {}, value
         );
     } catch (const std::exception& e){
-        auto response = this->initHttpResponse(
+        auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
         response.set_body(RESP_MSG_INTERNAL_SERVER_ERRROR);
         return response.done();
