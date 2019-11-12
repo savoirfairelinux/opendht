@@ -270,9 +270,9 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     if (logger_)
         logger_->d("[proxy:client] [get] [search %s]", key.to_c_str());
 
-    auto request = buildRequest("/" + key.toString());
-    auto reqid = request->id();
     try {
+        auto request = buildRequest("/" + key.toString());
+        auto reqid = request->id();
         request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         request->set_method(restinio::http_method_get());
         setHeaderFields(*request);
@@ -343,7 +343,6 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     catch (const std::exception &e){
         if (logger_)
             logger_->e("[proxy:client] [get %s] error: %s", key.to_c_str(), e.what());
-        requests_.erase(reqid);
     }
 }
 
@@ -438,9 +437,9 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
     if (logger_)
         logger_->d("[proxy:client] [put] [search %s] executing for %s", key.to_c_str(), val->toString().c_str());
 
-    auto request = buildRequest("/" + key.toString());
-    auto reqid = request->id();
     try {
+        auto request = buildRequest("/" + key.toString());
+        auto reqid = request->id();
         request->set_method(restinio::http_method_post());
         setHeaderFields(*request);
 
@@ -480,7 +479,6 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
     catch (const std::exception &e){
         if (logger_)
             logger_->e("[proxy:client] [put %s] error: %s", key.to_c_str(), e.what());
-        requests_.erase(reqid);
     }
 }
 
@@ -564,9 +562,9 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
 {
     if (logger_)
         logger_->d("[proxy:client] [status] query ipv%i info", family == AF_INET ? 4 : 6);
-    auto request = std::make_shared<http::Request>(httpContext_, resolver, family);
-    auto reqid = request->id();
     try {
+        auto request = std::make_shared<http::Request>(httpContext_, resolver, family);
+        auto reqid = request->id();
         request->set_method(restinio::http_method_get()); 
         setHeaderFields(*request);
         request->add_on_state_change_callback([this, reqid, family, infoState]
@@ -605,7 +603,6 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
     catch (const std::exception &e){
         if (logger_)
             logger_->e("[proxy:client] [status] error sending request: %s", e.what());
-        requests_.erase(reqid);
     }
 }
 
@@ -901,10 +898,10 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
 {
     if (logger_)
         logger_->e("[proxy:client] [listen] sendListen: %d", (int)method);
-    auto request = buildRequest();
-    listener.request = request;
-    auto reqid = request->id();
     try {
+        auto request = buildRequest();
+        listener.request = request;
+        auto reqid = request->id();
         request->set_header(header);
         setHeaderFields(*request);
         if (method == ListenMethod::LISTEN)
@@ -973,8 +970,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
     }
     catch (const std::exception &e){
         if (logger_)
-            logger_->e("[proxy:client] [listen] request #%i failed: %s", reqid, e.what());
-        requests_.erase(reqid);
+            logger_->e("[proxy:client] [listen] request failed: %s", e.what());
     }
 }
 

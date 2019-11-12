@@ -310,7 +310,7 @@ private:
 
     restinio::http_request_header_t header_;
     std::map<restinio::http_field_t, std::string> headers_;
-    restinio::http_connection_header_t connection_type_;
+    restinio::http_connection_header_t connection_type_ {restinio::http_connection_header_t::close};
     std::string body_;
 
     std::mutex cbs_mutex_;

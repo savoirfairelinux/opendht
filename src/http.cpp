@@ -624,14 +624,15 @@ Request::build()
     std::string conn_str = "";
     switch (connection_type_){
     case restinio::http_connection_header_t::upgrade:
-        throw std::invalid_argument("upgrade");
+        if (logger_)
+            logger_->e("Unsupported connection type 'upgrade', fallback to 'close'");
+    // fallthrough
+    case restinio::http_connection_header_t::close:
+        conn_str = "close";
         break;
     case restinio::http_connection_header_t::keep_alive:
         conn_str = "keep-alive";
         break;
-    case restinio::http_connection_header_t::close:
-        conn_str = "close";
-        connection_type_ = restinio::http_connection_header_t::close;
     }
     if (!conn_str.empty())
         request << "Connection: " << conn_str << "\r\n";
