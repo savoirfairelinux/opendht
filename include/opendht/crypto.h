@@ -538,6 +538,11 @@ struct OPENDHT_PUBLIC Certificate {
     void generateOcspRequest(gnutls_x509_crt_t& issuer, gnutls_datum_t& rdata, gnutls_datum_t& nonce);
 
     /*
+     * Get OCSP Response in readable format.
+     */
+    std::string getOcspResponse(const bool compact = true) const;
+
+    /*
      * Get OCSP response certificate status.
      * Return certificate status.
      * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-cert-status-t

@@ -1039,6 +1039,32 @@ Certificate::getPreferredDigest() const
     return getPublicKey().getPreferredDigest();
 }
 
+std::string
+Certificate::getOcspResponse(const bool compact) const
+{
+    if (ocsp_response.empty())
+        throw CryptoException("Empty OCSP Response");
+    int ret;
+    std::stringstream ss;
+    gnutls_ocsp_resp_t resp;
+    gnutls_datum_t data = { (unsigned char*)ocsp_response.data(), (unsigned int)ocsp_response.size() };
+    ret = gnutls_ocsp_resp_init(&resp);
+    if (ret < 0)
+        goto end;
+    ret = gnutls_ocsp_resp_import(resp, &data);
+    if (ret < 0)
+        goto end;
+    ret = gnutls_ocsp_resp_print(resp, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &data);
+    if (ret == 0)
+        ss.write((const char*)data.data, data.size);
+    gnutls_free(data.data);
+ end:
+    gnutls_ocsp_resp_deinit(resp);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    return ss.str();
+}
+
 void
 Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer, gnutls_datum_t& rdata, gnutls_datum_t& nonce)
 {
