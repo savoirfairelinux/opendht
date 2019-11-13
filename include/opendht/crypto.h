@@ -522,7 +522,26 @@ struct OPENDHT_PUBLIC Certificate {
 
     gnutls_digest_algorithm_t getPreferredDigest() const;
 
+    /*
+     * Generate OCSP request.
+     * Return GnuTLS error code.
+     * https://www.gnutls.org/manual/html_node/Error-codes.html
+     */
+    void generateOcspRequest(gnutls_x509_crt_t& issuer, gnutls_datum_t& rdata, gnutls_datum_t& nonce);
+
+    /*
+     * Get OCSP response certificate status.
+     * Return certificate status.
+     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-cert-status-t
+     */
     unsigned int getOcspResponseCertificateStatus() const;
+
+    /*
+     * Verify OCSP response.
+     * Return OCSP verify reason.
+     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
+     */
+    unsigned int verifyOcspResponse(gnutls_x509_crt_t& signer, gnutls_datum_t& nonce);
 
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
