@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
+ *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,6 +27,7 @@ extern "C" {
 #include <gnutls/gnutls.h>
 #include <gnutls/abstract.h>
 #include <gnutls/x509.h>
+#include <gnutls/ocsp.h>
 }
 
 #include <vector>
@@ -189,7 +190,6 @@ private:
     //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
 };
 
-
 class OPENDHT_PUBLIC RevocationList
 {
     using clock = std::chrono::system_clock;
@@ -300,6 +300,36 @@ private:
     CertificateRequest(const CertificateRequest& o) = delete;
     CertificateRequest& operator=(const CertificateRequest& o) = delete;
     gnutls_x509_crq_t request {nullptr};
+};
+
+class OPENDHT_PUBLIC OcspResponse
+{
+public:
+    OcspResponse(const uint8_t* dat_ptr, size_t dat_size);
+    ~OcspResponse();
+
+    Blob pack() const;
+    /*
+     * Get OCSP Response in readable format.
+     */
+    std::string toString(const bool compact = true) const;
+
+    /*
+     * Get OCSP response certificate status.
+     * Return certificate status.
+     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-cert-status-t
+     */
+    unsigned int getCertificateStatus() const;
+
+    /*
+     * Verify OCSP response.
+     * Return OCSP verify reason.
+     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
+     */
+    unsigned int verifyDirect(gnutls_x509_crt_t& cert, gnutls_x509_crt_t& signer, Blob& nonce);
+
+private:
+    gnutls_ocsp_resp_t response;
 };
 
 struct OPENDHT_PUBLIC Certificate {
@@ -527,30 +557,11 @@ struct OPENDHT_PUBLIC Certificate {
      * Return GnuTLS error code.
      * https://www.gnutls.org/manual/html_node/Error-codes.html
      */
-    void generateOcspRequest(gnutls_x509_crt_t& issuer, gnutls_datum_t& rdata, gnutls_datum_t& nonce);
-
-    /*
-     * Get OCSP Response in readable format.
-     */
-    std::string getOcspResponse(const bool compact = true) const;
-
-    /*
-     * Get OCSP response certificate status.
-     * Return certificate status.
-     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-cert-status-t
-     */
-    unsigned int getOcspResponseCertificateStatus() const;
-
-    /*
-     * Verify OCSP response.
-     * Return OCSP verify reason.
-     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
-     */
-    unsigned int verifyOcspResponse(gnutls_x509_crt_t& signer, gnutls_datum_t& nonce);
+    std::pair<Blob,Blob> generateOcspRequest(gnutls_x509_crt_t& issuer);
 
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
-    std::vector<uint8_t>/*binary*/ ocsp_response;
+    std::shared_ptr<OcspResponse> ocspResponse;
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
