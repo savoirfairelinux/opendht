@@ -877,7 +877,7 @@ Certificate::getLongId() const
 #endif
 }
 
-std::string
+Blob
 Certificate::getSerialNumber() const
 {
     if (not cert)
@@ -886,12 +886,7 @@ Certificate::getSerialNumber() const
     unsigned char serial[64];
     auto size = sizeof(serial);
     gnutls_x509_crt_get_serial(cert, &serial, &size);
-    // convert binary to hexadecimal
-    std::stringstream ss;
-    ss << std::hex;
-    for (size_t i = 0; i < size; i++)
-        ss << std::setw(2) << std::setfill('0') << (int)serial[i];
-    return ss.str();
+    return {serial, serial + size};
 }
 
 std::string
@@ -1262,15 +1257,11 @@ Certificate::getRevocationLists() const
 
 OcspResponse::OcspResponse(const uint8_t* dat_ptr, size_t dat_size)
 {
-    gnutls_datum_t dat;
     int ret = gnutls_ocsp_resp_init(&response);
     if (ret < 0)
-        goto end;
-    dat = {(unsigned char*)dat_ptr,(unsigned int)dat_size};
-    if (ret < 0)
-        goto end;
+        throw CryptoException(gnutls_strerror(ret));
+    gnutls_datum_t dat = {(unsigned char*)dat_ptr,(unsigned int)dat_size};
     ret = gnutls_ocsp_resp_import(response, &dat);
-end:
     if (ret < 0){
         gnutls_ocsp_resp_deinit(response);
         throw CryptoException(gnutls_strerror(ret));
@@ -1308,7 +1299,7 @@ OcspResponse::toString(const bool compact) const
 }
 
 
-unsigned int
+gnutls_ocsp_cert_status_t
 OcspResponse::getCertificateStatus() const
 {
     int ret;
@@ -1316,11 +1307,11 @@ OcspResponse::getCertificateStatus() const
     ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status, NULL, NULL, NULL, NULL);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    return status;
+    return (gnutls_ocsp_cert_status_t) status;
 }
 
-unsigned int
-OcspResponse::verifyDirect(gnutls_x509_crt_t& cert, gnutls_x509_crt_t& signer, Blob& nonce)
+gnutls_ocsp_verify_reason_t
+OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
 {
     // https://www.gnutls.org/manual/html_node/Error-codes.html
     int ret = -1;
@@ -1334,17 +1325,17 @@ OcspResponse::verifyDirect(gnutls_x509_crt_t& cert, gnutls_x509_crt_t& signer, B
      * This function will check whether the OCSP response is about the provided certificate.
      *     index: Specifies response number to get. Use (0) to get the first one.
      */
-    if ((ret = gnutls_ocsp_resp_check_crt(response, 0, cert)) < 0)
+    if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
         goto end;
 #endif
     /*
      * Verify signature of the Basic OCSP Response against the public key in the issuer certificate.
      * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-resp-verify-direct
      */
-    ret = gnutls_ocsp_resp_verify_direct(response, signer, &verify, 0);
+    ret = gnutls_ocsp_resp_verify_direct(response, crt.issuer->cert /*signer*/, &verify, 0);
     if (ret < 0)
         goto end;
-    ret = gnutls_ocsp_resp_check_crt(response, 0 /*index*/, cert);
+    ret = gnutls_ocsp_resp_check_crt(response, 0 /*index*/, crt.cert);
     if (ret < 0)
         goto end;
     /*
@@ -1380,7 +1371,7 @@ end:
         else
             throw CryptoException("Certificate is unknown");
     else
-        return verify;
+        return (gnutls_ocsp_verify_reason_t) verify;
 }
 
 // RevocationList

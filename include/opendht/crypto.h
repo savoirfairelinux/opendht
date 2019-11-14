@@ -327,14 +327,14 @@ public:
      * Return certificate status.
      * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-cert-status-t
      */
-    unsigned int getCertificateStatus() const;
+    gnutls_ocsp_cert_status_t getCertificateStatus() const;
 
     /*
      * Verify OCSP response.
      * Return OCSP verify reason.
      * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
      */
-    unsigned int verifyDirect(gnutls_x509_crt_t& cert, gnutls_x509_crt_t& signer, Blob& nonce);
+    gnutls_ocsp_verify_reason_t verifyDirect(const Certificate& crt, const Blob& nonce);
 
 private:
     gnutls_ocsp_resp_t response;
@@ -465,7 +465,7 @@ struct OPENDHT_PUBLIC Certificate {
     /** Same as getPublicKey().getLongId() */
     PkId getLongId() const;
 
-    std::string getSerialNumber() const;
+    Blob getSerialNumber() const;
 
     /** Read certificate Common Name (CN) */
     std::string getName() const;

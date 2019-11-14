@@ -158,8 +158,9 @@ void CryptoTester::testCertificateSerialNumber()
      * $ openssl x509 -in cert.pem  -noout -serial
      * serial=4BDD2E00AA7EBBFB
      */
-    std::string serialNumber = "4bdd2e00aa7ebbfb";
-    CPPUNIT_ASSERT_EQUAL(serialNumber, identity.second->getSerialNumber());
+    dht::Blob serial {{0x4b,0xdd,0x2e,0x00,0xaa,0x7e,0xbb,0xfb}};
+    auto blob = identity.second->getSerialNumber();
+    CPPUNIT_ASSERT(serial == blob);
 }
 
 void
