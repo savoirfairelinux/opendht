@@ -1037,31 +1037,23 @@ Certificate::getPreferredDigest() const
 std::pair<Blob,Blob>
 Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
 {
-    int ret;
-    gnutls_ocsp_req_t req;
-    gnutls_datum_t rdata, nonce;
-    ret = gnutls_ocsp_req_init(&req);
-    if (ret < 0) {
-        goto end;
-    }
-    ret = gnutls_ocsp_req_add_cert(req, GNUTLS_DIG_SHA512, issuer, cert);
-    if (ret < 0) {
-        goto end;
-    }
-    unsigned char noncebuf[64];
-    nonce = { noncebuf, sizeof(noncebuf) };
-    ret = gnutls_rnd(GNUTLS_RND_NONCE, nonce.data, nonce.size);
-    ret = gnutls_ocsp_req_set_nonce(req, 0, &nonce);
-    if (ret < 0) {
-        goto end;
-    }
-    ret = gnutls_ocsp_req_export(req, &rdata);
-    if (ret != 0) {
-        goto end;
-    }
-end:
-    gnutls_ocsp_req_deinit(req);
+    gnutls_ocsp_req_t rreq;
+    int ret = gnutls_ocsp_req_init(&rreq);
     if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    std::unique_ptr<struct gnutls_ocsp_req_int, decltype(&gnutls_ocsp_req_deinit)> req(rreq, &gnutls_ocsp_req_deinit);
+    ret = gnutls_ocsp_req_add_cert(req.get(), GNUTLS_DIG_SHA512, issuer, cert);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    unsigned char noncebuf[64];
+    gnutls_datum_t nonce = { noncebuf, sizeof(noncebuf) };
+    ret = gnutls_rnd(GNUTLS_RND_NONCE, nonce.data, nonce.size);
+    ret = gnutls_ocsp_req_set_nonce(req.get(), 0, &nonce);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    gnutls_datum_t rdata;
+    ret = gnutls_ocsp_req_export(req.get(), &rdata);
+    if (ret != 0)
         throw CryptoException(gnutls_strerror(ret));
     return std::make_pair<Blob,Blob>({rdata.data, rdata.data + rdata.size},
                                      {nonce.data, nonce.data + nonce.size});
