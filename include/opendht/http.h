@@ -113,7 +113,7 @@ public:
 
 private:
     unsigned int id_;
-    static unsigned int ids_;
+    static std::atomic_uint ids_;
 
     asio::io_context& ctx_;
     std::unique_ptr<socket_t> socket_;
@@ -323,9 +323,9 @@ private:
     std::string host_;
 
     unsigned int id_;
+    static std::atomic_uint ids_;
     asio::io_context& ctx_;
     sa_family_t family_ = AF_UNSPEC;
-    static unsigned int ids_;
     std::shared_ptr<Connection> conn_;
     std::shared_ptr<Resolver> resolver_;
 

@@ -77,7 +77,7 @@ Url::Url(const std::string& url): url(url)
 
 // connection
 
-unsigned int Connection::ids_ = 1;
+std::atomic_uint Connection::ids_ {1};
 
 Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), logger_(l)
@@ -438,7 +438,7 @@ Resolver::resolve(const std::string& host, const std::string& service)
 
 // Request
 
-unsigned int Request::ids_ = 1;
+std::atomic_uint Request::ids_ {1};
 
 
 Request::Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
