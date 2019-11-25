@@ -33,12 +33,10 @@ CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
 
 void
 DhtProxyTester::setUp() {
-    logger = dht::log::getStdLogger();
-
-    nodePeer.run(0, /*identity*/{}, /*threaded*/true);
+    nodePeer.run(0);
 
     nodeProxy = std::make_shared<dht::DhtRunner>();
-    nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
+    nodeProxy->run(0);
     nodeProxy->bootstrap(nodePeer.getBound());
 
     auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
@@ -48,7 +46,7 @@ DhtProxyTester::setUp() {
         new dht::DhtProxyServer(
             //dht::crypto::Identity{}, // http
             serverIdentity,            // https
-            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
+            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090"));
 
     clientConfig.server_ca = serverCAIdentity.second;
     clientConfig.client_identity = dht::crypto::generateIdentity("DhtProxyTester");
@@ -56,27 +54,20 @@ DhtProxyTester::setUp() {
     clientConfig.threaded = true;
     clientConfig.push_node_id = "dhtnode";
     clientConfig.proxy_server = "https://127.0.0.1:8080";
-
-    dht::DhtRunner::Context clientContext {};
-    clientContext.logger = logger;
-
-    nodeClient = std::make_shared<dht::DhtRunner>();
-    nodeClient->run(0, clientConfig, std::move(clientContext));
 }
 
 void
 DhtProxyTester::tearDown() {
-    logger->d("[tester:proxy] stopping peer node");
     nodePeer.join();
-    nodeClient->join();
-    logger->d("[tester:proxy] stopping proxy server");
+    nodeClient.join();
     serverProxy.reset(nullptr);
-    logger->d("[tester:proxy] stopping proxy node");
     nodeProxy->join();
 }
 
 void
 DhtProxyTester::testGetPut() {
+    nodeClient.run(0, clientConfig);
+
     bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;
@@ -94,13 +85,15 @@ DhtProxyTester::testGetPut() {
         CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     }
 
-    auto vals = nodeClient->get(key).get();
+    auto vals = nodeClient.get(key).get();
     CPPUNIT_ASSERT(not vals.empty());
     CPPUNIT_ASSERT(vals.front()->data == val_data);
 }
 
 void
 DhtProxyTester::testListen() {
+    nodeClient.run(0, clientConfig);
+
     std::condition_variable cv;
     std::mutex cv_m;
     std::unique_lock<std::mutex> lk(cv_m);
@@ -121,7 +114,7 @@ DhtProxyTester::testListen() {
     done = false;
 
     std::vector<dht::Blob> values;
-    auto token = nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
+    auto token = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
         if (not expired) {
             std::lock_guard<std::mutex> lk(cv_m);
             for (const auto& value : v)
@@ -143,7 +136,7 @@ DhtProxyTester::testListen() {
     auto secondVal_data = secondVal.data;
     nodePeer.put(key, std::move(secondVal));
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
-    nodeClient->cancelListen(key, std::move(token));
+    nodeClient.cancelListen(key, std::move(token));
     // Here values should contains 2 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
     CPPUNIT_ASSERT(values.back() == secondVal_data);
@@ -151,7 +144,8 @@ DhtProxyTester::testListen() {
 
 void
 DhtProxyTester::testResubscribeGetValues() {
-    nodeClient->setPushNotificationToken("atlas");
+    clientConfig.push_token = "atlas";
+    nodeClient.run(0, clientConfig);
 
     bool done = false;
     std::condition_variable cv;
@@ -174,26 +168,22 @@ DhtProxyTester::testResubscribeGetValues() {
 
     // Send a first subscribe, the value is sent via a push notification
     // So ignore values here.
-    nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) {
+    nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>&, bool) {
         return true;
     });
     cv.wait_for(lk, std::chrono::seconds(1));
 
     // Reboot node (to avoid cache)
-    nodeClient->join();
-    clientConfig.push_token = "atlas";
-
-    dht::DhtRunner::Context clientContext {};
-    clientContext.logger = logger;
-    nodeClient->run(0, clientConfig, std::move(clientContext));
+    nodeClient.join();
+    clientConfig.push_token = "";
+    nodeClient.run(0, clientConfig);
 
     // For the second subscribe, the proxy will return the value in the body
-    auto values = std::vector<dht::Blob>();
-    auto ftoken = nodeClient->listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
+    std::vector<std::shared_ptr<dht::Value>> values;
+    auto ftoken = nodeClient.listen(key, [&](const std::vector<std::shared_ptr<dht::Value>>& v, bool expired) {
         if (not expired) {
             std::lock_guard<std::mutex> lk(cv_m);
-            for (const auto& value : v)
-                values.emplace_back(value->data);
+            values.insert(values.end(), v.begin(), v.end());
             done = true;
             cv.notify_all();
         }
@@ -203,25 +193,25 @@ DhtProxyTester::testResubscribeGetValues() {
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     auto token = ftoken.get();
     CPPUNIT_ASSERT(token);
-    nodeClient->cancelListen(key, token);
+    nodeClient.cancelListen(key, token);
     // Here values should still contains 1 values
     CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
-    CPPUNIT_ASSERT(firstVal_data == values.front());
+    CPPUNIT_ASSERT(firstVal_data == values.front()->data);
 }
 
 void
 DhtProxyTester::testPutGet40KChars()
 {
+    nodeClient.run(0, clientConfig);
+    constexpr size_t N = 40000;
+
     // Arrange
     auto key = dht::InfoHash::get("testPutGet40KChars");
     std::vector<std::shared_ptr<dht::Value>> values;
-    std::string mtu = "";
-    for (int i = 0; i < 40000; i++){
-        if (i % 2 == 0)
-            mtu.append("M");
-        else
-            mtu.append("T");
-    }
+    std::vector<uint8_t> mtu;
+    mtu.reserve(N);
+    for (size_t i = 0; i < N; i++)
+        mtu.emplace_back((i % 2) ? 'T' : 'M');
     std::condition_variable cv;
     std::mutex cv_m;
     std::unique_lock<std::mutex> lk(cv_m);
@@ -230,15 +220,15 @@ DhtProxyTester::testPutGet40KChars()
 
     // Act
     dht::Value val {mtu};
-    nodeClient->put(key, std::move(val), [&](bool ok) {
+    nodeClient.put(key, std::move(val), [&](bool ok) {
         std::lock_guard<std::mutex> lk(cv_m);
         done_put = ok;
         cv.notify_all();
     });
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done_put; }));
 
-    nodeClient->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
-        values = vals;
+    nodeClient.get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
+        values.insert(values.end(), vals.begin(), vals.end());
         return true;
     },[&](bool ok){
         std::lock_guard<std::mutex> lk(cv_m);
@@ -248,10 +238,9 @@ DhtProxyTester::testPutGet40KChars()
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done_get; }));
 
     // Assert
-    dht::Value mtu_val {mtu};
-    for (const auto &value: values){
-        CPPUNIT_ASSERT(value->data == mtu_val.data);
-    }
+    CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
+    for (const auto &value: values)
+        CPPUNIT_ASSERT(value->data == mtu);
 }
 
 }  // namespace test

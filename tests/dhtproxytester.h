@@ -66,14 +66,11 @@ class DhtProxyTester : public CppUnit::TestFixture {
    void testPutGet40KChars();
 
  private:
+    dht::DhtRunner::Config clientConfig {};
     dht::DhtRunner nodePeer;
-
-    std::shared_ptr<dht::DhtRunner> nodeClient;
+    dht::DhtRunner nodeClient;
     std::shared_ptr<dht::DhtRunner> nodeProxy;
     std::unique_ptr<dht::DhtProxyServer> serverProxy;
-
-    dht::DhtRunner::Config clientConfig {};
-    std::shared_ptr<dht::Logger> logger {};
 };
 
 }  // namespace test
