@@ -283,6 +283,15 @@ DhtRunner::getBound(sa_family_t af) const {
     return SockAddr{};
 }
 
+in_port_t
+DhtRunner::getBoundPort(sa_family_t af) const {
+    std::lock_guard<std::mutex> lck(dht_mtx);
+    if (dht_)
+        if (auto sock = dht_->getSocket())
+            return sock->getPort(af);
+    return 0;
+}
+
 void
 DhtRunner::dumpTables() const
 {

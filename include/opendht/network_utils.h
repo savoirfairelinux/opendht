@@ -35,7 +35,7 @@
 #include <functional>
 #include <thread>
 #include <atomic>
-#include <iostream>
+#include <mutex>
 
 namespace dht {
 namespace net {
@@ -63,24 +63,34 @@ public:
     virtual int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) = 0;
 
     inline void setOnReceive(OnReceive&& cb) {
+        std::lock_guard<std::mutex> lk(lock);
         rx_callback = std::move(cb);
     }
 
-    virtual const SockAddr& getBound(sa_family_t family = AF_UNSPEC) const = 0;
     virtual bool hasIPv4() const = 0;
     virtual bool hasIPv6() const = 0;
 
-    in_port_t getPort(sa_family_t family = AF_UNSPEC) const {
-        return getBound(family).getPort();
+    SockAddr getBound(sa_family_t family = AF_UNSPEC) const {
+        std::lock_guard<std::mutex> lk(lock);
+        return getBoundRef(family);
     }
+    in_port_t getPort(sa_family_t family = AF_UNSPEC) const {
+        std::lock_guard<std::mutex> lk(lock);
+        return getBoundRef(family).getPort();
+    }
+
+    virtual const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const = 0;
 
     virtual void stop() = 0;
 protected:
 
     inline void onReceived(std::unique_ptr<ReceivedPacket>&& packet) {
+        std::lock_guard<std::mutex> lk(lock);
         if (rx_callback)
             rx_callback(std::move(packet));
     }
+protected:
+    mutable std::mutex lock;
 private:
     OnReceive rx_callback;
 };
@@ -93,12 +103,18 @@ public:
 
     int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) override;
 
-    const SockAddr& getBound(sa_family_t family = AF_UNSPEC) const override {
+    const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const override {
         return (family == AF_INET6) ? bound6 : bound4;
     }
 
-    bool hasIPv4() const override { return s4 != -1; }
-    bool hasIPv6() const override { return s6 != -1; }
+    bool hasIPv4() const override {
+        std::lock_guard<std::mutex> lk(lock);
+        return s4 != -1;
+    }
+    bool hasIPv6() const override {
+        std::lock_guard<std::mutex> lk(lock);
+        return s6 != -1;
+    }
 
     void stop() override;
 private:

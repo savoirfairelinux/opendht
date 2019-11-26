@@ -112,11 +112,13 @@ UdpSocket::UdpSocket(in_port_t port, const Logger& l) : logger(l) {
     SockAddr bind6;
     bind6.setFamily(AF_INET6);
     bind6.setPort(port);
+    std::lock_guard<std::mutex> lk(lock);
     openSockets(bind4, bind6);
 }
 
 UdpSocket::UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const Logger& l) : logger(l)
 {
+    std::lock_guard<std::mutex> lk(lock);
     openSockets(bind4, bind6);
 }
 
@@ -154,6 +156,7 @@ UdpSocket::sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool r
         int err = errno;
         logger.d("Can't send message to %s: %s", dest.toString().c_str(), strerror(err));
         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
+            std::lock_guard<std::mutex> lk(lock);
             auto bind4 = std::move(bound4), bind6 = std::move(bound6);
             openSockets(bind4, bind6);
             return sendTo(dest, data, size, false);
@@ -180,8 +183,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
     udpPipe(stopfds);
 #endif
     int stop_readfd = stopfds[0];
-    stopfd = stopfds[1];
 
+    stopfd = stopfds[1];
     s4 = -1;
     s6 = -1;
 
@@ -224,18 +227,18 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
     }
 
     running = true;
-    rcv_thread = std::thread([this, stop_readfd]() {
-        int selectFd = std::max({s4, s6, stop_readfd}) + 1;
+    rcv_thread = std::thread([this, stop_readfd, ls4=s4, ls6=s6]() mutable {
+        int selectFd = std::max({ls4, ls6, stop_readfd}) + 1;
         try {
             while (running) {
                 fd_set readfds;
 
                 FD_ZERO(&readfds);
                 FD_SET(stop_readfd, &readfds);
-                if(s4 >= 0)
-                    FD_SET(s4, &readfds);
-                if(s6 >= 0)
-                    FD_SET(s6, &readfds);
+                if(ls4 >= 0)
+                    FD_SET(ls4, &readfds);
+                if(ls6 >= 0)
+                    FD_SET(ls6, &readfds);
 
                 int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
                 if (rc < 0) {
@@ -259,10 +262,10 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                             break;
                         }
                     }
-                    else if (s4 >= 0 && FD_ISSET(s4, &readfds))
-                        rc = recvfrom(s4, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
-                    else if (s6 >= 0 && FD_ISSET(s6, &readfds))
-                        rc = recvfrom(s6, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
+                    else if (ls4 >= 0 && FD_ISSET(ls4, &readfds))
+                        rc = recvfrom(ls4, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
+                    else if (ls6 >= 0 && FD_ISSET(ls6, &readfds))
+                        rc = recvfrom(ls6, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
                     else
                         continue;
 
@@ -276,25 +279,28 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                         logger.e("Error receiving packet: %s", strerror(errno));
                         int err = errno;
                         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
-                            if (s4 >= 0) {
-                                close(s4);
+                            std::lock_guard<std::mutex> lk(lock);
+                            if (ls4 >= 0) {
+                                close(ls4);
                                 try {
-                                    s4 = bindSocket(bound4, bound4);
+                                    ls4 = bindSocket(bound4, bound4);
                                 } catch (const DhtException& e) {
                                     logger.e("Can't bind inet socket: %s", e.what());
                                 }
                             }
-                            if (s6 >= 0) {
-                                close(s6);
+                            if (ls6 >= 0) {
+                                close(ls6);
                                 try {
-                                    s6 = bindSocket(bound6, bound6);
+                                    ls6 = bindSocket(bound6, bound6);
                                 } catch (const DhtException& e) {
                                     logger.e("Can't bind inet6 socket: %s", e.what());
                                 }
                             }
-                            if (s4 < 0 && s6 < 0)
+                            if (ls4 < 0 && ls6 < 0)
                                 break;
-                            selectFd = std::max({s4, s6, stop_readfd}) + 1;
+                            s4 = ls4;
+                            s6 = ls6;
+                            selectFd = std::max({ls4, ls6, stop_readfd}) + 1;
                         }
                     }
                 }
@@ -302,16 +308,17 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
         } catch (const std::exception& e) {
             logger.e("Error in UdpSocket rx thread: %s", e.what());
         }
-        if (s4 >= 0)
-            close(s4);
-        if (s6 >= 0)
-            close(s6);
+        if (ls4 >= 0)
+            close(ls4);
+        if (ls6 >= 0)
+            close(ls6);
+        if (stop_readfd != -1)
+            close(stop_readfd);
+        std::lock_guard<std::mutex> lk(lock);
         s4 = -1;
         s6 = -1;
         bound4 = {};
         bound6 = {};
-        if (stop_readfd != -1)
-            close(stop_readfd);
         if (stopfd != -1)
             close(stopfd);
         stopfd = -1;

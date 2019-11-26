@@ -317,9 +317,7 @@ public:
      * Returns the currently bound port, in host byte order.
      * @param f: address family of the bound port to retreive.
      */
-    in_port_t getBoundPort(sa_family_t f = AF_INET) const {
-        return getBound(f).getPort();
-    }
+    in_port_t getBoundPort(sa_family_t f = AF_INET) const;
 
     std::pair<size_t, size_t> getStoreSize() const;
 
