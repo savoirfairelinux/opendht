@@ -328,6 +328,8 @@ private:
 
     // http client
     std::pair<std::string, std::string> pushHostPort_;
+    
+    mutable std::mutex requestLock_;
     std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
 
     std::shared_ptr<dht::Logger> logger_;

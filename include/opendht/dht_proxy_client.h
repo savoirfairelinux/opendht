@@ -351,7 +351,7 @@ private:
     std::shared_ptr<http::Resolver> resolver_;
 
     mutable std::mutex requestLock_;
-    std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
+    std::map<unsigned, std::shared_ptr<http::Request>> requests_;
     /*
      * Thread for executing the http io_context.run() blocking call
      */

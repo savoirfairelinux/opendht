@@ -829,13 +829,13 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     if (pushServer_.empty())
         return;
 
-    auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second,
-                                                                 httpsServer_ ? true : false, logger_);
-    auto reqid = request->id();
+    unsigned reqid = 0;
     try {
+        auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second,
+                                                                    httpsServer_ ? true : false, logger_);
+        reqid = request->id();
         request->set_target("/api/push");
         request->set_method(restinio::http_method_post());
-
         request->set_header_field(restinio::http_field_t::host, pushServer_.c_str());
         request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
         request->set_header_field(restinio::http_field_t::accept, "*/*");
@@ -856,29 +856,29 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
 
         Json::Value content;
         content["notifications"] = std::move(notifications);
-
-        Json::StreamWriterBuilder wbuilder;
-        wbuilder["commentStyle"] = "None";
-        wbuilder["indentation"] = "";
-
-        auto body = Json::writeString(wbuilder, content);
-        request->set_body(body);
-
+        request->set_body(Json::writeString(jsonBuilder_, content));
         request->add_on_state_change_callback([this, reqid]
-                                              (const http::Request::State state, const http::Response response){
+                                              (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
                 if (logger_ and response.status_code != 200)
                     logger_->e("[proxy:server] [notification] push failed: %i", response.status_code);
+                std::lock_guard<std::mutex> l(requestLock_);
                 requests_.erase(reqid);
             }
         });
+        {
+            std::lock_guard<std::mutex> l(requestLock_);
+            requests_[reqid] = request;
+        }
         request->send();
-        requests_[reqid] = request;
     }
     catch (const std::exception &e){
         if (logger_)
             logger_->e("[proxy:server] [notification] error send push: %i", e.what());
-        requests_.erase(reqid);
+        if (reqid) {
+            std::lock_guard<std::mutex> l(requestLock_);
+            requests_.erase(reqid);
+        }
     }
 }
 
