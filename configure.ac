@@ -98,7 +98,7 @@ AS_IF([test "x$SYS" = "xandroid"],
 LT_INIT()
 LT_LANG(C++)
 
-AX_CXX_COMPILE_STDCXX(11,[noext],[mandatory])
+AX_CXX_COMPILE_STDCXX(14,[noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
 
