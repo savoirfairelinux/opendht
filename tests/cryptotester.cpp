@@ -19,7 +19,7 @@
 
 #include "cryptotester.h"
 
-#include "opendht/crypto.h"
+#include <opendht/crypto.h>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(CryptoTester);
@@ -61,13 +61,13 @@ CryptoTester::testSignatureEncryption() {
     {
         std::vector<uint8_t> encrypted = public_key.encrypt(data1);
         encrypted[1]++;
-        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), dht::crypto::DecryptError);
+        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), std::runtime_error);
     }
 
     {
         std::vector<uint8_t> encrypted = public_key.encrypt(data2);
         encrypted[2]++;
-        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), dht::crypto::DecryptError);
+        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), std::runtime_error);
     }
 }
 
