@@ -138,36 +138,29 @@ Connection::~Connection()
 void
 Connection::close()
 {
-    if (!is_open())
-        return;
     asio::error_code ec;
-    if (ssl_socket_)
-        ssl_socket_->close(ec);
-    else if (socket_)
-        socket_->close(ec);
+    if (ssl_socket_) {
+        if (ssl_socket_->is_open())
+            ssl_socket_->close(ec);
+    }
+    else if (socket_) {
+        if (socket_->is_open())
+            socket_->close(ec);
+    }
     if (ec and logger_)
         logger_->e("[connection:%i] error closing: %s", id_, ec.message().c_str());
 }
 
-unsigned int
-Connection::id()
+bool
+Connection::is_open() const
 {
-    return id_;
+    if  (ssl_socket_) return ssl_socket_->is_open();
+    else if (socket_) return socket_->is_open();
+    else              return false;
 }
 
 bool
-Connection::is_open()
-{
-    if (ssl_socket_)
-        return ssl_socket_->is_open();
-    else if (socket_)
-        return socket_->is_open();
-    else
-        return false;
-}
-
-bool
-Connection::is_ssl()
+Connection::is_ssl() const
 {
     return ssl_ctx_ ? true : false;
 }
@@ -175,24 +168,26 @@ Connection::is_ssl()
 void
 Connection::set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
 {
-    if (ssl_socket_ and verify_mode != asio::ssl::verify_none){
-        auto hostname = endpoint.address().to_string();
+    if (ssl_socket_ and verify_mode != asio::ssl::verify_none) {
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
-        ssl_socket_->asio_ssl_stream().set_verify_callback(
-            [this, hostname](bool preverified, asio::ssl::verify_context& ctx) -> bool {
+        ssl_socket_->asio_ssl_stream().set_verify_callback([
+                id = id_,
+                logger = logger_,
+                hostname = endpoint.address().to_string()
+            ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
+                if (logger)
+                    logger->d("[connection:%i] verify %s compliance to RFC 2818", id, hostname.c_str());
                 if (preverified)
                     return preverified;
                 // starts from CA and goes down the presented chain
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);
                 auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
-                if (verified != 0 /*X509_V_OK*/ and logger_)
-                    logger_->e("[http::connection:%i] ssl verification error=%i", id_, verify_ec);
+                if (verified != 0 /*X509_V_OK*/ and logger)
+                    logger->e("[http::connection:%i] ssl verification error=%i", id, verify_ec);
                 return verified;
             }
         );
-        if (logger_)
-            logger_->d("[connection:%i] verify %s compliance to RFC 2818", id_, hostname.c_str());
     }
 }
 
@@ -617,7 +612,7 @@ Request::build()
     }
 
     // last connection header
-    std::string conn_str = "";
+    const char* conn_str = nullptr;
     switch (connection_type_){
     case restinio::http_connection_header_t::upgrade:
         if (logger_)
@@ -630,7 +625,7 @@ Request::build()
         conn_str = "keep-alive";
         break;
     }
-    if (!conn_str.empty())
+    if (conn_str)
         request << "Connection: " << conn_str << "\r\n";
 
     // body & content-length
@@ -887,6 +882,9 @@ Request::terminate(const asio::error_code& ec)
 
     if (logger_)
         logger_->d("[http:request:%i] done", id_);
+    if (connection_type_ != restinio::http_connection_header_t::keep_alive)
+        if (auto c = conn_)
+            c->close();
     notify_state_change(State::DONE);
 }
 

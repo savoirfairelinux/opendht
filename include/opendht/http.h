@@ -90,9 +90,9 @@ public:
                const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l = {});
     ~Connection();
 
-    unsigned int id();
-    bool is_open();
-    bool is_ssl();
+    inline unsigned int id() const { return  id_; };
+    bool is_open() const;
+    bool is_ssl() const;
 
     void set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode);
 
