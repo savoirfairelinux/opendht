@@ -153,12 +153,16 @@ void
 DhtProxyClient::stop()
 {
     isDestroying_ = true;
+    resolver_.reset();
     cancelAllOperations();
     cancelAllListeners();
     if (infoState_)
         infoState_->cancel = true;
+    for (auto& request : requests_)
+        request.second->cancel();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
+    requests_.clear();
 }
 
 std::vector<Sp<Value>>
@@ -317,14 +321,14 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         request->add_on_state_change_callback([this, reqid, opstate, donecb, key]
                                               (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
-                if (response.status_code != 200){
+                if (response.status_code != 200) {
                     if (logger_)
                         logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
                     opstate->ok.store(false);
                     if (response.status_code == 0)
                         opFailed();
                 }
-                if (donecb){
+                if (donecb) {
                     {
                         std::lock_guard<std::mutex> lock(lockCallbacks_);
                         callbacks_.emplace_back([donecb, opstate](){
@@ -334,8 +338,10 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                     }
                     loopSignal_();
                 }
-                std::lock_guard<std::mutex> l(requestLock_);
-                requests_.erase(reqid);
+                if (not isDestroying_) {
+                    std::lock_guard<std::mutex> l(requestLock_);
+                    requests_.erase(reqid);
+                }
             }
         });
         {
@@ -474,8 +480,10 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
                 }
                 if (cb)
                     cb(ok);
-                std::lock_guard<std::mutex> l(requestLock_);
-                requests_.erase(reqid);
+                if (not isDestroying_) {
+                    std::lock_guard<std::mutex> l(requestLock_);
+                    requests_.erase(reqid);
+                }
             }
         });
         {
@@ -598,8 +606,10 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
                     if (not infoState->cancel)
                         onProxyInfos(proxyInfos, family);
                 }
-                std::lock_guard<std::mutex> l(requestLock_);
-                requests_.erase(reqid);
+                if (not isDestroying_) {
+                    std::lock_guard<std::mutex> l(requestLock_);
+                    requests_.erase(reqid);
+                }
             }
         });
 
@@ -871,7 +881,10 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                             if (response.status_code == 0)
                                 opFailed();
                         }
-                        requests_.erase(reqid);
+                        if (not isDestroying_) {
+                            std::lock_guard<std::mutex> l(requestLock_);
+                            requests_.erase(reqid);
+                        }
                     }
                 });
                 {
@@ -975,8 +988,10 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                     if (response.status_code == 0)
                         opFailed();
                 }
-                std::lock_guard<std::mutex> l(requestLock_);
-                requests_.erase(reqid);
+                if (not isDestroying_) {
+                    std::lock_guard<std::mutex> l(requestLock_);
+                    requests_.erase(reqid);
+                }
             }
         });
         {

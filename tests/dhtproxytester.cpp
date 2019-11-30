@@ -27,6 +27,7 @@
 #include <chrono>
 #include <condition_variable>
 
+using namespace std::chrono_literals;
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
@@ -82,7 +83,7 @@ DhtProxyTester::testGetPut() {
             done = true;
             cv.notify_all();
         });
-        CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     }
 
     auto vals = nodeClient.get(key).get();
@@ -110,7 +111,7 @@ DhtProxyTester::testListen() {
         done = true;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     done = false;
 
     std::vector<dht::Blob> values;
@@ -124,7 +125,7 @@ DhtProxyTester::testListen() {
         }
         return true;
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     done = false;
     // Here values should contains 1 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 1);
@@ -135,7 +136,7 @@ DhtProxyTester::testListen() {
     dht::Value secondVal {"You're a monster"};
     auto secondVal_data = secondVal.data;
     nodePeer.put(key, std::move(secondVal));
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     nodeClient.cancelListen(key, std::move(token));
     // Here values should contains 2 values
     CPPUNIT_ASSERT_EQUAL(static_cast<int>(values.size()), 2);
@@ -163,7 +164,7 @@ DhtProxyTester::testResubscribeGetValues() {
         done = true;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     done = false;
 
     // Send a first subscribe, the value is sent via a push notification
@@ -190,7 +191,7 @@ DhtProxyTester::testResubscribeGetValues() {
         return true;
     });
 
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     auto token = ftoken.get();
     CPPUNIT_ASSERT(token);
     nodeClient.cancelListen(key, token);
@@ -220,12 +221,12 @@ DhtProxyTester::testPutGet40KChars()
 
     // Act
     dht::Value val {mtu};
-    nodeClient.put(key, std::move(val), [&](bool ok) {
+    nodePeer.put(key, std::move(val), [&](bool ok) {
         std::lock_guard<std::mutex> lk(cv_m);
         done_put = ok;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done_put; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done_put; }));
 
     nodeClient.get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
         values.insert(values.end(), vals.begin(), vals.end());
@@ -235,10 +236,44 @@ DhtProxyTester::testPutGet40KChars()
         done_get = ok;
         cv.notify_all();
     });
-    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done_get; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done_get; }));
 
     // Assert
     CPPUNIT_ASSERT_EQUAL((size_t)1u, values.size());
+    for (const auto &value: values)
+        CPPUNIT_ASSERT(value->data == mtu);
+}
+
+void
+DhtProxyTester::testFuzzy()
+{
+    constexpr size_t N = 40000;
+
+    // Arrange
+    auto key = dht::InfoHash::get("testFuzzy");
+    std::vector<std::shared_ptr<dht::Value>> values;
+    std::vector<uint8_t> mtu;
+    mtu.reserve(N);
+    for (size_t i = 0; i < N; i++)
+        mtu.emplace_back((i % 2) ? 'T' : 'M');
+
+    // Act
+    for (size_t i = 0; i < 100; i++) {
+        auto nodeTest = std::make_shared<dht::DhtRunner>();
+        nodeTest->run(0, clientConfig);
+        nodeTest->put(key, dht::Value(mtu), [&](bool ok) {
+            CPPUNIT_ASSERT(ok);
+        });
+        nodeTest->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
+            values.insert(values.end(), vals.begin(), vals.end());
+            return true;
+        },[&](bool ok){
+            CPPUNIT_ASSERT(ok);
+        });
+        std::this_thread::sleep_for(10ms);
+    }
+
+    // Assert
     for (const auto &value: values)
         CPPUNIT_ASSERT(value->data == mtu);
 }

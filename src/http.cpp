@@ -33,7 +33,6 @@ constexpr char HTTP_HEADER_CONNECTION[] = "Connection";
 constexpr char HTTP_HEADER_CONNECTION_KEEP_ALIVE[] = "keep-alive";
 constexpr char HTTP_HEADER_CONNECTION_CLOSE[] = "close";
 constexpr char HTTP_HEADER_CONTENT_LENGTH[] = "Content-Length";
-constexpr char HTTP_HEADER_CONTENT_TYPE[] = "Content-Type";
 constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
 constexpr char HTTP_HEADER_TRANSFER_ENCODING[] = "Transfer-Encoding";
 constexpr char HTTP_HEADER_TRANSFER_ENCODING_CHUNKED[] = "chunked";
@@ -88,12 +87,12 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
         ssl_ctx_->set_verify_mode(asio::ssl::verify_none);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
-            logger_->d("[http:client]  [connection:%i] start https session", id_);
+            logger_->d("[connection:%i] start https session", id_);
     }
     else {
         socket_ = std::make_unique<socket_t>(ctx);
         if (logger_)
-            logger_->d("[http:client]  [connection:%i] start http session", id_);
+            logger_->d("[connection:%i] start http session", id_);
     }
 }
 
@@ -110,7 +109,7 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         if (ec)
             throw std::runtime_error("Error adding certificate authority: " + ec.message());
         else if (logger_)
-            logger_->d("[http:client]  [connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
+            logger_->d("[connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
     }
     if (identity.first){
         auto key = identity.first->serialize();
@@ -125,7 +124,7 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         if (ec)
             throw std::runtime_error("Error adding client certificate: " + ec.message());
         else if (logger_)
-            logger_->d("[http:client]  [connection:%i] client certificate %s", id_, identity.second->getUID().c_str());
+            logger_->d("[connection:%i] client certificate %s", id_, identity.second->getUID().c_str());
     }
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
@@ -147,7 +146,7 @@ Connection::close()
     else if (socket_)
         socket_->close(ec);
     if (ec and logger_)
-        logger_->e("[http:client]  [connection:%i] error closing: %s", id_, ec.message().c_str());
+        logger_->e("[connection:%i] error closing: %s", id_, ec.message().c_str());
 }
 
 unsigned int
@@ -193,7 +192,7 @@ Connection::set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const 
             }
         );
         if (logger_)
-            logger_->d("[http:client]  [connection:%i] verify %s compliance to RFC 2818", id_, hostname.c_str());
+            logger_->d("[connection:%i] verify %s compliance to RFC 2818", id_, hostname.c_str());
     }
 }
 
@@ -243,23 +242,28 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 void
 Connection::async_handshake(HandlerCb cb)
 {
-    if (ssl_socket_)
+    if (ssl_socket_) {
+        std::weak_ptr<Connection> wthis = shared_from_this();
         ssl_socket_->async_handshake(asio::ssl::stream<asio::ip::tcp::socket>::client,
-                                    [this, cb](const asio::error_code& ec)
+                                    [wthis, cb](const asio::error_code& ec)
         {
             if (ec == asio::error::operation_aborted)
                 return;
-            auto verify_ec = SSL_get_verify_result(ssl_socket_->asio_ssl_stream().native_handle());
-            if (logger_){
-                if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
-                    || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
-                    logger_->d("[http:client]  [connection:%i] allow self-signed certificate in handshake", id_);
-                else if (verify_ec != X509_V_OK)
-                    logger_->e("[http:client]  [connection:%i] verify handshake error: %i", id_, verify_ec);
+            if (auto sthis = wthis.lock()) {
+                auto& this_ = *sthis;
+                auto verify_ec = SSL_get_verify_result(this_.ssl_socket_->asio_ssl_stream().native_handle());
+                if (this_.logger_) {
+                    if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
+                        || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
+                        this_.logger_->d("[connection:%i] allow self-signed certificate in handshake", this_.id_);
+                    else if (verify_ec != X509_V_OK)
+                        this_.logger_->e("[connection:%i] verify handshake error: %i", this_.id_, verify_ec);
+                }
             }
             if (cb)
                 cb(ec);
         });
+    }
     else if (socket_)
         cb(asio::error::no_protocol_option);
     else if (cb)
@@ -310,7 +314,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 {
     if (!is_open()){
         if (logger_)
-            logger_->e("[http:client]  [connection:%i] closed, can't timeout", id_);
+            logger_->e("[connection:%i] closed, can't timeout", id_);
         if (cb)
             cb(asio::error::operation_aborted);
         return;
@@ -318,12 +322,12 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
     if (!timeout_timer_)
         timeout_timer_ = std::make_unique<asio::steady_timer>(ctx_);
     timeout_timer_->expires_at(std::chrono::steady_clock::now() + timeout);
-    timeout_timer_->async_wait([this, cb](const asio::error_code &ec){
+    timeout_timer_->async_wait([id=id_, logger=logger_, cb](const asio::error_code &ec){
         if (ec == asio::error::operation_aborted)
             return;
         else if (ec){
-            if (logger_)
-                logger_->e("[http:client]  [connection:%i] timeout error: %s", id_, ec.message().c_str());
+            if (logger)
+                logger->e("[connection:%i] timeout error: %s", id, ec.message().c_str());
         }
         if (cb)
             cb(ec);
@@ -443,12 +447,12 @@ std::atomic_uint Request::ids_ {1};
 
 Request::Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
                  std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx),
-      resolver_(std::make_shared<Resolver>(ctx, url, logger)), logger_(logger)
+    : logger_(std::move(logger)), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, url, logger))
 {
     init_default_headers();
-    set_header_field(restinio::http_field_t::content_type, "application/json");
-    set_header_field(restinio::http_field_t::accept, "application/json");
+    set_header_field(restinio::http_field_t::content_type, HTTP_HEADER_CONTENT_TYPE_JSON);
+    set_header_field(restinio::http_field_t::accept, HTTP_HEADER_CONTENT_TYPE_JSON);
     Json::StreamWriterBuilder wbuilder;
     set_body(Json::writeString(wbuilder, json));
     add_on_state_change_callback([this, jsoncb](State state, const Response& response){
@@ -459,43 +463,43 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
         Json::CharReaderBuilder rbuilder;
         auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
         if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
-            logger_->e("[http:client]  [request:%i] can't parse response to json", id_, err.c_str());
+            logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
         if (jsoncb)
             jsoncb(json, response.status_code);
     });
 }
 
 Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx),
-      resolver_(std::make_shared<Resolver>(ctx, url, logger)), logger_(logger)
+    : logger_(logger), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, url, logger))
 {
     init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
                  const bool ssl, std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx),
-      resolver_(std::make_shared<Resolver>(ctx, host, service, ssl, logger)), logger_(logger)
+    : logger_(logger), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, host, service, ssl, logger))
 {
     init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, sa_family_t family)
-    : id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver), logger_(resolver->getLogger())
+    : logger_(resolver->getLogger()), id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver)
 {
     init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints, const bool ssl,
                  std::shared_ptr<dht::Logger> logger)
-    : id_(Request::ids_++), ctx_(ctx),
-      resolver_(std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger)), logger_(logger)
+    : logger_(logger), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, std::move(endpoints), ssl, logger))
 {
     init_default_headers();
 }
 
 Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, const std::string& target, sa_family_t family)
-    : id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver), logger_(resolver->getLogger())
+    : logger_(resolver->getLogger()), id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver)
 {
     set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
     set_target(target);
@@ -503,6 +507,9 @@ Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, cons
 
 Request::~Request()
 {
+    resolver_.reset();
+    cancel();
+    terminate(asio::error::connection_aborted);
 }
 
 void
@@ -681,7 +688,7 @@ Request::init_parser()
     if (!parser_)
         parser_ = std::make_unique<http_parser>();
     http_parser_init(parser_.get(), HTTP_RESPONSE);
-    parser_->data = static_cast<void*>(&cbs_);
+    parser_->data = static_cast<void*>(this);
 
     if (!parser_s_)
         parser_s_ = std::make_unique<http_parser_settings>();
@@ -714,33 +721,33 @@ Request::init_parser()
         };
         cbs_.on_message_complete = [this](){
             if (logger_)
-                logger_->d("[http:client]  [request:%i] response: message complete", id_);
+                logger_->d("[http:request:%i] response: message complete", id_);
             message_complete_.store(true);
         };
     }
     // http_parser raw c callback (note: no context can be passed into them)
     parser_s_->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
-        static_cast<Callbacks*>(parser->data)->on_status(parser->status_code);
+        static_cast<Request*>(parser->data)->cbs_.on_status(parser->status_code);
         return 0;
     };
     parser_s_->on_header_field = [](http_parser* parser, const char* at, size_t length) -> int {
-        static_cast<Callbacks*>(parser->data)->on_header_field(at, length);
+        static_cast<Request*>(parser->data)->cbs_.on_header_field(at, length);
         return 0;
     };
     parser_s_->on_header_value = [](http_parser* parser, const char* at, size_t length) -> int {
-        static_cast<Callbacks*>(parser->data)->on_header_value(at, length);
+        static_cast<Request*>(parser->data)->cbs_.on_header_value(at, length);
         return 0;
     };
     parser_s_->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
-        static_cast<Callbacks*>(parser->data)->on_body(at, length);
+        static_cast<Request*>(parser->data)->cbs_.on_body(at, length);
         return 0;
     };
     parser_s_->on_headers_complete = [](http_parser* parser) -> int {
-        static_cast<Callbacks*>(parser->data)->on_headers_complete();
+        static_cast<Request*>(parser->data)->cbs_.on_headers_complete();
         return 0;
     };
     parser_s_->on_message_complete = [](http_parser* parser) -> int {
-        static_cast<Callbacks*>(parser->data)->on_message_complete();
+        static_cast<Request*>(parser->data)->cbs_.on_message_complete();
         return 0;
     };
 }
@@ -750,7 +757,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
 {
     if (endpoints.empty()){
         if (logger_)
-            logger_->e("[http:client]  [request:%i] connect: no endpoints provided", id_);
+            logger_->e("[http:request:%i] connect: no endpoints provided", id_);
         if (cb)
             cb(asio::error::connection_aborted);
         return;
@@ -759,7 +766,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         std::string eps = "";
         for (const auto& endpoint : endpoints)
             eps.append(endpoint.address().to_string() + " ");
-        logger_->d("[http:client]  [request:%i] connect begin: %s", id_, eps.c_str());
+        logger_->d("[http:request:%i] connect begin: %s", id_, eps.c_str());
     }
     if (get_url().protocol == "https"){
         if (server_ca_)
@@ -771,31 +778,36 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
 
     // try to connect to any until one works
-    conn_->async_connect(std::move(endpoints), [this, cb]
+    std::weak_ptr<Request> wthis = shared_from_this();
+    conn_->async_connect(std::move(endpoints), [wthis, cb]
                         (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
+        auto sthis = wthis.lock();
+        if (not sthis)
+            return;
+        auto& this_ = *sthis;
         if (ec == asio::error::operation_aborted){
-            terminate(ec);
+            this_.terminate(ec);
             return;
         }
-        else if (ec and logger_)
-            logger_->e("[http:client]  [request:%i] connect: failed with all endpoints", id_);
+        else if (ec and this_.logger_)
+            this_.logger_->e("[http:request:%i] connect: failed with all endpoints", this_.id_);
         else {
-            if (logger_)
-                logger_->d("[http:client]  [request:%i] connect success", id_);
+            if (this_.logger_)
+                this_.logger_->d("[http:request:%i] connect success", this_.id_);
 
-            if (get_url().protocol == "https"){
-                if (server_ca_)
-                    conn_->set_ssl_verification(endpoint, asio::ssl::verify_peer
+            if (this_.get_url().protocol == "https"){
+                if (this_.server_ca_)
+                    this_.conn_->set_ssl_verification(endpoint, asio::ssl::verify_peer
                                                           | asio::ssl::verify_fail_if_no_peer_cert);
 
-                if (conn_ and conn_->is_open() and conn_->is_ssl()){
-                    conn_->async_handshake([this, cb](const asio::error_code& ec){
+                if (this_.conn_ and this_.conn_->is_open() and this_.conn_->is_ssl()){
+                    this_.conn_->async_handshake([id = this_.id_, cb, logger = this_.logger_](const asio::error_code& ec){
                         if (ec == asio::error::operation_aborted)
                             return;
-                        if (ec and logger_)
-                            logger_->e("[http:client]  [request:%i] handshake error: %s", id_, ec.message().c_str());
-                        else if (logger_)
-                            logger_->d("[http:client]  [request:%i] handshake success", id_);
+                        if (ec and logger)
+                            logger->e("[http:request:%i] handshake error: %s", id, ec.message().c_str());
+                        else if (logger)
+                            logger->d("[http:request:%i] handshake success", id);
                         if (cb)
                             cb(ec);
                     });
@@ -815,23 +827,29 @@ Request::send()
 {
     notify_state_change(State::CREATED);
 
-    resolver_->add_callback([this](const asio::error_code& ec,
-                                   std::vector<asio::ip::tcp::endpoint> endpoints){
-        if (ec){
-            if (logger_)
-                logger_->e("[http:client]  [request:%i] resolve error: %s", id_, ec.message().c_str());
-            terminate(asio::error::connection_aborted);
+    std::weak_ptr<Request> wthis = shared_from_this();
+    resolver_->add_callback([wthis](const asio::error_code& ec,
+                                   std::vector<asio::ip::tcp::endpoint> endpoints) {
+        if (auto sthis = wthis.lock()) {
+            auto& this_ = *sthis;
+            if (ec){
+                if (this_.logger_)
+                    this_.logger_->e("[http:request:%i] resolve error: %s", this_.id_, ec.message().c_str());
+                this_.terminate(asio::error::connection_aborted);
+            }
+            else if (!this_.conn_ or !this_.conn_->is_open()){
+                this_.connect(std::move(endpoints), [wthis](const asio::error_code &ec) {
+                    if (auto sthis = wthis.lock()) {
+                        if (ec)
+                            sthis->terminate(asio::error::not_connected);
+                        else
+                            sthis->post();
+                    }
+                });
+            }
+            else
+                this_.post();
         }
-        else if (!conn_ or !conn_->is_open()){
-            connect(std::move(endpoints), [this](const asio::error_code &ec){
-                if (ec)
-                    terminate(asio::error::not_connected);
-                else
-                    post();
-            });
-        }
-        else
-            post();
     }, family_);
 }
 
@@ -847,7 +865,7 @@ Request::post()
 
     if (logger_){
         std::string header; std::getline(std::istringstream(request_), header);
-        logger_->d("[http:client]  [request:%i] send: %s", id_, header.c_str());
+        logger_->d("[http:request:%i] send: %s", id_, header.c_str());
     }
     // write the request to buffer
     std::ostream request_stream(&conn_->input());
@@ -855,7 +873,12 @@ Request::post()
 
     // send the request
     notify_state_change(State::SENDING);
-    conn_->async_write(std::bind(&Request::handle_request, this, std::placeholders::_1));
+
+    std::weak_ptr<Request> wthis = shared_from_this();
+    conn_->async_write([wthis](const asio::error_code& ec, size_t) {
+        if (auto sthis = wthis.lock())
+            sthis->handle_request(ec);
+    });
 }
 
 void
@@ -865,16 +888,16 @@ Request::terminate(const asio::error_code& ec)
         return;
 
     if (ec != asio::error::eof and ec != asio::error::operation_aborted and logger_)
-        logger_->e("[http:client]  [request:%i] end with error: %s", id_, ec.message().c_str());
+        logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
 
     // set response outcome, ignore end of file and abort
-    if (!ec or ec == asio::error::eof or ec == asio::error::operation_aborted)
+    if (!ec or ec == asio::error::eof)
         response_.status_code = 200;
     else
         response_.status_code = 0;
 
     if (logger_)
-        logger_->d("[http:client]  [request:%i] done", id_);
+        logger_->d("[http:request:%i] done", id_);
     notify_state_change(State::DONE);
 }
 
@@ -890,11 +913,15 @@ Request::handle_request(const asio::error_code& ec)
         return;
     }
     if (logger_)
-        logger_->d("[http:client]  [request:%i] send success", id_);
+        logger_->d("[http:request:%i] send success", id_);
     // read response
     notify_state_change(State::RECEIVING);
-    conn_->async_read_until(HTTP_HEADER_DELIM, std::bind(&Request::handle_response_header,
-                                                         this, std::placeholders::_1));
+
+    std::weak_ptr<Request> wthis = shared_from_this();
+    conn_->async_read_until(HTTP_HEADER_DELIM, [wthis](const asio::error_code& ec, size_t){
+        if (auto sthis = wthis.lock())
+            sthis->handle_response_header(ec);
+    });
 }
 
 void
@@ -909,7 +936,7 @@ Request::handle_response_header(const asio::error_code& ec)
         return;
     }
     if (logger_)
-        logger_->d("[http:client]  [request:%i] response headers received", id_);
+        logger_->d("[http:request:%i] response headers received", id_);
     // read the header
     std::string header;
     std::string headers;
@@ -920,16 +947,21 @@ Request::handle_response_header(const asio::error_code& ec)
     headers.append("\n");
     parse_request(headers);
 
-    if (headers_[restinio::http_field_t::expect] == "100-continue" and response_.status_code != 200){
+    std::weak_ptr<Request> wthis = shared_from_this();
+
+    auto expect_it = headers_.find(restinio::http_field_t::expect);
+    if (expect_it != headers_.end() and (expect_it->second == "100-continue") and response_.status_code != 200){
         notify_state_change(State::SENDING);
         request_.append(body_);
         std::ostream request_stream(&conn_->input());
         request_stream << body_ << "\r\n";
-        conn_->async_write(std::bind(&Request::handle_request, this, std::placeholders::_1));
+        conn_->async_write([wthis](const asio::error_code& ec, size_t) {
+            if (auto sthis = wthis.lock())
+                sthis->handle_request(ec);
+        });
         return;
     }
 
-    // avoid creating non-existant headers by accessing the headers map without the presence of key
     auto connection_it = response_.headers.find(HTTP_HEADER_CONNECTION);
     auto content_length_it = response_.headers.find(HTTP_HEADER_CONTENT_LENGTH);
     auto transfer_encoding_it = response_.headers.find(HTTP_HEADER_TRANSFER_ENCODING);
@@ -947,15 +979,19 @@ Request::handle_response_header(const asio::error_code& ec)
                 terminate(asio::error::eof);
         }
         else { // more chunks to come (don't add the missing \n from std::getline)
-            conn_->async_read(content_length - response_.body.size(),
-                std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+            conn_->async_read(content_length - response_.body.size(), [wthis](const asio::error_code& ec, size_t bytes){
+                if (auto sthis = wthis.lock())
+                    sthis->handle_response_body(ec, bytes);
+            });
         }
     }
     // server wants to keep sending or we have content-length defined
     else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
-        conn_->async_read_until(BODY_VALUE_DELIM,
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+        conn_->async_read_until(BODY_VALUE_DELIM, [wthis](const asio::error_code& ec, size_t bytes){
+            if (auto sthis = wthis.lock())
+                sthis->handle_response_body(ec, bytes);
+        });
     }
     // server wants to close the connection
     else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
@@ -973,8 +1009,10 @@ Request::handle_response_header(const asio::error_code& ec)
         std::string chunk_size;
         std::getline(is, chunk_size);
         unsigned int content_length = std::stoul(chunk_size, nullptr, 16);
-        conn_->async_read(content_length,
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+        conn_->async_read(content_length, [wthis](const asio::error_code& ec, size_t bytes){
+            if (auto sthis = wthis.lock())
+                sthis->handle_response_body(ec, bytes);
+        });
     }
 }
 
@@ -990,7 +1028,7 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
         return;
     }
     if (logger_)
-        logger_->d("[http:client]  [request:%i] response body: %i bytes received", id_, bytes);
+        logger_->d("[http:request:%i] response body: %i bytes received", id_, bytes);
 
     if (bytes == 0){
         terminate(asio::error::eof);
@@ -1024,6 +1062,8 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
         parse_request(body + '\n');
     }
 
+    std::weak_ptr<Request> wthis = shared_from_this();
+
     // should be executed after each parse_request who can trigger http_parser on_message_complete
     if (message_complete_.load()){
         terminate(asio::error::eof);
@@ -1031,14 +1071,18 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     // has content-length
     else if (content_length_it != response_.headers.end() and response_.body.size() != content_length)
     {
-        conn_->async_read(content_length - response_.body.size(),
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+        conn_->async_read(content_length - response_.body.size(), [wthis](const asio::error_code& ec, size_t bytes){
+            if (auto sthis = wthis.lock())
+                sthis->handle_response_body(ec, bytes);
+        });
     }
     // server wants to keep sending
     else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_KEEP_ALIVE)
     {
-        conn_->async_read_until(BODY_VALUE_DELIM,
-            std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+        conn_->async_read_until(BODY_VALUE_DELIM, [wthis](const asio::error_code& ec, size_t bytes){
+            if (auto sthis = wthis.lock())
+                sthis->handle_response_body(ec, bytes);
+        });
     }
     // server wants to close the connection
     else if (connection_it != response_.headers.end() and connection_it->second == HTTP_HEADER_CONNECTION_CLOSE)
@@ -1061,8 +1105,10 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
             terminate(asio::error::eof);
         }
         else
-            conn_->async_read_until(BODY_VALUE_DELIM,
-                std::bind(&Request::handle_response_body, this, std::placeholders::_1, std::placeholders::_2));
+            conn_->async_read_until(BODY_VALUE_DELIM, [wthis](const asio::error_code& ec, size_t bytes){
+            if (auto sthis = wthis.lock())
+                sthis->handle_response_body(ec, bytes);
+        });
     }
 }
 

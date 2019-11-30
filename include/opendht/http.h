@@ -82,7 +82,7 @@ public:
     std::string fragment;
 };
 
-class OPENDHT_PUBLIC Connection
+class OPENDHT_PUBLIC Connection : public std::enable_shared_from_this<Connection>
 {
 public:
     Connection(asio::io_context& ctx, const bool ssl = true, std::shared_ptr<dht::Logger> l = {});
@@ -195,7 +195,7 @@ struct Response
     std::string body;
 };
 
-class OPENDHT_PUBLIC Request
+class OPENDHT_PUBLIC Request : public std::enable_shared_from_this<Request>
 {
 public:
     enum class State {
@@ -308,6 +308,8 @@ private:
      */
     size_t parse_request(const std::string& request);
 
+    std::shared_ptr<dht::Logger> logger_;
+
     restinio::http_request_header_t header_;
     std::map<restinio::http_field_t, std::string> headers_;
     restinio::http_connection_header_t connection_type_ {restinio::http_connection_header_t::close};
@@ -335,8 +337,6 @@ private:
     std::atomic<bool> finishing_ {false};
     std::unique_ptr<http_parser> parser_;
     std::unique_ptr<http_parser_settings> parser_s_;
-
-    std::shared_ptr<dht::Logger> logger_;
 };
 
 } // namespace http

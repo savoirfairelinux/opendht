@@ -324,6 +324,8 @@ private:
      */
     void cancelAllOperations();
 
+    std::atomic_bool isDestroying_ {false};
+
     std::string proxyUrl_;
     dht::crypto::Identity clientIdentity_;
     std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
@@ -404,8 +406,6 @@ private:
     std::string fillBody(bool resubscribe);
     void getPushRequest(Json::Value&) const;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
-
-    std::atomic_bool isDestroying_ {false};
 
     Json::StreamWriterBuilder jsonBuilder_;
     Json::CharReaderBuilder jsonReaderBuilder_;
