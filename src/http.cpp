@@ -37,7 +37,7 @@ constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
 constexpr char HTTP_HEADER_TRANSFER_ENCODING[] = "Transfer-Encoding";
 constexpr char HTTP_HEADER_TRANSFER_ENCODING_CHUNKED[] = "chunked";
 constexpr char HTTP_HEADER_DELIM[] = "\r\n\r\n";
-constexpr char BODY_VALUE_DELIM[] = "\n";
+constexpr char BODY_VALUE_DELIM = '\n';
 
 Url::Url(const std::string& url): url(url)
 {
@@ -79,7 +79,7 @@ Url::Url(const std::string& url): url(url)
 std::atomic_uint Connection::ids_ {1};
 
 Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dht::Logger> l)
-    : id_(Connection::ids_++), ctx_(ctx), logger_(l)
+    : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
     if (ssl){
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
@@ -98,7 +98,7 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
 
 Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> server_ca,
                        const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l)
-    : id_(Connection::ids_++), ctx_(ctx), logger_(l)
+    : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
     ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
     ssl_ctx_->set_default_verify_paths();
@@ -202,19 +202,12 @@ Connection::input()
     return write_buf_;
 }
 
-asio::streambuf&
-Connection::data()
-{
-    return read_buf_;
-}
-
 std::string
-Connection::read_bytes(const size_t bytes)
+Connection::read_bytes(size_t bytes)
 {
     std::string content;
-    std::istream is(&read_buf_);
     content.resize(bytes);
-    auto rb = is.readsome(&content[0], bytes);
+    auto rb = istream_.readsome(&content[0], bytes);
     content.resize(rb);
     return content;
 }
@@ -223,8 +216,7 @@ std::string
 Connection::read_until(const char delim)
 {
     std::string content;
-    std::istream is(&read_buf_);
-    std::getline(is, content, delim);
+    std::getline(istream_, content, delim);
     return content;
 }
 
@@ -273,40 +265,37 @@ Connection::async_handshake(HandlerCb cb)
 void
 Connection::async_write(BytesHandlerCb cb)
 {
-    if (!is_open())
-        return;
-    if (ssl_socket_)
-        asio::async_write(*ssl_socket_, write_buf_, cb);
-    else if (socket_)
-        asio::async_write(*socket_, write_buf_, cb);
-    else if (cb)
-        cb(asio::error::operation_aborted, 0);
+    if (!is_open())   return;
+    if (ssl_socket_)  asio::async_write(*ssl_socket_, write_buf_, cb);
+    else if (socket_) asio::async_write(*socket_, write_buf_, cb);
+    else if (cb)      cb(asio::error::operation_aborted, 0);
 }
 
 void
 Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
-    if (!is_open())
-        return;
-    if (ssl_socket_)
-        asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
-    else if (socket_)
-        asio::async_read_until(*socket_, read_buf_, delim, cb);
-    else if (cb)
-        cb(asio::error::operation_aborted, 0);
+    if (!is_open())   return;
+    if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
+    else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, cb);
+    else if (cb)      cb(asio::error::operation_aborted, 0);
 }
 
 void
-Connection::async_read(const size_t bytes, BytesHandlerCb cb)
+Connection::async_read_until(char delim, BytesHandlerCb cb)
 {
-    if (!is_open())
-        return;
-    if (ssl_socket_)
-        asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), cb);
-    else if (socket_)
-        asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), cb);
-    else if (cb)
-        cb(asio::error::operation_aborted, 0);
+    if (!is_open())   return;
+    if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, cb);
+    else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, cb);
+    else if (cb)      cb(asio::error::operation_aborted, 0);
+}
+
+void
+Connection::async_read(size_t bytes, BytesHandlerCb cb)
+{
+    if (!is_open())   return;
+    if (ssl_socket_)  asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), cb);
+    else if (socket_) asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), cb);
+    else if (cb)      cb(asio::error::operation_aborted, 0);
 }
 
 void
@@ -940,8 +929,7 @@ Request::handle_response_header(const asio::error_code& ec)
     // read the header
     std::string header;
     std::string headers;
-    std::istream is(&conn_->data());
-    while (std::getline(is, header) && header != "\r"){
+    while (std::getline(conn_->data(), header) && header != "\r"){
         headers.append(header + "\n");
     }
     headers.append("\n");
@@ -1007,7 +995,7 @@ Request::handle_response_header(const asio::error_code& ec)
              transfer_encoding_it->second == HTTP_HEADER_TRANSFER_ENCODING_CHUNKED)
     {
         std::string chunk_size;
-        std::getline(is, chunk_size);
+        std::getline(conn_->data(), chunk_size);
         unsigned int content_length = std::stoul(chunk_size, nullptr, 16);
         conn_->async_read(content_length, [wthis](const asio::error_code& ec, size_t bytes){
             if (auto sthis = wthis.lock())
@@ -1017,7 +1005,7 @@ Request::handle_response_header(const asio::error_code& ec)
 }
 
 void
-Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
+Request::handle_response_body(const asio::error_code& ec, size_t bytes)
 {
     if (ec && ec != asio::error::eof){
         terminate(ec);
@@ -1052,7 +1040,7 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     }
     // read and parse the chunked encoding fragment
     else {
-        auto body = conn_->read_until(BODY_VALUE_DELIM[0]);
+        auto body = conn_->read_until(BODY_VALUE_DELIM);
         response_.body += body;
         if (body == "0\r\n"){
             parse_request(response_.body);
@@ -1097,9 +1085,8 @@ Request::handle_response_body(const asio::error_code& ec, const size_t bytes)
     else if (transfer_encoding_it != response_.headers.end() and
              transfer_encoding_it->second == HTTP_HEADER_TRANSFER_ENCODING_CHUNKED)
     {
-        std::istream is(&conn_->data());
         std::string chunk_size;
-        std::getline(is, chunk_size);
+        std::getline(conn_->data(), chunk_size);
         if (chunk_size.size() == 0){
             parse_request(response_.body);
             terminate(asio::error::eof);

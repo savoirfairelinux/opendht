@@ -61,7 +61,7 @@ struct Certificate;
 namespace http {
 
 using HandlerCb = std::function<void(const asio::error_code& ec)>;
-using BytesHandlerCb = std::function<void(const asio::error_code& ec, const size_t bytes)>;
+using BytesHandlerCb = std::function<void(const asio::error_code& ec, size_t bytes)>;
 using ConnectHandlerCb = std::function<void(const asio::error_code& ec,
                                             const asio::ip::tcp::endpoint& endpoint)>;
 
@@ -97,16 +97,17 @@ public:
     void set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode);
 
     asio::streambuf& input();
-    asio::streambuf& data();
+    std::istream& data() { return istream_; }
 
-    std::string read_bytes(const size_t bytes);
+    std::string read_bytes(size_t bytes);
     std::string read_until(const char delim);
 
     void async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb);
     void async_handshake(HandlerCb cb);
     void async_write(BytesHandlerCb cb);
     void async_read_until(const char* delim, BytesHandlerCb cb);
-    void async_read(const size_t bytes, BytesHandlerCb cb);
+    void async_read_until(char delim, BytesHandlerCb cb);
+    void async_read(size_t bytes, BytesHandlerCb cb);
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
     void close();
@@ -124,6 +125,7 @@ private:
 
     asio::streambuf write_buf_;
     asio::streambuf read_buf_;
+    std::istream istream_;
 
     std::unique_ptr<asio::steady_timer> timeout_timer_;
     std::shared_ptr<dht::Logger> logger_;
@@ -299,7 +301,7 @@ private:
 
     void handle_response_header(const asio::error_code& ec);
 
-    void handle_response_body(const asio::error_code& ec, const size_t bytes);
+    void handle_response_body(const asio::error_code& ec, size_t bytes);
 
     /**
      * Parse the request with http_parser.
