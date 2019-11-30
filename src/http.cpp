@@ -492,7 +492,6 @@ Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, cons
 Request::~Request()
 {
     resolver_.reset();
-    cancel();
     terminate(asio::error::connection_aborted);
 }
 
