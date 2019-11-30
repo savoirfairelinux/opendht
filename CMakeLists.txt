@@ -362,39 +362,39 @@ install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATIO
 
 # Unit tests
 if (OPENDHT_TESTS)
-  FIND_PACKAGE(Cppunit REQUIRED)
-  # unit testing
+    FIND_PACKAGE(Cppunit REQUIRED)
+    # unit testing
     list (APPEND test_FILES
-      tests/infohashtester.h
-      tests/infohashtester.cpp
-      tests/valuetester.h
-      tests/valuetester.cpp
-      tests/cryptotester.h
-      tests/cryptotester.cpp
-      tests/dhtrunnertester.h
-      tests/dhtrunnertester.cpp
-      tests/peerdiscoverytester.h
-      tests/peerdiscoverytester.cpp
-      tests/threadpooltester.h
-      tests/threadpooltester.cpp
+        tests/infohashtester.h
+        tests/infohashtester.cpp
+        tests/valuetester.h
+        tests/valuetester.cpp
+        tests/cryptotester.h
+        tests/cryptotester.cpp
+        tests/dhtrunnertester.h
+        tests/dhtrunnertester.cpp
+        tests/peerdiscoverytester.h
+        tests/peerdiscoverytester.cpp
+        tests/threadpooltester.h
+        tests/threadpooltester.cpp
     )
     if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
-      list (APPEND test_FILES
-        tests/httptester.h
-        tests/httptester.cpp
-        tests/dhtproxytester.h
-        tests/dhtproxytester.cpp
-      )
+        list (APPEND test_FILES
+            tests/httptester.h
+            tests/httptester.cpp
+            tests/dhtproxytester.h
+            tests/dhtproxytester.cpp
+        )
     endif()
     add_executable(opendht_unit_tests
-      tests/tests_runner.cpp
-      ${test_FILES}
+        tests/tests_runner.cpp
+        ${test_FILES}
     )
     target_include_directories(opendht_unit_tests SYSTEM PRIVATE ${CPPUNIT_INCLUDE_DIRS})
     if (OPENDHT_SHARED)
-      target_link_libraries(opendht_unit_tests opendht)
+        target_link_libraries(opendht_unit_tests opendht)
     else ()
-      target_link_libraries(opendht_unit_tests opendht-static)
+        target_link_libraries(opendht_unit_tests opendht-static)
     endif ()
     target_link_libraries(opendht_unit_tests
        ${CMAKE_THREAD_LIBS_INIT}
