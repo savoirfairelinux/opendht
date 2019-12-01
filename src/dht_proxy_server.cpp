@@ -71,33 +71,26 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 class opendht_logger_t
 {
 public:
-    opendht_logger_t(std::shared_ptr<Logger> logger = {}){
-        if (logger)
-            m_logger = logger;
+    opendht_logger_t(std::shared_ptr<Logger> logger = {}) : m_logger(std::move(logger)) {}
+
+    template <typename Builder>
+    void trace(Builder&& msg_builder) {
+        /* if (m_logger) m_logger->d("[proxy:server] %s", msg_builder().c_str()); */
     }
 
     template <typename Builder>
-    void trace(Builder && msg_builder){
-        if (m_logger)
-            m_logger->d("[proxy:server] %s", msg_builder().c_str());
+    void info(Builder&& msg_builder) {
+        if (m_logger) m_logger->d("[proxy:server] %s", msg_builder().c_str());
     }
 
     template <typename Builder>
-    void info(Builder && msg_builder){
-        if (m_logger)
-            m_logger->d("[proxy:server] %s", msg_builder().c_str());
+    void warn(Builder&& msg_builder) {
+        if (m_logger) m_logger->w("[proxy:server] %s", msg_builder().c_str());
     }
 
     template <typename Builder>
-    void warn(Builder && msg_builder){
-        if (m_logger)
-            m_logger->w("[proxy:server] %s", msg_builder().c_str());
-    }
-
-    template <typename Builder>
-    void error(Builder && msg_builder){
-        if (m_logger)
-            m_logger->e("[proxy:server] %s", msg_builder().c_str());
+    void error(Builder&& msg_builder) {
+        if (m_logger) m_logger->e("[proxy:server] %s", msg_builder().c_str());
     }
 
 private:
@@ -1192,17 +1185,16 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
         initHttpResponse(request->create_response<ResponseByParts>()));
     response->flush();
     try {
-        dht_->get(infoHash, [this, response](const Sp<Value>& value){
-            auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-            response->append_chunk(output);
-            response->flush();
-            return true;
-        },
-        [response] (bool /*ok*/){
-            response->done();
-        },
-            {}, value
-        );
+        dht_->get(infoHash,
+            [this, response](const Sp<Value>& value) {
+                response->append_chunk(Json::writeString(jsonBuilder_, value->toJson()) + "\n");
+                response->flush();
+                return true;
+            },
+            [response] (bool /*ok*/){
+                response->done();
+            },
+            {}, value);
     } catch (const std::exception& e){
         auto response = initHttpResponse(
             request->create_response(restinio::status_internal_server_error()));
