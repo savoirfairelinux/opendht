@@ -340,7 +340,7 @@ public:
     void importValues(const std::vector<ValuesExport>& values);
 
     bool isRunning() const {
-        return running;
+        return running != State::Idle;
     }
 
     NodeStats getNodesStats(sa_family_t af) const;
@@ -358,7 +358,7 @@ public:
 
     // securedht methods
 
-    void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>)>);
+    void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
     void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
@@ -411,7 +411,7 @@ public:
     /**
      * Gracefuly disconnect from network.
      */
-    void shutdown(ShutdownCallback cb);
+    void shutdown(ShutdownCallback cb = {});
 
     /**
      * Quit and wait for all threads to terminate.
@@ -449,6 +449,12 @@ public:
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
+    enum class State {
+        Idle,
+        Running,
+        Stopping
+    };
+
     /**
      * Will try to resolve the list of hostnames `bootstrap_nodes` on seperate
      * thread and then queue ping requests. This list should contain reliable
@@ -462,6 +468,11 @@ private:
     NodeStatus getStatus() const {
         return std::max(status4, status6);
     }
+
+    bool checkShutdown();
+    void opEnded();
+    DoneCallback bindOpDoneCallback(DoneCallback&& cb);
+    DoneCallbackSimple bindOpDoneCallback(DoneCallbackSimple&& cb);
 
     /** Local DHT instance */
     std::unique_ptr<SecureDht> dht_;
@@ -510,7 +521,9 @@ private:
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
-    std::atomic_bool running {false};
+    std::atomic<State> running {State::Idle};
+    std::atomic_uint ongoing_ops {0};
+    std::vector<ShutdownCallback> shutdownCallbacks_;
 
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
