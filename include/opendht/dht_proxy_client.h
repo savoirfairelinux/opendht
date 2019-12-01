@@ -319,10 +319,6 @@ private:
      * cancel all Listeners
      */
     void cancelAllListeners();
-    /**
-     * cancel all Operations
-     */
-    void cancelAllOperations();
 
     std::atomic_bool isDestroying_ {false};
 

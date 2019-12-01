@@ -154,12 +154,16 @@ DhtProxyClient::stop()
 {
     isDestroying_ = true;
     resolver_.reset();
-    cancelAllOperations();
     cancelAllListeners();
     if (infoState_)
         infoState_->cancel = true;
-    for (auto& request : requests_)
-        request.second->cancel();
+    {
+        std::lock_guard<std::mutex> lock(requestLock_);
+        for (auto& request : requests_)
+            request.second->cancel();
+    }
+    if (not httpContext_.stopped())
+        httpContext_.stop();
     if (httpClientThread_.joinable())
         httpClientThread_.join();
     requests_.clear();
@@ -181,13 +185,6 @@ DhtProxyClient::getLocalById(const InfoHash& k, Value::Id id) const {
     if (s == searches_.end())
         return {};
     return s->second.ops.get(id);
-}
-
-void
-DhtProxyClient::cancelAllOperations()
-{
-    if (!httpContext_.stopped())
-        httpContext_.stop();
 }
 
 void
