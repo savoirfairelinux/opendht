@@ -43,11 +43,10 @@ DhtProxyTester::setUp() {
     auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
     auto serverIdentity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
 
-    serverProxy = std::unique_ptr<dht::DhtProxyServer>(
-        new dht::DhtProxyServer(
+    serverProxy = std::make_unique<dht::DhtProxyServer>(
             //dht::crypto::Identity{}, // http
             serverIdentity,            // https
-            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090"));
+            nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090");
 
     clientConfig.server_ca = serverCAIdentity.second;
     clientConfig.client_identity = dht::crypto::generateIdentity("DhtProxyTester");
@@ -61,7 +60,8 @@ void
 DhtProxyTester::tearDown() {
     nodePeer.join();
     nodeClient.join();
-    serverProxy.reset(nullptr);
+    nodeProxy->shutdown();
+    serverProxy.reset();
     nodeProxy->join();
 }
 
