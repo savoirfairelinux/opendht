@@ -246,7 +246,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
-        DHT_LOG.d(node.id, "[node %s] expired !", node.toString().c_str());
+        // DHT_LOG.d(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
@@ -481,7 +481,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 node->received(now, req);
                 if (not node->isClient())
                     onNewNode(node, 1);
-                throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
+                DHT_LOG.d(node->id, "[node %s] can't find transaction with id %u", node->toString().c_str(), msg->tid);
+                return;
             }
         }
 

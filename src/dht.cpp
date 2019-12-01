@@ -78,8 +78,7 @@ Dht::shutdown(ShutdownCallback cb)
 
     if (!*remaining) {
         DHT_LOG.w("shuting down node: %u ops remaining", *remaining);
-        if (cb)
-            cb();
+        if (cb) cb();
     }
 }
 
@@ -1920,7 +1919,7 @@ Dht::periodic(const uint8_t *buf, size_t buflen, SockAddr from)
         try {
             network_engine.processMessage(buf, buflen, std::move(from));
         } catch (const std::exception& e) {
-            DHT_LOG.e("Can't process message: %s", e.what());
+            DHT_LOG.w("Can't process message: %s", e.what());
         }
     }
     return scheduler.run();
