@@ -467,6 +467,7 @@ DhtRunner::getNodeInfo() const {
     NodeInfo info;
     info.id = getId();
     info.node_id = getNodeId();
+    info.ongoing_ops = ongoing_ops;
     info.ipv4 = dht_->getNodesStats(AF_INET);
     info.ipv6 = dht_->getNodesStats(AF_INET6);
     return info;

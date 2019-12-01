@@ -140,11 +140,13 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             print_help();
             continue;
         } else if (op == "ll") {
+            auto nodeInfo = node->getNodeInfo();
             print_node_info(*node, params);
+            std::cout << nodeInfo.ongoing_ops << " ongoing operations" << std::endl;
             std::cout << "IPv4 stats:" << std::endl;
-            std::cout << node->getNodesStats(AF_INET).toString() << std::endl;
+            std::cout << nodeInfo.ipv4.toString() << std::endl;
             std::cout << "IPv6 stats:" << std::endl;
-            std::cout << node->getNodesStats(AF_INET6).toString() << std::endl;
+            std::cout << nodeInfo.ipv6.toString() << std::endl;
 #ifdef OPENDHT_PROXY_SERVER
             for (const auto& proxy : proxies) {
                 std::cout << "Stats for proxy on port " << proxy.first << std::endl;

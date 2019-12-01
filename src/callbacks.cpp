@@ -121,6 +121,7 @@ NodeInfo::toJson() const
     val["node_id"] = node_id.toString();
     val["ipv4"] = ipv4.toJson();
     val["ipv6"] = ipv6.toJson();
+    val["ops"] = Json::Value::LargestUInt(ongoing_ops);
     return val;
 }
 
@@ -131,6 +132,7 @@ NodeInfo::NodeInfo(const Json::Value& v)
     node_id = InfoHash(v["node_id"].asString());
     ipv4 = NodeStats(v["ipv4"]);
     ipv6 = NodeStats(v["ipv6"]);
+    ongoing_ops = v["ops"].asLargestUInt();
 }
 
 #endif

@@ -522,7 +522,7 @@ private:
     std::mutex storage_mtx {};
 
     std::atomic<State> running {State::Idle};
-    std::atomic_uint ongoing_ops {0};
+    std::atomic_size_t ongoing_ops {0};
     std::vector<ShutdownCallback> shutdownCallbacks_;
 
     NodeStatus status4 {NodeStatus::Disconnected},
