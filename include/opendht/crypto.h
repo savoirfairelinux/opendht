@@ -43,16 +43,22 @@ namespace dht {
 namespace crypto {
 
 class OPENDHT_PUBLIC CryptoException : public std::runtime_error {
-    public:
-        CryptoException(const std::string& str) : std::runtime_error(str) {};
+public:
+    explicit CryptoException(const std::string& str) : std::runtime_error(str) {};
+    explicit CryptoException(const char* str) : std::runtime_error(str) {};
+    CryptoException(const CryptoException& e) noexcept = default;
+    CryptoException& operator=(const CryptoException&) noexcept = default;
 };
 
 /**
  * Exception thrown when a decryption error happened.
  */
 class OPENDHT_PUBLIC DecryptError : public CryptoException {
-    public:
-        DecryptError(const std::string& str = "") : CryptoException(str) {};
+public:
+    explicit DecryptError(const std::string& str) : CryptoException(str) {};
+    explicit DecryptError(const char* str) : CryptoException(str) {};
+    DecryptError(const DecryptError& e) noexcept = default;
+    DecryptError& operator=(const DecryptError&) noexcept = default;
 };
 
 struct PrivateKey;
