@@ -74,7 +74,7 @@ public:
     opendht_logger_t(std::shared_ptr<Logger> logger = {}) : m_logger(std::move(logger)) {}
 
     template <typename Builder>
-    void trace(Builder&& msg_builder) {
+    void trace(Builder&& /* msg_builder */) {
         /* if (m_logger) m_logger->d("[proxy:server] %s", msg_builder().c_str()); */
     }
 
