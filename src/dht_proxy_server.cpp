@@ -280,6 +280,7 @@ DhtProxyServer::~DhtProxyServer()
             if (l.second.response)
                 l.second.response->done();
         }
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         for (auto& lm: pushListeners_)  {
             for (auto& ls: lm.second.listeners)
                 for (auto& l : ls.second) {
@@ -291,6 +292,7 @@ DhtProxyServer::~DhtProxyServer()
                 }
         }
         pushListeners_.clear();
+#endif
     }
     if (logger_)
         logger_->d("[proxy:server] closing http server");
