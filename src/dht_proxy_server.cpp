@@ -273,6 +273,25 @@ DhtProxyServer::io_context() const
 
 DhtProxyServer::~DhtProxyServer()
 {
+    if (dht_) {
+        std::lock_guard<std::mutex> lock(lockListener_);
+        for (auto& l : listeners_) {
+            dht_->cancelListen(l.second.hash, std::move(l.second.token));
+            if (l.second.response)
+                l.second.response->done();
+        }
+        for (auto& lm: pushListeners_)  {
+            for (auto& ls: lm.second.listeners)
+                for (auto& l : ls.second) {
+                    if (l.expireNotifyTimer)
+                        l.expireNotifyTimer->cancel();
+                    if (l.expireTimer)
+                        l.expireTimer->cancel();
+                    dht_->cancelListen(ls.first, std::move(l.internalToken));
+                }
+        }
+        pushListeners_.clear();
+    }
     if (logger_)
         logger_->d("[proxy:server] closing http server");
     if (httpServer_)
