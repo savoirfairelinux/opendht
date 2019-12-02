@@ -16,9 +16,7 @@ if ENABLE_TESTS
 SUBDIRS += tests
 endif
 
-if HAVE_DOXYGEN
 SUBDIRS += doc
-endif
 
 ACLOCAL_AMFLAGS = -I m4
 

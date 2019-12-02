@@ -210,10 +210,6 @@ AM_COND_IF(ENABLE_PROXY_CLIENT, [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT"], [])
 AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS"], [])
 AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
 
-AM_COND_IF([HAVE_DOXYGEN], [
-  AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
-])
-
 dnl Configure setup.py if we build the python module
 AM_COND_IF([USE_CYTHON], [
     AC_SUBST(CURRENT_SOURCE_DIR, ".")
@@ -227,5 +223,7 @@ AC_CONFIG_FILES([Makefile
                  src/Makefile
                  tools/Makefile
                  tests/Makefile
+                 doc/Makefile
+                 doc/Doxyfile
                  opendht.pc])
 AC_OUTPUT

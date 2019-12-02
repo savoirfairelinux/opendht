@@ -1,7 +1,10 @@
 dist_man1_MANS = dhtnode.1
 
+noinst_HEADERS = \
+	Doxyfile
+
 if HAVE_DOXYGEN
-doxyfile.stamp:
+doxyfile.stamp: Doxyfile
 	$(DOXYGEN) Doxyfile
 	echo stamp > doxyfile.stamp
 
