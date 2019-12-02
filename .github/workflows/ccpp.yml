@@ -20,10 +20,8 @@ jobs:
       run: |
         cd argon2 && make && sudo make install && cd ..
     - name: configure
-      run: ./configure --disable-python
+      run: ./configure
     - name: make
       run: make
     - name: make check
       run: make check
-    - name: make distcheck
-      run: make distcheck
