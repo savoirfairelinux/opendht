@@ -3,9 +3,9 @@ add_executable (dhtnode dhtnode.cpp tools_common.h)
 add_executable (dhtscanner dhtscanner.cpp tools_common.h)
 add_executable (dhtchat dhtchat.cpp tools_common.h)
 
-target_link_libraries (dhtnode LINK_PUBLIC readline)
-target_link_libraries (dhtscanner LINK_PUBLIC readline)
-target_link_libraries (dhtchat LINK_PUBLIC readline)
+target_link_libraries (dhtnode LINK_PUBLIC ${READLINE_LIBRARIES})
+target_link_libraries (dhtscanner LINK_PUBLIC ${READLINE_LIBRARIES})
+target_link_libraries (dhtchat LINK_PUBLIC ${READLINE_LIBRARIES})
 
 if (OPENDHT_SHARED)
 	target_link_libraries (dhtnode LINK_PUBLIC opendht)
@@ -19,7 +19,7 @@ endif ()
 
 if (OPENDHT_C)
 	add_executable (dhtcnode dhtcnode.c)
-	target_link_libraries (dhtcnode LINK_PUBLIC opendht-c readline)
+	target_link_libraries (dhtcnode LINK_PUBLIC opendht-c ${READLINE_LIBRARIES})
 endif ()
 
 if (NOT DEFINED CMAKE_INSTALL_BINDIR)
