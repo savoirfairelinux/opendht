@@ -211,17 +211,16 @@ AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS"
 AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
 
 dnl Configure setup.py if we build the python module
-AM_COND_IF([USE_CYTHON], [
-    AC_SUBST(CURRENT_SOURCE_DIR, ".")
-    AC_SUBST(CURRENT_BINARY_DIR, ".")
-    AC_SUBST(PROJECT_SOURCE_DIR, "..")
-    AC_SUBST(PROJECT_BINARY_DIR, "../src/.libs")
-    AC_CONFIG_FILES([python/Makefile python/setup.py])
-])
+AC_SUBST(CURRENT_SOURCE_DIR, ".")
+AC_SUBST(CURRENT_BINARY_DIR, ".")
+AC_SUBST(PROJECT_SOURCE_DIR, "..")
+AC_SUBST(PROJECT_BINARY_DIR, "../src/.libs")
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  tools/Makefile
+                 python/Makefile
+                 python/setup.py
                  tests/Makefile
                  doc/Makefile
                  doc/Doxyfile
