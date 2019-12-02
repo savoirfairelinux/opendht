@@ -16,6 +16,9 @@ jobs:
         autotools-dev autoconf libasio-dev libfmt-dev libhttp-parser-dev libmsgpack-dev
     - name: autogen
       run: ./autogen.sh
+    - name: argon2
+      run: |
+        cd argon2 && make && sudo make install && cd ..
     - name: configure
       run: ./configure
     - name: make
