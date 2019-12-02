@@ -22,19 +22,32 @@
 #include <chrono>
 #include <mutex>
 #include <condition_variable>
+using namespace std::chrono_literals;
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
 
 void
 DhtRunnerTester::setUp() {
-    node1.run(42222, {}, true);
-    node2.run(42232, {}, true);
+    node1.run(42222);
+    node2.run(42232);
     node2.bootstrap(node1.getBound());
 }
 
 void
 DhtRunnerTester::tearDown() {
+    unsigned done {0};
+    std::condition_variable cv;
+    std::mutex cv_m;
+    auto shutdown = [&]{
+        std::lock_guard<std::mutex> lk(cv_m);
+        done++;
+        cv.notify_all();
+    };
+    node1.shutdown(shutdown);
+    node2.shutdown(shutdown);
+    std::unique_lock<std::mutex> lk(cv_m);
+    CPPUNIT_ASSERT(cv.wait_for(lk, 5s, [&]{ return done == 2; }));
     node1.join();
     node2.join();
 }
@@ -90,27 +103,22 @@ DhtRunnerTester::testListen() {
 
     for (unsigned i=0; i<N; i++) {
         node2.put(a, dht::Value("v1"), [&](bool ok) {
-            {
-                std::lock_guard<std::mutex> lock(mutex);
-                putCount++;
-                if (ok) putOkCount++;
-            }
+            std::lock_guard<std::mutex> lock(mutex);
+            putCount++;
+            if (ok) putOkCount++;
             cv.notify_all();
         });
         node2.put(b, dht::Value("v2"), [&](bool ok) {
-            {
-                std::lock_guard<std::mutex> lock(mutex);
-                putCount++;
-                if (ok) putOkCount++;
-            }
+            std::lock_guard<std::mutex> lock(mutex);
+            putCount++;
+            if (ok) putOkCount++;
             cv.notify_all();
         });
     }
 
     {
         std::unique_lock<std::mutex> lk(mutex);
-        cv.wait_for(lk, std::chrono::seconds(30), [&]{ return putCount == N * 2u; });
-        CPPUNIT_ASSERT_EQUAL(N * 2u, putCount);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N * 2u; }));
         CPPUNIT_ASSERT_EQUAL(N * 2u, putOkCount);
     }
 

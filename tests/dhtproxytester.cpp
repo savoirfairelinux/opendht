@@ -60,9 +60,19 @@ void
 DhtProxyTester::tearDown() {
     nodePeer.join();
     nodeClient.join();
-    nodeProxy->shutdown();
+
+    bool done = false;
+    std::condition_variable cv;
+    std::mutex cv_m;
+    nodeProxy->shutdown([&]{
+        std::lock_guard<std::mutex> lk(cv_m);
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lk(cv_m);
+    CPPUNIT_ASSERT(cv.wait_for(lk, 5s, [&]{ return done; }));
     serverProxy.reset();
-    nodeProxy->join();
+    nodeProxy.reset();
 }
 
 void
@@ -77,12 +87,12 @@ DhtProxyTester::testGetPut() {
     dht::Value val {"Hey! It's been a long time. How have you been?"};
     auto val_data = val.data;
     {
-        std::unique_lock<std::mutex> lk(cv_m);
         nodePeer.put(key, std::move(val), [&](bool) {
             std::lock_guard<std::mutex> lk(cv_m);
             done = true;
             cv.notify_all();
         });
+        std::unique_lock<std::mutex> lk(cv_m);
         CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
     }
 
