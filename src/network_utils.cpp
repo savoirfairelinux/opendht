@@ -26,6 +26,7 @@
 #define close(x) closesocket(x)
 #define write(s, b, f) send(s, b, (int)strlen(b), 0)
 #else
+#include <sys/select.h>
 #include <fcntl.h>
 #endif
 
