@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -16,6 +16,10 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "utils.h"
 #include "sockaddr.h"
 #include "default_types.h"
@@ -25,9 +29,17 @@
 #define IN_IS_ADDR_UNSPECIFIED(a) (((long int) (a)->s_addr) == 0x00000000)
 #endif /* IN_IS_ADDR_UNSPECIFIED */
 
+#ifndef PACKAGE_VERSION
+#define PACKAGE_VERSION "(unknown version)"
+#endif
+
 namespace dht {
 
 static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
+
+const char* version() {
+    return PACKAGE_VERSION;
+}
 
 std::pair<std::string, std::string>
 splitPort(const std::string& s) {
@@ -73,6 +85,24 @@ SockAddr::resolve(const std::string& host, const std::string& service)
     return ips;
 }
 
+void
+SockAddr::setAddress(const char* address)
+{
+    auto family = getFamily();
+    void* addr = nullptr;
+    switch (family) {
+    case AF_INET:
+        addr = &getIPv4().sin_addr;
+        break;
+    case AF_INET6:
+        addr = &getIPv6().sin6_addr;
+        break;
+    default:
+        throw std::runtime_error("Unknown address family");
+    }
+    if (inet_pton(family, address, addr) <= 0)
+        throw std::runtime_error(std::string("Can't parse IP address: ") + strerror(errno));
+}
 
 std::string
 print_addr(const sockaddr* sa, socklen_t slen)
@@ -80,7 +110,7 @@ print_addr(const sockaddr* sa, socklen_t slen)
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
     std::stringstream out;
-    if (!getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
+    if (sa and slen and !getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
         if (sa->sa_family == AF_INET6)
             out << "[" << hbuf << "]";
         else
@@ -171,10 +201,10 @@ SockAddr::isMappedIPv4() const
 }
 
 SockAddr
-SockAddr::getMappedIPv4() const
+SockAddr::getMappedIPv4()
 {
     if (not isMappedIPv4())
-        return *this;
+        return std::move(*this);
     SockAddr ret;
     ret.setFamily(AF_INET);
     ret.setPort(getPort());
@@ -182,6 +212,22 @@ SockAddr::getMappedIPv4() const
     auto addr4 = reinterpret_cast<uint8_t*>(&ret.getIPv4().sin_addr);
     addr6 += MAPPED_IPV4_PREFIX.size();
     std::copy_n(addr6, sizeof(in_addr), addr4);
+    return ret;
+}
+
+SockAddr
+SockAddr::getMappedIPv6()
+{
+    auto family = getFamily();
+    if (family != AF_INET)
+        return std::move(*this);
+    SockAddr ret;
+    ret.setFamily(AF_INET6);
+    ret.setPort(getPort());
+    auto addr4 = reinterpret_cast<const uint8_t*>(&getIPv4().sin_addr);
+    auto addr6 = reinterpret_cast<uint8_t*>(&ret.getIPv6().sin6_addr);
+    std::copy(MAPPED_IPV4_PREFIX.begin(), MAPPED_IPV4_PREFIX.end(), addr6);
+    std::copy_n(addr4, sizeof(in_addr), addr6 + MAPPED_IPV4_PREFIX.size());
     return ret;
 }
 

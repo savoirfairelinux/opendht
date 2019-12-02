@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -27,6 +27,8 @@
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
+#include "log_enable.h"
+#include "network_utils.h"
 
 #include <vector>
 #include <string>
@@ -45,6 +47,12 @@ struct TransId;
 #ifndef MSG_CONFIRM
 #define MSG_CONFIRM 0
 #endif
+
+struct NetworkConfig {
+    NetId network {0};
+    ssize_t max_req_per_sec {0};
+    ssize_t max_peer_req_per_sec {0};
+};
 
 class DhtProtocolException : public DhtException {
 public:
@@ -68,14 +76,14 @@ public:
     DhtProtocolException(uint16_t code, const std::string& msg="", InfoHash failing_node_id={})
         : DhtException(msg), msg(msg), code(code), failing_node_id(failing_node_id) {}
 
-    std::string getMsg() const { return msg; }
+    const std::string& getMsg() const { return msg; }
     uint16_t getCode() const { return code; }
-    const InfoHash getNodeId() const { return failing_node_id; }
+    const InfoHash& getNodeId() const { return failing_node_id; }
 
 private:
     std::string msg;
     uint16_t code;
-    const InfoHash failing_node_id;
+    InfoHash failing_node_id;
 };
 
 struct ParsedMessage;
@@ -204,19 +212,26 @@ public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(Logger& log, Scheduler& scheduler, const int& s = -1, const int& s6 = -1);
-    NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
-            decltype(NetworkEngine::onError) onError,
-            decltype(NetworkEngine::onNewNode) onNewNode,
-            decltype(NetworkEngine::onReportedAddr) onReportedAddr,
-            decltype(NetworkEngine::onPing) onPing,
-            decltype(NetworkEngine::onFindNode) onFindNode,
-            decltype(NetworkEngine::onGetValues) onGetValues,
-            decltype(NetworkEngine::onListen) onListen,
-            decltype(NetworkEngine::onAnnounce) onAnnounce,
-            decltype(NetworkEngine::onRefresh) onRefresh);
+    NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
+    NetworkEngine(
+            InfoHash& myid,
+            NetworkConfig config,
+            std::unique_ptr<DatagramSocket>&& sock,
+            Logger& log,
+            Scheduler& scheduler,
+            decltype(NetworkEngine::onError)&& onError,
+            decltype(NetworkEngine::onNewNode)&& onNewNode,
+            decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
+            decltype(NetworkEngine::onPing)&& onPing,
+            decltype(NetworkEngine::onFindNode)&& onFindNode,
+            decltype(NetworkEngine::onGetValues)&& onGetValues,
+            decltype(NetworkEngine::onListen)&& onListen,
+            decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+            decltype(NetworkEngine::onRefresh)&& onRefresh);
 
-    virtual ~NetworkEngine();
+    ~NetworkEngine();
+
+    net::DatagramSocket* getSocket() const { return dht_socket.get(); };
 
     void clear();
 
@@ -241,7 +256,7 @@ public:
     void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
 
     bool isRunning(sa_family_t af) const;
-    inline want_t want () const { return dht_socket >= 0 && dht_socket6 >= 0 ? (WANT4 | WANT6) : -1; }
+    inline want_t want () const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
 
     void connectivityChanged(sa_family_t);
 
@@ -271,8 +286,8 @@ public:
      * @return the request with information concerning its success.
      */
     Sp<Request>
-        sendPing(const sockaddr* sa, socklen_t salen, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-            return sendPing(std::make_shared<Node>(zeroes, sa, salen),
+        sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+            return sendPing(std::make_shared<Node>(zeroes, std::move(sa)),
                     std::forward<RequestCb>(on_done),
                     std::forward<RequestExpiredCb>(on_expired));
         }
@@ -290,9 +305,9 @@ public:
      */
     Sp<Request> sendFindNode(Sp<Node> n,
                              const InfoHash& hash,
-                             want_t want,
-                             RequestCb&& on_done,
-                             RequestExpiredCb&& on_expired);
+                             want_t want = -1,
+                             RequestCb&& on_done = {},
+                             RequestExpiredCb&& on_expired = {});
     /**
      * Send a "get" request to a given node.
      *
@@ -393,7 +408,7 @@ public:
      * @param fromlen  The length of the corresponding sockaddr structure.
      * @param now  The time to adjust the clock in the network engine.
      */
-    void processMessage(const uint8_t *buf, size_t buflen, const SockAddr& addr);
+    void processMessage(const uint8_t *buf, size_t buflen, SockAddr addr);
 
     Sp<Node> insertNode(const InfoHash& myid, const SockAddr& addr) {
         auto n = cache.getNode(myid, addr, scheduler.time(), 0);
@@ -421,7 +436,6 @@ private:
     /***************
      *  Constants  *
      ***************/
-    static constexpr size_t MAX_REQUESTS_PER_SEC {1600};
     /* the length of a node info buffer in ipv4 format */
     static const constexpr size_t NODE4_INFO_BUF_LEN {HASH_LEN + sizeof(in_addr) + sizeof(in_port_t)};
     /* the length of a node info buffer in ipv6 format */
@@ -468,7 +482,7 @@ private:
 
 
     // basic wrapper for socket sendto function
-    int send(const char *buf, size_t len, int flags, const SockAddr& addr);
+    int send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
 
     void sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
@@ -509,19 +523,18 @@ private:
 
     /* DHT info */
     const InfoHash& myid;
-    const NetId network {0};
-    const int& dht_socket;
-    const int& dht_socket6;
+    const NetworkConfig config {};
+    const std::unique_ptr<DatagramSocket> dht_socket;
     const Logger& DHT_LOG;
 
     NodeCache cache {};
 
     // global limiting should be triggered by at least 8 different IPs
-    using IpLimiter = RateLimiter<MAX_REQUESTS_PER_SEC/8>;
+    using IpLimiter = RateLimiter;
     using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
-    IpLimiterMap address_rate_limiter {};
-    RateLimiter<MAX_REQUESTS_PER_SEC> rate_limiter {};
-    size_t limiter_maintenance {0};
+    IpLimiterMap address_rate_limiter;
+    RateLimiter rate_limiter;
+    ssize_t limiter_maintenance {0};
 
     // requests handling
     std::map<Tid, Sp<Request>> requests {};
@@ -531,6 +544,8 @@ private:
     std::set<SockAddr> blacklist {};
 
     Scheduler& scheduler;
+
+    bool logIncoming_ {false};
 };
 
 } /* namespace net  */

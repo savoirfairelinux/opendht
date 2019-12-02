@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -37,11 +37,6 @@ const std::string printTime(const std::time_t& now) {
     return buf;
 }
 
-void print_node_info(const DhtRunner& dht, const dht_params&) {
-    std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  dht.getBoundPort() << std::endl;
-    std::cout << "Public key ID " << dht.getId() << std::endl;
-}
-
 void print_usage() {
     std::cout << "Usage: dhtchat [-n network_id] [-p local_port] [-b bootstrap_host[:port]]" << std::endl << std::endl;
     std::cout << "dhtchat, a simple OpenDHT command line chat client." << std::endl;
@@ -62,23 +57,20 @@ main(int argc, char **argv)
 
     DhtRunner dht;
     try {
-        dht.run(params.port, dht::crypto::generateIdentity("DHT Chat Node"), true, params.network);
+        params.generate_identity = true;
+        auto dhtConf = getDhtConfig(params);
+        dht.run(params.port, dhtConf.first, std::move(dhtConf.second));
 
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
-
-#if OPENDHT_PROXY_CLIENT
-    if (!params.proxyclient.empty()) {
-        dht.setProxyServer(params.proxyclient);
-        dht.enableProxy(true);
-    }
-#endif //OPENDHT_PROXY_CLIENT
 
         print_node_info(dht, params);
         std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
 
         bool connected {false};
         InfoHash room;
+        std::future<size_t> token;
+
         const InfoHash myid = dht.getId();
 
 #ifndef WIN32_NATIVE
@@ -109,7 +101,7 @@ main(int argc, char **argv)
                         std::cout << "Joining h(" << idstr << ") = " << room << std::endl;
                     }
 
-                    dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
+                    token = dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
                         if (msg.from != myid)
                             std::cout << msg.from.toString() << " at " << printTime(msg.date)
                                       << " (took " << print_dt(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
@@ -123,6 +115,7 @@ main(int argc, char **argv)
             } else {
                 auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
                 if (op == "d") {
+                    dht.cancelListen(room, std::move(token));
                     connected = false;
                     continue;
                 } else if (op == "e") {

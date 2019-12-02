@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -23,9 +23,14 @@
 
 namespace dht {
 
+namespace net {
+    class DatagramSocket;
+}
+
 class OPENDHT_PUBLIC DhtInterface {
 public:
     DhtInterface() = default;
+    DhtInterface(const Logger& l) : DHT_LOG(l) {};
     virtual ~DhtInterface() = default;
 
     // [[deprecated]]
@@ -38,6 +43,8 @@ public:
      */
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
+
+    virtual net::DatagramSocket* getSocket() const { return {}; };
 
     /**
      * Get the ID of the DHT node.
@@ -67,12 +74,11 @@ public:
      * used to bootstrap efficiently from previously known nodes.
      */
     virtual void insertNode(const InfoHash& id, const SockAddr&) = 0;
-    virtual void insertNode(const InfoHash& id, const sockaddr* sa, socklen_t salen) = 0;
     virtual void insertNode(const NodeExport& n) = 0;
 
-    virtual void pingNode(const sockaddr*, socklen_t, DoneCallbackSimple&& cb={}) = 0;
+    virtual void pingNode(SockAddr, DoneCallbackSimple&& cb={}) = 0;
 
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, const SockAddr&) = 0;
+    virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr) = 0;
     virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) = 0;
 
     /**
@@ -106,7 +112,7 @@ public:
     /**
      * Get locally stored data for the given hash.
      */
-    virtual std::vector<Sp<Value>> getLocal(const InfoHash& key, Value::Filter f = Value::AllFilter()) const = 0;
+    virtual std::vector<Sp<Value>> getLocal(const InfoHash& key, const Value::Filter& f = {}) const = 0;
 
     /**
      * Get locally stored data for the given key and value id.
@@ -143,12 +149,12 @@ public:
     /**
      * Get data currently being put at the given hash.
      */
-    virtual std::vector<Sp<Value>> getPut(const InfoHash&) = 0;
+    virtual std::vector<Sp<Value>> getPut(const InfoHash&) const = 0;
 
     /**
      * Get data currently being put at the given hash with the given id.
      */
-    virtual Sp<Value> getPut(const InfoHash&, const Value::Id&) = 0;
+    virtual Sp<Value> getPut(const InfoHash&, const Value::Id&) const = 0;
 
     /**
      * Stop any put/announce operation at the given location,
@@ -181,7 +187,7 @@ public:
      * Get the list of good nodes for local storage saving purposes
      * The list is ordered to minimize the back-to-work delay.
      */
-    virtual std::vector<NodeExport> exportNodes() = 0;
+    virtual std::vector<NodeExport> exportNodes() const = 0;
 
     virtual std::vector<ValuesExport> exportValues() const = 0;
     virtual void importValues(const std::vector<ValuesExport>&) = 0;
@@ -214,11 +220,16 @@ public:
     /**
      * Enable or disable logging of DHT internal messages
      */
-    virtual void setLoggers(LogMethod error = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG)
-    {
+    virtual void setLoggers(LogMethod error = {}, LogMethod warn = {}, LogMethod debug = {}) {
         DHT_LOG.DBG = debug;
         DHT_LOG.WARN = warn;
         DHT_LOG.ERR = error;
+    }
+
+    virtual void setLogger(const Logger& l) {
+        DHT_LOG.DBG = l.DBG;
+        DHT_LOG.WARN = l.WARN;
+        DHT_LOG.ERR = l.ERR;
     }
 
     /**
@@ -238,8 +249,6 @@ public:
     virtual void pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
 
 protected:
-    bool logFilerEnable_ {};
-    InfoHash logFiler_ {};
     Logger DHT_LOG;
 };
 

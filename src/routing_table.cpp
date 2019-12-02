@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -92,7 +92,7 @@ RoutingTable::middle(const RoutingTable::const_iterator& it) const
         throw std::out_of_range("End of table");
 
     InfoHash id = it->first;
-    id.setBit(bit, 1);
+    id.setBit(bit, true);
     return id;
 }
 

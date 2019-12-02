@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *
  *  Author: Andreas Traczyk <andreas.traczyk@savoirfairelinux.com>
  *

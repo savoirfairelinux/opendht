@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -19,11 +19,15 @@
 
 #pragma once
 
-#include "dhtrunner.h"
+#include "def.h"
+#include "log_enable.h"
 
 #include <iostream>
+#include <memory>
 
 namespace dht {
+
+class DhtRunner;
 
 /**
  * Logging-related functions
@@ -65,6 +69,15 @@ constexpr const Color::Modifier yellow(Color::FG_YELLOW);
  */
 OPENDHT_PUBLIC void
 printLog(std::ostream &s, char const *m, va_list args);
+
+OPENDHT_PUBLIC
+std::unique_ptr<Logger> getStdLogger();
+
+OPENDHT_PUBLIC
+std::unique_ptr<Logger> getFileLogger(const std::string &path);
+
+OPENDHT_PUBLIC
+std::unique_ptr<Logger> getSyslogLogger(const char* name);
 
 OPENDHT_PUBLIC void
 enableLogging(dht::DhtRunner &dht);

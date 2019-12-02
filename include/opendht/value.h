@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -79,7 +79,7 @@ static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 struct OPENDHT_PUBLIC ValueType {
     typedef uint16_t Id;
 
-    static bool DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
+    static bool DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
     static bool DEFAULT_EDIT_POLICY(InfoHash, const std::shared_ptr<Value>&, std::shared_ptr<Value>&, const InfoHash&, const SockAddr&) {
         return false;
     }
@@ -165,6 +165,13 @@ struct OPENDHT_PUBLIC Value
             return chainOr(std::move(f1), std::move(f2));
         }
         static Filter chain(Filter&& f1, Filter&& f2) {
+            if (not f1) return std::move(f2);
+            if (not f2) return std::move(f1);
+            return [f1 = std::move(f1), f2 = std::move(f2)](const Value& v) {
+                return f1(v) and f2(v);
+            };
+        }
+        static Filter chain(const Filter& f1, const Filter& f2) {
             if (not f1) return f2;
             if (not f2) return f1;
             return [f1,f2](const Value& v) {
@@ -173,21 +180,25 @@ struct OPENDHT_PUBLIC Value
         }
         static Filter chainAll(std::vector<Filter>&& set) {
             if (set.empty()) return {};
-            return std::bind([](const Value& v, std::vector<Filter>& s) {
-                for (const auto& f : s)
+            return [set = std::move(set)](const Value& v) {
+                for (const auto& f : set)
                     if (f and not f(v))
                         return false;
                 return true;
-            }, std::placeholders::_1, std::move(set));
+            };
         }
         static Filter chain(std::initializer_list<Filter> l) {
             return chainAll(std::vector<Filter>(l.begin(), l.end()));
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
-            if (not f1 or not f2) return AllFilter();
+            if (not f1 or not f2) return {};
             return [f1,f2](const Value& v) {
                 return f1(v) or f2(v);
             };
+        }
+        static Filter notFilter(Filter&& f) {
+            if (not f) return [](const Value&) { return false; };
+            return [f](const Value& v) { return not f(v); };
         }
         std::vector<Sp<Value>> filter(const std::vector<Sp<Value>>& values) {
             if (not (*this))
@@ -874,7 +885,7 @@ struct OPENDHT_PUBLIC Query
 {
     static const std::string QUERY_PARSE_ERROR;
 
-    Query(Select s = {}, Where w = {}, bool none = false) : select(s), where(w), none(none) { };
+    Query(Select s = {}, Where w = {}, bool none = false) : select(std::move(s)), where(std::move(w)), none(none) { };
 
     /**
      * Initializes a query based on a SQL-ish formatted string. The abstract
@@ -936,7 +947,7 @@ struct OPENDHT_PUBLIC Query
  */
 struct OPENDHT_PUBLIC FieldValueIndex {
     FieldValueIndex() {}
-    FieldValueIndex(const Value& v, Select s = {});
+    FieldValueIndex(const Value& v, const Select& s = {});
     /**
      * Tells if all the fields of this are contained in the other
      * FieldValueIndex with the same value.
@@ -990,7 +1001,7 @@ template <typename T,
 Value::Filter
 getFilterSet()
 {
-    return Value::AllFilter();
+    return {};
 }
 
 template <class T>

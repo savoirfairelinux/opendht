@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,7 @@
 #ifndef _WIN32
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #ifdef __ANDROID__
 typedef uint16_t in_port_t;
 #endif
@@ -39,6 +40,7 @@ typedef uint16_t in_port_t;
 #include <string>
 #include <memory>
 #include <vector>
+#include <stdexcept>
 #include <stdlib.h>
 
 #include <cstring>
@@ -58,7 +60,7 @@ public:
     SockAddr(const SockAddr& o) {
         set(o.get(), o.getLength());
     }
-    SockAddr(SockAddr&& o) : len(o.len), addr(std::move(o.addr)) {
+    SockAddr(SockAddr&& o) noexcept : addr(std::move(o.addr)), len(o.len) {
         o.len = 0;
     }
 
@@ -118,7 +120,7 @@ public:
     /**
      * Returns the address family or AF_UNSPEC if the address is not set.
      */
-    sa_family_t getFamily() const { return len > sizeof(sa_family_t) ? addr->sa_family : AF_UNSPEC; }
+    sa_family_t getFamily() const { return len ? addr->sa_family : AF_UNSPEC; }
 
     /**
      * Resize the managed structure to the appropriate size (if needed),
@@ -144,6 +146,21 @@ public:
         }
         if (len > sizeof(sa_family_t))
             addr->sa_family = af;
+    }
+
+    /**
+     * Set Network Interface to any
+     */
+    void setAny() {
+        auto family = getFamily();
+        switch(family) {
+        case AF_INET:
+            getIPv4().sin_addr.s_addr = htonl(INADDR_ANY);
+            break;
+        case AF_INET6:
+            getIPv6().sin6_addr = in6addr_any;
+            break;
+        }
     }
 
     /**
@@ -174,6 +191,12 @@ public:
             break;
         }
     }
+
+    /**
+     * Set the address part of the socket address from a numeric IP address (string representation).
+     * Family must be already set. Throws in case of parse failue.
+     */
+    void setAddress(const char* address);
 
     /**
      * Returns the accessible byte length at the pointer returned by #get().
@@ -226,7 +249,8 @@ public:
     bool isUnspecified() const;
 
     bool isMappedIPv4() const;
-    SockAddr getMappedIPv4() const;
+    SockAddr getMappedIPv4();
+    SockAddr getMappedIPv6();
 
     /**
      * A comparator to classify IP addresses, only considering the
@@ -257,9 +281,9 @@ public:
         }
     };
 private:
-    socklen_t len {0};
     struct free_delete { void operator()(void* p) { ::free(p); } };
     std::unique_ptr<sockaddr, free_delete> addr {};
+    socklen_t len {0};
 
     void set(const sockaddr* sa, socklen_t length) {
         if (len != length) {

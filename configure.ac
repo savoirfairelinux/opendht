@@ -1,6 +1,6 @@
 dnl define macros
-m4_define([opendht_major_version], 1)
-m4_define([opendht_minor_version], 8)
+m4_define([opendht_major_version], 2)
+m4_define([opendht_minor_version], 0)
 m4_define([opendht_patch_version], 0)
 m4_define([opendht_version],
 		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
@@ -98,7 +98,7 @@ AS_IF([test "x$SYS" = "xandroid"],
 LT_INIT()
 LT_LANG(C++)
 
-AX_CXX_COMPILE_STDCXX(11,[noext],[mandatory])
+AX_CXX_COMPILE_STDCXX(14,[noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
 
@@ -123,7 +123,7 @@ AM_COND_IF([ENABLE_TESTS], [
 	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
 ])
 
-AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes | test x$proxy_server == xyes)
+AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes || test x$proxy_server == xyes)
 
 PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
@@ -141,9 +141,37 @@ AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
 ])
 
+AC_ARG_WITH([openssl], AS_HELP_STRING([--without-openssl], [Build with OpenSSL support]))
+AS_IF([test "x$with_openssl" != "xno"],
+      [PKG_CHECK_MODULES([OpenSSL], [openssl >= 1.1], [have_openssl=yes], [have_openssl=no])],
+      [have_openssl=no])
+AS_IF([test "x$have_openssl" = "xyes"], [
+    AC_MSG_NOTICE([Using OpenSSL])
+], [
+    AC_MSG_NOTICE([Not using OpenSSL])
+])
+
+AC_ARG_WITH([http_parser_fork], AS_HELP_STRING([--with-http-parser-fork], [Build with http_parser fork to support old API]))
+AS_IF([test "x$with_http_parser_fork" = "xyes"],[
+    AC_MSG_NOTICE([Using http_parser fork])
+    CPPFLAGS+=" -DOPENDHT_PROXY_HTTP_PARSER_FORK"
+], [
+    AC_MSG_NOTICE([Not using http_parser fork])
+])
+
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
-	AC_CHECK_LIB(restbed, exit,, AC_MSG_ERROR([Missing restbed files]))
-	LDFLAGS="${LDFLAGS} -lrestbed"
+    AC_CHECK_HEADERS([asio.hpp], exit,, AC_MSG_ERROR([Missing Asio headers files]))
+    CXXFLAGS="${CXXFLAGS} -DASIO_STANDALONE"
+    PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0], [have_fmt=yes], [have_fmt=no])
+    AS_IF([test "x$have_fmt" = "xyes"], [
+        AC_MSG_NOTICE([Using libfmt])
+    ], [
+        AC_MSG_NOTICE([Missing libfmt files])
+    ])
+    # http_parser has no pkgconfig, instead we check with:
+    AC_CHECK_LIB(http_parser, exit,, AC_MSG_ERROR([Missing HttpParser library files]))
+    AC_CHECK_HEADERS([http_parser.h], [http_parser_headers=yes; break;])
+    AS_IF([test "x$http_parser_headers" != "xyes"], AC_MSG_ERROR([Missing HttpParser headers files]))
 ])
 
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
@@ -177,23 +205,14 @@ AM_COND_IF([ENABLE_TOOLS], [
   ])
 ])
 
-AM_COND_IF(ENABLE_PROXY_SERVER,
-    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=true"],
-    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER=false"])
+AM_COND_IF(ENABLE_PROXY_SERVER, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER"], [])
+AM_COND_IF(ENABLE_PROXY_CLIENT, [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT"], [])
+AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS"], [])
+AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
 
-AM_COND_IF(ENABLE_PROXY_CLIENT,
-    [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT=true"],
-    [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT=false"])
-
-AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS,
-    [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=true"],
-    [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS=false"])
-
-AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY,
-    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=true"],
-    [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY=false"])
-
-AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
+AM_COND_IF([HAVE_DOXYGEN], [
+  AC_CONFIG_FILES([doc/Doxyfile doc/Makefile])
+])
 
 dnl Configure setup.py if we build the python module
 AM_COND_IF([USE_CYTHON], [

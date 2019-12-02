@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2004-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2004-2019 Savoir-faire Linux Inc.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,8 +17,8 @@
 
 #include "base64.h"
 
-#include <stdint.h>
-#include <stdlib.h>
+#include <cstdint>
+#include <cstdlib>
 
 /* Mainly based on the following stackoverflow question:
  * http://stackoverflow.com/questions/342409/how-do-i-base64-encode-decode-in-c

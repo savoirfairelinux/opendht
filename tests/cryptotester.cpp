@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2019 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -19,7 +19,7 @@
 
 #include "cryptotester.h"
 
-#include "opendht/crypto.h"
+#include <opendht/crypto.h>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(CryptoTester);
@@ -34,16 +34,41 @@ CryptoTester::testSignatureEncryption() {
     auto key = dht::crypto::PrivateKey::generate();
     auto public_key = key.getPublicKey();
 
-    std::vector<uint8_t> data {5, 10};
-    std::vector<uint8_t> signature = key.sign(data);
+    std::vector<uint8_t> data1 {5, 10};
+    std::vector<uint8_t> data2(64 * 1024, 10);
+
+    std::vector<uint8_t> signature1 = key.sign(data1);
+    std::vector<uint8_t> signature2 = key.sign(data2);
 
     // check signature
-    CPPUNIT_ASSERT(public_key.checkSignature(data, signature));
+    CPPUNIT_ASSERT(public_key.checkSignature(data1, signature1));
+    CPPUNIT_ASSERT(public_key.checkSignature(data2, signature2));
 
     // encrypt data
-    std::vector<uint8_t> encrypted = public_key.encrypt(data);
-    std::vector<uint8_t> decrypted = key.decrypt(encrypted);
-    CPPUNIT_ASSERT(data == decrypted);
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data1);
+        std::vector<uint8_t> decrypted = key.decrypt(encrypted);
+        CPPUNIT_ASSERT(data1 == decrypted);
+    }
+
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data2);
+        std::vector<uint8_t> decrypted = key.decrypt(encrypted);
+        CPPUNIT_ASSERT(data2 == decrypted);
+    }
+
+    // encrypt data (invalid)
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data1);
+        encrypted[1]++;
+        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), std::runtime_error);
+    }
+
+    {
+        std::vector<uint8_t> encrypted = public_key.encrypt(data2);
+        encrypted[2]++;
+        CPPUNIT_ASSERT_THROW(key.decrypt(encrypted), std::runtime_error);
+    }
 }
 
 void
@@ -53,7 +78,6 @@ CryptoTester::testCertificateRevocation()
     auto account1 = dht::crypto::generateIdentity("acc1", ca1, 4096, true);
     auto device11 = dht::crypto::generateIdentity("dev11", account1);
     auto device12 = dht::crypto::generateIdentity("dev12", account1);
-
 
     dht::crypto::TrustList list;
     list.add(*ca1.second);
@@ -72,7 +96,7 @@ CryptoTester::testCertificateRevocation()
 
     v = list.verify(*device2.second);
     CPPUNIT_ASSERT_MESSAGE(v.toString(), !v);
-    
+
     account1.second->revoke(*account1.first, *device11.second);
     dht::crypto::TrustList list2;
     list2.add(*account1.second);
@@ -80,6 +104,34 @@ CryptoTester::testCertificateRevocation()
     v = list2.verify(*device11.second);
     CPPUNIT_ASSERT_MESSAGE(v.toString(), !v);
     v = list2.verify(*device12.second);
+    CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
+}
+
+void
+CryptoTester::testCertificateRequest()
+{
+    // Generate CA
+    auto ca = dht::crypto::generateIdentity("Test CA");
+
+    // Generate signed request
+    auto deviceKey = dht::crypto::PrivateKey::generate();
+    auto request = dht::crypto::CertificateRequest();
+    request.setName("Test Device");
+    request.sign(deviceKey);
+
+    // Export/import request
+    auto importedRequest = dht::crypto::CertificateRequest(request.pack());
+    CPPUNIT_ASSERT(importedRequest.verify());
+
+    // Generate/sign certificate from request
+    auto signedCert = dht::crypto::Certificate::generate(request, ca);
+    CPPUNIT_ASSERT_EQUAL(ca.second->getName(), signedCert.getIssuerName());
+    CPPUNIT_ASSERT_EQUAL(request.getName(), signedCert.getName());
+
+    // Check generated certificate
+    dht::crypto::TrustList list;
+    list.add(*ca.second);
+    auto v = list.verify(signedCert);
     CPPUNIT_ASSERT_MESSAGE(v.toString(), v);
 }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2019 Savoir-faire Linux Inc.
  *
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
@@ -25,6 +25,7 @@
 
 #include <opendht/dhtrunner.h>
 #include <opendht/dht_proxy_server.h>
+#include <opendht/log.h>
 
 namespace test {
 
@@ -32,6 +33,9 @@ class DhtProxyTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(DhtProxyTester);
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testResubscribeGetValues);
+    CPPUNIT_TEST(testPutGet40KChars);
+    CPPUNIT_TEST(testFuzzy);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -39,26 +43,37 @@ class DhtProxyTester : public CppUnit::TestFixture {
      * Method automatically called before each test by CppUnit
      * Init nodes
      */
-    void setUp();
+   void setUp();
     /**
      * Method automatically called after each test CppUnit
      */
-    void tearDown();
+   void tearDown();
     /**
      * Test get and put methods
      */
-    void testGetPut();
+   void testGetPut();
     /**
      * Test listen
      */
-    void testListen();
+   void testListen();
+   /**
+    * When a proxy redo a subscribe on the proxy
+    * it should retrieve existant values
+    */
+   void testResubscribeGetValues();
+   /**
+    * Test MTU put/get on dht
+    */
+   void testPutGet40KChars();
+
+   void testFuzzy();
 
  private:
-    dht::DhtRunner nodePeer {};
-
-    std::shared_ptr<dht::DhtRunner> nodeClient;
+    dht::DhtRunner::Config clientConfig {};
+    dht::DhtRunner nodePeer;
+    dht::DhtRunner nodeClient;
     std::shared_ptr<dht::DhtRunner> nodeProxy;
-    std::unique_ptr<dht::DhtProxyServer> server;
+    std::unique_ptr<dht::DhtProxyServer> serverProxy;
 };
 
 }  // namespace test

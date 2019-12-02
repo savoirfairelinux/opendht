@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -90,20 +90,7 @@ struct Storage {
 
     Storage() {}
     Storage(time_point t) : maintenance_time(t) {}
-
-#if defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9 || defined(_WIN32)
-    // GCC-bug: remove me when support of GCC < 4.9.2 is abandoned
-    Storage(Storage&& o) noexcept
-        : maintenance_time(std::move(o.maintenance_time))
-        , listeners(std::move(o.listeners))
-        , local_listeners(std::move(o.local_listeners))
-        , listener_token(std::move(o.listener_token))
-        , values(std::move(o.values))
-        , total_size(std::move(o.total_size)) {}
-#else
     Storage(Storage&& o) noexcept = default;
-#endif
-
     Storage& operator=(Storage&& o) = default;
 
     bool empty() const {
@@ -128,7 +115,7 @@ struct Storage {
         return {};
     }
 
-    std::vector<Sp<Value>> get(Value::Filter f = {}) const {
+    std::vector<Sp<Value>> get(const Value::Filter& f = {}) const {
         std::vector<Sp<Value>> newvals {};
         if (not f) newvals.reserve(values.size());
         for (auto& v : values) {
@@ -166,6 +153,12 @@ struct Storage {
         return time_point::max();
     }
 
+    size_t listen(ValueCallback& cb, Value::Filter& f, const Sp<Query>& q);
+
+    void cancelListen(size_t token) {
+        local_listeners.erase(token);
+    }
+
     StoreDiff remove(const InfoHash& id, Value::Id);
 
     std::pair<ssize_t, std::vector<Sp<Value>>> expire(const InfoHash& id, time_point now);
@@ -177,6 +170,22 @@ private:
     std::vector<ValueStorage> values {};
     size_t total_size {};
 };
+
+
+size_t
+Storage::listen(ValueCallback& gcb, Value::Filter& filter, const Sp<Query>& query)
+{
+    if (not empty()) {
+        std::vector<Sp<Value>> newvals = get(filter);
+        if (not newvals.empty()) {
+            if (!gcb(newvals, false))
+                return 0;
+        }
+    }
+    auto tokenlocal = ++listener_token;
+    local_listeners.emplace(tokenlocal, LocalListener{query, filter, gcb});
+    return tokenlocal;
+}
 
 
 std::pair<ValueStorage*, Storage::StoreDiff>

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -85,21 +85,13 @@ main(int argc, char **argv)
 
     DhtRunner dht;
     try {
-        dht.run(params.port, {}, true, params.network);
-
-        if (params.log) {
-            if (params.syslog)
-                log::enableSyslog(dht, "dhtnode");
-            else if (not params.logfile.empty())
-                log::enableFileLogging(dht, params.logfile);
-            else
-                log::enableLogging(dht);
-        }
+        auto dhtConf = getDhtConfig(params);
+        dht.run(params.port, dhtConf.first, std::move(dhtConf.second));
 
         if (not params.bootstrap.first.empty())
             dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
 
-        std::cout << "OpenDht node " << dht.getNodeId() << " running on port " <<  params.port << std::endl;
+        print_node_info(dht, params);
         std::cout << "Scanning network..." << std::endl;
         auto all_nodes = std::make_shared<NodeSet>();
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-2016 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -43,7 +43,7 @@ loop = asyncio.get_event_loop()
 pending_tests = {}
 keys = [dht.InfoHash.getRandom() for _ in range(args.num_ops)]
 
-def listen_cb(key, val):
+def listen_cb(key, val, expired):
     global pending_tests
     kstr = str(key)
     if kstr in pending_tests:
@@ -54,7 +54,7 @@ def listen_cb(key, val):
     return True
 
 def listen(key):
-    node1.listen(key, lambda v: loop.call_soon_threadsafe(listen_cb, key, v))
+    node1.listen(key, lambda v, e: loop.call_soon_threadsafe(listen_cb, key, v, e))
 
 for key in keys:
     listen(key)

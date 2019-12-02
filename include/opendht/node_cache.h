@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -40,12 +40,16 @@ struct NodeCache {
     ~NodeCache();
 
 private:
-    class NodeMap : public std::map<InfoHash, std::weak_ptr<Node>> {
+    class NodeMap : private std::map<InfoHash, std::weak_ptr<Node>> {
     public:
         Sp<Node> getNode(const InfoHash& id);
         Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
+        std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, size_t count) const;
         void clearBadNodes();
         void setExpired();
+        void cleanup();
+    private:
+        size_t cleanup_counter {0};
     };
 
     const NodeMap& cache(sa_family_t af) const { return af == AF_INET ? cache_4 : cache_6; }

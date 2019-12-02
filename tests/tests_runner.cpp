@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2017-2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2017-2019 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -21,7 +21,7 @@
 #include <cppunit/CompilerOutputter.h>
 #include <iostream>
 
-int main(int argc, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
     CppUnit::TestFactoryRegistry &registry = CppUnit::TestFactoryRegistry::getRegistry();
     CppUnit::Test *suite = registry.makeTest();
     if (suite->countTestCases() == 0) {

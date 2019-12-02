@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -17,7 +17,6 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #include "network_engine.h"
 #include "request.h"
 #include "default_types.h"
@@ -25,17 +24,6 @@
 #include "parsed_message.h"
 
 #include <msgpack.hpp>
-
-#ifndef _WIN32
-#include <arpa/inet.h>
-#include <unistd.h>
-#else
-#include <ws2tcpip.h>
-#include <io.h>
-#endif
-#include <fcntl.h>
-
-#include <cstring>
 
 namespace dht {
 namespace net {
@@ -53,39 +41,10 @@ constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
 const std::string NetworkEngine::my_v {"RNG1"};
-constexpr size_t NetworkEngine::MAX_REQUESTS_PER_SEC;
 
-static const uint8_t v4prefix[16] = {
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0
-};
+static constexpr uint8_t v4prefix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0};
 
 constexpr unsigned SEND_NODES {8};
-
-#ifdef _WIN32
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    unsigned long mode = !!nonblocking;
-    int rc = ioctlsocket(fd, FIONBIO, &mode);
-    return rc == 0;
-}
-
-extern const char *inet_ntop(int, const void *, char *, socklen_t);
-
-#else
-
-static bool
-set_nonblocking(int fd, int nonblocking)
-{
-    int rc = fcntl(fd, F_GETFL, 0);
-    if (rc < 0)
-        return false;
-    rc = fcntl(fd, F_SETFL, nonblocking?(rc | O_NONBLOCK):(rc & ~O_NONBLOCK));
-    return rc >= 0;
-}
-
-#endif
 
 
 /* Transaction-ids are 4-bytes long, with the first two bytes identifying
@@ -139,32 +98,33 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
    nodes6(std::move(msg.nodes6))
 {}
 
-NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, const int& s, const int& s6)
-    : myid(zeroes), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
+NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
+    : myid(zeroes), dht_socket(std::move(sock)), DHT_LOG(log), rate_limiter((size_t)-1), scheduler(scheduler)
 {}
-NetworkEngine::NetworkEngine(InfoHash& myid, NetId net, const int& s, const int& s6, Logger& log, Scheduler& scheduler,
-        decltype(NetworkEngine::onError) onError,
-        decltype(NetworkEngine::onNewNode) onNewNode,
-        decltype(NetworkEngine::onReportedAddr) onReportedAddr,
-        decltype(NetworkEngine::onPing) onPing,
-        decltype(NetworkEngine::onFindNode) onFindNode,
-        decltype(NetworkEngine::onGetValues) onGetValues,
-        decltype(NetworkEngine::onListen) onListen,
-        decltype(NetworkEngine::onAnnounce) onAnnounce,
-        decltype(NetworkEngine::onRefresh) onRefresh) :
-    onError(onError), onNewNode(onNewNode), onReportedAddr(onReportedAddr), onPing(onPing), onFindNode(onFindNode),
-    onGetValues(onGetValues), onListen(onListen), onAnnounce(onAnnounce), onRefresh(onRefresh), myid(myid),
-    network(net), dht_socket(s), dht_socket6(s6), DHT_LOG(log), scheduler(scheduler)
-{
-    if (dht_socket >= 0) {
-        if (!set_nonblocking(dht_socket, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-    if (dht_socket6 >= 0) {
-        if (!set_nonblocking(dht_socket6, 1))
-            throw DhtException("Can't set socket to non-blocking mode");
-    }
-}
+
+NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
+        decltype(NetworkEngine::onError)&& onError,
+        decltype(NetworkEngine::onNewNode)&& onNewNode,
+        decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
+        decltype(NetworkEngine::onPing)&& onPing,
+        decltype(NetworkEngine::onFindNode)&& onFindNode,
+        decltype(NetworkEngine::onGetValues)&& onGetValues,
+        decltype(NetworkEngine::onListen)&& onListen,
+        decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+        decltype(NetworkEngine::onRefresh)&& onRefresh) :
+    onError(std::move(onError)),
+    onNewNode(std::move(onNewNode)),
+    onReportedAddr(std::move(onReportedAddr)),
+    onPing(std::move(onPing)),
+    onFindNode(std::move(onFindNode)),
+    onGetValues(std::move(onGetValues)),
+    onListen(std::move(onListen)),
+    onAnnounce(std::move(onAnnounce)),
+    onRefresh(std::move(onRefresh)),
+    myid(myid), config(c), dht_socket(std::move(sock)), DHT_LOG(log),
+    rate_limiter(config.max_req_per_sec),
+    scheduler(scheduler)
+{}
 
 NetworkEngine::~NetworkEngine() {
     clear();
@@ -189,29 +149,29 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
-    pk.pack(std::string("u"));
+    pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_REQ_ID); pk.pack(myid);
     if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
+        pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
     }
     if (not values.empty()) {
-        pk.pack(std::string("re"));
+        pk.pack(KEY_REQ_REFRESHED);
         pk.pack(values);
         DHT_LOG.d(n->id, "[node %s] sending %zu refreshed values", n->toString().c_str(), values.size());
     }
 
-    pk.pack(std::string("t")); pk.pack(socket_id);
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_TID); pk.pack(socket_id);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, n->getAddr());
+    send(n->getAddr(), buffer.data(), buffer.size());
 }
 
 void
@@ -219,29 +179,29 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
-    pk.pack(std::string("u"));
+    pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_REQ_ID); pk.pack(myid);
     if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
+        pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
     }
     if (not values.empty()) {
-        pk.pack(std::string("exp"));
+        pk.pack(KEY_REQ_EXPIRED);
         pk.pack(values);
         DHT_LOG.d(n->id, "[node %s] sending %zu expired values", n->toString().c_str(), values.size());
     }
 
-    pk.pack(std::string("t")); pk.pack(socket_id);
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_TID); pk.pack(socket_id);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, n->getAddr());
+    send(n->getAddr(), buffer.data(), buffer.size());
 }
 
 
@@ -250,11 +210,11 @@ NetworkEngine::isRunning(sa_family_t af) const
 {
     switch (af) {
     case 0:
-        return dht_socket  >= 0 ||  dht_socket6 >= 0;
+        return dht_socket->hasIPv4() or dht_socket->hasIPv6();
     case AF_INET:
-        return dht_socket  >= 0;
+        return dht_socket->hasIPv4();
     case AF_INET6:
-        return dht_socket6 >= 0;
+        return dht_socket->hasIPv6();
     default:
         return false;
     }
@@ -286,7 +246,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
-        DHT_LOG.d(node.id, "[node %s] expired !", node.toString().c_str());
+        // DHT_LOG.d(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
@@ -295,9 +255,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         req.on_expired(req, false);
     }
 
-    auto err = send((char*)req.msg.data(), req.msg.size(),
-            (node.getReplyTime() >= now - UDP_REPLY_TIME) ? 0 : MSG_CONFIRM,
-            node.getAddr());
+    auto err = send(node.getAddr(), (char*)req.msg.data(), req.msg.size(), node.getReplyTime() < now - UDP_REPLY_TIME);
     if (err == ENETUNREACH  ||
         err == EHOSTUNREACH ||
         err == EAFNOSUPPORT ||
@@ -327,11 +285,11 @@ NetworkEngine::requestStep(Sp<Request> sreq)
 void
 NetworkEngine::sendRequest(const Sp<Request>& request)
 {
-    auto& node = request->node;
-    if (not node->id)
+    auto& node = *request->node;
+    if (not node.id)
         requests.emplace(request->tid, request);
     request->start = scheduler.time();
-    node->requested(request);
+    node.requested(request);
     requestStep(request);
 }
 
@@ -343,7 +301,7 @@ NetworkEngine::rateLimit(const SockAddr& addr)
     const auto& now = scheduler.time();
 
     // occasional IP limiter maintenance (a few times every second at max rate)
-    if (limiter_maintenance++ == MAX_REQUESTS_PER_SEC/8) {
+    if (limiter_maintenance++ == config.max_peer_req_per_sec) {
         for (auto it = address_rate_limiter.begin(); it != address_rate_limiter.end();) {
             if (it->second.maintain(now) == 0)
                 address_rate_limiter.erase(it++);
@@ -353,9 +311,12 @@ NetworkEngine::rateLimit(const SockAddr& addr)
         limiter_maintenance = 0;
     }
 
-    auto it = address_rate_limiter.emplace(addr, IpLimiter{});
     // invoke per IP, then global rate limiter
-    return it.first->second.limit(now) and rate_limiter.limit(now);
+    return (config.max_peer_req_per_sec < 0
+            or address_rate_limiter
+                .emplace(addr, config.max_peer_req_per_sec).first->second
+                .limit(now))
+            and rate_limiter.limit(now);
 }
 
 bool
@@ -401,8 +362,9 @@ NetworkEngine::isNodeBlacklisted(const SockAddr& addr) const
 }
 
 void
-NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr& from)
+NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
 {
+    auto from = f.getMappedIPv4();
     if (isMartian(from)) {
         DHT_LOG.w("Received packet from martian node %s", from.toString().c_str());
         return;
@@ -423,8 +385,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         return;
     }
 
-    if (msg->network != network) {
-        DHT_LOG.d("Received message from other network %u", msg->network);
+    if (msg->network != config.network) {
+        DHT_LOG.d("Received message from other config.network %u", msg->network);
         return;
     }
 
@@ -434,7 +396,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
     if (msg->type == MessageType::ValueData) {
         auto pmsg_it = partial_messages.find(msg->tid);
         if (pmsg_it == partial_messages.end()) {
-            DHT_LOG.d("Can't find partial message");
+            if (logIncoming_)
+                DHT_LOG.d("Can't find partial message");
             rateLimit(from);
             return;
         }
@@ -474,15 +437,15 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, const SockAddr&
         process(std::move(msg), from);
     } else {
         // starting partial message session
-        PartialMessage pmsg;
-        pmsg.from = from;
-        pmsg.msg = std::move(msg);
-        pmsg.start = now;
-        pmsg.last_part = now;
-        auto wmsg = partial_messages.emplace(pmsg.msg->tid, std::move(pmsg));
-        if (wmsg.second) {
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, wmsg.first->first));
+        auto k = msg->tid;
+        auto& pmsg = partial_messages[k];
+        if (not pmsg.msg) {
+            pmsg.from = from;
+            pmsg.msg = std::move(msg);
+            pmsg.start = now;
+            pmsg.last_part = now;
+            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
+            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
         } else
             DHT_LOG.e("Partial message with given TID already exists");
     }
@@ -518,7 +481,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 node->received(now, req);
                 if (not node->isClient())
                     onNewNode(node, 1);
-                throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find transaction", msg->id};
+                DHT_LOG.d(node->id, "[node %s] can't find transaction with id %u", node->toString().c_str(), msg->tid);
+                return;
             }
         }
 
@@ -544,19 +508,21 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 req->reply_time = time_point::min();
                 onError(req, DhtProtocolException {msg->error_code});
             } else {
-                DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",
+                if (logIncoming_)
+                    DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
             }
             break;
         }
         case MessageType::Reply:
             if (req) { /* request reply */
-                if (req->getType() == MessageType::AnnounceValue or req->getType() == MessageType::Listen)
-                    req->node->authSuccess();
-                req->reply_time = scheduler.time();
+                auto& r = *req;
+                if (r.getType() == MessageType::AnnounceValue or r.getType() == MessageType::Listen)
+                    r.node->authSuccess();
+                r.reply_time = scheduler.time();
 
                 deserializeNodes(*msg, from);
-                req->setDone(std::move(*msg));
+                r.setDone(std::move(*msg));
                 break;
             } else { /* request socket data */
                 deserializeNodes(*msg, from);
@@ -574,7 +540,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             switch (msg->type) {
             case MessageType::Ping:
                 ++in_stats.ping;
-                DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
                 onPing(node);
                 sendPong(from, msg->tid);
                 break;
@@ -595,7 +562,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::AnnounceValue: {
-                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
 
@@ -608,13 +576,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::Refresh:
-                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
                 sendValueAnnounced(from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
-                DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_)
+                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query));
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
@@ -645,33 +615,9 @@ insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 }
 
 int
-NetworkEngine::send(const char *buf, size_t len, int flags, const SockAddr& addr)
+NetworkEngine::send(const SockAddr& addr, const char *buf, size_t len, bool confirmed)
 {
-    if (not addr)
-        return EFAULT;
-
-    int s;
-    if (addr.getFamily() == AF_INET)
-        s = dht_socket;
-    else if (addr.getFamily() == AF_INET6)
-        s = dht_socket6;
-    else
-        s = -1;
-
-    if (s < 0)
-        return EAFNOSUPPORT;
-#ifdef MSG_NOSIGNAL
-    flags |= MSG_NOSIGNAL;
-#endif
-    if (sendto(s, buf, len, flags, addr.get(), addr.getLength()) == -1) {
-        int err = errno;
-        DHT_LOG.e("Can't send message to %s: %s", addr.toString().c_str(), strerror(err));
-        if (err == EPIPE) {
-            throw SocketException(EPIPE);
-        }
-        return err;
-    }
-    return 0;
+    return dht_socket ? dht_socket->sendTo(addr, (const uint8_t*)buf, len, confirmed) : ENOTCONN;
 }
 
 Sp<Request>
@@ -679,18 +625,18 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
     TransId tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(1);
-     pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_A); pk.pack_map(1);
+     pk.pack(KEY_REQ_ID); pk.pack(myid);
 
-    pk.pack(std::string("q")); pk.pack(std::string("ping"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_PING);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Ping, tid.toInt(), node,
@@ -716,22 +662,22 @@ void
 NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
-    pk.pack(std::string("r")); pk.pack_map(2);
-      pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_R); pk.pack_map(2);
+      pk.pack(KEY_REQ_ID); pk.pack(myid);
       insertAddr(pk, addr);
 
     TransId t (tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -740,25 +686,25 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(2 + (want>0?1:0));
-      pk.pack(std::string("id"));     pk.pack(myid);
-      pk.pack(std::string("target")); pk.pack(target);
+    pk.pack(KEY_A); pk.pack_map(2 + (want>0?1:0));
+      pk.pack(KEY_REQ_ID);     pk.pack(myid);
+      pk.pack(KEY_REQ_TARGET); pk.pack(target);
     if (want > 0) {
-      pk.pack(std::string("w"));
+      pk.pack(KEY_REQ_WANT);
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
       if (want & WANT4) pk.pack(AF_INET);
       if (want & WANT6) pk.pack(AF_INET6);
     }
 
-    pk.pack(std::string("q")); pk.pack(std::string("find"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_FIND);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::FindNode, tid.toInt(), n,
@@ -786,28 +732,28 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(std::string("a"));  pk.pack_map(2 +
+    pk.pack(KEY_A);  pk.pack_map(2 +
                                 (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0) +
                                 (want>0?1:0));
-      pk.pack(std::string("id")); pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(info_hash);
-      pk.pack(std::string("q")); pk.pack(query);
+      pk.pack(KEY_REQ_ID); pk.pack(myid);
+      pk.pack(KEY_REQ_H);  pk.pack(info_hash);
+      pk.pack(KEY_Q); pk.pack(query);
     if (want > 0) {
-      pk.pack(std::string("w"));
+      pk.pack(KEY_REQ_WANT);
       pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
       if (want & WANT4) pk.pack(AF_INET);
       if (want & WANT6) pk.pack(AF_INET6);
     }
 
-    pk.pack(std::string("q")); pk.pack(std::string("get"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_GET);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::GetValues, tid.toInt(), n,
@@ -895,13 +841,13 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
         total_size += v.size();
 
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack(std::string("values"));
+    pk.pack(KEY_REQ_VALUES);
     pk.pack_array(svals.size());
     // try to put everything in a single UDP packet
     if (svals.size() < 50 && total_size < MAX_PACKET_VALUE_SIZE) {
         for (const auto& b : svals)
             buffer.write((const char*)b.data(), b.size());
-        DHT_LOG.d("sending %lu bytes of values", total_size);
+        // DHT_LOG.d("sending %lu bytes of values", total_size);
         svals.clear();
     } else {
         for (const auto& b : svals)
@@ -921,19 +867,19 @@ NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals
             end = std::min(start + MTU, v.size());
             buffer.clear();
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
-            pk.pack_map(3+(network?1:0));
-            if (network) {
-                pk.pack(std::string("n")); pk.pack(network);
+            pk.pack_map(3+(config.network?1:0));
+            if (config.network) {
+                pk.pack(KEY_NETID); pk.pack(config.network);
             }
-            pk.pack(std::string("y")); pk.pack(std::string("v"));
-            pk.pack(std::string("t")); pk.pack_bin(tid.size());
+            pk.pack(KEY_Y); pk.pack(KEY_V);
+            pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                        pk.pack_bin_body((const char*)tid.data(), tid.size());
-            pk.pack(std::string("p")); pk.pack_map(1);
+            pk.pack(KEY_V); pk.pack_map(1);
                 pk.pack(i); pk.pack_map(2);
                     pk.pack(std::string("o")); pk.pack(start);
                     pk.pack(std::string("d")); pk.pack_bin(end-start);
                                                pk.pack_bin_body((const char*)v.data()+start, end-start);
-            send(buffer.data(), buffer.size(), 0, addr);
+            send(addr, buffer.data(), buffer.size());
             start = end;
         } while (start != v.size());
         i++;
@@ -946,24 +892,24 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
-    pk.pack(std::string("r"));
+    pk.pack(KEY_R);
     pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
-    pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_REQ_ID); pk.pack(myid);
     insertAddr(pk, addr);
     if (nodes.size() > 0) {
-        pk.pack(std::string("n4"));
+        pk.pack(KEY_REQ_NODES4);
         pk.pack_bin(nodes.size());
         pk.pack_bin_body((const char*)nodes.data(), nodes.size());
     }
     if (nodes6.size() > 0) {
-        pk.pack(std::string("n6"));
+        pk.pack(KEY_REQ_NODES6);
         pk.pack_bin(nodes6.size());
         pk.pack_bin_body((const char*)nodes6.data(), nodes6.size());
     }
     if (not token.empty()) {
-        pk.pack(std::string("token")); packToken(pk, token);
+        pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
     }
     std::vector<Blob> svals {};
     if (not st.empty()) { /* pack complete values */
@@ -971,7 +917,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
         if (fields.empty()) {
             svals = packValueHeader(buffer, st);
         } else { /* pack fields */
-            pk.pack(std::string("fields"));
+            pk.pack(KEY_REQ_FIELDS);
             pk.pack_map(2);
             pk.pack(std::string("f")); pk.pack(fields);
             pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
@@ -983,16 +929,16 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
     }
 
     TransId t (tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
-                               pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
+                      pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     // send response
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 
     // send parts
     if (not svals.empty())
@@ -1077,26 +1023,26 @@ NetworkEngine::sendListen(Sp<Node> n,
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
     auto has_query = query.where.getFilter() or not query.select.getSelection().empty();
-    pk.pack(std::string("a")); pk.pack_map(4 + has_query);
-      pk.pack(std::string("id"));    pk.pack(myid);
-      pk.pack(std::string("h"));     pk.pack(hash);
-      pk.pack(std::string("token")); packToken(pk, token);
-      pk.pack(std::string("sid"));  pk.pack_bin(sid.size());
-                                     pk.pack_bin_body((const char*)sid.data(), sid.size());
+    pk.pack(KEY_A); pk.pack_map(4 + has_query);
+      pk.pack(KEY_REQ_ID);    pk.pack(myid);
+      pk.pack(KEY_REQ_H);     pk.pack(hash);
+      pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
+      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
+                              pk.pack_bin_body((const char*)sid.data(), sid.size());
       if (has_query) {
-          pk.pack(std::string("q")); pk.pack(query);
+          pk.pack(KEY_REQ_QUERY); pk.pack(query);
       }
 
-    pk.pack(std::string("q")); pk.pack(std::string("listen"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_LISTEN);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Listen, tid.toInt(), n,
@@ -1120,22 +1066,22 @@ void
 NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
-    pk.pack(std::string("r")); pk.pack_map(2);
-      pk.pack(std::string("id")); pk.pack(myid);
+    pk.pack(KEY_R); pk.pack_map(2);
+      pk.pack(KEY_REQ_ID); pk.pack(myid);
       insertAddr(pk, addr);
 
     TransId t (tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 Sp<Request>
@@ -1150,25 +1096,25 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map((created < scheduler.time() ? 5 : 4));
-      pk.pack(std::string("id"));     pk.pack(myid);
-      pk.pack(std::string("h"));      pk.pack(infohash);
+    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
+      pk.pack(KEY_REQ_ID);     pk.pack(myid);
+      pk.pack(KEY_REQ_H);      pk.pack(infohash);
       auto v = packValueHeader(buffer, {value});
       if (created < scheduler.time()) {
-          pk.pack(std::string("c"));
+          pk.pack(KEY_REQ_CREATION);
           pk.pack(to_time_t(created));
       }
-      pk.pack(std::string("token"));  pk.pack(token);
+      pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
 
-    pk.pack(std::string("q")); pk.pack(std::string("put"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Q);   pk.pack(QUERY_PUT);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
+                      pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_Y);   pk.pack(KEY_Q);
+    pk.pack(KEY_UA);  pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid.toInt(), n,
@@ -1208,21 +1154,21 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
     TransId tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(std::string("a")); pk.pack_map(4);
-      pk.pack(std::string("id"));  pk.pack(myid);
-      pk.pack(std::string("h"));  pk.pack(infohash);
-      pk.pack(std::string("vid")); pk.pack(vid);
-      pk.pack(std::string("token"));  pk.pack(token);
+    pk.pack(KEY_A); pk.pack_map(4);
+      pk.pack(KEY_REQ_ID);       pk.pack(myid);
+      pk.pack(KEY_REQ_H);        pk.pack(infohash);
+      pk.pack(KEY_REQ_VALUE_ID); pk.pack(vid);
+      pk.pack(KEY_REQ_TOKEN);    pk.pack(token);
 
-    pk.pack(std::string("q")); pk.pack(std::string("refresh"));
-    pk.pack(std::string("t")); pk.pack_bin(tid.size());
+    pk.pack(KEY_Q); pk.pack(QUERY_REFRESH);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
                                pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(std::string("y")); pk.pack(std::string("q"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
     auto req = std::make_shared<Request>(MessageType::Refresh, tid.toInt(), n,
@@ -1253,23 +1199,23 @@ void
 NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(network?1:0));
+    pk.pack_map(4+(config.network?1:0));
 
-    pk.pack(std::string("r")); pk.pack_map(3);
-      pk.pack(std::string("id"));  pk.pack(myid);
-      pk.pack(std::string("vid")); pk.pack(vid);
+    pk.pack(KEY_R); pk.pack_map(3);
+      pk.pack(KEY_REQ_ID);  pk.pack(myid);
+      pk.pack(KEY_REQ_VALUE_ID); pk.pack(vid);
       insertAddr(pk, addr);
 
     TransId t(tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("r"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_R);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 void
@@ -1283,25 +1229,25 @@ NetworkEngine::sendError(const SockAddr& addr,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(4 + (include_id?1:0));
 
-    pk.pack(std::string("e")); pk.pack_array(2);
+    pk.pack(KEY_E); pk.pack_array(2);
       pk.pack(code);
       pk.pack(message);
 
     if (include_id) {
-        pk.pack(std::string("r")); pk.pack_map(1);
-          pk.pack(std::string("id")); pk.pack(myid);
+        pk.pack(KEY_R); pk.pack_map(1);
+          pk.pack(KEY_REQ_ID); pk.pack(myid);
     }
 
     TransId t(tid);
-    pk.pack(std::string("t")); pk.pack_bin(t.size());
+    pk.pack(KEY_TID); pk.pack_bin(t.size());
                                pk.pack_bin_body((const char*)t.data(), t.size());
-    pk.pack(std::string("y")); pk.pack(std::string("e"));
-    pk.pack(std::string("v")); pk.pack(my_v);
-    if (network) {
-        pk.pack(std::string("n")); pk.pack(network);
+    pk.pack(KEY_Y); pk.pack(KEY_E);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    send(buffer.data(), buffer.size(), 0, addr);
+    send(addr, buffer.data(), buffer.size());
 }
 
 void

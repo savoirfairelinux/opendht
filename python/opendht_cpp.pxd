@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2016 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
 #
@@ -77,6 +77,9 @@ cdef extern from "opendht/sockaddr.h" namespace "dht":
         void setPort(in_port_t p)
         sa_family_t getFamily() const
         void setFamily(sa_family_t f)
+        bool isLoopback() const
+        bool isPrivate() const
+        bool isUnspecified() const
 
 ctypedef vector[uint8_t] Blob
 
@@ -182,6 +185,7 @@ cdef extern from "opendht/node.h" namespace "dht":
 cdef extern from "opendht/callbacks.h" namespace "dht":
     ctypedef void (*ShutdownCallbackRaw)(void *user_data)
     ctypedef bool (*GetCallbackRaw)(shared_ptr[Value] values, void *user_data)
+    ctypedef bool (*ValueCallbackRaw)(shared_ptr[Value] values, bool expired, void *user_data)
     ctypedef void (*DoneCallbackRaw)(bool done, vector[shared_ptr[Node]]* nodes, void *user_data)
     ctypedef void (*DoneCallbackSimpleRaw)(bool done, void *user_data)
 
@@ -189,6 +193,8 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
         ShutdownCallback() except +
     cppclass GetCallback:
         GetCallback() except +
+    cppclass ValueCallback:
+        ValueCallback() except +
     cppclass DoneCallback:
         DoneCallback() except +
     cppclass DoneCallbackSimple:
@@ -196,6 +202,7 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
 
     cdef ShutdownCallback bindShutdownCb(ShutdownCallbackRaw cb, void *user_data)
     cdef GetCallback bindGetCb(GetCallbackRaw cb, void *user_data)
+    cdef ValueCallback bindValueCb(ValueCallbackRaw cb, void *user_data)
     cdef DoneCallback bindDoneCb(DoneCallbackRaw cb, void *user_data)
     cdef DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw cb, void *user_data)
 
@@ -204,6 +211,9 @@ cdef extern from "opendht/callbacks.h" namespace "dht":
         uint32_t network
         bool is_bootstrap
         bool maintain_storage
+        string persist_path
+        size_t max_req_per_sec
+        size_t max_peer_req_per_sec
     cppclass SecureDhtConfig:
         Config node_config
         Identity id
@@ -231,7 +241,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         string getSearchesLog(sa_family_t af) const
         void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb, nullptr_t f, Where w)
         void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb)
-        ListenToken listen(InfoHash key, GetCallback get_cb)
+        ListenToken listen(InfoHash key, ValueCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)
         vector[unsigned] getNodeMessageStats(bool i)
 

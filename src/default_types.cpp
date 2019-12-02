@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -38,7 +38,7 @@ DhtMessage::storePolicy(InfoHash h, std::shared_ptr<Value>& v, const InfoHash& f
 }
 
 Value::Filter
-DhtMessage::ServiceFilter(std::string s)
+DhtMessage::ServiceFilter(const std::string& s)
 {
     return Value::Filter::chain(
         Value::TypeFilter(TYPE),

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2019 Savoir-faire Linux Inc.
  *
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
@@ -38,14 +38,13 @@ void
 InfoHashTester::testConstructors() {
     // Default constructor creates a null infohash
     auto nullHash = dht::InfoHash();
-    CPPUNIT_ASSERT(nullHash.size() == 20);
+    CPPUNIT_ASSERT_EQUAL((size_t)20u, nullHash.size());
     CPPUNIT_ASSERT(!nullHash);
     // Build from a uint8_t. if length to short, should get a null infohash
     uint8_t to_short[] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8};
     auto infohash = dht::InfoHash(to_short, 8);
-    CPPUNIT_ASSERT(infohash.size() == 20);
-    CPPUNIT_ASSERT_EQUAL(infohash.toString(),
-        std::string("0000000000000000000000000000000000000000"));
+    CPPUNIT_ASSERT_EQUAL((size_t)20u, infohash.size());
+    CPPUNIT_ASSERT_EQUAL(std::string("0000000000000000000000000000000000000000"), infohash.toString());
     // Build from a uint8_t. if length is enough, data should contains the uint8_t
     uint8_t enough[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa,
                         0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa};
@@ -66,7 +65,7 @@ InfoHashTester::testConstructors() {
     }
     // Build from string
     auto infohashFromStr = dht::InfoHash("0102030405060708090A0102030405060708090A");
-    CPPUNIT_ASSERT(infohashFromStr.size() == 20);
+    CPPUNIT_ASSERT_EQUAL((size_t)20u, infohashFromStr.size());
     const auto* dataStr = infohashFromStr.data();
     for (auto i = 0; i < 20; ++i) {
         CPPUNIT_ASSERT_EQUAL((int)dataStr[i], (int)data[i]);

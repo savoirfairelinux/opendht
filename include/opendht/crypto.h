@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -43,16 +43,22 @@ namespace dht {
 namespace crypto {
 
 class OPENDHT_PUBLIC CryptoException : public std::runtime_error {
-    public:
-        CryptoException(const std::string& str) : std::runtime_error(str) {};
+public:
+    explicit CryptoException(const std::string& str) : std::runtime_error(str) {};
+    explicit CryptoException(const char* str) : std::runtime_error(str) {};
+    CryptoException(const CryptoException& e) noexcept = default;
+    CryptoException& operator=(const CryptoException&) noexcept = default;
 };
 
 /**
  * Exception thrown when a decryption error happened.
  */
 class OPENDHT_PUBLIC DecryptError : public CryptoException {
-    public:
-        DecryptError(const std::string& str = "") : CryptoException(str) {};
+public:
+    explicit DecryptError(const std::string& str) : CryptoException(str) {};
+    explicit DecryptError(const char* str) : CryptoException(str) {};
+    DecryptError(const DecryptError& e) noexcept = default;
+    DecryptError& operator=(const DecryptError&) noexcept = default;
 };
 
 struct PrivateKey;
@@ -66,13 +72,14 @@ using Identity = std::pair<std::shared_ptr<PrivateKey>, std::shared_ptr<Certific
  */
 struct OPENDHT_PUBLIC PublicKey
 {
-    PublicKey() {}
+    PublicKey();
 
     /**
      * Takes ownership of an existing gnutls_pubkey.
      */
     PublicKey(gnutls_pubkey_t k) : pk(k) {}
-    PublicKey(const Blob& pk);
+    PublicKey(const uint8_t* dat, size_t dat_size);
+    PublicKey(const Blob& pk) : PublicKey(pk.data(), pk.size()) {}
     PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };
 
     ~PublicKey();
@@ -96,8 +103,15 @@ struct OPENDHT_PUBLIC PublicKey
      */
     PkId getLongId() const;
 
-    bool checkSignature(const Blob& data, const Blob& signature) const;
-    Blob encrypt(const Blob&) const;
+    bool checkSignature(const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) const;
+    bool checkSignature(const Blob& data, const Blob& signature) const {
+        return checkSignature(data.data(), data.size(), signature.data(), signature.size());
+    }
+
+    Blob encrypt(const uint8_t* data, size_t data_len) const;
+    Blob encrypt(const Blob& data) const {
+        return encrypt(data.data(), data.size());
+    }
 
     void pack(Blob& b) const;
     void unpack(const uint8_t* dat, size_t dat_size);
@@ -115,7 +129,9 @@ struct OPENDHT_PUBLIC PublicKey
 
     void msgpack_unpack(msgpack::object o);
 
-    gnutls_pubkey_t pk {};
+    gnutls_digest_algorithm_t getPreferredDigest() const;
+
+    gnutls_pubkey_t pk {nullptr};
 private:
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
@@ -138,7 +154,8 @@ struct OPENDHT_PUBLIC PrivateKey
     PrivateKey(PrivateKey&& o) noexcept;
     PrivateKey& operator=(PrivateKey&& o) noexcept;
 
-    PrivateKey(const Blob& import, const std::string& password = {});
+    PrivateKey(const uint8_t* src, size_t src_size, const char* password = nullptr);
+    PrivateKey(const Blob& src, const std::string& password = {}) : PrivateKey(src.data(), src.size(), password.data()) {}
     ~PrivateKey();
     explicit operator bool() const { return key; }
 
@@ -186,7 +203,7 @@ class OPENDHT_PUBLIC RevocationList
 public:
     RevocationList();
     RevocationList(const Blob& b);
-    RevocationList(RevocationList&& o) : crl(o.crl) { o.crl = nullptr; }
+    RevocationList(RevocationList&& o) noexcept : crl(o.crl) { o.crl = nullptr; }
     ~RevocationList();
 
     RevocationList& operator=(RevocationList&& o) { crl = o.crl; o.crl = nullptr; return *this; }
@@ -254,14 +271,49 @@ private:
     RevocationList& operator=(const RevocationList&) = delete;
 };
 
+enum class NameType { UNKNOWN = 0, RFC822, DNS, URI, IP };
+
+class OPENDHT_PUBLIC CertificateRequest {
+public:
+    CertificateRequest();
+    CertificateRequest(const uint8_t* data, size_t size);
+    CertificateRequest(const Blob& data) : CertificateRequest(data.data(), data.size()) {}
+
+    CertificateRequest(CertificateRequest&& o) noexcept : request(std::move(o.request)) {
+        o.request = nullptr;
+    }
+    CertificateRequest& operator=(CertificateRequest&& o) noexcept;
+
+    ~CertificateRequest();
+
+    void setName(const std::string& name);
+    void setUID(const std::string& name);
+    void setAltName(NameType type, const std::string& name);
+
+    std::string getName() const;
+    std::string getUID() const;
+
+    void sign(const PrivateKey& key, const std::string& password = {});
+
+    bool verify() const;
+
+    Blob pack() const;
+    std::string toString() const;
+
+    gnutls_x509_crq_t get() const { return request; }
+private:
+    CertificateRequest(const CertificateRequest& o) = delete;
+    CertificateRequest& operator=(const CertificateRequest& o) = delete;
+    gnutls_x509_crq_t request {nullptr};
+};
 
 struct OPENDHT_PUBLIC Certificate {
-    Certificate() {}
+    Certificate() noexcept {}
 
     /**
      * Take ownership of existing gnutls structure
      */
-    Certificate(gnutls_x509_crt_t crt) : cert(crt) {}
+    Certificate(gnutls_x509_crt_t crt) noexcept : cert(crt) {}
 
     Certificate(Certificate&& o) noexcept : cert(o.cert), issuer(std::move(o.issuer)) { o.cert = nullptr; };
 
@@ -392,8 +444,6 @@ struct OPENDHT_PUBLIC Certificate {
     /** Read certificate issuer User ID (UID) */
     std::string getIssuerUID() const;
 
-    enum class NameType { UNKNOWN = 0, RFC822, DNS, URI, IP };
-
     /** Read certificate alternative names */
     std::vector<std::pair<NameType, std::string>> getAltNames() const;
 
@@ -431,7 +481,8 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
-    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", Identity ca = {}, bool is_ca = false);
+    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false);
+    static Certificate generate(const CertificateRequest& request, const Identity& ca);
 
     gnutls_x509_crt_t getCopy() const {
         if (not cert)
@@ -472,7 +523,9 @@ struct OPENDHT_PUBLIC Certificate {
         return {crts, crls};
     }
 
-    gnutls_x509_crt_t cert {};
+    gnutls_digest_algorithm_t getPreferredDigest() const;
+
+    gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
 private:
     Certificate(const Certificate&) = delete;
@@ -500,10 +553,10 @@ struct OPENDHT_PUBLIC TrustList
     };
 
     TrustList();
-    TrustList(TrustList&& o) : trust(std::move(o.trust)) {
+    TrustList(TrustList&& o) noexcept : trust(std::move(o.trust)) {
         o.trust = nullptr;
     }
-    TrustList& operator=(TrustList&& o);
+    TrustList& operator=(TrustList&& o) noexcept;
     ~TrustList();
     void add(const Certificate& crt);
     void add(const RevocationList& crl);
@@ -513,7 +566,7 @@ struct OPENDHT_PUBLIC TrustList
 private:
     TrustList(const TrustList& o) = delete;
     TrustList& operator=(const TrustList& o) = delete;
-    gnutls_x509_trust_list_t trust;
+    gnutls_x509_trust_list_t trust {nullptr};
 };
 
 template <class T>
@@ -611,12 +664,13 @@ using SecureBlob = secure_vector<uint8_t>;
  *           If not set, the generated certificate will be a self-signed CA.
  * @param key_length stength of the generated private key (bits).
  */
-OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, Identity ca, unsigned key_length, bool is_ca);
-OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", Identity ca = {}, unsigned key_length = 4096);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name, const Identity& ca, unsigned key_length, bool is_ca);
+OPENDHT_PUBLIC Identity generateIdentity(const std::string& name = "dhtnode", const Identity& ca = {}, unsigned key_length = 4096);
 
-OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, Identity ca, bool is_ca);
-OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", Identity ca = {});
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name, const Identity& ca, bool is_ca);
+OPENDHT_PUBLIC Identity generateEcIdentity(const std::string& name = "dhtnode", const Identity& ca = {});
 
+OPENDHT_PUBLIC void saveIdentity(const Identity& id, const std::string& path, const std::string& privkey_password = {});
 
 /**
  * Performs SHA512, SHA256 or SHA1, depending on hash_length.
@@ -642,7 +696,10 @@ OPENDHT_PUBLIC Blob stretchKey(const std::string& password, Blob& salt, size_t k
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
  */
-OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const Blob& key);
+OPENDHT_PUBLIC Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key);
+OPENDHT_PUBLIC inline Blob aesEncrypt(const Blob& data, const Blob& key) {
+    return aesEncrypt(data.data(), data.size(), key);
+}
 OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const std::string& password);
 
 /**

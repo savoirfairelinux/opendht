@@ -26,3 +26,19 @@
   #define OPENDHT_PUBLIC
   #define OPENDHT_LOCAL
 #endif // opendht_EXPORTS
+
+
+#ifdef opendht_c_EXPORTS // defined if OpenDHT is compiled as a shared library
+  #ifdef OPENDHT_C_BUILD // defined if we are building the OpenDHT shared library (instead of using it)
+    #define OPENDHT_C_PUBLIC OPENDHT_EXPORT
+  #else
+    #define OPENDHT_C_PUBLIC OPENDHT_IMPORT
+  #endif // OPENDHT_BUILD
+  #define OPENDHT_C_LOCAL OPENDHT_HIDDEN
+#else // opendht_EXPORTS is not defined: this means OpenDHT is a static lib.
+  #define OPENDHT_C_PUBLIC
+  #define OPENDHT_C_LOCAL
+#endif // opendht_EXPORTS
+
+// bytes
+#define HASH_LEN 20u

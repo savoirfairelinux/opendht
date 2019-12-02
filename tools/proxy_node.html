@@ -116,13 +116,19 @@ $(function() {
     const serverStatus = $("#serverStatus");
     const serverBtn = $("#serverBtn");
     setServer = function(event) {
-        server = 'http://'+serverValue.val() + '/';
+        server = serverValue.val() + '/';
         serverStatus.empty();
         serverBtn.button('loading');
         $.getJSON(server, function(data){
             $('<span><b>Node</b> '+data.node_id+'</span>').appendTo(serverStatus).hide().fadeIn();
         }).fail(function(error) {
-            serverStatus.html("<div class='alert alert-danger' style='margin-bottom: 0px;'><span class='glyphicon glyphicon-remove' aria-hidden='true'></span> Can't access node</div>");
+            var message = " Cant' access node."
+            if (serverValue.val().indexOf("https") != -1){
+                message += "</br></br>Self-signed certificate must be allowed in browser."
+            }
+            serverStatus.html("<div class='alert alert-danger' style='margin-bottom: 0px;'>" +
+                              "<span class='glyphicon glyphicon-remove' aria-hidden='true'></span>" +
+                              message + "</div>");
         }).always(function(error) {
             serverBtn.button('reset');
         });
@@ -143,7 +149,7 @@ $(function() {
                     <div class="well well-sm" style="margin-top:10px; margin-bottom:0px;">
                         <form id="serverForm" class="form-inline" onsubmit="return setServer();" style="margin-bottom:4px;">
                             <div class="input-group">
-                                <input type="text" class="form-control" id="serverValue" placeholder="Proxy server" value="127.0.0.1:8080"/>
+                                <input type="text" class="form-control" id="serverValue" placeholder="Proxy server" value="http://127.0.0.1:8080"/>
                                 <span class="input-group-btn">
                                     <button id="serverBtn" type="submit" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i>"><span class="glyphicon glyphicon-refresh" aria-hidden="true"></span></button>
                                 </span>

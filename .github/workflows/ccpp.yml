@@ -1,0 +1,26 @@
+name: C/C++ CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v1
+    - name: deps
+      run: |
+        sudo apt install libncurses5-dev libreadline-dev nettle-dev \
+        libgnutls28-dev libuv1-dev cython3 python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev \
+        autotools-dev autoconf libasio-dev libfmt-dev libhttp-parser-dev libmsgpack-dev
+    - name: autogen
+      run: ./autogen.sh
+    - name: configure
+      run: ./configure
+    - name: make
+      run: make
+    - name: make check
+      run: make check
+    - name: make distcheck
+      run: make distcheck

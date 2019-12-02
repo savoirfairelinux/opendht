@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -42,6 +42,11 @@ struct Bucket {
     Sp<Node> randomNode();
 
     void sendCachedPing(net::NetworkEngine& ne);
+    void connectivityChanged() {
+        time = time_point::min();
+        for (auto& node : nodes)
+            node->setTime(time_point::min());
+    }
 };
 
 class RoutingTable : public std::list<Bucket> {
@@ -76,7 +81,7 @@ public:
     void connectivityChanged(const time_point& now) {
         grow_time = now;
         for (auto& b : *this)
-            b.time = time_point::min();
+            b.connectivityChanged();
     }
 
     bool onNewNode(const Sp<Node>& node, int comfirm, const time_point& now, const InfoHash& myid, net::NetworkEngine& ne);

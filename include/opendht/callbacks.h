@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -44,6 +44,13 @@ enum class NodeStatus {
     Connected     // 1+ good nodes
 };
 
+inline constexpr const char*
+statusToStr(NodeStatus status) {
+    return status == NodeStatus::Connected  ? "connected"  : (
+           status == NodeStatus::Connecting ? "connecting" :
+                                              "disconnected");
+}
+
 struct OPENDHT_PUBLIC NodeStats {
     unsigned good_nodes {0},
              dubious_nodes {0},
@@ -71,6 +78,7 @@ struct OPENDHT_PUBLIC NodeInfo {
     InfoHash node_id;
     NodeStats ipv4;
     NodeStats ipv6;
+    size_t ongoing_ops;
 
 #ifdef OPENDHT_JSONCPP
     /**
@@ -89,20 +97,29 @@ struct OPENDHT_PUBLIC NodeInfo {
  */
 struct OPENDHT_PUBLIC Config {
     /** DHT node ID */
-    InfoHash node_id;
+    InfoHash node_id {};
 
     /**
      * DHT network ID. A node will only talk with other nodes having
      * the same network ID.
      * Network ID 0 (default) represents the main public network.
      */
-    NetId network;
+    NetId network {0};
 
     /** For testing purposes only, enables bootstrap mode */
-    bool is_bootstrap;
+    bool is_bootstrap {false};
 
     /** Makes the DHT responsible to maintain its stored values. Consumes more ressources. */
-    bool maintain_storage;
+    bool maintain_storage {false};
+
+    /** If set, the dht will load its state from this file on start and save its state in this file on shutdown */
+    std::string persist_path {};
+
+    /** If non-0, overrides the default global rate-limit.-1 means no limit. */
+    ssize_t max_req_per_sec {0};
+
+    /** If non-0, overrides the default per-IP address rate-limit. -1 means no limit. */
+    ssize_t max_peer_req_per_sec {0};
 };
 
 /**
@@ -110,8 +127,8 @@ struct OPENDHT_PUBLIC Config {
  */
 struct OPENDHT_PUBLIC SecureDhtConfig
 {
-    Config node_config;
-    crypto::Identity id;
+    Config node_config {};
+    crypto::Identity id {};
 };
 
 static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
@@ -127,9 +144,7 @@ using ShutdownCallback = std::function<void()>;
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 
 typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
-
-OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC GetCallback bindGetCb(GetCallbackSimple cb);
+typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data);
 
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
 typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
@@ -139,10 +154,13 @@ typedef bool (*FilterRaw)(const Value&, void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
-OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data);
+OPENDHT_PUBLIC GetCallbackSimple bindGetCb(const GetCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC GetCallback bindGetCb(const GetCallbackSimple& cb);
+OPENDHT_PUBLIC ValueCallback bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data);
 OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackSimple donecb);
-OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data);
+OPENDHT_PUBLIC DoneCallback bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(const DoneCallbackSimpleRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC Value::Filter bindFilterRaw(const FilterRaw& raw_filter, void* user_data);
 
 }

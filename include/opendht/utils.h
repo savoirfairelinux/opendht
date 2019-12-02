@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -39,6 +39,8 @@ namespace dht {
 
 using NetId = uint32_t;
 using want_t = int_fast8_t;
+
+OPENDHT_PUBLIC const char* version();
 
 // shortcut for std::shared_ptr
 template<class T>
@@ -88,6 +90,21 @@ template <class DT>
 static double
 print_dt(DT d) {
     return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+}
+
+template <class DT>
+static std::string
+print_duration(DT d) {
+    if (d < std::chrono::seconds(0)) {
+        return "-" + print_duration(-d);
+    }
+    if (d < std::chrono::milliseconds(1)) {
+        return std::to_string(std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count()) +  " us";
+    } else if (d < std::chrono::seconds(1)) {
+        return std::to_string(std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count()) +  " ms";
+    } else {
+        return std::to_string(print_dt(d)) + " s";
+    }
 }
 
 template <typename Duration = duration>

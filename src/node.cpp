@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -37,6 +37,13 @@ Node::Node(const InfoHash& id, const SockAddr& addr, bool client)
     transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
 }
 
+Node::Node(const InfoHash& id, SockAddr&& addr, bool client)
+: id(id), addr(std::move(addr)), is_client(client), sockets_()
+{
+    thread_local crypto::random_device rd {};
+    transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
+}
+
 /* This is our definition of a known-good node. */
 bool
 Node::isGood(time_point now) const
@@ -49,7 +56,7 @@ Node::isGood(time_point now) const
 bool
 Node::isPendingMessage() const
 {
-    for (auto r : requests_) {
+    for (const auto& r : requests_) {
         if (r.second->pending())
             return true;
     }
@@ -60,7 +67,7 @@ size_t
 Node::getPendingMessageCount() const
 {
     size_t count {0};
-    for (auto r : requests_) {
+    for (const auto& r : requests_) {
         if (r.second->pending())
             count++;
     }

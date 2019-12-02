@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -22,6 +22,9 @@
 #pragma once
 
 #include <opendht.h>
+#include <opendht/log.h>
+#include <opendht/crypto.h>
+#include <opendht/network_utils.h>
 #ifndef WIN32_NATIVE
 #include <getopt.h>
 #include <readline/readline.h>
@@ -86,48 +89,145 @@ bool isInfoHash(const dht::InfoHash& h) {
     return true;
 }
 
-static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
+std::vector<uint8_t>
+loadFile(const std::string& path)
+{
+    std::vector<uint8_t> buffer;
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Can't read file: "+path);
+    file.seekg(0, std::ios::end);
+    auto size = file.tellg();
+    if (size > std::numeric_limits<unsigned>::max())
+        throw std::runtime_error("File is too big: "+path);
+    buffer.resize(size);
+    file.seekg(0, std::ios::beg);
+    if (!file.read((char*)buffer.data(), size))
+        throw std::runtime_error("Can't load file: "+path);
+    return buffer;
+}
 
 struct dht_params {
     bool help {false}; // print help and exit
-    bool log {false};
-    std::string logfile {};
-    bool syslog {false};
-    in_port_t port {0};
-    dht::NetId network {0};
+    bool version {false};
     bool generate_identity {false};
     bool daemonize {false};
     bool service {false};
+    bool peer_discovery {false};
+    bool log {false};
+    bool syslog {false};
+    std::string logfile {};
     std::pair<std::string, std::string> bootstrap {};
+    dht::NetId network {0};
+    in_port_t port {0};
     in_port_t proxyserver {0};
+    in_port_t proxyserverssl {0};
     std::string proxyclient {};
     std::string pushserver {};
     std::string devicekey {};
+    std::string persist_path {};
+    dht::crypto::Identity id {};
+    dht::crypto::Identity proxy_id {};
+    std::string privkey_pwd {};
+    std::string proxy_privkey_pwd {};
+    std::string save_identity {};
+    bool no_rate_limit {false};
 };
 
+std::pair<dht::DhtRunner::Config, dht::DhtRunner::Context>
+getDhtConfig(dht_params& params)
+{
+    if (not params.id.first and params.generate_identity) {
+        auto node_ca = std::make_unique<dht::crypto::Identity>(dht::crypto::generateEcIdentity("DHT Node CA"));
+        params.id = dht::crypto::generateIdentity("DHT Node", *node_ca);
+        if (not params.save_identity.empty()) {
+            dht::crypto::saveIdentity(*node_ca, params.save_identity + "_ca", params.privkey_pwd);
+            dht::crypto::saveIdentity(params.id, params.save_identity, params.privkey_pwd);
+        }
+    }
+
+    dht::DhtRunner::Config config {};
+    config.dht_config.node_config.network = params.network;
+    config.dht_config.node_config.maintain_storage = false;
+    config.dht_config.node_config.persist_path = params.persist_path;
+    config.dht_config.id = params.id;
+    config.threaded = true;
+    config.proxy_server = params.proxyclient;
+    config.push_node_id = "dhtnode";
+    config.push_token = params.devicekey;
+    config.peer_discovery = params.peer_discovery;
+    config.peer_publish = params.peer_discovery;
+    if (params.no_rate_limit) {
+        config.dht_config.node_config.max_req_per_sec = -1;
+        config.dht_config.node_config.max_peer_req_per_sec = -1;
+    }
+
+    dht::DhtRunner::Context context {};
+    if (params.log) {
+        if (params.syslog or (params.daemonize and params.logfile.empty()))
+            context.logger = dht::log::getSyslogLogger("dhtnode");
+        else if (not params.logfile.empty())
+            context.logger = dht::log::getFileLogger(params.logfile);
+        else
+            context.logger = dht::log::getStdLogger();
+    }
+    if (context.logger) {
+        context.statusChangedCallback = [logger = *context.logger](dht::NodeStatus status4, dht::NodeStatus status6) {
+            logger.WARN("Connectivity changed: IPv4: %s, IPv6: %s", dht::statusToStr(status4), dht::statusToStr(status6));
+        };
+    }
+    return {std::move(config), std::move(context)};
+}
+
+void print_node_info(const dht::DhtRunner& node, const dht_params& params) {
+    std::cout << "OpenDHT node " << node.getNodeId() << " running on ";
+    auto port4 = node.getBoundPort(AF_INET);
+    auto port6 = node.getBoundPort(AF_INET6);
+    if (port4 == port6)
+        std::cout << "port " << port4 << std::endl;
+    else
+        std::cout << "IPv4 port " << port4 << ", IPv6 port " << port6 << std::endl;
+    if (params.id.first)
+        std::cout << "Public key ID " << node.getId() << std::endl;
+}
+
 static const constexpr struct option long_options[] = {
-   {"help",       no_argument      , nullptr, 'h'},
-   {"port",       required_argument, nullptr, 'p'},
-   {"net",        required_argument, nullptr, 'n'},
-   {"bootstrap",  required_argument, nullptr, 'b'},
-   {"identity",   no_argument      , nullptr, 'i'},
-   {"verbose",    no_argument      , nullptr, 'v'},
-   {"daemonize",  no_argument      , nullptr, 'd'},
-   {"service",    no_argument      , nullptr, 's'},
-   {"logfile",    required_argument, nullptr, 'l'},
-   {"syslog",     no_argument      , nullptr, 'L'},
-   {"proxyserver",required_argument, nullptr, 'S'},
-   {"proxyclient",required_argument, nullptr, 'C'},
-   {"pushserver", required_argument, nullptr, 'P'},
-   {"devicekey",  required_argument, nullptr, 'D'},
-   {nullptr,      0                , nullptr,  0}
+    {"help",                    no_argument      , nullptr, 'h'},
+    {"port",                    required_argument, nullptr, 'p'},
+    {"net",                     required_argument, nullptr, 'n'},
+    {"bootstrap",               required_argument, nullptr, 'b'},
+    {"identity",                no_argument      , nullptr, 'i'},
+    {"save-identity",           required_argument, nullptr, 'I'},
+    {"certificate",             required_argument, nullptr, 'c'},
+    {"privkey",                 required_argument, nullptr, 'k'},
+    {"privkey-password",        required_argument, nullptr, 'm'},
+    {"verbose",                 no_argument      , nullptr, 'v'},
+    {"daemonize",               no_argument      , nullptr, 'd'},
+    {"service",                 no_argument      , nullptr, 's'},
+    {"peer-discovery",          no_argument      , nullptr, 'D'},
+    {"no-rate-limit",           no_argument      , nullptr, 'U'},
+    {"persist",                 required_argument, nullptr, 'f'},
+    {"logfile",                 required_argument, nullptr, 'l'},
+    {"syslog",                  no_argument      , nullptr, 'L'},
+    {"proxyserver",             required_argument, nullptr, 'S'},
+    {"proxyserverssl",          required_argument, nullptr, 'e'},
+    {"proxy-certificate",       required_argument, nullptr, 'w'},
+    {"proxy-privkey",           required_argument, nullptr, 'K'},
+    {"proxy-privkey-password",  required_argument, nullptr, 'M'},
+    {"proxyclient",             required_argument, nullptr, 'C'},
+    {"pushserver",              required_argument, nullptr, 'y'},
+    {"devicekey",               required_argument, nullptr, 'z'},
+    {"version",                 no_argument      , nullptr, 'V'},
+    {nullptr,                   0                , nullptr,  0}
 };
 
 dht_params
 parseArgs(int argc, char **argv) {
     dht_params params;
     int opt;
-    while ((opt = getopt_long(argc, argv, "hidsvp:n:b:l:", long_options, nullptr)) != -1) {
+    std::string privkey;
+    std::string proxy_privkey;
+    while ((opt = getopt_long(argc, argv, "hidsvDUp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -145,23 +245,43 @@ parseArgs(int argc, char **argv) {
                     std::cout << "Invalid port: " << port_arg << std::endl;
             }
             break;
-        case 'P':
+        case 'e': {
+                int port_arg = atoi(optarg);
+                if (port_arg >= 0 && port_arg < 0x10000)
+                    params.proxyserverssl = port_arg;
+                else
+                    std::cout << "Invalid port: " << port_arg << std::endl;
+            }
+            break;
+        case 'D':
+            params.peer_discovery = true;
+            break;
+        case 'y':
             params.pushserver = optarg;
             break;
         case 'C':
             params.proxyclient = optarg;
             break;
-        case 'D':
+        case 'z':
             params.devicekey = optarg;
+            break;
+        case 'f':
+            params.persist_path = optarg;
             break;
         case 'n':
             params.network = strtoul(optarg, nullptr, 0);
             break;
+        case 'U':
+            params.no_rate_limit = true;
+            break;
         case 'b':
             params.bootstrap = dht::splitPort((optarg[0] == '=') ? optarg+1 : optarg);
             if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
-                params.bootstrap.second = std::to_string(DHT_DEFAULT_PORT);
+                params.bootstrap.second = std::to_string(dht::net::DHT_DEFAULT_PORT);
             }
+            break;
+        case 'V':
+            params.version = true;
             break;
         case 'h':
             params.help = true;
@@ -185,10 +305,59 @@ parseArgs(int argc, char **argv) {
         case 's':
             params.service = true;
             break;
+        case 'c': {
+            try {
+                params.id.second = std::make_shared<dht::crypto::Certificate>(loadFile(optarg));
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::string("Error loading certificate: ") + e.what());
+            }
+            break;
+        }
+        case 'w': {
+            try {
+                params.proxy_id.second = std::make_shared<dht::crypto::Certificate>(loadFile(optarg));
+            } catch (const std::exception& e) {
+                throw std::runtime_error(std::string("Error loading proxy certificate: ") + e.what());
+            }
+            break;
+        }
+        case 'k':
+            privkey = optarg;
+            break;
+        case 'K':
+            proxy_privkey = optarg;
+            break;
+        case 'm':
+            params.privkey_pwd = optarg;
+            break;
+        case 'M':
+            params.proxy_privkey_pwd = optarg;
+            break;
+        case 'I':
+            params.save_identity = optarg;
+            break;
         default:
             break;
         }
     }
+    if (not privkey.empty()) {
+        try {
+            params.id.first = std::make_shared<dht::crypto::PrivateKey>(loadFile(privkey),
+                                                                        params.privkey_pwd);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("Error loading private key: ") + e.what());
+        }
+    }
+    if (not proxy_privkey.empty()) {
+        try {
+            params.proxy_id.first = std::make_shared<dht::crypto::PrivateKey>(loadFile(proxy_privkey),
+                                                                              params.proxy_privkey_pwd);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("Error loading proxy private key: ") + e.what());
+        }
+    }
+    if (params.save_identity.empty())
+        params.privkey_pwd.clear();
     return params;
 }
 
@@ -213,18 +382,17 @@ readLine(const char* prefix = PROMPT)
 struct ServiceRunner {
     bool wait() {
         std::unique_lock<std::mutex> lock(m);
-        cv.wait(lock, [&]{return terminate;});
+        cv.wait(lock, [&]{return terminate.load();});
         return !terminate;
     }
     void kill() {
-        std::lock_guard<std::mutex> lock(m);
         terminate = true;
         cv.notify_all();
     }
 private:
     std::condition_variable cv;
     std::mutex m;
-    bool terminate = false;
+    std::atomic_bool terminate {false};
 };
 
 ServiceRunner runner;
@@ -235,6 +403,8 @@ void signal_handler(int sig)
     case SIGHUP:
         break;
     case SIGINT:
+        close(STDIN_FILENO);
+        // fall through
     case SIGTERM:
         runner.kill();
         break;
@@ -268,14 +438,8 @@ void daemonize()
         exit(EXIT_FAILURE);
     }
 
-    if ((chdir("/")) < 0) {
-        exit(EXIT_FAILURE);
-    }
-
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
-
-    setupSignals();
 #endif
 }

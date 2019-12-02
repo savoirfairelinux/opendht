@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.1)
 project (opendht)
-set (opendht_VERSION_MAJOR 1)
-set (opendht_VERSION_MINOR 8.0)
+set (opendht_VERSION_MAJOR 2)
+set (opendht_VERSION_MINOR 0.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -16,12 +16,15 @@ option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
-option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restbed and jsoncpp" OFF)
+option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
-option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restbed and jsoncpp" OFF)
+option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
+option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
+option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
+option (OPENDHT_C "Build C bindings" OFF)
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -40,8 +43,8 @@ if (NOT OPENDHT_ARGON2)
     find_package(PkgConfig)
     pkg_search_module(argon2 libargon2)
     if (argon2_FOUND)
-        message("Argon2 found " ${argon2_req})
-        set(argon2_lib ", libargon2")
+        message("-- Found Argon2: " ${argon2_LIBRARY_DIRS} " (found version \"" ${argon2_VERSION} "\")")
+        link_directories (${argon2_LIBRARY_DIRS})
     else ()
         message("Argon2 not found, using included version.")
         set(OPENDHT_ARGON2 ON)
@@ -58,14 +61,34 @@ if (Jsoncpp_FOUND)
 endif()
 
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
-    find_package(Restbed REQUIRED)
+    find_package(Restinio REQUIRED)
+    if (Restinio_FOUND)
+        add_definitions(-DASIO_STANDALONE)
+        find_library(FMT_LIBRARY fmt)
+        add_library(fmt SHARED IMPORTED)
+        find_library(HTTP_PARSER_LIBRARY http_parser)
+        add_library(http_parser SHARED IMPORTED)
+    endif()
     if (NOT Jsoncpp_FOUND)
         message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
+    endif()
+    if (OPENDHT_PROXY_OPENSSL)
+        # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
+        pkg_search_module(OPENSSL REQUIRED openssl)
+        if (OPENSSL_FOUND)
+            message(STATUS "Found OpenSSL ${OPENSSL_VERSION}")
+            include_directories(${OPENSSL_INCLUDE_DIRS})
+        else ()
+            message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+        endif()
+    endif()
+    if (OPENDHT_PROXY_HTTP_PARSER_FORK)
+        add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
     endif()
 endif()
 
 # Build flags
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
 if (OPENDHT_SANITIZE)
@@ -78,6 +101,7 @@ set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lncurses")
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif ()
+add_definitions(-DPACKAGE_VERSION="${opendht_VERSION}")
 if (OPENDHT_LOG)
     add_definitions(-DOPENDHT_LOG=true)
 else ()
@@ -102,11 +126,14 @@ endif ()
 if (Nettle_INCLUDE_DIRS)
     include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
 endif ()
-if (Restbed_INCLUDE_DIR)
-    include_directories (SYSTEM "${Restbed_INCLUDE_DIR}")
+if (Restinio_INCLUDE_DIR)
+    include_directories (SYSTEM "${Restinio_INCLUDE_DIR}")
 endif ()
 if (Jsoncpp_INCLUDE_DIRS)
     include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
+endif ()
+if (OpenSSL_INCLUDE_DIR)
+    include_directories (SYSTEM "${OpenSSL_INCLUDE_DIR}")
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 link_directories (${Jsoncpp_LIBRARY_DIRS})
@@ -152,6 +179,9 @@ list (APPEND opendht_SOURCES
     src/securedht.cpp
     src/dhtrunner.cpp
     src/log.cpp
+    src/peer_discovery.cpp
+    src/network_utils.cpp
+    src/thread_pool.cpp
 )
 
 list (APPEND opendht_HEADERS
@@ -175,9 +205,16 @@ list (APPEND opendht_HEADERS
     include/opendht/securedht.h
     include/opendht/log.h
     include/opendht/log_enable.h
+    include/opendht/peer_discovery.h
+    include/opendht/thread_pool.h
+    include/opendht/network_utils.h
     include/opendht.h
 )
 
+if (OPENDHT_PYTHON)
+    message("Indexation enabled since it is required for Python support")
+    set(OPENDHT_INDEX ON)
+endif()
 if (OPENDHT_INDEX)
     list (APPEND opendht_SOURCES src/indexation/pht.cpp)
     list (APPEND opendht_HEADERS include/opendht/indexation/pht.h)
@@ -185,11 +222,9 @@ if (OPENDHT_INDEX)
 endif()
 
 if (OPENDHT_PROXY_SERVER)
-  add_definitions(-DOPENDHT_PROXY_SERVER=true)
+  add_definitions(-DOPENDHT_PROXY_SERVER)
   if (OPENDHT_PROXY_SERVER_IDENTITY)
-    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=true)
-  else ()
-    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY=false)
+    add_definitions(-DOPENDHT_PROXY_SERVER_IDENTITY)
   endif()
   list (APPEND opendht_HEADERS
     include/opendht/dht_proxy_server.h
@@ -197,31 +232,29 @@ if (OPENDHT_PROXY_SERVER)
   list (APPEND opendht_SOURCES
     src/dht_proxy_server.cpp
   )
-else ()
-    add_definitions(-DENABLE_PROXY_SERVER=false)
 endif ()
 
 if (OPENDHT_PROXY_CLIENT)
-  add_definitions(-DOPENDHT_PROXY_CLIENT=true)
+  add_definitions(-DOPENDHT_PROXY_CLIENT)
   list (APPEND opendht_HEADERS
     include/opendht/dht_proxy_client.h
   )
   list (APPEND opendht_SOURCES
     src/dht_proxy_client.cpp
   )
-else ()
-  add_definitions(-DOPENDHT_PROXY_CLIENT=false)
 endif ()
 
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
   if (OPENDHT_PUSH_NOTIFICATIONS)
     message("Using push notification")
-    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=true)
-  else ()
-    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS=false)
+    add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS)
   endif ()
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h
+    include/opendht/http.h
+  )
+  list (APPEND opendht_SOURCES
+    src/http.cpp
   )
 endif ()
 
@@ -255,8 +288,10 @@ if (OPENDHT_STATIC)
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
     target_link_libraries(opendht-static
-        PRIVATE ${Restbed_LIBRARY} ${argon2_LIBRARIES}
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Jsoncpp_LIBRARIES})
+        PRIVATE  ${argon2_LIBRARIES}
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+               ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+               ${OPENSSL_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -274,8 +309,30 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES} ${Restbed_LIBRARY} ${Jsoncpp_LIBRARIES})
+    target_link_libraries(opendht
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
+        PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+                ${Jsoncpp_LIBRARIES}
+                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
+endif ()
+
+if (OPENDHT_C)
+    add_library (opendht-c SHARED
+        c/opendht.cpp
+        c/opendht_c.h
+    )
+    target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
+    target_link_libraries(opendht-c opendht)
+    # PkgConfig module
+    configure_file (
+        opendht-c.pc.in
+        opendht-c.pc
+        @ONLY
+    )
+    install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
+    install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht-c.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif ()
 
 if (OPENDHT_TOOLS)
@@ -307,37 +364,47 @@ install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE o
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
 
 # Unit tests
-IF(OPENDHT_TESTS)
-  FIND_PACKAGE(Cppunit REQUIRED)
-  # unit testing
+if (OPENDHT_TESTS)
+    FIND_PACKAGE(Cppunit REQUIRED)
+    # unit testing
     list (APPEND test_FILES
-      tests/infohashtester.h
-      tests/infohashtester.cpp
-      tests/cryptotester.h
-      tests/cryptotester.cpp
-      tests/dhtrunnertester.h
-      tests/dhtrunnertester.cpp
+        tests/infohashtester.h
+        tests/infohashtester.cpp
+        tests/valuetester.h
+        tests/valuetester.cpp
+        tests/cryptotester.h
+        tests/cryptotester.cpp
+        tests/dhtrunnertester.h
+        tests/dhtrunnertester.cpp
+        tests/peerdiscoverytester.h
+        tests/peerdiscoverytester.cpp
+        tests/threadpooltester.h
+        tests/threadpooltester.cpp
     )
     if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
-      list (APPEND test_FILES
-        tests/dhtproxytester.h
-        tests/dhtproxytester.cpp
-      )
+        list (APPEND test_FILES
+            tests/httptester.h
+            tests/httptester.cpp
+            tests/dhtproxytester.h
+            tests/dhtproxytester.cpp
+        )
     endif()
     add_executable(opendht_unit_tests
-      tests/tests_runner.cpp
-      ${test_FILES}
+        tests/tests_runner.cpp
+        ${test_FILES}
     )
+    target_include_directories(opendht_unit_tests SYSTEM PRIVATE ${CPPUNIT_INCLUDE_DIRS})
     if (OPENDHT_SHARED)
-      TARGET_LINK_LIBRARIES(opendht_unit_tests opendht)
+        target_link_libraries(opendht_unit_tests opendht)
     else ()
-      TARGET_LINK_LIBRARIES(opendht_unit_tests opendht-static)
+        target_link_libraries(opendht_unit_tests opendht-static)
     endif ()
-    TARGET_LINK_LIBRARIES(opendht_unit_tests
+    target_link_libraries(opendht_unit_tests
        ${CMAKE_THREAD_LIBS_INIT}
        ${CPPUNIT_LIBRARIES}
        ${GNUTLS_LIBRARIES}
+       ssl crypto jsoncpp
     )
     enable_testing()
     add_test(TEST opendht_unit_tests)
-ENDIF()
+endif()

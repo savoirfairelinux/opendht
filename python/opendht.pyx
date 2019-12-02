@@ -1,11 +1,11 @@
 # distutils: language = c++
-# distutils: extra_compile_args = -std=c++11
+# distutils: extra_compile_args = -std=c++14
 # distutils: include_dirs = ../../include
 # distutils: library_dirs = ../../src
 # distutils: libraries = opendht gnutls
 # cython: language_level=3
 #
-# Copyright (c) 2015-2016 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author(s): Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
 #            Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
@@ -64,6 +64,14 @@ cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with
     pv = Value()
     pv._value = value
     return cb(pv) if not f or f(pv) else True
+
+cdef inline bool value_callback(shared_ptr[cpp.Value] value, bool expired, void *user_data) with gil:
+    cbs = <object>user_data
+    cb = cbs['valcb']
+    f = cbs['filter'] if 'filter' in cbs else None
+    pv = Value()
+    pv._value = value
+    return cb(pv, expired) if not f or f(pv) else True
 
 cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
     node_ids = []
@@ -139,6 +147,12 @@ cdef class SockAddr(object):
         return self._addr.setPort(port)
     def setFamily(SockAddr self, cpp.sa_family_t af):
         return self._addr.setFamily(af)
+    def isLoopback(SockAddr self):
+        return self._addr.isLoopback()
+    def isPrivate(SockAddr self):
+        return self._addr.isPrivate()
+    def isUnspecified(SockAddr self):
+        return self._addr.isUnspecified()
     def __str__(self):
         return self.toString().decode()
     def __repr__(self):
@@ -444,6 +458,9 @@ cdef class DhtConfig(object):
         self._config.dht_config.node_config.network = netid
     def setMaintainStorage(self, bool maintain_storage):
         self._config.dht_config.node_config.maintain_storage = maintain_storage
+    def setRateLimit(self, ssize_t max_req_per_sec, ssize_t max_peer_req_per_sec):
+        self._config.dht_config.node_config.max_req_per_sec = max_req_per_sec
+        self._config.dht_config.node_config.max_peer_req_per_sec = max_peer_req_per_sec
 
 cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr
@@ -585,14 +602,14 @@ cdef class DhtRunner(_WithID):
                 while pending > 0:
                     lock.wait()
             return ok
-    def listen(self, InfoHash key, get_cb):
+    def listen(self, InfoHash key, value_cb):
         t = ListenToken()
         t._h = key._infohash
-        cb_obj = {'get':get_cb}
+        cb_obj = {'valcb':value_cb}
         t._cb['cb'] = cb_obj
         # avoid the callback being destructed if the token is destroyed
         ref.Py_INCREF(cb_obj)
-        t._t = self.thisptr.get().listen(t._h, cpp.bindGetCb(get_callback, <void*>cb_obj)).share()
+        t._t = self.thisptr.get().listen(t._h, cpp.bindValueCb(value_callback, <void*>cb_obj)).share()
         return t
     def cancelListen(self, ListenToken token):
         self.thisptr.get().cancelListen(token._h, token._t)

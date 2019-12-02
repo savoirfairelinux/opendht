@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -19,10 +19,9 @@
 #pragma once
 
 #include "opendht/dhtrunner.h"
-#if OPENDHT_PROXY_SERVER
+#ifdef OPENDHT_PROXY_SERVER
 #include "opendht/dht_proxy_server.h"
 #endif
-#include "opendht/log.h"
 #include "opendht/default_types.h"
 #ifdef OPENDHT_INDEXATION
 #include "opendht/indexation/pht.h"

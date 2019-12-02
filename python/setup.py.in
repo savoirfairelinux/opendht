@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2017 Savoir-faire Linux Inc.
+# Copyright (C) 2015-2019 Savoir-faire Linux Inc.
 # Author: Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
@@ -50,8 +50,8 @@ setup(name="opendht",
           ["@CURRENT_SOURCE_DIR@/opendht.pyx"],
           include_dirs = ['@PROJECT_SOURCE_DIR@/include'],
           language="c++",
-          extra_compile_args=["-std=c++11"],
-          extra_link_args=["-std=c++11"],
+          extra_compile_args=["-std=c++14"],
+          extra_link_args=["-std=c++14"],
           libraries=["opendht"],
           library_dirs = ['@CURRENT_BINARY_DIR@', '@PROJECT_BINARY_DIR@']
       ))

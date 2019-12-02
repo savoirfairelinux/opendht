@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2015-2017 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -19,15 +19,18 @@ import opendht as dht
 import time
 import asyncio
 
+config = dht.DhtConfig()
+config.setRateLimit(-1, -1)
+
 ping_node = dht.DhtRunner()
-ping_node.run()
+ping_node.run(config=config)
 #ping_node.enableLogging()
 #ping_node.bootstrap("bootstrap.ring.cx", "4222")
 
 pong_node = dht.DhtRunner()
-pong_node.run()
+pong_node.run(config=config)
 #pong_node.enableLogging()
-pong_node.ping(ping_node.getBound());
+pong_node.ping(ping_node.getBound())
 
 loc_ping = dht.InfoHash.get("toto99")
 loc_pong = dht.InfoHash.get(str(loc_ping))
@@ -42,7 +45,6 @@ def done(h, ok):
 
 def ping(node, h):
 	global i
-	time.sleep(0.0075) 
 	i += 1
 	if i < MAX:
 		node.put(h, dht.Value(b"hey"), lambda ok, nodes: done(node.getNodeId().decode(), ok))
@@ -51,11 +53,11 @@ def ping(node, h):
 
 def pong(node, h):
 	print(node.getNodeId().decode(), "got ping", h, i)
-	loop.call_soon_threadsafe(ping, node, h);
+	loop.call_soon_threadsafe(ping, node, h)
 	return True
 
-ping_node.listen(loc_ping, lambda v: pong(pong_node, loc_pong))
-pong_node.listen(loc_pong, lambda v: pong(ping_node, loc_ping))
+ping_node.listen(loc_ping, lambda v, e: pong(pong_node, loc_pong) if not e else True)
+pong_node.listen(loc_pong, lambda v, e: pong(ping_node, loc_ping) if not e else True)
 
 ping(pong_node, loc_ping)
 

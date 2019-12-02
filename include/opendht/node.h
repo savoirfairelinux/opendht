@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -48,6 +48,7 @@ struct Node {
     const InfoHash id;
 
     Node(const InfoHash& id, const SockAddr& addr, bool client=false);
+    Node(const InfoHash& id, SockAddr&& addr, bool client=false);
     Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
         : Node(id, SockAddr(sa, salen)) {}
 

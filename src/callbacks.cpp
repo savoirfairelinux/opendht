@@ -4,7 +4,7 @@ namespace dht {
 
 
 GetCallbackSimple
-bindGetCb(GetCallbackRaw raw_cb, void* user_data)
+bindGetCb(const GetCallbackRaw& raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](const std::shared_ptr<Value>& value) {
@@ -13,7 +13,7 @@ bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 }
 
 GetCallback
-bindGetCb(GetCallbackSimple cb)
+bindGetCb(const GetCallbackSimple& cb)
 {
     if (not cb) return {};
     return [=](const std::vector<std::shared_ptr<Value>>& values) {
@@ -24,8 +24,20 @@ bindGetCb(GetCallbackSimple cb)
     };
 }
 
+ValueCallback
+bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data)
+{
+    if (not raw_cb) return {};
+    return [=](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+        for (const auto& v : values)
+            if (not raw_cb(v, expired, user_data))
+                return false;
+        return true;
+    };
+}
+
 ShutdownCallback
-bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data)
+bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data)
 {
     return [=]() { shutdown_cb_raw(user_data); };
 }
@@ -39,7 +51,7 @@ bindDoneCb(DoneCallbackSimple donecb)
 }
 
 DoneCallback
-bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
+bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
@@ -48,7 +60,7 @@ bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
 }
 
 DoneCallbackSimple
-bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
+bindDoneCbSimple(const DoneCallbackSimpleRaw& raw_cb, void* user_data) {
     if (not raw_cb) return {};
     return [=](bool success) {
         raw_cb(success, user_data);
@@ -109,6 +121,7 @@ NodeInfo::toJson() const
     val["node_id"] = node_id.toString();
     val["ipv4"] = ipv4.toJson();
     val["ipv6"] = ipv6.toJson();
+    val["ops"] = Json::Value::LargestUInt(ongoing_ops);
     return val;
 }
 
@@ -119,6 +132,7 @@ NodeInfo::NodeInfo(const Json::Value& v)
     node_id = InfoHash(v["node_id"].asString());
     ipv4 = NodeStats(v["ipv4"]);
     ipv6 = NodeStats(v["ipv6"]);
+    ongoing_ops = v["ops"].asLargestUInt();
 }
 
 #endif

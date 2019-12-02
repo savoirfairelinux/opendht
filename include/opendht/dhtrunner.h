@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -20,12 +20,13 @@
 
 #pragma once
 
+#include "def.h"
 #include "infohash.h"
 #include "value.h"
 #include "callbacks.h"
 #include "sockaddr.h"
 #include "log_enable.h"
-#include "def.h"
+#include "network_utils.h"
 
 #include <thread>
 #include <mutex>
@@ -40,6 +41,7 @@ namespace dht {
 
 struct Node;
 class SecureDht;
+class PeerDiscovery;
 struct SecureDhtConfig;
 
 /**
@@ -51,32 +53,46 @@ struct SecureDhtConfig;
 class OPENDHT_PUBLIC DhtRunner {
 
 public:
-    typedef std::function<void(NodeStatus, NodeStatus)> StatusCallback;
+    using StatusCallback = std::function<void(NodeStatus, NodeStatus)>;
 
     struct Config {
-        SecureDhtConfig dht_config;
-        bool threaded;
-        std::string proxy_server;
-        std::string push_node_id;
+        SecureDhtConfig dht_config {};
+        bool threaded {true};
+        std::string proxy_server {};
+        std::string push_node_id {};
+        std::string push_token {};
+        bool peer_discovery {false};
+        bool peer_publish {false};
+        std::shared_ptr<dht::crypto::Certificate> server_ca;
+        dht::crypto::Identity client_identity;
+    };
+
+    struct Context {
+        std::shared_ptr<Logger> logger {};
+        std::unique_ptr<net::DatagramSocket> sock;
+        std::shared_ptr<PeerDiscovery> peerDiscovery {};
+        StatusCallback statusChangedCallback {};
+        CertificateStoreQuery certificateStore {};
+        Context() {}
     };
 
     DhtRunner();
     virtual ~DhtRunner();
 
-    void get(InfoHash id, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    void get(InfoHash id, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter f = {}, Where w = {}) {
         get(id, bindGetCb(cb), donecb, f, w);
     }
 
-    void get(InfoHash id, GetCallbackSimple cb, DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    void get(InfoHash id, GetCallbackSimple cb, DoneCallbackSimple donecb={}, Value::Filter f = {}, Where w = {}) {
         get(id, bindGetCb(cb), donecb, f, w);
     }
 
     void get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f={}, Where w = {});
 
-    void get(InfoHash id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    void get(InfoHash id, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter f = {}, Where w = {}) {
         get(id, cb, bindDoneCb(donecb), f, w);
     }
-    void get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb={}, Value::Filter f = Value::AllFilter(), Where w = {});
+    void get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb={}, Value::Filter f = {}, Where w = {});
 
     template <class T>
     void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, DoneCallbackSimple dcb={})
@@ -105,7 +121,7 @@ public:
         getFilterSet<T>());
     }
 
-    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    std::future<std::vector<std::shared_ptr<dht::Value>>> get(InfoHash key, Value::Filter f = {}, Where w = {}) {
         auto p = std::make_shared<std::promise<std::vector<std::shared_ptr< dht::Value >>>>();
         auto values = std::make_shared<std::vector<std::shared_ptr< dht::Value >>>();
         get(key, [=](const std::vector<std::shared_ptr<dht::Value>>& vlist) {
@@ -136,7 +152,7 @@ public:
         query(hash, cb, bindDoneCb(done_cb), q);
     }
 
-    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
+    std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = {}, Where w = {});
 
     std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f={}, Where w={}) {
         return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
@@ -145,8 +161,8 @@ public:
             return true;
         }, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
-    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = Value::AllFilter(), Where w = {});
-    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = Value::AllFilter(), Where w = {}) {
+    std::future<size_t> listen(const std::string& key, GetCallback vcb, Value::Filter f = {}, Where w = {});
+    std::future<size_t> listen(InfoHash key, GetCallbackSimple cb, Value::Filter f = {}, Where w = {}) {
         return listen(key, bindGetCb(cb), f, w);
     }
 
@@ -168,7 +184,7 @@ public:
     }
 
     template <typename T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = Value::AllFilter(), Where w = {})
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = {}, Where w = {})
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
@@ -184,7 +200,7 @@ public:
         getFilterSet<T>(f), w);
     }
     template <typename T>
-    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = Value::AllFilter(), Where w = {})
+    std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = {}, Where w = {})
     {
         return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
             for (const auto& v : vals) {
@@ -214,35 +230,36 @@ public:
     }
     void put(const std::string& key, Value&& value, DoneCallbackSimple cb={}, time_point created=time_point::max(), bool permanent = false);
 
-    void cancelPut(const InfoHash& h, const Value::Id& id);
+    void cancelPut(const InfoHash& h, Value::Id id);
+    void cancelPut(const InfoHash& h, const std::shared_ptr<Value>& value);
 
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={});
-    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
-        putSigned(hash, value, bindDoneCb(cb));
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
+    void putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
+        putSigned(hash, value, bindDoneCb(cb), permanent);
     }
 
-    void putSigned(InfoHash hash, Value&& value, DoneCallback cb={});
-    void putSigned(InfoHash hash, Value&& value, DoneCallbackSimple cb) {
-        putSigned(hash, std::forward<Value>(value), bindDoneCb(cb));
+    void putSigned(InfoHash hash, Value&& value, DoneCallback cb={}, bool permanent = false);
+    void putSigned(InfoHash hash, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
+        putSigned(hash, std::forward<Value>(value), bindDoneCb(cb), permanent);
     }
-    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb={});
+    void putSigned(const std::string& key, Value&& value, DoneCallbackSimple cb={}, bool permanent = false);
 
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb) {
-        putEncrypted(hash, to, value, bindDoneCb(cb));
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
+    void putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
+        putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
     }
 
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb={});
-    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb) {
-        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb));
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallback cb={}, bool permanent = false);
+    void putEncrypted(InfoHash hash, InfoHash to, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
+        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb), permanent);
     }
-    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={});
+    void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={}, bool permanent = false);
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
-    void bootstrap(const std::vector<SockAddr>& nodes, DoneCallbackSimple&& cb={});
+    void bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb={});
     void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
 
     /**
@@ -258,6 +275,13 @@ public:
      * to the DHT network is established.
      */
     void bootstrap(const std::string& host, const std::string& service);
+    void bootstrap(const std::string& hostService);
+
+    /**
+     * Insert known nodes to the routing table, without necessarly ping them.
+     * Usefull to restart a node and get things running fast without putting load on the network.
+     */
+    void bootstrap(const InfoHash& id, const SockAddr& address);
 
     /**
      * Clear the list of bootstrap added using bootstrap(const std::string&, const std::string&).
@@ -287,17 +311,13 @@ public:
      * Returns the currently bound address.
      * @param f: address family of the bound address to retreive.
      */
-    const SockAddr& getBound(sa_family_t f = AF_INET) const {
-        return (f == AF_INET) ? bound4 : bound6;
-    }
+    SockAddr getBound(sa_family_t f = AF_INET) const;
 
     /**
      * Returns the currently bound port, in host byte order.
      * @param f: address family of the bound port to retreive.
      */
-    in_port_t getBoundPort(sa_family_t f = AF_INET) const {
-        return getBound(f).getPort();
-    }
+    in_port_t getBoundPort(sa_family_t f = AF_INET) const;
 
     std::pair<size_t, size_t> getStoreSize() const;
 
@@ -307,7 +327,8 @@ public:
 
     std::vector<ValuesExport> exportValues() const;
 
-    void setLoggers(LogMethod err = NOLOG, LogMethod warn = NOLOG, LogMethod debug = NOLOG);
+    void setLogger(const Logger& logger = {});
+    void setLoggers(LogMethod err = {}, LogMethod warn = {}, LogMethod debug = {});
 
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
@@ -319,7 +340,7 @@ public:
     void importValues(const std::vector<ValuesExport>& values);
 
     bool isRunning() const {
-        return running;
+        return running != State::Idle;
     }
 
     NodeStats getNodesStats(sa_family_t af) const;
@@ -337,7 +358,7 @@ public:
 
     // securedht methods
 
-    void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>)>);
+    void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
     void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
@@ -347,23 +368,14 @@ public:
      * @param threaded: If false, ::loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(in_port_t port = 4222, const crypto::Identity identity = {}, bool threaded = false, NetId network = 0) {
-        run(port, {
-            /*.dht_config = */{
-                /*.node_config = */{
-                    /*.node_id = */{},
-                    /*.network = */network,
-                    /*.is_bootstrap = */false,
-                    /*.maintain_storage*/false
-                },
-                /*.id = */identity
-            },
-            /*.threaded = */threaded,
-            /*.proxy_server = */"",
-            /*.push_node_id = */""
-        });
+    void run(in_port_t port = dht::net::DHT_DEFAULT_PORT, const crypto::Identity& identity = {}, bool threaded = true, NetId network = 0) {
+        Config config;
+        config.dht_config.node_config.network = network;
+        config.dht_config.id = identity;
+        config.threaded = threaded;
+        run(port, config);
     }
-    void run(in_port_t port, Config config);
+    void run(in_port_t port, const Config& config, Context&& context = {});
 
     /**
      * @param local4: Local IPv4 address and port to bind. Can be null.
@@ -373,12 +385,14 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const SockAddr& local4, const SockAddr& local6, Config config);
+    void run(const SockAddr& local4, const SockAddr& local6, const Config& config, Context&& context = {});
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, Config config);
+    void run(const char* ip4, const char* ip6, const char* service, const Config& config, Context&& context = {});
+
+    void run(const Config& config, Context&& context);
 
     void setOnStatusChanged(StatusCallback&& cb) {
         statusCb = std::move(cb);
@@ -391,19 +405,13 @@ public:
      */
     time_point loop() {
         std::lock_guard<std::mutex> lck(dht_mtx);
-        time_point wakeup = time_point::min();
-        try {
-            wakeup = loop_();
-        } catch (const dht::SocketException& e) {
-            startNetwork(bound4, bound6);
-        }
-        return wakeup;
+        return loop_();
     }
 
     /**
      * Gracefuly disconnect from network.
      */
-    void shutdown(ShutdownCallback cb);
+    void shutdown(ShutdownCallback cb = {});
 
     /**
      * Quit and wait for all threads to terminate.
@@ -411,6 +419,8 @@ public:
      * All internal state will be lost. The DHT can then be run again with @run().
      */
     void join();
+
+    std::shared_ptr<PeerDiscovery> getPeerDiscovery() const { return peerDiscovery_; };
 
     void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "");
 
@@ -439,6 +449,12 @@ public:
 private:
     static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
+    enum class State {
+        Idle,
+        Running,
+        Stopping
+    };
+
     /**
      * Will try to resolve the list of hostnames `bootstrap_nodes` on seperate
      * thread and then queue ping requests. This list should contain reliable
@@ -447,13 +463,16 @@ private:
      */
     void tryBootstrapContinuously();
 
-    void stopNetwork();
-    void startNetwork(const SockAddr sin4, const SockAddr sin6);
     time_point loop_();
 
     NodeStatus getStatus() const {
         return std::max(status4, status6);
     }
+
+    bool checkShutdown();
+    void opEnded();
+    DoneCallback bindOpDoneCallback(DoneCallback&& cb);
+    DoneCallbackSimple bindOpDoneCallback(DoneCallbackSimple&& cb);
 
     /** Local DHT instance */
     std::unique_ptr<SecureDht> dht_;
@@ -486,16 +505,8 @@ private:
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
-
-    std::thread rcv_thread {};
     std::mutex sock_mtx {};
-
-    struct ReceivedPacket {
-        Blob data;
-        SockAddr from;
-        time_point received;
-    };
-    std::queue<ReceivedPacket> rcv {};
+    std::queue<std::unique_ptr<net::ReceivedPacket>> rcv {};
 
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};
@@ -503,7 +514,6 @@ private:
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes_all {};
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
     std::thread bootstrap_thread {};
-    /** protects bootstrap_nodes, bootstrap_thread */
     std::mutex bootstrap_mtx {};
     std::condition_variable bootstrap_cv {};
 
@@ -511,20 +521,22 @@ private:
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
-    std::atomic_bool running {false};
-    std::atomic_bool running_network {false};
+    std::atomic<State> running {State::Idle};
+    std::atomic_size_t ongoing_ops {0};
+    std::vector<ShutdownCallback> shutdownCallbacks_;
 
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
     StatusCallback statusCb {nullptr};
 
-    int stop_writefd {-1};
-    int s4 {-1}, s6 {-1};
-    SockAddr bound4 {};
-    SockAddr bound6 {};
+    /** PeerDiscovery Parameters */
+    std::shared_ptr<PeerDiscovery> peerDiscovery_;
 
-    /** Push notification token */
-    std::string pushToken_;
+    /**
+     * The Logger instance is used in enableProxy and other methods that
+     * would create instances of classes using a common logger.
+     */
+    std::shared_ptr<dht::Logger> logger_;
 };
 
 }

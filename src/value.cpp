@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -54,17 +54,19 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
             s << IpServiceAnnouncement(v.data);
         } else if (v.type == CERTIFICATE_TYPE.id) {
             s << "Certificate";
+#ifdef OPENDHT_LOG_CRT_ID
             try {
-                InfoHash h = crypto::Certificate(v.data).getPublicKey().getId();
+                auto h = crypto::Certificate(v.data).getPublicKey().getLongId();
                 s << " with ID " << h;
             } catch (const std::exception& e) {
                 s << " (invalid)";
             }
+#endif
         } else {
             s << "Data (type: " << v.type << " ): ";
             s << std::hex;
-            for (size_t i=0; i<v.data.size(); i++)
-                s << std::setfill('0') << std::setw(2) << (unsigned)v.data[i];
+            for (auto i : v.data)
+                s << std::setfill('0') << std::setw(2) << (unsigned)i;
             s << std::dec;
         }
     }
@@ -76,7 +78,7 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
 const ValueType ValueType::USER_DATA = {0, "User Data"};
 
 bool
-ValueType::DEFAULT_STORE_POLICY(InfoHash, std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&)
+ValueType::DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&)
 {
     return v->size() <= MAX_VALUE_SIZE;
 }
@@ -286,11 +288,11 @@ FieldValue::getLocalFilter() const
         case Value::Field::UserType:
             return Value::UserTypeFilter(std::string {blobValue.begin(), blobValue.end()});
         default:
-            return Value::AllFilter();
+            return {};
     }
 }
 
-FieldValueIndex::FieldValueIndex(const Value& v, Select s)
+FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
 {
     auto selection = s.getSelection();
     if (not selection.empty()) {
@@ -397,8 +399,8 @@ FieldValueIndex::msgpack_unpack_fields(const std::set<Value::Field>& fields, con
 }
 
 void trim_str(std::string& str) {
-    auto first = std::min(str.size(), str.find_first_not_of(" "));
-    auto last = std::min(str.size(), str.find_last_not_of(" "));
+    auto first = std::min(str.size(), str.find_first_not_of(' '));
+    auto last = std::min(str.size(), str.find_last_not_of(' '));
     str = str.substr(first, last - first + 1);
 }
 
@@ -495,8 +497,7 @@ template <typename T>
 bool subset(std::vector<T> fds, std::vector<T> qfds)
 {
     for (auto& fd : fds) {
-        auto correspondance = std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; });
-        if (correspondance == qfds.end())
+        if (std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; }) == qfds.end())
             return false;
     }
     return true;
@@ -504,10 +505,9 @@ bool subset(std::vector<T> fds, std::vector<T> qfds)
 
 bool Select::isSatisfiedBy(const Select& os) const {
     /* empty, means all values are selected. */
-    if (fieldSelection_.empty() and not os.fieldSelection_.empty())
-        return false;
-    else
-        return subset(fieldSelection_, os.fieldSelection_);
+    return fieldSelection_.empty() ?
+        os.fieldSelection_.empty() :
+        subset(fieldSelection_, os.fieldSelection_);
 }
 
 bool Where::isSatisfiedBy(const Where& ow) const {

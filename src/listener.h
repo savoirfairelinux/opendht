@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -43,13 +43,6 @@ struct Listener {
  * A single "listen" operation data
  */
 struct LocalListener {
-    Sp<Query> query;
-    Value::Filter filter;
-    ValueCallback get_cb;
-};
-
-
-struct SearchListener {
     Sp<Query> query;
     Value::Filter filter;
     ValueCallback get_cb;

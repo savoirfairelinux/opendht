@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2018 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -65,7 +65,8 @@ struct Dht::SearchNode {
         ValueCache cache;
         Sp<Scheduler::Job> cacheExpirationJob {};
         Sp<net::Request> req {};
-        CachedListenStatus(ValueStateCallback&& cb) : cache(std::forward<ValueStateCallback>(cb)) {}
+        CachedListenStatus(ValueStateCallback&& cb, SyncCallback&& scb)
+         : cache(std::forward<ValueStateCallback>(cb), std::forward<SyncCallback>(scb)) {}
         CachedListenStatus(CachedListenStatus&&) = default;
         CachedListenStatus(const CachedListenStatus&) = delete;
         CachedListenStatus& operator=(const CachedListenStatus&) = delete;
@@ -225,6 +226,13 @@ struct Dht::SearchNode {
         }
     }
 
+    void onListenSynced(const Sp<Query>& q, bool synced = true) {
+        auto l = listenStatus.find(q);
+        if (l != listenStatus.end()) {
+            l->second.cache.onSynced(synced);
+        }
+    }
+
     void expireValues(const Sp<Query>& q, Scheduler& scheduler) {
         auto l = listenStatus.find(q);
         if (l != listenStatus.end()) {
@@ -377,6 +385,11 @@ struct Dht::Search {
     std::multimap<time_point, Get> callbacks {};
 
     /* listeners */
+    struct SearchListener {
+        Sp<Query> query;
+        ValueCallback get_cb;
+        SyncCallback sync_cb;
+    };
     std::map<size_t, SearchListener> listeners {};
     size_t listener_token = 1;
 
@@ -475,23 +488,22 @@ struct Dht::Search {
     bool isAnnounced(Value::Id id) const;
     bool isListening(time_point now) const;
 
-    void get(Value::Filter f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
+    void get(const Value::Filter& f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
         if (gcb or qcb) {
-            const auto& now = scheduler.time();
-            callbacks.emplace(now, Get { now, f, q, qcb, gcb, dcb });
-            auto values = cache.get(f);
-            if (not values.empty())
-                gcb(values);
-            scheduler.edit(nextSearchStep, now);
+            if (not cache.get(f, q, gcb, dcb)) {
+                const auto& now = scheduler.time();
+                callbacks.emplace(now, Get { now, f, q, qcb, gcb, dcb });
+                scheduler.edit(nextSearchStep, now);
+            }
         }
     }
 
-    size_t listen(ValueCallback cb, Value::Filter f, const Sp<Query>& q, Scheduler& scheduler) {
+    size_t listen(const ValueCallback& cb, const Value::Filter& f, const Sp<Query>& q, Scheduler& scheduler) {
         //DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
-        return cache.listen(cb, q, f, [&](const Sp<Query>& q, ValueCallback vcb){
+        return cache.listen(cb, q, f, [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb){
             done = false;
             auto token = ++listener_token;
-            listeners.emplace(token, SearchListener{q, f, vcb});
+            listeners.emplace(token, SearchListener{q, vcb, scb});
             scheduler.edit(nextSearchStep, scheduler.time());
             return token;
         });
@@ -518,6 +530,35 @@ struct Dht::Search {
                 scheduler.edit(opExpirationJob, nextExpire);
             });
         scheduler.edit(opExpirationJob, cache.getExpiration());
+    }
+
+    std::vector<Sp<Value>> getPut() const {
+        std::vector<Sp<Value>> ret;
+        ret.reserve(announce.size());
+        for (const auto& a : announce)
+            ret.push_back(a.value);
+        return ret;
+    }
+
+    Sp<Value> getPut(Value::Id vid) const {
+        for (auto& a : announce) {
+            if (a.value->id == vid)
+                return a.value;
+        }
+        return {};
+    }
+
+    bool cancelPut(Value::Id vid) {
+        bool canceled {false};
+        for (auto it = announce.begin(); it != announce.end();) {
+            if (it->value->id == vid) {
+                canceled = true;
+                it = announce.erase(it);
+            }
+            else
+                ++it;
+        }
+        return canceled;
     }
 
     /**

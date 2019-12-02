@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2016 Savoir-faire Linux Inc.
+ *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -24,6 +24,8 @@
 
 #include "infohash.h"
 
+#include <cstdarg>
+
 #ifndef OPENDHT_LOG
 #define OPENDHT_LOG true
 #endif
@@ -31,11 +33,6 @@
 namespace dht {
 
 // Logging related utility functions
-
-/**
- * Dummy function used to disable logging
- */
-inline void NOLOG(char const*, va_list) {}
 
 /**
  * Wrapper for logging methods
@@ -85,9 +82,13 @@ private:
 };
 
 struct Logger {
-    LogMethod DBG = NOLOG;
-    LogMethod WARN = NOLOG;
-    LogMethod ERR = NOLOG;
+    LogMethod DBG = {};
+    LogMethod WARN = {};
+    LogMethod ERR = {};
+
+    Logger() = default;
+    Logger(LogMethod&& err, LogMethod&& warn, LogMethod&& dbg)
+        : DBG(std::move(dbg)), WARN(std::move(warn)), ERR(std::move(err)) {}
     void setFilter(const InfoHash& f) {
         filter_ = f;
         filterEnable_ = static_cast<bool>(filter_);

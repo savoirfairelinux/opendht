@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -43,8 +43,8 @@ public:
      * result_type is unsigned int so this is currently safe.
      */
     static_assert(
-        sizeof(result_type) == 2 || 
-        sizeof(result_type) == 4 || 
+        sizeof(result_type) == 2 ||
+        sizeof(result_type) == 4 ||
         sizeof(result_type) == 8,
         "result_type must be 16, 32 or 64 bits");
 

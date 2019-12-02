@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2017 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -38,7 +38,7 @@ class OPENDHT_PUBLIC DhtMessage : public Value::Serializable<DhtMessage>
 public:
     static const ValueType TYPE;
 
-    DhtMessage(std::string s = {}, Blob msg = {}) : service(s), data(msg) {}
+    DhtMessage(const std::string& s = {}, const Blob& msg = {}) : service(s), data(msg) {}
 
     std::string getService() const {
         return service;
@@ -48,7 +48,7 @@ public:
 
     static bool storePolicy(InfoHash key, std::shared_ptr<Value>& value, const InfoHash& from, const SockAddr&);
 
-    static Value::Filter ServiceFilter(std::string s);
+    static Value::Filter ServiceFilter(const std::string& s);
 
     /** print value for debugging */
     friend std::ostream& operator<< (std::ostream&, const DhtMessage&);
@@ -114,8 +114,10 @@ public:
     ImMessage() {}
     ImMessage(dht::Value::Id id, std::string&& m, long d = 0)
         : id(id), msg(std::move(m)), date(d) {}
-    ImMessage(dht::Value::Id id, std::string&& dt, std::string&& m, long d = 0)
+    ImMessage(dht::Value::Id id, std::string &&dt, std::string &&m, long d = 0)
         : id(id), msg(std::move(m)), datatype(std::move(dt)), date(d) {}
+    ImMessage(dht::Value::Id id, std::string &&dt, std::string &&m, std::map<std::string, std::string> &&md, long d = 0)
+        : id(id), msg(std::move(m)), datatype(std::move(dt)), metadatas(std::move(md)), date(d) {}
 
     virtual void unpackValue(const Value& v) override {
         to = v.recipient;
@@ -126,10 +128,11 @@ public:
     dht::Value::Id id {0};
     std::string msg;
     std::string datatype;
+    std::map<std::string, std::string> metadatas;
     long date {0};
     ImStatus status {ImStatus::NONE};
 
-    MSGPACK_DEFINE_MAP(id, msg, date, status, datatype)
+    MSGPACK_DEFINE_MAP(id, msg, date, status, datatype, metadatas)
 };
 
 class OPENDHT_PUBLIC TrustRequest : public EncryptedValue<TrustRequest>
