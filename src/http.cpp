@@ -875,12 +875,14 @@ Request::terminate(const asio::error_code& ec)
 
     // set response outcome, ignore end of file and abort
     if (!ec or ec == asio::error::eof)
-        response_.status_code = 200;
+        response_.status_code = parser_->status_code;
     else
         response_.status_code = 0;
 
+    response_.aborted = ec == asio::error::operation_aborted;
+
     if (logger_)
-        logger_->d("[http:request:%i] done", id_);
+        logger_->d("[http:request:%i] done with status code %u", id_, parser_->status_code);
     if (connection_type_ != restinio::http_connection_header_t::keep_alive)
         if (auto c = conn_)
             c->close();

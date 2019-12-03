@@ -192,9 +192,10 @@ private:
 
 struct Response
 {
-    unsigned int status_code;
+    unsigned int status_code {0};
     std::map<std::string, std::string> headers;
     std::string body;
+    bool aborted {false};
 };
 
 class OPENDHT_PUBLIC Request : public std::enable_shared_from_this<Request>
