@@ -322,7 +322,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                     if (logger_)
                         logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
                     opstate->ok.store(false);
-                    if (response.status_code == 0)
+                    if (not response.aborted and response.status_code == 0)
                         opFailed();
                 }
                 if (donecb) {
@@ -472,7 +472,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
                 if (not ok) {
                     if (logger_)
                         logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
-                    if (response.status_code == 0)
+                    if (not response.aborted and response.status_code == 0)
                         opFailed();
                 }
                 if (cb)
@@ -875,7 +875,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                             if (logger_)
                                 logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
                                            key.to_c_str(), response.status_code);
-                            if (response.status_code == 0)
+                            if (not response.aborted and response.status_code == 0)
                                 opFailed();
                         }
                         if (not isDestroying_) {
@@ -982,7 +982,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                         logger_->e("[proxy:client] [listen] send request #%i failed with code=%i",
                                    reqid, response.status_code);
                     opstate->ok.store(false);
-                    if (response.status_code == 0)
+                    if (not response.aborted and response.status_code == 0)
                         opFailed();
                 }
                 if (not isDestroying_) {
