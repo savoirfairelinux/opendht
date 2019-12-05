@@ -443,11 +443,13 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
         if (state != Request::State::DONE)
             return;
         Json::Value json;
-        std::string err;
-        Json::CharReaderBuilder rbuilder;
-        auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
-        if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
-            logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
+        if (response.status_code != 0) {
+            std::string err;
+            Json::CharReaderBuilder rbuilder;
+            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+            if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
+                logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
+        }
         if (jsoncb)
             jsoncb(json, response.status_code);
     });
@@ -458,6 +460,15 @@ Request::Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<
       resolver_(std::make_shared<Resolver>(ctx, url, logger))
 {
     init_default_headers();
+}
+
+Request::Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone, std::shared_ptr<dht::Logger> logger)
+    : logger_(logger), id_(Request::ids_++), ctx_(ctx), resolver_(std::make_shared<Resolver>(ctx, url, logger))
+{
+    add_on_state_change_callback([this, onDone](State state, const Response& response){
+        if (state == Request::State::DONE)
+            onDone(response);
+    });
 }
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,

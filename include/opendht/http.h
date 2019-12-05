@@ -212,6 +212,7 @@ public:
     using OnDataCb = std::function<void(const char* at, size_t length)>;
     using OnStateChangeCb = std::function<void(State state, const Response& response)>;
     using OnJsonCb = std::function<void(Json::Value value, unsigned int status_code)>;
+    using OnDoneCb = std::function<void(const Response& response)>;
 
     // resolves implicitly
     Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
@@ -219,6 +220,7 @@ public:
     Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& host, const std::string& service,
             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
+    Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone, std::shared_ptr<dht::Logger> logger = {});
 
     // user defined resolver
     Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, sa_family_t family = AF_UNSPEC);
