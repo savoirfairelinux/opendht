@@ -19,13 +19,14 @@
 
 #include "httptester.h"
 
-// std
+#include <opendht/log.h>
+#include <opendht/value.h>
+#include <opendht/dhtrunner.h>
+
 #include <iostream>
 #include <string>
-
 #include <chrono>
 #include <condition_variable>
-
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(HttpTester);
@@ -34,26 +35,22 @@ void
 HttpTester::setUp() {
     logger = dht::log::getStdLogger();
 
-    nodePeer.run(0, /*identity*/{}, /*threaded*/true);
+    nodePeer = std::make_shared<dht::DhtRunner>();
+    nodePeer->run(0);
 
-    nodeProxy = std::make_shared<dht::DhtRunner>();
+    auto nodeProxy = std::make_shared<dht::DhtRunner>();
     nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
-    nodeProxy->bootstrap(nodePeer.getBound());
+    nodeProxy->bootstrap(nodePeer->getBound());
 
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(
         new dht::DhtProxyServer(
             /*http*/dht::crypto::Identity{}, nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
-
 }
 
 void
 HttpTester::tearDown() {
-    logger->d("[tester:http] stopping peer node");
-    nodePeer.join();
-    logger->d("[tester:http] stopping proxy server");
-    serverProxy.reset(nullptr);
-    logger->d("[tester:http] stopping proxy node");
-    nodeProxy->join();
+    serverProxy.reset();
+    nodePeer->join();
 }
 
 void
@@ -248,7 +245,7 @@ HttpTester::test_send_json() {
         if (status_code != 200 and logger)
             logger->e("[tester] [status] failed with code=%i", status_code);
         std::cout << "[tester] got response:\n" << value << std::endl;
-        resp_val = value;
+        resp_val = std::move(value);
         status = status_code;
         done = true;
         cv.notify_all();
@@ -258,7 +255,21 @@ HttpTester::test_send_json() {
     // Assert
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
     CPPUNIT_ASSERT(status == 200);
-    CPPUNIT_ASSERT(resp_val["data"] == val.toJson()["data"]);
+    CPPUNIT_ASSERT(resp_val["data"] == json["data"]);
+
+    done = false;
+    url = "https://google.ca";
+    request = std::make_shared<dht::http::Request>(serverProxy->io_context(), url,
+                   [&](const dht::http::Response& response){
+        logger->w("got answer: %.*s", response.body.size(), response.body.data());
+        status = response.status_code;
+        done = true;
+        cv.notify_all();
+    }, logger);
+    request->send();
+
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(status == 200);
 }
 
 }  // namespace test
