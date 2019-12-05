@@ -152,21 +152,22 @@ DhtProxyClient::~DhtProxyClient()
 void
 DhtProxyClient::stop()
 {
-    isDestroying_ = true;
-    resolver_.reset();
-    cancelAllListeners();
-    if (infoState_)
-        infoState_->cancel = true;
-    {
-        std::lock_guard<std::mutex> lock(requestLock_);
-        for (auto& request : requests_)
-            request.second->cancel();
+    if (not isDestroying_.exchange(true)) {
+        resolver_.reset();
+        cancelAllListeners();
+        if (infoState_)
+            infoState_->cancel = true;
+        {
+            std::lock_guard<std::mutex> lock(requestLock_);
+            for (auto& request : requests_)
+                request.second->cancel();
+        }
+        if (not httpContext_.stopped())
+            httpContext_.stop();
+        if (httpClientThread_.joinable())
+            httpClientThread_.join();
+        requests_.clear();
     }
-    if (not httpContext_.stopped())
-        httpContext_.stop();
-    if (httpClientThread_.joinable())
-        httpClientThread_.join();
-    requests_.clear();
 }
 
 std::vector<Sp<Value>>
@@ -271,6 +272,10 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     if (logger_)
         logger_->d("[proxy:client] [get] [search %s]", key.to_c_str());
 
+    if (isDestroying_) {
+        if (donecb) donecb(false, {});
+        return;
+    }
     try {
         auto request = buildRequest("/" + key.toString());
         auto reqid = request->id();
@@ -356,9 +361,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
 void
 DhtProxyClient::put(const InfoHash& key, Sp<Value> val, DoneCallback cb, time_point created, bool permanent)
 {
-    if (not val){
-        if (cb)
-            cb(false, {});
+    if (not val or isDestroying_) {
+        if (cb) cb(false, {});
         return;
     }
     if (logger_)
@@ -703,6 +707,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
 {
     if (logger_)
         logger_->d("[proxy:client] [listen] [search %s]", key.to_c_str());
+    if (isDestroying_)
+        return 0;
 
     std::lock_guard<std::mutex> lock(searchLock_);
     auto& search = searches_[key];
