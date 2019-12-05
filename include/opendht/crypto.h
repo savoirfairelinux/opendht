@@ -160,6 +160,7 @@ struct OPENDHT_PUBLIC PrivateKey
     explicit operator bool() const { return key; }
 
     PublicKey getPublicKey() const;
+    int serialize(uint8_t* out, size_t* out_len, const std::string& password = {}) const;
     Blob serialize(const std::string& password = {}) const;
 
     /**

@@ -348,15 +348,23 @@ PrivateKey::serialize(const std::string& password) const
     size_t buf_sz = 8192;
     Blob buffer;
     buffer.resize(buf_sz);
-    int err = password.empty()
-        ? gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr,          GNUTLS_PKCS_PLAIN,         buffer.data(), &buf_sz)
-        : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, buffer.data(), &buf_sz);
+    auto err = serialize(buffer.data(), &buf_sz, password);
     if (err != GNUTLS_E_SUCCESS) {
         std::cerr << "Could not export private key - " << gnutls_strerror(err) << std::endl;
         return {};
     }
     buffer.resize(buf_sz);
     return buffer;
+}
+
+int
+PrivateKey::serialize(uint8_t* out, size_t* out_len, const std::string& password) const
+{
+    if (!x509_key)
+        return -1;
+    return password.empty()
+        ? gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, nullptr,          GNUTLS_PKCS_PLAIN,         out, out_len)
+        : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, out, out_len);
 }
 
 PublicKey

@@ -45,7 +45,7 @@ struct OPENDHT_C_PUBLIC dht_publickey;
 typedef struct dht_publickey dht_publickey;
 OPENDHT_C_PUBLIC dht_publickey* dht_publickey_import(const uint8_t* dat, size_t dat_size);
 OPENDHT_C_PUBLIC void dht_publickey_delete(dht_publickey* pk);
-OPENDHT_C_PUBLIC int dht_publickey_pack(dht_publickey* pk, char* out, size_t* out_size);
+OPENDHT_C_PUBLIC int dht_publickey_export(const dht_publickey* pk, char* out, size_t* out_size);
 OPENDHT_C_PUBLIC dht_infohash dht_publickey_get_id(const dht_publickey* pk);
 OPENDHT_C_PUBLIC dht_pkid dht_publickey_get_long_id(const dht_publickey* pk);
 OPENDHT_C_PUBLIC bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, size_t data_size, const char* signature, size_t signature_size);
@@ -56,6 +56,7 @@ struct OPENDHT_C_PUBLIC dht_privatekey;
 typedef struct dht_privatekey dht_privatekey;
 OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_generate(unsigned key_length_bits);
 OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password);
+OPENDHT_C_PUBLIC int dht_privatekey_export(const dht_privatekey*, char* out, size_t* out_size, const char* password);
 OPENDHT_C_PUBLIC dht_publickey* dht_privatekey_get_publickey(const dht_privatekey*);
 OPENDHT_C_PUBLIC void dht_privatekey_delete(dht_privatekey*);
 

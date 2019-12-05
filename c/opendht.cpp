@@ -122,7 +122,7 @@ void dht_publickey_delete(dht_publickey* pk) {
     delete reinterpret_cast<PubkeySp*>(pk);
 }
 
-int dht_publickey_pack(dht_publickey* pk, char* out, size_t* outlen) {
+int dht_publickey_export(const dht_publickey* pk, char* out, size_t* outlen) {
     const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
     return gnutls_pubkey_export(pkey->pk, GNUTLS_X509_FMT_DER, out, outlen);
 }
@@ -162,6 +162,13 @@ dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const
     } catch (const dht::crypto::CryptoException& e) {
         return nullptr;
     }
+}
+
+int dht_privatekey_export(const dht_privatekey* k, char* out, size_t* out_size, const char* password) {
+    if (!out or !out_size or !*out_size)
+        return -1;
+    const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
+    return key->serialize((uint8_t*)out, out_size, password);
 }
 
 dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
