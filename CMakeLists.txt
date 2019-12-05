@@ -322,7 +322,12 @@ if (OPENDHT_C)
         c/opendht_c.h
     )
     target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
-    target_link_libraries(opendht-c opendht)
+    if (OPENDHT_SHARED)
+        target_link_libraries(opendht-c opendht)
+    else ()
+        target_link_libraries(opendht-c opendht-static)
+    endif ()
+
     # PkgConfig module
     configure_file (
         opendht-c.pc.in
