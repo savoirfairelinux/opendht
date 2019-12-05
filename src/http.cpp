@@ -1007,19 +1007,25 @@ Request::onHeadersComplete() {
     // has content-length
     if (content_length_it != response_.headers.end()) {
         size_t content_length = atoi(content_length_it->second.c_str());
-        /*auto dat = conn_->read_bytes(content_length);
-        if (logger_)
+        auto dat = conn_->read_bytes(content_length);
+        /*if (logger_)
             logger_->d("[http:request:%i] response body: %zu/%zu bytes received:\n\"%.*s\"", id_, dat.size(), content_length, dat.size(), dat.data());
         if (not dat.empty()) {
             if (dat.size() == content_length)
                 dat += HTTP_HEADER_DELIM;
             http_parser_execute(parser_.get(), parser_s_.get(), dat.data(), dat.size());
         }*/
-        //if (dat.size == )
-        conn_->async_read(content_length, [wthis](const asio::error_code& ec, size_t bytes){
-            if (auto sthis = wthis.lock())
-                sthis->handle_response_header(ec, bytes);
-        });
+        if (dat.size() == content_length)
+            ctx_.post([wthis, dat=std::move(dat)]{
+                if (auto sthis = wthis.lock()) {
+                    http_parser_execute(sthis->parser_.get(), sthis->parser_s_.get(), dat.data(), dat.size());
+                }
+            });
+        else
+            conn_->async_read(content_length, [wthis](const asio::error_code& ec, size_t bytes){
+                if (auto sthis = wthis.lock())
+                    sthis->handle_response_header(ec, bytes);
+            });
         /*auto r = conn_->read_bytes(content_length);
         std::cout << "Has content length " << content_length << std::endl;
         std::cout << "Read content " << r.size() << std::endl;
