@@ -302,9 +302,11 @@ private:
 
     void handle_request(const asio::error_code& ec);
 
-    void handle_response_header(const asio::error_code& ec);
+    void handle_response_header(const asio::error_code& ec, size_t bytes);
 
     void handle_response_body(const asio::error_code& ec, size_t bytes);
+
+    void onHeadersComplete();
 
     /**
      * Parse the request with http_parser.

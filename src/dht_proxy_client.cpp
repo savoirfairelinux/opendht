@@ -279,7 +279,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
     try {
         auto request = buildRequest("/" + key.toString());
         auto reqid = request->id();
-        request->set_connection_type(restinio::http_connection_header_t::keep_alive);
+        //request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         request->set_method(restinio::http_method_get());
         setHeaderFields(*request);
 

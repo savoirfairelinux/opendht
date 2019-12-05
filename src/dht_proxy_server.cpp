@@ -386,7 +386,6 @@ HttpResponse DhtProxyServer::initHttpResponse(HttpResponse response) const
     response.append_header("Server", "RESTinio");
     response.append_header(restinio::http_field::content_type, "application/json");
     response.append_header(restinio::http_field::access_control_allow_origin, "*");
-    response.connection_keep_alive();
     return response;
 }
 
