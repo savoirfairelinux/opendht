@@ -68,6 +68,9 @@ constexpr char RESP_MSG_NO_TOKEN[] = "{\"err\":\"No token\"}";
 
 constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 
+using ResponseByParts = restinio::chunked_output_t;
+using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
+
 class opendht_logger_t
 {
 public:
@@ -957,7 +960,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
             if (logger_)
                 logger_->d("[proxy:server] [put %s] %s %s", infoHash.toString().c_str(),
                           value->toString().c_str(), (permanent ? "permanent" : ""));
-            if (permanent){
+            if (permanent) {
                 std::string pushToken, clientId, platform;
                 auto& pVal = root["permanent"];
                 if (pVal.isObject()){
@@ -1003,7 +1006,6 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     if (pput.expireNotifyTimer)
                         pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                 }
-                lock.unlock();
             }
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){

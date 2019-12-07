@@ -76,9 +76,9 @@ struct OPENDHT_PUBLIC NodeStats {
 struct OPENDHT_PUBLIC NodeInfo {
     InfoHash id;
     InfoHash node_id;
-    NodeStats ipv4;
-    NodeStats ipv6;
-    size_t ongoing_ops;
+    NodeStats ipv4 {};
+    NodeStats ipv6 {};
+    size_t ongoing_ops {0};
 
 #ifdef OPENDHT_JSONCPP
     /**

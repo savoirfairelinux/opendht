@@ -54,8 +54,6 @@ class DhtRunner;
 
 using RestRouter = restinio::router::express_router_t<>;
 using RequestStatus = restinio::request_handling_status_t;
-using ResponseByParts = restinio::chunked_output_t;
-using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
 
 /**
  * Describes the REST API
@@ -87,15 +85,15 @@ public:
 
     struct ServerStats {
         /** Current number of listen operations */
-        size_t listenCount;
+        size_t listenCount {0};
         /** Current number of permanent put operations */
-        size_t putCount;
+        size_t putCount {0};
         /** Current number of push tokens with at least one listen operation */
-        size_t pushListenersCount;
+        size_t pushListenersCount {0};
         /** Average requests per second */
-        double requestRate;
+        double requestRate {0};
         /** Node Info **/
-        NodeInfo nodeInfo;
+        NodeInfo nodeInfo {};
 
         std::string toString() const {
             std::ostringstream ss;
