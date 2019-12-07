@@ -344,30 +344,27 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 opstate->ok.store(false);
             }
         });
-        request->add_on_state_change_callback([this, reqid, opstate, donecb, key]
-                                              (http::Request::State state, const http::Response& response){
-            if (state == http::Request::State::DONE){
-                if (response.status_code != 200) {
-                    if (logger_)
-                        logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
-                    opstate->ok.store(false);
-                    if (not response.aborted and response.status_code == 0)
-                        opFailed();
+        request->add_on_done_callback([this, reqid, opstate, donecb, key] (const http::Response& response){
+            if (response.status_code != 200) {
+                if (logger_)
+                    logger_->e("[proxy:client] [get %s] failed with code=%i", key.to_c_str(), response.status_code);
+                opstate->ok.store(false);
+                if (not response.aborted and response.status_code == 0)
+                    opFailed();
+            }
+            if (donecb) {
+                {
+                    std::lock_guard<std::mutex> lock(lockCallbacks_);
+                    callbacks_.emplace_back([donecb, opstate](){
+                        donecb(opstate->ok, {});
+                        opstate->stop.store(true);
+                    });
                 }
-                if (donecb) {
-                    {
-                        std::lock_guard<std::mutex> lock(lockCallbacks_);
-                        callbacks_.emplace_back([donecb, opstate](){
-                            donecb(opstate->ok, {});
-                            opstate->stop.store(true);
-                        });
-                    }
-                    loopSignal_();
-                }
-                if (not isDestroying_) {
-                    std::lock_guard<std::mutex> l(requestLock_);
-                    requests_.erase(reqid);
-                }
+                loopSignal_();
+            }
+            if (not isDestroying_) {
+                std::lock_guard<std::mutex> l(requestLock_);
+                requests_.erase(reqid);
             }
         });
         {
@@ -493,22 +490,19 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
             }
         }
         request->set_body(Json::writeString(jsonBuilder_, json));
-        request->add_on_state_change_callback([this, reqid, cb]
-                                              (http::Request::State state, const http::Response& response){
-            if (state == http::Request::State::DONE){
-                bool ok = response.status_code == 200;
-                if (not ok) {
-                    if (logger_)
-                        logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
-                    if (not response.aborted and response.status_code == 0)
-                        opFailed();
-                }
-                if (cb)
-                    cb(ok);
-                if (not isDestroying_) {
-                    std::lock_guard<std::mutex> l(requestLock_);
-                    requests_.erase(reqid);
-                }
+        request->add_on_done_callback([this, reqid, cb] (const http::Response& response){
+            bool ok = response.status_code == 200;
+            if (not ok) {
+                if (logger_)
+                    logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
+                if (not response.aborted and response.status_code == 0)
+                    opFailed();
+            }
+            if (cb)
+                cb(ok);
+            if (not isDestroying_) {
+                std::lock_guard<std::mutex> l(requestLock_);
+                requests_.erase(reqid);
             }
         });
         {
@@ -608,33 +602,30 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
         auto reqid = request->id();
         request->set_method(restinio::http_method_get()); 
         setHeaderFields(*request);
-        request->add_on_state_change_callback([this, reqid, family, infoState]
-                                              (http::Request::State state, const http::Response& response){
-            if (state == http::Request::State::DONE) {
-                if (infoState->cancel.load())
+        request->add_on_done_callback([this, reqid, family, infoState] (const http::Response& response){
+            if (infoState->cancel.load())
+                return;
+            if (response.status_code != 200) {
+                if (logger_)
+                    logger_->e("[proxy:client] [status] ipv%i failed with code=%i",
+                                family == AF_INET ? 4 : 6, response.status_code);
+                // pass along the failures
+                if ((family == AF_INET and infoState->ipv4 == 0) or (family == AF_INET6 and infoState->ipv6 == 0))
+                    onProxyInfos(Json::Value{}, family);
+            } else {
+                std::string err;
+                Json::Value proxyInfos;
+                auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
+                if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
+                    onProxyInfos(Json::Value{}, family);
                     return;
-                if (response.status_code != 200) {
-                    if (logger_)
-                        logger_->e("[proxy:client] [status] ipv%i failed with code=%i",
-                                    family == AF_INET ? 4 : 6, response.status_code);
-                    // pass along the failures
-                    if ((family == AF_INET and infoState->ipv4 == 0) or (family == AF_INET6 and infoState->ipv6 == 0))
-                        onProxyInfos(Json::Value{}, family);
-                } else {
-                    std::string err;
-                    Json::Value proxyInfos;
-                    auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
-                    if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
-                        onProxyInfos(Json::Value{}, family);
-                        return;
-                    }
-                    if (not infoState->cancel)
-                        onProxyInfos(proxyInfos, family);
                 }
-                if (not isDestroying_) {
-                    std::lock_guard<std::mutex> l(requestLock_);
-                    requests_.erase(reqid);
-                }
+                if (not infoState->cancel)
+                    onProxyInfos(proxyInfos, family);
+            }
+            if (not isDestroying_) {
+                std::lock_guard<std::mutex> l(requestLock_);
+                requests_.erase(reqid);
             }
         });
 
@@ -898,20 +889,17 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
                 body["key"] = deviceKey_;
                 body["client_id"] = pushClientId_;
                 request->set_body(Json::writeString(jsonBuilder_, body));
-                request->add_on_state_change_callback([this, reqid, key]
-                                                      (http::Request::State state, const http::Response& response){
-                    if (state == http::Request::State::DONE){
-                        if (response.status_code != 200) {
-                            if (logger_)
-                                logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
-                                           key.to_c_str(), response.status_code);
-                            if (not response.aborted and response.status_code == 0)
-                                opFailed();
-                        }
-                        if (not isDestroying_) {
-                            std::lock_guard<std::mutex> l(requestLock_);
-                            requests_.erase(reqid);
-                        }
+                request->add_on_done_callback([this, reqid, key] (const http::Response& response){
+                    if (response.status_code != 200) {
+                        if (logger_)
+                            logger_->e("[proxy:client] [unsubscribe %s] failed with code=%i",
+                                        key.to_c_str(), response.status_code);
+                        if (not response.aborted and response.status_code == 0)
+                            opFailed();
+                    }
+                    if (not isDestroying_) {
+                        std::lock_guard<std::mutex> l(requestLock_);
+                        requests_.erase(reqid);
                     }
                 });
                 {
@@ -1004,21 +992,18 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                 opstate->ok.store(false);
             }
         });
-        request->add_on_state_change_callback([this, opstate, reqid]
-                                              (http::Request::State state, const http::Response& response){
-            if (state == http::Request::State::DONE){
-                if (response.status_code != 200) {
-                    if (logger_)
-                        logger_->e("[proxy:client] [listen] send request #%i failed with code=%i",
-                                   reqid, response.status_code);
-                    opstate->ok.store(false);
-                    if (not response.aborted and response.status_code == 0)
-                        opFailed();
-                }
-                if (not isDestroying_) {
-                    std::lock_guard<std::mutex> l(requestLock_);
-                    requests_.erase(reqid);
-                }
+        request->add_on_done_callback([this, opstate, reqid] (const http::Response& response) {
+            if (response.status_code != 200) {
+                if (logger_)
+                    logger_->e("[proxy:client] [listen] send request #%i failed with code=%i",
+                                reqid, response.status_code);
+                opstate->ok.store(false);
+                if (not response.aborted and response.status_code == 0)
+                    opFailed();
+            }
+            if (not isDestroying_) {
+                std::lock_guard<std::mutex> l(requestLock_);
+                requests_.erase(reqid);
             }
         });
         {

@@ -269,6 +269,7 @@ public:
     void add_on_status_callback(OnStatusCb cb);
     void add_on_body_callback(OnDataCb cb);
     void add_on_state_change_callback(OnStateChangeCb cb);
+    void add_on_done_callback(OnDoneCb cb);
 
     void send();
 
@@ -288,7 +289,7 @@ private:
         OnStateChangeCb on_state_change;
     };
 
-    void notify_state_change(const State state);
+    void notify_state_change(State state);
 
     void build();
 

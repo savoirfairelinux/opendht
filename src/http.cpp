@@ -450,9 +450,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
     Json::StreamWriterBuilder wbuilder;
     set_method(restinio::http_method_post());
     set_body(Json::writeString(wbuilder, json));
-    add_on_state_change_callback([this, jsoncb](State state, const Response& response){
-        if (state != Request::State::DONE)
-            return;
+    add_on_done_callback([this, jsoncb](const Response& response){
         Json::Value json;
         if (response.status_code != 0) {
             std::string err;
@@ -462,7 +460,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
                 logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
         }
         if (jsoncb)
-            jsoncb(json, response.status_code);
+            jsoncb(std::move(json), response.status_code);
     });
 }
 
@@ -477,10 +475,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone,
     : logger_(logger), id_(Request::ids_++), ctx_(ctx), resolver_(std::make_shared<Resolver>(ctx, url, logger))
 {
     init_default_headers();
-    add_on_state_change_callback([onDone](State state, const Response& response){
-        if (state == Request::State::DONE)
-            onDone(response);
-    });
+    add_on_done_callback(std::move(onDone));
 }
 
 Request::Request(asio::io_context& ctx, const std::string& host, const std::string& service,
@@ -660,8 +655,15 @@ Request::add_on_state_change_callback(OnStateChangeCb cb) {
 }
 
 void
-Request::notify_state_change(const State state)
-{
+Request::add_on_done_callback(OnDoneCb cb) {
+    add_on_state_change_callback([onDone=std::move(cb)](State state, const Response& response){
+        if (state == Request::State::DONE)
+            onDone(response);
+    });
+}
+
+void
+Request::notify_state_change(State state) {
     state_ = state;
     if (cbs_.on_state_change)
         cbs_.on_state_change(state, response_);
