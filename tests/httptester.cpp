@@ -19,41 +19,35 @@
 
 #include "httptester.h"
 
-// std
+#include <opendht/value.h>
+#include <opendht/dhtrunner.h>
+
 #include <iostream>
 #include <string>
-
 #include <chrono>
 #include <condition_variable>
-
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(HttpTester);
 
 void
 HttpTester::setUp() {
-    logger = dht::log::getStdLogger();
+    nodePeer = std::make_shared<dht::DhtRunner>();
+    nodePeer->run(0);
 
-    nodePeer.run(0, /*identity*/{}, /*threaded*/true);
-
-    nodeProxy = std::make_shared<dht::DhtRunner>();
+    auto nodeProxy = std::make_shared<dht::DhtRunner>();
     nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
-    nodeProxy->bootstrap(nodePeer.getBound());
+    nodeProxy->bootstrap(nodePeer->getBound());
 
     serverProxy = std::unique_ptr<dht::DhtProxyServer>(
         new dht::DhtProxyServer(
-            /*http*/dht::crypto::Identity{}, nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090", logger));
-
+            /*http*/dht::crypto::Identity{}, nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090"));
 }
 
 void
 HttpTester::tearDown() {
-    logger->d("[tester:http] stopping peer node");
-    nodePeer.join();
-    logger->d("[tester:http] stopping proxy server");
-    serverProxy.reset(nullptr);
-    logger->d("[tester:http] stopping proxy node");
-    nodeProxy->join();
+    serverProxy.reset();
+    nodePeer->join();
 }
 
 void
@@ -234,31 +228,72 @@ HttpTester::test_send_json() {
     std::mutex cv_m;
     std::unique_lock<std::mutex> lk(cv_m);
     bool done = false;
-
-    dht::Value val {"hey"};
-    auto json = val.toJson();
-    json["permanent"] = false;
-    std::cout << "[test_send_json] sending:\n" << json << std::endl;
-    Json::Value resp_val;
     unsigned int status = 0;
-    std::string url = "http://127.0.0.1:8080/key";
+
+    auto json = dht::Value("hey").toJson();
+    Json::Value resp_val;
+
     // Act
-    auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(), url, json,
-                   [this, &cv, &done, &status, &resp_val](Json::Value value, unsigned int status_code){
-        if (status_code != 200 and logger)
-            logger->e("[tester] [status] failed with code=%i", status_code);
-        std::cout << "[tester] got response:\n" << value << std::endl;
-        resp_val = value;
-        status = status_code;
-        done = true;
-        cv.notify_all();
-    }, logger);
-    request->set_method(restinio::http_method_post());
+    auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(), 
+        "http://127.0.0.1:8080/key",
+        json,
+        [&](Json::Value value, unsigned int status_code) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            resp_val = std::move(value);
+            status = status_code;
+            done = true;
+            cv.notify_all();
+        });
     request->send();
+
     // Assert
     CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
-    CPPUNIT_ASSERT(status == 200);
-    CPPUNIT_ASSERT(resp_val["data"] == val.toJson()["data"]);
+    CPPUNIT_ASSERT_EQUAL(200u, status);
+    CPPUNIT_ASSERT_EQUAL(json["data"].asString(), resp_val["data"].asString());
+    done = false;
+
+#if 0
+    request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
+        "http://google.ca",
+        [&](const dht::http::Response& response) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            status = response.status_code;
+            done = true;
+            cv.notify_all();
+        });
+    request->send();
+
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(status != 0);
+    done = false;
+
+    request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
+        "https://google.ca",
+        [&](const dht::http::Response& response) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            status = response.status_code;
+            done = true;
+            cv.notify_all();
+        });
+    request->send();
+
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT(status != 0);
+    done = false;
+
+    request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
+        "https://google.ca/sdbjklwGBIP",
+        [&](const dht::http::Response& response) {
+            std::lock_guard<std::mutex> lk(cv_m);
+            status = response.status_code;
+            done = true;
+            cv.notify_all();
+        });
+    request->send();
+
+    CPPUNIT_ASSERT(cv.wait_for(lk, std::chrono::seconds(10), [&]{ return done; }));
+    CPPUNIT_ASSERT_EQUAL(404u, status);
+#endif
 }
 
 }  // namespace test

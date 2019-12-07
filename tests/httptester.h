@@ -23,12 +23,12 @@
 #include <cppunit/TestFixture.h>
 #include <cppunit/extensions/HelperMacros.h>
 
-#include <opendht/value.h>
-#include <opendht/log.h>
 #include <opendht/http.h>
-
-#include <opendht/dhtrunner.h>
 #include <opendht/dht_proxy_server.h>
+#include <asio.hpp>
+
+#include <thread>
+#include <memory>
 
 namespace test {
 
@@ -88,10 +88,7 @@ class HttpTester : public CppUnit::TestFixture {
    void test_send_json();
 
  private:
-    std::shared_ptr<dht::Logger> logger {};
-
-    dht::DhtRunner nodePeer;
-    std::shared_ptr<dht::DhtRunner> nodeProxy;
+    std::shared_ptr<dht::DhtRunner> nodePeer;
     std::unique_ptr<dht::DhtProxyServer> serverProxy;
 };
 
