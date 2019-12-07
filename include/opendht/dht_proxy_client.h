@@ -53,9 +53,9 @@ public:
     DhtProxyClient();
 
     explicit DhtProxyClient(
-        std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
+        std::shared_ptr<crypto::Certificate> serverCA, crypto::Identity clientIdentity,
         std::function<void()> loopSignal, const std::string& serverHost,
-        const std::string& pushClientId = "", std::shared_ptr<dht::Logger> logger = {});
+        const std::string& pushClientId = "", std::shared_ptr<Logger> logger = {});
 
     void setHeaderFields(http::Request& request);
 
@@ -404,7 +404,7 @@ private:
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
     Json::StreamWriterBuilder jsonBuilder_;
-    Json::CharReaderBuilder jsonReaderBuilder_;
+    std::unique_ptr<Json::CharReader> jsonReader_;
     std::shared_ptr<dht::Logger> logger_;
 
     std::shared_ptr<http::Request> buildRequest(const std::string& target = {});

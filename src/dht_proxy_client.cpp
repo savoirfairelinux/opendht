@@ -99,16 +99,15 @@ DhtProxyClient::DhtProxyClient(
         std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
         std::function<void()> signal, const std::string& serverHost,
         const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
-    :
-        clientIdentity_(clientIdentity), serverCertificate_(serverCA),
-        pushClientId_(pushClientId), loopSignal_(signal), logger_(logger)
+    : proxyUrl_(serverHost)
+    , clientIdentity_(clientIdentity), serverCertificate_(serverCA)
+    , pushClientId_(pushClientId), loopSignal_(signal)
+    , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
+    , logger_(logger)
 {
-    // build http client
-    proxyUrl_ = serverHost;
-
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
-    if (logger_){
+    if (logger_) {
         if (serverCertificate_)
             logger_->d("[proxy:client] using ca certificate for ssl:\n%s",
                        serverCertificate_->toString(false/*chain*/).c_str());
@@ -320,8 +319,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                     std::string err;
                     Json::Value json;
                     const auto& line = b.line();
-                    auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
-                    if (!reader->parse(line.data(), line.data() + line.size(), &json, &err)){
+                    if (!jsonReader_->parse(line.data(), line.data() + line.size(), &json, &err)){
                         opstate->ok.store(false);
                         return;
                     }
@@ -615,8 +613,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
             } else {
                 std::string err;
                 Json::Value proxyInfos;
-                auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
-                if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
+                if (!jsonReader_->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
                     onProxyInfos(Json::Value{}, family);
                     return;
                 }
@@ -964,8 +961,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t header,
                     std::string err;
                     Json::Value json;
                     const auto& line = b.line();
-                    auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
-                    if (!reader->parse(line.data(), line.data() + line.size(), &json, &err)){
+                    if (!jsonReader_->parse(line.data(), line.data() + line.size(), &json, &err)){
                         opstate->ok.store(false);
                         return;
                     }
