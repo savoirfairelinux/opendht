@@ -99,7 +99,7 @@ public:
     asio::streambuf& input();
     std::istream& data() { return istream_; }
 
-    std::string read_bytes(size_t bytes);
+    std::string read_bytes(size_t bytes = 0);
     std::string read_until(const char delim);
 
     void async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb);
@@ -108,11 +108,20 @@ public:
     void async_read_until(const char* delim, BytesHandlerCb cb);
     void async_read_until(char delim, BytesHandlerCb cb);
     void async_read(size_t bytes, BytesHandlerCb cb);
+    void async_read_some(size_t bytes, BytesHandlerCb cb);
 
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
     void close();
 
 private:
+
+    template<typename T>
+    T wrapCallabck(T cb) const {
+        return [t=shared_from_this(),cb=std::move(cb)](auto ...params) {
+            cb(params...);
+        };
+    }
+
     unsigned int id_;
     static std::atomic_uint ids_;
 
@@ -232,7 +241,7 @@ public:
 
     ~Request();
 
-    unsigned int id() const;
+    inline unsigned int id() const { return  id_; };
     void set_connection(std::shared_ptr<Connection> connection);
     std::shared_ptr<Connection> get_connection() const;
     inline const Url& get_url() const {
@@ -272,15 +281,10 @@ private:
     using OnCompleteCb = std::function<void()>;
 
     struct Callbacks {
-        Callbacks(){}
-
         OnStatusCb on_status;
         OnDataCb on_header_field;
         OnDataCb on_header_value;
         OnDataCb on_body;
-        OnCompleteCb on_headers_complete;
-        OnCompleteCb on_message_complete;
-
         OnStateChangeCb on_state_change;
     };
 
@@ -301,17 +305,11 @@ private:
     void post();
 
     void handle_request(const asio::error_code& ec);
+    void handle_response(const asio::error_code& ec, size_t bytes);
 
-    void handle_response_header(const asio::error_code& ec);
-
-    void handle_response_body(const asio::error_code& ec, size_t bytes);
-
-    /**
-     * Parse the request with http_parser.
-     * Return how many bytes were parsed.
-     * Note: we pass requerst.size()==0 to signal that EOF has been received.
-     */
-    size_t parse_request(const std::string& request);
+    void onHeadersComplete();
+    void onBody(const char* at, size_t length);
+    void onComplete();
 
     std::shared_ptr<dht::Logger> logger_;
 
@@ -320,7 +318,6 @@ private:
     restinio::http_connection_header_t connection_type_ {restinio::http_connection_header_t::close};
     std::string body_;
 
-    std::mutex cbs_mutex_;
     Callbacks cbs_;
     State state_;
 
@@ -338,7 +335,6 @@ private:
 
     Response response_ {};
     std::string request_;
-    std::atomic<bool> message_complete_ {false};
     std::atomic<bool> finishing_ {false};
     std::unique_ptr<http_parser> parser_;
     std::unique_ptr<http_parser_settings> parser_s_;
