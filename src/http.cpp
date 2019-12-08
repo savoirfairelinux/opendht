@@ -758,11 +758,12 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             this_.terminate(ec);
             return;
         }
-        else if (ec and this_.logger_)
-            this_.logger_->e("[http:request:%i] connect: failed with all endpoints", this_.id_);
-        else {
+        else if (ec) {
             if (this_.logger_)
-                this_.logger_->d("[http:request:%i] connect success", this_.id_);
+                this_.logger_->e("[http:request:%i] connect failed with all endpoints: %s", this_.id_, ec.message().c_str());
+        } else {
+            // if (this_.logger_)
+            //     this_.logger_->d("[http:request:%i] connect success", this_.id_);
 
             const auto& url = this_.get_url();
             auto port = endpoint.port();
@@ -783,8 +784,8 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                             return;
                         if (ec and logger)
                             logger->e("[http:request:%i] handshake error: %s", id, ec.message().c_str());
-                        else if (logger)
-                            logger->d("[http:request:%i] handshake success", id);
+                        //else if (logger)
+                        //    logger->d("[http:request:%i] handshake success", id);
                         if (cb)
                             cb(ec);
                     });
@@ -889,8 +890,8 @@ Request::handle_request(const asio::error_code& ec)
         terminate(asio::error::not_connected);
         return;
     }
-    if (logger_)
-        logger_->d("[http:request:%i] send success", id_);
+    // if (logger_)
+    //    logger_->d("[http:request:%i] send success", id_);
     // read response
     notify_state_change(State::RECEIVING);
 
