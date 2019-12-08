@@ -920,16 +920,12 @@ Request::handle_response(const asio::error_code& ec, size_t n_bytes)
     }
 
     if (state_ != State::DONE and parser_ and not http_body_is_final(parser_.get())) {
-        if (auto toRead = parser_->content_length ? std::min<uint64_t>(parser_->content_length, 64 * 1024) : 64 * 1024) {
-            if (logger_)
-                logger_->d("[http:request:%i] read more %llu", id_, toRead);
-
-            std::weak_ptr<Request> wthis = shared_from_this();
-            conn_->async_read_some(toRead, [wthis](const asio::error_code& ec, size_t bytes){
-                if (auto sthis = wthis.lock())
-                    sthis->handle_response(ec, bytes);
-            });
-        }
+        auto toRead = parser_->content_length ? std::min<uint64_t>(parser_->content_length, 64 * 1024) : 64 * 1024;
+        std::weak_ptr<Request> wthis = shared_from_this();
+        conn_->async_read_some(toRead, [wthis](const asio::error_code& ec, size_t bytes){
+            if (auto sthis = wthis.lock())
+                sthis->handle_response(ec, bytes);
+        });
     }
 }
 
