@@ -76,8 +76,9 @@ Dht::shutdown(ShutdownCallback cb)
     for (auto& str : store)
         *remaining += maintainStorage(str, true, str_donecb);
 
+    DHT_LOG.w("shuting down node: after storage, %u ops", *remaining);
+
     if (!*remaining) {
-        DHT_LOG.w("shuting down node: %u ops remaining", *remaining);
         if (cb) cb();
     }
 }
