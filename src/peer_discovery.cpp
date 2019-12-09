@@ -22,11 +22,7 @@
 #include "network_utils.h"
 #include "utils.h"
 
-#include <asio/io_context.hpp>
-#include <asio/ip/udp.hpp>
-#include <asio/ip/multicast.hpp>
-#include <asio/steady_timer.hpp>
-#include <asio/streambuf.hpp>
+#include <asio.hpp>
 
 using namespace std::chrono_literals;
 
