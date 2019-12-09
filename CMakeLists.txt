@@ -85,6 +85,8 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
     if (OPENDHT_PROXY_HTTP_PARSER_FORK)
         add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
     endif()
+else()
+    set(OPENDHT_PROXY_OPENSSL OFF)
 endif()
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT OR OPENDHT_PEER_DISCOVERY)
     add_definitions(-DASIO_STANDALONE)
@@ -419,8 +421,11 @@ if (OPENDHT_TESTS)
        ${CMAKE_THREAD_LIBS_INIT}
        ${CPPUNIT_LIBRARIES}
        ${GNUTLS_LIBRARIES}
-       ssl crypto jsoncpp
+       ${Jsoncpp_LIBRARIES}
     )
+    if (OPENDHT_PROXY_OPENSSL)
+        target_link_libraries(opendht_unit_tests ${OPENSSL_LIBRARIES})
+    endif()
     enable_testing()
     add_test(TEST opendht_unit_tests)
 endif()
