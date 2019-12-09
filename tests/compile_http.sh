@@ -1,1 +1,0 @@
-g++ -Wall -Wextra -Wfatal-errors -pedantic -g ../src/http.cpp tests_runner.cpp httptester.cpp -o run.out -lopendht -lpthread -lcppunit -ljsoncpp -DOPENDHT_JSONCPP -I../include/opendht -DASIO_STANDALONE

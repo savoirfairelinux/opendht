@@ -22,6 +22,7 @@ option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" O
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
+option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
 option (OPENDHT_C "Build C bindings" OFF)
@@ -177,7 +178,6 @@ list (APPEND opendht_SOURCES
     src/securedht.cpp
     src/dhtrunner.cpp
     src/log.cpp
-    src/peer_discovery.cpp
     src/network_utils.cpp
     src/thread_pool.cpp
 )
@@ -203,11 +203,16 @@ list (APPEND opendht_HEADERS
     include/opendht/securedht.h
     include/opendht/log.h
     include/opendht/log_enable.h
-    include/opendht/peer_discovery.h
     include/opendht/thread_pool.h
     include/opendht/network_utils.h
     include/opendht.h
 )
+
+if (OPENDHT_PEER_DISCOVERY)
+    list (APPEND opendht_SOURCES src/peer_discovery.cpp)
+    list (APPEND opendht_HEADERS include/opendht/peer_discovery.h)
+    add_definitions(-DOPENDHT_PEERDISCOVERY)
+endif()
 
 if (OPENDHT_PYTHON)
     message("Indexation enabled since it is required for Python support")
@@ -390,6 +395,12 @@ if (OPENDHT_TESTS)
             tests/httptester.cpp
             tests/dhtproxytester.h
             tests/dhtproxytester.cpp
+        )
+    endif()
+    if (OPENDHT_PEER_DISCOVERY)
+        list (APPEND test_FILES
+            tests/peerdiscoverytester.h
+            tests/peerdiscoverytester.cpp
         )
     endif()
     add_executable(opendht_unit_tests
