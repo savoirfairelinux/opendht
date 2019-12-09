@@ -20,6 +20,9 @@
 #include "peerdiscoverytester.h"
 #include "opendht/value.h"
 
+#include <mutex>
+#include <condition_variable>
+
 namespace test {
 
 constexpr unsigned MULTICAST_PORT = 2222;
