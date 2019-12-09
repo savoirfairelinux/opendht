@@ -30,9 +30,9 @@ RUN echo "** Building a recent version of asio ***" \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/8d5d3e8237e0947adb9ba1ffc8281f4ad7cb2a59.tar.gz \
-    && ls -l && tar -xzf 8d5d3e8237e0947adb9ba1ffc8281f4ad7cb2a59.tar.gz \
-    && cd restinio-8d5d3e8237e0947adb9ba1ffc8281f4ad7cb2a59/dev \
+    && wget https://github.com/aberaud/restinio/archive/a7a10e419d9089c5b8ee63f5e3098c892f22fae4.tar.gz \
+    && ls -l && tar -xzf a7a10e419d9089c5b8ee63f5e3098c892f22fae4.tar.gz \
+    && cd restinio-a7a10e419d9089c5b8ee63f5e3098c892f22fae4/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
              -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
              -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
