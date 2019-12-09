@@ -22,7 +22,7 @@
 
 namespace test {
 
-constexpr int MULTICAST_PORT = 2222;
+constexpr unsigned MULTICAST_PORT = 2222;
 const std::string DHT_NODE_NAME {"dht"};
 const std::string JAMI_NODE_NAME {"jami"};
 

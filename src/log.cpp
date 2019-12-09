@@ -56,9 +56,9 @@ printLog(std::ostream& s, char const *m, va_list args) {
     s << std::endl;
 }
 
-std::unique_ptr<Logger>
+std::shared_ptr<Logger>
 getStdLogger() {
-    return std::unique_ptr<Logger>(new Logger(
+    return std::make_shared<Logger>(
         [](char const *m, va_list args) {
             std::cerr << red;
             printLog(std::cerr, m, args);
@@ -70,22 +70,22 @@ getStdLogger() {
             std::cout << def;
         },
         [](char const *m, va_list args) { printLog(std::cout, m, args); }
-    ));
+    );
 }
 
-std::unique_ptr<Logger>
+std::shared_ptr<Logger>
 getFileLogger(const std::string &path) {
     auto logfile = std::make_shared<std::ofstream>();
     logfile->open(path, std::ios::out);
 
-    return std::unique_ptr<Logger>(new Logger(
+    return std::make_shared<Logger>(
         [=](char const *m, va_list args) { printLog(*logfile, m, args); },
         [=](char const *m, va_list args) { printLog(*logfile, m, args); },
         [=](char const *m, va_list args) { printLog(*logfile, m, args); }
-    ));
+    );
 }
 
-std::unique_ptr<Logger>
+std::shared_ptr<Logger>
 getSyslogLogger(const char* name) {
 #ifndef _WIN32
     struct Syslog {
@@ -103,13 +103,13 @@ getSyslogLogger(const char* name) {
         logfile = std::make_shared<Syslog>(name);
         opened_logfile = logfile;
     }
-    return std::unique_ptr<Logger>(new Logger(
+    return std::make_shared<Logger>(
         [logfile](char const *m, va_list args) { vsyslog(LOG_ERR, m, args); },
         [logfile](char const *m, va_list args) { vsyslog(LOG_WARNING, m, args); },
         [logfile](char const *m, va_list args) { vsyslog(LOG_INFO, m, args); }
-    ));
+    );
 #else
-    return std::unique_ptr<Logger>(new Logger());
+    return std::make_shared<Logger>();
 #endif
 }
 

@@ -71,13 +71,13 @@ OPENDHT_PUBLIC void
 printLog(std::ostream &s, char const *m, va_list args);
 
 OPENDHT_PUBLIC
-std::unique_ptr<Logger> getStdLogger();
+std::shared_ptr<Logger> getStdLogger();
 
 OPENDHT_PUBLIC
-std::unique_ptr<Logger> getFileLogger(const std::string &path);
+std::shared_ptr<Logger> getFileLogger(const std::string &path);
 
 OPENDHT_PUBLIC
-std::unique_ptr<Logger> getSyslogLogger(const char* name);
+std::shared_ptr<Logger> getSyslogLogger(const char* name);
 
 OPENDHT_PUBLIC void
 enableLogging(dht::DhtRunner &dht);

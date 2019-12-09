@@ -22,10 +22,13 @@
 #include "def.h"
 #include "sockaddr.h"
 #include "infohash.h"
+#include "log_enable.h"
 
 #include <thread>
-#include <mutex>
-#include <condition_variable>
+
+namespace asio {
+class io_context;
+}
 
 namespace dht {
 
@@ -35,7 +38,7 @@ public:
     static constexpr in_port_t DEFAULT_PORT = 8888;
     using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
 
-    PeerDiscovery(in_port_t port = DEFAULT_PORT);
+    PeerDiscovery(in_port_t port = DEFAULT_PORT, std::shared_ptr<asio::io_context> ioContext = {}, std::shared_ptr<Logger> logger = {});
     ~PeerDiscovery();
 
     /**
@@ -51,7 +54,7 @@ public:
     }
 
     /**
-     * startPublish - Keeping sending data until node is joinned or stop is called - msgpack
+     * startPublish - Keeping sending data until node is joinned or stop is called
     */
     void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
     void startPublish(sa_family_t domain, const std::string &type, const msgpack::sbuffer &pack_buf);
@@ -79,20 +82,12 @@ public:
     bool stopPublish(const std::string &type);
     bool stopPublish(sa_family_t domain, const std::string &type);
 
-    /**
-     * Configure the sockopt to be able to listen multicast group
-    */
-    static void joinMulticast(int sockfd, sa_family_t family);
-
-    /**
-     * Join the threads
-    */
-    void join();
-
 private:
     class DomainPeerDiscovery;
     std::unique_ptr<DomainPeerDiscovery> peerDiscovery4_;
     std::unique_ptr<DomainPeerDiscovery> peerDiscovery6_;
+    std::shared_ptr<asio::io_context> ioContext_;
+    std::thread ioRunnner_;
 };
 
 }

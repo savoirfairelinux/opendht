@@ -307,9 +307,6 @@ DhtRunner::join()
     if (bootstrap_thread.joinable())
         bootstrap_thread.join();
 
-    if (peerDiscovery_)
-        peerDiscovery_->join();
-
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         pending_ops = decltype(pending_ops)();
