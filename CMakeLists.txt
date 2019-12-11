@@ -215,7 +215,7 @@ list (APPEND opendht_HEADERS
 if (OPENDHT_PEER_DISCOVERY)
     list (APPEND opendht_SOURCES src/peer_discovery.cpp)
     list (APPEND opendht_HEADERS include/opendht/peer_discovery.h)
-    add_definitions(-DOPENDHT_PEERDISCOVERY)
+    add_definitions(-DOPENDHT_PEER_DISCOVERY)
 endif()
 
 if (OPENDHT_PYTHON)
@@ -388,8 +388,6 @@ if (OPENDHT_TESTS)
         tests/cryptotester.cpp
         tests/dhtrunnertester.h
         tests/dhtrunnertester.cpp
-        tests/peerdiscoverytester.h
-        tests/peerdiscoverytester.cpp
         tests/threadpooltester.h
         tests/threadpooltester.cpp
     )

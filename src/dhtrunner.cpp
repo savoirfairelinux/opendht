@@ -20,9 +20,10 @@
 
 #include "dhtrunner.h"
 #include "securedht.h"
-#include "peer_discovery.h"
 #include "network_utils.h"
-
+#ifdef OPENDHT_PEER_DISCOVERY
+#include "peer_discovery.h"
+#endif
 #ifdef OPENDHT_PROXY_CLIENT
 #include "dht_proxy_client.h"
 #endif
@@ -124,7 +125,8 @@ DhtRunner::run(const Config& config, Context&& context)
         {
             std::lock_guard<std::mutex> lck(sock_mtx);
             if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
-                std::cerr << "Dropping packet: queue is full!" << std::endl;
+                if (logger_)
+                    logger_->e("Dropping packet: queue is full!");
                 rcv.pop();
             }
             rcv.emplace(std::move(pkt));
@@ -184,21 +186,28 @@ DhtRunner::run(const Config& config, Context&& context)
     });
 
     if (config.peer_discovery or config.peer_publish) {
+#ifdef OPENDHT_PEER_DISCOVERY
         peerDiscovery_ = context.peerDiscovery ?
             std::move(context.peerDiscovery) :
             std::make_shared<PeerDiscovery>();
+#else
+        std::cerr << "Peer discovery requested but OpenDHT built without peer discovery support." << std::endl;
+#endif
     }
 
     auto netId = config.dht_config.node_config.network;
     if (config.peer_discovery) {
+#ifdef OPENDHT_PEER_DISCOVERY
         peerDiscovery_->startDiscovery<NodeInsertionPack>(PEER_DISCOVERY_DHT_SERVICE, [this, netId](NodeInsertionPack&& v, SockAddr&& addr){
             addr.setPort(v.port);
             if (v.nodeId != dht_->getNodeId() && netId == v.net){
                 bootstrap(v.nodeId, addr);
             }
         });
+#endif
     }
     if (config.peer_publish) {
+#ifdef OPENDHT_PEER_DISCOVERY
         msgpack::sbuffer sbuf_node;
         NodeInsertionPack adc;
         adc.net = netId;
@@ -216,6 +225,7 @@ DhtRunner::run(const Config& config, Context&& context)
             msgpack::pack(sbuf_node, adc);
             peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         }
+#endif
     }
 }
 
@@ -292,8 +302,10 @@ DhtRunner::join()
             return;
         cv.notify_all();
         bootstrap_cv.notify_all();
+#ifdef OPENDHT_PEER_DISCOVERY
         if (peerDiscovery_)
             peerDiscovery_->stop();
+#endif
         if (dht_)
             if (auto sock = dht_->getSocket())
                 sock->stop();
