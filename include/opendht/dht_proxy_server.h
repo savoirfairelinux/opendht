@@ -31,10 +31,7 @@
 
 #include <restinio/all.hpp>
 #include <restinio/tls.hpp>
-
-#ifdef OPENDHT_JSONCPP
 #include <json/json.h>
-#endif
 
 #include <memory>
 #include <mutex>
@@ -111,7 +108,6 @@ public:
             return ss.str();
         }
 
-#ifdef OPENDHT_JSONCPP
         /**
          * Build a json object from a NodeStats
          */
@@ -124,7 +120,6 @@ public:
             result["nodeInfo"] = nodeInfo.toJson();
             return result;
         }
-#endif
     };
 
     ServerStats stats() const { return stats_; }
