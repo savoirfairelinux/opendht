@@ -195,19 +195,17 @@ DhtRunner::run(const Config& config, Context&& context)
 #endif
     }
 
+#ifdef OPENDHT_PEER_DISCOVERY
     auto netId = config.dht_config.node_config.network;
     if (config.peer_discovery) {
-#ifdef OPENDHT_PEER_DISCOVERY
         peerDiscovery_->startDiscovery<NodeInsertionPack>(PEER_DISCOVERY_DHT_SERVICE, [this, netId](NodeInsertionPack&& v, SockAddr&& addr){
             addr.setPort(v.port);
             if (v.nodeId != dht_->getNodeId() && netId == v.net){
                 bootstrap(v.nodeId, addr);
             }
         });
-#endif
     }
     if (config.peer_publish) {
-#ifdef OPENDHT_PEER_DISCOVERY
         msgpack::sbuffer sbuf_node;
         NodeInsertionPack adc;
         adc.net = netId;
@@ -225,8 +223,8 @@ DhtRunner::run(const Config& config, Context&& context)
             msgpack::pack(sbuf_node, adc);
             peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         }
-#endif
     }
+#endif
 }
 
 void
