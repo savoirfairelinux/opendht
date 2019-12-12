@@ -19,10 +19,4 @@
 #pragma once
 
 #include "opendht/dhtrunner.h"
-#ifdef OPENDHT_PROXY_SERVER
-#include "opendht/dht_proxy_server.h"
-#endif
 #include "opendht/default_types.h"
-#ifdef OPENDHT_INDEXATION
-#include "opendht/indexation/pht.h"
-#endif
