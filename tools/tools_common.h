@@ -28,6 +28,9 @@
 #ifdef OPENDHT_INDEXATION
 #include <opendht/indexation/pht.h>
 #endif
+#ifdef OPENDHT_PROXY_SERVER
+#include <opendht/dht_proxy_server.h>
+#endif
 
 #ifndef WIN32_NATIVE
 #include <getopt.h>
