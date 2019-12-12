@@ -25,6 +25,10 @@
 #include <opendht/log.h>
 #include <opendht/crypto.h>
 #include <opendht/network_utils.h>
+#ifdef OPENDHT_INDEXATION
+#include <opendht/indexation/pht.h>
+#endif
+
 #ifndef WIN32_NATIVE
 #include <getopt.h>
 #include <readline/readline.h>
