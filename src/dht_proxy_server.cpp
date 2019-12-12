@@ -18,6 +18,10 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "dht_proxy_server.h"
 
 #include "default_types.h"
