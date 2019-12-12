@@ -139,7 +139,7 @@ AS_IF([test "x$with_jsoncpp" != "xno"],
       [have_jsoncpp=no])
 AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AC_MSG_NOTICE([Using JsonCpp])
-    CPPFLAGS+=" -DOPENDHT_JSONCPP=1"
+    CPPFLAGS+=" -DOPENDHT_JSONCPP"
 ], [
     AC_MSG_NOTICE([Not using JsonCpp])
     AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
@@ -158,7 +158,7 @@ AS_IF([test "x$have_openssl" = "xyes"], [
 AC_ARG_WITH([http_parser_fork], AS_HELP_STRING([--with-http-parser-fork], [Build with http_parser fork to support old API]))
 AS_IF([test "x$with_http_parser_fork" = "xyes"],[
     AC_MSG_NOTICE([Using http_parser fork])
-    CPPFLAGS+=" -DOPENDHT_PROXY_HTTP_PARSER_FORK"
+    AC_DEFINE([OPENDHT_PROXY_HTTP_PARSER_FORK], [], [Define if using http parser fork])
 ], [
     AC_MSG_NOTICE([Not using http_parser fork])
 ])
@@ -209,8 +209,8 @@ AM_COND_IF([ENABLE_TOOLS], [
   ])
 ])
 
-AM_COND_IF(ENABLE_PROXY_SERVER, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER"], [])
-AM_COND_IF(ENABLE_PROXY_CLIENT, [CPPFLAGS+=" -DOPENDHT_PROXY_CLIENT"], [])
+AM_COND_IF(ENABLE_PROXY_SERVER, AC_DEFINE([OPENDHT_PROXY_SERVER], [], [Building with proxy server]))
+AM_COND_IF(ENABLE_PROXY_CLIENT, AC_DEFINE([OPENDHT_PROXY_CLIENT], [], [Building with proxy client]))
 AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS"], [])
 AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
 
