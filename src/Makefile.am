@@ -27,7 +27,6 @@ libopendht_la_SOURCES  = \
         dhtrunner.cpp \
         default_types.cpp \
         log.cpp \
-        peer_discovery.cpp \
         network_utils.cpp \
         thread_pool.cpp
 
@@ -56,7 +55,6 @@ nobase_include_HEADERS = \
         ../include/opendht/default_types.h \
         ../include/opendht/log.h \
         ../include/opendht/log_enable.h \
-        ../include/opendht/peer_discovery.h \
         ../include/opendht/network_utils.h \
         ../include/opendht/rng.h \
         ../include/opendht/thread_pool.h
@@ -75,6 +73,11 @@ libopendht_la_SOURCES += base64.h base64.cpp
 if PROXY_CLIENT_OR_SERVER
 libopendht_la_SOURCES += http.cpp
 nobase_include_HEADERS += ../include/opendht/proxy.h ../include/opendht/http.h
+endif
+
+if ENABLE_PEER_DISCOVERY
+libopendht_la_SOURCES += peer_discovery.cpp
+nobase_include_HEADERS += ../include/opendht/peer_discovery.h
 endif
 
 if ENABLE_INDEXATION

@@ -35,9 +35,13 @@ AS_IF([test "x$enable_logs" != "xno"], [
 dnl Check for indexation
 AC_ARG_ENABLE([indexation], [AS_HELP_STRING([--disable-indexation], [Disable DHT indexation])])
 AM_CONDITIONAL(ENABLE_INDEXATION, test x$enable_indexation != "xno")
-AS_IF([test "x$enable_indexation" != "xno"], [
-	AC_DEFINE([OPENDHT_INDEXATION], [1], [Define if DHT indexation is enabled])
+AM_COND_IF(ENABLE_INDEXATION, [
+	AC_DEFINE([OPENDHT_INDEXATION], [], [Define if DHT indexation is enabled])
 ])
+
+AC_ARG_ENABLE([peer-discovery], [AS_HELP_STRING([--disable-peer-discovery], [Disable peer-discovery])])
+AM_CONDITIONAL(ENABLE_PEER_DISCOVERY, test x$enable_peer_discovery != "xno")
+AM_COND_IF(ENABLE_PEER_DISCOVERY, [AC_DEFINE([OPENDHT_PEER_DISCOVERY], [], [Define if peer discovery is enabled])])
 
 dnl Check for Doxygen
 AC_ARG_ENABLE([doc], AS_HELP_STRING([--enable-doc], [Enable documentation generation (doxygen)]))
