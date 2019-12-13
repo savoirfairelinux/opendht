@@ -58,6 +58,7 @@ public:
     MSGPACK_DEFINE(service, data)
 };
 
+#ifndef OPENDHT_LIGHT
 template <typename T>
 class OPENDHT_PUBLIC SignedValue : public Value::Serializable<T>
 {
@@ -99,7 +100,6 @@ public:
 
     dht::InfoHash to;
 };
-
 
 
 
@@ -177,16 +177,8 @@ public:
     {
         pk.pack_array(2);
         pk.pack(id);
-#if 1
         pk.pack_bin(ice_data.size());
         pk.pack_bin_body((const char*)ice_data.data(), ice_data.size());
-#else
-        // hack for backward compatibility with old opendht compiled with msgpack 1.0
-        // remove when enough people have moved to new versions
-        pk.pack_array(ice_data.size());
-        for (uint8_t b : ice_data)
-            pk.pack(b);
-#endif
     }
 
     virtual void msgpack_unpack(msgpack::object o)
@@ -200,6 +192,7 @@ public:
     Value::Id id {0};
     Blob ice_data;
 };
+#endif
 
 /* "Peer" announcement
  */
@@ -261,8 +254,11 @@ private:
     SockAddr addr;
 };
 
-
+#ifndef OPENDHT_LIGHT
 OPENDHT_PUBLIC extern const std::array<std::reference_wrapper<const ValueType>, 5> DEFAULT_TYPES;
+#else
+OPENDHT_PUBLIC extern const std::array<std::reference_wrapper<const ValueType>, 1> DEFAULT_TYPES;
+#endif
 
 OPENDHT_PUBLIC extern const std::array<std::reference_wrapper<const ValueType>, 1> DEFAULT_INSECURE_TYPES;
 

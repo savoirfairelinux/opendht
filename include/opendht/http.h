@@ -118,7 +118,7 @@ private:
     template<typename T>
     T wrapCallabck(T cb) const {
         return [t=shared_from_this(),cb=std::move(cb)](auto ...params) {
-            cb(params...);
+            return cb(params...);
         };
     }
 

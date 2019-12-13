@@ -20,7 +20,7 @@
 #pragma once
 
 #include "infohash.h"
-#include "crypto.h"
+//#include "crypto.h"
 #include "utils.h"
 #include "sockaddr.h"
 
@@ -45,6 +45,12 @@ namespace dht {
 
 struct Value;
 struct Query;
+
+namespace crypto {
+class PublicKey;
+class PrivateKey;
+class Certificate;
+}
 
 /**
  * A storage policy is applied once to every incoming value storage requests.
@@ -241,15 +247,9 @@ struct OPENDHT_PUBLIC Value
         };
     }
 
-    static Filter OwnerFilter(const crypto::PublicKey& pk) {
-        return OwnerFilter(pk.getId());
-    }
+    static Filter OwnerFilter(const crypto::PublicKey& pk);
 
-    static Filter OwnerFilter(const InfoHash& pkh) {
-        return [pkh](const Value& v) {
-            return v.owner and v.owner->getId() == pkh;
-        };
-    }
+    static Filter OwnerFilter(const InfoHash& pkh);
 
     static Filter SeqNumFilter(uint16_t seq_no) {
         return [seq_no](const Value& v) {
@@ -341,20 +341,13 @@ struct OPENDHT_PUBLIC Value
      * Afterward, checkSignature() will return true and owner will
      * be set to the corresponding public key.
      */
-    void sign(const crypto::PrivateKey& key) {
-        if (isEncrypted())
-            throw DhtException("Can't sign encrypted data.");
-        owner = std::make_shared<const crypto::PublicKey>(key.getPublicKey());
-        signature = key.sign(getToSign());
-    }
+    void sign(const crypto::PrivateKey& key);
 
     /**
      * Check that the value is signed and that the signature matches.
      * If true, the owner field will contain the signer public key.
      */
-    bool checkSignature() const {
-        return isSigned() and owner->checkSignature(getToSign(), signature);
-    }
+    bool checkSignature() const;
 
     std::shared_ptr<const crypto::PublicKey> getOwner() const {
         return std::static_pointer_cast<const crypto::PublicKey>(owner);
@@ -363,15 +356,7 @@ struct OPENDHT_PUBLIC Value
     /**
      * Sign the value with from and returns the encrypted version for to.
      */
-    Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to) {
-        if (isEncrypted())
-            throw DhtException("Data is already encrypted.");
-        setRecipient(to.getId());
-        sign(from);
-        Value nv {id};
-        nv.setCypher(to.encrypt(getToEncrypt()));
-        return nv;
-    }
+    Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to);
 
     Value() {}
 
@@ -424,7 +409,11 @@ struct OPENDHT_PUBLIC Value
     inline bool operator== (const Value& o) {
         return id == o.id &&
         (isEncrypted() ? cypher == o.cypher :
-        ((owner == o.owner || *owner == *o.owner) && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature));
+        (
+#ifndef OPENDHT_LIGHT
+            (owner == o.owner || *owner == *o.owner) &&
+#endif
+            type == o.type && data == o.data && user_type == o.user_type && signature == o.signature));
     }
 
     void setRecipient(const InfoHash& r) {
@@ -482,7 +471,8 @@ struct OPENDHT_PUBLIC Value
     template <typename Packer>
     void msgpack_pack_to_sign(Packer& pk) const
     {
-        bool has_owner = owner && *owner;
+#ifndef OPENDHT_LIGHT
+        bool has_owner = owner && *owner
         pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient ? 5 : 4):2));
         if (has_owner) { // isSigned
             pk.pack(std::string("seq"));   pk.pack(seq);
@@ -491,6 +481,9 @@ struct OPENDHT_PUBLIC Value
                 pk.pack(std::string("to")); pk.pack(recipient);
             }
         }
+#else
+        pk.pack_map((user_type.empty()?0:1) + 2);
+#endif
         pk.pack(std::string("type"));  pk.pack(type);
         pk.pack(std::string("data"));  pk.pack_bin(data.size());
                                        pk.pack_bin_body((const char*)data.data(), data.size());
@@ -535,9 +528,11 @@ struct OPENDHT_PUBLIC Value
                     pk.pack(static_cast<uint64_t>(type));
                     break;
                 case Value::Field::OwnerPk:
+#ifndef OPENDHT_LIGHT
                     if (owner)
                         owner->msgpack_pack(pk);
                     else
+#endif
                         InfoHash().msgpack_pack(pk);
                     break;
                 case Value::Field::SeqNum:

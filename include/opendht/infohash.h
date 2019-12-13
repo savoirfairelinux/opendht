@@ -50,7 +50,7 @@ namespace dht {
 using byte = uint8_t;
 
 namespace crypto {
-    OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length);
+OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash, size_t hash_length);
 }
 
 /**

@@ -122,6 +122,7 @@ struct OPENDHT_PUBLIC Config {
     ssize_t max_peer_req_per_sec {0};
 };
 
+#ifndef OPENDHT_LIGHT
 /**
  * SecureDht configuration.
  */
@@ -130,6 +131,7 @@ struct OPENDHT_PUBLIC SecureDhtConfig
     Config node_config {};
     crypto::Identity id {};
 };
+#endif
 
 static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 

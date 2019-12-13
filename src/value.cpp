@@ -22,9 +22,12 @@
 #endif
 
 #include "value.h"
-
 #include "default_types.h"
+#include "callbacks.h"
+
+#ifndef OPENDHT_LIGHT
 #include "securedht.h" // print certificate ID
+#endif
 
 #ifdef OPENDHT_JSONCPP
 #include "base64.h"
@@ -42,6 +45,46 @@ Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data) {
     };
 }
 
+#ifndef OPENDHT_LIGHT
+Value::Filter
+Value::OwnerFilter(const crypto::PublicKey& pk) {
+    return OwnerFilter(pk.getId());
+}
+
+
+Value::Filter
+Value::OwnerFilter(const InfoHash& pkh) {
+    return [pkh](const Value& v) {
+        return v.owner and v.owner->getId() == pkh;
+    };
+}
+
+void
+Value::sign(const crypto::PrivateKey& key) {
+    if (isEncrypted())
+        throw DhtException("Can't sign encrypted data.");
+    owner = std::make_shared<const crypto::PublicKey>(key.getPublicKey());
+    signature = key.sign(getToSign());
+}
+
+bool
+Value::checkSignature() const {
+    return isSigned() and owner->checkSignature(getToSign(), signature);
+}
+
+Value
+Value::encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to) {
+    if (isEncrypted())
+        throw DhtException("Data is already encrypted.");
+    setRecipient(to.getId());
+    sign(from);
+    Value nv {id};
+    nv.setCypher(to.encrypt(getToEncrypt()));
+    return nv;
+}
+
+#endif
+
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     auto flags(s.flags());
@@ -56,7 +99,9 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
     if (not v.isEncrypted()) {
         if (v.type == IpServiceAnnouncement::TYPE.id) {
             s << IpServiceAnnouncement(v.data);
-        } else if (v.type == CERTIFICATE_TYPE.id) {
+        }
+#ifndef OPENDHT_LIGHT
+        else if (v.type == CERTIFICATE_TYPE.id) {
             s << "Certificate";
 #ifdef OPENDHT_LOG_CRT_ID
             try {
@@ -66,7 +111,9 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
                 s << " (invalid)";
             }
 #endif
-        } else {
+        }
+#endif
+        else {
             s << "Data (type: " << v.type << " ): ";
             s << std::hex;
             for (auto i : v.data)
@@ -163,9 +210,12 @@ Value::msgpack_unpack_body(const msgpack::object& o)
                 seq = rseq->as<decltype(seq)>();
             else
                 throw msgpack::type_error();
+
+#ifndef OPENDHT_LIGHT
             crypto::PublicKey new_owner;
             new_owner.msgpack_unpack(*rowner);
             owner = std::make_shared<const crypto::PublicKey>(std::move(new_owner));
+#endif
             if (auto rrecipient = findMapValue(*rbody, "to")) {
                 recipient = rrecipient->as<InfoHash>();
             }
@@ -194,11 +244,13 @@ Value::Value(Json::Value& json)
     }
     if (json.isMember("seq"))
         seq = json["seq"].asInt();
+#ifndef OPENDHT_LIGHT
     if (json.isMember("owner")) {
         auto ownerStr = json["owner"].asString();
         auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
         owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
     }
+#endif
     if (json.isMember("to")) {
         auto toStr = json["to"].asString();
         recipient = InfoHash(toStr);
@@ -318,9 +370,11 @@ FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
             case Value::Field::ValueType:
                 index[f] = {f, v.type};
                 break;
+#ifndef OPENDHT_LIGHT
             case Value::Field::OwnerPk:
                 index[f] = {f, v.owner ? v.owner->getId() : InfoHash() };
                 break;
+#endif
             case Value::Field::SeqNum:
                 index[f] = {f, v.seq};
                 break;
