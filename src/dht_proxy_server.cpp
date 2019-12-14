@@ -706,7 +706,10 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                     }
                     json["exp"] = ss.str();
                 }
-                sendPushNotification(pushToken, std::move(json), isAndroid, !expired);
+                auto maxPrio = 1000u;
+                for (const auto& v : values)
+                    maxPrio = std::min(maxPrio, v->priority);
+                sendPushNotification(pushToken, std::move(json), isAndroid, !expired and maxPrio == 0);
                 return true;
             }
         );
