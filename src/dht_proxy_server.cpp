@@ -706,7 +706,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                     }
                     json["exp"] = ss.str();
                 }
-                sendPushNotification(pushToken, std::move(json), isAndroid);
+                sendPushNotification(pushToken, std::move(json), isAndroid, !expired);
                 return true;
             }
         );
@@ -802,7 +802,7 @@ DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const s
     }
     if (logger_)
         logger_->d("[proxy:server] [subscribe] sending put refresh to %s token", pushToken.c_str());
-    sendPushNotification(pushToken, std::move(json), isAndroid);
+    sendPushNotification(pushToken, std::move(json), isAndroid, false);
 }
 
 void
@@ -844,7 +844,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid)
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid, bool highPriority)
 {
     if (pushServer_.empty())
         return;
@@ -868,7 +868,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         notification["tokens"] = std::move(tokens);
         notification["platform"] = isAndroid ? 2 : 1;
         notification["data"] = std::move(json);
-        notification["priority"] = "high";
+        notification["priority"] = highPriority ? "high" : "normal";
         notification["time_to_live"] = 600;
 
         Json::Value notifications(Json::arrayValue);
