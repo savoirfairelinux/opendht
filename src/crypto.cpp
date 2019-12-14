@@ -412,10 +412,16 @@ PublicKey::pack(Blob& b) const
         throw CryptoException(std::string("Could not export public key: null key"));
     std::vector<uint8_t> tmp(2048);
     size_t sz = tmp.size();
-    if (int err = gnutls_pubkey_export(pk, GNUTLS_X509_FMT_DER, tmp.data(), &sz))
+    if (int err = pack(tmp.data(), &sz))
         throw CryptoException(std::string("Could not export public key: ") + gnutls_strerror(err));
     tmp.resize(sz);
     b.insert(b.end(), tmp.begin(), tmp.end());
+}
+
+int
+PublicKey::pack(uint8_t* out, size_t* out_len) const
+{
+    return gnutls_pubkey_export(pk, GNUTLS_X509_FMT_DER, out, out_len);
 }
 
 void

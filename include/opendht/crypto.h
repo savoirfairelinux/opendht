@@ -114,6 +114,7 @@ struct OPENDHT_PUBLIC PublicKey
     }
 
     void pack(Blob& b) const;
+    int pack(uint8_t* out, size_t* out_len) const;
     void unpack(const uint8_t* dat, size_t dat_size);
 
     std::string toString() const;
