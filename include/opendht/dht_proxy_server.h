@@ -281,7 +281,7 @@ private:
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid);
+    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid, bool highPriority);
 
     /**
      * Send push notification with an expire timeout.
