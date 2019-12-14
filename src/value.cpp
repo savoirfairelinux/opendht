@@ -87,20 +87,6 @@ ValueType::DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const
     return v->size() <= MAX_VALUE_SIZE;
 }
 
-msgpack::object*
-findMapValue(const msgpack::object& map, const std::string& key) {
-    if (map.type != msgpack::type::MAP) throw msgpack::type_error();
-    for (unsigned i = 0; i < map.via.map.size; i++) {
-        auto& o = map.via.map.ptr[i];
-        if(o.key.type != msgpack::type::STR)
-            continue;
-        if (o.key.as<std::string>() == key) {
-            return &o.val;
-        }
-    }
-    return nullptr;
-}
-
 size_t
 Value::size() const
 {
