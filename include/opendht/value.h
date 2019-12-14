@@ -43,6 +43,7 @@
 
 namespace dht {
 
+static const std::string VALUE_KEY_PRIO("p");
 struct Value;
 struct Query;
 
@@ -408,7 +409,9 @@ struct OPENDHT_PUBLIC Value
 
     Value(Value&& o) noexcept
      : id(o.id), owner(std::move(o.owner)), recipient(o.recipient),
-     type(o.type), data(std::move(o.data)), user_type(std::move(o.user_type)), seq(o.seq), signature(std::move(o.signature)), cypher(std::move(o.cypher)) {}
+     type(o.type), data(std::move(o.data)), user_type(std::move(o.user_type)), seq(o.seq)
+     , signature(std::move(o.signature)), cypher(std::move(o.cypher))
+     , priority(o.priority) {}
 
     template <typename Type>
     Value(const Type& vs)
@@ -518,9 +521,12 @@ struct OPENDHT_PUBLIC Value
     template <typename Packer>
     void msgpack_pack(Packer& pk) const
     {
-        pk.pack_map(2);
+        pk.pack_map(2 + (priority?1:0));
         pk.pack(std::string("id"));  pk.pack(id);
         pk.pack(std::string("dat")); msgpack_pack_to_encrypt(pk);
+        if (priority) {
+            pk.pack(VALUE_KEY_PRIO);  pk.pack(priority);
+        }
     }
 
     template <typename Packer>
@@ -601,6 +607,13 @@ struct OPENDHT_PUBLIC Value
      * Hold encrypted version of the data.
      */
     Blob cypher {};
+
+    /**
+     * Priority of this value (used for push notifications)
+     * 0 = high priority
+     * 1 = normal priority
+     */
+    unsigned priority {0};
 
 private:
     friend class SecureDht;

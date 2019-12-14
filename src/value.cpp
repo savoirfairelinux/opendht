@@ -108,6 +108,10 @@ Value::msgpack_unpack(const msgpack::object& o)
         msgpack_unpack_body(*rdat);
     } else
         throw msgpack::type_error();
+
+    if (auto rprio = findMapValue(o, VALUE_KEY_PRIO)) {
+        priority = rprio->as<unsigned>();
+    }
 }
 
 void
@@ -195,6 +199,9 @@ Value::Value(const Json::Value& json)
     const auto& jutype = json["utype"];
     if (jutype.isString())
         user_type = jutype.asString();
+    const auto& jprio = json["prio"];
+    if (jprio.isIntegral())
+        priority = jprio.asUInt();
 }
 
 Json::Value
@@ -219,6 +226,8 @@ Value::toJson() const
         if (not user_type.empty())
             val["utype"] = user_type;
     }
+    if (priority)
+        val["prio"] = priority;
     return val;
 }
 
