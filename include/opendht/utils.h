@@ -133,7 +133,7 @@ using Blob = std::vector<uint8_t>;
 /**
  * Provides backward compatibility with msgpack 1.0
  */
-OPENDHT_PUBLIC Blob unpackBlob(msgpack::object& o);
+OPENDHT_PUBLIC Blob unpackBlob(const msgpack::object& o);
 
 template <typename Type>
 Blob

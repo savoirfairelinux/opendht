@@ -551,7 +551,7 @@ struct OPENDHT_PUBLIC Value
             }
     }
 
-    void msgpack_unpack(msgpack::object o);
+    void msgpack_unpack(const msgpack::object& o);
     void msgpack_unpack_body(const msgpack::object& o);
     Blob getPacked() const {
         msgpack::sbuffer buffer;
@@ -658,7 +658,7 @@ struct OPENDHT_PUBLIC FieldValue
         }
     }
 
-    void msgpack_unpack(msgpack::object msg) {
+    void msgpack_unpack(const msgpack::object& msg) {
         hashValue = {};
         blobValue.clear();
 

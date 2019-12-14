@@ -447,7 +447,7 @@ PublicKey::toString() const
 }
 
 void
-PublicKey::msgpack_unpack(msgpack::object o)
+PublicKey::msgpack_unpack(const msgpack::object& o)
 {
     if (o.type == msgpack::type::BIN)
         unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
@@ -792,7 +792,7 @@ Certificate::unpack(const uint8_t* dat, size_t dat_size)
 }
 
 void
-Certificate::msgpack_unpack(msgpack::object o)
+Certificate::msgpack_unpack(const msgpack::object& o)
 {
     if (o.type == msgpack::type::BIN)
         unpack((const uint8_t*)o.via.bin.ptr, o.via.bin.size);
@@ -1252,7 +1252,7 @@ RevocationList::unpack(const uint8_t* dat, size_t dat_size)
 }
 
 void
-RevocationList::msgpack_unpack(msgpack::object o)
+RevocationList::msgpack_unpack(const msgpack::object& o)
 {
     try {
         if (o.type == msgpack::type::BIN)

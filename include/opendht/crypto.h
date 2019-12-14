@@ -127,7 +127,7 @@ struct OPENDHT_PUBLIC PublicKey
         p.pack_bin_body((const char*)b.data(), b.size());
     }
 
-    void msgpack_unpack(msgpack::object o);
+    void msgpack_unpack(const msgpack::object& o);
 
     gnutls_digest_algorithm_t getPreferredDigest() const;
 
@@ -225,7 +225,7 @@ public:
         p.pack_bin_body((const char*)b.data(), b.size());
     }
 
-    void msgpack_unpack(msgpack::object o);
+    void msgpack_unpack(const msgpack::object& o);
 
     void revoke(const Certificate& crt, time_point t = time_point::min());
 
@@ -423,7 +423,7 @@ struct OPENDHT_PUBLIC Certificate {
         p.pack_bin_body((const char*)b.data(), b.size());
     }
 
-    void msgpack_unpack(msgpack::object o);
+    void msgpack_unpack(const msgpack::object& o);
 
     explicit operator bool() const { return cert; }
     PublicKey getPublicKey() const;

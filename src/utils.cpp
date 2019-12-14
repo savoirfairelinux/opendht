@@ -246,7 +246,7 @@ std::time_t to_time_t(time_point t) {
 }
 
 Blob
-unpackBlob(msgpack::object& o) {
+unpackBlob(const msgpack::object& o) {
     switch (o.type) {
     case msgpack::type::BIN:
         return {o.via.bin.ptr, o.via.bin.ptr+o.via.bin.size};

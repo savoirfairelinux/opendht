@@ -94,7 +94,7 @@ Value::size() const
 }
 
 void
-Value::msgpack_unpack(msgpack::object o)
+Value::msgpack_unpack(const msgpack::object& o)
 {
     if (o.type != msgpack::type::MAP) throw msgpack::type_error();
     if (o.via.map.size < 2) throw msgpack::type_error();

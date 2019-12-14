@@ -189,7 +189,7 @@ public:
 #endif
     }
 
-    virtual void msgpack_unpack(msgpack::object o)
+    virtual void msgpack_unpack(const msgpack::object& o)
     {
         if (o.type != msgpack::type::ARRAY) throw msgpack::type_error();
         if (o.via.array.size < 2) throw msgpack::type_error();
@@ -229,7 +229,7 @@ public:
         pk.pack_bin_body((const char*)addr.get(), addr.getLength());
     }
 
-    virtual void msgpack_unpack(msgpack::object o)
+    virtual void msgpack_unpack(const msgpack::object& o)
     {
         if (o.type == msgpack::type::BIN)
             addr = {(sockaddr*)o.via.bin.ptr, (socklen_t)o.via.bin.size};
