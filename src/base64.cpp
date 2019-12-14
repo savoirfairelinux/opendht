@@ -131,7 +131,7 @@ base64_encode(const std::vector<unsigned char>& str)
     return base64_encode(str.cbegin(), str.cend());
 }
 
-std::string
+std::vector<unsigned char>
 base64_decode(const std::string& str)
 {
     size_t output_length = str.length() / 4 * 3 + 2;
@@ -139,5 +139,5 @@ base64_decode(const std::string& str)
     output.resize(output_length);
     base64_decode(str.data(), str.size(), output.data(), &output_length);
     output.resize(output_length);
-    return std::string(output.begin(), output.end());
+    return output;
 }

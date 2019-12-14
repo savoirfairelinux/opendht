@@ -390,7 +390,7 @@ struct OPENDHT_PUBLIC Value
      * Build a value from a json object
      * @param json
      */
-    Value(Json::Value& json);
+    Value(const Json::Value& json);
 #endif
 
     template <typename Type>

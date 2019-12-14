@@ -165,39 +165,36 @@ Value::msgpack_unpack_body(const msgpack::object& o)
 }
 
 #ifdef OPENDHT_JSONCPP
-Value::Value(Json::Value& json)
+Value::Value(const Json::Value& json)
 {
     id = Value::Id(unpackId(json, "id"));
-    if (json.isMember("cypher")) {
-        auto cypherStr = json["cypher"].asString();
-        cypherStr = base64_decode(cypherStr);
-        cypher = std::vector<unsigned char>(cypherStr.begin(), cypherStr.end());
-    }
-    if (json.isMember("sig")) {
-        auto sigStr = json["sig"].asString();
-        sigStr = base64_decode(sigStr);
-        signature = std::vector<unsigned char>(sigStr.begin(), sigStr.end());
-    }
-    if (json.isMember("seq"))
-        seq = json["seq"].asInt();
-    if (json.isMember("owner")) {
-        auto ownerStr = json["owner"].asString();
+    const auto& jcypher = json["cypher"];
+    if (jcypher.isString())
+        cypher = base64_decode(jcypher.asString());
+    const auto& jsig = json["sig"];
+    if (jsig.isString())
+        signature = base64_decode(jsig.asString());
+    const auto& jseq = json["seq"];
+    if (!jseq.isNull())
+        seq = jseq.asInt();
+    const auto& jowner = json["owner"];
+    if (jowner.isString()) {
+        auto ownerStr = jowner.asString();
         auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
         owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
     }
-    if (json.isMember("to")) {
-        auto toStr = json["to"].asString();
-        recipient = InfoHash(toStr);
-    }
-    if (json.isMember("type"))
-        type = json["type"].asInt();
-    if (json.isMember("data")){
-        auto dataStr = json["data"].asString();
-        dataStr = base64_decode(dataStr);
-        data = std::vector<unsigned char>(dataStr.begin(), dataStr.end());
-    }
-    if (json.isMember("utype"))
-        user_type = json["utype"].asString();
+    const auto& jto = json["to"];
+    if (jto.isString())
+        recipient = InfoHash(jto.asString());
+    const auto& jtype = json["type"];
+    if (!jtype.isNull())
+        type = jtype.asInt();
+    const auto& jdata = json["data"];
+    if (jdata.isString())
+        data = base64_decode(jdata.asString());
+    const auto& jutype = json["utype"];
+    if (jutype.isString())
+        user_type = jutype.asString();
 }
 
 Json::Value

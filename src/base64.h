@@ -33,4 +33,4 @@ std::string base64_encode(const std::vector<unsigned char>& str);
  * @param str the input buffer
  * @return a base64-decoded buffer
  */
-std::string base64_decode(const std::string& str);
+std::vector<unsigned char> base64_decode(const std::string& str);
