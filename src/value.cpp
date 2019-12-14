@@ -96,15 +96,15 @@ Value::size() const
 void
 Value::msgpack_unpack(const msgpack::object& o)
 {
-    if (o.type != msgpack::type::MAP) throw msgpack::type_error();
-    if (o.via.map.size < 2) throw msgpack::type_error();
+    if (o.type != msgpack::type::MAP or o.via.map.size < 2)
+        throw msgpack::type_error();
 
-    if (auto rid = findMapValue(o, "id")) {
+    if (auto rid = findMapValue(o, VALUE_KEY_ID)) {
         id = rid->as<Id>();
     } else
         throw msgpack::type_error();
 
-    if (auto rdat = findMapValue(o, "dat")) {
+    if (auto rdat = findMapValue(o, VALUE_KEY_DAT)) {
         msgpack_unpack_body(*rdat);
     } else
         throw msgpack::type_error();
@@ -130,37 +130,37 @@ Value::msgpack_unpack_body(const msgpack::object& o)
     } else {
         if (o.type != msgpack::type::MAP)
             throw msgpack::type_error();
-        auto rbody = findMapValue(o, "body");
+        auto rbody = findMapValue(o, VALUE_KEY_BODY);
         if (not rbody)
             throw msgpack::type_error();
 
-        if (auto rdata = findMapValue(*rbody, "data")) {
+        if (auto rdata = findMapValue(*rbody, VALUE_KEY_DATA)) {
             data = unpackBlob(*rdata);
         } else
             throw msgpack::type_error();
 
-        if (auto rtype = findMapValue(*rbody, "type")) {
+        if (auto rtype = findMapValue(*rbody, VALUE_KEY_TYPE)) {
             type = rtype->as<ValueType::Id>();
         } else
             throw msgpack::type_error();
 
-        if (auto rutype = findMapValue(*rbody, "utype")) {
+        if (auto rutype = findMapValue(*rbody, VALUE_KEY_USERTYPE)) {
             user_type = rutype->as<std::string>();
         }
 
-        if (auto rowner = findMapValue(*rbody, "owner")) {
-            if (auto rseq = findMapValue(*rbody, "seq"))
+        if (auto rowner = findMapValue(*rbody, VALUE_KEY_OWNER)) {
+            if (auto rseq = findMapValue(*rbody, VALUE_KEY_SEQ))
                 seq = rseq->as<decltype(seq)>();
             else
                 throw msgpack::type_error();
             crypto::PublicKey new_owner;
             new_owner.msgpack_unpack(*rowner);
             owner = std::make_shared<const crypto::PublicKey>(std::move(new_owner));
-            if (auto rrecipient = findMapValue(*rbody, "to")) {
+            if (auto rrecipient = findMapValue(*rbody, VALUE_KEY_TO)) {
                 recipient = rrecipient->as<InfoHash>();
             }
 
-            if (auto rsig = findMapValue(o, "sig")) {
+            if (auto rsig = findMapValue(o, VALUE_KEY_SIGNATURE)) {
                 signature = unpackBlob(*rsig);
             } else
                 throw msgpack::type_error();
@@ -171,32 +171,32 @@ Value::msgpack_unpack_body(const msgpack::object& o)
 #ifdef OPENDHT_JSONCPP
 Value::Value(const Json::Value& json)
 {
-    id = Value::Id(unpackId(json, "id"));
+    id = Value::Id(unpackId(json, VALUE_KEY_ID));
     const auto& jcypher = json["cypher"];
     if (jcypher.isString())
         cypher = base64_decode(jcypher.asString());
-    const auto& jsig = json["sig"];
+    const auto& jsig = json[VALUE_KEY_SIGNATURE];
     if (jsig.isString())
         signature = base64_decode(jsig.asString());
-    const auto& jseq = json["seq"];
+    const auto& jseq = json[VALUE_KEY_SEQ];
     if (!jseq.isNull())
         seq = jseq.asInt();
-    const auto& jowner = json["owner"];
+    const auto& jowner = json[VALUE_KEY_OWNER];
     if (jowner.isString()) {
         auto ownerStr = jowner.asString();
         auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
         owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
     }
-    const auto& jto = json["to"];
+    const auto& jto = json[VALUE_KEY_TO];
     if (jto.isString())
         recipient = InfoHash(jto.asString());
-    const auto& jtype = json["type"];
+    const auto& jtype = json[VALUE_KEY_TYPE];
     if (!jtype.isNull())
         type = jtype.asInt();
-    const auto& jdata = json["data"];
+    const auto& jdata = json[VALUE_KEY_DATA];
     if (jdata.isString())
         data = base64_decode(jdata.asString());
-    const auto& jutype = json["utype"];
+    const auto& jutype = json[VALUE_KEY_USERTYPE];
     if (jutype.isString())
         user_type = jutype.asString();
     const auto& jprio = json["prio"];
@@ -208,23 +208,23 @@ Json::Value
 Value::toJson() const
 {
     Json::Value val;
-    val["id"] = std::to_string(id);
+    val[VALUE_KEY_ID] = std::to_string(id);
     if (isEncrypted()) {
         val["cypher"] = base64_encode(cypher);
     } else {
         if (isSigned())
-            val["sig"] = base64_encode(signature);
+            val[VALUE_KEY_SIGNATURE] = base64_encode(signature);
         bool has_owner = owner && *owner;
         if (has_owner) { // isSigned
-            val["seq"] = seq;
-            val["owner"] = owner->toString();
+            val[VALUE_KEY_SEQ] = seq;
+            val[VALUE_KEY_OWNER] = owner->toString();
             if (recipient)
-                val["to"] = recipient.toString();
+                val[VALUE_KEY_TO] = recipient.toString();
         }
-        val["type"] = type;
-        val["data"] = base64_encode(data);
+        val[VALUE_KEY_TYPE] = type;
+        val[VALUE_KEY_DATA] = base64_encode(data);
         if (not user_type.empty())
-            val["utype"] = user_type;
+            val[VALUE_KEY_USERTYPE] = user_type;
     }
     if (priority)
         val["prio"] = priority;
@@ -235,13 +235,11 @@ uint64_t
 unpackId(const Json::Value& json, const std::string& key) {
     uint64_t ret = 0;
     try {
-        if (json.isMember(key)) {
-            const auto& t = json[key];
-            if (t.isString()) {
-                ret = std::stoull(t.asString());
-            } else {
-                ret = t.asLargestUInt();
-            }
+        const auto& t = json[key];
+        if (t.isString()) {
+            ret = std::stoull(t.asString());
+        } else {
+            ret = t.asLargestUInt();
         }
     } catch (...) {}
     return ret;
@@ -411,13 +409,13 @@ Select::Select(const std::string& q_str) {
 
         while (std::getline(fields, token, ',')) {
             trim_str(token);
-            if (token == "id")
+            if (token == VALUE_KEY_ID)
                 field(Value::Field::Id);
             else if (token == "value_type")
                 field(Value::Field::ValueType);
             else if (token == "owner_pk")
                 field(Value::Field::OwnerPk);
-            if (token == "seq")
+            if (token == VALUE_KEY_SEQ)
                 field(Value::Field::SeqNum);
             else if (token == "user_type")
                 field(Value::Field::UserType);
@@ -453,13 +451,13 @@ Where::Where(const std::string& q_str) {
                     s = value_str.substr(1, value_str.size()-2);
                 else
                     s = value_str;
-                if (field_str == "id")
+                if (field_str == VALUE_KEY_ID)
                     id(v);
                 else if (field_str == "value_type")
                     valueType(v);
                 else if (field_str == "owner_pk")
                     owner(InfoHash(s));
-                else if (field_str == "seq")
+                else if (field_str == VALUE_KEY_SEQ)
                     seq(v);
                 else if (field_str == "user_type")
                     userType(s);
@@ -519,7 +517,7 @@ std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
     for (auto fs = select.fieldSelection_.begin() ; fs != select.fieldSelection_.end() ; ++fs) {
         switch (*fs) {
             case Value::Field::Id:
-                s << "id";
+                s << VALUE_KEY_ID;
                 break;
             case Value::Field::ValueType:
                 s << "value_type";
@@ -531,7 +529,7 @@ std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
                 s << "owner_public_key";
                 break;
             case Value::Field::SeqNum:
-                s << "seq";
+                s << VALUE_KEY_SEQ;
                 break;
             default:
                 break;

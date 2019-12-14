@@ -43,7 +43,19 @@
 
 namespace dht {
 
+static const std::string VALUE_KEY_ID("id");
+static const std::string VALUE_KEY_DAT("dat");
 static const std::string VALUE_KEY_PRIO("p");
+static const std::string VALUE_KEY_SIGNATURE("sig");
+
+static const std::string VALUE_KEY_SEQ("seq");
+static const std::string VALUE_KEY_DATA("data");
+static const std::string VALUE_KEY_OWNER("owner");
+static const std::string VALUE_KEY_TYPE("type");
+static const std::string VALUE_KEY_TO("to");
+static const std::string VALUE_KEY_BODY("body");
+static const std::string VALUE_KEY_USERTYPE("utype");
+
 struct Value;
 struct Query;
 
@@ -488,17 +500,17 @@ struct OPENDHT_PUBLIC Value
         bool has_owner = owner && *owner;
         pk.pack_map((user_type.empty()?0:1) + (has_owner?(recipient ? 5 : 4):2));
         if (has_owner) { // isSigned
-            pk.pack(std::string("seq"));   pk.pack(seq);
-            pk.pack(std::string("owner")); owner->msgpack_pack(pk);
+            pk.pack(VALUE_KEY_SEQ);   pk.pack(seq);
+            pk.pack(VALUE_KEY_OWNER); owner->msgpack_pack(pk);
             if (recipient) {
-                pk.pack(std::string("to")); pk.pack(recipient);
+                pk.pack(VALUE_KEY_TO); pk.pack(recipient);
             }
         }
-        pk.pack(std::string("type"));  pk.pack(type);
-        pk.pack(std::string("data"));  pk.pack_bin(data.size());
-                                       pk.pack_bin_body((const char*)data.data(), data.size());
+        pk.pack(VALUE_KEY_TYPE);  pk.pack(type);
+        pk.pack(VALUE_KEY_DATA);  pk.pack_bin(data.size());
+                                  pk.pack_bin_body((const char*)data.data(), data.size());
         if (not user_type.empty()) {
-            pk.pack(std::string("utype")); pk.pack(user_type);
+            pk.pack(VALUE_KEY_USERTYPE); pk.pack(user_type);
         }
     }
 
@@ -510,10 +522,10 @@ struct OPENDHT_PUBLIC Value
             pk.pack_bin_body((const char*)cypher.data(), cypher.size());
         } else {
             pk.pack_map(isSigned() ? 2 : 1);
-            pk.pack(std::string("body")); msgpack_pack_to_sign(pk);
+            pk.pack(VALUE_KEY_BODY); msgpack_pack_to_sign(pk);
             if (isSigned()) {
-                pk.pack(std::string("sig")); pk.pack_bin(signature.size());
-                                             pk.pack_bin_body((const char*)signature.data(), signature.size());
+                pk.pack(VALUE_KEY_SIGNATURE); pk.pack_bin(signature.size());
+                                              pk.pack_bin_body((const char*)signature.data(), signature.size());
             }
         }
     }
@@ -522,8 +534,8 @@ struct OPENDHT_PUBLIC Value
     void msgpack_pack(Packer& pk) const
     {
         pk.pack_map(2 + (priority?1:0));
-        pk.pack(std::string("id"));  pk.pack(id);
-        pk.pack(std::string("dat")); msgpack_pack_to_encrypt(pk);
+        pk.pack(VALUE_KEY_ID);  pk.pack(id);
+        pk.pack(VALUE_KEY_DAT); msgpack_pack_to_encrypt(pk);
         if (priority) {
             pk.pack(VALUE_KEY_PRIO);  pk.pack(priority);
         }
