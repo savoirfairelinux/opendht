@@ -22,8 +22,8 @@ RUN echo "*** Building nodejs/http_parser dependency ***" \
 
 # libasio-dev (1.10.6-3) is too old
 RUN echo "** Building a recent version of asio ***" \
-    && wget https://github.com/aberaud/asio/archive/b2b7a1c166390459e1c169c8ae9ef3234b361e3f.tar.gz \
-    && tar -xvf b2b7a1c166390459e1c169c8ae9ef3234b361e3f.tar.gz && cd asio-b2b7a1c166390459e1c169c8ae9ef3234b361e3f/asio \
+    && wget https://github.com/aberaud/asio/archive/a7d66ef4017d8f1b7f2cef1bb4ba8e23b0961571.tar.gz \
+    && tar -xvf a7d66ef4017d8f1b7f2cef1bb4ba8e23b0961571.tar.gz && cd asio-a7d66ef4017d8f1b7f2cef1bb4ba8e23b0961571/asio \
     && ./autogen.sh && ./configure --prefix=/usr --without-boost --disable-examples --disable-tests  \
     && make install \
     && cd ../../ && rm -rf asio*
