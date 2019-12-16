@@ -124,7 +124,7 @@ void dht_publickey_delete(dht_publickey* pk) {
 
 int dht_publickey_export(const dht_publickey* pk, char* out, size_t* outlen) {
     const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
-    return pkey->pack(out, outlen);
+    return pkey->pack((uint8_t*)out, outlen);
 }
 
 dht_infohash dht_publickey_get_id(const dht_publickey* pk) {
