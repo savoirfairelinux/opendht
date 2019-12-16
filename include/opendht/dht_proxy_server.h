@@ -360,6 +360,7 @@ private:
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     struct Listener {
         std::string clientId;
+        std::string sessionId;
         std::future<size_t> internalToken;
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;

@@ -622,15 +622,16 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
     }
     try {
         std::string err;
-        Json::Value root;
+        Json::Value r;
         auto* char_data = reinterpret_cast<const char*>(request->body().data());
         auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
-        if (!reader->parse(char_data, char_data + request->body().size(), &root, &err)){
+        if (!reader->parse(char_data, char_data + request->body().size(), &r, &err)){
             auto response = initHttpResponse(
                 request->create_response(restinio::status_bad_request()));
             response.set_body(RESP_MSG_JSON_INCORRECT);
             return response.done();
         }
+        const Json::Value& root(r); // parse using const Json so [] never creates element
         auto pushToken = root["key"].asString();
         if (pushToken.empty()){
             auto response = initHttpResponse(
@@ -638,12 +639,12 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             response.set_body(RESP_MSG_NO_TOKEN);
             return response.done();
         }
-        auto platform = root["platform"].asString();
-        auto isAndroid = platform == "android";
-        auto clientId = root.isMember("client_id") ? root["client_id"].asString() : std::string();
+        auto isAndroid = root["platform"].asString() == "android";
+        auto clientId = root["client_id"].asString();
+        auto sessionId = root["session_id"].asString();
 
         if (logger_)
-            logger_->d("[proxy:server] [subscribe %s] [client %s]", infoHash.toString().c_str(), clientId.c_str());
+            logger_->d("[proxy:server] [subscribe %s] [client %s] [session %s]", infoHash.toString().c_str(), clientId.c_str(), sessionId.c_str());
         // ================ Search for existing listener ===================
         // start the timer
         auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
@@ -653,11 +654,11 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto pushListener = pushListeners_.emplace(pushToken, PushListener{}).first;
         auto pushListeners = pushListener->second.listeners.emplace(infoHash, std::vector<Listener>{}).first;
 
-        for (auto &listener: pushListeners->second){
-            if (logger_)
-                logger_->d("[proxy:server] [subscribe] found [client %s]", listener.clientId.c_str());
+        for (auto &listener: pushListeners->second) {
             // Found -> Resubscribe
-            if (listener.clientId == clientId){
+            if (listener.clientId == clientId) {
+                if (logger_)
+                    logger_->d("[proxy:server] [subscribe] found [client %s]", listener.clientId.c_str());
                 // Reset timers
                 listener.expireTimer->expires_at(timeout);
                 listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
@@ -692,12 +693,13 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 
         // Add listen on dht
         listener.internalToken = dht_->listen(infoHash,
-            [this, infoHash, pushToken, isAndroid, clientId]
+            [this, infoHash, pushToken, isAndroid, clientId, sessionId]
             (const std::vector<std::shared_ptr<Value>>& values, bool expired){
                 // Build message content
                 Json::Value json;
                 json["key"] = infoHash.toString();
                 json["to"] = clientId;
+                json["s"] = sessionId;
                 if (expired and values.size() < 2){
                     std::stringstream ss;
                     for(size_t i = 0; i < values.size(); ++i){
@@ -714,7 +716,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             }
         );
         // Launch timers
-        auto &ctx = io_context();
+        auto& ctx = io_context();
         // expire notify
         if (!listener.expireNotifyTimer)
             listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx, timeout - proxy::OP_MARGIN);
@@ -723,8 +725,9 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         Json::Value json;
         json["timeout"] = infoHash.toString();
         json["to"] = clientId;
+        json["s"] = sessionId;
         listener.expireNotifyTimer->async_wait(std::bind(&DhtProxyServer::handleNotifyPushListenExpire, this,
-                                               std::placeholders::_1, pushToken, json, isAndroid));
+                                               std::placeholders::_1, pushToken, std::move(json), isAndroid));
         // cancel push listen
         if (!listener.expireTimer)
             listener.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);

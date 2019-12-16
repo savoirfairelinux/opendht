@@ -93,6 +93,16 @@ private:
     std::string line_ {};
 };
 
+std::string
+getRandomSessionId(size_t length = 8) {
+    static constexpr const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~";
+    std::string str(length, 0);
+    crypto::random_device rdev;
+    std::uniform_int_distribution<> dist(0, (sizeof(chars)/sizeof(char)) - 1);
+    std::generate_n( str.begin(), length, [&]{ return chars[dist(rdev)]; } );
+    return str;
+}
+
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(
@@ -101,7 +111,8 @@ DhtProxyClient::DhtProxyClient(
         const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
     : proxyUrl_(serverHost)
     , clientIdentity_(clientIdentity), serverCertificate_(serverCA)
-    , pushClientId_(pushClientId), loopSignal_(signal)
+    , pushClientId_(pushClientId), pushSessionId_(getRandomSessionId())
+    , loopSignal_(signal)
     , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
     , logger_(logger)
 {
@@ -929,7 +940,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
 }
 
 void
-DhtProxyClient::sendListen(const restinio::http_request_header_t header,
+DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                            const ValueCallback& cb,
                            const Sp<OperationState>& opstate,
                            Listener& listener, ListenMethod method)
@@ -1118,6 +1129,12 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
         statusIpv6_ = NodeStatus::Connected;
     }
     try {
+        auto sessionId = notification.find("s");
+        if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
+            if (logger_)
+                logger_->d("[proxy:client] [push] ignoring push for other session");
+            return;
+        }
         std::lock_guard<std::mutex> lock(searchLock_);
         auto timeout = notification.find("timeout");
         if (timeout != notification.cend()) {
@@ -1162,7 +1179,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 } else {
                     std::stringstream ss(expired->second);
                     std::vector<Value::Id> ids;
-                    while(ss.good()){
+                    while(ss.good()) {
                         std::string substr;
                         getline(ss, substr, ',');
                         ids.emplace_back(std::stoull(substr));
@@ -1237,6 +1254,7 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
 {
     body["key"] = deviceKey_;
     body["client_id"] = pushClientId_;
+    body["session_id"] = pushSessionId_;
 #ifdef __ANDROID__
     body["platform"] = "android";
 #endif

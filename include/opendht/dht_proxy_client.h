@@ -303,7 +303,7 @@ private:
     /**
      * Send Listen with httpClient_
      */
-    void sendListen(const restinio::http_request_header_t header, const ValueCallback& cb,
+    void sendListen(const restinio::http_request_header_t& header, const ValueCallback& cb,
                     const Sp<OperationState>& opstate, Listener& listener, ListenMethod method = ListenMethod::LISTEN);
     void handleResubscribe(const asio::error_code& ec, const InfoHash& key,
                            const size_t token, std::shared_ptr<OperationState> opstate);
@@ -327,6 +327,7 @@ private:
     std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
     //std::pair<std::string, std::string> serverHostService_;
     std::string pushClientId_;
+    std::string pushSessionId_;
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};
