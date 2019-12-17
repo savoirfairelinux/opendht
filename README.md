@@ -16,7 +16,7 @@ Values are distributed over the network, with redundancy.
  * IPv4 and IPv6 support
  * Clean and powerful C++14 map API
  * Python 3 bindings
- * REST API
+ * REST API with optional HTTP client+server with push notification support
 
 ## Documentation
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
