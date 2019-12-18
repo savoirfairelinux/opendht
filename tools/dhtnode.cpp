@@ -384,10 +384,11 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         else if (op == "p") {
             std::string v;
             iss >> v;
-            node->put(id, dht::Value {
+            auto value = std::make_shared<dht::Value>(
                 dht::ValueType::USER_DATA.id,
-                std::vector<uint8_t> {v.begin(), v.end()}
-            }, [start](bool ok) {
+                std::vector<uint8_t> {v.begin(), v.end()});
+            value->user_type = "text/plain";
+            node->put(id, std::move(value), [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << std::endl;
             });
@@ -399,6 +400,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
             );
+            value->user_type = "text/plain";
             node->put(id, value, [start,value](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 auto flags(std::cout.flags());
@@ -418,10 +420,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             }
             std::string v;
             iss >> v;
-            node->putSigned(id, dht::Value {
-                dht::ValueType::USER_DATA.id,
-                std::vector<uint8_t> {v.begin(), v.end()}
-            }, [start](bool ok) {
+            auto value = std::make_shared<dht::Value>();
+            value->data = {v.begin(), v.end()};
+            value->user_type = "text/plain";
+            node->putSigned(id, std::move(value), [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Put signed: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << "s)" << std::endl;
             });
@@ -434,10 +436,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             std::string tostr;
             std::string v;
             iss >> tostr >> v;
-            node->putEncrypted(id, InfoHash(tostr), dht::Value {
+            auto value = std::make_shared<dht::Value>(
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()}
-            }, [start](bool ok) {
+            );
+            value->user_type = "text/plain";
+            node->putEncrypted(id, InfoHash(tostr), std::move(value), [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << std::endl;
             });

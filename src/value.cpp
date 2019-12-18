@@ -45,7 +45,7 @@ Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data) {
 std::ostream& operator<< (std::ostream& s, const Value& v)
 {
     auto flags(s.flags());
-    s << "Value[id:" << std::hex << v.id << std::dec << " ";
+    s << "Value[id:" << std::hex << v.id << std::dec << ' ';
     if (v.isEncrypted())
         s << "encrypted ";
     else if (v.isSigned()) {
@@ -67,14 +67,23 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
             }
 #endif
         } else {
-            s << "Data (type: " << v.type << " ): ";
-            s << std::hex;
-            for (auto i : v.data)
-                s << std::setfill('0') << std::setw(2) << (unsigned)i;
-            s << std::dec;
+            if (v.user_type.empty())
+                s << "data:";
+            else
+                s << "data(" << v.user_type << "):";
+            if (v.user_type == "text/plain") {
+                s << '"';
+                s.write((const char*)v.data.data(), v.data.size());
+                s << '"';
+            } else {
+                s << std::hex;
+                for (auto i : v.data)
+                    s << std::setfill('0') << std::setw(2) << (unsigned)i;
+                s << std::dec;
+            }
         }
     }
-    s << "]";
+    s << ']';
     s.flags(flags);
     return s;
 }
