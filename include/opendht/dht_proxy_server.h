@@ -291,7 +291,7 @@ private:
      * @param isAndroid
      */
     void handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
-                                      Json::Value json, const bool isAndroid);
+                                      std::function<Json::Value()> json, const bool isAndroid);
 
     /**
      * Remove a push listener between a client and a hash
@@ -339,10 +339,15 @@ private:
     // Connection Listener observing conn state changes.
     std::shared_ptr<ConnectionListener> connListener_;
 
+    struct PushSessionContext {
+        std::mutex lock;
+        std::string sessionId;
+    };
     struct PermanentPut {
         time_point expiration;
         std::string pushToken;
         std::string clientId;
+        std::shared_ptr<PushSessionContext> sessionCtx;
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
     };
@@ -360,7 +365,7 @@ private:
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     struct Listener {
         std::string clientId;
-        std::string sessionId;
+        std::shared_ptr<PushSessionContext> sessionCtx;
         std::future<size_t> internalToken;
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
