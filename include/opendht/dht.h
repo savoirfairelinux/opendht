@@ -68,7 +68,11 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l = {});
+    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {});
+
+    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l = {})
+        : Dht(std::move(sock), config, std::make_shared<Logger>(l)) {}
+
     virtual ~Dht();
 
     /**

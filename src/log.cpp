@@ -115,22 +115,22 @@ getSyslogLogger(const char* name) {
 
 void
 enableLogging(dht::DhtRunner &dht) {
-    dht.setLogger(*getStdLogger());
+    dht.setLogger(getStdLogger());
 }
 
 void
 enableFileLogging(dht::DhtRunner &dht, const std::string &path) {
-    dht.setLogger(*getFileLogger(path));
+    dht.setLogger(getFileLogger(path));
 }
 
 OPENDHT_PUBLIC void
 enableSyslog(dht::DhtRunner &dht, const char* name) {
-    dht.setLogger(*getSyslogLogger(name));
+    dht.setLogger(getSyslogLogger(name));
 }
 
 void
 disableLogging(dht::DhtRunner &dht) {
-    dht.setLogger({});
+    dht.setLogger();
 }
 
 }

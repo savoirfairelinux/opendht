@@ -97,8 +97,8 @@ private:
 
 class OPENDHT_PUBLIC UdpSocket : public DatagramSocket {
 public:
-    UdpSocket(in_port_t port, const Logger& l = {});
-    UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const Logger& l = {});
+    UdpSocket(in_port_t port, const std::shared_ptr<Logger>& l = {});
+    UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const std::shared_ptr<Logger>& l = {});
     ~UdpSocket();
 
     int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) override;
@@ -118,7 +118,7 @@ public:
 
     void stop() override;
 private:
-    Logger logger;
+    std::shared_ptr<Logger> logger;
     int s4 {-1};
     int s6 {-1};
     int stopfd {-1};

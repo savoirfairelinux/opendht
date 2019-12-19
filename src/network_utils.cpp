@@ -106,7 +106,7 @@ void udpPipe(int fds[2])
 }
 #endif
 
-UdpSocket::UdpSocket(in_port_t port, const Logger& l) : logger(l) {
+UdpSocket::UdpSocket(in_port_t port, const std::shared_ptr<Logger>& l) : logger(l) {
     SockAddr bind4;
     bind4.setFamily(AF_INET);
     bind4.setPort(port);
@@ -117,7 +117,7 @@ UdpSocket::UdpSocket(in_port_t port, const Logger& l) : logger(l) {
     openSockets(bind4, bind6);
 }
 
-UdpSocket::UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const Logger& l) : logger(l)
+UdpSocket::UdpSocket(const SockAddr& bind4, const SockAddr& bind6, const std::shared_ptr<Logger>& l) : logger(l)
 {
     std::lock_guard<std::mutex> lk(lock);
     openSockets(bind4, bind6);
@@ -155,7 +155,8 @@ UdpSocket::sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool r
 
     if (sendto(s, (const char*)data, size, flags, dest.get(), dest.getLength()) == -1) {
         int err = errno;
-        logger.d("Can't send message to %s: %s", dest.toString().c_str(), strerror(err));
+        if (logger)
+            logger->d("Can't send message to %s: %s", dest.toString().c_str(), strerror(err));
         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
             std::lock_guard<std::mutex> lk(lock);
             auto bind4 = std::move(bound4), bind6 = std::move(bound6);
@@ -194,7 +195,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
         try {
             s4 = bindSocket(bind4, bound4);
         } catch (const DhtException& e) {
-            logger.e("Can't bind inet socket: %s", e.what());
+            if (logger)
+                logger->e("Can't bind inet socket: %s", e.what());
         }
     }
 
@@ -209,7 +211,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                 try {
                     s6 = bindSocket(b6, bound6);
                 } catch (const DhtException& e) {
-                    logger.e("Can't bind inet6 socket: %s", e.what());
+                    if (logger)
+                        logger->e("Can't bind inet6 socket: %s", e.what());
                 }
             }
         }
@@ -217,7 +220,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
             try {
                 s6 = bindSocket(bind6, bound6);
             } catch (const DhtException& e) {
-                logger.e("Can't bind inet6 socket: %s", e.what());
+                if (logger)
+                    logger->e("Can't bind inet6 socket: %s", e.what());
             }
         }
     }
@@ -244,7 +248,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                 int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
                 if (rc < 0) {
                     if (errno != EINTR) {
-                        logger.e("Select error: %s", strerror(errno));
+                        if (logger)
+                            logger->e("Select error: %s", strerror(errno));
                         std::this_thread::sleep_for(std::chrono::seconds(1));
                     }
                 }
@@ -259,7 +264,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
 
                     if (FD_ISSET(stop_readfd, &readfds)) {
                         if (recv(stop_readfd, (char*)buf.data(), buf.size(), 0) < 0) {
-                            logger.e("Got stop packet error: %s", strerror(errno));
+                            if (logger)
+                                logger->e("Got stop packet error: %s", strerror(errno));
                             break;
                         }
                     }
@@ -277,7 +283,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                         pkt->received = clock::now();
                         onReceived(std::move(pkt));
                     } else if (rc == -1) {
-                        logger.e("Error receiving packet: %s", strerror(errno));
+                        if (logger)
+                            logger->e("Error receiving packet: %s", strerror(errno));
                         int err = errno;
                         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
                             std::lock_guard<std::mutex> lk(lock);
@@ -286,7 +293,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                                 try {
                                     ls4 = bindSocket(bound4, bound4);
                                 } catch (const DhtException& e) {
-                                    logger.e("Can't bind inet socket: %s", e.what());
+                                    if (logger)
+                                        logger->e("Can't bind inet socket: %s", e.what());
                                 }
                             }
                             if (ls6 >= 0) {
@@ -294,7 +302,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                                 try {
                                     ls6 = bindSocket(bound6, bound6);
                                 } catch (const DhtException& e) {
-                                    logger.e("Can't bind inet6 socket: %s", e.what());
+                                    if (logger)
+                                        logger->e("Can't bind inet6 socket: %s", e.what());
                                 }
                             }
                             if (ls4 < 0 && ls6 < 0)
@@ -307,7 +316,8 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                 }
             }
         } catch (const std::exception& e) {
-            logger.e("Error in UdpSocket rx thread: %s", e.what());
+            if (logger)
+                logger->e("Error in UdpSocket rx thread: %s", e.what());
         }
         if (ls4 >= 0)
             close(ls4);
@@ -332,7 +342,8 @@ UdpSocket::stop()
     if (running.exchange(false)) {
         auto sfd = stopfd;
         if (sfd != -1 && write(sfd, "\0", 1) == -1) {
-            logger.e("Can't write to stop fd");
+            if (logger)
+                logger->e("Can't write to stop fd");
         }
     }
 }

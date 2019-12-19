@@ -109,12 +109,12 @@ DhtProxyClient::DhtProxyClient(
         std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
         std::function<void()> signal, const std::string& serverHost,
         const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
-    : proxyUrl_(serverHost)
+    : DhtInterface(logger)
+    , proxyUrl_(serverHost)
     , clientIdentity_(clientIdentity), serverCertificate_(serverCA)
     , pushClientId_(pushClientId), pushSessionId_(getRandomSessionId())
     , loopSignal_(signal)
     , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
-    , logger_(logger)
 {
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
@@ -461,7 +461,7 @@ DhtProxyClient::buildRequest(const std::string& target)
     auto resolver = resolver_;
     if (not resolver)
         resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
-    auto request = target.empty() 
+    auto request = target.empty()
         ? std::make_shared<http::Request>(httpContext_, resolver)
         : std::make_shared<http::Request>(httpContext_, resolver, target);
     if (serverCertificate_)
@@ -609,7 +609,7 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
     try {
         auto request = std::make_shared<http::Request>(httpContext_, resolver, family);
         auto reqid = request->id();
-        request->set_method(restinio::http_method_get()); 
+        request->set_method(restinio::http_method_get());
         setHeaderFields(*request);
         request->add_on_done_callback([this, reqid, family, infoState] (const http::Response& response){
             if (infoState->cancel.load())

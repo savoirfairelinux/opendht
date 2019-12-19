@@ -107,7 +107,7 @@ DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const Config& con
 {
     if (running == State::Idle) {
         if (not context.sock)
-            context.sock.reset(new net::UdpSocket(local4, local6, context.logger ? *context.logger : Logger{}));
+            context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
         run(config, std::move(context));
     }
 }
@@ -138,7 +138,7 @@ DhtRunner::run(const Config& config, Context&& context)
         cv.notify_all();
     });
 
-    auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger ? *context.logger : Logger{}));
+    auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger));
     dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
 
 #ifdef OPENDHT_PROXY_CLIENT
@@ -146,7 +146,7 @@ DhtRunner::run(const Config& config, Context&& context)
 #endif
     enableProxy(not config.proxy_server.empty());
     if (context.logger and dht_via_proxy_) {
-        dht_via_proxy_->setLogger(*context.logger);
+        dht_via_proxy_->setLogger(context.logger);
     }
     if (context.statusChangedCallback) {
         statusCb = std::move(context.statusChangedCallback);
@@ -410,7 +410,7 @@ DhtRunner::exportValues() const {
 }
 
 void
-DhtRunner::setLogger(const Logger& logger) {
+DhtRunner::setLogger(const Sp<Logger>& logger) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)
         dht_->setLogger(logger);
@@ -429,7 +429,6 @@ DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
 void
 DhtRunner::setLogFilter(const InfoHash& f) {
     std::lock_guard<std::mutex> lck(dht_mtx);
-    activeDht()->setLogFilter(f);
     if (dht_)
         dht_->setLogFilter(f);
 #ifdef OPENDHT_PROXY_CLIENT

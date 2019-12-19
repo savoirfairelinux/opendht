@@ -327,7 +327,10 @@ public:
 
     std::vector<ValuesExport> exportValues() const;
 
-    void setLogger(const Logger& logger = {});
+    void setLogger(const Sp<Logger>& logger = {});
+    void setLogger(const Logger& logger) {
+        setLogger(std::make_shared<Logger>(logger));
+    }
     void setLoggers(LogMethod err = {}, LogMethod warn = {}, LogMethod debug = {});
 
     /**

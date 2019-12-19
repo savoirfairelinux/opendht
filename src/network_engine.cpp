@@ -98,11 +98,11 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
    nodes6(std::move(msg.nodes6))
 {}
 
-NetworkEngine::NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
-    : myid(zeroes), dht_socket(std::move(sock)), DHT_LOG(log), rate_limiter((size_t)-1), scheduler(scheduler)
+NetworkEngine::NetworkEngine(const Sp<Logger>& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
+    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rate_limiter((size_t)-1), scheduler(scheduler)
 {}
 
-NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<DatagramSocket>&& sock, Logger& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<DatagramSocket>&& sock, const Sp<Logger>& log, Scheduler& scheduler,
         decltype(NetworkEngine::onError)&& onError,
         decltype(NetworkEngine::onNewNode)&& onNewNode,
         decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -121,7 +121,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<Da
     onListen(std::move(onListen)),
     onAnnounce(std::move(onAnnounce)),
     onRefresh(std::move(onRefresh)),
-    myid(myid), config(c), dht_socket(std::move(sock)), DHT_LOG(log),
+    myid(myid), config(c), dht_socket(std::move(sock)), logger_(log),
     rate_limiter(config.max_req_per_sec),
     scheduler(scheduler)
 {}
@@ -140,7 +140,8 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
     try {
         sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
     } catch (const std::overflow_error& e) {
-        DHT_LOG.e("Can't send value: buffer not large enough !");
+        if (logger_)
+            logger_->e("Can't send value: buffer not large enough !");
     }
 }
 
@@ -160,7 +161,8 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
     if (not values.empty()) {
         pk.pack(KEY_REQ_REFRESHED);
         pk.pack(values);
-        DHT_LOG.d(n->id, "[node %s] sending %zu refreshed values", n->toString().c_str(), values.size());
+        if (logger_)
+            logger_->d(n->id, "[node %s] sending %zu refreshed values", n->toString().c_str(), values.size());
     }
 
     pk.pack(KEY_TID); pk.pack(socket_id);
@@ -190,7 +192,8 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
     if (not values.empty()) {
         pk.pack(KEY_REQ_EXPIRED);
         pk.pack(values);
-        DHT_LOG.d(n->id, "[node %s] sending %zu expired values", n->toString().c_str(), values.size());
+        if (logger_)
+            logger_->d(n->id, "[node %s] sending %zu expired values", n->toString().c_str(), values.size());
     }
 
     pk.pack(KEY_TID); pk.pack(socket_id);
@@ -246,7 +249,8 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     auto now = scheduler.time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
-        // DHT_LOG.d(node.id, "[node %s] expired !", node.toString().c_str());
+        // if (logger_)
+        //     logger_->d(node.id, "[node %s] expired !", node.toString().c_str());
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
@@ -366,12 +370,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
 {
     auto from = f.getMappedIPv4();
     if (isMartian(from)) {
-        DHT_LOG.w("Received packet from martian node %s", from.toString().c_str());
+        if (logger_)
+            logger_->w("Received packet from martian node %s", from.toString().c_str());
         return;
     }
 
     if (isNodeBlacklisted(from)) {
-        DHT_LOG.w("Received packet from blacklisted node %s", from.toString().c_str());
+        if (logger_)
+            logger_->w("Received packet from blacklisted node %s", from.toString().c_str());
         return;
     }
 
@@ -380,13 +386,16 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
         msg->msgpack_unpack(msg_res.get());
     } catch (const std::exception& e) {
-        DHT_LOG.w("Can't parse message of size %lu: %s", buflen, e.what());
-        //DHT_LOG.DBG.logPrintable(buf, buflen);
+        if (logger_)
+            logger_->w("Can't parse message of size %lu: %s", buflen, e.what());
+        // if (logger_)
+        //     logger_->DBG.logPrintable(buf, buflen);
         return;
     }
 
     if (msg->network != config.network) {
-        DHT_LOG.d("Received message from other config.network %u", msg->network);
+        if (logger_)
+            logger_->d("Received message from other config.network %u", msg->network);
         return;
     }
 
@@ -397,12 +406,14 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         auto pmsg_it = partial_messages.find(msg->tid);
         if (pmsg_it == partial_messages.end()) {
             if (logIncoming_)
-                DHT_LOG.d("Can't find partial message");
+                if (logger_)
+                    logger_->d("Can't find partial message");
             rateLimit(from);
             return;
         }
         if (!pmsg_it->second.from.equals(from)) {
-            DHT_LOG.d("Received partial message data from unexpected IP address");
+            if (logger_)
+                logger_->d("Received partial message data from unexpected IP address");
             rateLimit(from);
             return;
         }
@@ -421,14 +432,16 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
     }
 
     if (msg->id == myid or not msg->id) {
-        DHT_LOG.d("Received message from self");
+        if (logger_)
+            logger_->d("Received message from self");
         return;
     }
 
     if (msg->type > MessageType::Reply) {
         /* Rate limit requests. */
         if (!rateLimit(from)) {
-            DHT_LOG.w("Dropping request due to rate limiting");
+            if (logger_)
+                logger_->w("Dropping request due to rate limiting");
             return;
         }
     }
@@ -447,7 +460,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
             scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
         } else
-            DHT_LOG.e("Partial message with given TID already exists");
+            if (logger_)
+                logger_->e("Partial message with given TID already exists");
     }
 }
 
@@ -481,7 +495,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 node->received(now, req);
                 if (not node->isClient())
                     onNewNode(node, 1);
-                DHT_LOG.d(node->id, "[node %s] can't find transaction with id %u", node->toString().c_str(), msg->tid);
+                if (logger_)
+                    logger_->d(node->id, "[node %s] can't find transaction with id %u", node->toString().c_str(), msg->tid);
                 return;
             }
         }
@@ -493,7 +508,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         onReportedAddr(msg->id, msg->addr);
 
         if (req and (req->cancelled() or req->expired() or req->completed())) {
-            DHT_LOG.w(node->id, "[node %s] response to expired, cancelled or completed request", node->toString().c_str());
+            if (logger_)
+                logger_->w(node->id, "[node %s] response to expired, cancelled or completed request", node->toString().c_str());
             return;
         }
 
@@ -509,7 +525,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 onError(req, DhtProtocolException {msg->error_code});
             } else {
                 if (logIncoming_)
-                    DHT_LOG.w(msg->id, "[node %s %s] received unknown error message %u",
+                    if (logger_)
+                        logger_->w(msg->id, "[node %s %s] received unknown error message %u",
                         msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
             }
             break;
@@ -541,12 +558,14 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             case MessageType::Ping:
                 ++in_stats.ping;
                 if (logIncoming_)
-                    DHT_LOG.d(node->id, "[node %s] sending pong", node->toString().c_str());
+                    if (logger_)
+                        logger_->d(node->id, "[node %s] sending pong", node->toString().c_str());
                 onPing(node);
                 sendPong(from, msg->tid);
                 break;
             case MessageType::FindNode: {
-                //DHT_LOG.d(msg->target, node->id, "[node %s] got 'find' request for %s (%d)", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
+                // if (logger_)
+                //     logger_->d(msg->target, node->id, "[node %s] got 'find' request for %s (%d)", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
                 auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
@@ -554,7 +573,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::GetValues: {
-                //DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'get' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                // if (logger_)
+                //     logger_->d(msg->info_hash, node->id, "[node %s] got 'get' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
@@ -562,8 +582,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::AnnounceValue: {
-                if (logIncoming_)
-                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_ and logger_)
+                    logger_->d(msg->info_hash, node->id, "[node %s] got 'put' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.put;
                 onAnnounce(node, msg->info_hash, msg->token, msg->values, msg->created);
 
@@ -576,15 +596,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::Refresh:
-                if (logIncoming_)
-                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_ and logger_)
+                    logger_->d(msg->info_hash, node->id, "[node %s] got 'refresh' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 onRefresh(node, msg->info_hash, msg->token, msg->value_id);
                 /* Same note as above in MessageType::AnnounceValue applies. */
                 sendValueAnnounced(from, msg->tid, msg->value_id);
                 break;
             case MessageType::Listen: {
-                if (logIncoming_)
-                    DHT_LOG.d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                if (logIncoming_ and logger_)
+                    logger_->d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query));
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
@@ -595,7 +615,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
         } catch (const std::overflow_error& e) {
-            DHT_LOG.e("Can't send value: buffer not large enough !");
+            if (logger_)
+                logger_->e("Can't send value: buffer not large enough !");
         } catch (DhtProtocolException& e) {
             sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
@@ -642,7 +663,8 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
     auto req = std::make_shared<Request>(MessageType::Ping, tid.toInt(), node,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&&) {
-            DHT_LOG.d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
+            if (logger_)
+                logger_->d(req_status.node->id, "[node %s] got pong !", req_status.node->toString().c_str());
             if (on_done) {
                 on_done(req_status, {});
             }
@@ -847,7 +869,8 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
     if (svals.size() < 50 && total_size < MAX_PACKET_VALUE_SIZE) {
         for (const auto& b : svals)
             buffer.write((const char*)b.data(), b.size());
-        // DHT_LOG.d("sending %lu bytes of values", total_size);
+        // if (logger_)
+        //     logger_->d("sending %lu bytes of values", total_size);
         svals.clear();
     } else {
         for (const auto& b : svals)
@@ -1011,12 +1034,14 @@ NetworkEngine::sendListen(Sp<Node> n,
         socket = previous->getSocket();
     } else {
         if (previous)
-            DHT_LOG.e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
+            if (logger_)
+                logger_->e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
         socket = n->openSocket(std::move(socket_cb));
     }
 
     if (not socket) {
-        DHT_LOG.e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
+        if (logger_)
+            logger_->e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
         return {};
     }
     TransId sid(socket);
@@ -1121,7 +1146,8 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
-                DHT_LOG.d(infohash, "Unknown search or announce!");
+                if (logger_)
+                    logger_->d(infohash, "Unknown search or announce!");
             } else {
                 if (on_done) {
                     RequestAnswer answer {};
@@ -1175,7 +1201,8 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
-                DHT_LOG.d(infohash, "Unknown search or announce!");
+                if (logger_)
+                    logger_->d(infohash, "Unknown search or announce!");
             } else {
                 if (on_done) {
                     RequestAnswer answer {};
@@ -1258,7 +1285,8 @@ NetworkEngine::maintainRxBuffer(Tid tid)
         const auto& now = scheduler.time();
         if (msg->second.start + RX_MAX_PACKET_TIME < now
          || msg->second.last_part + RX_TIMEOUT < now) {
-            DHT_LOG.w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
+            if (logger_)
+                logger_->w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
             partial_messages.erase(msg);
         }
     }

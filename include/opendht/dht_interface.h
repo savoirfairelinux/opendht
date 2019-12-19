@@ -30,7 +30,8 @@ namespace net {
 class OPENDHT_PUBLIC DhtInterface {
 public:
     DhtInterface() = default;
-    DhtInterface(const Logger& l) : DHT_LOG(l) {};
+    DhtInterface(const Logger& l) : logger_(std::make_shared<Logger>(l)) {};
+    DhtInterface(const std::shared_ptr<Logger>& l) : logger_(l) {};
     virtual ~DhtInterface() = default;
 
     // [[deprecated]]
@@ -221,15 +222,23 @@ public:
      * Enable or disable logging of DHT internal messages
      */
     virtual void setLoggers(LogMethod error = {}, LogMethod warn = {}, LogMethod debug = {}) {
-        DHT_LOG.DBG = debug;
-        DHT_LOG.WARN = warn;
-        DHT_LOG.ERR = error;
+        if (logger_) {
+            logger_->DBG = std::move(debug);
+            logger_->WARN = std::move(warn);
+            logger_->ERR = std::move(error);
+        } else
+            logger_= std::make_shared<Logger>(std::move(error), std::move(warn), std::move(debug));
     }
 
     virtual void setLogger(const Logger& l) {
-        DHT_LOG.DBG = l.DBG;
-        DHT_LOG.WARN = l.WARN;
-        DHT_LOG.ERR = l.ERR;
+        if (logger_)
+            *logger_ = l;
+        else
+            logger_= std::make_shared<Logger>(l);
+    }
+
+    virtual void setLogger(const std::shared_ptr<Logger>& l) {
+        logger_ = l;
     }
 
     /**
@@ -237,7 +246,8 @@ public:
      */
     virtual void setLogFilter(const InfoHash& f)
     {
-        DHT_LOG.setFilter(f);
+        if (logger_)
+            logger_->setFilter(f);
     }
 
     virtual void setPushNotificationToken(const std::string&) {};
@@ -249,7 +259,7 @@ public:
     virtual void pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
 
 protected:
-    Logger DHT_LOG;
+    std::shared_ptr<Logger> logger_ {};
 };
 
 } // namespace dht

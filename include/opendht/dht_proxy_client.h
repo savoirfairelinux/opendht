@@ -406,7 +406,6 @@ private:
 
     Json::StreamWriterBuilder jsonBuilder_;
     std::unique_ptr<Json::CharReader> jsonReader_;
-    std::shared_ptr<dht::Logger> logger_;
 
     std::shared_ptr<http::Request> buildRequest(const std::string& target = {});
 };

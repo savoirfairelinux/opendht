@@ -212,12 +212,12 @@ public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(Logger& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
+    NetworkEngine(const Sp<Logger>& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
     NetworkEngine(
             InfoHash& myid,
             NetworkConfig config,
             std::unique_ptr<DatagramSocket>&& sock,
-            Logger& log,
+            const Sp<Logger>& log,
             Scheduler& scheduler,
             decltype(NetworkEngine::onError)&& onError,
             decltype(NetworkEngine::onNewNode)&& onNewNode,
@@ -525,7 +525,7 @@ private:
     const InfoHash& myid;
     const NetworkConfig config {};
     const std::unique_ptr<DatagramSocket> dht_socket;
-    const Logger& DHT_LOG;
+    Sp<Logger> logger_;
 
     NodeCache cache {};
 

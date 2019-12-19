@@ -316,11 +316,16 @@ public:
         dht_->setLogger(logger);
     }
 
+    void setLogger(const std::shared_ptr<Logger>& logger) override {
+        DhtInterface::setLogger(logger);
+        dht_->setLogger(logger);
+    }
+
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
      */
     void setLogFilter(const InfoHash& f) override {
-        DHT_LOG.setFilter(f);
+        DhtInterface::setLogFilter(f);
         dht_->setLogFilter(f);
     }
 
