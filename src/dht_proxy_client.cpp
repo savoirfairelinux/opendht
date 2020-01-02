@@ -1062,17 +1062,15 @@ DhtProxyClient::restartListeners()
     for (auto& search : searches_) {
         auto key = search.first;
         for (auto& put : search.second.puts) {
-            if (!*put.second.ok) {
-                doPut(key, put.second.value, [ok = put.second.ok](bool result){
-                    *ok = result;
-                }, time_point::max(), true);
-                if (!put.second.refreshPutTimer){
-                    put.second.refreshPutTimer = std::make_unique<asio::steady_timer>(httpContext_);
-                }
-                put.second.refreshPutTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
-                put.second.refreshPutTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this,
-                                                        std::placeholders::_1, key, put.first));
+            doPut(key, put.second.value, [ok = put.second.ok](bool result){
+                *ok = result;
+            }, time_point::max(), true);
+            if (!put.second.refreshPutTimer) {
+                put.second.refreshPutTimer = std::make_unique<asio::steady_timer>(httpContext_);
             }
+            put.second.refreshPutTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
+            put.second.refreshPutTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this,
+                                                   std::placeholders::_1, key, put.first));
         }
     }
     if (not deviceKey_.empty()) {
