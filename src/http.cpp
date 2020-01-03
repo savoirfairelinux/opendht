@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2016-2019 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2019 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Mingrui Zhang <mingrui.zhang@savoirfairelinux.com>
  *              Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *              Adrien Béraud <adrien.beraud@savoirfairelinux.com>
