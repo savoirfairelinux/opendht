@@ -705,7 +705,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                 Json::Value json;
                 json["key"] = infoHash.toString();
                 json["to"] = clientId;
-                json["t"] = std::chrono::duration_cast<std::chrono::milliseconds>(system_clock::now().time_since_epoch()).count();
+                json["t"] = Json::Value::Int64(std::chrono::duration_cast<std::chrono::milliseconds>(system_clock::now().time_since_epoch()).count());
                 {
                     std::lock_guard<std::mutex> l(sessionCtx->lock);
                     json["s"] = sessionCtx->sessionId;
