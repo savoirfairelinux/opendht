@@ -27,6 +27,7 @@ struct OpCacheValueStorage
 {
     Sp<Value> data {};
     unsigned refCount {1};
+    system_clock::time_point updated {system_clock::time_point::min()};
     OpCacheValueStorage(Sp<Value> val) : data(val) {}
 };
 
@@ -47,16 +48,16 @@ public:
         };
     }
 
-    bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
+    bool onValue(const std::vector<Sp<Value>>& vals, bool expired, const system_clock::time_point& t = system_clock::time_point::min()) {
         if (expired)
-            return onValuesExpired(vals);
+            return onValuesExpired(vals, t);
         else
-            return onValuesAdded(vals);
+            return onValuesAdded(vals, t);
     }
 
-    bool onValuesAdded(const std::vector<Sp<Value>>& vals);
-    bool onValuesExpired(const std::vector<Sp<Value>>& vals);
-    bool onValuesExpired(const std::vector<Value::Id>& vals);
+    bool onValuesAdded(const std::vector<Sp<Value>>& vals, const system_clock::time_point& t = system_clock::time_point::min());
+    bool onValuesExpired(const std::vector<Sp<Value>>& vals, const system_clock::time_point& t = system_clock::time_point::min());
+    bool onValuesExpired(const std::vector<Value::Id>& vals, const system_clock::time_point& t = system_clock::time_point::min());
 
     void onNodeChanged(ListenSyncStatus status) {
         switch (status) {

@@ -300,10 +300,12 @@ private:
         SUBSCRIBE,
         RESUBSCRIBE,
     };
+    using CacheValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired, system_clock::time_point)>;
+
     /**
      * Send Listen with httpClient_
      */
-    void sendListen(const restinio::http_request_header_t& header, const ValueCallback& cb,
+    void sendListen(const restinio::http_request_header_t& header, const CacheValueCallback& cb,
                     const Sp<OperationState>& opstate, Listener& listener, ListenMethod method = ListenMethod::LISTEN);
     void handleResubscribe(const asio::error_code& ec, const InfoHash& key,
                            const size_t token, std::shared_ptr<OperationState> opstate);

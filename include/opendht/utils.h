@@ -77,6 +77,7 @@ public:
 // Time related definitions and utility functions
 
 using clock = std::chrono::steady_clock;
+using system_clock = std::chrono::system_clock;
 using time_point = clock::time_point;
 using duration = clock::duration;
 

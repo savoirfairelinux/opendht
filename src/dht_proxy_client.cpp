@@ -46,7 +46,7 @@ struct DhtProxyClient::Listener
 
     unsigned callbackId;
     OpValueCache cache;
-    ValueCallback cb;
+    CacheValueCallback cb;
     Sp<OperationState> opstate;
     std::shared_ptr<http::Request> request;
     std::unique_ptr<asio::steady_timer> refreshSubscriberTimer;
@@ -761,7 +761,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         // Add cache callback
         auto opstate = std::make_shared<OperationState>();
         l->second.opstate = opstate;
-        l->second.cb = [this,key,token,opstate](const std::vector<Sp<Value>>& values, bool expired){
+        l->second.cb = [this,key,token,opstate](const std::vector<Sp<Value>>& values, bool expired, system_clock::time_point t){
             if (opstate->stop)
                 return false;
             std::lock_guard<std::mutex> lock(searchLock_);
@@ -769,7 +769,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             if (s != searches_.end()) {
                 auto l = s->second.listeners.find(token);
                 if (l != s->second.listeners.end()) {
-                    return l->second.cache.onValue(values, expired);
+                    return l->second.cache.onValue(values, expired, t);
                 }
             }
             return false;
@@ -941,7 +941,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
 
 void
 DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
-                           const ValueCallback& cb,
+                           const CacheValueCallback& cb,
                            const Sp<OperationState>& opstate,
                            Listener& listener, ListenMethod method)
 {
@@ -968,7 +968,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                 b.append(at, length);
 
                 // one value per body line
-                while (b.getLine('\n') and !opstate->stop){
+                while (b.getLine('\n') and !opstate->stop) {
                     std::string err;
                     Json::Value json;
                     const auto& line = b.line();
@@ -986,7 +986,7 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
                         {
                             std::lock_guard<std::mutex> lock(lockCallbacks_);
                             callbacks_.emplace_back([cb, value, opstate, expired]() {
-                                if (not opstate->stop.load() and not cb({value}, expired))
+                                if (not opstate->stop.load() and not cb({value}, expired, system_clock::time_point::min()))
                                     opstate->stop.store(true);
                             });
                         }
@@ -1155,6 +1155,10 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
             }
         } else {
             auto key = InfoHash(notification.at("key"));
+            system_clock::time_point sendTime = system_clock::time_point::min();
+            try {
+                sendTime = system_clock::time_point(std::chrono::milliseconds(std::stoull(notification.at("t"))));
+            } catch (...) {}
             auto& search = searches_.at(key);
             for (auto& list : search.listeners) {
                 if (list.second.opstate->stop)
@@ -1167,12 +1171,12 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                 if (expired == notification.end()) {
                     auto cb = list.second.cb;
                     auto oldValues = list.second.cache.getValues();
-                    get(key, [cb](const std::vector<Sp<Value>>& vals) {
-                        return cb(vals, false);
-                    }, [cb, oldValues](bool /*ok*/) {
+                    get(key, [cb, sendTime](const std::vector<Sp<Value>>& vals) {
+                        return cb(vals, false, sendTime);
+                    }, [cb, oldValues, sendTime](bool /*ok*/) {
                         // Decrement old values refcount to expire values not
                         // present in the new list
-                        cb(oldValues, true);
+                        cb(oldValues, true, sendTime);
                     });
                 } else {
                     std::stringstream ss(expired->second);
@@ -1184,7 +1188,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                     }
                     {
                         std::lock_guard<std::mutex> lock(lockCallbacks_);
-                        callbacks_.emplace_back([this, key, token, opstate, ids]() {
+                        callbacks_.emplace_back([this, key, token, opstate, ids, sendTime]() {
                             if (opstate->stop)
                                 return;
                             std::lock_guard<std::mutex> lock(searchLock_);
@@ -1194,7 +1198,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                             auto l = s->second.listeners.find(token);
                             if (l == s->second.listeners.end())
                                 return;
-                            if (not opstate->stop and not l->second.cache.onValuesExpired(ids))
+                            if (not opstate->stop and not l->second.cache.onValuesExpired(ids, sendTime))
                                 opstate->stop = true;
                         });
                     }

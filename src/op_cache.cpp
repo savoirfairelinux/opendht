@@ -22,7 +22,7 @@ namespace dht {
 constexpr const std::chrono::seconds OpCache::EXPIRATION;
 
 bool
-OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals) {
+OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals, const system_clock::time_point& t) {
     std::vector<Sp<Value>> newValues;
     for (const auto& v : vals) {
         auto viop = values.emplace(v->id, v);
@@ -31,16 +31,21 @@ OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals) {
         } else {
             viop.first->second.refCount++;
         }
+        viop.first->second.updated = t;
     }
     return newValues.empty() ? true : callback(newValues, false);
 }
 
 bool
-OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals) {
+OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals, const system_clock::time_point& t) {
     std::vector<Sp<Value>> expiredValues;
     for (const auto& v : vals) {
         auto vit = values.find(v->id);
         if (vit != values.end()) {
+            if (vit->second.updated > t)
+                continue;
+            
+            vit->second.updated = t;
             vit->second.refCount--;
             if (not vit->second.refCount) {
                 expiredValues.emplace_back(std::move(vit->second.data));
@@ -52,12 +57,16 @@ OpValueCache::onValuesExpired(const std::vector<Sp<Value>>& vals) {
 }
 
 bool
-OpValueCache::onValuesExpired(const std::vector<Value::Id>& vids)
+OpValueCache::onValuesExpired(const std::vector<Value::Id>& vids, const system_clock::time_point& t)
 {
     std::vector<Sp<Value>> expiredValues;
     for (const auto& vid : vids) {
         auto vit = values.find(vid);
         if (vit != values.end()) {
+            if (vit->second.updated > t)
+                continue;
+            
+            vit->second.updated = t;
             vit->second.refCount--;
             if (not vit->second.refCount) {
                 expiredValues.emplace_back(std::move(vit->second.data));
