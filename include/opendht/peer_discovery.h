@@ -82,6 +82,8 @@ public:
     bool stopPublish(const std::string &type);
     bool stopPublish(sa_family_t domain, const std::string &type);
 
+    void connectivityChanged();
+
 private:
     class DomainPeerDiscovery;
     std::unique_ptr<DomainPeerDiscovery> peerDiscovery4_;
