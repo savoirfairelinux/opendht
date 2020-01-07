@@ -24,8 +24,6 @@
 
 #include <asio.hpp>
 
-using namespace std::chrono_literals;
-
 namespace dht {
 
 // Organization-local Scope multicast
@@ -45,6 +43,8 @@ public:
 
     bool stopDiscovery(const std::string &type);
     bool stopPublish(const std::string &type);
+
+    void publish();
 
     void connectivityChanged();
 
@@ -72,10 +72,8 @@ private:
 
     void stopDiscovery();
     void stopPublish();
-    void publish();
 
     void reDiscover();
-    void rePublish();
 };
 
 PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
@@ -142,7 +140,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
                         return;
                 }
                 if (cb)
-			cb(std::move(o.val), SockAddr{ receiveFrom_.data(), (socklen_t)receiveFrom_.size() });
+                    cb(std::move(o.val), SockAddr{ receiveFrom_.data(), (socklen_t)receiveFrom_.size() });
             }
         } catch (const std::exception& e) {
             if (logger_)
@@ -156,14 +154,16 @@ void
 PeerDiscovery::DomainPeerDiscovery::publish()
 {
     std::lock_guard<std::mutex> lck(mtx_);
-    if (lrunning_) {
-        sockFd_.async_send_to(asio::buffer(sbuf_.data(), sbuf_.size()), sockAddrSend_, [logger=logger_](const asio::error_code& ec, size_t){
-            if (ec and ec != asio::error::operation_aborted) {
-                if (logger)
+    if (not lrunning_)
+        return;
+
+    sockFd_.async_send_to(asio::buffer(sbuf_.data(), sbuf_.size()), sockAddrSend_,
+            [logger=logger_] (const asio::error_code& ec, size_t)
+            {
+                if (ec and (ec != asio::error::operation_aborted) and logger)
                     logger->w("Error sending packet: %s", ec.message().c_str());
             }
-        });
-    }
+    );
 }
 
 void
@@ -217,7 +217,7 @@ PeerDiscovery::DomainPeerDiscovery::stopDiscovery()
 void
 PeerDiscovery::DomainPeerDiscovery::stopPublish()
 {
-	lrunning_ = false;
+    lrunning_ = false;
 }
 
 void
@@ -248,32 +248,24 @@ PeerDiscovery::DomainPeerDiscovery::reloadMessages()
 void
 PeerDiscovery::DomainPeerDiscovery::reDiscover()
 {
-	asio::error_code ec;
+    asio::error_code ec;
 
-	sockFd_.set_option(asio::ip::multicast::leave_group(sockAddrSend_.address()), ec);
-	if (ec)
-		if (logger_)
-			logger_->w("didn't get to BYE: %s", ec.message().c_str());
+    sockFd_.set_option(asio::ip::multicast::leave_group(sockAddrSend_.address()), ec);
+    if (ec and logger_)
+        logger_->w("didn't get to BYE: %s", ec.message().c_str());
 
-	sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
-	if (ec)
-		if (logger_)
-			logger_->w("can't multicast on %s: %s",
-					sockAddrSend_.address().to_string(),
-					ec.message().c_str());
-}
-
-void
-PeerDiscovery::DomainPeerDiscovery::rePublish()
-{
-   publish();
+    sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address()), ec);
+    if (ec and logger_)
+        logger_->w("can't multicast on %s: %s",
+                sockAddrSend_.address().to_string(),
+                ec.message().c_str());
 }
 
 void
 PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
 {
-	reDiscover();
-	rePublish();
+    reDiscover();
+    publish();
 }
 
 PeerDiscovery::PeerDiscovery(in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
@@ -380,10 +372,10 @@ PeerDiscovery::stopPublish(sa_family_t domain, const std::string& type)
 void
 PeerDiscovery::connectivityChanged()
 {
-	if (peerDiscovery4_)
-		peerDiscovery4_->connectivityChanged();
-	if (peerDiscovery6_)
-		peerDiscovery6_->connectivityChanged();
+    if (peerDiscovery4_)
+        peerDiscovery4_->connectivityChanged();
+    if (peerDiscovery6_)
+        peerDiscovery6_->connectivityChanged();
 }
 
 } /* namespace dht */
