@@ -1032,6 +1032,10 @@ DhtRunner::connectivityChanged()
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) {
         dht.connectivityChanged();
+#ifdef OPENDHT_PEER_DISCOVERY
+        if (peerDiscovery_)
+            peerDiscovery_->connectivityChanged();
+#endif
     });
     cv.notify_all();
 }
