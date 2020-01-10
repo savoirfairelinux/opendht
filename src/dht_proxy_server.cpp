@@ -1030,6 +1030,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
 #endif
                 } else {
                     if (not sessionId.empty()) {
+                        if (not pput.sessionCtx)
+                            pput.sessionCtx = std::make_shared<PushSessionContext>();
                         std::lock_guard<std::mutex> l(pput.sessionCtx->lock);
                         pput.sessionCtx->sessionId = sessionId;
                     }
