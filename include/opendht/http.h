@@ -35,6 +35,7 @@
 
 #include <memory>
 #include <queue>
+#include <mutex>
 
 namespace Json {
 class Value;
@@ -122,6 +123,8 @@ private:
         };
     }
 
+    mutable std::mutex mutex_;
+
     unsigned int id_;
     static std::atomic_uint ids_;
 
@@ -185,7 +188,7 @@ public:
 private:
     void resolve(const std::string& host, const std::string& service);
 
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
 
     Url url_;
     asio::error_code ec_;
@@ -311,6 +314,8 @@ private:
     void onHeadersComplete();
     void onBody(const char* at, size_t length);
     void onComplete();
+
+    mutable std::mutex mutex_;
 
     std::shared_ptr<dht::Logger> logger_;
 
