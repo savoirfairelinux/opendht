@@ -152,8 +152,11 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             std::cout << nodeInfo.ipv6.toString() << std::endl;
 #ifdef OPENDHT_PROXY_SERVER
             for (const auto& proxy : proxies) {
-                std::cout << "Stats for proxy on port " << proxy.first << std::endl;
-                std::cout << "  " << proxy.second->stats().toString() << std::endl;
+                std::cout << "Stats for proxy server on port " << proxy.first << std::endl;
+                if (auto stats = proxy.second->stats())
+                    std::cout << "  " << stats->toString() << std::endl;
+                else
+                    std::cout << "  (stats not available yet)" << std::endl;                
             }
 #endif
             continue;

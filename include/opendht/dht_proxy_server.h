@@ -90,20 +90,19 @@ public:
         /** Average requests per second */
         double requestRate {0};
         /** Node Info **/
-        NodeInfo nodeInfo {};
+        std::shared_ptr<NodeInfo> nodeInfo {};
 
         std::string toString() const {
             std::ostringstream ss;
             ss << "Listens: " << listenCount << " Puts: " << putCount << " PushListeners: " << pushListenersCount << std::endl;
             ss << "Requests: " << requestRate << " per second." << std::endl;
-            auto& ni = nodeInfo;
-            auto& ipv4 = ni.ipv4;
-            if (ipv4.table_depth > 1) {
-                ss << "IPv4 Network estimation: " << ipv4.getNetworkSizeEstimation() << std::endl;;
-            }
-            auto& ipv6 = ni.ipv6;
-            if (ipv6.table_depth > 1) {
-                ss << "IPv6 Network estimation: " << ipv6.getNetworkSizeEstimation() << std::endl;;
+            if (nodeInfo) {
+                auto& ipv4 = nodeInfo->ipv4;
+                if (ipv4.table_depth > 1)
+                    ss << "IPv4 Network estimation: " << ipv4.getNetworkSizeEstimation() << std::endl;;
+                auto& ipv6 = nodeInfo->ipv6;
+                if (ipv6.table_depth > 1)
+                    ss << "IPv6 Network estimation: " << ipv6.getNetworkSizeEstimation() << std::endl;;
             }
             return ss.str();
         }
@@ -117,14 +116,15 @@ public:
             result["putCount"] = static_cast<Json::UInt64>(putCount);
             result["pushListenersCount"] = static_cast<Json::UInt64>(pushListenersCount);
             result["requestRate"] = requestRate;
-            result["nodeInfo"] = nodeInfo.toJson();
+            if (nodeInfo)
+                result["nodeInfo"] = nodeInfo->toJson();
             return result;
         }
     };
 
-    ServerStats stats() const { return stats_; }
+    std::shared_ptr<ServerStats> stats() const { return stats_; }
 
-    void updateStats() const;
+    std::shared_ptr<ServerStats> updateStats(std::shared_ptr<NodeInfo> info) const;
 
     std::shared_ptr<DhtRunner> getNode() const { return dht_; }
 
@@ -327,9 +327,8 @@ private:
 
     std::shared_ptr<dht::Logger> logger_;
 
-    mutable std::mutex statsMutex_;
-    mutable ServerStats stats_;
-    mutable NodeInfo nodeInfo_ {};
+    mutable std::shared_ptr<ServerStats> stats_;
+    mutable std::shared_ptr<NodeInfo> nodeInfo_ {};
     std::unique_ptr<asio::steady_timer> printStatsTimer_;
 
     // Thread-safe access to listeners map.

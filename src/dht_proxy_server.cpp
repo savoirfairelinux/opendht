@@ -36,6 +36,7 @@
 #include <iostream>
 
 using namespace std::placeholders;
+using namespace std::chrono_literals;
 
 #ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
 namespace restinio {
@@ -263,7 +264,7 @@ DhtProxyServer::DhtProxyServer(
     }
     dht->forwardAllMessages(true);
 
-    printStatsTimer_ = std::make_unique<asio::steady_timer>(io_context(), PRINT_STATS_PERIOD);
+    printStatsTimer_ = std::make_unique<asio::steady_timer>(io_context(), 0s);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
 
@@ -344,20 +345,23 @@ DhtProxyServer::addServerSettings(ServerSettings& settings, const unsigned int m
     settings.connection_state_listener(connListener_);
 }
 
-void
-DhtProxyServer::updateStats() const
+std::shared_ptr<DhtProxyServer::ServerStats>
+DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
 {
     auto now = clock::now();
     auto last = lastStatsReset_.exchange(now);
     auto count = requestNum_.exchange(0);
     auto dt = std::chrono::duration<double>(now - last);
-    stats_.requestRate = count / dt.count();
+    auto sstats = std::make_shared<ServerStats>();
+    auto& stats = *sstats;
+    stats.requestRate = count / dt.count();
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-    stats_.pushListenersCount = pushListeners_.size();
+    stats.pushListenersCount = pushListeners_.size();
 #endif
-    stats_.putCount = puts_.size();
-    stats_.listenCount = listeners_.size();
-    stats_.nodeInfo = nodeInfo_;
+    stats.putCount = puts_.size();
+    stats.listenCount = listeners_.size();
+    stats.nodeInfo = info;
+    return sstats;
 }
 
 void
@@ -372,13 +376,12 @@ DhtProxyServer::handlePrintStats(const asio::error_code &ec)
     if (io_context().stopped())
         return;
 
-    if (dht_){
-        updateStats();
+    if (auto dht = dht_) {
         // Refresh stats cache
-        auto newInfo = dht_->getNodeInfo();
-        std::lock_guard<std::mutex> lck(statsMutex_);
-        nodeInfo_ = std::move(newInfo);
-        auto json = nodeInfo_.toJson();
+        auto newInfo = std::make_shared<NodeInfo>(dht->getNodeInfo());
+        stats_ = updateStats(newInfo);
+        nodeInfo_ = newInfo;
+        auto json = newInfo->toJson();
         auto str = Json::writeString(jsonBuilder_, json);
         if (logger_)
             logger_->d("[proxy:server] [stats] %s", str.c_str());
@@ -477,12 +480,12 @@ DhtProxyServer::getNodeInfo(restinio::request_handle_t request,
                             restinio::router::route_params_t /*params*/) const
 {
     Json::Value result;
-    std::lock_guard<std::mutex> lck(statsMutex_);
-    if (nodeInfo_.ipv4.good_nodes == 0 &&
-        nodeInfo_.ipv6.good_nodes == 0){
-        nodeInfo_ = dht_->getNodeInfo();
+    auto nodeInfo = nodeInfo_;
+    if (not nodeInfo) {
+        nodeInfo = std::make_shared<NodeInfo>(dht_->getNodeInfo());
+        nodeInfo_ = nodeInfo;
     }
-    result = nodeInfo_.toJson();
+    result = nodeInfo->toJson();
     // [ipv6:ipv4]:port or ipv4:port
     result["public_ip"] = request->remote_endpoint().address().to_string();
     auto output = Json::writeString(jsonBuilder_, result) + "\n";
@@ -498,8 +501,8 @@ DhtProxyServer::getStats(restinio::request_handle_t request,
 {
     requestNum_++;
     try {
-        if (dht_){
-            auto output = Json::writeString(jsonBuilder_, stats_.toJson()) + "\n";
+        if (auto stats = stats_) {
+            auto output = Json::writeString(jsonBuilder_, stats->toJson()) + "\n";
             auto response = initHttpResponse(request->create_response());
             response.append_body(output);
             response.done();
