@@ -694,6 +694,8 @@ Request::notify_state_change(State state) {
 void
 Request::init_parser()
 {
+    response_.request = shared_from_this();
+
     if (!parser_)
         parser_ = std::make_unique<http_parser>();
     http_parser_init(parser_.get(), HTTP_RESPONSE);

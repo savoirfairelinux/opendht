@@ -202,12 +202,15 @@ private:
     std::shared_ptr<dht::Logger> logger_;
 };
 
+class Request;
+
 struct Response
 {
     unsigned int status_code {0};
     std::map<std::string, std::string> headers;
     std::string body;
     bool aborted {false};
+    std::weak_ptr<Request> request;
 };
 
 class OPENDHT_PUBLIC Request : public std::enable_shared_from_this<Request>
