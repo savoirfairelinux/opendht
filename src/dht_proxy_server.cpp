@@ -484,6 +484,8 @@ DhtProxyServer::getNodeInfo(restinio::request_handle_t request,
     if (not nodeInfo) {
         nodeInfo = std::make_shared<NodeInfo>(dht_->getNodeInfo());
         nodeInfo_ = nodeInfo;
+        if (auto stats = stats_)
+            stats->nodeInfo = nodeInfo;
     }
     result = nodeInfo->toJson();
     // [ipv6:ipv4]:port or ipv4:port
