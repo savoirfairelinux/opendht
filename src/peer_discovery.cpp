@@ -66,13 +66,13 @@ private:
     bool drunning_ {false};
 
     void loopListener();
-    void query(const asio::ip::udp::endpoint peer);
+    void query(const asio::ip::udp::endpoint& peer);
     void reloadMessages();
 
     void stopDiscovery();
     void stopPublish();
 
-    void publish(const asio::ip::udp::endpoint peer);
+    void publish(const asio::ip::udp::endpoint& peer);
 
     void reDiscover();
 };
@@ -167,10 +167,10 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
 }
 
 void
-PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint peer)
+PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint& peer)
 {
-    std::lock_guard<std::mutex> lck(mtx_);
-    if (not lrunning_)
+    std::lock_guard<std::mutex> lck(dmtx_);
+    if (not drunning_)
         return;
 
     msgpack::sbuffer pbuf_request;
@@ -188,7 +188,7 @@ PeerDiscovery::DomainPeerDiscovery::query(const asio::ip::udp::endpoint peer)
 }
 
 void
-PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint peer)
+PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
 {
     std::lock_guard<std::mutex> lck(mtx_);
     if (not lrunning_)
@@ -293,6 +293,7 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
         logger_->w("can't multicast on %s: %s",
                 sockAddrSend_.address().to_string().c_str(),
                 ec.message().c_str());
+    query(sockAddrSend_);
 }
 
 void
