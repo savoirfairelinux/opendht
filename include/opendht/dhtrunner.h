@@ -349,6 +349,7 @@ public:
     NodeStats getNodesStats(sa_family_t af) const;
     unsigned getNodesStats(sa_family_t af, unsigned *good_return, unsigned *dubious_return, unsigned *cached_return, unsigned *incoming_return) const;
     NodeInfo getNodeInfo() const;
+    void getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)>);
 
     std::vector<unsigned> getNodeMessageStats(bool in = false) const;
     std::string getStorageLog() const;

@@ -378,13 +378,14 @@ DhtProxyServer::handlePrintStats(const asio::error_code &ec)
 
     if (auto dht = dht_) {
         // Refresh stats cache
-        auto newInfo = std::make_shared<NodeInfo>(dht->getNodeInfo());
-        stats_ = updateStats(newInfo);
-        nodeInfo_ = newInfo;
-        auto json = newInfo->toJson();
-        auto str = Json::writeString(jsonBuilder_, json);
-        if (logger_)
-            logger_->d("[proxy:server] [stats] %s", str.c_str());
+        dht->getNodeInfo([this](std::shared_ptr<NodeInfo> newInfo){
+            stats_ = updateStats(newInfo);
+            nodeInfo_ = newInfo;
+            if (logger_) {
+                auto str = Json::writeString(jsonBuilder_, newInfo->toJson());
+                logger_->d("[proxy:server] [stats] %s", str.c_str());
+            }
+        });
     }
     printStatsTimer_->expires_at(printStatsTimer_->expiry() + PRINT_STATS_PERIOD);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));

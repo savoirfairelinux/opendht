@@ -486,6 +486,25 @@ DhtRunner::getNodeInfo() const {
     return info;
 }
 
+void
+DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    ongoing_ops++;
+    pending_ops_prio.emplace([cb = std::move(cb), this](SecureDht& dht){
+        auto sinfo = std::make_shared<NodeInfo>();
+        auto& info = *sinfo;
+        info.id = dht.getId();
+        info.node_id = dht.getNodeId();
+        info.ipv4 = dht.getNodesStats(AF_INET);
+        info.ipv6 = dht.getNodesStats(AF_INET6);
+        info.ongoing_ops = ongoing_ops;
+        cb(sinfo);
+        opEnded();
+    });
+    cv.notify_all();
+}
+
 std::vector<unsigned>
 DhtRunner::getNodeMessageStats(bool in) const
 {
