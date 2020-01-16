@@ -133,7 +133,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
             msgpack::object obj = rcv.get();
 
             if (obj.type == msgpack::type::STR) {
-	        if (lrunning_ and obj.as<std::string>() == "q")
+                if (lrunning_ and obj.as<std::string>() == "q")
                     publish(receiveFrom_);
             } else if (obj.type == msgpack::type::MAP) {
                 for (unsigned i = 0; i < obj.via.map.size; i++) {
