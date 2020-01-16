@@ -64,7 +64,7 @@ struct LogMethod {
         func(format, args);
         va_end(args);
     }
-    void log(char const* format, va_list args) const {
+    inline void log(char const* format, va_list args) const {
         func(format, args);
     }
     explicit operator bool() const {

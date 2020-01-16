@@ -417,6 +417,7 @@ DhtRunner::exportValues() const {
 void
 DhtRunner::setLogger(const Sp<Logger>& logger) {
     std::lock_guard<std::mutex> lck(dht_mtx);
+    logger_ = logger;
     if (dht_)
         dht_->setLogger(logger);
 #ifdef OPENDHT_PROXY_CLIENT
