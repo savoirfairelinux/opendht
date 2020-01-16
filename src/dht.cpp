@@ -852,7 +852,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filte
     if (!sr)
         throw DhtException("Can't create search");
     if (logger_)
-        logger_->e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
+        logger_->w(id, "[search %s IPv%c] listen", id.to_c_str(), (af == AF_INET) ? '4' : '6');
     return sr->listen(cb, f, q, scheduler);
 }
 
