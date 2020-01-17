@@ -346,8 +346,8 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
             n = pn;
         } else {
             for (auto& sn : sr->nodes) {
-                if (sn.canGet(now, up, query)) {
-                    n = &sn;
+                if (sn->canGet(now, up, query)) {
+                    n = sn.get();
                     break;
                 }
             }
@@ -488,7 +488,8 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
 
     Sp<Query> probe_query {};
     const auto& now = scheduler.time();
-    for (auto& n : sr->nodes) {
+    for (auto& np : sr->nodes) {
+        auto& n = *np;
         if (not n.isSynced(now))
             continue;
 
@@ -650,8 +651,8 @@ Dht::searchStep(Sp<Search> sr)
             // clear corresponding queries
             for (const auto& get : completed_gets)
                 for (auto& sn : sr->nodes) {
-                    sn.getStatus.erase(get.query);
-                    sn.pagination_queries.erase(get.query);
+                    sn->getStatus.erase(get.query);
+                    sn->pagination_queries.erase(get.query);
                 }
 
             /* clearing callbacks for announced values */
@@ -670,10 +671,10 @@ Dht::searchStep(Sp<Search> sr)
         if (not sr->listeners.empty()) {
             unsigned i = 0;
             for (auto& n : sr->nodes) {
-                if (not n.isSynced(now))
+                if (not n->isSynced(now))
                     continue;
-                searchSynchedNodeListen(sr, n);
-                if (not n.candidate and ++i == LISTEN_NODES)
+                searchSynchedNodeListen(sr, *n);
+                if (not n->candidate and ++i == LISTEN_NODES)
                     break;
             }
         }
@@ -808,8 +809,8 @@ Dht::announce(const InfoHash& id,
     if (a_sr == sr->announce.end()) {
         sr->announce.emplace_back(Announce {permanent, value, created, callback});
         for (auto& n : sr->nodes) {
-            n.probe_query.reset();
-            n.acked[value->id].first.reset();
+            n->probe_query.reset();
+            n->acked[value->id].first.reset();
         }
     } else {
         a_sr->permanent = permanent;
@@ -817,8 +818,8 @@ Dht::announce(const InfoHash& id,
         if (a_sr->value != value) {
             a_sr->value = value;
             for (auto& n : sr->nodes) {
-                n.acked[value->id].first.reset();
-                n.probe_query.reset();
+                n->acked[value->id].first.reset();
+                n->probe_query.reset();
             }
         }
         if (sr->isAnnounced(value->id)) {
@@ -1537,10 +1538,9 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     }
 
     out << " Common bits    InfoHash                       Conn. Get   Ops  IP" << std::endl;
-    unsigned i = 0;
     auto last_get = sr.getLastGetTime();
-    for (const auto& n : sr.nodes) {
-        i++;
+    for (const auto& np : sr.nodes) {
+        auto& n = *np;
         out << std::setfill (' ') << std::setw(3) << InfoHash::commonBits(sr.id, n.node->id) << ' ' << n.node->id;
         out << ' ' << (findNode(n.node->id, sr.af) ? '*' : ' ');
         out << " [";
@@ -2162,9 +2162,9 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
         for (auto& srp : searches(node->getFamily())) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
-                if (n.node != node) continue;
-                n.token.clear();
-                n.last_get_reply = time_point::min();
+                if (n->node != node) continue;
+                n->token.clear();
+                n->last_get_reply = time_point::min();
                 searchSendGetValues(sr);
                 scheduler.edit(sr->nextSearchStep, scheduler.time());
                 break;

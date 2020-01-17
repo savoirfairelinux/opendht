@@ -86,15 +86,15 @@ struct Dht::SearchNode {
 
     Blob token {};                                 /* last token the node sent to us after a get request */
     time_point last_get_reply {time_point::min()}; /* last time received valid token */
+    Sp<Scheduler::Job> syncJob {};
     bool candidate {false};                        /* A search node is candidate if the search is/was synced and this
                                                       node is a new candidate for inclusion. */
-    Sp<Scheduler::Job> syncJob {};
 
     SearchNode() : node() {}
     SearchNode(const SearchNode&) = delete;
-    SearchNode(SearchNode&&) = default;
+    SearchNode(SearchNode&&) = delete;
     SearchNode& operator=(const SearchNode&) = delete;
-    SearchNode& operator=(SearchNode&&) = default;
+    SearchNode& operator=(SearchNode&&) = delete;
 
     SearchNode(const Sp<Node>& node) : node(node) {}
     ~SearchNode() {
@@ -376,7 +376,7 @@ struct Dht::Search {
 
     bool expired {false};              /* no node, or all nodes expired */
     bool done {false};                 /* search is over, cached for later */
-    std::vector<SearchNode> nodes {};
+    std::vector<std::unique_ptr<SearchNode>> nodes {};
 
     /* pending puts */
     std::vector<Announce> announce {};
@@ -416,17 +416,17 @@ struct Dht::Search {
     bool insertNode(const Sp<Node>& n, time_point now, const Blob& token={});
 
     SearchNode* getNode(const Sp<Node>& n) {
-        auto srn = std::find_if(nodes.begin(), nodes.end(), [&](SearchNode& sn) {
-            return n == sn.node;
+        auto srn = std::find_if(nodes.begin(), nodes.end(), [&](std::unique_ptr<SearchNode>& sn) {
+            return n == sn->node;
         });
-        return (srn == nodes.end()) ? nullptr : &(*srn);
+        return (srn == nodes.end()) ? nullptr : (*srn).get();
     }
 
     /* number of concurrent sync requests */
     unsigned currentlySolicitedNodeCount() const {
         unsigned count = 0;
         for (const auto& n : nodes)
-            if (not n.isBad() and n.pendingGet())
+            if (not n->isBad() and n->pendingGet())
                 count++;
         return count;
     }
@@ -460,12 +460,12 @@ struct Dht::Search {
      */
     void setDone(const Get& get) {
         for (auto& n : nodes) {
-            auto pqs = n.pagination_queries.find(get.query);
-            if (pqs != n.pagination_queries.cend()) {
+            auto pqs = n->pagination_queries.find(get.query);
+            if (pqs != n->pagination_queries.cend()) {
                 for (auto& pq : pqs->second)
-                    n.getStatus.erase(pq);
+                    n->getStatus.erase(pq);
             }
-            n.getStatus.erase(get.query);
+            n->getStatus.erase(get.query);
         }
         if (get.done_cb)
             get.done_cb(true, getNodes());
@@ -478,9 +478,9 @@ struct Dht::Search {
      */
     void setDone() {
         for (auto& n : nodes) {
-            n.getStatus.clear();
-            n.listenStatus.clear();
-            n.acked.clear();
+            n->getStatus.clear();
+            n->listenStatus.clear();
+            n->acked.clear();
         }
         done = true;
     }
@@ -522,9 +522,9 @@ struct Dht::Search {
                     }
                     for (auto& sn : nodes) {
                         if (listeners.empty())
-                            sn.cancelListen();
+                            sn->cancelListen();
                         else if (query)
-                            sn.cancelListen(query);
+                            sn->cancelListen(query);
                     }
                 });
                 scheduler.edit(opExpirationJob, nextExpire);
@@ -565,14 +565,14 @@ struct Dht::Search {
      * @return The number of non-good search nodes.
      */
     unsigned getNumberOfBadNodes() const {
-        return std::count_if(nodes.begin(), nodes.end(), [](const SearchNode& sn) {
-            return sn.isBad();
+        return std::count_if(nodes.begin(), nodes.end(), [](const std::unique_ptr<SearchNode>& sn) {
+            return sn->isBad();
         });
     }
     unsigned getNumberOfConsecutiveBadNodes() const {
         unsigned count = 0;
-        std::find_if(nodes.begin(), nodes.end(), [&count](const SearchNode& sn) {
-            if (not sn.isBad())
+        std::find_if(nodes.begin(), nodes.end(), [&count](const std::unique_ptr<SearchNode>& sn) {
+            if (not sn->isBad())
                 return true;
             ++count;
             return false;
@@ -591,7 +591,7 @@ struct Dht::Search {
      */
     bool removeExpiredNode(const time_point& now) {
         for (auto e = nodes.cend(); e != nodes.cbegin();) {
-            const Node& n = *(--e)->node;
+            const Node& n = *(*(--e))->node;
             if (n.isRemovable(now)) {
                 //std::cout << "Removing expired node " << n.id << " from IPv" << (af==AF_INET?'4':'6') << " search " << id << std::endl;
                 nodes.erase(e);
@@ -664,7 +664,7 @@ struct Dht::Search {
         // remove acked for cleared annouces
         for (auto it = announced; it != announce.end(); ++it) {
             for (auto& n : nodes)
-                n.acked.erase(it->value->id);
+                n->acked.erase(it->value->id);
         }
         announce.erase(announced, announce.end());
     }
@@ -697,13 +697,13 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
     auto n = nodes.end();
     while (n != nodes.begin()) {
         --n;
-        if (n->node == snode) {
+        if ((*n)->node == snode) {
             found = true;
             break;
         }
 
         /* Node not found. We could insert it after this one. */
-        if (id.xorCmp(nid, n->node->id) > 0) {
+        if (id.xorCmp(nid, (*n)->node->id) > 0) {
             ++n;
             break;
         }
@@ -727,7 +727,7 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
             full = nodes.size() - bad >=  SEARCH_NODES;
             while (std::distance(nodes.cbegin(), t) - bad >  SEARCH_NODES) {
                 --t;
-                if (t->isBad())
+                if ((*t)->isBad())
                     bad--;
             }
         }
@@ -743,7 +743,7 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
         if (nodes.empty()) {
             step_time = time_point::min();
         }
-        n = nodes.insert(n, SearchNode(snode));
+        n = nodes.emplace(n, std::make_unique<SearchNode>(snode));
         node.setTime(now);
         new_search_node = true;
         if (node.isExpired()) {
@@ -755,16 +755,16 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
         }
 
         while (nodes.size() - bad >  SEARCH_NODES) {
-            if (not expired and nodes.back().isBad())
+            if (not expired and nodes.back()->isBad())
                 bad--;
             nodes.pop_back();
         }
     }
     if (not token.empty()) {
-        n->candidate = false;
-        n->last_get_reply = now;
+        (*n)->candidate = false;
+        (*n)->last_get_reply = now;
         if (token.size() <= 64)
-            n->token = token;
+            (*n)->token = token;
         expired = false;
     }
     if (new_search_node)
@@ -778,7 +778,7 @@ Dht::Search::getNodes() const
     std::vector<Sp<Node>> ret {};
     ret.reserve(nodes.size());
     for (const auto& sn : nodes)
-        ret.emplace_back(sn.node);
+        ret.emplace_back(sn->node);
     return ret;
 }
 
@@ -787,9 +787,9 @@ Dht::Search::isSynced(time_point now) const
 {
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.isBad())
+        if (n->isBad())
             continue;
-        if (not n.isSynced(now))
+        if (not n->isSynced(now))
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -820,9 +820,9 @@ Dht::Search::isDone(const Get& get) const
 {
     unsigned i = 0;
     for (const auto& sn : nodes) {
-        if (sn.isBad())
+        if (sn->isBad())
             continue;
-        if (not sn.isDone(get))
+        if (not sn->isDone(get))
             return false;
         if (++i == TARGET_NODES)
             break;
@@ -837,9 +837,9 @@ Dht::Search::isAnnounced(Value::Id id) const
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.isBad())
+        if (n->isBad())
             continue;
-        if (not n.isAnnounced(id))
+        if (not n->isAnnounced(id))
             return false;
         if (++i == TARGET_NODES)
             return true;
@@ -854,14 +854,14 @@ Dht::Search::isListening(time_point now) const
         return false;
     unsigned i = 0;
     for (const auto& n : nodes) {
-        if (n.isBad())
+        if (n->isBad())
             continue;
         SearchNode::NodeListenerStatus::const_iterator ls {};
-        for (ls = n.listenStatus.begin(); ls != n.listenStatus.end() ; ++ls) {
-            if (n.isListening(now, ls))
+        for (ls = n->listenStatus.begin(); ls != n->listenStatus.end() ; ++ls) {
+            if (n->isListening(now, ls))
                 break;
         }
-        if (ls == n.listenStatus.end())
+        if (ls == n->listenStatus.end())
             return false;
         if (++i == LISTEN_NODES)
             break;
