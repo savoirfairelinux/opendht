@@ -49,7 +49,7 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
     registerInsecureType(CERTIFICATE_TYPE);
 
     if (certificate_) {
-        auto certId = certificate_->getPublicKey().getId();
+        auto certId = certificate_->getId();
         if (key_ and certId != key_->getPublicKey().getId())
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
@@ -180,7 +180,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
     Sp<crypto::Certificate> b = getCertificate(node);
     if (b && *b) {
         if (logger_)
-            logger_->d("Using certificate from cache for %s", node.toString().c_str());
+            logger_->d("Using certificate from cache for %s", node.to_c_str());
         if (cb)
             cb(b);
         return;
@@ -189,7 +189,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
         auto res = localQueryMethod_(node);
         if (not res.empty()) {
             if (logger_)
-                logger_->d("Registering certificate from local store for %s", node.toString().c_str());
+                logger_->d("Registering certificate from local store for %s", node.to_c_str());
             nodesCertificates_.emplace(node, res.front());
             if (cb)
                 cb(res.front());
@@ -205,7 +205,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
                 if (logger_)
-                    logger_->d("Found certificate for %s", node.toString().c_str());
+                    logger_->d(node, "Found certificate for %s", node.to_c_str());
                 if (cb)
                     cb(cert);
                 return false;
@@ -224,7 +224,7 @@ SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp
     auto pk = getPublicKey(node);
     if (pk && *pk) {
         if (logger_)
-            logger_->d("Found public key from cache for %s", node.toString().c_str());
+            logger_->d(node, "Found public key from cache for %s", node.to_c_str());
         if (cb)
             cb(pk);
         return;
