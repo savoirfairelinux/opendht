@@ -125,17 +125,22 @@ DhtRunner::run(const Config& config, Context&& context)
         logger_->d("[runner %p] state changed to Running", this);
     }
 
-    context.sock->setOnReceive([&] (std::unique_ptr<net::ReceivedPacket>&& pkt) {
+    context.sock->setOnReceive([&] (net::PacketList&& pkts) {
+        net::PacketList ret;
         {
             std::lock_guard<std::mutex> lck(sock_mtx);
-            if (rcv.size() >= RX_QUEUE_MAX_SIZE) {
+            auto maxSize = RX_QUEUE_MAX_SIZE - pkts.size();
+            while (rcv.size() > maxSize) {
                 if (logger_)
                     logger_->e("Dropping packet: queue is full!");
-                rcv.pop();
+                rcv.pop_front();
             }
-            rcv.emplace(std::move(pkt));
+
+            rcv.splice(rcv.end(), std::move(pkts));
+            ret = std::move(rcv_free);
         }
         cv.notify_all();
+        return ret;
     });
 
     auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger));
@@ -596,6 +601,7 @@ DhtRunner::loop_()
 
     time_point wakeup {};
     decltype(rcv) received {};
+    decltype(rcv) received_treated {};
     {
         std::lock_guard<std::mutex> lck(sock_mtx);
         // move to stack
@@ -605,26 +611,35 @@ DhtRunner::loop_()
     // Discard old packets
     size_t dropped {0};
     if (not received.empty()) {
-        auto now = clock::now();
-        while (not received.empty() and now - received.front()->received > RX_QUEUE_MAX_DELAY) {
-            received.pop();
+        auto limit = clock::now() - RX_QUEUE_MAX_DELAY;
+        auto it = received.begin();
+        while (it != received.end() and it->received < limit) {
+            it->data.clear();
+            ++it;
             dropped++;
         }
+        received_treated.splice(received_treated.end(), received, received.begin(), it);
     }
 
     // Handle packets
     if (not received.empty()) {
-        while (not received.empty()) {
-            auto& pck = received.front();
-            if (clock::now() - pck->received > RX_QUEUE_MAX_DELAY)
+        for (auto& pkt : received) {
+            if (clock::now() - pkt.received > RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
-                wakeup = dht->periodic(pck->data.data(), pck->data.size(), std::move(pck->from));
-            received.pop();
+                wakeup = dht->periodic(pkt.data.data(), pkt.data.size(), std::move(pkt.from));
+            pkt.data.clear();
         }
+        received_treated.splice(received_treated.end(), std::move(received));
     } else {
         // Or just run the scheduler
         wakeup = dht->periodic(nullptr, 0, nullptr, 0);
+    }
+
+    if (not received_treated.empty()) {
+        std::lock_guard<std::mutex> lck(sock_mtx);
+        if (rcv_free.size() < RX_QUEUE_MAX_SIZE)
+            rcv_free.splice(rcv_free.end(), std::move(received_treated));
     }
 
     if (dropped)

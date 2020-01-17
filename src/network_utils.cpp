@@ -277,11 +277,12 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                         continue;
 
                     if (rc > 0) {
-                        auto pkt = std::unique_ptr<ReceivedPacket>(new ReceivedPacket);
-                        pkt->data = {buf.begin(), buf.begin()+rc};
-                        pkt->from = {from, from_len};
-                        pkt->received = clock::now();
-                        onReceived(std::move(pkt));
+                        auto pkts = getNewPacket();
+                        auto& pkt = pkts.front();
+                        pkt.data.insert(pkt.data.end(), buf.begin(), buf.begin()+rc);
+                        pkt.from = {from, from_len};
+                        pkt.received = clock::now();
+                        onReceived(std::move(pkts));
                     } else if (rc == -1) {
                         if (logger)
                             logger->e("Error receiving packet: %s", strerror(errno));

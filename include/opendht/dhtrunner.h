@@ -510,7 +510,8 @@ private:
     std::thread dht_thread {};
     std::condition_variable cv {};
     std::mutex sock_mtx {};
-    std::queue<std::unique_ptr<net::ReceivedPacket>> rcv {};
+    net::PacketList rcv {};
+    decltype(rcv) rcv_free {};
 
     /** true if currently actively boostraping */
     std::atomic_bool bootstraping {false};

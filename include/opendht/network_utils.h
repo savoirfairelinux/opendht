@@ -36,6 +36,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <list>
 
 namespace dht {
 namespace net {
@@ -54,10 +55,11 @@ struct ReceivedPacket {
     SockAddr from;
     time_point received;
 };
+using PacketList = std::list<ReceivedPacket>;
 
 class OPENDHT_PUBLIC DatagramSocket {
 public:
-    using OnReceive = std::function<void(std::unique_ptr<ReceivedPacket>&& packet)>;
+    using OnReceive = std::function<PacketList(PacketList&& packets)>;
     virtual ~DatagramSocket() {};
 
     virtual int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) = 0;
@@ -84,15 +86,31 @@ public:
     virtual void stop() = 0;
 protected:
 
-    inline void onReceived(std::unique_ptr<ReceivedPacket>&& packet) {
+    PacketList getNewPacket() {
+        PacketList pkts;
+        if (toRecycle_.empty()) {
+            pkts.emplace_back();
+        } else {
+            auto begIt = toRecycle_.begin();
+            auto begItNext = std::next(begIt);
+            pkts.splice(pkts.end(), toRecycle_, begIt, begItNext);
+        }
+        return pkts;
+    }
+
+    inline void onReceived(PacketList&& packets) {
         std::lock_guard<std::mutex> lk(lock);
-        if (rx_callback)
-            rx_callback(std::move(packet));
+        if (rx_callback) {
+            auto r = rx_callback(std::move(packets));
+            if (not r.empty())
+                toRecycle_.splice(toRecycle_.end(), std::move(r));
+        }
     }
 protected:
     mutable std::mutex lock;
 private:
     OnReceive rx_callback;
+    PacketList toRecycle_;
 };
 
 class OPENDHT_PUBLIC UdpSocket : public DatagramSocket {
