@@ -114,7 +114,7 @@ private:
     void clear() {
         on_done = {};
         on_expired = {};
-        msg.clear();
+        msg = {};
     }
 
     const Tid tid {0}; /* the request id. */
