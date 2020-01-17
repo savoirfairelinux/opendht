@@ -124,6 +124,7 @@ struct OPENDHT_PUBLIC dht_runner_config {
     const char* push_token;
     bool peer_discovery;
     bool peer_publish;
+    bool connectivity_stat;
     dht_certificate* server_ca;
     dht_identity client_identity;
 };

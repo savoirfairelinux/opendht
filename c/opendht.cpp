@@ -282,6 +282,7 @@ void dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_confi
     config.push_token = conf->push_token ? std::string(conf->push_token) : std::string{};
     config.peer_discovery = conf->peer_discovery;
     config.peer_publish = conf->peer_publish;
+    config.connectivity_stat = conf->connectivity_stat;
     runner->run(port, config);
 }
 

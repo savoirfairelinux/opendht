@@ -42,6 +42,7 @@ namespace dht {
 struct Node;
 class SecureDht;
 class PeerDiscovery;
+class ConnectivityStat;
 struct SecureDhtConfig;
 
 /**
@@ -63,6 +64,7 @@ public:
         std::string push_token {};
         bool peer_discovery {false};
         bool peer_publish {false};
+        bool connectivity_stat {false};
         std::shared_ptr<dht::crypto::Certificate> server_ca;
         dht::crypto::Identity client_identity;
     };
@@ -71,6 +73,7 @@ public:
         std::shared_ptr<Logger> logger {};
         std::unique_ptr<net::DatagramSocket> sock;
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
+        std::shared_ptr<ConnectivityStat> connectivityStat {};
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
         Context() {}
@@ -294,6 +297,7 @@ public:
      * The DHT will recontact neighbor nodes, re-register for listen ops etc.
      */
     void connectivityChanged();
+    void connectivityChanged(uint32_t event);
 
     void dumpTables() const;
 
@@ -426,6 +430,8 @@ public:
 
     std::shared_ptr<PeerDiscovery> getPeerDiscovery() const { return peerDiscovery_; };
 
+    std::shared_ptr<ConnectivityStat> getConnectivityStat() const { return connectivityStat_; };
+
     void setProxyServer(const std::string& proxy, const std::string& pushNodeId = "");
 
     /**
@@ -536,6 +542,8 @@ private:
 
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;
+
+    std::shared_ptr<ConnectivityStat> connectivityStat_;
 
     /**
      * The Logger instance is used in enableProxy and other methods that

@@ -43,6 +43,21 @@ AC_ARG_ENABLE([peer-discovery], [AS_HELP_STRING([--disable-peer-discovery], [Dis
 AM_CONDITIONAL(ENABLE_PEER_DISCOVERY, test x$enable_peer_discovery != "xno")
 AM_COND_IF(ENABLE_PEER_DISCOVERY, [AC_DEFINE([OPENDHT_PEER_DISCOVERY], [], [Define if peer discovery is enabled])])
 
+AC_ARG_ENABLE([connectivity-stat], [AS_HELP_STRING([--disable-connectivity-stat], [Disable connectivity stat module])])
+AM_CONDITIONAL(ENABLE_CONNECTIVITY_STAT, test x$enable_connectivity_stat != "xno")
+AM_COND_IF(ENABLE_CONNECTIVITY_STAT, [AC_DEFINE([OPENDHT_CONNECTIVITY_STAT], [], [Define if connectivity stat module is enabled])])
+
+AS_IF([test "x$enable_connectivity_stat" != "xyes"],
+          [PKG_CHECK_MODULES([NL3], [libnl-route-3.0], [have_libnl=yes], [have_libnl=no])],
+          [have_libnl=no])
+
+AS_IF([test "x$have_libnl" = "xyes"], [
+    AC_MSG_NOTICE([Using system libnl])
+], [
+    AC_MSG_NOTICE([Not using libnl])
+    AM_COND_IF(ENABLE_CONNECTIVITY_STAT, AC_MSG_ERROR(["libnl is required connectivity stat"]))
+])
+
 dnl Check for Doxygen
 AC_ARG_ENABLE([doc], AS_HELP_STRING([--enable-doc], [Enable documentation generation (doxygen)]))
 AS_IF([test "x$enable_doc" = "xyes"], [

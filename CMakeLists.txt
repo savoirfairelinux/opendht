@@ -23,6 +23,7 @@ option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp"
 option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
+option (OPENDHT_CONNECTIVITY_STAT "Enable connectivity stat module" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
 option (OPENDHT_C "Build C bindings" OFF)
@@ -91,6 +92,9 @@ endif()
 if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT OR OPENDHT_PEER_DISCOVERY)
     add_definitions(-DASIO_STANDALONE)
 endif()
+if (OPENDHT_CONNECTIVITY_STAT)
+	find_package (NL REQUIRED)
+endif()
 
 # Build flags
 set (CMAKE_CXX_STANDARD 14)
@@ -146,6 +150,10 @@ include_directories (
     include/opendht/
     ${CMAKE_CURRENT_BINARY_DIR}/include/
 )
+if (OPENDHT_CONNECTIVITY_STAT)
+	include_directories (SYSTEM "${NL_INCLUDE_DIRS}")
+	link_directories (${NL_LIBRARIES})
+endif()
 
 # Install dirs
 include (GNUInstallDirs)
@@ -282,6 +290,12 @@ if(OPENDHT_ARGON2)
     include_directories(argon2/include/)
 endif()
 
+if (OPENDHT_CONNECTIVITY_STAT)
+    list (APPEND opendht_SOURCES src/connectivity_stat.cpp)
+    list (APPEND opendht_HEADERS include/opendht/connectivity_stat.hpp)
+    add_definitions(-DOPENDHT_CONNECTIVITY_STAT)
+endif()
+
 # Targets
 if (OPENDHT_STATIC)
     add_library (opendht-static STATIC
@@ -298,7 +312,7 @@ if (OPENDHT_STATIC)
         PRIVATE  ${argon2_LIBRARIES}
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
-               ${OPENSSL_LIBRARIES})
+               ${OPENSSL_LIBRARIES} ${NL_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -316,11 +330,12 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
+    # FIXME
     target_link_libraries(opendht
         PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
         PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                 ${Jsoncpp_LIBRARIES}
-                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${NL_LIBRARIES})
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()

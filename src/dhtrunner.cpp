@@ -31,6 +31,9 @@
 #ifdef OPENDHT_PROXY_CLIENT
 #include "dht_proxy_client.h"
 #endif
+#ifdef OPENDHT_CONNECTIVITY_STAT
+#include "connectivity_stat.hpp"
+#endif
 
 namespace dht {
 
@@ -196,6 +199,16 @@ DhtRunner::run(const Config& config, Context&& context)
 #endif
     }
 
+    if (config.connectivity_stat) {
+#ifdef OPENDHT_CONNECTIVITY_STAT
+        connectivityStat_ = context.connectivityStat ?
+            std::move(context.connectivityStat) :
+            std::make_shared<ConnectivityStat>();
+#else
+        std::cerr << "Connectivity Stat requested but OpenDHT is built without it!" << std::endl;
+#endif
+    }
+
 #ifdef OPENDHT_PEER_DISCOVERY
     auto netId = config.dht_config.node_config.network;
     if (config.peer_discovery) {
@@ -225,6 +238,19 @@ DhtRunner::run(const Config& config, Context&& context)
             peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         }
     }
+#endif
+#ifdef OPENDHT_CONNECTIVITY_STAT
+    cb cc_cb = [this] (unsigned int event) { connectivityChanged(event); };
+    unsigned int events = 0;
+    events |= connectivityStat_->addtopic(NEWROUTE);
+    events |= connectivityStat_->addtopic(DELROUTE);
+#ifdef OPENDHT_PEER_DISCOVERY
+    /* very verbose, at sfl this will publish any between every 10-20 seconds
+     */
+    events |= connectivityStat_->addtopic(NEWNEIGH);
+#endif
+    if (connectivityStat_)
+        connectivityStat_->registerCB(cc_cb, events);
 #endif
 }
 
@@ -1063,6 +1089,26 @@ DhtRunner::connectivityChanged()
 #ifdef OPENDHT_PEER_DISCOVERY
         if (peerDiscovery_)
             peerDiscovery_->connectivityChanged();
+#endif
+    });
+    cv.notify_all();
+}
+
+void
+DhtRunner::connectivityChanged(unsigned int event)
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+
+    pending_ops_prio.emplace([=](SecureDht& dht) {
+        if (event == NEWROUTE) {
+            dht.connectivityChanged();
+            pretty_logger("ENTERED", __func__, "NEWROUTE");
+        }
+#ifdef OPENDHT_PEER_DISCOVERY
+        if (peerDiscovery_ && event<CONNSTAT_DEL_TOPICS) {
+            pretty_logger("ENTERED", __func__, "non-DEL* event has occured");
+            peerDiscovery_->connectivityChanged();
+        }
 #endif
     });
     cv.notify_all();

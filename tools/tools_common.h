@@ -121,6 +121,7 @@ struct dht_params {
     bool daemonize {false};
     bool service {false};
     bool peer_discovery {false};
+    bool connectivity_stat {false};
     bool log {false};
     bool syslog {false};
     std::string logfile {};
@@ -166,6 +167,7 @@ getDhtConfig(dht_params& params)
     config.push_token = params.devicekey;
     config.peer_discovery = params.peer_discovery;
     config.peer_publish = params.peer_discovery;
+    config.connectivity_stat = params.connectivity_stat;
     if (params.no_rate_limit) {
         config.dht_config.node_config.max_req_per_sec = -1;
         config.dht_config.node_config.max_peer_req_per_sec = -1;
@@ -228,6 +230,7 @@ static const constexpr struct option long_options[] = {
     {"pushserver",              required_argument, nullptr, 'y'},
     {"devicekey",               required_argument, nullptr, 'z'},
     {"version",                 no_argument      , nullptr, 'V'},
+    {"connectivity-stat",       no_argument      , nullptr, 'a'},
     {nullptr,                   0                , nullptr,  0}
 };
 
@@ -348,6 +351,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'I':
             params.save_identity = optarg;
+            break;
+        case 'a':
+            params.connectivity_stat = true;
             break;
         default:
             break;
