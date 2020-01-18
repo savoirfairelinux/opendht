@@ -114,6 +114,7 @@ public:
      */
     inline const time_point& time() const { return now; }
     inline time_point syncTime() { return (now = clock::now()); }
+    inline void syncTime(const time_point& n) { now = n; }
 
 private:
     time_point now {clock::now()};

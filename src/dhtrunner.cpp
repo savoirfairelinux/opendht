@@ -621,13 +621,13 @@ DhtRunner::loop_()
             if (now - pkt.received > net::RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
-                wakeup = dht->periodic(pkt.data.data(), pkt.data.size(), std::move(pkt.from));
+                wakeup = dht->periodic(pkt.data.data(), pkt.data.size(), std::move(pkt.from), now);
             pkt.data.clear();
         }
         received_treated.splice(received_treated.end(), std::move(received));
     } else {
         // Or just run the scheduler
-        wakeup = dht->periodic(nullptr, 0, nullptr, 0);
+        wakeup = dht->periodic(nullptr, 0, nullptr, 0, clock::now());
     }
 
     if (not received_treated.empty()) {

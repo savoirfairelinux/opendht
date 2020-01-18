@@ -1957,9 +1957,9 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, const Don
 }
 
 time_point
-Dht::periodic(const uint8_t *buf, size_t buflen, SockAddr from)
+Dht::periodic(const uint8_t *buf, size_t buflen, SockAddr from, const time_point& now)
 {
-    scheduler.syncTime();
+    scheduler.syncTime(now);
     if (buflen) {
         try {
             network_engine.processMessage(buf, buflen, std::move(from));

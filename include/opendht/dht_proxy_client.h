@@ -197,9 +197,9 @@ public:
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
 
-    time_point periodic(const uint8_t*, size_t, SockAddr) override;
-    time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen) override {
-        return periodic(buf, buflen, SockAddr(from, fromlen));
+    time_point periodic(const uint8_t*, size_t, SockAddr, const time_point& now) override;
+    time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
+        return periodic(buf, buflen, SockAddr(from, fromlen), now);
     }
 
     /**

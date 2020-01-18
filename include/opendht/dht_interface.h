@@ -79,8 +79,8 @@ public:
 
     virtual void pingNode(SockAddr, DoneCallbackSimple&& cb={}) = 0;
 
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr) = 0;
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen) = 0;
+    virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr, const time_point& now) = 0;
+    virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) = 0;
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
