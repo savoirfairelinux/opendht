@@ -42,6 +42,8 @@ namespace dht {
 namespace net {
 
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
+static const constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
+static const constexpr std::chrono::milliseconds RX_QUEUE_MAX_DELAY(650);
 
 int bindSocket(const SockAddr& addr, SockAddr& bound);
 
@@ -102,7 +104,7 @@ protected:
         std::lock_guard<std::mutex> lk(lock);
         if (rx_callback) {
             auto r = rx_callback(std::move(packets));
-            if (not r.empty())
+            if (not r.empty() and toRecycle_.size() < RX_QUEUE_MAX_SIZE)
                 toRecycle_.splice(toRecycle_.end(), std::move(r));
         }
     }

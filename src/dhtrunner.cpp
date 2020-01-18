@@ -32,17 +32,9 @@
 #include "dht_proxy_client.h"
 #endif
 
-#ifdef _WIN32
-#include <cstring>
-#define close(x) closesocket(x)
-#define write(s, b, f) send(s, b, (int)strlen(b), 0)
-#endif
-
 namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
-static constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
-static constexpr std::chrono::milliseconds RX_QUEUE_MAX_DELAY(500);
 static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
 
 struct DhtRunner::Listener {
@@ -129,7 +121,7 @@ DhtRunner::run(const Config& config, Context&& context)
         net::PacketList ret;
         {
             std::lock_guard<std::mutex> lck(sock_mtx);
-            auto maxSize = RX_QUEUE_MAX_SIZE - pkts.size();
+            auto maxSize = net::RX_QUEUE_MAX_SIZE - pkts.size();
             while (rcv.size() > maxSize) {
                 if (logger_)
                     logger_->e("Dropping packet: queue is full!");
@@ -612,7 +604,7 @@ DhtRunner::loop_()
     // Discard old packets
     size_t dropped {0};
     if (not received.empty()) {
-        auto limit = clock::now() - RX_QUEUE_MAX_DELAY;
+        auto limit = clock::now() - net::RX_QUEUE_MAX_DELAY;
         auto it = received.begin();
         while (it != received.end() and it->received < limit) {
             it->data.clear();
@@ -625,7 +617,8 @@ DhtRunner::loop_()
     // Handle packets
     if (not received.empty()) {
         for (auto& pkt : received) {
-            if (clock::now() - pkt.received > RX_QUEUE_MAX_DELAY)
+            auto now = clock::now();
+            if (now - pkt.received > net::RX_QUEUE_MAX_DELAY)
                 dropped++;
             else
                 wakeup = dht->periodic(pkt.data.data(), pkt.data.size(), std::move(pkt.from));
@@ -639,7 +632,7 @@ DhtRunner::loop_()
 
     if (not received_treated.empty()) {
         std::lock_guard<std::mutex> lck(sock_mtx);
-        if (rcv_free.size() < RX_QUEUE_MAX_SIZE)
+        if (rcv_free.size() < net::RX_QUEUE_MAX_SIZE)
             rcv_free.splice(rcv_free.end(), std::move(received_treated));
     }
 
