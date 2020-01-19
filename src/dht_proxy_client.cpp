@@ -280,7 +280,7 @@ DhtProxyClient::isRunning(sa_family_t af) const
 }
 
 time_point
-DhtProxyClient::periodic(const uint8_t*, size_t, SockAddr, const time_point& now)
+DhtProxyClient::periodic(const uint8_t*, size_t, SockAddr, const time_point& /*now*/)
 {
     // Exec all currently stored callbacks
     decltype(callbacks_) callbacks;
