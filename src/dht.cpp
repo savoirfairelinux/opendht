@@ -39,7 +39,7 @@ constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
 constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
-static constexpr size_t MAX_REQUESTS_PER_SEC {1600};
+static constexpr size_t MAX_REQUESTS_PER_SEC {8 * 1024};
 
 NodeStatus
 Dht::getStatus(sa_family_t af) const
