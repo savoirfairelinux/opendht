@@ -171,7 +171,9 @@ DhtProxyServer::DhtProxyServer(
     std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
     std::shared_ptr<Logger> logger
 )
-    :   dht_(dht), logger_(logger),
+    :   ioContext_(std::make_shared<asio::io_context>()),
+        dht_(dht), logger_(logger),
+        printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
         pushServer_(pushServer)
 {
@@ -235,7 +237,7 @@ DhtProxyServer::DhtProxyServer(
         settings.port(port);
         settings.tls_context(std::move(tls_context));
         httpsServer_ = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
-            restinio::own_io_context(),
+            ioContext_,
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(std::move(settings))
         );
         // run http server
@@ -251,7 +253,7 @@ DhtProxyServer::DhtProxyServer(
         addServerSettings(settings);
         settings.port(port);
         httpServer_ = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
-            restinio::own_io_context(),
+            ioContext_,
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(std::move(settings))
         );
         // run http server
@@ -263,20 +265,13 @@ DhtProxyServer::DhtProxyServer(
         });
     }
     dht->forwardAllMessages(true);
-
-    printStatsTimer_ = std::make_unique<asio::steady_timer>(io_context(), 0s);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
-
 
 asio::io_context&
 DhtProxyServer::io_context() const
 {
-    if (httpsServer_)
-        return httpsServer_->io_context();
-    else if (httpServer_)
-        return httpServer_->io_context();
-    throw std::runtime_error("No available server");
+    return *ioContext_;
 }
 
 DhtProxyServer::~DhtProxyServer()
@@ -304,10 +299,7 @@ DhtProxyServer::~DhtProxyServer()
     }
     if (logger_)
         logger_->d("[proxy:server] closing http server");
-    if (httpServer_)
-        httpServer_->io_context().stop();
-    if (httpsServer_)
-        httpsServer_->io_context().stop();
+    ioContext_->stop();
     if (serverThread_.joinable())
         serverThread_.join();
     if (logger_)
@@ -480,21 +472,16 @@ RequestStatus
 DhtProxyServer::getNodeInfo(restinio::request_handle_t request,
                             restinio::router::route_params_t /*params*/) const
 {
-    Json::Value result;
-    auto nodeInfo = nodeInfo_;
-    if (not nodeInfo) {
-        nodeInfo = std::make_shared<NodeInfo>(dht_->getNodeInfo());
-        nodeInfo_ = nodeInfo;
-        if (auto stats = stats_)
-            stats->nodeInfo = nodeInfo;
+    if (auto nodeInfo = nodeInfo_) {
+        auto result = nodeInfo->toJson();
+        // [ipv6:ipv4]:port or ipv4:port
+        result["public_ip"] = request->remote_endpoint().address().to_string();
+        auto response = initHttpResponse(request->create_response());
+        response.append_body(Json::writeString(jsonBuilder_, result) + "\n");
+        return response.done();
     }
-    result = nodeInfo->toJson();
-    // [ipv6:ipv4]:port or ipv4:port
-    result["public_ip"] = request->remote_endpoint().address().to_string();
-    auto output = Json::writeString(jsonBuilder_, result) + "\n";
-
-    auto response = initHttpResponse(request->create_response());
-    response.append_body(output);
+    auto response = initHttpResponse(request->create_response(restinio::status_service_unavailable()));
+    response.set_body(RESP_MSG_SERVICE_UNAVAILABLE);
     return response.done();
 }
 
@@ -731,11 +718,9 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                 return true;
             }
         );
-        // Launch timers
-        auto& ctx = io_context();
         // expire notify
         if (!listener.expireNotifyTimer)
-            listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx, timeout - proxy::OP_MARGIN);
+            listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), timeout - proxy::OP_MARGIN);
         else
             listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
         auto jsonProvider = [infoHash, clientId, sessionCtx = listener.sessionCtx](){
@@ -750,7 +735,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                                                std::placeholders::_1, pushToken, std::move(jsonProvider), isAndroid));
         // cancel push listen
         if (!listener.expireTimer)
-            listener.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
+            listener.expireTimer = std::make_unique<asio::steady_timer>(io_context(), timeout);
         else
             listener.expireTimer->expires_at(timeout);
         listener.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPushListen, this,

@@ -310,6 +310,7 @@ private:
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
+    std::shared_ptr<asio::io_context> ioContext_;
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
     Json::CharReaderBuilder jsonReaderBuilder_;
@@ -321,14 +322,14 @@ private:
 
     // http client
     std::pair<std::string, std::string> pushHostPort_;
-    
+
     mutable std::mutex requestLock_;
     std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
 
     std::shared_ptr<dht::Logger> logger_;
 
-    mutable std::shared_ptr<ServerStats> stats_;
-    mutable std::shared_ptr<NodeInfo> nodeInfo_ {};
+    std::shared_ptr<ServerStats> stats_;
+    std::shared_ptr<NodeInfo> nodeInfo_ {};
     std::unique_ptr<asio::steady_timer> printStatsTimer_;
 
     // Thread-safe access to listeners map.
