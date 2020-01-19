@@ -307,6 +307,7 @@ private:
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
     void handlePrintStats(const asio::error_code &ec);
+    void updateStats();
 
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;

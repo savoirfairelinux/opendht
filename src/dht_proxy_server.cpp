@@ -272,6 +272,7 @@ DhtProxyServer::DhtProxyServer(
         });
     }
     dht->forwardAllMessages(true);
+    updateStats();
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
 
@@ -364,28 +365,23 @@ DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
 }
 
 void
+DhtProxyServer::updateStats() {
+    dht_->getNodeInfo([this](std::shared_ptr<NodeInfo> newInfo){
+        stats_ = updateStats(newInfo);
+        nodeInfo_ = newInfo;
+        if (logger_) {
+            auto str = Json::writeString(jsonBuilder_, newInfo->toJson());
+            logger_->d("[proxy:server] [stats] %s", str.c_str());
+        }
+    });
+}
+
+void
 DhtProxyServer::handlePrintStats(const asio::error_code &ec)
 {
     if (ec == asio::error::operation_aborted)
         return;
-    else if (ec){
-        if (logger_)
-            logger_->e("[proxy:server] [stats] error printing: %s", ec.message().c_str());
-    }
-    if (io_context().stopped())
-        return;
-
-    if (auto dht = dht_) {
-        // Refresh stats cache
-        dht->getNodeInfo([this](std::shared_ptr<NodeInfo> newInfo){
-            stats_ = updateStats(newInfo);
-            nodeInfo_ = newInfo;
-            if (logger_) {
-                auto str = Json::writeString(jsonBuilder_, newInfo->toJson());
-                logger_->d("[proxy:server] [stats] %s", str.c_str());
-            }
-        });
-    }
+    updateStats();
     printStatsTimer_->expires_at(printStatsTimer_->expiry() + PRINT_STATS_PERIOD);
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
 }
