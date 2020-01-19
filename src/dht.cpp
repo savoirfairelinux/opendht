@@ -1485,7 +1485,7 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
 {
     const auto& now = scheduler.time();
     using namespace std::chrono;
-    out << b.first << " count " << b.nodes.size() << " age " << duration_cast<seconds>(now - b.time).count() << " sec";
+    out << b.first << " count: " << b.nodes.size() << " updated: " << print_time_relative(now, b.time);
     if (b.cached)
         out << " (cached)";
     out  << std::endl;
@@ -1494,9 +1494,9 @@ Dht::dumpBucket(const Bucket& b, std::ostream& out) const
         const auto& t = n->getTime();
         const auto& r = n->getReplyTime();
         if (t != r)
-            out << " age " << duration_cast<seconds>(now - t).count() << ", reply: " << duration_cast<seconds>(now - r).count();
+            out << " updated: " << print_time_relative(now, t) << ", replied: " << print_time_relative(now, r);
         else
-            out << " age " << duration_cast<seconds>(now - t).count();
+            out << " updated: " << print_time_relative(now, t);
         if (n->isExpired())
             out << " [expired]";
         else if (n->isGood(now))
@@ -1511,7 +1511,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
     const auto& now = scheduler.time();
     using namespace std::chrono;
     out << std::endl << "Search IPv" << (sr.af == AF_INET6 ? '6' : '4') << ' ' << sr.id << " gets: " << sr.callbacks.size();
-    out << ", age: " << duration_cast<seconds>(now - sr.step_time).count() << " s";
+    out << ", last step: " << print_time_relative(now, sr.step_time);
     if (sr.done)
         out << " [done]";
     if (sr.expired)
@@ -1881,7 +1881,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                         const auto& end = scheduler.time();
                         // using namespace std::chrono;
                         // if (logger_)
-                        //     logger_->d(n->id, "[node %s] bucket maintenance op expired after %llu ms", n->toString().c_str(), duration_cast<milliseconds>(end-start).count());
+                        //     logger_->d(n->id, "[node %s] bucket maintenance op expired after %s", n->toString().c_str(), print_duration(end-start).c_str());
                         scheduler.edit(nextNodesConfirmation, end + Node::MAX_RESPONSE_TIME);
                     }
                 });

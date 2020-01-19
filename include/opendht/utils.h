@@ -84,6 +84,13 @@ using duration = clock::duration;
 time_point from_time_t(std::time_t t);
 std::time_t to_time_t(time_point t);
 
+inline std::string
+to_str(double d) {
+    char buf[16];
+    auto ret = snprintf(buf, sizeof(buf), "%.3g", d);
+    return (ret < 0) ? std::to_string(d) : std::string(buf, ret);
+}
+
 /**
  * Converts std::chrono::duration to floating-point seconds.
  */
@@ -100,12 +107,21 @@ print_duration(DT d) {
         return "-" + print_duration(-d);
     }
     if (d < std::chrono::milliseconds(1)) {
-        return std::to_string(std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count()) +  " us";
+        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count()) +  " us";
     } else if (d < std::chrono::seconds(1)) {
-        return std::to_string(std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count()) +  " ms";
+        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count()) +  " ms";
     } else {
-        return std::to_string(print_dt(d)) + " s";
+        return to_str(print_dt(d)) + " s";
     }
+}
+
+template <class TimePoint>
+static std::string
+print_time_relative(TimePoint now, TimePoint d) {
+    if (d == TimePoint::min()) return "never";
+    if (d == now)              return "now";
+    return (d > now) ? std::string("in ") + print_duration(d - now)
+                     : print_duration(now - d) + std::string(" ago");
 }
 
 template <typename Duration = duration>
