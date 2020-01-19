@@ -563,10 +563,9 @@ DhtProxyServer::listen(restinio::request_handle_t request,
                 auto jsonVal = value->toJson();
                 if (expired)
                     jsonVal["expired"] = true;
-                auto output = Json::writeString(jsonBuilder_, jsonVal) + "\n";
-                response->append_chunk(output);
-                response->flush();
+                response->append_chunk(Json::writeString(jsonBuilder_, jsonVal) + "\n");
             }
+            response->flush();
             return true;
         });
         return restinio::request_handling_status_t::accepted;
