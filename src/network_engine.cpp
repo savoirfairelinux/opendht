@@ -27,6 +27,7 @@
 
 namespace dht {
 namespace net {
+using namespace std::chrono_literals;
 
 const std::string DhtProtocolException::GET_NO_INFOHASH {"Get_values with no info_hash"};
 const std::string DhtProtocolException::LISTEN_NO_INFOHASH {"Listen with no info_hash"};
@@ -98,11 +99,15 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
    nodes6(std::move(msg.nodes6))
 {}
 
-NetworkEngine::NetworkEngine(const Sp<Logger>& log, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
-    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rate_limiter((size_t)-1), scheduler(scheduler)
+NetworkEngine::NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rand, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
+    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rd(rand), rate_limiter((size_t)-1), scheduler(scheduler)
 {}
 
-NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<DatagramSocket>&& sock, const Sp<Logger>& log, Scheduler& scheduler,
+NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
+        std::unique_ptr<DatagramSocket>&& sock,
+        const Sp<Logger>& log,
+        std::mt19937_64& rand,
+        Scheduler& scheduler,
         decltype(NetworkEngine::onError)&& onError,
         decltype(NetworkEngine::onNewNode)&& onNewNode,
         decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -121,7 +126,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c, std::unique_ptr<Da
     onListen(std::move(onListen)),
     onAnnounce(std::move(onAnnounce)),
     onRefresh(std::move(onRefresh)),
-    myid(myid), config(c), dht_socket(std::move(sock)), logger_(log),
+    myid(myid), config(c), dht_socket(std::move(sock)), logger_(log), rd(rand),
     rate_limiter(config.max_req_per_sec),
     scheduler(scheduler)
 {}
@@ -270,12 +275,14 @@ NetworkEngine::requestStep(Sp<Request> sreq)
         if (not node.id)
             requests.erase(req.tid);
     } else {
+        req.last_try = now;
         if (err != EAGAIN) {
             ++req.attempt_count;
+            req.attempt_duration +=
+                req.attempt_duration + uniform_duration_distribution<>(0ms, ((duration)Node::MAX_RESPONSE_TIME)/4)(rd);
         }
-        req.last_try = now;
         std::weak_ptr<Request> wreq = sreq;
-        scheduler.add(req.last_try + Node::MAX_RESPONSE_TIME, [this,wreq] {
+        scheduler.add(req.last_try + req.attempt_duration, [this,wreq] {
             if (auto req = wreq.lock())
                 requestStep(req);
         });

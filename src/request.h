@@ -108,7 +108,7 @@ private:
     static const constexpr size_t MAX_ATTEMPT_COUNT {3};
 
     bool isExpired(time_point now) const {
-        return pending() and now > last_try + Node::MAX_RESPONSE_TIME and attempt_count >= Request::MAX_ATTEMPT_COUNT;
+        return pending() and now > last_try + attempt_duration and attempt_count >= Request::MAX_ATTEMPT_COUNT;
     }
 
     void clear() {
@@ -122,6 +122,7 @@ private:
     State state_ {State::PENDING};
 
     unsigned attempt_count {0};                /* number of attempt to process the request. */
+    duration attempt_duration {((duration)Node::MAX_RESPONSE_TIME)/2};
     time_point start {time_point::min()};      /* time when the request is created. */
     time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
 

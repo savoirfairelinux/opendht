@@ -1739,11 +1739,11 @@ fromDhtConfig(const Config& config)
     return netConf;
 }
 
-Dht::Dht() : store(), network_engine(logger_, scheduler, {}) {}
+Dht::Dht() : store(), network_engine(logger_, rd, scheduler, {}) {}
 
 Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l)
     : DhtInterface(l), myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
-    network_engine(myid, fromDhtConfig(config), std::move(sock), logger_, scheduler,
+    network_engine(myid, fromDhtConfig(config), std::move(sock), logger_, rd, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
             std::bind(&Dht::onReportedAddr, this, _1, _2),

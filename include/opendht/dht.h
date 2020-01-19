@@ -385,6 +385,8 @@ private:
     std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners {};
     size_t listener_token {1};
 
+    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
+
     // timing
     Scheduler scheduler;
     Sp<Scheduler::Job> nextNodesConfirmation {};
@@ -396,8 +398,6 @@ private:
 
     using ReportedAddr = std::pair<unsigned, SockAddr>;
     std::vector<ReportedAddr> reported_addr;
-
-    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
 
     std::string persistPath;
 
