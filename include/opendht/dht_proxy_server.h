@@ -134,7 +134,8 @@ private:
     struct RestRouterTraits;
 
     template <typename HttpResponse>
-    HttpResponse initHttpResponse(HttpResponse response) const;
+    static HttpResponse initHttpResponse(HttpResponse response);
+    static restinio::request_handling_status_t serverError(restinio::request_t& request);
 
     template< typename ServerSettings >
     void addServerSettings(ServerSettings& serverSettings,
