@@ -770,6 +770,8 @@ struct OPENDHT_PUBLIC Select
         return ss.str();
     }
 
+    bool empty() const { return fieldSelection_.empty(); }
+
     OPENDHT_PUBLIC friend std::ostream& operator<<(std::ostream& s, const dht::Select& q);
 private:
     std::vector<Value::Field> fieldSelection_ {};

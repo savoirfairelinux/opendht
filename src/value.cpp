@@ -297,8 +297,8 @@ FieldValue::getLocalFilter() const
 
 FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
 {
-    auto selection = s.getSelection();
-    if (not selection.empty()) {
+    if (not s.empty()) {
+        auto selection = s.getSelection();
         std::transform(selection.begin(), selection.end(), std::inserter(index, index.end()),
             [](const std::set<Value::Field>::value_type& f) {
                 return std::make_pair(f, FieldValue {});

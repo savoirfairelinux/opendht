@@ -763,22 +763,27 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(KEY_A);  pk.pack_map(2 +
-                                (query.where.getFilter() or not query.select.getSelection().empty() ? 1:0) +
-                                (want>0?1:0));
+    unsigned sendQuery = (not query.where.empty() or not query.select.empty()) ? 1 : 0;
+    unsigned sendWant = (want > 0) ? 1 : 0;
+
+    pk.pack(KEY_A);  pk.pack_map(2 + sendQuery + sendWant);
       pk.pack(KEY_REQ_ID); pk.pack(myid);
       pk.pack(KEY_REQ_H);  pk.pack(info_hash);
-      pk.pack(KEY_Q); pk.pack(query);
-    if (want > 0) {
-      pk.pack(KEY_REQ_WANT);
-      pk.pack_array(((want & WANT4)?1:0) + ((want & WANT6)?1:0));
-      if (want & WANT4) pk.pack(AF_INET);
-      if (want & WANT6) pk.pack(AF_INET6);
-    }
+      if (sendQuery) {
+        pk.pack(KEY_Q); pk.pack(query);
+      }
+      if (sendWant) {
+        pk.pack(KEY_REQ_WANT);
+        unsigned sendWant4 = (want & WANT4) ? 1 : 0;
+        unsigned sendWant6 = (want & WANT6) ? 1 : 0;
+        pk.pack_array(sendWant4 + sendWant6);
+        if (sendWant4) pk.pack(AF_INET);
+        if (sendWant6) pk.pack(AF_INET6);
+      }
 
     pk.pack(KEY_Q); pk.pack(QUERY_GET);
     pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+                      pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
@@ -943,10 +948,10 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
     }
     std::vector<Blob> svals {};
     if (not st.empty()) { /* pack complete values */
-        auto fields = query.select.getSelection();
-        if (fields.empty()) {
+        if (query.select.empty()) {
             svals = packValueHeader(buffer, st);
         } else { /* pack fields */
+            auto fields = query.select.getSelection();
             pk.pack(KEY_REQ_FIELDS);
             pk.pack_map(2);
             pk.pack(std::string("f")); pk.pack(fields);
@@ -1057,7 +1062,7 @@ NetworkEngine::sendListen(Sp<Node> n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
-    auto has_query = query.where.getFilter() or not query.select.getSelection().empty();
+    auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A); pk.pack_map(4 + has_query);
       pk.pack(KEY_REQ_ID);    pk.pack(myid);
       pk.pack(KEY_REQ_H);     pk.pack(hash);

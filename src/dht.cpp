@@ -370,7 +370,7 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
             if (not n)
                 continue;
 
-            if (query and not query->select.getSelection().empty()) {
+            if (query and not query->select.empty()) {
                 /* The request contains a select. No need to paginate... */
                 /* if (logger_)
                        logger_->d(sr->id, n->node->id, "[search %s] [node %s] sending 'get'",
