@@ -525,10 +525,11 @@ DhtProxyServer::get(restinio::request_handle_t request,
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
         dht_->get(infoHash, [this, response](const std::vector<Sp<Value>>& values) {
+            std::stringstream output;
             for (const auto& value : values) {
-                auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
-                response->append_chunk(output);
+                output << Json::writeString(jsonBuilder_, value->toJson()) << "\n";
             }
+            response->append_chunk(output.str());
             response->flush();
             return true;
         },
@@ -1009,9 +1010,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
             }
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){
-                    auto output = Json::writeString(jsonBuilder_, value->toJson()) + "\n";
                     auto response = initHttpResponse(request->create_response());
-                    response.append_body(output);
+                    response.append_body(Json::writeString(jsonBuilder_, value->toJson()) + "\n");
                     response.done();
                 } else {
                     auto response = initHttpResponse(request->create_response(restinio::status_bad_gateway()));

@@ -326,7 +326,8 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                 auto& b = *rxBuf;
                 b.append(at, length);
                 // one value per body line
-                while (b.getLine('\n') and !opstate->stop){
+                std::vector<Sp<Value>> values;
+                while (b.getLine('\n') and !opstate->stop) {
                     std::string err;
                     Json::Value json;
                     const auto& line = b.line();
@@ -335,17 +336,19 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
                         return;
                     }
                     auto value = std::make_shared<Value>(json);
-                    if ((not filter or filter(*value)) and cb){
-                        {
-                            std::lock_guard<std::mutex> lock(lockCallbacks_);
-                            callbacks_.emplace_back([opstate, cb, value](){
-                                if (not opstate->stop.load() and not cb({value})){
-                                    opstate->stop.store(true);
-                                }
-                            });
-                        }
-                        loopSignal_();
+                    if ((not filter or filter(*value)) and cb)
+                        values.emplace_back(std::move(value));
+                }
+                if (not values.empty() and cb) {
+                    {
+                        std::lock_guard<std::mutex> lock(lockCallbacks_);
+                        callbacks_.emplace_back([opstate, cb, values = std::move(values)](){
+                            if (not opstate->stop.load() and not cb(values)){
+                                opstate->stop.store(true);
+                            }
+                        });
                     }
+                    loopSignal_();
                 }
             } catch(const std::exception& e) {
                 if (logger_)
