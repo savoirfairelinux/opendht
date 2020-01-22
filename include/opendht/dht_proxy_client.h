@@ -285,7 +285,7 @@ private:
      */
     struct InfoState;
     void getProxyInfos();
-    void queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t family, std::shared_ptr<http::Resolver> resolver);
+    void queryProxyInfo(const std::shared_ptr<InfoState>& infoState, const std::shared_ptr<http::Resolver>& resolver, sa_family_t family);
     void onProxyInfos(const Json::Value& val, const sa_family_t family);
     SockAddr parsePublicAddress(const Json::Value& val);
 

@@ -78,13 +78,12 @@ struct LineSplit {
     bool getLine(char c) {
         auto it = buf_.begin();
         while (it != buf_.end()) {
-            if (*it == c) {
+            if (*(it++) == c) {
                 line_.clear();
-                line_.insert(line_.end(), buf_.begin(), ++it);
+                line_.insert(line_.end(), buf_.begin(), it);
                 buf_.erase(buf_.begin(), it);
                 return true;
             }
-            it++;
         }
         return false;
     }
@@ -449,7 +448,7 @@ DhtProxyClient::handleRefreshPut(const asio::error_code &ec, InfoHash key, Value
             doPut(key, p->second.value, [ok = p->second.ok](bool result){
                 *ok = result;
             }, time_point::max(), true);
-            p->second.refreshPutTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
+            p->second.refreshPutTimer->expires_after(proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             p->second.refreshPutTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, id));
         }
     }
@@ -622,13 +621,13 @@ DhtProxyClient::getProxyInfos()
         logger_->d("[proxy:client] [status] sending request");
 
     auto resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
-    queryProxyInfo(infoState, AF_INET, resolver);
-    queryProxyInfo(infoState, AF_INET6, resolver);
+    queryProxyInfo(infoState, resolver, AF_INET);
+    queryProxyInfo(infoState, resolver, AF_INET6);
     resolver_ = resolver;
 }
 
 void
-DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t family, std::shared_ptr<http::Resolver> resolver)
+DhtProxyClient::queryProxyInfo(const Sp<InfoState>& infoState, const Sp<http::Resolver>& resolver, sa_family_t family)
 {
     if (logger_)
         logger_->d("[proxy:client] [status] query ipv%i info", family == AF_INET ? 4 : 6);
@@ -652,10 +651,9 @@ DhtProxyClient::queryProxyInfo(std::shared_ptr<InfoState> infoState, sa_family_t
                 Json::Value proxyInfos;
                 if (!jsonReader_->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
                     onProxyInfos(Json::Value{}, family);
-                    return;
-                }
-                if (not infoState->cancel)
+                } else if (not infoState->cancel) {
                     onProxyInfos(proxyInfos, family);
+                }
             }
             if (not isDestroying_) {
                 std::lock_guard<std::mutex> l(requestLock_);
