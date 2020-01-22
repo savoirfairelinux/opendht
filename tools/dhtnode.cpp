@@ -391,9 +391,11 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 dht::ValueType::USER_DATA.id,
                 std::vector<uint8_t> {v.begin(), v.end()});
             value->user_type = "text/plain";
-            node->put(id, std::move(value), [start](bool ok) {
+            node->put(id, value, [start, value](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << std::endl;
+                auto flags(std::cout.flags());
+                std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << ". Value ID: " << std::hex << value->id << std::endl;
+                std::cout.flags(flags);
             });
         }
         else if (op == "pp") {
@@ -404,7 +406,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 std::vector<uint8_t> {v.begin(), v.end()}
             );
             value->user_type = "text/plain";
-            node->put(id, value, [start,value](bool ok) {
+            node->put(id, value, [start, value](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
                 auto flags(std::cout.flags());
                 std::cout << "Put: " << (ok ? "success" : "failure") << ", took " << print_duration(end-start) << ". Value ID: " << std::hex << value->id << std::endl;
