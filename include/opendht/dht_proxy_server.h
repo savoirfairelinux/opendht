@@ -352,6 +352,7 @@ private:
         std::shared_ptr<PushSessionContext> sessionCtx;
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+        Sp<Value> value;
     };
     struct SearchPuts {
         std::map<dht::Value::Id, PermanentPut> puts;

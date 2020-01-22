@@ -941,15 +941,33 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 }
                 std::unique_lock<std::mutex> lock(lockSearchPuts_);
                 auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
-                auto vid = value->id;
                 auto& sPuts = puts_[infoHash];
+                if (value->id == Value::INVALID_ID) {
+                    for (auto& pp : sPuts.puts) {
+                        if (pp.second.pushToken == pushToken and pp.second.value->contentEquals(*value)) {
+                            pp.second.expireTimer->expires_at(timeout);
+                            pp.second.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
+                                                        std::placeholders::_1, infoHash, pp.second.value->id));
+                            if (not sessionId.empty()) {
+                                if (not pp.second.sessionCtx)
+                                    pp.second.sessionCtx = std::make_shared<PushSessionContext>();
+                                std::lock_guard<std::mutex> l(pp.second.sessionCtx->lock);
+                                pp.second.sessionCtx->sessionId = sessionId;
+                            }
+                            auto response = initHttpResponse(request->create_response());
+                            response.append_body(Json::writeString(jsonBuilder_, value->toJson()) + "\n");
+                            return response.done();
+                        }
+                    }
+                }
+
+                auto vid = value->id;
                 auto& pput = sPuts.puts[vid];
+                pput.value = value;
                 if (not pput.expireTimer) {
                     auto &ctx = io_context();
                     // cancel permanent put
                     pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
-                    pput.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
-                                                 std::placeholders::_1, infoHash, vid));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                     if (not pushToken.empty()){
                         pput.sessionCtx = std::make_shared<PushSessionContext>();
@@ -986,6 +1004,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     if (pput.expireNotifyTimer)
                         pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                 }
+                pput.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
+                                                std::placeholders::_1, infoHash, vid));
             }
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){

@@ -436,10 +436,16 @@ struct OPENDHT_PUBLIC Value
         msgpack_unpack(o);
     }
 
+    /**
+     * Returns true if value contents are equals (not considering the value ID)
+     */
+    inline bool contentEquals(const Value& o) {
+        return isEncrypted() ? cypher == o.cypher :
+            ((owner == o.owner || *owner == *o.owner) && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature);
+    }
+
     inline bool operator== (const Value& o) {
-        return id == o.id &&
-        (isEncrypted() ? cypher == o.cypher :
-        ((owner == o.owner || *owner == *o.owner) && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature));
+        return id == o.id and contentEquals(o);
     }
 
     void setRecipient(const InfoHash& r) {
