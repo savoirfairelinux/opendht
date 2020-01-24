@@ -35,13 +35,21 @@ pong_node.ping(ping_node.getBound())
 loc_ping = dht.InfoHash.get("toto99")
 loc_pong = dht.InfoHash.get(str(loc_ping))
 
+net = []
+for i in range(1,10):
+	node = dht.DhtRunner()
+	node.run(config=config)
+	node.ping(ping_node.getBound())
+	net.append(node)
+
 i = 0
 MAX = 2048
 
 loop = asyncio.get_event_loop()
 
 def done(h, ok):
-	print(h, "over", ok)
+	pass
+	#print(h, "over", ok)
 
 def ping(node, h):
 	global i
@@ -52,9 +60,11 @@ def ping(node, h):
 		loop.stop()
 
 def pong(node, h):
-	print(node.getNodeId().decode(), "got ping", h, i)
+	#print(node.getNodeId().decode(), "got ping", h, i)
 	loop.call_soon_threadsafe(ping, node, h)
 	return True
+
+t1 = time.time()
 
 ping_node.listen(loc_ping, lambda v, e: pong(pong_node, loc_pong) if not e else True)
 pong_node.listen(loc_pong, lambda v, e: pong(ping_node, loc_ping) if not e else True)
@@ -62,3 +72,8 @@ pong_node.listen(loc_pong, lambda v, e: pong(ping_node, loc_ping) if not e else 
 ping(pong_node, loc_ping)
 
 loop.run_forever()
+
+t2 = time.time()
+
+print(MAX, "ping-pong done, took", t2 - t1, "s")
+print(1000 * (t2 - t1)/MAX, "ms per rt", MAX/(t2 - t1), "rt per s")
