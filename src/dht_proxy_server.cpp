@@ -946,7 +946,10 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 auto& sPuts = puts_[infoHash];
                 if (value->id == Value::INVALID_ID) {
                     for (auto& pp : sPuts.puts) {
-                        if (pp.second.pushToken == pushToken and pp.second.value->contentEquals(*value)) {
+                        if (pp.second.pushToken == pushToken 
+                            and pp.second.clientId == clientId 
+                            and pp.second.value->contentEquals(*value))
+                        {
                             pp.second.expireTimer->expires_at(timeout);
                             pp.second.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
                                                         std::placeholders::_1, infoHash, pp.second.value->id));
