@@ -67,9 +67,8 @@ struct Dht::SearchNode {
         Sp<net::Request> req {};
         CachedListenStatus(ValueStateCallback&& cb, SyncCallback&& scb)
          : cache(std::forward<ValueStateCallback>(cb), std::forward<SyncCallback>(scb)) {}
-        CachedListenStatus(CachedListenStatus&&) = default;
+        CachedListenStatus(CachedListenStatus&&) = delete;
         CachedListenStatus(const CachedListenStatus&) = delete;
-        CachedListenStatus& operator=(const CachedListenStatus&) = delete;
     };
     using NodeListenerStatus = std::map<Sp<Query>, CachedListenStatus>;
 
@@ -293,26 +292,26 @@ struct Dht::SearchNode {
         acked.clear();
     }
 
-    bool isListening(time_point now) const {
+    inline bool isListening(time_point now, duration listen_expire) const {
         auto ls = listenStatus.begin();
         for ( ; ls != listenStatus.end() ; ++ls) {
-            if (isListening(now, ls)) {
+            if (isListening(now, ls, listen_expire)) {
                 break;
             }
         }
         return ls != listenStatus.end();
     }
-    bool isListening(time_point now, const Sp<Query>& q) const {
+    inline bool isListening(time_point now, const Sp<Query>& q, duration listen_expire) const {
         const auto& ls = listenStatus.find(q);
         if (ls == listenStatus.end())
             return false;
         else
-            return isListening(now, ls);
+            return isListening(now, ls, listen_expire);
     }
-    bool isListening(time_point now, NodeListenerStatus::const_iterator listen_status) const {
+    inline bool isListening(time_point now, NodeListenerStatus::const_iterator listen_status, duration listen_expire) const {
         if (listen_status == listenStatus.end() or not listen_status->second.req)
             return false;
-        return listen_status->second.req->reply_time + LISTEN_EXPIRE_TIME > now;
+        return listen_status->second.req->reply_time + listen_expire > now;
     }
     void cancelListen() {
         for (const auto& status : listenStatus)
@@ -345,12 +344,12 @@ struct Dht::SearchNode {
      * Assuming the node is synced, should the "listen" request with Query q be
      * sent to this node now ?
      */
-    time_point getListenTime(const Sp<Query>& q) const {
+    time_point getListenTime(const Sp<Query>& q, duration listen_expire) const {
         auto listen_status = listenStatus.find(q);
         if (listen_status == listenStatus.end() or not listen_status->second.req)
             return time_point::min();
         return listen_status->second.req->pending() ? time_point::max() :
-            listen_status->second.req->reply_time + LISTEN_EXPIRE_TIME - REANNOUNCE_MARGIN;
+            listen_status->second.req->reply_time + listen_expire - REANNOUNCE_MARGIN;
     }
 
     /**
@@ -486,7 +485,7 @@ struct Dht::Search {
     }
 
     bool isAnnounced(Value::Id id) const;
-    bool isListening(time_point now) const;
+    bool isListening(time_point now, duration exp) const;
 
     void get(const Value::Filter& f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
         if (gcb or qcb) {
@@ -848,7 +847,7 @@ Dht::Search::isAnnounced(Value::Id id) const
 }
 
 bool
-Dht::Search::isListening(time_point now) const
+Dht::Search::isListening(time_point now, duration listen_expire) const
 {
     if (nodes.empty() or listeners.empty())
         return false;
@@ -858,7 +857,7 @@ Dht::Search::isListening(time_point now) const
             continue;
         SearchNode::NodeListenerStatus::const_iterator ls {};
         for (ls = n->listenStatus.begin(); ls != n->listenStatus.end() ; ++ls) {
-            if (n->isListening(now, ls))
+            if (n->isListening(now, ls, listen_expire))
                 break;
         }
         if (ls == n->listenStatus.end())

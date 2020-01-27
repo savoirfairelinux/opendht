@@ -139,6 +139,7 @@ struct dht_params {
     std::string proxy_privkey_pwd {};
     std::string save_identity {};
     bool no_rate_limit {false};
+    bool public_stable {false};
 };
 
 std::pair<dht::DhtRunner::Config, dht::DhtRunner::Context>
@@ -157,6 +158,7 @@ getDhtConfig(dht_params& params)
     config.dht_config.node_config.network = params.network;
     config.dht_config.node_config.maintain_storage = false;
     config.dht_config.node_config.persist_path = params.persist_path;
+    config.dht_config.node_config.public_stable = params.public_stable;
     config.dht_config.id = params.id;
     config.threaded = true;
     config.proxy_server = params.proxyclient;
@@ -213,6 +215,7 @@ static const constexpr struct option long_options[] = {
     {"service",                 no_argument      , nullptr, 's'},
     {"peer-discovery",          no_argument      , nullptr, 'D'},
     {"no-rate-limit",           no_argument      , nullptr, 'U'},
+    {"public-stable",           no_argument      , nullptr, 'P'},
     {"persist",                 required_argument, nullptr, 'f'},
     {"logfile",                 required_argument, nullptr, 'l'},
     {"syslog",                  no_argument      , nullptr, 'L'},
@@ -234,7 +237,7 @@ parseArgs(int argc, char **argv) {
     int opt;
     std::string privkey;
     std::string proxy_privkey;
-    while ((opt = getopt_long(argc, argv, "hidsvDUp:n:b:f:l:", long_options, nullptr)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hidsvDUPp:n:b:f:l:", long_options, nullptr)) != -1) {
         switch (opt) {
         case 'p': {
                 int port_arg = atoi(optarg);
@@ -280,6 +283,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'U':
             params.no_rate_limit = true;
+            break;
+        case 'P':
+            params.public_stable = true;
             break;
         case 'b':
             params.bootstrap = dht::splitPort((optarg[0] == '=') ? optarg+1 : optarg);

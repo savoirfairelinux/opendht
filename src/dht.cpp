@@ -37,8 +37,9 @@ using namespace std::placeholders;
 
 constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
-constexpr std::chrono::seconds Dht::LISTEN_EXPIRE_TIME;
-constexpr std::chrono::seconds Dht::REANNOUNCE_MARGIN;
+constexpr duration Dht::LISTEN_EXPIRE_TIME;
+constexpr duration Dht::LISTEN_EXPIRE_TIME_PUBLIC;
+constexpr duration Dht::REANNOUNCE_MARGIN;
 static constexpr size_t MAX_REQUESTS_PER_SEC {8 * 1024};
 
 NodeStatus
@@ -537,11 +538,12 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
 void
 Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
 {
+    const auto& listenExp = getListenExpiration();
     std::weak_ptr<Search> ws = sr;
     for (const auto& l : sr->listeners) {
         const auto& query = l.second.query;
         auto list_token = l.first;
-        if (n.getListenTime(query) > scheduler.time())
+        if (n.getListenTime(query, listenExp) > scheduler.time())
             continue;
         // if (logger_)
         //     logger_->d(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
@@ -549,7 +551,9 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
 
         auto r = n.listenStatus.find(query);
         if (r == n.listenStatus.end()) {
-            r = n.listenStatus.emplace(query, SearchNode::CachedListenStatus{
+            r = n.listenStatus.emplace(std::piecewise_construct,
+                std::forward_as_tuple(query),
+                std::forward_as_tuple(
                 [ws,list_token](const std::vector<Sp<Value>>& values, bool expired){
                     if (auto sr = ws.lock()) {
                         auto l = sr->listeners.find(list_token);
@@ -564,10 +568,8 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                             l->second.sync_cb(status);
                         }
                     }
-                }
-            }).first;
-            auto node = n.node;
-            r->second.cacheExpirationJob = scheduler.add(time_point::max(), [this,ws,query,node]{
+                })).first;
+            r->second.cacheExpirationJob = scheduler.add(time_point::max(), [this,ws,query,node=n.node]{
                 if (auto sr = ws.lock()) {
                     if (auto sn = sr->getNode(node)) {
                         sn->expireValues(query, scheduler);
@@ -582,7 +584,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                 if (auto sr = ws.lock()) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
                     if (auto sn = sr->getNode(req.node)) {
-                        scheduler.add(sn->getListenTime(query), std::bind(&Dht::searchStep, this, sr));
+                        scheduler.add(sn->getListenTime(query, getListenExpiration()), std::bind(&Dht::searchStep, this, sr));
                         sn->onListenSynced(query);
                     }
                     onListenDone(req.node, answer, sr);
@@ -694,7 +696,8 @@ Dht::searchStep(Sp<Search> sr)
         if (logger_)
             logger_->w(sr->id, "[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
         sr->expire();
-        connectivityChanged(sr->af);
+        if (not public_stable)
+            connectivityChanged(sr->af);
     }
 
     /* dumpSearch(*sr, std::cout); */
@@ -1509,6 +1512,7 @@ void
 Dht::dumpSearch(const Search& sr, std::ostream& out) const
 {
     const auto& now = scheduler.time();
+    const auto& listen_expire = getListenExpiration();
     using namespace std::chrono;
     out << std::endl << "Search IPv" << (sr.af == AF_INET6 ? '6' : '4') << ' ' << sr.id << " gets: " << sr.callbacks.size();
     out << ", last step: " << print_time_relative(now, sr.step_time);
@@ -1518,7 +1522,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
         out << " [expired]";
     bool synced = sr.isSynced(now);
     out << (synced ? " [synced]" : " [not synced]");
-    if (synced && sr.isListening(now))
+    if (synced && sr.isListening(now, listen_expire))
         out << " [listening]";
     out << std::endl;
 
@@ -1563,7 +1567,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
                 out << "    ";
             else
                 out << "["
-                    << (n.isListening(now) ? 'l' : (n.pending(n.listenStatus) ? 'f' : ' ')) << "] ";
+                    << (n.isListening(now,listen_expire) ? 'l' : (n.pending(n.listenStatus) ? 'f' : ' ')) << "] ";
         }
 
         // Announce status
@@ -1755,7 +1759,8 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, cons
             std::bind(&Dht::onRefresh, this, _1, _2, _3, _4)),
     persistPath(config.persist_path),
     is_bootstrap(config.is_bootstrap),
-    maintain_storage(config.maintain_storage)
+    maintain_storage(config.maintain_storage),
+    public_stable(config.public_stable)
 {
     scheduler.syncTime();
     auto s = network_engine.getSocket();

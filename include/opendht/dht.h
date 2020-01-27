@@ -341,9 +341,10 @@ private:
     static constexpr std::chrono::minutes SEARCH_EXPIRE_TIME {62};
 
     /* Timeout for listen */
-    static constexpr std::chrono::seconds LISTEN_EXPIRE_TIME {30};
+    static constexpr duration LISTEN_EXPIRE_TIME {std::chrono::seconds(30)};
+    static constexpr duration LISTEN_EXPIRE_TIME_PUBLIC {std::chrono::minutes(5)};
 
-    static constexpr std::chrono::seconds REANNOUNCE_MARGIN {10};
+    static constexpr duration REANNOUNCE_MARGIN {std::chrono::seconds(10)};
 
     static constexpr size_t TOKEN_SIZE {32};
 
@@ -407,6 +408,11 @@ private:
     //       be put in bootstrap mode.
     const bool is_bootstrap {false};
     const bool maintain_storage {false};
+    const bool public_stable {false};
+
+    inline const duration& getListenExpiration() const {
+        return public_stable ? LISTEN_EXPIRE_TIME_PUBLIC : LISTEN_EXPIRE_TIME;
+    }
 
     void rotateSecrets();
 
