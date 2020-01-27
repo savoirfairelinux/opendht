@@ -441,7 +441,11 @@ struct OPENDHT_PUBLIC Value
      */
     inline bool contentEquals(const Value& o) {
         return isEncrypted() ? cypher == o.cypher :
-            ((owner == o.owner || *owner == *o.owner) && type == o.type && data == o.data && user_type == o.user_type && signature == o.signature);
+            ((owner == o.owner || (owner and o.owner and *owner == *o.owner))
+                && type == o.type
+                && data == o.data
+                && user_type == o.user_type
+                && signature == o.signature);
     }
 
     inline bool operator== (const Value& o) {
