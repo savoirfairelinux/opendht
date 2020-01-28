@@ -971,6 +971,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                     if (not pushToken.empty()){
+                        pput.pushToken = pushToken;
                         pput.sessionCtx = std::make_shared<PushSessionContext>();
                         pput.sessionCtx->sessionId = sessionId;
                         // notify push listen expire
