@@ -1,7 +1,7 @@
 lib_LTLIBRARIES = libopendht.la
 
-libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@ @OpenSSL_CFLAGS@ @Fmt_CFLAGS@
-libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@ @OpenSSL_LIBS@ @Fmt_LIBS@
+libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@ @OpenSSL_CFLAGS@ @Fmt_CFLAGS@ @NL3_CFLAGS@
+libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@ @OpenSSL_LIBS@ @Fmt_LIBS@ @Nettle_LIBS@ @NL3_LIBS@
 libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
 libopendht_la_SOURCES  = \
         dht.cpp \
@@ -78,6 +78,11 @@ endif
 if ENABLE_PEER_DISCOVERY
 libopendht_la_SOURCES += peer_discovery.cpp
 nobase_include_HEADERS += ../include/opendht/peer_discovery.h
+endif
+
+if ENABLE_CONNSTAT
+libopendht_la_SOURCES += connstat.cpp
+nobase_include_HEADERS += ../include/opendht/connstat.h
 endif
 
 if ENABLE_INDEXATION

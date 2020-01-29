@@ -121,6 +121,24 @@ AC_ARG_ENABLE([proxy_server_identity], AS_HELP_STRING([--enable-proxy-server-ide
 AC_ARG_ENABLE([proxy_client], AS_HELP_STRING([--enable-proxy-client], [Enable proxy client ability]), proxy_client=yes, proxy_client=no)
 AM_CONDITIONAL(ENABLE_PROXY_CLIENT, test x$proxy_client == xyes)
 
+dnl connectivity status
+AC_ARG_ENABLE([connstat],
+	      AS_HELP_STRING([--disable-connstat],
+			     [Disable native connectivity stat reports]))
+AS_IF([test "$SYS" == "android"], [have_libnl=yes],
+      [test "$SYS" == "linux"], [PKG_CHECK_MODULES([NL3],
+						  [libnl-3.0 libnl-genl-3.0 libnl-route-3.0],
+						  [have_libnl=yes], [have_libnl=no])],
+	[have_libnl=no]
+)
+dnl assert on other hosts
+AS_IF([test "x$enable_connstat" = "xyes" && "x$have_libnl" = "xno"], [
+       AC_MSG_ERROR(["libnl is required connectivity stat"])]
+)
+AM_CONDITIONAL([ENABLE_CONNSTAT], [test "x$have_libnl" == "xyes"])
+AM_COND_IF([ENABLE_CONNSTAT], [AC_DEFINE([ENABLE_CONNSTAT], [1], [Enable connstat])])
+
+
 AC_ARG_ENABLE([tests], AS_HELP_STRING([--enable-tests], [Enable tests]), build_tests=yes, build_tests=no)
 AM_CONDITIONAL(ENABLE_TESTS, test x$build_tests == xyes)
 AM_COND_IF([ENABLE_TESTS], [
