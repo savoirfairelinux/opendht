@@ -84,7 +84,6 @@ public:
      * @return The time for the next job to run.
      */
     time_point run() {
-        syncTime();
         while (not timers.empty()) {
             auto timer = timers.begin();
             /*
