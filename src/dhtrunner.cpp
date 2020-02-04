@@ -212,13 +212,13 @@ DhtRunner::run(const Config& config, Context&& context)
         adc.net = netId;
         adc.nodeId = dht_->getNodeId();
         // IPv4
-        if (auto bound4 = dht_->getSocket()->getBound(AF_INET)) {
+        if (const auto& bound4 = dht_->getSocket()->getBoundRef(AF_INET)) {
             adc.port = bound4.getPort();
             msgpack::pack(sbuf_node, adc);
             peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
         }
         // IPv6
-        if (auto bound6 = dht_->getSocket()->getBound(AF_INET6)) {
+        if (const auto& bound6 = dht_->getSocket()->getBoundRef(AF_INET6)) {
             adc.port = bound6.getPort();
             sbuf_node.clear();
             msgpack::pack(sbuf_node, adc);
