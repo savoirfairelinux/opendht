@@ -526,7 +526,7 @@ Request::Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, cons
     : logger_(resolver->getLogger()), id_(Request::ids_++), ctx_(ctx), family_(family), resolver_(resolver)
 {
     set_header_field(restinio::http_field_t::host, get_url().host + ":" + get_url().service);
-    set_target(target);
+    set_target(Url(target).target);
 }
 
 Request::~Request()
