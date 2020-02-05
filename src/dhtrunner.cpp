@@ -497,7 +497,7 @@ DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
         info.ipv4 = dht.getNodesStats(AF_INET);
         info.ipv6 = dht.getNodesStats(AF_INET6);
         info.ongoing_ops = ongoing_ops;
-        cb(sinfo);
+        cb(std::move(sinfo));
         opEnded();
     });
     cv.notify_all();

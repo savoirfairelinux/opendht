@@ -360,7 +360,7 @@ DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
 #endif
     stats.putCount = puts_.size();
     stats.listenCount = listeners_.size();
-    stats.nodeInfo = info;
+    stats.nodeInfo = std::move(info);
     return sstats;
 }
 
