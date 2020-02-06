@@ -341,6 +341,7 @@ DhtProxyServer::addServerSettings(ServerSettings& settings, const unsigned int m
     // socket options
     settings.socket_options_setter([](auto & options){
         options.set_option(asio::ip::tcp::no_delay{true});
+        options.set_option(asio::socket_base::keep_alive{true});
     });
     settings.connection_state_listener(connListener_);
 }
