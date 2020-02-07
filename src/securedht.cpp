@@ -352,6 +352,11 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)
 void
 SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback, bool permanent)
 {
+    if (not key_)  {
+        if (callback)
+            callback(false, {});
+        return;
+    }
     if (val->id == Value::INVALID_ID) {
         crypto::random_device rdev;
         std::uniform_int_distribution<Value::Id> rand_id;
@@ -393,6 +398,11 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
 void
 SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent)
 {
+    if (not key_)  {
+        if (callback)
+            callback(false, {});
+        return;
+    }
     findPublicKey(to, [=](const Sp<const crypto::PublicKey>& pk) {
         if(!pk || !*pk) {
             if (callback)
