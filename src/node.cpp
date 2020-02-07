@@ -30,17 +30,15 @@ constexpr std::chrono::minutes Node::NODE_EXPIRE_TIME;
 constexpr std::chrono::minutes Node::NODE_GOOD_TIME;
 constexpr std::chrono::seconds Node::MAX_RESPONSE_TIME;
 
-Node::Node(const InfoHash& id, const SockAddr& addr, bool client)
+Node::Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client)
 : id(id), addr(addr), is_client(client), sockets_()
 {
-    thread_local crypto::random_device rd {};
     transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
 }
 
-Node::Node(const InfoHash& id, SockAddr&& addr, bool client)
+Node::Node(const InfoHash& id, SockAddr&& addr, std::mt19937_64& rd, bool client)
 : id(id), addr(std::move(addr)), is_client(client), sockets_()
 {
-    thread_local crypto::random_device rd {};
     transaction_id = std::uniform_int_distribution<Tid>{1}(rd);
 }
 

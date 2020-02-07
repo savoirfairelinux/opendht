@@ -37,13 +37,14 @@ struct NodeCache {
      */
     void clearBadNodes(sa_family_t family = 0);
 
+    NodeCache(std::mt19937_64& r) : rd(r) {};
     ~NodeCache();
 
 private:
     class NodeMap : private std::map<InfoHash, std::weak_ptr<Node>> {
     public:
         Sp<Node> getNode(const InfoHash& id);
-        Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client);
+        Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client, std::mt19937_64& rd);
         std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, size_t count) const;
         void clearBadNodes();
         void setExpired();
@@ -56,6 +57,7 @@ private:
     NodeMap& cache(sa_family_t af) { return af == AF_INET ? cache_4 : cache_6; }
     NodeMap cache_4;
     NodeMap cache_6;
+    std::mt19937_64& rd;
 };
 
 }

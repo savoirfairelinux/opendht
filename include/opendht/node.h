@@ -47,10 +47,10 @@ struct Socket {
 struct Node {
     const InfoHash id;
 
-    Node(const InfoHash& id, const SockAddr& addr, bool client=false);
-    Node(const InfoHash& id, SockAddr&& addr, bool client=false);
-    Node(const InfoHash& id, const sockaddr* sa, socklen_t salen)
-        : Node(id, SockAddr(sa, salen)) {}
+    Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client=false);
+    Node(const InfoHash& id, SockAddr&& addr, std::mt19937_64& rd, bool client=false);
+    Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, std::mt19937_64& rd)
+        : Node(id, SockAddr(sa, salen), rd) {}
 
     InfoHash getId() const {
         return id;

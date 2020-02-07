@@ -37,8 +37,8 @@ NodeCache::getNode(const InfoHash& id, sa_family_t family) {
 Sp<Node>
 NodeCache::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client) {
     if (not id)
-        return std::make_shared<Node>(id, addr);
-    return cache(addr.getFamily()).getNode(id, addr, now, confirm, client);
+        return std::make_shared<Node>(id, addr, rd, client);
+    return cache(addr.getFamily()).getNode(id, addr, now, confirm, client, rd);
 }
 
 std::vector<Sp<Node>>
@@ -104,13 +104,13 @@ NodeCache::NodeMap::getNode(const InfoHash& id)
 }
 
 Sp<Node>
-NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client)
+NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point now, bool confirm, bool client, std::mt19937_64& rd)
 {
-    auto it = emplace(id, std::weak_ptr<Node>{});
-    auto node = it.first->second.lock();
+    auto& nref = (*this)[id];
+    auto node = nref.lock();
     if (not node) {
-        node = std::make_shared<Node>(id, addr, client);
-        it.first->second = node;
+        node = std::make_shared<Node>(id, addr, rd, client);
+        nref = node;
         if (cleanup_counter++ == CLEANUP_FREQ) {
             cleanup();
             cleanup_counter = 0;

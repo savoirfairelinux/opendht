@@ -100,7 +100,7 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 {}
 
 NetworkEngine::NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rand, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
-    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rd(rand), rate_limiter((size_t)-1), scheduler(scheduler)
+    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rd(rand), cache(rd), rate_limiter((size_t)-1), scheduler(scheduler)
 {}
 
 NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
@@ -127,6 +127,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
     onAnnounce(std::move(onAnnounce)),
     onRefresh(std::move(onRefresh)),
     myid(myid), config(c), dht_socket(std::move(sock)), logger_(log), rd(rand),
+    cache(rd),
     rate_limiter(config.max_req_per_sec),
     scheduler(scheduler)
 {}

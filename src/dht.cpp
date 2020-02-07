@@ -1409,10 +1409,7 @@ void
 Dht::rotateSecrets()
 {
     oldsecret = secret;
-    {
-        crypto::random_device rdev;
-        secret = std::uniform_int_distribution<uint64_t>{}(rdev);
-    }
+    secret = std::uniform_int_distribution<uint64_t>{}(rd);
     uniform_duration_distribution<> time_dist(std::chrono::minutes(15), std::chrono::minutes(45));
     auto rotate_secrets_time = scheduler.time() + time_dist(rd);
     scheduler.add(rotate_secrets_time, std::bind(&Dht::rotateSecrets, this));
@@ -1781,10 +1778,7 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, cons
     nextNodesConfirmation = scheduler.add(scheduler.time() + time_dis(rd), std::bind(&Dht::confirmNodes, this));
 
     // Fill old secret
-    {
-        crypto::random_device rdev;
-        secret = std::uniform_int_distribution<uint64_t>{}(rdev);
-    }
+    secret = std::uniform_int_distribution<uint64_t>{}(rd);
     rotateSecrets();
 
     expire();
@@ -1822,7 +1816,7 @@ Dht::neighbourhoodMaintenance(RoutingTable& list)
             q = r;
     }
 
-    auto n = q->randomNode();
+    auto n = q->randomNode(rd);
     if (n) {
         if (logger_)
             logger_->d(id, n->id, "[node %s] sending [find %s] for neighborhood maintenance",
@@ -1847,7 +1841,7 @@ Dht::bucketMaintenance(RoutingTable& list)
             /* This bucket hasn't seen any positive confirmation for a long
                time. Pick a random id in this bucket's range, and send a request
                to a random node. */
-            InfoHash id = list.randomId(b);
+            InfoHash id = list.randomId(b, rd);
             auto q = b;
             /* If the bucket is empty, we try to fill it from a neighbour.
                We also sometimes do it gratuitiously to recover from
@@ -1860,7 +1854,7 @@ Dht::bucketMaintenance(RoutingTable& list)
                     q = r;
             }
 
-            auto n = q->randomNode();
+            auto n = q->randomNode(rd);
             if (n and not n->isPendingMessage()) {
                 want_t want = -1;
 

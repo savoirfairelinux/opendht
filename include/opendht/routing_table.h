@@ -39,7 +39,7 @@ struct Bucket {
     Sp<Node> cached;                    /* the address of a likely candidate */
 
     /** Return a random node in a bucket. */
-    Sp<Node> randomNode();
+    Sp<Node> randomNode(std::mt19937_64& rd);
 
     void sendCachedPing(net::NetworkEngine& ne);
     void connectivityChanged() {
@@ -89,7 +89,7 @@ public:
     /**
      * Return a random id in the bucket's range.
      */
-    InfoHash randomId(const RoutingTable::const_iterator& bucket) const;
+    InfoHash randomId(const RoutingTable::const_iterator& bucket, std::mt19937_64& rd) const;
 
     unsigned depth(const RoutingTable::const_iterator& bucket) const;
 

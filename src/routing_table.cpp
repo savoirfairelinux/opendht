@@ -25,15 +25,8 @@
 
 namespace dht {
 
-static std::mt19937 rd{ dht::crypto::random_device{}() };
-#ifdef _WIN32
-static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
-#else
-static std::uniform_int_distribution<uint8_t> rand_byte;
-#endif
-
 Sp<Node>
-Bucket::randomNode()
+Bucket::randomNode(std::mt19937_64& rd)
 {
     if (nodes.empty())
         return nullptr;
@@ -65,7 +58,7 @@ void Bucket::sendCachedPing(net::NetworkEngine& ne)
 }
 
 InfoHash
-RoutingTable::randomId(const RoutingTable::const_iterator& it) const
+RoutingTable::randomId(const RoutingTable::const_iterator& it, std::mt19937_64& rd) const
 {
     int bit1 = it->first.lowbit();
     int bit2 = std::next(it) != end() ? std::next(it)->first.lowbit() : -1;
@@ -73,6 +66,12 @@ RoutingTable::randomId(const RoutingTable::const_iterator& it) const
 
     if (bit >= 8*(int)HASH_LEN)
         return it->first;
+
+#ifdef _WIN32
+    std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint8_t>::max() };
+#else
+    std::uniform_int_distribution<uint8_t> rand_byte;
+#endif
 
     int b = bit/8;
     InfoHash id_return;

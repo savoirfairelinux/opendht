@@ -275,7 +275,8 @@ public:
      * @return the request with information concerning its success.
      */
     Sp<Request>
-        sendPing(Sp<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+    sendPing(Sp<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+    
     /**
      * Send a "ping" request to a given node.
      *
@@ -287,11 +288,12 @@ public:
      * @return the request with information concerning its success.
      */
     Sp<Request>
-        sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-            return sendPing(std::make_shared<Node>(zeroes, std::move(sa)),
-                    std::forward<RequestCb>(on_done),
-                    std::forward<RequestExpiredCb>(on_expired));
-        }
+    sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+        return sendPing(std::make_shared<Node>(zeroes, std::move(sa), rd),
+                std::forward<RequestCb>(on_done),
+                std::forward<RequestExpiredCb>(on_expired));
+    }
+    
     /**
      * Send a "find node" request to a given node.
      *
@@ -529,7 +531,7 @@ private:
     Sp<Logger> logger_;
     std::mt19937_64& rd;
 
-    NodeCache cache {};
+    NodeCache cache;
 
     // global limiting should be triggered by at least 8 different IPs
     using IpLimiter = RateLimiter;
