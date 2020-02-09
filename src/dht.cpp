@@ -487,15 +487,16 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         }
     };
 
-    Sp<Query> probe_query {};
+    static const auto PROBE_QUERY = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
+
     const auto& now = scheduler.time();
     for (auto& np : sr->nodes) {
         auto& n = *np;
         if (not n.isSynced(now))
             continue;
 
-        const auto& gs = n.probe_query ? n.getStatus.find(n.probe_query) : n.getStatus.cend();
-        if (gs != n.getStatus.cend() and gs->second and gs->second->pending()) {
+        auto gs = n.probe_query ? n.getStatus.find(n.probe_query) : n.getStatus.end();
+        if (gs != n.getStatus.end() and gs->second and gs->second->pending()) {
             continue;
         }
 
@@ -517,18 +518,19 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         }
 
         if (sendQuery) {
-            if (not probe_query)
-                probe_query = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
+            if (gs == n.getStatus.cend()) {
+                n.probe_query = PROBE_QUERY;
+                gs = n.getStatus.emplace(n.probe_query, Sp<net::Request>()).first;
+            }
             if (logger_)
                 logger_->d(sr->id, n.node->id, "[search %s] [node %s] sending %s",
-                    sr->id.toString().c_str(), n.node->toString().c_str(), probe_query->toString().c_str());
-            n.probe_query = probe_query;
-            n.getStatus[probe_query] = network_engine.sendGetValues(n.node,
+                    sr->id.toString().c_str(), n.node->toString().c_str(), n.probe_query->toString().c_str());
+            gs->second = network_engine.sendGetValues(n.node,
                     sr->id,
-                    *probe_query,
+                    *PROBE_QUERY,
                     -1,
                     onSelectDone,
-                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, probe_query));
+                    std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, PROBE_QUERY));
         }
         if (not n.candidate and ++i == TARGET_NODES)
             break;
