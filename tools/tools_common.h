@@ -160,6 +160,7 @@ getDhtConfig(dht_params& params)
     config.dht_config.node_config.persist_path = params.persist_path;
     config.dht_config.node_config.public_stable = params.public_stable;
     config.dht_config.id = params.id;
+    config.dht_config.cert_cache_all = static_cast<bool>(params.id.first);
     config.threaded = true;
     config.proxy_server = params.proxyclient;
     config.push_node_id = "dhtnode";

@@ -137,6 +137,12 @@ struct OPENDHT_PUBLIC SecureDhtConfig
 {
     Config node_config {};
     crypto::Identity id {};
+
+    /** 
+     * Cache all encountered public keys and certificates,
+     * for use by the certificate store, putEncrypted and putSigned
+     */
+    bool cert_cache_all {false};
 };
 
 static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};

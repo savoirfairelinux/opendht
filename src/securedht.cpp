@@ -37,7 +37,7 @@ extern "C" {
 namespace dht {
 
 SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
-: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second)
+: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
 {
     if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
@@ -280,11 +280,12 @@ SecureDht::checkValue(const Sp<Value>& v)
         v->signatureChecked = true;
         if (v->owner and v->owner->checkSignature(v->getToSign(), v->signature)) {
             v->signatureValid = true;
-            nodesPubKeys_[v->owner->getId()] = v->owner;
+            if (enableCache_)
+                nodesPubKeys_[v->owner->getId()] = v->owner;
             return v;
         }
         else if (logger_)
-                logger_->w("Signature verification failed for %s", v->toString().c_str());
+            logger_->w("Signature verification failed for %s", v->toString().c_str());
     }
     // Forward normal values
     else {

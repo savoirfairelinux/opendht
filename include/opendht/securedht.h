@@ -350,6 +350,7 @@ private:
     std::map<InfoHash, Sp<const crypto::PublicKey>> nodesPubKeys_ {};
 
     std::atomic_bool forward_all_ {false};
+    bool enableCache_ {false};
 };
 
 const ValueType CERTIFICATE_TYPE = {
