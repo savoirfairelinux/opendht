@@ -298,6 +298,24 @@ void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service) 
         runner->bootstrap(host);
 }
 
+void dht_runner_bootstrap2(dht_runner* r, struct sockaddr *addrs[], socklen_t addrs_len[], dht_done_cb done_cb, void* cb_user_data) {
+    auto runner = reinterpret_cast<dht::DhtRunner*>(r);
+
+    std::vector<dht::SockAddr> sa;
+
+    size_t i = 0;
+    while(addrs != nullptr && addrs[i] != nullptr) {
+        sa.push_back(dht::SockAddr(addrs[i], addrs_len[i]));
+        i++;
+    }
+
+    auto cb = [done_cb, cb_user_data](bool success) {
+        done_cb(success, cb_user_data);
+    };
+
+    runner->bootstrap(sa, cb);
+}
+
 void dht_runner_get(dht_runner* r, const dht_infohash* h, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);

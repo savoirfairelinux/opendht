@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 libc="0.2.0"
 os_socketaddr="0.1.0"
+futures="0.3.4"

@@ -25,6 +25,8 @@ use std::ptr;
 pub use crate::ffi::*;
 use std::net::SocketAddr;
 use os_socketaddr::OsSocketAddr;
+use futures::prelude::*;
+use futures::channel::mpsc;
 
 impl DhtRunnerConfig {
 
@@ -114,11 +116,47 @@ extern fn get_handler_cb(v: *mut Value, ptr: *mut c_void) -> bool {
     }
 }
 
+extern fn get_async_handler_cb(v: *mut Value, ptr: *mut c_void) -> bool {
+    if ptr.is_null() {
+        return true;
+    }
+    let f = unsafe {
+        let tx = ptr as *mut mpsc::UnboundedSender<Option<std::io::Result<Box<Value>>>>;
+        (*tx).send(Some(Ok((*v).boxed())))
+    };
+    futures::executor::block_on(f).is_ok()
+}
+
 extern fn done_handler_cb(ok: bool, ptr: *mut c_void) {
     unsafe {
         let handler = Box::from_raw(ptr as *mut GetHandler);
         (*handler.done_cb)(ok)
     }
+}
+
+extern fn done_async_handler_cb(ok: bool, ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+
+    let mut tx = unsafe {
+        let ptr = ptr as *mut mpsc::UnboundedSender<Option<std::io::Result<Box<Value>>>>;
+        Box::from_raw(ptr)
+    };
+    let item = if ok { None } else { Some(Err(std::io::Error::new(std::io::ErrorKind::Other, "get failed"))) };
+    let _ = futures::executor::block_on((*tx).send(item));
+}
+
+extern fn bootstrap_done_async_handler_cb(ok: bool, ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+
+    let tx = unsafe {
+        let ptr = ptr as *mut futures::channel::oneshot::Sender<bool>;
+        Box::from_raw(ptr)
+    };
+    let _ = (*tx).send(ok);
 }
 
 struct PutHandler<'a>
@@ -165,6 +203,14 @@ extern fn listen_handler_done(ptr: *mut c_void) {
     }
 }
 
+struct VerboseDrop<'a, T>(T, &'a str);
+
+impl<'a, T> VerboseDrop<'a, T> {
+    fn drop(&mut self) {
+        println!("{}", self.1);
+    }
+}
+
 impl DhtRunner {
     pub fn new() -> Box<DhtRunner> {
         unsafe {
@@ -187,9 +233,28 @@ impl DhtRunner {
     pub fn bootstrap(&mut self, host: &str, service: u16) {
         unsafe {
             dht_runner_bootstrap(&mut *self,
-                CString::new(host).unwrap().as_ptr(),
-                CString::new(service.to_string()).unwrap().as_ptr())
+                                 CString::new(host).unwrap().as_ptr(),
+                                 CString::new(service.to_string()).unwrap().as_ptr())
         }
+    }
+
+    pub async fn bootstrap_async<A: Iterator<Item=SocketAddr>>(&mut self, addrs: A) -> std::io::Result<bool> {
+        let socks: Vec<OsSocketAddr> = addrs.map(|a| a.into()).collect();
+        let sizes: Vec<libc::socklen_t> = socks.iter().map(|s| s.len()).collect();
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+
+        let tx = Box::new(tx);
+        let tx = Box::into_raw(tx) as *mut c_void;
+
+        unsafe {
+            dht_runner_bootstrap2(&mut *self, socks.as_ptr() as *const *const _,
+                                  sizes.as_ptr() as *const *const _, bootstrap_done_async_handler_cb as *mut c_void, tx);
+        }
+
+        let success = rx.await.expect("bootstrap_async() sender was dropped unexpectedly");
+
+        Ok(success)
     }
 
     pub fn node_id(&self) -> InfoHash {
@@ -217,6 +282,19 @@ impl DhtRunner {
         }
     }
 
+    pub fn get_async(&mut self, h: &InfoHash)
+    -> impl TryStream<Ok=Box<Value>, Error=std::io::Error> + Unpin {
+        let (tx, rx) = mpsc::unbounded();
+        let tx = Box::new(tx);
+        let tx = Box::into_raw(tx) as *mut c_void;
+
+        unsafe {
+            dht_runner_get(&mut *self, h, get_async_handler_cb, done_async_handler_cb, tx)
+        }
+        rx.take_while(|item: &Option<_>| futures::future::ready(item.is_some()))
+            .filter_map(|item| futures::future::ready(item))
+    }
+
     pub fn put<'a>(&mut self, h: &InfoHash, v: Box<Value>,
                    done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
         let handler = Box::new(PutHandler {
@@ -226,6 +304,21 @@ impl DhtRunner {
         unsafe {
             dht_runner_put(&mut *self, h, &*v, put_handler_done, handler, permanent)
         }
+    }
+
+    pub async fn put_async(&mut self, h: &InfoHash, v: Box<Value>, permanent: bool) -> bool {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        let mut tx = Some(tx);
+
+        let mut done_cb = move |success| {
+            if let Some(tx) = tx.take() {
+                tx.send(success).expect("put_async() receiver was dropped unexpectedly");
+            }
+        };
+
+        self.put(h, v, &mut done_cb, permanent);
+
+        rx.await.expect("put_async() sender was dropped unexpectedly")
     }
 
     pub fn put_signed<'a>(&mut self, h: &InfoHash, v: Box<Value>,
@@ -239,6 +332,21 @@ impl DhtRunner {
         }
     }
 
+    pub async fn put_signed_async(&mut self, h: &InfoHash, v: Box<Value>, permanent: bool) -> bool {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        let mut tx = Some(tx);
+
+        let mut done_cb = move |success| {
+            if let Some(tx) = tx.take() {
+                tx.send(success).expect("put_signed_async() receiver was dropped unexpectedly");
+            }
+        };
+
+        self.put_signed(h, v, &mut done_cb, permanent);
+
+        rx.await.expect("put_signed_async() sender was dropped unexpectedly")
+    }
+
     pub fn put_encrypted<'a>(&mut self, h: &InfoHash, to: &InfoHash, v: Box<Value>,
                              done_cb: &'a mut(dyn FnMut(bool)), permanent: bool) {
         let handler = Box::new(PutHandler {
@@ -248,6 +356,22 @@ impl DhtRunner {
         unsafe {
             dht_runner_put_encrypted(&mut *self, h, to, &*v, put_handler_done, handler, permanent)
         }
+    }
+
+    pub async fn put_encrypted_async(&mut self, h: &InfoHash, to: &InfoHash, v: Box<Value>,
+                                     permanent: bool) -> bool {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        let mut tx = Some(tx);
+
+        let mut done_cb = move |success| {
+            if let Some(tx) = tx.take() {
+                tx.send(success).expect("put_encrypted_async() receiver was dropped unexpectedly");
+            }
+        };
+
+        self.put_encrypted(h, to, v, &mut done_cb, permanent);
+
+        rx.await.expect("put_encrypted_async() sender was dropped unexpectedly")
     }
 
     pub fn cancel_put<'a>(&mut self, h: &InfoHash, vid: u64) {
@@ -267,6 +391,20 @@ impl DhtRunner {
         }
     }
 
+    pub fn listen_async(&mut self, h: &InfoHash)
+        -> impl Stream<Item=(Box<Value>, bool)> + Unpin
+    {
+        let (mut tx, rx) = mpsc::unbounded();
+
+        let mut value_cb = move |v, expired| {
+            futures::executor::block_on(tx.send((v, expired))).is_ok()
+        };
+
+        let _token = self.listen(h, &mut value_cb);
+
+        return Box::pin(rx);
+    }
+
     pub fn cancel_listen(&mut self, h: &InfoHash, token: Box<OpToken>) {
         unsafe {
             dht_runner_cancel_listen(&mut *self, h, &*token)
@@ -280,6 +418,16 @@ impl DhtRunner {
         unsafe {
             dht_runner_shutdown(&mut *self, done_cb, cb_user_data)
         }
+    }
+
+    pub async fn shutdown_async<'a>(&'a mut self) -> bool {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        let tx = Box::new(tx);
+        let ptr = Box::into_raw(tx) as *mut c_void;
+
+        self.shutdown(done_async_handler_cb, ptr);
+
+        rx.await.expect("shutdown_async() sender was dropped unexpectedly")
     }
 
     pub fn public_addresses(&self) -> Vec<SocketAddr> {

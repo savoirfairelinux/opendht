@@ -94,6 +94,7 @@ OPENDHT_C_PUBLIC const char* dht_value_get_user_type(const dht_value* data);
 typedef bool (*dht_get_cb)(const dht_value* value, void* user_data);
 typedef bool (*dht_value_cb)(const dht_value* value, bool expired, void* user_data);
 typedef void (*dht_done_cb)(bool ok, void* user_data);
+typedef void (*dht_bootstrap_cb)(bool ok);
 typedef void (*dht_shutdown_cb)(void* user_data);
 
 struct OPENDHT_C_PUBLIC dht_op_token;
@@ -139,6 +140,7 @@ OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
 OPENDHT_C_PUBLIC void dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);
 OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len);
 OPENDHT_C_PUBLIC void dht_runner_bootstrap(dht_runner* runner, const char* host, const char* service);
+OPENDHT_C_PUBLIC void dht_runner_bootstrap2(dht_runner* r, struct sockaddr *addrs[], socklen_t addrs_len[], dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_op_token* dht_runner_listen(dht_runner* runner, const dht_infohash* hash, dht_value_cb cb, dht_shutdown_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_cancel_listen(dht_runner* runner, const dht_infohash* hash, dht_op_token* token);
