@@ -557,6 +557,14 @@ struct Dht::Search {
             else
                 ++it;
         }
+        for (auto& n : nodes) {
+            auto ackIt = n->acked.find(vid);
+            if (ackIt != n->acked.end()) {
+                if (ackIt->second.first)
+                    ackIt->second.first->cancel();
+                n->acked.erase(ackIt);
+            }
+        }
         return canceled;
     }
 
@@ -662,8 +670,14 @@ struct Dht::Search {
         });
         // remove acked for cleared annouces
         for (auto it = announced; it != announce.end(); ++it) {
-            for (auto& n : nodes)
-                n->acked.erase(it->value->id);
+            for (auto& n : nodes) {
+                auto ackIt = n->acked.find(it->value->id);
+                if (ackIt != n->acked.end()) {
+                    if (ackIt->second.first)
+                        ackIt->second.first->cancel();
+                    n->acked.erase(ackIt);
+                }
+            }
         }
         announce.erase(announced, announce.end());
     }
