@@ -332,14 +332,16 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
             close(ls6);
         if (stop_readfd != -1)
             close(stop_readfd);
-        std::lock_guard<std::mutex> lk(lock);
-        s4 = -1;
-        s6 = -1;
-        bound4 = {};
-        bound6 = {};
         if (stopfd != -1)
             close(stopfd);
-        stopfd = -1;
+        std::unique_lock<std::mutex> lk(lock, std::try_to_lock);
+        if (lk.owns_lock()) {
+            s4 = -1;
+            s6 = -1;
+            bound4 = {};
+            bound6 = {};
+            stopfd = -1;
+        }
     });
 }
 
