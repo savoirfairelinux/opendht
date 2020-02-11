@@ -288,30 +288,36 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                             logger->e("Error receiving packet: %s", strerror(errno));
                         int err = errno;
                         if (err == EPIPE || err == ENOTCONN || err == ECONNRESET) {
-                            std::lock_guard<std::mutex> lk(lock);
-                            if (ls4 >= 0) {
-                                close(ls4);
-                                try {
-                                    ls4 = bindSocket(bound4, bound4);
-                                } catch (const DhtException& e) {
-                                    if (logger)
-                                        logger->e("Can't bind inet socket: %s", e.what());
+                            if (not running) break;
+                            std::unique_lock<std::mutex> lk(lock, std::try_to_lock);
+                            if (lk.owns_lock()) {
+                                if (not running) break;
+                                if (ls4 >= 0) {
+                                    close(ls4);
+                                    try {
+                                        ls4 = bindSocket(bound4, bound4);
+                                    } catch (const DhtException& e) {
+                                        if (logger)
+                                            logger->e("Can't bind inet socket: %s", e.what());
+                                    }
                                 }
-                            }
-                            if (ls6 >= 0) {
-                                close(ls6);
-                                try {
-                                    ls6 = bindSocket(bound6, bound6);
-                                } catch (const DhtException& e) {
-                                    if (logger)
-                                        logger->e("Can't bind inet6 socket: %s", e.what());
+                                if (ls6 >= 0) {
+                                    close(ls6);
+                                    try {
+                                        ls6 = bindSocket(bound6, bound6);
+                                    } catch (const DhtException& e) {
+                                        if (logger)
+                                            logger->e("Can't bind inet6 socket: %s", e.what());
+                                    }
                                 }
-                            }
-                            if (ls4 < 0 && ls6 < 0)
+                                if (ls4 < 0 && ls6 < 0)
+                                    break;
+                                s4 = ls4;
+                                s6 = ls6;
+                                selectFd = std::max({ls4, ls6, stop_readfd}) + 1;
+                            } else {
                                 break;
-                            s4 = ls4;
-                            s6 = ls6;
-                            selectFd = std::max({ls4, ls6, stop_readfd}) + 1;
+                            }
                         }
                     }
                 }
