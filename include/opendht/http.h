@@ -206,7 +206,7 @@ class Request;
 
 struct Response
 {
-    unsigned int status_code {0};
+    unsigned status_code {0};
     std::map<std::string, std::string> headers;
     std::string body;
     bool aborted {false};
@@ -223,10 +223,10 @@ public:
         RECEIVING,
         DONE
     };
-    using OnStatusCb = std::function<void(unsigned int status_code)>;
+    using OnStatusCb = std::function<void(unsigned status_code)>;
     using OnDataCb = std::function<void(const char* at, size_t length)>;
     using OnStateChangeCb = std::function<void(State state, const Response& response)>;
-    using OnJsonCb = std::function<void(Json::Value value, unsigned int status_code)>;
+    using OnJsonCb = std::function<void(Json::Value value, unsigned status_code)>;
     using OnDoneCb = std::function<void(const Response& response)>;
 
     // resolves implicitly
@@ -253,6 +253,12 @@ public:
     inline const Url& get_url() const {
         return resolver_->get_url();
     };
+
+    /** The previous request in case of redirect following */
+    std::shared_ptr<Request> getPrevious() const {
+        return prev_.lock();
+    }
+
     inline std::string& to_string() {
         return request_;
     }
@@ -347,6 +353,12 @@ private:
     std::atomic<bool> finishing_ {false};
     std::unique_ptr<http_parser> parser_;
     std::unique_ptr<http_parser_settings> parser_s_;
+
+    // Next request in case of redirect following
+    std::shared_ptr<Request> next_;
+    std::weak_ptr<Request> prev_;
+    unsigned num_redirect {0};
+    bool follow_redirect {true};
 };
 
 } // namespace http

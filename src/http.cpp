@@ -31,6 +31,7 @@ namespace http {
 
 constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
 constexpr char HTTP_HEADER_DELIM[] = "\r\n\r\n";
+constexpr unsigned MAX_REDIRECTS {5};
 
 Url::Url(const std::string& url): url(url)
 {
@@ -976,18 +977,42 @@ void
 Request::onHeadersComplete() {
     notify_state_change(State::HEADER_RECEIVED);
 
-    auto expect_it = headers_.find(restinio::http_field_t::expect);
-    if (expect_it != headers_.end() and (expect_it->second == "100-continue") and response_.status_code != 200){
-        notify_state_change(State::SENDING);
-        request_.append(body_);
-        std::ostream request_stream(&conn_->input());
-        request_stream << body_ << "\r\n";
-        std::weak_ptr<Request> wthis = shared_from_this();
-        conn_->async_write([wthis](const asio::error_code& ec, size_t) {
-            if (auto sthis = wthis.lock())
-                sthis->handle_request(ec);
-        });
-        return;
+    
+    if (response_.status_code == restinio::status_code::moved_permanently.raw_code() or
+        response_.status_code == restinio::status_code::found.raw_code())
+    {
+        auto location_it = response_.headers.find(restinio::field_to_string(restinio::http_field_t::location));
+        if (location_it == response_.headers.end()){
+            if (logger_)
+                logger_->e("[http:client] [request:%i] got redirect without location", id_);
+            terminate(asio::error::connection_aborted); 
+        }
+
+        if (follow_redirect and num_redirect < MAX_REDIRECTS) {
+            auto next = std::make_shared<Request>(ctx_, location_it->second, logger_);
+            next->cbs_ = std::move(cbs_);
+            next->num_redirect = num_redirect + 1;
+            next_ = next;
+            next->prev_ = shared_from_this();
+            next->send();
+        } else {
+            if (logger_)
+                logger_->e("[http:client] [request:%i] got redirect without location", id_);
+            terminate(asio::error::connection_aborted); 
+        }
+    } else {
+        auto expect_it = headers_.find(restinio::http_field_t::expect);
+        if (expect_it != headers_.end() and (expect_it->second == "100-continue") and response_.status_code != 200){
+            notify_state_change(State::SENDING);
+            request_.append(body_);
+            std::ostream request_stream(&conn_->input());
+            request_stream << body_ << "\r\n";
+            std::weak_ptr<Request> wthis = shared_from_this();
+            conn_->async_write([wthis](const asio::error_code& ec, size_t) {
+                if (auto sthis = wthis.lock())
+                    sthis->handle_request(ec);
+            });
+        }
     }
 }
 
