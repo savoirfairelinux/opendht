@@ -1,4 +1,7 @@
 cmake_minimum_required (VERSION 3.1)
+include(CMakePackageConfigHelpers)
+include(CMakeDependentOption)
+
 project (opendht)
 set (opendht_VERSION_MAJOR 2)
 set (opendht_VERSION_MINOR 0.0)
@@ -22,6 +25,7 @@ option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" O
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
+CMAKE_DEPENDENT_OPTION(OPENDHT_HTTP "Build embedded http(s) client" OFF "NOT OPENDHT_PROXY_SERVER;NOT OPENDHT_PROXY_CLIENT" ON)
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
@@ -61,7 +65,7 @@ if (Jsoncpp_FOUND)
     )
 endif()
 
-if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+if (OPENDHT_HTTP)
     find_package(Restinio REQUIRED)
     if (Restinio_FOUND)
         find_library(FMT_LIBRARY fmt)
@@ -88,7 +92,7 @@ if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
 else()
     set(OPENDHT_PROXY_OPENSSL OFF)
 endif()
-if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT OR OPENDHT_PEER_DISCOVERY)
+if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
     add_definitions(-DASIO_STANDALONE)
 endif()
 
@@ -251,7 +255,7 @@ if (OPENDHT_PROXY_CLIENT)
   )
 endif ()
 
-if (OPENDHT_PROXY_SERVER OR OPENDHT_PROXY_CLIENT)
+if (OPENDHT_HTTP)
   if (OPENDHT_PUSH_NOTIFICATIONS)
     message("Using push notification")
     add_definitions(-DOPENDHT_PUSH_NOTIFICATIONS)
@@ -357,7 +361,6 @@ if (OPENDHT_PYTHON)
 endif ()
 
 # CMake module
-include(CMakePackageConfigHelpers)
 write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake"
   VERSION ${opendht_VERSION}
   COMPATIBILITY AnyNewerVersion
