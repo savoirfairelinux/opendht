@@ -518,19 +518,17 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         }
 
         if (sendQuery) {
-            if (gs == n.getStatus.cend()) {
-                n.probe_query = PROBE_QUERY;
-                gs = n.getStatus.emplace(n.probe_query, Sp<net::Request>()).first;
-            }
             if (logger_)
                 logger_->d(sr->id, n.node->id, "[search %s] [node %s] sending %s",
                     sr->id.toString().c_str(), n.node->toString().c_str(), n.probe_query->toString().c_str());
-            gs->second = network_engine.sendGetValues(n.node,
+            auto req = network_engine.sendGetValues(n.node,
                     sr->id,
                     *PROBE_QUERY,
                     -1,
                     onSelectDone,
                     std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, PROBE_QUERY));
+            n.probe_query = PROBE_QUERY;
+            n.getStatus[PROBE_QUERY] = std::move(req);
         }
         if (not n.candidate and ++i == TARGET_NODES)
             break;
