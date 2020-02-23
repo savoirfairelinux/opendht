@@ -16,10 +16,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #include <opendht/http.h>
 #include <opendht/log.h>
 
@@ -108,15 +104,17 @@ main(int argc, char **argv)
     }
 
     asio::io_context ctx;
-    auto request = std::make_shared<dht::http::Request>(ctx, params.url, [headers=params.headers](const dht::http::Response& response){
-        if (headers) {
+    auto request = std::make_shared<dht::http::Request>(ctx, params.url, [&](const dht::http::Response& response){
+        if (params.headers) {
             for (const auto& header : response.headers)
                 std::cout << header.first << ": " << header.second << std::endl;
             std::cout << std::endl;
         }
         std::cout << response.body << std::endl;
+        ctx.stop();
     }, logger);
     request->send();
+    auto work = asio::make_work_guard(ctx);
     ctx.run();
     return 0;
 }
