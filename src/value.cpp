@@ -261,18 +261,18 @@ FieldValue::operator==(const FieldValue& vfd) const
     if (field != vfd.field)
         return false;
     switch (field) {
-        case Value::Field::Id:
-        case Value::Field::ValueType:
-        case Value::Field::SeqNum:
-            return intValue == vfd.intValue;
-        case Value::Field::OwnerPk:
-            return hashValue == vfd.hashValue;
-        case Value::Field::UserType:
-            return blobValue == vfd.blobValue;
-        case Value::Field::None:
-            return true;
-        default:
-            return false;
+    case Value::Field::Id:
+    case Value::Field::ValueType:
+    case Value::Field::SeqNum:
+        return intValue == vfd.intValue;
+    case Value::Field::OwnerPk:
+        return hashValue == vfd.hashValue;
+    case Value::Field::UserType:
+        return blobValue == vfd.blobValue;
+    case Value::Field::None:
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -280,18 +280,18 @@ Value::Filter
 FieldValue::getLocalFilter() const
 {
     switch (field) {
-        case Value::Field::Id:
-            return Value::IdFilter(intValue);
-        case Value::Field::ValueType:
-            return Value::TypeFilter(intValue);
-        case Value::Field::OwnerPk:
-            return Value::OwnerFilter(hashValue);
-        case Value::Field::SeqNum:
-            return Value::SeqNumFilter(intValue);
-        case Value::Field::UserType:
-            return Value::UserTypeFilter(std::string {blobValue.begin(), blobValue.end()});
-        default:
-            return {};
+    case Value::Field::Id:
+        return Value::IdFilter(intValue);
+    case Value::Field::ValueType:
+        return Value::TypeFilter(intValue);
+    case Value::Field::OwnerPk:
+        return Value::OwnerFilter(hashValue);
+    case Value::Field::SeqNum:
+        return Value::SeqNumFilter(intValue);
+    case Value::Field::UserType:
+        return Value::UserTypeFilter(std::string {blobValue.begin(), blobValue.end()});
+    default:
+        return {};
     }
 }
 
@@ -311,23 +311,23 @@ FieldValueIndex::FieldValueIndex(const Value& v, const Select& s)
     for (const auto& fvp : index) {
         const auto& f = fvp.first;
         switch (f) {
-            case Value::Field::Id:
-                index[f] = {f, v.id};
-                break;
-            case Value::Field::ValueType:
-                index[f] = {f, v.type};
-                break;
-            case Value::Field::OwnerPk:
-                index[f] = {f, v.owner ? v.owner->getId() : InfoHash() };
-                break;
-            case Value::Field::SeqNum:
-                index[f] = {f, v.seq};
-                break;
-            case Value::Field::UserType:
-                index[f] = {f, Blob {v.user_type.begin(), v.user_type.end()}};
-                break;
-            default:
-                break;
+        case Value::Field::Id:
+            index[f] = {f, v.id};
+            break;
+        case Value::Field::ValueType:
+            index[f] = {f, v.type};
+            break;
+        case Value::Field::OwnerPk:
+            index[f] = {f, v.owner ? v.owner->getId() : InfoHash() };
+            break;
+        case Value::Field::SeqNum:
+            index[f] = {f, v.seq};
+            break;
+        case Value::Field::UserType:
+            index[f] = {f, Blob {v.user_type.begin(), v.user_type.end()}};
+            break;
+        default:
+            break;
         }
     }
 }
@@ -347,28 +347,28 @@ std::ostream& operator<<(std::ostream& os, const FieldValueIndex& fvi) {
     os << "Index[";
     for (auto v = fvi.index.begin(); v != fvi.index.end(); ++v) {
         switch (v->first) {
-            case Value::Field::Id: {
-                auto flags(os.flags());
-                os << "Id:" << std::hex << v->second.getInt();
-                os.flags(flags);
-                break;
-            }
-            case Value::Field::ValueType:
-                os << "ValueType:" << v->second.getInt();
-                break;
-            case Value::Field::OwnerPk:
-                os << "Owner:" << v->second.getHash().toString();
-                break;
-            case Value::Field::SeqNum:
-                os << "Seq:" << v->second.getInt();
-                break;
-            case Value::Field::UserType: {
-                auto ut = v->second.getBlob();
-                os << "UserType:" << std::string(ut.begin(), ut.end());
-                break;
-            }
-            default:
-                break;
+        case Value::Field::Id: {
+            auto flags(os.flags());
+            os << "Id:" << std::hex << v->second.getInt();
+            os.flags(flags);
+            break;
+        }
+        case Value::Field::ValueType:
+            os << "ValueType:" << v->second.getInt();
+            break;
+        case Value::Field::OwnerPk:
+            os << "Owner:" << v->second.getHash();
+            break;
+        case Value::Field::SeqNum:
+            os << "Seq:" << v->second.getInt();
+            break;
+        case Value::Field::UserType: {
+            auto ut = v->second.getBlob();
+            os << "UserType:" << std::string(ut.begin(), ut.end());
+            break;
+        }
+        default:
+            break;
         }
         os << (std::next(v) != fvi.index.end() ? "," : "");
     }
@@ -384,19 +384,19 @@ FieldValueIndex::msgpack_unpack_fields(const std::set<Value::Field>& fields, con
     for (const auto& field : fields) {
         auto& field_value = o.via.array.ptr[offset+(j++)];
         switch (field) {
-            case Value::Field::Id:
-            case Value::Field::ValueType:
-            case Value::Field::SeqNum:
-                index[field] = FieldValue(field, field_value.as<uint64_t>());
-                break;
-            case Value::Field::OwnerPk:
-                index[field] = FieldValue(field, field_value.as<InfoHash>());
-                break;
-            case Value::Field::UserType:
-                index[field] = FieldValue(field, field_value.as<Blob>());
-                break;
-            default:
-                throw msgpack::type_error();
+        case Value::Field::Id:
+        case Value::Field::ValueType:
+        case Value::Field::SeqNum:
+            index[field] = FieldValue(field, field_value.as<uint64_t>());
+            break;
+        case Value::Field::OwnerPk:
+            index[field] = FieldValue(field, field_value.as<InfoHash>());
+            break;
+        case Value::Field::UserType:
+            index[field] = FieldValue(field, field_value.as<Blob>());
+            break;
+        default:
+            throw msgpack::type_error();
         }
     }
 }
@@ -522,9 +522,12 @@ bool Query::isSatisfiedBy(const Query& q) const {
 }
 
 std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
-    s << "SELECT " << (select.fieldSelection_.empty() ? "*" : "");
-    for (auto fs = select.fieldSelection_.begin() ; fs != select.fieldSelection_.end() ; ++fs) {
-        switch (*fs) {
+    s << "SELECT ";
+    if (select.fieldSelection_.empty())
+        s << '*';
+    else
+        for (auto fs = select.fieldSelection_.begin(); fs != select.fieldSelection_.end();) {
+            switch (*fs) {
             case Value::Field::Id:
                 s << VALUE_KEY_ID;
                 break;
@@ -542,9 +545,10 @@ std::ostream& operator<<(std::ostream& s, const dht::Select& select) {
                 break;
             default:
                 break;
+            }
+            if (++fs != select.fieldSelection_.end())
+                s << ',';
         }
-        s << (std::next(fs) != select.fieldSelection_.end() ? "," : "");
-    }
     return s;
 }
 
@@ -553,25 +557,25 @@ std::ostream& operator<<(std::ostream& s, const dht::Where& where) {
         s << "WHERE ";
         for (auto f = where.filters_.begin() ; f != where.filters_.end() ; ++f) {
             switch (f->getField()) {
-                case Value::Field::Id:
-                    s << "id=" << f->getInt();
-                    break;
-                case Value::Field::ValueType:
-                    s << "value_type=" << f->getInt();
-                    break;
-                case Value::Field::OwnerPk:
-                    s << "owner_pk_hash=" << f->getHash().toString();
-                    break;
-                case Value::Field::SeqNum:
-                    s << "seq=" << f->getInt();
-                    break;
-                case Value::Field::UserType: {
-                    auto b = f->getBlob();
-                    s << "user_type=" << std::string {b.begin(), b.end()};
-                    break;
-                }
-                default:
-                    break;
+            case Value::Field::Id:
+                s << VALUE_KEY_ID << '=' << f->getInt();
+                break;
+            case Value::Field::ValueType:
+                s << "value_type=" << f->getInt();
+                break;
+            case Value::Field::OwnerPk:
+                s << "owner_pk_hash=" << f->getHash();
+                break;
+            case Value::Field::SeqNum:
+                s << VALUE_KEY_SEQ << '=' << f->getInt();
+                break;
+            case Value::Field::UserType: {
+                auto b = f->getBlob();
+                s << "user_type=" << std::string {b.begin(), b.end()};
+                break;
+            }
+            default:
+                break;
             }
             s << (std::next(f) != where.filters_.end() ? "," : "");
         }
