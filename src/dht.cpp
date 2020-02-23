@@ -518,6 +518,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
         }
 
         if (sendQuery) {
+            n.probe_query = PROBE_QUERY;
             if (logger_)
                 logger_->d(sr->id, n.node->id, "[search %s] [node %s] sending %s",
                     sr->id.toString().c_str(), n.node->toString().c_str(), n.probe_query->toString().c_str());
@@ -527,7 +528,6 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                     -1,
                     onSelectDone,
                     std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, PROBE_QUERY));
-            n.probe_query = PROBE_QUERY;
             n.getStatus[PROBE_QUERY] = std::move(req);
         }
         if (not n.candidate and ++i == TARGET_NODES)
@@ -1912,37 +1912,25 @@ Dht::maintainStorage(decltype(store)::value_type& storage, bool force, const Don
     const auto& now = scheduler.time();
     size_t announce_per_af = 0;
 
-    bool want4 = true, want6 = true;
-
-    auto nodes = buckets4.findClosestNodes(storage.first, now);
-    if (!nodes.empty()) {
-        if (force || storage.first.xorCmp(nodes.back()->id, myid) < 0) {
-            for (auto &value : storage.second.getValues()) {
-                const auto& vt = getType(value.data->type);
-                if (force || value.created + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
-                    // gotta put that value there
-                    announce(storage.first, AF_INET, value.data, donecb, value.created);
-                    ++announce_per_af;
+    auto maintain = [&](sa_family_t af){
+        bool want = true;
+        auto nodes = buckets(af).findClosestNodes(storage.first, now);
+        if (!nodes.empty()) {
+            if (force || storage.first.xorCmp(nodes.back()->id, myid) < 0) {
+                for (auto &value : storage.second.getValues()) {
+                    const auto& vt = getType(value.data->type);
+                    if (force || value.created + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
+                        // gotta put that value there
+                        announce(storage.first, af, value.data, donecb, value.created);
+                        ++announce_per_af;
+                    }
                 }
+                want = false;
             }
-            want4 = false;
         }
-    }
-
-    auto nodes6 = buckets6.findClosestNodes(storage.first, now);
-    if (!nodes6.empty()) {
-        if (force || storage.first.xorCmp(nodes6.back()->id, myid) < 0) {
-            for (auto &value : storage.second.getValues()) {
-                const auto& vt = getType(value.data->type);
-                if (force || value.created + vt.expiration > now + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME) {
-                    // gotta put that value there
-                    announce(storage.first, AF_INET6, value.data, donecb, value.created);
-                    ++announce_per_af;
-                }
-            }
-            want6 = false;
-        }
-    }
+        return want;
+    };
+    bool want4 = maintain(AF_INET), want6 = maintain(AF_INET6);
 
     if (not want4 and not want6) {
         if (logger_)
