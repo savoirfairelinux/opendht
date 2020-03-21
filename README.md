@@ -14,8 +14,8 @@ Values are distributed over the network, with redundancy.
  * High resilience to network disruption
  * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
  * IPv4 and IPv6 support
- * Clean and powerful C++14 map API
- * Python 3 bindings
+ * Clean and powerful **C++14** map API
+ * Bindings for **C, Rust & Python 3**
  * REST API with optional HTTP client+server with push notification support
 
 ## Documentation
