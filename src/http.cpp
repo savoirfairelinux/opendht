@@ -977,7 +977,6 @@ void
 Request::onHeadersComplete() {
     notify_state_change(State::HEADER_RECEIVED);
 
-    
     if (response_.status_code == restinio::status_code::moved_permanently.raw_code() or
         response_.status_code == restinio::status_code::found.raw_code())
     {
@@ -985,11 +984,14 @@ Request::onHeadersComplete() {
         if (location_it == response_.headers.end()){
             if (logger_)
                 logger_->e("[http:client] [request:%i] got redirect without location", id_);
-            terminate(asio::error::connection_aborted); 
+            terminate(asio::error::connection_aborted);
         }
 
         if (follow_redirect and num_redirect < MAX_REDIRECTS) {
             auto next = std::make_shared<Request>(ctx_, location_it->second, logger_);
+            next->set_method(header_.method());
+            next->headers_ = std::move(headers_);
+            next->body_ = std::move(body_);
             next->cbs_ = std::move(cbs_);
             next->num_redirect = num_redirect + 1;
             next_ = next;
@@ -998,7 +1000,7 @@ Request::onHeadersComplete() {
         } else {
             if (logger_)
                 logger_->e("[http:client] [request:%i] got redirect without location", id_);
-            terminate(asio::error::connection_aborted); 
+            terminate(asio::error::connection_aborted);
         }
     } else {
         auto expect_it = headers_.find(restinio::http_field_t::expect);
