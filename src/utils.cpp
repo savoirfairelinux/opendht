@@ -236,13 +236,23 @@ bool operator==(const SockAddr& a, const SockAddr& b) {
 }
 
 time_point from_time_t(std::time_t t) {
-    return clock::now() + (std::chrono::system_clock::from_time_t(t) - std::chrono::system_clock::now());
+    auto dt = system_clock::from_time_t(t) - system_clock::now();
+    auto now = clock::now();
+	if (dt > system_clock::duration(0) and now > time_point::max() - dt)
+		return time_point::max();
+    else if (dt < system_clock::duration(0) and now < time_point::min() - dt)
+    	return time_point::min();
+    return now + dt;
 }
 
 std::time_t to_time_t(time_point t) {
-    return std::chrono::system_clock::to_time_t(
-            std::chrono::system_clock::now() +
-            std::chrono::duration_cast<std::chrono::system_clock::duration>(t - clock::now()));
+    auto dt = t - clock::now();
+    auto now = system_clock::now();
+	if (dt > duration(0) and now > system_clock::time_point::max() - dt)
+		return system_clock::to_time_t(system_clock::time_point::max());
+    else if (dt < duration(0) and now < system_clock::time_point::min() - dt)
+		return system_clock::to_time_t(system_clock::time_point::min());
+    return system_clock::to_time_t(now + dt);
 }
 
 Blob
@@ -274,7 +284,7 @@ findMapValue(const msgpack::object& map, const char* key) {
     if (map.type != msgpack::type::MAP) throw msgpack::type_error();
     for (unsigned i = 0; i < map.via.map.size; i++) {
         auto& o = map.via.map.ptr[i];
-        if (o.key.type == msgpack::type::STR 
+        if (o.key.type == msgpack::type::STR
             && std::strncmp(o.key.via.str.ptr, key, o.key.via.str.size) == 0)
             return &o.val;
     }
@@ -286,7 +296,7 @@ findMapValue(const msgpack::object& map, const std::string& key) {
     if (map.type != msgpack::type::MAP) throw msgpack::type_error();
     for (unsigned i = 0; i < map.via.map.size; i++) {
         auto& o = map.via.map.ptr[i];
-        if (o.key.type == msgpack::type::STR 
+        if (o.key.type == msgpack::type::STR
             && key.size() == o.key.via.str.size
             && std::strncmp(o.key.via.str.ptr, key.data(), o.key.via.str.size) == 0)
             return &o.val;

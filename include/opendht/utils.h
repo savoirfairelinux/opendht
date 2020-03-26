@@ -110,8 +110,12 @@ print_duration(DT d) {
         return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count()) +  " us";
     } else if (d < std::chrono::seconds(1)) {
         return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count()) +  " ms";
+    } else if (d < std::chrono::minutes(1)) {
+        return to_str(std::chrono::duration_cast<std::chrono::duration<double>>(d).count()) +  " s";
+    } else if (d < std::chrono::hours(1)) {
+        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60>>>(d).count()) +  " min";
     } else {
-        return to_str(print_dt(d)) + " s";
+        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::ratio<3600>>>(d).count()) +  " h";
     }
 }
 
