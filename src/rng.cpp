@@ -25,7 +25,7 @@ namespace dht {
 namespace crypto {
 
 random_device::random_device() :
-   gen(std::chrono::system_clock::now().time_since_epoch().count())
+   gen(std::chrono::system_clock::now().time_since_epoch().count() ^ std::chrono::high_resolution_clock::now().count())
 {}
 
 random_device::result_type
