@@ -248,11 +248,11 @@ time_point from_time_t(std::time_t t) {
 std::time_t to_time_t(time_point t) {
     auto dt = t - clock::now();
     auto now = system_clock::now();
-    if (dt > duration(0) and now > system_clock::time_point::max() - dt)
+    if (dt > duration(0) and now >= system_clock::time_point::max() - dt)
         return system_clock::to_time_t(system_clock::time_point::max());
-    else if (dt < duration(0) and now < system_clock::time_point::min() - dt)
+    else if (dt < duration(0) and now <= system_clock::time_point::min() - dt)
         return system_clock::to_time_t(system_clock::time_point::min());
-    return system_clock::to_time_t(now + dt);
+    return system_clock::to_time_t(now + std::chrono::duration_cast<system_clock::duration>(dt));
 }
 
 Blob
