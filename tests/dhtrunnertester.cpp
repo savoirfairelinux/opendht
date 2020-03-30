@@ -88,7 +88,9 @@ DhtRunnerTester::testListen() {
     auto a = dht::InfoHash::get("234");
     auto b = dht::InfoHash::get("2345");
     auto c = dht::InfoHash::get("23456");
-    constexpr unsigned N = 32;
+    auto d = dht::InfoHash::get("234567");
+    constexpr unsigned N = 256;
+    constexpr unsigned SZ = 56 * 1024;
 
     auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&) {
         valueCount++;
@@ -105,6 +107,16 @@ DhtRunnerTester::testListen() {
         return true;
     });
 
+    auto ftokend = node1.listen(d, [&](const std::shared_ptr<dht::Value>&) {
+        valueCount++;
+        return true;
+    });
+
+    std::vector<uint8_t> mtu;
+    mtu.reserve(SZ);
+    for (size_t i = 0; i < SZ; i++)
+        mtu.emplace_back((i % 2) ? 'T' : 'M');
+
     for (unsigned i=0; i<N; i++) {
         node2.put(a, dht::Value("v1"), [&](bool ok) {
             std::lock_guard<std::mutex> lock(mutex);
@@ -118,29 +130,41 @@ DhtRunnerTester::testListen() {
             if (ok) putOkCount++;
             cv.notify_all();
         });
+        auto bigVal = std::make_shared<dht::Value>();
+        bigVal->data = mtu;
+        node2.put(c, bigVal, [&](bool ok) {
+            std::lock_guard<std::mutex> lock(mutex);
+            putCount++;
+            if (ok) putOkCount++;
+            cv.notify_all();
+        });
     }
 
     {
         std::unique_lock<std::mutex> lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N * 2u; }));
-        CPPUNIT_ASSERT_EQUAL(N * 2u, putOkCount);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N * 3u; }));
+        CPPUNIT_ASSERT_EQUAL(N * 3u, putOkCount);
     }
 
     CPPUNIT_ASSERT(ftokena.valid());
     CPPUNIT_ASSERT(ftokenb.valid());
     CPPUNIT_ASSERT(ftokenc.valid());
+    CPPUNIT_ASSERT(ftokend.valid());
 
     auto tokena = ftokena.get();
     auto tokenc = ftokenc.get();
+    auto tokend = ftokend.get();
     // tokenb might be 0 since the callback returns false.
 
     CPPUNIT_ASSERT(tokena);
     CPPUNIT_ASSERT(tokenc);
-    CPPUNIT_ASSERT_EQUAL(N + 1u, valueCount.load());
+    CPPUNIT_ASSERT(tokend);
+    CPPUNIT_ASSERT_EQUAL(N * 2u + 1u, valueCount.load());
 
     node1.cancelListen(a, tokena);
     node1.cancelListen(b, std::move(ftokenb));
     node1.cancelListen(c, tokenc);
+    node1.cancelListen(d, tokend);
 }
 
 }  // namespace test
