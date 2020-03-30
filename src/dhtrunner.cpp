@@ -479,6 +479,8 @@ DhtRunner::getNodeInfo() const {
         info.node_id = dht->getNodeId();
         info.ipv4 = dht->getNodesStats(AF_INET);
         info.ipv6 = dht->getNodesStats(AF_INET6);
+        info.metrics = dht->getNodeMetrics();
+        info.ongoing_ops = ongoing_ops;
     }
     info.ongoing_ops = ongoing_ops;
     return info;
@@ -496,6 +498,7 @@ DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
         info.node_id = dht.getNodeId();
         info.ipv4 = dht.getNodesStats(AF_INET);
         info.ipv6 = dht.getNodesStats(AF_INET6);
+        info.metrics = dht.getNodeMetrics();
         info.ongoing_ops = ongoing_ops;
         cb(std::move(sinfo));
         opEnded();

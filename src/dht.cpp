@@ -1482,6 +1482,20 @@ Dht::getNodesStats(sa_family_t af) const
     return stats;
 }
 
+NodeMetrics
+Dht::getNodeMetrics() const
+{
+    NodeMetrics metrics;
+    metrics.scheduler_size = scheduler.size();
+    metrics.node_cache_size = network_engine.getNodeCacheSize();
+    metrics.rate_limiter_size = network_engine.getRateLimiterSize();
+    metrics.store_size = store.size();
+    metrics.store_quota_size = store_quota.size();
+    metrics.reported_addr_num = reported_addr.size();
+    metrics.request_count = net::REQ_COUNT.load();
+    return metrics;
+}
+
 void
 Dht::dumpBucket(const Bucket& b, std::ostream& out) const
 {

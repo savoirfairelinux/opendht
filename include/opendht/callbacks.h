@@ -76,12 +76,31 @@ struct OPENDHT_PUBLIC NodeStats {
     MSGPACK_DEFINE_MAP(good_nodes, dubious_nodes, cached_nodes, incoming_nodes, table_depth, searches)
 };
 
+struct OPENDHT_PUBLIC NodeMetrics {
+    size_t scheduler_size {0};
+    size_t node_cache_size {0};
+    size_t request_count {0};
+    size_t rate_limiter_size {0};
+    size_t reported_addr_num {0};
+    size_t store_size {0};
+    size_t store_values {0};
+    size_t store_quota_size {0};
+
+#ifdef OPENDHT_JSONCPP
+    /**
+     * Build a json object from a NodeStats
+     */
+    Json::Value toJson() const;
+#endif
+};
+
 struct OPENDHT_PUBLIC NodeInfo {
     InfoHash id;
     InfoHash node_id;
     NodeStats ipv4 {};
     NodeStats ipv6 {};
     size_t ongoing_ops {0};
+    NodeMetrics metrics {};
 
 #ifdef OPENDHT_JSONCPP
     /**

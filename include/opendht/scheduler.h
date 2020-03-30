@@ -115,6 +115,8 @@ public:
     inline time_point syncTime() { return (now = clock::now()); }
     inline void syncTime(const time_point& n) { now = n; }
 
+    inline size_t size() const { return timers.size(); }
+
 private:
     time_point now {clock::now()};
     std::multimap<time_point, Sp<Job>> timers {}; /* the jobs ordered by time */

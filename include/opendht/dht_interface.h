@@ -194,6 +194,7 @@ public:
     virtual void importValues(const std::vector<ValuesExport>&) = 0;
 
     virtual NodeStats getNodesStats(sa_family_t af) const = 0;
+    virtual NodeMetrics getNodeMetrics() const { return {}; }
 
     virtual std::string getStorageLog() const = 0;
     virtual std::string getStorageLog(const InfoHash&) const = 0;

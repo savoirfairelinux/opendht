@@ -180,6 +180,9 @@ public:
     NodeStats getNodesStats(sa_family_t af) const override {
         return dht_->getNodesStats(af);
     }
+    NodeMetrics getNodeMetrics() const override {
+        return dht_->getNodeMetrics();
+    }
     std::vector<unsigned> getNodeMessageStats(bool in = false) override {
         return dht_->getNodeMessageStats(in);
     }

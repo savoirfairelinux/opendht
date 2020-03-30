@@ -273,6 +273,7 @@ public:
     void loadState(const std::string& path);
 
     NodeStats getNodesStats(sa_family_t af) const override;
+    NodeMetrics getNodeMetrics() const override;
 
     std::string getStorageLog() const override;
     std::string getStorageLog(const InfoHash&) const override;

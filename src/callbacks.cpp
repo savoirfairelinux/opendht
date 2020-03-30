@@ -144,6 +144,7 @@ NodeInfo::toJson() const
     val["ipv4"] = ipv4.toJson();
     val["ipv6"] = ipv6.toJson();
     val["ops"] = Json::Value::LargestUInt(ongoing_ops);
+    val["metrics"] = metrics.toJson();
     return val;
 }
 
@@ -155,6 +156,21 @@ NodeInfo::NodeInfo(const Json::Value& v)
     ipv4 = NodeStats(v["ipv4"]);
     ipv6 = NodeStats(v["ipv6"]);
     ongoing_ops = v["ops"].asLargestUInt();
+}
+
+Json::Value
+NodeMetrics::toJson() const
+{
+    Json::Value val;
+    val["scheduler_size"] = Json::Value::LargestUInt(scheduler_size);
+    val["node_cache_size"] = Json::Value::LargestUInt(node_cache_size);
+    val["request_count"] = Json::Value::LargestUInt(request_count);
+    val["rate_limiter_size"] = Json::Value::LargestUInt(rate_limiter_size);
+    val["reported_addr_num"] = Json::Value::LargestUInt(reported_addr_num);
+    val["store_size"] = Json::Value::LargestUInt(store_size);
+    val["store_values"] = Json::Value::LargestUInt(store_values);
+    val["store_quota_size"] = Json::Value::LargestUInt(store_quota_size);
+    return val;
 }
 
 #endif
