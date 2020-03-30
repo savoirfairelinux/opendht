@@ -281,6 +281,9 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             ++req.attempt_count;
             req.attempt_duration +=
                 req.attempt_duration + uniform_duration_distribution<>(0ms, ((duration)Node::MAX_RESPONSE_TIME)/4)(rd);
+            if (not req.parts.empty()){
+                sendValueParts(req.tid, req.parts, node.getAddr());
+            }
         }
         std::weak_ptr<Request> wreq = sreq;
         scheduler.add(req.last_try + req.attempt_duration, [this,wreq] {
@@ -1175,9 +1178,8 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
             }
         }
     );
+    req->parts = std::move(v);
     sendRequest(req);
-    if (not v.empty())
-        sendValueParts(tid, v, n->getAddr());
     ++out_stats.put;
     return req;
 }

@@ -115,6 +115,7 @@ private:
         on_done = {};
         on_expired = {};
         msg = {};
+        parts = {};
     }
 
     const Tid tid {0}; /* the request id. */
@@ -131,6 +132,7 @@ private:
 
     Blob msg {};                      /* the serialized message. */
     Tid socket;   /* the socket used for further reponses. */
+    std::vector<Blob> parts;
 };
 
 } /* namespace net  */

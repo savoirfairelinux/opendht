@@ -276,7 +276,7 @@ public:
      */
     Sp<Request>
     sendPing(Sp<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
-    
+
     /**
      * Send a "ping" request to a given node.
      *
@@ -293,7 +293,7 @@ public:
                 std::forward<RequestCb>(on_done),
                 std::forward<RequestExpiredCb>(on_expired));
     }
-    
+
     /**
      * Send a "find node" request to a given node.
      *
