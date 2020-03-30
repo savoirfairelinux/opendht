@@ -145,6 +145,14 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         } else if (op == "ll") {
             auto nodeInfo = node->getNodeInfo();
             print_node_info(*node, params);
+            std::cout << "Scheduler size:" << nodeInfo.metrics.scheduler_size << std::endl;
+            std::cout << "RateLimiter size:" << nodeInfo.metrics.rate_limiter_size << std::endl;
+            std::cout << "ReportedAddr count:" << nodeInfo.metrics.reported_addr_num << std::endl;
+            std::cout << "Node cache size:" << nodeInfo.metrics.node_cache_size << std::endl;
+            std::cout << "Store size:" << nodeInfo.metrics.store_size << std::endl;
+            std::cout << "Store quota size:" << nodeInfo.metrics.store_quota_size << std::endl;
+            std::cout << "Global request count:" << nodeInfo.metrics.request_count << std::endl;
+
             std::cout << nodeInfo.ongoing_ops << " ongoing operations" << std::endl;
             std::cout << "IPv4 stats:" << std::endl;
             std::cout << nodeInfo.ipv4.toString() << std::endl;
