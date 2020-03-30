@@ -34,10 +34,13 @@ CPPUNIT_TEST_SUITE_REGISTRATION(DhtProxyTester);
 
 void
 DhtProxyTester::setUp() {
-    nodePeer.run(0);
+    clientConfig.dht_config.node_config.max_peer_req_per_sec = -1;
+    clientConfig.dht_config.node_config.max_req_per_sec = -1;
+
+    nodePeer.run(0, clientConfig);
 
     nodeProxy = std::make_shared<dht::DhtRunner>();
-    nodeProxy->run(0);
+    nodeProxy->run(0, clientConfig);
     nodeProxy->bootstrap(nodePeer.getBound());
 
     auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
@@ -50,8 +53,6 @@ DhtProxyTester::setUp() {
 
     clientConfig.server_ca = serverCAIdentity.second;
     clientConfig.client_identity = dht::crypto::generateIdentity("DhtProxyTester");
-    clientConfig.dht_config.node_config.maintain_storage = false;
-    clientConfig.threaded = true;
     clientConfig.push_node_id = "dhtnode";
     clientConfig.proxy_server = "https://127.0.0.1:8080";
 }
@@ -280,7 +281,7 @@ DhtProxyTester::testFuzzy()
         },[&](bool ok){
             CPPUNIT_ASSERT(ok);
         });
-        std::this_thread::sleep_for(10ms);
+        std::this_thread::sleep_for(5ms);
     }
 
     // Assert

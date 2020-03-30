@@ -29,8 +29,12 @@ CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
 
 void
 DhtRunnerTester::setUp() {
-    node1.run(42222);
-    node2.run(42232);
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+
+    node1.run(42222, config);
+    node2.run(42232, config);
     node2.bootstrap(node1.getBound());
 }
 
