@@ -131,8 +131,8 @@ private:
     std::function<void(const Request&, bool)> on_expired {};
 
     Blob msg {};                      /* the serialized message. */
-    Tid socket;   /* the socket used for further reponses. */
     std::vector<Blob> parts;
+    Tid socket;   /* the socket used for further reponses. */
 };
 
 } /* namespace net  */
