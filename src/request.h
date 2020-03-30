@@ -29,6 +29,8 @@ namespace net {
 class NetworkEngine;
 struct ParsedMessage;
 
+extern std::atomic<size_t> REQ_COUNT;
+
 /*!
  * @class   Request
  * @brief   An atomic request destined to a node.
@@ -67,14 +69,22 @@ struct Request {
         }
     }
 
-    Request(State state = State::PENDING) : state_(state) {}
+    Request(State state = State::PENDING) : state_(state) {
+        REQ_COUNT++;
+    }
     Request(MessageType type, Tid tid,
             Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<void(const Request&, bool)> on_expired,
             Tid socket = 0) :
-        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)), socket(socket) { }
+        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)), socket(socket) {
+            REQ_COUNT++;
+        }
+
+    ~Request() {
+        REQ_COUNT--;
+    }
 
     Tid getTid() const { return tid; }
     MessageType getType() const { return type; }

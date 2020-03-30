@@ -34,6 +34,9 @@
 #endif
 
 namespace dht {
+namespace net {
+std::atomic<size_t> REQ_COUNT {0};
+}
 
 static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
 
