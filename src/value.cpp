@@ -75,11 +75,13 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
                 s << '"';
                 s.write((const char*)v.data.data(), v.data.size());
                 s << '"';
-            } else {
+            } else if (v.data.size() < 1024) {
                 s << std::hex;
                 for (auto i : v.data)
                     s << std::setfill('0') << std::setw(2) << (unsigned)i;
                 s << std::dec;
+            } else {
+                s << v.data.size() << " bytes";
             }
         }
     }
