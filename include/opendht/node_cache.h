@@ -26,6 +26,13 @@
 namespace dht {
 
 struct NodeCache {
+    size_t size(sa_family_t family) const {
+        return cache(family).count();
+    }
+    size_t size() const {
+        return size(AF_INET) + size(AF_INET6);
+    }
+
     Sp<Node> getNode(const InfoHash& id, sa_family_t family);
     Sp<Node> getNode(const InfoHash& id, const SockAddr&, time_point now, bool confirmed, bool client=false);
     std::vector<Sp<Node>> getCachedNodes(const InfoHash& id, sa_family_t sa_f, size_t count) const;
@@ -49,6 +56,7 @@ private:
         void clearBadNodes();
         void setExpired();
         void cleanup();
+        size_t count() const { return size(); }
     private:
         size_t cleanup_counter {0};
     };

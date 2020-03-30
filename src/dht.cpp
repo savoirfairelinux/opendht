@@ -1477,6 +1477,8 @@ Dht::getNodesStats(sa_family_t af) const
             stats.cached_nodes++;
     }
     stats.table_depth = bcks.depth(bcks.findBucket(myid));
+    stats.searches = searches(af).size();
+    stats.cached_nodes = network_engine.getNodeCacheSize(af);
     return stats;
 }
 
