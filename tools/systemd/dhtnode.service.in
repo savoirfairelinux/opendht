@@ -1,14 +1,45 @@
 [Unit]
 Description=OpenDHT standalone node
+Documentation=man:dhtnode(1)
 After=network.target
 
 [Service]
-EnvironmentFile=@sysconfdir@/dhtnode.conf
-ExecStart=@bindir@/dhtnode -s $DHT_ARGS
-KillMode=process
-Restart=on-failure
 Type=simple
+User=opendht
+Group=opendht
+ExecStart=/usr/bin/dhtnode -s $DHT_ARGS
+Restart=on-failure
+RestartSec=2s
+LimitNOFILE=65536
 DynamicUser=yes
+EnvironmentFile=@sysconfdir@/dhtnode.conf
+KillMode=process
+LimitNOFILE=65536
+WorkingDirectory=/tmp
+
+# Hardening
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+LockPersonality=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+PrivateUsers=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+ReadOnlyDirectories=/
+ReadWriteDirectories=-/proc/self
+ReadWriteDirectories=-/var/run
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
 
 [Install]
 WantedBy=multi-user.target
