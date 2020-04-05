@@ -3,9 +3,9 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 Name: OpenDHT
-Description: C++ Distributed Hash Table library
+Description: C++14 Distributed Hash Table library
 Version: @VERSION@
 Libs: -L${libdir} -lopendht
-Libs.private: -lpthread
-Requires.private: gnutls >= 3.1@argon2_lib@
+Libs.private: @http_parser_lib@ -lpthread
+Requires.private: gnutls >= 3.3, nettle >= 2.4@argon2_lib@@jsoncpp_lib@@openssl_lib@
 Cflags: -I${includedir}

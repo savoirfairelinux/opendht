@@ -140,6 +140,7 @@ AS_IF([test "x$with_jsoncpp" != "xno"],
 AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AC_MSG_NOTICE([Using JsonCpp])
     CPPFLAGS+=" -DOPENDHT_JSONCPP"
+    AC_SUBST(jsoncpp_lib, [", jsoncpp"])
 ], [
     AC_MSG_NOTICE([Not using JsonCpp])
     AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
@@ -151,6 +152,7 @@ AS_IF([test "x$with_openssl" != "xno"],
       [have_openssl=no])
 AS_IF([test "x$have_openssl" = "xyes"], [
     AC_MSG_NOTICE([Using OpenSSL])
+    AC_SUBST(openssl_lib, [", openssl"])
 ], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
@@ -175,6 +177,7 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     # http_parser has no pkgconfig, instead we check with:
     AC_CHECK_LIB(http_parser, exit,, AC_MSG_ERROR([Missing HttpParser library files]))
     AC_CHECK_HEADERS([http_parser.h], [http_parser_headers=yes; break;])
+    AC_SUBST(http_parser_lib, ["-lhttp_parser"])
     AS_IF([test "x$http_parser_headers" != "xyes"], AC_MSG_ERROR([Missing HttpParser headers files]))
 ])
 
