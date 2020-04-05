@@ -27,7 +27,7 @@ Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-
 
 #### How-to build a simple client app
 ```bash
-g++ main.cpp -std=c++14 -lopendht -lgnutls
+g++ main.cpp -std=c++14 -lopendht
 ```
 
 ## Examples
