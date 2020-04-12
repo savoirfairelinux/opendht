@@ -51,7 +51,7 @@ int main()
 
     // Join the network through any running node,
     // here using a known bootstrap node.
-    node.bootstrap("bootstrap.ring.cx", "4222");
+    node.bootstrap("bootstrap.jami.net", "4222");
 
     // put some data on the dht
     std::vector<uint8_t> some_data(5, 10);
@@ -82,7 +82,7 @@ node.run()
 
 # Join the network through any running node,
 # here using a known bootstrap node.
-node.bootstrap("bootstrap.ring.cx", "4222")
+node.bootstrap("bootstrap.jami.net", "4222")
 
 # blocking call (provide callback arguments to make the call non-blocking)
 node.put(dht.InfoHash.get("unique_key"), dht.Value(b'some binary data'))
