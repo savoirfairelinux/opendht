@@ -330,10 +330,10 @@ private:
     static constexpr unsigned LISTEN_NODES {4};
 
     /* The maximum number of hashes we're willing to track. */
-    static constexpr unsigned MAX_HASHES {64 * 1024};
+    static constexpr unsigned MAX_HASHES {1024 * 1024};
 
     /* The maximum number of searches we keep data about. */
-    static constexpr unsigned MAX_SEARCHES {64 * 1024};
+    static constexpr unsigned MAX_SEARCHES {1024 * 1024};
 
     static constexpr std::chrono::minutes MAX_STORAGE_MAINTENANCE_EXPIRE_TIME {10};
 
@@ -374,12 +374,14 @@ private:
     std::map<SockAddr, StorageBucket, SockAddr::ipCmp> store_quota;
     size_t total_values {0};
     size_t total_store_size {0};
+    size_t max_store_keys {MAX_HASHES};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
     using SearchMap = std::map<InfoHash, Sp<Search>>;
     SearchMap searches4 {};
     SearchMap searches6 {};
-    uint16_t search_id {0};
+    size_t max_searches {MAX_SEARCHES};
+    size_t search_id {0};
 
     // map a global listen token to IPv4, IPv6 specific listen tokens.
     // 0 is the invalid token.

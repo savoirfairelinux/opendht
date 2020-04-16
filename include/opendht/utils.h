@@ -105,8 +105,7 @@ static std::string
 print_duration(DT d) {
     if (d < std::chrono::seconds(0)) {
         return "-" + print_duration(-d);
-    }
-    if (d < std::chrono::milliseconds(1)) {
+    } else if (d < std::chrono::milliseconds(1)) {
         return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count()) +  " us";
     } else if (d < std::chrono::seconds(1)) {
         return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count()) +  " ms";

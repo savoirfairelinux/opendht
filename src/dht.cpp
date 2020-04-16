@@ -750,7 +750,7 @@ Dht::search(const InfoHash& id, sa_family_t af, GetCallback gcb, QueryCallback q
         sr->done = false;
         sr->expired = false;
     } else {
-        if (searches4.size() + searches6.size() < MAX_SEARCHES) {
+        if (srs.size() < max_searches) {
             sr = std::make_shared<Search>();
             srs.emplace(id, sr);
         } else {
@@ -872,7 +872,7 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     auto query = std::make_shared<Query>(Select{}, std::move(where));
     auto filter = f.chain(query->where.getFilter());
     auto st = store.find(id);
-    if (st == store.end() && store.size() < MAX_HASHES)
+    if (st == store.end() && store.size() < max_store_keys)
         st = store.emplace(id, scheduler.time() + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME).first;
 
     size_t tokenlocal = 0;
@@ -1226,7 +1226,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
 
     auto st = store.find(id);
     if (st == store.end()) {
-        if (store.size() >= MAX_HASHES)
+        if (store.size() >= max_store_keys)
             return false;
         auto st_i = store.emplace(id, now);
         st = st_i.first;
@@ -1272,7 +1272,7 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
     const auto& now = scheduler.time();
     auto st = store.find(id);
     if (st == store.end()) {
-        if (store.size() >= MAX_HASHES)
+        if (store.size() >= max_store_keys)
             return;
         st = store.emplace(id, now).first;
     }
@@ -1743,7 +1743,12 @@ fromDhtConfig(const Config& config)
 Dht::Dht() : store(), network_engine(logger_, rd, scheduler, {}) {}
 
 Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l)
-    : DhtInterface(l), myid(config.node_id ? config.node_id : InfoHash::getRandom()), store(), store_quota(),
+    : DhtInterface(l),
+    myid(config.node_id ? config.node_id : InfoHash::getRandom()),
+    store(),
+    store_quota(),
+    max_store_keys(config.max_store_size ? (int)config.max_store_size : MAX_HASHES),
+    max_searches(config.max_searches ? (int)config.max_searches : MAX_SEARCHES),
     network_engine(myid, fromDhtConfig(config), std::move(sock), logger_, rd, scheduler,
             std::bind(&Dht::onError, this, _1, _2),
             std::bind(&Dht::onNewNode, this, _1, _2),
