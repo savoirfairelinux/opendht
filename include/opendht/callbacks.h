@@ -58,6 +58,8 @@ struct OPENDHT_PUBLIC NodeStats {
              cached_nodes {0},
              incoming_nodes {0};
     unsigned table_depth {0};
+    unsigned searches {0};
+    unsigned node_cache_size {0};
     unsigned getKnownNodes() const { return good_nodes + dubious_nodes; }
     unsigned long getNetworkSizeEstimation() const { return 8 * std::exp2(table_depth); }
     std::string toString() const;
@@ -71,7 +73,7 @@ struct OPENDHT_PUBLIC NodeStats {
     explicit NodeStats(const Json::Value& v);
 #endif
 
-    MSGPACK_DEFINE_MAP(good_nodes, dubious_nodes, cached_nodes, incoming_nodes, table_depth)
+    MSGPACK_DEFINE_MAP(good_nodes, dubious_nodes, cached_nodes, incoming_nodes, table_depth, searches, node_cache_size)
 };
 
 struct OPENDHT_PUBLIC NodeInfo {

@@ -432,6 +432,21 @@ public:
         return cache.getCachedNodes(id, sa_f, count);
     }
 
+    size_t getNodeCacheSize() const {
+        return cache.size();
+    }
+    size_t getNodeCacheSize(sa_family_t af) const {
+        return cache.size(af);
+    }
+
+    size_t getRateLimiterSize() const {
+        return address_rate_limiter.size();
+    }
+
+    size_t getPartialCount() const {
+        return partial_messages.size();
+    }
+
 private:
 
     struct PartialMessage;

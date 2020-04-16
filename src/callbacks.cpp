@@ -94,6 +94,7 @@ NodeStats::toString() const
 {
     std::stringstream ss;
     ss << "Known nodes: " << good_nodes << " good, " << dubious_nodes << " dubious, " << incoming_nodes << " incoming." << std::endl;
+    ss << searches << " searches, " << node_cache_size << " total cached nodes" << std::endl;
     if (table_depth > 1) {
         ss << "Routing table depth: " << table_depth << std::endl;
         ss << "Network size estimation: " << getNetworkSizeEstimation() << " nodes" << std::endl;
