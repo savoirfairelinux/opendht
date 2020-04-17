@@ -45,11 +45,17 @@ static constexpr size_t MAX_REQUESTS_PER_SEC {8 * 1024};
 NodeStatus
 Dht::getStatus(sa_family_t af) const
 {
-    const auto& stats = getNodesStats(af);
-    if (stats.good_nodes)
-        return NodeStatus::Connected;
+    unsigned dubious = 0;
+    for (const auto& b : buckets(af)) {
+        for (auto& n : b.nodes) {
+            if (n->isGood(scheduler.time())) {
+                return NodeStatus::Connected;
+            } else if (not n->isExpired())
+                dubious++;
+        }
+    }
     auto& ping = af == AF_INET ? pending_pings4 : pending_pings6;
-    if (ping or stats.getKnownNodes())
+    if (dubious or ping)
         return NodeStatus::Connecting;
     return NodeStatus::Disconnected;
 }
@@ -690,8 +696,8 @@ Dht::searchStep(Sp<Search> sr)
 
     while (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES and searchSendGetValues(sr));
 
-    if (sr->getNumberOfConsecutiveBadNodes() >= std::min(sr->nodes.size(),
-                                                             static_cast<size_t>(SEARCH_MAX_BAD_NODES)))
+    
+    if (sr->getNumberOfConsecutiveBadNodes() >= std::min<size_t>(sr->nodes.size(), SEARCH_MAX_BAD_NODES))
     {
         if (logger_)
             logger_->w(sr->id, "[search %s IPv%c] expired", sr->id.toString().c_str(), sr->af == AF_INET ? '4' : '6');
