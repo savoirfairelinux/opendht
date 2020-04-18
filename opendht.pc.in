@@ -6,6 +6,6 @@ Name: OpenDHT
 Description: C++14 Distributed Hash Table library
 Version: @VERSION@
 Libs: -L${libdir} -lopendht
-Libs.private: @http_parser_lib@ -lpthread
+Libs.private: @http_parser_lib@ -pthread
 Requires.private: gnutls >= 3.3, nettle >= 2.4@argon2_lib@@jsoncpp_lib@@openssl_lib@
 Cflags: -I${includedir}
