@@ -54,11 +54,12 @@ static const std::string KEY_REQ_EXPIRED {"exp"};
 static const std::string KEY_REQ_REFRESHED {"re"};
 static const std::string KEY_REQ_FIELDS {"fileds"};
 static const std::string KEY_REQ_WANT {"w"};
+static const std::string KEY_VERSION {"ve"};
 
 static const std::string QUERY_PING {"ping"};
 static const std::string QUERY_FIND {"find"};
 static const std::string QUERY_GET {"get"};
-static const std::string QUERY_UPDATE_VALUES {"updateValues"};
+static const std::string QUERY_UPDATE {"update"};
 static const std::string QUERY_PUT {"put"};
 static const std::string QUERY_LISTEN {"listen"};
 static const std::string QUERY_REFRESH {"refresh"};
@@ -114,6 +115,7 @@ struct ParsedMessage {
     uint16_t error_code;
     /* reported address by the distant node */
     std::string ua;
+    int version {0};
     SockAddr addr;
     void msgpack_unpack(const msgpack::object& o);
 
@@ -225,8 +227,8 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         type = MessageType::AnnounceValue;
     else if (parsed.q == QUERY_REFRESH)
         type = MessageType::Refresh;
-    else if (parsed.q == QUERY_UPDATE_VALUES)
-        type = MessageType::UpdateValues;
+    else if (parsed.q == QUERY_UPDATE)
+        type = MessageType::UpdateValue;
     else
         throw msgpack::type_error();
 
@@ -298,6 +300,8 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             parsedReq.fields = &o.val;
         else if (key == KEY_REQ_WANT)
             parsedReq.want = &o.val;
+        else if (key == KEY_VERSION)
+            version = o.val.as<int>();
     }
 
     if (parsedReq.sa) {

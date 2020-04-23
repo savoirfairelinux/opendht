@@ -605,7 +605,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             });
         }
         auto prev_req = r != n.listenStatus.end() ? r->second.req : nullptr;
-        auto new_req = network_engine.sendUpdateValues(n.node, sr->id, *query, n.token, prev_req,
+        auto new_req = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
             [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
             { /* on done */
                 if (auto sr = ws.lock()) {
@@ -1200,8 +1200,13 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v, bool newVa
                 std::vector<Sp<Value>> vals {};
                 vals.push_back(v.data);
                 Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-                network_engine.tellListener(node_listeners.first, l.first, id, 0, ntoken, {}, {},
-                        std::move(vals), l.second.query);
+                if (l.second.version == 0) {
+                    network_engine.tellListener(node_listeners.first, l.first, id, 0, ntoken, {}, {},
+                            std::move(vals), l.second.query);
+                } else {
+                    network_engine.updateValues(node_listeners.first, l.first, id, 0, ntoken, {}, {},
+                            std::move(vals), l.second.query);
+                }
             }
         }
     }
@@ -1259,8 +1264,9 @@ Dht::storageErase(const InfoHash& id, Value::Id vid)
 }
 
 void
-Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_id, Query&& query)
+Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_id, Query&& query, int version)
 {
+    printf("@@@ storageAddListener v: %u\n", version);
     const auto& now = scheduler.time();
     auto st = store.find(id);
     if (st == store.end()) {
@@ -1277,7 +1283,7 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
                     dht4.buckets.findClosestNodes(id, now, TARGET_NODES), dht6.buckets.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
-        node_listeners.emplace(socket_id, Listener {now, std::forward<Query>(query)});
+        node_listeners.emplace(socket_id, Listener {now, std::forward<Query>(query), version});
     }
     else
         l->second.refresh(now, std::forward<Query>(query));
@@ -1755,8 +1761,9 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, cons
             std::bind(&Dht::onPing, this, _1),
             std::bind(&Dht::onFindNode, this, _1, _2, _3),
             std::bind(&Dht::onGetValues, this, _1, _2, _3, _4),
-            std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5),
+            std::bind(&Dht::onListen, this, _1, _2, _3, _4, _5, _6),
             std::bind(&Dht::onAnnounce, this, _1, _2, _3, _4, _5),
+            std::bind(&Dht::onUpdate, this, _1, _2, _3, _4, _5),
             std::bind(&Dht::onRefresh, this, _1, _2, _3, _4)),
     persistPath(config.persist_path),
     is_bootstrap(config.is_bootstrap),
@@ -2325,7 +2332,7 @@ void Dht::onGetValuesDone(const Sp<Node>& node,
 }
 
 net::RequestAnswer
-Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query)
+Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t socket_id, const Query& query, int version)
 {
     if (not hash) {
         if (logger_)
@@ -2341,7 +2348,7 @@ Dht::onListen(Sp<Node> node, const InfoHash& hash, const Blob& token, size_t soc
         throw net::DhtProtocolException {net::DhtProtocolException::UNAUTHORIZED, net::DhtProtocolException::LISTEN_WRONG_TOKEN};
     }
     Query q = query;
-    storageAddListener(hash, node, socket_id, std::move(q));
+    storageAddListener(hash, node, socket_id, std::move(q), version);
     return {};
 }
 
@@ -2357,6 +2364,28 @@ Dht::onListenDone(const Sp<Node>& /* node */, net::RequestAnswer& /* answer */, 
         searchSendGetValues(sr);
         scheduler.edit(sr->nextSearchStep, now);
     }
+}
+
+net::RequestAnswer
+Dht::onUpdate(Sp<Node> n,
+        const InfoHash& hash,
+        const Blob& token,
+        const std::vector<Sp<Value>>& values,
+        const time_point& creation_date)
+{
+    printf("@@@ onUpdate TODO\n");
+    auto& node = *n;
+    if (not hash) {
+        if (logger_)
+            logger_->w(node.id, "put with no info_hash");
+        throw net::DhtProtocolException {
+            net::DhtProtocolException::NON_AUTHORITATIVE_INFORMATION,
+            net::DhtProtocolException::PUT_NO_INFOHASH
+        };
+    }
+
+    // TODO not sure for expire and refresh Get search
+    return {};
 }
 
 net::RequestAnswer

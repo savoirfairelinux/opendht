@@ -99,6 +99,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
         decltype(NetworkEngine::onGetValues)&& onGetValues,
         decltype(NetworkEngine::onListen)&& onListen,
         decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+        decltype(NetworkEngine::onUpdate)&& onUpdate,
         decltype(NetworkEngine::onRefresh)&& onRefresh) :
     onError(std::move(onError)),
     onNewNode(std::move(onNewNode)),
@@ -108,6 +109,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
     onGetValues(std::move(onGetValues)),
     onListen(std::move(onListen)),
     onAnnounce(std::move(onAnnounce)),
+    onUpdate(std::move(onUpdate)),
     onRefresh(std::move(onRefresh)),
     myid(myid), config(c), dht_socket(std::move(sock)), logger_(log), rd(rand),
     cache(rd),
@@ -128,6 +130,26 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
+    } catch (const std::overflow_error& e) {
+        if (logger_)
+            logger_->e("Can't send value: buffer not large enough !");
+    }
+}
+
+void
+NetworkEngine::updateValues(Sp<Node> node, Tid socket_id, const InfoHash& hash, want_t want,
+        const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
+        std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
+        const Query& query)
+{
+    printf("@@@ updateValues\n");
+    auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
+    try {
+        sendUpdateValues(node, hash, values, scheduler.time(), ntoken, [](const Request&, RequestAnswer&&) {
+            printf("@@@ onDone TODO\n");
+        }, [](const Request&, bool) {
+            printf("@@@ onExpired TODO\n");
+        });
     } catch (const std::overflow_error& e) {
         if (logger_)
             logger_->e("Can't send value: buffer not large enough !");
@@ -600,13 +622,19 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (logIncoming_ and logger_)
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
-                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query));
+                RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
-            case MessageType::UpdateValues: {
-                printf("@@@ Receive UpdateValues\n");
+            case MessageType::UpdateValue: {
+                printf("@@@ QUERY_UPDATE\n");
+                if (logIncoming_ and logger_)
+                    logger_->d(msg->info_hash, node->id, "[node %s] got 'update' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
+                ++in_stats.updateValue;
+                onUpdate(node, msg->info_hash, msg->token, msg->values, msg->created);
+                // TODO use and remove created: msg->socket_id;
+                // TODO token?
                 break;
             }
             default:
@@ -1047,6 +1075,7 @@ NetworkEngine::sendListen(Sp<Node> n,
     auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A); pk.pack_map(4 + has_query);
       pk.pack(KEY_REQ_ID);    pk.pack(myid);
+      pk.pack(KEY_VERSION);   pk.pack(1);
       pk.pack(KEY_REQ_H);     pk.pack(hash);
       pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
       pk.pack(KEY_REQ_SID);   pk.pack(socket);
@@ -1076,75 +1105,6 @@ NetworkEngine::sendListen(Sp<Node> n,
     );
     sendRequest(req);
     ++out_stats.listen;
-    return req;
-}
-
-Sp<Request>
-NetworkEngine::sendUpdateValues(Sp<Node> n,
-        const InfoHash& hash,
-        const Query& query,
-        const Blob& token,
-        Sp<Request> previous,
-        RequestCb&& on_done,
-        RequestExpiredCb&& on_expired,
-        SocketCb&& socket_cb)
-{
-    Tid socket;
-    TransId tid (n->getNewTid());
-    if (previous and previous->node == n) {
-        socket = previous->getSocket();
-    } else {
-        if (previous)
-            if (logger_)
-                logger_->e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
-        socket = n->openSocket(std::move(socket_cb));
-    }
-
-    if (not socket) {
-        if (logger_)
-            logger_->e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
-        return {};
-    }
-    TransId sid(socket);
-
-    msgpack::sbuffer buffer;
-    msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
-
-    auto has_query = not query.where.empty() or not query.select.empty();
-    pk.pack(KEY_A); pk.pack_map(4 + has_query);
-      pk.pack(KEY_REQ_ID);    pk.pack(myid);
-      pk.pack(KEY_REQ_H);     pk.pack(hash);
-      pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
-      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
-                              pk.pack_bin_body((const char*)sid.data(), sid.size());
-      if (has_query) {
-          pk.pack(KEY_REQ_QUERY); pk.pack(query);
-      }
-
-    pk.pack(KEY_Q); pk.pack(QUERY_UPDATE_VALUES);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
-    pk.pack(KEY_Y); pk.pack(KEY_Q);
-    pk.pack(KEY_UA); pk.pack(my_v);
-    if (config.network) {
-        pk.pack(KEY_NETID); pk.pack(config.network);
-    }
-
-    auto req = std::make_shared<Request>(MessageType::UpdateValues, tid.toInt(), n,
-        Blob(buffer.data(), buffer.data() + buffer.size()),
-        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
-            if (on_done)
-                on_done(req_status, {std::forward<ParsedMessage>(msg)});
-        },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired)
-                on_expired(req_status, done);
-        },
-        socket
-    );
-    sendRequest(req);
-    ++out_stats.updateValues;
     return req;
 }
 
@@ -1227,6 +1187,66 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
 }
 
 Sp<Request>
+NetworkEngine::sendUpdateValues(Sp<Node> n,
+                                const InfoHash& infohash,
+                                const std::vector<Sp<Value>>& values,
+                                time_point created,
+                                const Blob& token,
+                                RequestCb&& on_done,
+                                RequestExpiredCb&& on_expired)
+{
+    TransId tid (n->getNewTid());
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5+(config.network?1:0));
+
+    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
+      pk.pack(KEY_REQ_ID);     pk.pack(myid);
+      pk.pack(KEY_REQ_H);      pk.pack(infohash);
+      auto v = packValueHeader(buffer, values);
+      if (created < scheduler.time()) {
+          pk.pack(KEY_REQ_CREATION);
+          pk.pack(to_time_t(created));
+      }
+      pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
+
+    pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
+    pk.pack(KEY_VERSION);   pk.pack(1);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
+                      pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_Y);   pk.pack(KEY_Q);
+    pk.pack(KEY_UA);  pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+
+    auto req = std::make_shared<Request>(MessageType::UpdateValue, tid.toInt(), n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
+            if (msg.value_id == Value::INVALID_ID) {
+                if (logger_)
+                    logger_->d(infohash, "Unknown search or announce!");
+            } else {
+                if (on_done) {
+                    RequestAnswer answer {};
+                    answer.vid = msg.value_id;
+                    on_done(req_status, std::move(answer));
+                }
+            }
+        },
+        [=](const Request& req_status, bool done) { /* on expired */
+            if (on_expired) {
+                on_expired(req_status, done);
+            }
+        }
+    );
+    req->parts = std::move(v);
+    sendRequest(req);
+    ++out_stats.put;
+    return req;
+}
+
+Sp<Request>
 NetworkEngine::sendRefreshValue(Sp<Node> n,
                 const InfoHash& infohash,
                 const Value::Id& vid,
@@ -1274,7 +1294,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
         }
     );
     sendRequest(req);
-    ++out_stats.refresh;
+    ++out_stats.updateValue;
     return req;
 }
 

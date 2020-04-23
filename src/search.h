@@ -222,7 +222,7 @@ struct Dht::SearchNode {
                                      answer.refreshed_values,
                                      answer.expired_values, types, scheduler.time());
             scheduler.edit(l->second.cacheExpirationJob, next);
-        }
+        } 
     }
 
     void onListenSynced(const Sp<Query>& q, bool synced = true) {
