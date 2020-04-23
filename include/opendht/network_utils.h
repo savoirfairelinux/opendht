@@ -61,6 +61,9 @@ using PacketList = std::list<ReceivedPacket>;
 
 class OPENDHT_PUBLIC DatagramSocket {
 public:
+    /** A function that takes a list of new received packets and
+     *  optionally returns consumed packets for recycling.
+     **/
     using OnReceive = std::function<PacketList(PacketList&& packets)>;
     virtual ~DatagramSocket() {};
 
@@ -84,6 +87,11 @@ public:
     }
 
     virtual const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const = 0;
+
+    /** Virtual resolver mothod allows to implement custom resolver */
+    virtual std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {}) {
+        return SockAddr::resolve(host, service);
+    }
 
     virtual void stop() = 0;
 protected:

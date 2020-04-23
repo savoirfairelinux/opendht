@@ -80,10 +80,14 @@ public:
      */
     inline const InfoHash& getNodeId() const override { return myid; }
 
+    NodeStatus updateStatus(sa_family_t af) override;
+
     /**
      * Get the current status of the node for the given family.
      */
-    NodeStatus getStatus(sa_family_t af) const override;
+    NodeStatus getStatus(sa_family_t af) const override {
+        return dht(af).status;
+    }
 
     NodeStatus getStatus() const override {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
@@ -109,6 +113,15 @@ public:
     }
     const ValueType& getType(ValueType::Id type_id) const override {
         return types.getType(type_id);
+    }
+
+    void addBootstrap(const std::string& host, const std::string& service) override {
+        bootstrap_nodes.emplace_back(host, service);
+        onDisconnected();
+    }
+
+    void clearBootstrap() override {
+        bootstrap_nodes.clear();
     }
 
     /**
@@ -366,9 +379,23 @@ private:
     // registred types
     TypeStore types;
 
-    // the stuff
-    RoutingTable buckets4 {};
-    RoutingTable buckets6 {};
+    using SearchMap = std::map<InfoHash, Sp<Search>>;
+    struct Kad {
+        RoutingTable buckets {};
+        SearchMap searches {};
+        unsigned pending_pings {0};
+        NodeStatus status;
+
+        NodeStatus getStatus(time_point now) const;
+        NodeStats getNodesStats(time_point now, const InfoHash& myid) const;
+    };
+
+    Kad dht4 {};
+    Kad dht6 {};
+
+    std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
+    std::chrono::steady_clock::duration bootstrap_period {std::chrono::seconds(10)};
+    Sp<Scheduler::Job> bootstrapJob {};
 
     std::map<InfoHash, Storage> store;
     std::map<SockAddr, StorageBucket, SockAddr::ipCmp> store_quota;
@@ -377,9 +404,6 @@ private:
     size_t max_store_keys {MAX_HASHES};
     size_t max_store_size {DEFAULT_STORAGE_LIMIT};
 
-    using SearchMap = std::map<InfoHash, Sp<Search>>;
-    SearchMap searches4 {};
-    SearchMap searches6 {};
     size_t max_searches {MAX_SEARCHES};
     size_t search_id {0};
 
@@ -396,9 +420,6 @@ private:
     Sp<Scheduler::Job> nextStorageMaintenance {};
 
     net::NetworkEngine network_engine;
-    unsigned pending_pings4 {0};
-    unsigned pending_pings6 {0};
-
     using ReportedAddr = std::pair<unsigned, SockAddr>;
     std::vector<ReportedAddr> reported_addr;
 
@@ -444,8 +465,10 @@ private:
     size_t maintainStorage(decltype(store)::value_type&, bool force=false, const DoneCallback& donecb={});
 
     // Buckets
-    RoutingTable& buckets(sa_family_t af) { return af == AF_INET ? buckets4 : buckets6; }
-    const RoutingTable& buckets(sa_family_t af) const { return af == AF_INET ? buckets4 : buckets6; }
+    Kad& dht(sa_family_t af) { return af == AF_INET ? dht4 : dht6; }
+    const Kad& dht(sa_family_t af) const { return af == AF_INET ? dht4 : dht6; }
+    RoutingTable& buckets(sa_family_t af) { return dht(af).buckets; }
+    const RoutingTable& buckets(sa_family_t af) const { return dht(af).buckets; }
     Bucket* findBucket(const InfoHash& id, sa_family_t af) {
         auto& b = buckets(af);
         auto it = b.findBucket(id);
@@ -467,8 +490,8 @@ private:
 
     // Searches
 
-    inline SearchMap& searches(sa_family_t af) { return af == AF_INET ? searches4 : searches6; }
-    inline const SearchMap& searches(sa_family_t af) const { return af == AF_INET ? searches4 : searches6; }
+    inline SearchMap& searches(sa_family_t af) { return dht(af).searches; }
+    inline const SearchMap& searches(sa_family_t af) const { return dht(af).searches; }
 
     /**
      * Low-level method that will perform a search on the DHT for the specified
@@ -491,6 +514,7 @@ private:
 
     void confirmNodes();
     void expire();
+    void onDisconnected();
 
     /**
      * Generic function to execute when a 'get' request has completed.

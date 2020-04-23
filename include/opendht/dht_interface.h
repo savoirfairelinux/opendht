@@ -42,6 +42,7 @@ public:
     /**
      * Get the current status of the node for the given family.
      */
+    virtual NodeStatus updateStatus(sa_family_t af) { return getStatus(af); };
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
 
@@ -68,6 +69,9 @@ public:
     virtual void registerType(const ValueType& type) = 0;
 
     virtual const ValueType& getType(ValueType::Id type_id) const = 0;
+
+    virtual void addBootstrap(const std::string& /*host*/, const std::string& /*service*/) {};
+    virtual void clearBootstrap() {};
 
     /**
      * Insert a node in the main routing table.

@@ -459,14 +459,6 @@ private:
         Stopping
     };
 
-    /**
-     * Will try to resolve the list of hostnames `bootstrap_nodes` on seperate
-     * thread and then queue ping requests. This list should contain reliable
-     * nodes so that the DHT node can recover quickly from losing connection
-     * with the network.
-     */
-    void tryBootstrapContinuously();
-
     time_point loop_();
 
     NodeStatus getStatus() const {
@@ -512,15 +504,6 @@ private:
     std::mutex sock_mtx {};
     net::PacketList rcv {};
     decltype(rcv) rcv_free {};
-
-    /** true if currently actively boostraping */
-    std::atomic_bool bootstraping {false};
-    /* bootstrap nodes given as (host, service) pairs */
-    std::vector<std::pair<std::string,std::string>> bootstrap_nodes_all {};
-    std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
-    std::thread bootstrap_thread {};
-    std::mutex bootstrap_mtx {};
-    std::condition_variable bootstrap_cv {};
 
     std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
     std::queue<std::function<void(SecureDht&)>> pending_ops {};

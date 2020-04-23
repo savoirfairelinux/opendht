@@ -17,7 +17,6 @@
  *  along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 #include "dht.h"
 #include "rng.h"
 #include "search.h"
@@ -43,18 +42,40 @@ constexpr duration Dht::REANNOUNCE_MARGIN;
 static constexpr size_t MAX_REQUESTS_PER_SEC {8 * 1024};
 
 NodeStatus
-Dht::getStatus(sa_family_t af) const
+Dht::updateStatus(sa_family_t af)
+{
+    auto& d = dht(af);
+    auto old = d.status;
+    d.status = d.getStatus(scheduler.time());
+    if (d.status != old) {
+        auto& other = dht(af == AF_INET ? AF_INET6 : AF_INET);
+        if (other.status == NodeStatus::Disconnected && d.status == NodeStatus::Disconnected)
+            onDisconnected();
+        else if (other.status == NodeStatus::Connected || d.status == NodeStatus::Connected) {
+            // On connected
+            if (bootstrapJob) {
+                bootstrapJob->cancel();
+                bootstrapJob.reset();
+            }
+            bootstrap_period = std::chrono::seconds(10);
+        }
+    }
+    return d.status;
+}
+
+NodeStatus
+Dht::Kad::getStatus(time_point now) const
 {
     unsigned dubious = 0;
-    for (const auto& b : buckets(af)) {
+    for (const auto& b : buckets) {
         for (auto& n : b.nodes) {
-            if (n->isGood(scheduler.time())) {
+            if (n->isGood(now)) {
                 return NodeStatus::Connected;
             } else if (not n->isExpired())
                 dubious++;
         }
     }
-    auto& ping = af == AF_INET ? pending_pings4 : pending_pings6;
+    auto& ping = pending_pings;
     if (dubious or ping)
         return NodeStatus::Connecting;
     return NodeStatus::Disconnected;
@@ -224,8 +245,8 @@ Dht::expireSearches()
             return b;
         } else { return false; }
     };
-    erase_if(searches4, expired);
-    erase_if(searches6, expired);
+    erase_if(dht4.searches, expired);
+    erase_if(dht6.searches, expired);
 }
 
 void
@@ -804,47 +825,12 @@ Dht::announce(const InfoHash& id,
 {
     auto& srs = searches(af);
     auto srp = srs.find(id);
-    auto sr = srp == srs.end() ? search(id, af) : srp->second;
-    if (!sr) {
-        if (callback)
-            callback(false, {});
-        return;
+    if (auto sr = srp == srs.end() ? search(id, af) : srp->second) {
+        sr->put(value, callback, created, permanent);
+        scheduler.edit(sr->nextSearchStep, scheduler.time());
+    } else if (callback) {
+        callback(false, {});
     }
-    sr->done = false;
-    sr->expired = false;
-    auto a_sr = std::find_if(sr->announce.begin(), sr->announce.end(), [&](const Announce& a){
-        return a.value->id == value->id;
-    });
-    if (a_sr == sr->announce.end()) {
-        sr->announce.emplace_back(Announce {permanent, value, created, callback});
-        for (auto& n : sr->nodes) {
-            n->probe_query.reset();
-            n->acked[value->id].first.reset();
-        }
-    } else {
-        a_sr->permanent = permanent;
-        a_sr->created = created;
-        if (a_sr->value != value) {
-            a_sr->value = value;
-            for (auto& n : sr->nodes) {
-                n->acked[value->id].first.reset();
-                n->probe_query.reset();
-            }
-        }
-        if (sr->isAnnounced(value->id)) {
-            if (a_sr->callback)
-                a_sr->callback(true, {});
-            a_sr->callback = {};
-            if (callback)
-                callback(true, {});
-            return;
-        } else {
-            if (a_sr->callback)
-                a_sr->callback(false, {});
-            a_sr->callback = callback;
-        }
-    }
-    scheduler.edit(sr->nextSearchStep, scheduler.time());
 }
 
 size_t
@@ -924,8 +910,8 @@ Dht::cancelListen(const InfoHash& id, size_t token)
                 srp->second->cancelListen(token, scheduler);
         }
     };
-    searches_cancel_listen(searches4, std::get<1>(it->second));
-    searches_cancel_listen(searches6, std::get<2>(it->second));
+    searches_cancel_listen(dht4.searches, std::get<1>(it->second));
+    searches_cancel_listen(dht6.searches, std::get<2>(it->second));
     listeners.erase(it);
     return true;
 }
@@ -1136,8 +1122,8 @@ Dht::getPut(const InfoHash& id) const
         auto vals = srp->second->getPut();
         ret.insert(ret.end(), vals.begin(), vals.end());
     };
-    find_values(searches4);
-    find_values(searches6);
+    find_values(dht4.searches);
+    find_values(dht6.searches);
     return ret;
 }
 
@@ -1148,9 +1134,9 @@ Dht::getPut(const InfoHash& id, const Value::Id& vid) const
         auto srp = srs.find(id);
         return (srp != srs.end()) ? srp->second->getPut(vid) : Sp<Value> {};
     };
-    if (auto v4 = find_value(searches4))
+    if (auto v4 = find_value(dht4.searches))
         return v4;
-    if (auto v6 = find_value(searches6))
+    if (auto v6 = find_value(dht6.searches))
         return v6;
     return {};
 }
@@ -1163,8 +1149,8 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
         auto srp = srs.find(id);
         return (srp != srs.end()) ? srp->second->cancelPut(vid) : false;
     };
-    canceled |= sr_cancel_put(searches4);
-    canceled |= sr_cancel_put(searches6);
+    canceled |= sr_cancel_put(dht4.searches);
+    canceled |= sr_cancel_put(dht6.searches);
     if (canceled)
         storageErase(id, vid);
     return canceled;
@@ -1288,7 +1274,7 @@ Dht::storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t socket_
         auto vals = st->second.get(query.where.getFilter());
         if (not vals.empty()) {
             network_engine.tellListener(node, socket_id, id, WANT4 | WANT6, makeToken(node->getAddr(), false),
-                    buckets4.findClosestNodes(id, now, TARGET_NODES), buckets6.findClosestNodes(id, now, TARGET_NODES),
+                    dht4.buckets.findClosestNodes(id, now, TARGET_NODES), dht6.buckets.findClosestNodes(id, now, TARGET_NODES),
                     std::move(vals), query);
         }
         node_listeners.emplace(socket_id, Listener {now, std::forward<Query>(query)});
@@ -1467,10 +1453,16 @@ Dht::tokenMatch(const Blob& token, const SockAddr& addr) const
 NodeStats
 Dht::getNodesStats(sa_family_t af) const
 {
+    NodeStats stats = dht(af).getNodesStats(scheduler.time(), myid);
+    stats.node_cache_size = network_engine.getNodeCacheSize(af);
+    return stats;
+}
+
+NodeStats
+Dht::Kad::getNodesStats(time_point now, const InfoHash& myid) const
+{
     NodeStats stats {};
-    const auto& now = scheduler.time();
-    const auto& bcks = buckets(af);
-    for (const auto& b : bcks) {
+    for (const auto& b : buckets) {
         for (auto& n : b.nodes) {
             if (n->isGood(now)) {
                 stats.good_nodes++;
@@ -1482,9 +1474,8 @@ Dht::getNodesStats(sa_family_t af) const
         if (b.cached)
             stats.cached_nodes++;
     }
-    stats.table_depth = bcks.depth(bcks.findBucket(myid));
-    stats.searches = searches(af).size();
-    stats.node_cache_size = network_engine.getNodeCacheSize(af);
+    stats.table_depth = buckets.depth(buckets.findBucket(myid));
+    stats.searches = searches.size();
     return stats;
 }
 
@@ -1605,18 +1596,18 @@ Dht::dumpTables() const
     out << "My id " << myid << std::endl;
 
     out << "Buckets IPv4 :" << std::endl;
-    for (const auto& b : buckets4)
+    for (const auto& b : dht4.buckets)
         dumpBucket(b, out);
     out << "Buckets IPv6 :" << std::endl;
-    for (const auto& b : buckets6)
+    for (const auto& b : dht6.buckets)
         dumpBucket(b, out);
 
     auto dump_searches = [&](std::map<InfoHash, Sp<Search>> srs) {
         for (auto& srp : srs)
             dumpSearch(*srp.second, out);
     };
-    dump_searches(searches4);
-    dump_searches(searches6);
+    dump_searches(dht4.searches);
+    dump_searches(dht6.searches);
     out << std::endl;
 
     out << getStorageLog() << std::endl;
@@ -1692,24 +1683,24 @@ std::string
 Dht::getSearchesLog(sa_family_t af) const
 {
     std::stringstream out;
-    auto num_searches = searches4.size() + searches6.size();
+    auto num_searches = dht4.searches.size() + dht6.searches.size();
     if (num_searches > 8) {
         if (not af or af == AF_INET)
-            for (const auto& sr : searches4)
+            for (const auto& sr : dht4.searches)
                 out << "[search " << sr.first << " IPv4]" << std::endl;
         if (not af or af == AF_INET6)
-            for (const auto& sr : searches6)
+            for (const auto& sr : dht6.searches)
                 out << "[search " << sr.first << " IPv6]" << std::endl;
     } else {
         out << "s:synched, u:updated, a:announced, c:candidate, f:cur req, x:expired, *:known" << std::endl;
         if (not af or af == AF_INET)
-            for (const auto& sr : searches4)
+            for (const auto& sr : dht4.searches)
                 dumpSearch(*sr.second, out);
         if (not af or af == AF_INET6)
-            for (const auto& sr : searches6)
+            for (const auto& sr : dht6.searches)
                 dumpSearch(*sr.second, out);
     }
-    out << "Total: " << num_searches << " searches (" << searches4.size() << " IPv4, " << searches6.size() << " IPv6)." << std::endl;
+    out << "Total: " << num_searches << " searches (" << dht4.searches.size() << " IPv4, " << dht6.searches.size() << " IPv6)." << std::endl;
     return out.str();
 }
 
@@ -1730,9 +1721,9 @@ Dht::getSearchLog(const InfoHash& id, sa_family_t af) const
 
 Dht::~Dht()
 {
-    for (auto& s : searches4)
+    for (auto& s : dht4.searches)
         s.second->clear();
-    for (auto& s : searches6)
+    for (auto& s : dht6.searches)
         s.second->clear();
 }
 
@@ -1777,12 +1768,12 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, cons
     if (not s or (not s->hasIPv4() and not s->hasIPv6()))
         throw DhtException("Opened socket required");
     if (s->hasIPv4()) {
-        buckets4 = {Bucket {AF_INET}};
-        buckets4.is_client = config.is_bootstrap;
+        dht4.buckets = {Bucket {AF_INET}};
+        dht4.buckets.is_client = config.is_bootstrap;
     }
     if (s->hasIPv6()) {
-        buckets6 = {Bucket {AF_INET6}};
-        buckets6.is_client = config.is_bootstrap;
+        dht6.buckets = {Bucket {AF_INET6}};
+        dht6.buckets.is_client = config.is_bootstrap;
     }
 
     search_id = std::uniform_int_distribution<decltype(search_id)>{}(rd);
@@ -1977,11 +1968,32 @@ Dht::expire()
     uniform_duration_distribution<> time_dis(std::chrono::minutes(2), std::chrono::minutes(6));
     auto expire_stuff_time = scheduler.time() + duration(time_dis(rd));
 
-    expireBuckets(buckets4);
-    expireBuckets(buckets6);
+    expireBuckets(dht4.buckets);
+    expireBuckets(dht6.buckets);
     expireStore();
     expireSearches();
     scheduler.add(expire_stuff_time, std::bind(&Dht::expire, this));
+}
+
+void
+Dht::onDisconnected()
+{
+    if (dht4.status != NodeStatus::Disconnected || dht6.status != NodeStatus::Disconnected)
+        return;
+    if (logger_)
+        logger_->d(myid, "Bootstraping");
+    for (const auto& boootstrap : bootstrap_nodes)
+        try {
+            for (const auto& ip : network_engine.getSocket()->resolve(boootstrap.first, boootstrap.second))
+                pingNode(ip);
+        } catch (const std::exception& e) {
+            if (logger_)
+                logger_->e(myid, "Can't resolve %s:%s: %s", boootstrap.first.c_str(), boootstrap.second.c_str(), e.what());
+        }
+    if (bootstrapJob)
+        bootstrapJob->cancel();
+    bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::onDisconnected, this));
+    bootstrap_period *= 2;
 }
 
 void
@@ -1991,25 +2003,25 @@ Dht::confirmNodes()
     bool soon = false;
     const auto& now = scheduler.time();
 
-    if (searches4.empty() and getStatus(AF_INET) == NodeStatus::Connected) {
+    if (dht4.searches.empty() and dht4.status == NodeStatus::Connected) {
         if (logger_)
             logger_->d(myid, "[confirm nodes] initial IPv4 'get' for my id (%s)", myid.toString().c_str());
         search(myid, AF_INET);
     }
-    if (searches6.empty() and getStatus(AF_INET6) == NodeStatus::Connected) {
+    if (dht6.searches.empty() and dht6.status == NodeStatus::Connected) {
         if (logger_)
             logger_->d(myid, "[confirm nodes] initial IPv6 'get' for my id (%s)", myid.toString().c_str());
         search(myid, AF_INET6);
     }
 
-    soon |= bucketMaintenance(buckets4);
-    soon |= bucketMaintenance(buckets6);
+    soon |= bucketMaintenance(dht4.buckets);
+    soon |= bucketMaintenance(dht6.buckets);
 
     if (!soon) {
-        if (buckets4.grow_time >= now - seconds(150))
-            soon |= neighbourhoodMaintenance(buckets4);
-        if (buckets6.grow_time >= now - seconds(150))
-            soon |= neighbourhoodMaintenance(buckets6);
+        if (dht4.buckets.grow_time >= now - seconds(150))
+            soon |= neighbourhoodMaintenance(dht4.buckets);
+        if (dht6.buckets.grow_time >= now - seconds(150))
+            soon |= neighbourhoodMaintenance(dht6.buckets);
     }
 
     /* In order to maintain all buckets' age within 600 seconds, worst
@@ -2094,25 +2106,25 @@ Dht::exportNodes() const
 {
     const auto& now = scheduler.time();
     std::vector<NodeExport> nodes;
-    const auto b4 = buckets4.findBucket(myid);
-    if (b4 != buckets4.end()) {
+    const auto b4 = dht4.buckets.findBucket(myid);
+    if (b4 != dht4.buckets.end()) {
         for (auto& n : b4->nodes)
             if (n->isGood(now))
                 nodes.push_back(n->exportNode());
     }
-    const auto b6 = buckets6.findBucket(myid);
-    if (b6 != buckets6.end()) {
+    const auto b6 = dht6.buckets.findBucket(myid);
+    if (b6 != dht6.buckets.end()) {
         for (auto& n : b6->nodes)
             if (n->isGood(now))
                 nodes.push_back(n->exportNode());
     }
-    for (auto b = buckets4.begin(); b != buckets4.end(); ++b) {
+    for (auto b = dht4.buckets.begin(); b != dht4.buckets.end(); ++b) {
         if (b == b4) continue;
         for (auto& n : b->nodes)
             if (n->isGood(now))
                 nodes.push_back(n->exportNode());
     }
-    for (auto b = buckets6.begin(); b != buckets6.end(); ++b) {
+    for (auto b = dht6.buckets.begin(); b != dht6.buckets.end(); ++b) {
         if (b == b6) continue;
         for (auto& n : b->nodes)
             if (n->isGood(now))
@@ -2136,7 +2148,7 @@ Dht::pingNode(SockAddr sa, DoneCallbackSimple&& cb)
     scheduler.syncTime();
     if (logger_)
         logger_->d("Sending ping to %s", sa.toString().c_str());
-    auto& count = sa.getFamily() == AF_INET ? pending_pings4 : pending_pings6;
+    auto& count = dht(sa.getFamily()).pending_pings;
     count++;
     network_engine.sendPing(std::move(sa), [&count,cb](const net::Request&, net::RequestAnswer&&) {
         count--;
@@ -2197,9 +2209,9 @@ Dht::onFindNode(Sp<Node> node, const InfoHash& target, want_t want)
     net::RequestAnswer answer;
     answer.ntoken = makeToken(node->getAddr(), false);
     if (want & WANT4)
-        answer.nodes4 = buckets4.findClosestNodes(target, now, TARGET_NODES);
+        answer.nodes4 = dht4.buckets.findClosestNodes(target, now, TARGET_NODES);
     if (want & WANT6)
-        answer.nodes6 = buckets6.findClosestNodes(target, now, TARGET_NODES);
+        answer.nodes6 = dht6.buckets.findClosestNodes(target, now, TARGET_NODES);
     return answer;
 }
 
@@ -2218,8 +2230,8 @@ Dht::onGetValues(Sp<Node> node, const InfoHash& hash, want_t, const Query& query
     net::RequestAnswer answer {};
     auto st = store.find(hash);
     answer.ntoken = makeToken(node->getAddr(), false);
-    answer.nodes4 = buckets4.findClosestNodes(hash, now, TARGET_NODES);
-    answer.nodes6 = buckets6.findClosestNodes(hash, now, TARGET_NODES);
+    answer.nodes4 = dht4.buckets.findClosestNodes(hash, now, TARGET_NODES);
+    answer.nodes6 = dht6.buckets.findClosestNodes(hash, now, TARGET_NODES);
     if (st != store.end() && not st->second.empty()) {
         answer.values = st->second.get(query.where.getFilter());
         if (logger_)

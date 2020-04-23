@@ -174,7 +174,7 @@ DhtRunner::run(const Config& config, Context&& context)
                     if (not pending_ops_prio.empty())
                         return true;
                     auto s = getStatus();
-                    if (not pending_ops.empty() and (s == NodeStatus::Connected or (s == NodeStatus::Disconnected and not bootstraping)))
+                    if (not pending_ops.empty() and (s == NodeStatus::Connected or s == NodeStatus::Disconnected))
                         return true;
                 }
                 return false;
@@ -300,7 +300,6 @@ DhtRunner::join()
         if (running.exchange(State::Idle) == State::Idle)
             return;
         cv.notify_all();
-        bootstrap_cv.notify_all();
 #ifdef OPENDHT_PEER_DISCOVERY
         if (peerDiscovery_)
             peerDiscovery_->stop();
@@ -314,9 +313,6 @@ DhtRunner::join()
 
     if (dht_thread.joinable())
         dht_thread.join();
-
-    if (bootstrap_thread.joinable())
-        bootstrap_thread.join();
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
@@ -584,7 +580,7 @@ DhtRunner::loop_()
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         auto s = getStatus();
-        ops = (pending_ops_prio.empty() && (s == NodeStatus::Connected or (s == NodeStatus::Disconnected and not bootstraping))) ?
+        ops = (pending_ops_prio.empty() && (s == NodeStatus::Connected or s == NodeStatus::Disconnected)) ?
                std::move(pending_ops) : std::move(pending_ops_prio);
     }
     while (not ops.empty()) {
@@ -639,20 +635,11 @@ DhtRunner::loop_()
     if (dropped)
         std::cerr << "Dropped " << dropped << " packets with high delay" << std::endl;
 
-    NodeStatus nstatus4 = dht->getStatus(AF_INET);
-    NodeStatus nstatus6 = dht->getStatus(AF_INET6);
+    NodeStatus nstatus4 = dht->updateStatus(AF_INET);
+    NodeStatus nstatus6 = dht->updateStatus(AF_INET6);
     if (nstatus4 != status4 || nstatus6 != status6) {
         status4 = nstatus4;
         status6 = nstatus6;
-        if (status4 == NodeStatus::Disconnected and status6 == NodeStatus::Disconnected) {
-            // We have lost connection with the DHT.  Try to recover using bootstrap nodes.
-            std::unique_lock<std::mutex> lck(bootstrap_mtx);
-            bootstrap_nodes = bootstrap_nodes_all;
-            tryBootstrapContinuously();
-        } else {
-            std::unique_lock<std::mutex> lck(bootstrap_mtx);
-            bootstrap_nodes.clear();
-        }
         if (statusCb)
             statusCb(status4, status6);
     }
@@ -900,88 +887,33 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Done
 }
 
 void
-DhtRunner::tryBootstrapContinuously()
-{
-    if (bootstrap_thread.joinable()) {
-        if (bootstraping)
-            return; // already running
-        else
-            bootstrap_thread.join();
-    }
-    bootstraping = true;
-    bootstrap_thread = std::thread([this]() {
-        auto next = clock::now();
-        do {
-            decltype(bootstrap_nodes) nodes;
-            {
-                std::lock_guard<std::mutex> lck(bootstrap_mtx);
-                nodes = bootstrap_nodes;
-            }
-
-            next += BOOTSTRAP_PERIOD;
-            {
-                std::mutex mtx;
-                std::unique_lock<std::mutex> blck(mtx);
-                unsigned ping_count(0);
-                // Reverse: try last inserted bootstrap nodes first
-                for (auto it = nodes.rbegin(); it != nodes.rend(); it++) {
-                    ++ping_count;
-                    try {
-                        bootstrap(SockAddr::resolve(it->first, it->second), [&](bool) {
-                            if (running != State::Running)
-                                return;
-                            {
-                                std::unique_lock<std::mutex> blck(mtx);
-                                --ping_count;
-                            }
-                            bootstrap_cv.notify_all();
-                        });
-                    } catch (std::invalid_argument& e) {
-                        --ping_count;
-                        std::cerr << e.what() << std::endl;
-                    }
-                }
-                // wait at least until the next BOOTSTRAP_PERIOD
-                bootstrap_cv.wait_until(blck, next, [&]() { return running != State::Running; });
-                // wait for bootstrap requests to end.
-                if (running != State::Running)
-                   bootstrap_cv.wait(blck, [&]() { return running != State::Running or ping_count == 0; });
-            }
-            // update state
-            {
-                std::lock_guard<std::mutex> lck(dht_mtx);
-                bootstraping = running == State::Running and
-                               status4 == NodeStatus::Disconnected and
-                               status6 == NodeStatus::Disconnected;
-            }
-        } while (bootstraping);
-    });
-}
-
-void
 DhtRunner::bootstrap(const std::string& host, const std::string& service)
 {
-    std::lock_guard<std::mutex> lck(bootstrap_mtx);
-    bootstrap_nodes_all.emplace_back(host, service);
-    bootstrap_nodes.emplace_back(host, service);
-    tryBootstrapContinuously();
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops_prio.emplace([host, service] (SecureDht& dht) mutable {
+        dht.addBootstrap(host, service);
+    });
+    cv.notify_all();
 }
 
 void
 DhtRunner::bootstrap(const std::string& hostService)
 {
-    std::lock_guard<std::mutex> lck(bootstrap_mtx);
-    auto host_service = splitPort(hostService);
-    bootstrap_nodes_all.emplace_back(host_service.first, host_service.second);
-    bootstrap_nodes.emplace_back(std::move(host_service.first), std::move(host_service.second));
-    tryBootstrapContinuously();
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops_prio.emplace([host_service = splitPort(hostService)] (SecureDht& dht) mutable {
+        dht.addBootstrap(host_service.first, host_service.second);
+    });
+    cv.notify_all();
 }
 
 void
 DhtRunner::clearBootstrap()
 {
-    std::lock_guard<std::mutex> lck(bootstrap_mtx);
-    bootstrap_nodes_all.clear();
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    pending_ops_prio.emplace([] (SecureDht& dht) mutable {
+        dht.clearBootstrap();
+    });
+    cv.notify_all();
 }
 
 void
