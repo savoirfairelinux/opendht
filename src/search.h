@@ -616,7 +616,7 @@ struct Dht::Search {
     unsigned getNumberOfConsecutiveBadNodes() const {
         unsigned count = 0;
         std::find_if(nodes.begin(), nodes.end(), [&count](const std::unique_ptr<SearchNode>& sn) {
-            if (not sn->isBad())
+            if (not sn->node->isExpired())
                 return true;
             ++count;
             return false;
