@@ -589,10 +589,8 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             { /* on done */
                 if (auto sr = ws.lock()) {
                     scheduler.edit(sr->nextSearchStep, scheduler.time());
-                    if (auto sn = sr->getNode(req.node)) {
+                    if (auto sn = sr->getNode(req.node))
                         scheduler.add(sn->getListenTime(query, getListenExpiration()), std::bind(&Dht::searchStep, this, sr));
-                        sn->onListenSynced(query);
-                    }
                     onListenDone(req.node, answer, sr);
                 }
             },
