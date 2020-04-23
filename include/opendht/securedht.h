@@ -201,6 +201,9 @@ public:
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
         return dht_->periodic(buf, buflen, from, fromlen, now);
     }
+    NodeStatus updateStatus(sa_family_t af) override  {
+        return dht_->updateStatus(af);
+    }
     NodeStatus getStatus(sa_family_t af) const override {
         return dht_->getStatus(af);
     }
@@ -215,6 +218,12 @@ public:
     }
     const ValueType& getType(ValueType::Id type_id) const override {
         return dht_->getType(type_id);
+    }
+    void addBootstrap(const std::string& host, const std::string& service) override {
+        dht_->addBootstrap(host, service);
+    }
+    void clearBootstrap() override {
+        dht_->clearBootstrap();
     }
     void insertNode(const InfoHash& id, const SockAddr& sa) override {
         dht_->insertNode(id, sa);

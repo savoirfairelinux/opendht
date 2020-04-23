@@ -568,6 +568,43 @@ struct Dht::Search {
         return canceled;
     }
 
+    void put(const Sp<Value>& value, DoneCallback callback, time_point created, bool permanent) {
+        done = false;
+        expired = false;
+        auto a_sr = std::find_if(announce.begin(), announce.end(), [&](const Announce& a){
+            return a.value->id == value->id;
+        });
+        if (a_sr == announce.end()) {
+            announce.emplace_back(Announce {permanent, value, created, callback});
+            for (auto& n : nodes) {
+                n->probe_query.reset();
+                n->acked[value->id].first.reset();
+            }
+        } else {
+            a_sr->permanent = permanent;
+            a_sr->created = created;
+            if (a_sr->value != value) {
+                a_sr->value = value;
+                for (auto& n : nodes) {
+                    n->acked[value->id].first.reset();
+                    n->probe_query.reset();
+                }
+            }
+            if (isAnnounced(value->id)) {
+                if (a_sr->callback)
+                    a_sr->callback(true, {});
+                a_sr->callback = {};
+                if (callback)
+                    callback(true, {});
+                return;
+            } else {
+                if (a_sr->callback)
+                    a_sr->callback(false, {});
+                a_sr->callback = callback;
+            }
+        }
+    }
+
     /**
      * @return The number of non-good search nodes.
      */

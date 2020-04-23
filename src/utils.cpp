@@ -76,11 +76,8 @@ SockAddr::resolve(const std::string& host, const std::string& service)
     if(rc != 0)
         throw std::invalid_argument(std::string("Error: `") + host + ":" + service + "`: " + gai_strerror(rc));
 
-    addrinfo* infop = info;
-    while (infop) {
+    for (addrinfo* infop = info; infop; infop = infop->ai_next)
         ips.emplace_back(infop->ai_addr, infop->ai_addrlen);
-        infop = infop->ai_next;
-    }
     freeaddrinfo(info);
     return ips;
 }
