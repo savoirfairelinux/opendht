@@ -605,7 +605,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
             });
         }
         auto prev_req = r != n.listenStatus.end() ? r->second.req : nullptr;
-        auto new_req = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
+        auto new_req = network_engine.sendUpdateValues(n.node, sr->id, *query, n.token, prev_req,
             [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
             { /* on done */
                 if (auto sr = ws.lock()) {

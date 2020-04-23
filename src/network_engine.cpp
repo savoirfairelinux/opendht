@@ -605,6 +605,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
+            case MessageType::UpdateValues: {
+                printf("@@@ Receive UpdateValues\n");
+                break;
+            }
             default:
                 break;
             }
@@ -1072,6 +1076,75 @@ NetworkEngine::sendListen(Sp<Node> n,
     );
     sendRequest(req);
     ++out_stats.listen;
+    return req;
+}
+
+Sp<Request>
+NetworkEngine::sendUpdateValues(Sp<Node> n,
+        const InfoHash& hash,
+        const Query& query,
+        const Blob& token,
+        Sp<Request> previous,
+        RequestCb&& on_done,
+        RequestExpiredCb&& on_expired,
+        SocketCb&& socket_cb)
+{
+    Tid socket;
+    TransId tid (n->getNewTid());
+    if (previous and previous->node == n) {
+        socket = previous->getSocket();
+    } else {
+        if (previous)
+            if (logger_)
+                logger_->e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
+        socket = n->openSocket(std::move(socket_cb));
+    }
+
+    if (not socket) {
+        if (logger_)
+            logger_->e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
+        return {};
+    }
+    TransId sid(socket);
+
+    msgpack::sbuffer buffer;
+    msgpack::packer<msgpack::sbuffer> pk(&buffer);
+    pk.pack_map(5+(config.network?1:0));
+
+    auto has_query = not query.where.empty() or not query.select.empty();
+    pk.pack(KEY_A); pk.pack_map(4 + has_query);
+      pk.pack(KEY_REQ_ID);    pk.pack(myid);
+      pk.pack(KEY_REQ_H);     pk.pack(hash);
+      pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
+      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
+                              pk.pack_bin_body((const char*)sid.data(), sid.size());
+      if (has_query) {
+          pk.pack(KEY_REQ_QUERY); pk.pack(query);
+      }
+
+    pk.pack(KEY_Q); pk.pack(QUERY_UPDATE_VALUES);
+    pk.pack(KEY_TID); pk.pack_bin(tid.size());
+                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_Y); pk.pack(KEY_Q);
+    pk.pack(KEY_UA); pk.pack(my_v);
+    if (config.network) {
+        pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+
+    auto req = std::make_shared<Request>(MessageType::UpdateValues, tid.toInt(), n,
+        Blob(buffer.data(), buffer.data() + buffer.size()),
+        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
+            if (on_done)
+                on_done(req_status, {std::forward<ParsedMessage>(msg)});
+        },
+        [=](const Request& req_status, bool done) { /* on expired */
+            if (on_expired)
+                on_expired(req_status, done);
+        },
+        socket
+    );
+    sendRequest(req);
+    ++out_stats.updateValues;
     return req;
 }
 

@@ -58,6 +58,7 @@ static const std::string KEY_REQ_WANT {"w"};
 static const std::string QUERY_PING {"ping"};
 static const std::string QUERY_FIND {"find"};
 static const std::string QUERY_GET {"get"};
+static const std::string QUERY_UPDATE_VALUES {"updateValues"};
 static const std::string QUERY_PUT {"put"};
 static const std::string QUERY_LISTEN {"listen"};
 static const std::string QUERY_REFRESH {"refresh"};
@@ -224,6 +225,8 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         type = MessageType::AnnounceValue;
     else if (parsed.q == QUERY_REFRESH)
         type = MessageType::Refresh;
+    else if (parsed.q == QUERY_UPDATE_VALUES)
+        type = MessageType::UpdateValues;
     else
         throw msgpack::type_error();
 
