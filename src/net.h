@@ -32,7 +32,7 @@ enum class MessageType {
     Listen,
     ValueData,
     ValueUpdate,
-    UpdateValues
+    UpdateValue
 };
 
 } /* namespace net */

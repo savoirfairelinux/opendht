@@ -120,6 +120,7 @@ struct RequestAnswer {
  * @param onGetValues    callback for "get values" request.
  * @param onListen       callback for "listen" request.
  * @param onAnnounce     callback for "announce" request.
+ * @param onUpdate       callback for "update" request.
  * @param onRefresh      callback for "refresh" request.
  */
 class NetworkEngine final
@@ -180,7 +181,8 @@ private:
             const InfoHash&,
             const Blob&,
             Tid,
-            const Query&)> onListen {};
+            const Query&,
+            int)> onListen {};
     /**
      * Called on announce request.
      *
@@ -195,6 +197,20 @@ private:
             const Blob&,
             const std::vector<Sp<Value>>&,
             const time_point&)> onAnnounce {};
+    /**
+     * Called on update request.
+     *
+     * @param node (type: Sp<Node>) the requesting node.
+     * @param h (type: InfoHash) hash of the value of interest.
+     * @param token (type: Blob) security token.
+     * @param values (type: std::vector<Sp<Value>>) values to store.
+     * @param created (type: time_point) time when the value was created.
+     */
+    std::function<RequestAnswer(Sp<Node>,
+            const InfoHash&,
+            const Blob&,
+            const std::vector<Sp<Value>>&,
+            const time_point&)> onUpdate {};
     /**
      * Called on refresh request.
      *
@@ -228,6 +244,7 @@ public:
             decltype(NetworkEngine::onGetValues)&& onGetValues,
             decltype(NetworkEngine::onListen)&& onListen,
             decltype(NetworkEngine::onAnnounce)&& onAnnounce,
+            decltype(NetworkEngine::onAnnounce)&& onUpdate,
             decltype(NetworkEngine::onRefresh)&& onRefresh);
 
     ~NetworkEngine();
@@ -237,9 +254,10 @@ public:
     void clear();
 
     /**
-     * Sends values (with closest nodes) to a listenner.
+     * Sends values (with closest nodes) to a listener.
      *
-     * @param sa          The address of the listenner.
+     * @deprecated
+     * @param sa          The address of the listener.
      * @param sslen       The length of the sockaddr structure.
      * @param socket_id  The tid to use to write to the request socket.
      * @param hash        The hash key of the value.
@@ -250,6 +268,24 @@ public:
      * @param values      The values to send.
      */
     void tellListener(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
+            std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
+            std::vector<Sp<Value>>&& values, const Query& q);
+
+    /**
+     * Sends values (with closest nodes) to a listener.
+     * 
+     * @note  This deprecate tellListener
+     * @param sa          The address of the listener.
+     * @param sslen       The length of the sockaddr structure.
+     * @param socket_id  The tid to use to write to the request socket.
+     * @param hash        The hash key of the value.
+     * @param want        Wether to send ipv4 and/or ipv6 nodes.
+     * @param ntoken      Listen security token.
+     * @param nodes       The ipv4 closest nodes.
+     * @param nodes6      The ipv6 closest nodes.
+     * @param values      The values to send.
+     */
+    void updateValues(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
             std::vector<Sp<Value>>&& values, const Query& q);
 
@@ -363,37 +399,6 @@ public:
                            RequestExpiredCb&& on_expired,
                            SocketCb&& socket_cb);
     /**
-     * Send a "updateValues" request to a given node.
-     *
-     * @param n           The node.
-     * @param hash        The storage's hash.
-     * @param query       The query describing filters.
-     * @param token       A security token.
-     * @param previous    The previous request "updateValues" sent to this node.
-     * @param socket      **UNUSED** The socket for further response.
-     *
-     *                    For backward compatibility purpose, sendUpdateValues has to
-     *                    handle creation of the socket. Therefor, you cannot
-     *                    use openSocket yourself. TODO: Once we don't support
-     *                    the old "updateValues" negociation, sendUpdateValues shall not
-     *                    create the socket itself.
-     *
-     * @param on_done     Request callback when the request is completed.
-     * @param on_expired  Request callback when the request expires.
-     * @param socket_cb   Callback to execute each time new updates arrive on
-     *                    the socket.
-     *
-     * @return the request with information concerning its success.
-     */
-    Sp<Request> sendUpdateValues(Sp<Node> n,
-                                 const InfoHash& hash,
-                                 const Query& query,
-                                 const Blob& token,
-                                 Sp<Request> previous,
-                                 RequestCb&& on_done,
-                                 RequestExpiredCb&& on_expired,
-                                 SocketCb&& socket_cb);
-    /**
      * Send a "announce" request to a given node.
      *
      * @param n           The node.
@@ -429,6 +434,26 @@ public:
     Sp<Request> sendRefreshValue(Sp<Node> n,
                                  const InfoHash& hash,
                                  const Value::Id& vid,
+                                 const Blob& token,
+                                 RequestCb&& on_done,
+                                 RequestExpiredCb&& on_expired);
+    /**
+     * Send a "update" request to a given node. Used for Listen operations
+     *
+     * @param n           The node.
+     * @param hash        The target hash.
+     * @param values      The values.
+     * @param created     Time id.
+     * @param token       A security token.
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     *
+     * @return the request with information concerning its success.
+     */
+    Sp<Request> sendUpdateValues(Sp<Node> n,
+                                 const InfoHash& infohash,
+                                 const std::vector<Sp<Value>>& values,
+                                 time_point created,
                                  const Blob& token,
                                  RequestCb&& on_done,
                                  RequestExpiredCb&& on_expired);
@@ -521,13 +546,13 @@ private:
     void sendRequest(const Sp<Request>& request);
 
     struct MessageStats {
-        unsigned ping          {0};
-        unsigned find          {0};
-        unsigned get           {0};
-        unsigned put           {0};
-        unsigned listen        {0};
-        unsigned updateValues  {0};
-        unsigned refresh       {0};
+        unsigned ping         {0};
+        unsigned find         {0};
+        unsigned get          {0};
+        unsigned put          {0};
+        unsigned listen       {0};
+        unsigned updateValue  {0};
+        unsigned refresh      {0};
     };
 
 

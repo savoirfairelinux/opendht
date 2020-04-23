@@ -445,7 +445,7 @@ private:
     void reportedAddr(const SockAddr&);
 
     // Storage
-    void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {});
+    void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
     bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {}, bool permanent = false);
     bool storageErase(const InfoHash& id, Value::Id vid);
     bool storageRefresh(const InfoHash& id, Value::Id vid);
@@ -600,10 +600,17 @@ private:
             const InfoHash& hash,
             const Blob& token,
             size_t socket_id,
-            const Query& query);
+            const Query& query,
+            int version = 0);
     void onListenDone(const Sp<Node>& status,
             net::RequestAnswer& a,
             Sp<Search>& sr);
+    /* when we receive an update request */
+    net::RequestAnswer onUpdate(Sp<Node> node,
+            const InfoHash& hash,
+            const Blob& token,
+            const std::vector<Sp<Value>>& v,
+            const time_point& created);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,
             const InfoHash& hash,

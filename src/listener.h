@@ -30,8 +30,9 @@ namespace dht {
 struct Listener {
     time_point time;
     Query query;
+    int version;
 
-    Listener(time_point t, Query&& q) : time(t), query(std::move(q)) {}
+    Listener(time_point t, Query&& q, int version = 0) : time(t), query(std::move(q)), version(version) {}
 
     void refresh(time_point t, Query&& q) {
         time = t;
