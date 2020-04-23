@@ -57,6 +57,10 @@ class DhtRunnerTester : public CppUnit::TestFixture {
      * Test listen method
      */
     void testListen();
+    /**
+     * Test listen method with lot of datas
+     */
+    void testListenLotOfBytes();
 };
 
 }  // namespace test

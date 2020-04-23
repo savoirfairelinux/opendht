@@ -363,6 +363,37 @@ public:
                            RequestExpiredCb&& on_expired,
                            SocketCb&& socket_cb);
     /**
+     * Send a "updateValues" request to a given node.
+     *
+     * @param n           The node.
+     * @param hash        The storage's hash.
+     * @param query       The query describing filters.
+     * @param token       A security token.
+     * @param previous    The previous request "updateValues" sent to this node.
+     * @param socket      **UNUSED** The socket for further response.
+     *
+     *                    For backward compatibility purpose, sendUpdateValues has to
+     *                    handle creation of the socket. Therefor, you cannot
+     *                    use openSocket yourself. TODO: Once we don't support
+     *                    the old "updateValues" negociation, sendUpdateValues shall not
+     *                    create the socket itself.
+     *
+     * @param on_done     Request callback when the request is completed.
+     * @param on_expired  Request callback when the request expires.
+     * @param socket_cb   Callback to execute each time new updates arrive on
+     *                    the socket.
+     *
+     * @return the request with information concerning its success.
+     */
+    Sp<Request> sendUpdateValues(Sp<Node> n,
+                                 const InfoHash& hash,
+                                 const Query& query,
+                                 const Blob& token,
+                                 Sp<Request> previous,
+                                 RequestCb&& on_done,
+                                 RequestExpiredCb&& on_expired,
+                                 SocketCb&& socket_cb);
+    /**
      * Send a "announce" request to a given node.
      *
      * @param n           The node.
@@ -490,12 +521,13 @@ private:
     void sendRequest(const Sp<Request>& request);
 
     struct MessageStats {
-        unsigned ping    {0};
-        unsigned find    {0};
-        unsigned get     {0};
-        unsigned put     {0};
-        unsigned listen  {0};
-        unsigned refresh {0};
+        unsigned ping          {0};
+        unsigned find          {0};
+        unsigned get           {0};
+        unsigned put           {0};
+        unsigned listen        {0};
+        unsigned updateValues  {0};
+        unsigned refresh       {0};
     };
 
 

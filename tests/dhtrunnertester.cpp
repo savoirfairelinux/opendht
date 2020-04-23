@@ -167,4 +167,54 @@ DhtRunnerTester::testListen() {
     node1.cancelListen(d, tokend);
 }
 
+void
+DhtRunnerTester::testListenLotOfBytes() {
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::atomic_uint valueCount(0);
+    unsigned putCount(0);
+    unsigned putOkCount(0);
+
+    std::string data {};
+    for (int i = 0; i < 10000; ++i) {
+        data += "a";
+    }
+
+    auto foo = dht::InfoHash::get("foo");
+    constexpr unsigned N = 50;
+
+    for (unsigned i=0; i<N; i++) {
+        node2.put(foo, data, [&](bool ok) {
+            std::lock_guard<std::mutex> lock(mutex);
+            putCount++;
+            if (ok) putOkCount++;
+            cv.notify_all();
+        });
+    }
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N; }));
+    }
+
+    dht::DhtRunner node3 {};
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.max_peer_req_per_sec = -1;
+    config.dht_config.node_config.max_req_per_sec = -1;
+    node3.run(42242, config);
+    node3.bootstrap(node1.getBound());
+
+    auto ftokenfoo = node3.listen(foo, [&](const std::shared_ptr<dht::Value>&) {
+        valueCount++;
+        cv.notify_all();
+        return true;
+    });
+
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return valueCount == N; }));
+    }
+
+    node3.cancelListen(foo, ftokenfoo.get());
+}
+
 }  // namespace test
