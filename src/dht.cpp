@@ -1982,14 +1982,19 @@ Dht::onDisconnected()
         return;
     if (logger_)
         logger_->d(myid, "Bootstraping");
-    for (const auto& boootstrap : bootstrap_nodes)
+    for (const auto& boootstrap : bootstrap_nodes) {
         try {
-            for (const auto& ip : network_engine.getSocket()->resolve(boootstrap.first, boootstrap.second))
+            auto ips = network_engine.getSocket()->resolve(boootstrap.first, boootstrap.second);
+            for (auto& ip : ips) {
+                if (ip.getPort() == 0)
+                    ip.setPort(net::DHT_DEFAULT_PORT);
                 pingNode(ip);
+            }
         } catch (const std::exception& e) {
             if (logger_)
                 logger_->e(myid, "Can't resolve %s:%s: %s", boootstrap.first.c_str(), boootstrap.second.c_str(), e.what());
         }
+    }
     if (bootstrapJob)
         bootstrapJob->cancel();
     bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::onDisconnected, this));
