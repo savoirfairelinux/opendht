@@ -99,7 +99,6 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
         decltype(NetworkEngine::onGetValues)&& onGetValues,
         decltype(NetworkEngine::onListen)&& onListen,
         decltype(NetworkEngine::onAnnounce)&& onAnnounce,
-        decltype(NetworkEngine::onUpdate)&& onUpdate,
         decltype(NetworkEngine::onRefresh)&& onRefresh) :
     onError(std::move(onError)),
     onNewNode(std::move(onNewNode)),
@@ -109,7 +108,6 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
     onGetValues(std::move(onGetValues)),
     onListen(std::move(onListen)),
     onAnnounce(std::move(onAnnounce)),
-    onUpdate(std::move(onUpdate)),
     onRefresh(std::move(onRefresh)),
     myid(myid), config(c), dht_socket(std::move(sock)), logger_(log), rd(rand),
     cache(rd),
@@ -142,15 +140,9 @@ NetworkEngine::updateValues(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
         std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
         const Query& query)
 {
-    printf("@@@ updateValues\n");
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        // TODO token useless?
-        sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id, [](const Request&, RequestAnswer&&) {
-            printf("@@@ onDone TODO\n");
-        }, [](const Request&, bool) {
-            printf("@@@ onExpired TODO\n");
-        });
+        sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id);
     } catch (const std::overflow_error& e) {
         if (logger_)
             logger_->e("Can't send value: buffer not large enough !");
@@ -629,23 +621,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 break;
             }
             case MessageType::UpdateValue: {
-                printf("@@@ QUERY_UPDATE %u %u %u\n", msg->version, msg->socket_id, msg->values.size());
                 if (logIncoming_ and logger_)
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'update' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.updateValue;
-
-
                 auto rsocket = node->getSocket(msg->socket_id);
                 if (not rsocket) {
-                    printf("@@@ CAN't find socket %u\n", msg->socket_id);
+                    logger_->e(msg->info_hash, node->id, "[node %s] 'update' request without socket for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                     break;
                 }
                 rsocket->on_receive(node, std::move(*msg));
-
-
-                //onUpdate(node, msg->info_hash, msg->token, msg->values, msg->created);
-                // TODO use and remove created: msg->socket_id;
-                // TODO token?
                 break;
             }
             default:
@@ -1202,12 +1186,9 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
                                 const std::vector<Sp<Value>>& values,
                                 time_point created,
                                 const Blob& token,
-                                const size_t& socket_id,
-                                RequestCb&& on_done,
-                                RequestExpiredCb&& on_expired)
+                                const size_t& socket_id)
 {
     TransId tid (n->getNewTid());
-    printf("### SEND SID %u\n", socket_id);
 
     TransId sid (socket_id);
     msgpack::sbuffer buffer;
@@ -1258,7 +1239,7 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
     );
     req->parts = std::move(v);
     sendRequest(req);
-    ++out_stats.put;
+    ++out_stats.updateValue;
     return req;
 }
 
@@ -1310,7 +1291,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
         }
     );
     sendRequest(req);
-    ++out_stats.updateValue;
+    ++out_stats.refresh;
     return req;
 }
 

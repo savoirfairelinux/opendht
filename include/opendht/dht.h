@@ -605,12 +605,6 @@ private:
     void onListenDone(const Sp<Node>& status,
             net::RequestAnswer& a,
             Sp<Search>& sr);
-    /* when we receive an update request */
-    net::RequestAnswer onUpdate(Sp<Node> node,
-            const InfoHash& hash,
-            const Blob& token,
-            const std::vector<Sp<Value>>& v,
-            const time_point& created);
     /* when we receive an announce request */
     net::RequestAnswer onAnnounce(Sp<Node> node,
             const InfoHash& hash,
