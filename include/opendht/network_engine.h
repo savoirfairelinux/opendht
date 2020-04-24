@@ -445,6 +445,7 @@ public:
      * @param values      The values.
      * @param created     Time id.
      * @param token       A security token.
+     * @param sid         The socket id.
      * @param on_done     Request callback when the request is completed.
      * @param on_expired  Request callback when the request expires.
      *
@@ -455,6 +456,7 @@ public:
                                  const std::vector<Sp<Value>>& values,
                                  time_point created,
                                  const Blob& token,
+                                 const size_t& sid,
                                  RequestCb&& on_done,
                                  RequestExpiredCb&& on_expired);
 

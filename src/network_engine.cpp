@@ -145,7 +145,8 @@ NetworkEngine::updateValues(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
     printf("@@@ updateValues\n");
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendUpdateValues(node, hash, values, scheduler.time(), ntoken, [](const Request&, RequestAnswer&&) {
+        // TODO token useless?
+        sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id, [](const Request&, RequestAnswer&&) {
             printf("@@@ onDone TODO\n");
         }, [](const Request&, bool) {
             printf("@@@ onExpired TODO\n");
@@ -622,18 +623,27 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (logIncoming_ and logger_)
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
-                printf("@@@@ msg->socket_id %u\n", msg->socket_id);
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
             case MessageType::UpdateValue: {
-                printf("@@@ QUERY_UPDATE\n");
+                printf("@@@ QUERY_UPDATE %u %u %u\n", msg->version, msg->socket_id, msg->values.size());
                 if (logIncoming_ and logger_)
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'update' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.updateValue;
-                onUpdate(node, msg->info_hash, msg->token, msg->values, msg->created);
+
+
+                auto rsocket = node->getSocket(msg->socket_id);
+                if (not rsocket) {
+                    printf("@@@ CAN't find socket %u\n", msg->socket_id);
+                    break;
+                }
+                rsocket->on_receive(node, std::move(*msg));
+
+
+                //onUpdate(node, msg->info_hash, msg->token, msg->values, msg->created);
                 // TODO use and remove created: msg->socket_id;
                 // TODO token?
                 break;
@@ -1192,14 +1202,19 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
                                 const std::vector<Sp<Value>>& values,
                                 time_point created,
                                 const Blob& token,
+                                const size_t& socket_id,
                                 RequestCb&& on_done,
                                 RequestExpiredCb&& on_expired)
 {
     TransId tid (n->getNewTid());
+    printf("### SEND SID %u\n", socket_id);
+
+    TransId sid (socket_id);
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(7+(config.network?1:0));
 
+    pk.pack(KEY_VERSION);   pk.pack(1);
     pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
@@ -1211,7 +1226,8 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
       pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
 
     pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
-    pk.pack(KEY_VERSION);   pk.pack(1);
+    pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
+                            pk.pack_bin_body((const char*)sid.data(), sid.size());
     pk.pack(KEY_TID); pk.pack_bin(tid.size());
                       pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
