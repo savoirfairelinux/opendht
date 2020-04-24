@@ -120,7 +120,6 @@ struct RequestAnswer {
  * @param onGetValues    callback for "get values" request.
  * @param onListen       callback for "listen" request.
  * @param onAnnounce     callback for "announce" request.
- * @param onUpdate       callback for "update" request.
  * @param onRefresh      callback for "refresh" request.
  */
 class NetworkEngine final
@@ -198,20 +197,6 @@ private:
             const std::vector<Sp<Value>>&,
             const time_point&)> onAnnounce {};
     /**
-     * Called on update request.
-     *
-     * @param node (type: Sp<Node>) the requesting node.
-     * @param h (type: InfoHash) hash of the value of interest.
-     * @param token (type: Blob) security token.
-     * @param values (type: std::vector<Sp<Value>>) values to store.
-     * @param created (type: time_point) time when the value was created.
-     */
-    std::function<RequestAnswer(Sp<Node>,
-            const InfoHash&,
-            const Blob&,
-            const std::vector<Sp<Value>>&,
-            const time_point&)> onUpdate {};
-    /**
      * Called on refresh request.
      *
      * @param node (type: Sp<Node>) the requesting node.
@@ -244,7 +229,6 @@ public:
             decltype(NetworkEngine::onGetValues)&& onGetValues,
             decltype(NetworkEngine::onListen)&& onListen,
             decltype(NetworkEngine::onAnnounce)&& onAnnounce,
-            decltype(NetworkEngine::onAnnounce)&& onUpdate,
             decltype(NetworkEngine::onRefresh)&& onRefresh);
 
     ~NetworkEngine();
@@ -272,18 +256,18 @@ public:
             std::vector<Sp<Value>>&& values, const Query& q);
 
     /**
-     * Sends values (with closest nodes) to a listener.
+     * Sends values (with closest nodes) to a listener (if version == 1)
      * 
-     * @note  This deprecate tellListener
-     * @param sa          The address of the listener.
-     * @param sslen       The length of the sockaddr structure.
-     * @param socket_id  The tid to use to write to the request socket.
-     * @param hash        The hash key of the value.
+     * @note  This deprecates tellListener
+     * @param n           The node
+     * @param socket_id   Socket id linked to the listener
+     * @param hash        The hash watched by the listener
      * @param want        Wether to send ipv4 and/or ipv6 nodes.
      * @param ntoken      Listen security token.
      * @param nodes       The ipv4 closest nodes.
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
+     * @param q           The query
      */
     void updateValues(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
@@ -446,8 +430,6 @@ public:
      * @param created     Time id.
      * @param token       A security token.
      * @param sid         The socket id.
-     * @param on_done     Request callback when the request is completed.
-     * @param on_expired  Request callback when the request expires.
      *
      * @return the request with information concerning its success.
      */
@@ -456,9 +438,7 @@ public:
                                  const std::vector<Sp<Value>>& values,
                                  time_point created,
                                  const Blob& token,
-                                 const size_t& sid,
-                                 RequestCb&& on_done,
-                                 RequestExpiredCb&& on_expired);
+                                 const size_t& sid);
 
     /**
      * Parses a message and calls appropriate callbacks.
