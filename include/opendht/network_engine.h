@@ -502,7 +502,7 @@ private:
     // basic wrapper for socket sendto function
     int send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
 
-    void sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr);
+    void sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
     void maintainRxBuffer(Tid tid);
 
