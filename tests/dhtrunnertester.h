@@ -32,6 +32,7 @@ class DhtRunnerTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testConstructors);
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
+    CPPUNIT_TEST(testListenLotOfBytes);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
