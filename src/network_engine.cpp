@@ -123,26 +123,15 @@ void
 NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, want_t want,
         const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
         std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
-        const Query& query)
+        const Query& query, int version)
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
-    } catch (const std::overflow_error& e) {
-        if (logger_)
-            logger_->e("Can't send value: buffer not large enough !");
-    }
-}
-
-void
-NetworkEngine::updateValues(Sp<Node> node, Tid socket_id, const InfoHash& hash, want_t want,
-        const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
-        std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
-        const Query& query)
-{
-    auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
-    try {
-        sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id);
+        if (version == 1) {
+            sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id);
+        } else {
+            sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
+        }
     } catch (const std::overflow_error& e) {
         if (logger_)
             logger_->e("Can't send value: buffer not large enough !");
@@ -1219,23 +1208,8 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
 
     auto req = std::make_shared<Request>(MessageType::UpdateValue, tid.toInt(), n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
-        [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
-            if (msg.value_id == Value::INVALID_ID) {
-                if (logger_)
-                    logger_->d(infohash, "Unknown search or announce!");
-            } else {
-                if (on_done) {
-                    RequestAnswer answer {};
-                    answer.vid = msg.value_id;
-                    on_done(req_status, std::move(answer));
-                }
-            }
-        },
-        [=](const Request& req_status, bool done) { /* on expired */
-            if (on_expired) {
-                on_expired(req_status, done);
-            }
-        }
+        [=](const Request&, ParsedMessage&&) { /* on done */ },
+        [=](const Request&, bool) { /* on expired */ }
     );
     req->parts = std::move(v);
     sendRequest(req);
