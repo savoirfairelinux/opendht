@@ -48,23 +48,6 @@ static constexpr uint8_t v4prefix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xF
 constexpr unsigned SEND_NODES {8};
 
 
-/* Transaction-ids are 4-bytes long, with the first two bytes identifying
- * the kind of request, and the remaining two a sequence number in
- * host order.
- */
-struct TransId final : public std::array<uint8_t, 4> {
-    TransId() { std::fill(begin(), end(), 0); }
-    TransId(const std::array<char, 4>& o) { std::copy(o.begin(), o.end(), begin()); }
-    TransId(uint32_t id) {
-        *reinterpret_cast<uint32_t*>(data()) = htonl(id);
-    }
-
-    uint32_t toInt() const {
-        return ntohl(*reinterpret_cast<const uint32_t*>(&(*this)[0]));
-    }
-};
-
-
 struct NetworkEngine::PartialMessage {
     SockAddr from;
     time_point start;
@@ -654,7 +637,7 @@ NetworkEngine::send(const SockAddr& addr, const char *buf, size_t len, bool conf
 
 Sp<Request>
 NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    TransId tid (node->getNewTid());
+    Tid tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -663,15 +646,14 @@ NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& o
      pk.pack(KEY_REQ_ID); pk.pack(myid);
 
     pk.pack(KEY_Q); pk.pack(QUERY_PING);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                              pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::Ping, tid.toInt(), node,
+    auto req = std::make_shared<Request>(MessageType::Ping, tid, node,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&&) {
             if (logger_)
@@ -701,9 +683,7 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
       pk.pack(KEY_REQ_ID); pk.pack(myid);
       insertAddr(pk, addr);
 
-    TransId t (tid);
-    pk.pack(KEY_TID); pk.pack_bin(t.size());
-                               pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
@@ -716,7 +696,7 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
 Sp<Request>
 NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    TransId tid (n->getNewTid());
+    Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -732,15 +712,14 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
     }
 
     pk.pack(KEY_Q); pk.pack(QUERY_FIND);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::FindNode, tid.toInt(), n,
+    auto req = std::make_shared<Request>(MessageType::FindNode, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
@@ -762,7 +741,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
 Sp<Request>
 NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-    TransId tid (n->getNewTid());
+    Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -786,15 +765,14 @@ NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query&
       }
 
     pk.pack(KEY_Q); pk.pack(QUERY_GET);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                      pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::GetValues, tid.toInt(), n,
+    auto req = std::make_shared<Request>(MessageType::GetValues, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done) {
@@ -896,7 +874,7 @@ NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Va
 }
 
 void
-NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals, const SockAddr& addr)
+NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr)
 {
     msgpack::sbuffer buffer;
     unsigned i=0;
@@ -911,8 +889,7 @@ NetworkEngine::sendValueParts(const TransId& tid, const std::vector<Blob>& svals
                 pk.pack(KEY_NETID); pk.pack(config.network);
             }
             pk.pack(KEY_Y); pk.pack(KEY_V);
-            pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                                       pk.pack_bin_body((const char*)tid.data(), tid.size());
+            pk.pack(KEY_TID); pk.pack(tid);
             pk.pack(KEY_V); pk.pack_map(1);
                 pk.pack(i); pk.pack_map(2);
                     pk.pack(std::string("o")); pk.pack(start);
@@ -967,9 +944,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
         }
     }
 
-    TransId t (tid);
-    pk.pack(KEY_TID); pk.pack_bin(t.size());
-                      pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
@@ -1045,7 +1020,7 @@ NetworkEngine::sendListen(Sp<Node> n,
         SocketCb&& socket_cb)
 {
     Tid socket;
-    TransId tid (n->getNewTid());
+    Tid tid (n->getNewTid());
     if (previous and previous->node == n) {
         socket = previous->getSocket();
     } else {
@@ -1060,7 +1035,6 @@ NetworkEngine::sendListen(Sp<Node> n,
             logger_->e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
         return {};
     }
-    TransId sid(socket);
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -1071,22 +1045,20 @@ NetworkEngine::sendListen(Sp<Node> n,
       pk.pack(KEY_REQ_ID);    pk.pack(myid);
       pk.pack(KEY_REQ_H);     pk.pack(hash);
       pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
-      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
-                              pk.pack_bin_body((const char*)sid.data(), sid.size());
+      pk.pack(KEY_REQ_SID);   pk.pack(socket);
       if (has_query) {
           pk.pack(KEY_REQ_QUERY); pk.pack(query);
       }
 
     pk.pack(KEY_Q); pk.pack(QUERY_LISTEN);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::Listen, tid.toInt(), n,
+    auto req = std::make_shared<Request>(MessageType::Listen, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (on_done)
@@ -1113,9 +1085,7 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
       pk.pack(KEY_REQ_ID); pk.pack(myid);
       insertAddr(pk, addr);
 
-    TransId t (tid);
-    pk.pack(KEY_TID); pk.pack_bin(t.size());
-                               pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
@@ -1134,7 +1104,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
         RequestCb&& on_done,
         RequestExpiredCb&& on_expired)
 {
-    TransId tid (n->getNewTid());
+    Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -1150,15 +1120,14 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
       pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
 
     pk.pack(KEY_Q);   pk.pack(QUERY_PUT);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                      pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
     pk.pack(KEY_UA);  pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid.toInt(), n,
+    auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
@@ -1192,7 +1161,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                 RequestCb&& on_done,
                 RequestExpiredCb&& on_expired)
 {
-    TransId tid (n->getNewTid());
+    Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -1204,15 +1173,14 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
       pk.pack(KEY_REQ_TOKEN);    pk.pack(token);
 
     pk.pack(KEY_Q); pk.pack(QUERY_REFRESH);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                               pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::Refresh, tid.toInt(), n,
+    auto req = std::make_shared<Request>(MessageType::Refresh, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
             if (msg.value_id == Value::INVALID_ID) {
@@ -1248,9 +1216,7 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) 
       pk.pack(KEY_REQ_VALUE_ID); pk.pack(vid);
       insertAddr(pk, addr);
 
-    TransId t(tid);
-    pk.pack(KEY_TID); pk.pack_bin(t.size());
-                               pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
@@ -1280,9 +1246,7 @@ NetworkEngine::sendError(const SockAddr& addr,
           pk.pack(KEY_REQ_ID); pk.pack(myid);
     }
 
-    TransId t(tid);
-    pk.pack(KEY_TID); pk.pack_bin(t.size());
-                               pk.pack_bin_body((const char*)t.data(), t.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_E);
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
