@@ -1212,12 +1212,14 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
     TransId sid (socket_id);
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(7+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(KEY_VERSION);   pk.pack(1);
-    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
+    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 7 : 6));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
+      pk.pack(KEY_VERSION);    pk.pack(1);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
+      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
+                              pk.pack_bin_body((const char*)sid.data(), sid.size());
       auto v = packValueHeader(buffer, values);
       if (created < scheduler.time()) {
           pk.pack(KEY_REQ_CREATION);
@@ -1226,8 +1228,6 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
       pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
 
     pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
-    pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
-                            pk.pack_bin_body((const char*)sid.data(), sid.size());
     pk.pack(KEY_TID); pk.pack_bin(tid.size());
                       pk.pack_bin_body((const char*)tid.data(), tid.size());
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
