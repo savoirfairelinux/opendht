@@ -250,28 +250,11 @@ public:
      * @param nodes       The ipv4 closest nodes.
      * @param nodes6      The ipv6 closest nodes.
      * @param values      The values to send.
+     * @param version     If version = 1, a request will be used to answer to the listener
      */
     void tellListener(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
-            std::vector<Sp<Value>>&& values, const Query& q);
-
-    /**
-     * Sends values (with closest nodes) to a listener (if version == 1)
-     * 
-     * @note  This deprecates tellListener
-     * @param n           The node
-     * @param socket_id   Socket id linked to the listener
-     * @param hash        The hash watched by the listener
-     * @param want        Wether to send ipv4 and/or ipv6 nodes.
-     * @param ntoken      Listen security token.
-     * @param nodes       The ipv4 closest nodes.
-     * @param nodes6      The ipv6 closest nodes.
-     * @param values      The values to send.
-     * @param q           The query
-     */
-    void updateValues(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
-            std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
-            std::vector<Sp<Value>>&& values, const Query& q);
+            std::vector<Sp<Value>>&& values, const Query& q, int version);
 
     void tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
     void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
