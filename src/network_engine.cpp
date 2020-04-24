@@ -622,6 +622,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (logIncoming_ and logger_)
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
+                printf("@@@@ msg->socket_id %u\n", msg->socket_id);
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
                 auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
                 sendListenConfirmation(from, msg->tid);
@@ -1067,13 +1068,12 @@ NetworkEngine::sendListen(Sp<Node> n,
             logger_->e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
         return {};
     }
-
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
     auto has_query = not query.where.empty() or not query.select.empty();
-    pk.pack(KEY_A); pk.pack_map(4 + has_query);
+    pk.pack(KEY_A); pk.pack_map(5 + has_query);
       pk.pack(KEY_REQ_ID);    pk.pack(myid);
       pk.pack(KEY_VERSION);   pk.pack(1);
       pk.pack(KEY_REQ_H);     pk.pack(hash);
