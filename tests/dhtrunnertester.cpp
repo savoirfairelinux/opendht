@@ -175,10 +175,7 @@ DhtRunnerTester::testListenLotOfBytes() {
     unsigned putCount(0);
     unsigned putOkCount(0);
 
-    std::string data {};
-    for (int i = 0; i < 10000; ++i) {
-        data += "a";
-    }
+    std::string data(10000, 'a');
 
     auto foo = dht::InfoHash::get("foo");
     constexpr unsigned N = 50;
