@@ -1177,9 +1177,9 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
                                 const Blob& token,
                                 const size_t& socket_id)
 {
-    TransId tid (n->getNewTid());
+    Tid tid (n->getNewTid());
+    Tid sid (socket_id);
 
-    TransId sid (socket_id);
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -1188,8 +1188,7 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
       pk.pack(KEY_VERSION);    pk.pack(1);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
-      pk.pack(KEY_REQ_SID);   pk.pack_bin(sid.size());
-                              pk.pack_bin_body((const char*)sid.data(), sid.size());
+      pk.pack(KEY_REQ_SID);   pk.pack(sid);
       auto v = packValueHeader(buffer, values);
       if (created < scheduler.time()) {
           pk.pack(KEY_REQ_CREATION);
@@ -1198,15 +1197,14 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
       pk.pack(KEY_REQ_TOKEN);  pk.pack(token);
 
     pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
-    pk.pack(KEY_TID); pk.pack_bin(tid.size());
-                      pk.pack_bin_body((const char*)tid.data(), tid.size());
+    pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
     pk.pack(KEY_UA);  pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
-    auto req = std::make_shared<Request>(MessageType::UpdateValue, tid.toInt(), n,
+    auto req = std::make_shared<Request>(MessageType::UpdateValue, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request&, ParsedMessage&&) { /* on done */ },
         [=](const Request&, bool) { /* on expired */ }
