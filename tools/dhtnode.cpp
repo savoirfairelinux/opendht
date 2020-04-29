@@ -114,7 +114,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #endif
 )
 {
-    print_node_info(*node, params);
+    print_node_info(node->getNodeInfo(), params);
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
 #ifndef WIN32_NATIVE
@@ -143,22 +143,23 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             print_help();
             continue;
         } else if (op == "ll") {
-            auto nodeInfo = node->getNodeInfo();
-            print_node_info(*node, params);
-            std::cout << nodeInfo.ongoing_ops << " ongoing operations" << std::endl;
-            std::cout << "IPv4 stats:" << std::endl;
-            std::cout << nodeInfo.ipv4.toString() << std::endl;
-            std::cout << "IPv6 stats:" << std::endl;
-            std::cout << nodeInfo.ipv6.toString() << std::endl;
+            node->getNodeInfo([&](const std::shared_ptr<dht::NodeInfo>& nodeInfo) {
+                print_node_info(*nodeInfo, params);
+                std::cout << nodeInfo->ongoing_ops << " ongoing operations" << std::endl;
+                std::cout << "IPv4 stats:" << std::endl;
+                std::cout << nodeInfo->ipv4.toString() << std::endl;
+                std::cout << "IPv6 stats:" << std::endl;
+                std::cout << nodeInfo->ipv6.toString() << std::endl;
 #ifdef OPENDHT_PROXY_SERVER
-            for (const auto& proxy : proxies) {
-                std::cout << "Stats for proxy server on port " << proxy.first << std::endl;
-                if (auto stats = proxy.second->stats())
-                    std::cout << "  " << stats->toString() << std::endl;
-                else
-                    std::cout << "  (stats not available yet)" << std::endl;                
-            }
+                for (const auto& proxy : proxies) {
+                    std::cout << "Stats for proxy server on port " << proxy.first << std::endl;
+                    if (auto stats = proxy.second->stats())
+                        std::cout << "  " << stats->toString() << std::endl;
+                    else
+                        std::cout << "  (stats not available yet)" << std::endl;                
+                }
 #endif
+            });
             continue;
         } else if (op == "lr") {
             std::cout << "IPv4 routing table:" << std::endl;
