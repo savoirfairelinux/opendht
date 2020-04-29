@@ -82,6 +82,8 @@ struct OPENDHT_PUBLIC NodeInfo {
     NodeStats ipv4 {};
     NodeStats ipv6 {};
     size_t ongoing_ops {0};
+    in_port_t bound4 {0};
+    in_port_t bound6 {0};
 
 #ifdef OPENDHT_JSONCPP
     /**
