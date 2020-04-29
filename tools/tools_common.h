@@ -124,7 +124,7 @@ struct dht_params {
     bool log {false};
     bool syslog {false};
     std::string logfile {};
-    std::pair<std::string, std::string> bootstrap {};
+    std::string bootstrap {};
     dht::NetId network {0};
     in_port_t port {0};
     in_port_t proxyserver {0};
@@ -289,10 +289,7 @@ parseArgs(int argc, char **argv) {
             params.public_stable = true;
             break;
         case 'b':
-            params.bootstrap = dht::splitPort((optarg[0] == '=') ? optarg+1 : optarg);
-            if (not params.bootstrap.first.empty() and params.bootstrap.second.empty()) {
-                params.bootstrap.second = std::to_string(dht::net::DHT_DEFAULT_PORT);
-            }
+            params.bootstrap = (optarg[0] == '=') ? optarg+1 : optarg;
             break;
         case 'V':
             params.version = true;

@@ -191,14 +191,10 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             continue;
         } else if (op == "b") {
             iss >> idstr;
-            try {
-                auto addr = splitPort(idstr);
-                if (not addr.first.empty() and addr.second.empty())
-                    addr.second = std::to_string(dht::net::DHT_DEFAULT_PORT);
-                node->bootstrap(addr.first.c_str(), addr.second.c_str());
-            } catch (const std::exception& e) {
-                std::cerr << e.what() << std::endl;
-            }
+            if (not idstr.empty())
+                node->bootstrap(idstr);
+            else
+                std::cerr << "No service provided. Syntax: b hostname:port" << std::endl;
             continue;
         } else if (op == "log") {
             iss >> idstr;
@@ -538,9 +534,9 @@ main(int argc, char **argv)
         auto dhtConf = getDhtConfig(params);
         node->run(params.port, dhtConf.first, std::move(dhtConf.second));
 
-        if (not params.bootstrap.first.empty()) {
-            std::cout << "Bootstrap: " << params.bootstrap.first << ":" << params.bootstrap.second << std::endl;
-            node->bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
+        if (not params.bootstrap.empty()) {
+            std::cout << "Bootstrap: " << params.bootstrap << std::endl;
+            node->bootstrap(params.bootstrap);
         }
 
 #ifdef OPENDHT_PROXY_SERVER

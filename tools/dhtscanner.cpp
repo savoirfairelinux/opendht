@@ -91,8 +91,8 @@ main(int argc, char **argv)
         auto dhtConf = getDhtConfig(params);
         dht.run(params.port, dhtConf.first, std::move(dhtConf.second));
 
-        if (not params.bootstrap.first.empty())
-            dht.bootstrap(params.bootstrap.first.c_str(), params.bootstrap.second.c_str());
+        if (not params.bootstrap.empty())
+            dht.bootstrap(params.bootstrap);
 
         print_node_info(dht.getNodeInfo(), params);
         std::cout << "Scanning network..." << std::endl;
