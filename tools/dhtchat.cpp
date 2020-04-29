@@ -67,7 +67,7 @@ main(int argc, char **argv)
         if (not params.bootstrap.empty())
             dht.bootstrap(params.bootstrap);
 
-        print_node_info(dht.getNodeInfo(), params);
+        print_node_info(dht.getNodeInfo());
         std::cout << "  type 'c {hash}' to join a channel" << std::endl << std::endl;
 
         bool connected {false};

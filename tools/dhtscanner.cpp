@@ -94,7 +94,7 @@ main(int argc, char **argv)
         if (not params.bootstrap.empty())
             dht.bootstrap(params.bootstrap);
 
-        print_node_info(dht.getNodeInfo(), params);
+        print_node_info(dht.getNodeInfo());
         std::cout << "Scanning network..." << std::endl;
         auto all_nodes = std::make_shared<NodeSet>();
 

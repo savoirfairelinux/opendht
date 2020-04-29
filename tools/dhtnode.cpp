@@ -114,7 +114,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #endif
 )
 {
-    print_node_info(node->getNodeInfo(), params);
+    print_node_info(node->getNodeInfo());
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
 #ifndef WIN32_NATIVE
@@ -144,7 +144,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             continue;
         } else if (op == "ll") {
             node->getNodeInfo([&](const std::shared_ptr<dht::NodeInfo>& nodeInfo) {
-                print_node_info(*nodeInfo, params);
+                print_node_info(*nodeInfo);
                 std::cout << nodeInfo->ongoing_ops << " ongoing operations" << std::endl;
                 std::cout << "IPv4 stats:" << std::endl;
                 std::cout << nodeInfo->ipv4.toString() << std::endl;

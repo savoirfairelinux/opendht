@@ -191,13 +191,13 @@ getDhtConfig(dht_params& params)
     return {std::move(config), std::move(context)};
 }
 
-void print_node_info(const dht::NodeInfo& info, const dht_params& params) {
+void print_node_info(const dht::NodeInfo& info) {
     std::cout << "OpenDHT node " << info.node_id << " running on ";
     if (info.bound4 == info.bound6)
         std::cout << "port " << info.bound4 << std::endl;
     else
         std::cout << "IPv4 port " << info.bound4 << ", IPv6 port " << info.bound6 << std::endl;
-    if (params.id.first)
+    if (info.id)
         std::cout << "Public key ID " << info.id << std::endl;
 }
 
