@@ -625,7 +625,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         } catch (const std::overflow_error& e) {
             if (logger_)
                 logger_->e("Can't send value: buffer not large enough !");
-        } catch (DhtProtocolException& e) {
+        } catch (const DhtProtocolException& e) {
             sendError(from, msg->tid, e.getCode(), e.getMsg().c_str(), true);
         }
     }
