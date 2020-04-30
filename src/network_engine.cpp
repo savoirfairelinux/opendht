@@ -613,12 +613,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (logIncoming_ and logger_)
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'update' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.updateValue;
-                auto rsocket = node->getSocket(msg->socket_id);
-                if (not rsocket) {
+                if (auto rsocket = node->getSocket(msg->socket_id))
+                    rsocket->on_receive(node, std::move(*msg));
+                else if (logger_)
                     logger_->e(msg->info_hash, node->id, "[node %s] 'update' request without socket for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
-                    break;
-                }
-                rsocket->on_receive(node, std::move(*msg));
                 break;
             }
             default:
