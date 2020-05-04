@@ -127,7 +127,7 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
 {
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
-        if (version == 1) {
+        if (version >= 1) {
             sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id);
         } else {
             sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
@@ -139,11 +139,12 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
 }
 
 void
-NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values)
+NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(config.network?1:0));
+
+    pk.pack_map(4 + (version >= 1 ? 2 : 0) + (config.network?1:0));
 
     pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
@@ -165,16 +166,34 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
 
+    if (version >= 1) {
+        Tid tid (n->getNewTid());
+        Tid sid (socket_id);
+
+        pk.pack(KEY_REQ_SID);   pk.pack(sid);
+        pk.pack(KEY_TID); pk.pack(tid);
+
+        auto req = std::make_shared<Request>(MessageType::UpdateValue, tid, n,
+            Blob(buffer.data(), buffer.data() + buffer.size()),
+            [=](const Request&, ParsedMessage&&) { /* on done */ },
+            [=](const Request&, bool) { /* on expired */ }
+        );
+        sendRequest(req);
+        ++out_stats.updateValue;
+        return;
+    }
+
     // send response
     send(n->getAddr(), buffer.data(), buffer.size());
 }
 
 void
-NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values)
+NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(config.network?1:0));
+
+    pk.pack_map(4 + (version >= 1 ? 2 : 0) + (config.network?1:0));
 
     pk.pack(KEY_U);
     pk.pack_map(1 + (not values.empty()?1:0) + (not token.empty()?1:0));
@@ -194,6 +213,23 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
     pk.pack(KEY_UA); pk.pack(my_v);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+
+    if (version >= 1) {
+        Tid tid (n->getNewTid());
+        Tid sid (socket_id);
+
+        pk.pack(KEY_REQ_SID);   pk.pack(sid);
+        pk.pack(KEY_TID); pk.pack(tid);
+
+        auto req = std::make_shared<Request>(MessageType::UpdateValue, tid, n,
+            Blob(buffer.data(), buffer.data() + buffer.size()),
+            [=](const Request&, ParsedMessage&&) { /* on done */ },
+            [=](const Request&, bool) { /* on expired */ }
+        );
+        sendRequest(req);
+        ++out_stats.updateValue;
+        return;
     }
 
     // send response

@@ -256,8 +256,8 @@ public:
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
             std::vector<Sp<Value>>&& values, const Query& q, int version);
 
-    void tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
-    void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values);
+    void tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
+    void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
@@ -516,8 +516,8 @@ private:
         unsigned get          {0};
         unsigned put          {0};
         unsigned listen       {0};
-        unsigned updateValue  {0};
         unsigned refresh      {0};
+        unsigned updateValue  {0};
     };
 
 
