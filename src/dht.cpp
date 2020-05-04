@@ -1312,7 +1312,7 @@ Dht::expireStore(decltype(store)::iterator i)
                             id.toString().c_str(),
                             node_listeners.first->toString().c_str());
                     Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-                    network_engine.tellListenerExpired(node_listeners.first, l.first, id, ntoken, ids);
+                    network_engine.tellListenerExpired(node_listeners.first, l.first, id, ntoken, ids, l.second.version);
                 }
             }
         }
@@ -2480,7 +2480,7 @@ Dht::storageRefresh(const InfoHash& id, Value::Id vid)
                             id.toString().c_str(),
                             node_listeners.first->toString().c_str());
                     Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
-                    network_engine.tellListenerRefreshed(node_listeners.first, l.first, id, ntoken, ids);
+                    network_engine.tellListenerRefreshed(node_listeners.first, l.first, id, ntoken, ids, l.second.version);
                 }
             }
         }
