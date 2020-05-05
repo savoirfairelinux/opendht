@@ -48,10 +48,10 @@ for i in range(80,101):
         
         stats['timestamp'] = str(ts)
 
-        with open("stats_proxy_" + str(i), "a") as stat_file:
-            stat_file.write(str(stats))
-            stat_file.write('\n')
+        #with open("stats_proxy_" + str(i), "a") as stat_file:
+        #    stat_file.write(str(stats))
+        #    stat_file.write('\n')
 
-with open("stats_proxy_total", "a") as stat_file:
+with open("stats_proxy_total", "w") as stat_file:
     stat_file.write(str(stats_total))
     stat_file.write('\n')
