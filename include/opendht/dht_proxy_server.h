@@ -316,6 +316,7 @@ private:
     std::shared_ptr<DhtRunner> dht_;
     Json::StreamWriterBuilder jsonBuilder_;
     Json::CharReaderBuilder jsonReaderBuilder_;
+    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
 
     // http server
     std::thread serverThread_;
