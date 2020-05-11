@@ -36,6 +36,15 @@
 #include <memory>
 #include <mutex>
 
+namespace dht {
+enum class PushType {
+    None = 0,
+    Android,
+    iOS
+};
+}
+MSGPACK_ADD_ENUM(dht::PushType)
+
 namespace http {
 class Request;
 struct ListenerSession;
@@ -52,6 +61,13 @@ class DhtRunner;
 using RestRouter = restinio::router::express_router_t<>;
 using RequestStatus = restinio::request_handling_status_t;
 
+struct ProxyServerConfig {
+    in_port_t port {8000};
+    std::string pushServer {};
+    std::string persistStatePath {};
+    dht::crypto::Identity identity {};
+};
+
 /**
  * Describes the REST API
  */
@@ -66,10 +82,9 @@ public:
      * @note if the server fails to start (if port is already used or reserved),
      * it will fails silently
      */
-    DhtProxyServer(
-       dht::crypto::Identity identity,
-       std::shared_ptr<DhtRunner> dht, in_port_t port = 8000, const std::string& pushServer = "",
-       std::shared_ptr<dht::Logger> logger = {});
+    DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
+        const ProxyServerConfig& config = {},
+        const std::shared_ptr<dht::Logger>& logger = {});
 
     virtual ~DhtProxyServer();
 
@@ -282,17 +297,17 @@ private:
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, bool isAndroid, bool highPriority);
+    void sendPushNotification(const std::string& key, Json::Value&& json, PushType type, bool highPriority);
 
     /**
      * Send push notification with an expire timeout.
      * @param ec
      * @param pushToken
      * @param json
-     * @param isAndroid
+     * @param type
      */
     void handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
-                                      std::function<Json::Value()> json, const bool isAndroid);
+                                      std::function<Json::Value()> json, PushType type);
 
     /**
      * Remove a push listener between a client and a hash
@@ -309,6 +324,12 @@ private:
     void handlePrintStats(const asio::error_code &ec);
     void updateStats();
 
+    template <typename Os>
+    void saveState(Os& stream);
+
+    template <typename Is>
+    void loadState(Is& is, size_t size);
+
     using clock = std::chrono::steady_clock;
     using time_point = clock::time_point;
 
@@ -317,6 +338,8 @@ private:
     Json::StreamWriterBuilder jsonBuilder_;
     Json::CharReaderBuilder jsonReaderBuilder_;
     std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
+
+    std::string persistPath_;
 
     // http server
     std::thread serverThread_;
@@ -354,9 +377,32 @@ private:
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
         Sp<Value> value;
+        PushType type;
+
+        template <typename Packer>
+        void msgpack_pack(Packer& p) const
+        {
+            p.pack_map(2 + (sessionCtx ? 1 : 0) + (clientId.empty() ? 0 : 1) + (type == PushType::None ? 0 : 2));
+            p.pack("value"); p.pack(value);
+            p.pack("exp"); p.pack(to_time_t(expiration));
+            if (not clientId.empty()) {
+                p.pack("cid"); p.pack(clientId);
+            }
+            if (sessionCtx) {
+                std::lock_guard<std::mutex> l(sessionCtx->lock);
+                p.pack("sid"); p.pack(sessionCtx->sessionId);
+            }
+            if (type != PushType::None) {
+                p.pack("t"); p.pack(type);
+                p.pack("token"); p.pack(pushToken);
+            }
+        }
+
+        void msgpack_unpack(const msgpack::object& o);
     };
     struct SearchPuts {
         std::map<dht::Value::Id, PermanentPut> puts;
+        MSGPACK_DEFINE_ARRAY(puts)
     };
     std::mutex lockSearchPuts_;
     std::map<InfoHash, SearchPuts> puts_;
@@ -368,14 +414,32 @@ private:
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     struct Listener {
+        time_point expiration;
         std::string clientId;
         std::shared_ptr<PushSessionContext> sessionCtx;
         std::future<size_t> internalToken;
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
+        PushType type;
+
+        template <typename Packer>
+        void msgpack_pack(Packer& p) const
+        {
+            p.pack_map(sessionCtx ? 4 : 3);
+            p.pack("cid"); p.pack(clientId);
+            p.pack("exp"); p.pack(to_time_t(expiration));
+            if (sessionCtx) {
+                std::lock_guard<std::mutex> l(sessionCtx->lock);
+                p.pack("sid"); p.pack(sessionCtx->sessionId);
+            }
+            p.pack("t"); p.pack(type);
+        }
+
+        void msgpack_unpack(const msgpack::object& o);
     };
     struct PushListener {
         std::map<InfoHash, std::vector<Listener>> listeners;
+        MSGPACK_DEFINE_ARRAY(listeners)
     };
     std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
