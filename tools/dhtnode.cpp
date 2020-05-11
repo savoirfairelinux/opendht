@@ -218,14 +218,11 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                 iss >> idstr;
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
-                unsigned int port = std::stoi(idstr);
-                proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
-                    new DhtProxyServer(
-                        dht::crypto::Identity{}, node, port
-#ifdef OPENDHT_PUSH_NOTIFICATIONS
-                        ,pushServer
-#endif
-                )));
+                in_port_t port = std::stoi(idstr);
+                ProxyServerConfig serverConfig;
+                serverConfig.port = port;
+                serverConfig.pushServer = pushServer;
+                proxies.emplace(port, std::make_unique<DhtProxyServer>(node, serverConfig));
             } catch (...) { }
             continue;
         } else if (op == "psx") {
@@ -236,13 +233,12 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 #endif // OPENDHT_PUSH_NOTIFICATIONS
             try {
                 if (params.proxy_id.first and params.proxy_id.second){
-                    unsigned int port = std::stoi(idstr);
-                    proxies.emplace(port, std::unique_ptr<DhtProxyServer>(
-                        new DhtProxyServer(params.proxy_id, node, port
-#ifdef OPENDHT_PUSH_NOTIFICATIONS
-                                           ,pushServer
-#endif
-                    )));
+                    in_port_t port = std::stoi(idstr);
+                    ProxyServerConfig serverConfig;
+                    serverConfig.identity = params.proxy_id;
+                    serverConfig.port = port;
+                    serverConfig.pushServer = pushServer;
+                    proxies.emplace(port, std::make_unique<DhtProxyServer>(node, serverConfig));
                 }
                 else {
                     std::cerr << "Missing Identity private key or certificate" << std::endl;
@@ -542,17 +538,24 @@ main(int argc, char **argv)
 #ifdef OPENDHT_PROXY_SERVER
         std::map<in_port_t, std::unique_ptr<DhtProxyServer>> proxies;
 #endif
-        if (params.proxyserverssl and params.proxy_id.first and params.proxy_id.second){
+        if (params.proxyserver or params.proxyserverssl) {
 #ifdef OPENDHT_PROXY_SERVER
-            proxies.emplace(params.proxyserverssl, std::unique_ptr<DhtProxyServer>(
-                new DhtProxyServer(params.proxy_id,
-                                   node, params.proxyserverssl, params.pushserver, dhtConf.second.logger)));
-        }
-        if (params.proxyserver) {
-            proxies.emplace(params.proxyserver, std::unique_ptr<DhtProxyServer>(
-                new DhtProxyServer(
-                    dht::crypto::Identity{},
-                    node, params.proxyserver, params.pushserver, dhtConf.second.logger)));
+            ProxyServerConfig serverConfig;
+            serverConfig.pushServer = params.pushserver;
+            if (params.proxyserverssl and params.proxy_id.first and params.proxy_id.second){
+                serverConfig.identity = params.proxy_id;
+                serverConfig.port = params.proxyserverssl;
+                if (not params.persist_path.empty())
+                    serverConfig.persistStatePath = params.persist_path + '_' + std::to_string(serverConfig.port);
+                proxies.emplace(params.proxyserverssl, std::make_unique<DhtProxyServer>(node, serverConfig, dhtConf.second.logger));
+            }
+            if (params.proxyserver) {
+                serverConfig.identity = {};
+                serverConfig.port = params.proxyserver;
+                if (not params.persist_path.empty())
+                    serverConfig.persistStatePath = params.persist_path + '_' + std::to_string(serverConfig.port);
+                proxies.emplace(params.proxyserver, std::make_unique<DhtProxyServer>(node, serverConfig, dhtConf.second.logger));
+            }
 #else
             std::cerr << "DHT proxy server requested but OpenDHT built without proxy server support." << std::endl;
             exit(EXIT_FAILURE);

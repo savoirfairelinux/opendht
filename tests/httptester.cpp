@@ -39,9 +39,10 @@ HttpTester::setUp() {
     nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
     nodeProxy->bootstrap(nodePeer->getBound());
 
-    serverProxy = std::unique_ptr<dht::DhtProxyServer>(
-        new dht::DhtProxyServer(
-            /*http*/dht::crypto::Identity{}, nodeProxy, 8080, /*pushServer*/"127.0.0.1:8090"));
+    dht::ProxyServerConfig config;
+    config.port = 8080;
+    config.pushServer = "127.0.0.1:8090";
+    serverProxy = std::make_unique<dht::DhtProxyServer>(nodeProxy, config);
 }
 
 void

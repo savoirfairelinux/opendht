@@ -34,6 +34,7 @@
 #include <functional>
 #include <limits>
 #include <iostream>
+#include <fstream>
 
 using namespace std::placeholders;
 using namespace std::chrono_literals;
@@ -173,26 +174,71 @@ struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
     using connection_state_listener_t = ConnectionListener;
 };
 
-DhtProxyServer::DhtProxyServer(
-    crypto::Identity identity,
-    std::shared_ptr<DhtRunner> dht, in_port_t port, const std::string& pushServer,
-    std::shared_ptr<Logger> logger
+void
+DhtProxyServer::PermanentPut::msgpack_unpack(const msgpack::object& o)
+{
+    if (auto cid = findMapValue(o, "cid")) {
+        clientId = cid->as<std::string>();
+    }
+    if (auto exp = findMapValue(o, "exp")) {
+        expiration = from_time_t(exp->as<time_t>());
+    }
+    if (auto token = findMapValue(o, "token")) {
+        pushToken = token->as<std::string>();
+    }
+    if (auto sid = findMapValue(o, "sid")) {
+        if (not sessionCtx)
+            sessionCtx = std::make_shared<PushSessionContext>();
+        sessionCtx->sessionId = sid->as<std::string>();
+    }
+    if (auto t = findMapValue(o, "t")) {
+        type = t->as<PushType>();
+    }
+    if (auto val = findMapValue(o, "value")) {
+        value = std::make_shared<dht::Value>(*val);
+    }
+}
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+void
+DhtProxyServer::Listener::msgpack_unpack(const msgpack::object& o)
+{
+    if (auto cid = findMapValue(o, "cid")) {
+        clientId = cid->as<std::string>();
+    }
+    if (auto exp = findMapValue(o, "exp")) {
+        expiration = from_time_t(exp->as<time_t>());
+    }
+    if (auto sid = findMapValue(o, "sid")) {
+        if (not sessionCtx)
+            sessionCtx = std::make_shared<PushSessionContext>();
+        sessionCtx->sessionId = sid->as<std::string>();
+    }
+    if (auto t = findMapValue(o, "t")) {
+        type = t->as<PushType>();
+    }
+}
+#endif
+
+DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
+        const ProxyServerConfig& config,
+        const std::shared_ptr<dht::Logger>& logger
 )
     :   ioContext_(std::make_shared<asio::io_context>()),
-        dht_(dht), logger_(logger),
+        dht_(dht), persistPath_(config.persistStatePath), logger_(logger),
         printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
-        pushServer_(pushServer)
+        pushServer_(config.pushServer)
 {
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
 
     if (logger_)
-        logger_->d("[proxy:server] [init] running on %i", port);
-    if (not pushServer.empty()){
+        logger_->d("[proxy:server] [init] running on %i", config.port);
+    if (not pushServer_.empty()){
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
         if (logger_)
-            logger_->d("[proxy:server] [init] using push server %s", pushServer.c_str());
+            logger_->d("[proxy:server] [init] using push server %s", pushServer_.c_str());
 #else
         if (logger_)
             logger_->e("[proxy:server] [init] opendht built without push notification support");
@@ -202,9 +248,9 @@ DhtProxyServer::DhtProxyServer(
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
 
-    if (!pushServer.empty()){
+    if (!pushServer_.empty()){
         // no host delim, assume port only
-        if (pushServer.find(":") == std::string::npos)
+        if (pushServer_.find(":") == std::string::npos)
             pushServer_ =  "localhost:" + pushServer_;
         // define http request destination for push notifications
         pushHostPort_ = splitPort(pushServer_);
@@ -212,7 +258,7 @@ DhtProxyServer::DhtProxyServer(
             logger_->d("Using push server for notifications: %s:%s", pushHostPort_.first.c_str(),
                                                                      pushHostPort_.second.c_str());
     }
-    if (identity.first and identity.second) {
+    if (config.identity.first and config.identity.second) {
         asio::error_code ec;
         // define tls context
         asio::ssl::context tls_context { asio::ssl::context::sslv23 };
@@ -226,13 +272,13 @@ DhtProxyServer::DhtProxyServer(
         SSL_CTX_set_options(tls_context.native_handle(), SSL_OP_NO_RENEGOTIATION); // CVE-2009-3555
 #endif
         // node private key
-        auto key = identity.first->serialize();
+        auto key = config.identity.first->serialize();
         tls_context.use_private_key(asio::const_buffer{key.data(), key.size()},
                                     asio::ssl::context::file_format::pem, ec);
         if (ec)
             throw std::runtime_error("Error setting node's private key: " + ec.message());
         // certificate chain
-        auto certchain = identity.second->toString(true/*chain*/);
+        auto certchain = config.identity.second->toString(true/*chain*/);
         tls_context.use_certificate_chain(asio::const_buffer{certchain.data(), certchain.size()}, ec);
         if (ec)
             throw std::runtime_error("Error setting certificate chain: " + ec.message());
@@ -241,7 +287,7 @@ DhtProxyServer::DhtProxyServer(
         // build http server
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>();
         addServerSettings(settings);
-        settings.port(port);
+        settings.port(config.port);
         settings.tls_context(std::move(tls_context));
         httpsServer_ = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
             ioContext_,
@@ -258,7 +304,7 @@ DhtProxyServer::DhtProxyServer(
     else {
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraits>();
         addServerSettings(settings);
-        settings.port(port);
+        settings.port(config.port);
         httpServer_ = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
             ioContext_,
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraits>>(std::move(settings))
@@ -274,7 +320,149 @@ DhtProxyServer::DhtProxyServer(
     dht->forwardAllMessages(true);
     updateStats();
     printStatsTimer_->async_wait(std::bind(&DhtProxyServer::handlePrintStats, this, std::placeholders::_1));
+
+    if (not persistPath_.empty()) {
+        try {
+            std::ifstream stateFile(persistPath_, std::ios::binary | std::ios::ate);
+            if (stateFile) {
+                std::streamsize size = stateFile.tellg();
+                stateFile.seekg(0, std::ios::beg);
+                if (logger_)
+                    logger_->d("Loading proxy state from %.*s (%td bytes)", (int)persistPath_.size(), persistPath_.c_str(), size);
+                loadState(stateFile, size);
+            }
+        } catch (const std::exception& e) {
+            if (logger_)
+                logger_->e("Error loading state from file: %s", e.what());
+        }
+    }
 }
+
+template <typename Os>
+void
+DhtProxyServer::saveState(Os& stream) {
+    msgpack::packer<Os> pk(&stream);
+    pk.pack_map(2);
+    {
+        std::lock_guard<std::mutex> lock(lockSearchPuts_);
+        pk.pack("puts");
+        pk.pack(puts_);
+    }
+    {
+        std::lock_guard<std::mutex> lock(lockListener_);
+        pk.pack("pushListeners");
+        pk.pack(pushListeners_);
+    }
+}
+
+template <typename Is>
+void
+DhtProxyServer::loadState(Is& is, size_t size) {
+    msgpack::unpacker pac;
+    pac.reserve_buffer(size);
+    if (is.read(pac.buffer(), size)) {
+        pac.buffer_consumed(size);
+
+        msgpack::object_handle oh;
+        while (pac.next(oh)) {
+            if (oh.get().type != msgpack::type::MAP)
+                continue;
+            if (auto puts = findMapValue(oh.get(), "puts")) {
+                std::lock_guard<std::mutex> lock(lockSearchPuts_);
+                puts_ = puts->as<decltype(puts_)>();
+                if (logger_)
+                    logger_->d("Loading %zu persistent puts", puts_.size());
+                for (auto& put : puts_) {
+                    for (auto& pput : put.second.puts) {
+                        pput.second.expireTimer = std::make_unique<asio::steady_timer>(io_context(), pput.second.expiration);
+                        pput.second.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
+                                                std::placeholders::_1, put.first, pput.first));
+                        auto jsonProvider = [infoHash=put.first.toString(), clientId=pput.second.clientId, vid = pput.first, sessionCtx = pput.second.sessionCtx](){
+                            Json::Value json;
+                            json["timeout"] = infoHash;
+                            json["to"] = clientId;
+                            json["vid"] = std::to_string(vid);
+                            std::lock_guard<std::mutex> l(sessionCtx->lock);
+                            json["s"] = sessionCtx->sessionId;
+                            return json;
+                        };
+                        pput.second.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), pput.second.expiration - proxy::OP_MARGIN);
+                        pput.second.expireNotifyTimer->async_wait(std::bind(
+                            &DhtProxyServer::handleNotifyPushListenExpire, this,
+                            std::placeholders::_1, pput.second.pushToken, std::move(jsonProvider), pput.second.type));
+                        dht_->put(put.first, pput.second.value, DoneCallbackSimple{}, time_point::max(), true);
+                    }
+                }
+            } else {
+                if (logger_)
+                    logger_->d("No persistent puts in state");
+            }
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+            if (auto listeners = findMapValue(oh.get(), "pushListeners")) {
+                std::lock_guard<std::mutex> lock(lockListener_);
+                pushListeners_ = listeners->as<decltype(pushListeners_)>();
+                if (logger_)
+                    logger_->d("Loading %zu push listeners", pushListeners_.size());
+                for (auto& pushListener : pushListeners_) {
+                    for (auto& listeners : pushListener.second.listeners) {
+                        for (auto& listener : listeners.second) {
+                            listener.internalToken = dht_->listen(listeners.first,
+                                [this, infoHash=listeners.first, pushToken=pushListener.first, type=listener.type, clientId=listener.clientId, sessionCtx = listener.sessionCtx]
+                                (const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                                    // Build message content
+                                    Json::Value json;
+                                    json["key"] = infoHash.toString();
+                                    json["to"] = clientId;
+                                    json["t"] = Json::Value::Int64(std::chrono::duration_cast<std::chrono::milliseconds>(system_clock::now().time_since_epoch()).count());
+                                    {
+                                        std::lock_guard<std::mutex> l(sessionCtx->lock);
+                                        json["s"] = sessionCtx->sessionId;
+                                    }
+                                    if (expired and values.size() < 2){
+                                        std::stringstream ss;
+                                        for(size_t i = 0; i < values.size(); ++i){
+                                            if(i != 0) ss << ",";
+                                            ss << values[i]->id;
+                                        }
+                                        json["exp"] = ss.str();
+                                    }
+                                    auto maxPrio = 1000u;
+                                    for (const auto& v : values)
+                                        maxPrio = std::min(maxPrio, v->priority);
+                                    sendPushNotification(pushToken, std::move(json), type, !expired and maxPrio == 0);
+                                    return true;
+                                }
+                            );
+                            // expire notify
+                            listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), listener.expiration - proxy::OP_MARGIN);
+                            auto jsonProvider = [infoHash = listeners.first.toString(), clientId = listener.clientId, sessionCtx = listener.sessionCtx](){
+                                Json::Value json;
+                                json["timeout"] = infoHash;
+                                json["to"] = clientId;
+                                std::lock_guard<std::mutex> l(sessionCtx->lock);
+                                json["s"] = sessionCtx->sessionId;
+                                return json;
+                            };
+                            listener.expireNotifyTimer->async_wait(std::bind(&DhtProxyServer::handleNotifyPushListenExpire, this,
+                                                                std::placeholders::_1, pushListener.first, std::move(jsonProvider), listener.type));
+                            // cancel push listen
+                            listener.expireTimer = std::make_unique<asio::steady_timer>(io_context(), listener.expiration);
+                            listener.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPushListen, this,
+                                                            std::placeholders::_1, pushListener.first, listeners.first, listener.clientId));
+                        }
+                    }
+                }
+            } else {
+                if (logger_)
+                    logger_->d("No push listeners in state");
+            }
+#endif
+        }
+        if (logger_)
+            logger_->d("loading ended");
+    }
+}
+
 
 asio::io_context&
 DhtProxyServer::io_context() const
@@ -284,6 +472,12 @@ DhtProxyServer::io_context() const
 
 DhtProxyServer::~DhtProxyServer()
 {
+    if (not persistPath_.empty()) {
+        if (logger_)
+            logger_->d("Saving proxy state to %.*s", (int)persistPath_.size(), persistPath_.c_str());
+        std::ofstream stateFile(persistPath_, std::ios::binary);
+        saveState(stateFile);
+    }
     if (dht_) {
         std::lock_guard<std::mutex> lock(lockListener_);
         for (auto& l : listeners_) {
@@ -607,7 +801,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             response.set_body(RESP_MSG_NO_TOKEN);
             return response.done();
         }
-        auto isAndroid = root["platform"].asString() == "android";
+        auto type = root["platform"].asString() == "android" ? PushType::Android : PushType::iOS;
         auto clientId = root["client_id"].asString();
         auto sessionId = root["session_id"].asString();
 
@@ -628,8 +822,10 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                 if (logger_)
                     logger_->d("[proxy:server] [subscribe] found [client %s]", listener.clientId.c_str());
                 // Reset timers
+                listener.expiration = timeout;
                 listener.expireTimer->expires_at(timeout);
                 listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
+                listener.type = type;
                 {
                     std::lock_guard<std::mutex> l(listener.sessionCtx->lock);
                     listener.sessionCtx->sessionId = sessionId;
@@ -664,10 +860,11 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         listener.clientId = clientId;
         listener.sessionCtx = std::make_shared<PushSessionContext>();
         listener.sessionCtx->sessionId = sessionId;
+        listener.type = type;
 
         // Add listen on dht
         listener.internalToken = dht_->listen(infoHash,
-            [this, infoHash, pushToken, isAndroid, clientId, sessionCtx = listener.sessionCtx]
+            [this, infoHash, pushToken, type, clientId, sessionCtx = listener.sessionCtx]
             (const std::vector<std::shared_ptr<Value>>& values, bool expired){
                 // Build message content
                 Json::Value json;
@@ -689,7 +886,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                 auto maxPrio = 1000u;
                 for (const auto& v : values)
                     maxPrio = std::min(maxPrio, v->priority);
-                sendPushNotification(pushToken, std::move(json), isAndroid, !expired and maxPrio == 0);
+                sendPushNotification(pushToken, std::move(json), type, !expired and maxPrio == 0);
                 return true;
             }
         );
@@ -707,7 +904,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             return json;
         };
         listener.expireNotifyTimer->async_wait(std::bind(&DhtProxyServer::handleNotifyPushListenExpire, this,
-                                               std::placeholders::_1, pushToken, std::move(jsonProvider), isAndroid));
+                                               std::placeholders::_1, pushToken, std::move(jsonProvider), listener.type));
         // cancel push listen
         if (!listener.expireTimer)
             listener.expireTimer = std::make_unique<asio::steady_timer>(io_context(), timeout);
@@ -766,7 +963,7 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 
 void
 DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
-                                             std::function<Json::Value()> jsonProvider, const bool isAndroid)
+                                             std::function<Json::Value()> jsonProvider, PushType type)
 {
     if (ec == asio::error::operation_aborted)
         return;
@@ -776,7 +973,7 @@ DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const s
     }
     if (logger_)
         logger_->d("[proxy:server] [subscribe] sending put refresh to %s token", pushToken.c_str());
-    sendPushNotification(pushToken, jsonProvider(), isAndroid, false);
+    sendPushNotification(pushToken, jsonProvider(), type, false);
 }
 
 void
@@ -818,7 +1015,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, bool isAndroid, bool highPriority)
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, PushType type, bool highPriority)
 {
     if (pushServer_.empty())
         return;
@@ -840,7 +1037,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         Json::Value tokens(Json::arrayValue);
         tokens[0] = token;
         notification["tokens"] = std::move(tokens);
-        notification["platform"] = isAndroid ? 2 : 1;
+        notification["platform"] = type == PushType::Android ? 2 : 1;
         notification["data"] = std::move(json);
         notification["priority"] = highPriority ? "high" : "normal";
         notification["time_to_live"] = 600;
@@ -889,6 +1086,7 @@ DhtProxyServer::handleCancelPermamentPut(const asio::error_code &ec, const InfoH
     }
     if (logger_)
         logger_->d("[proxy:server] [put %s] cancel permament put %i", key.toString().c_str(), vid);
+    std::lock_guard<std::mutex> lock(lockSearchPuts_);
     auto sPuts = puts_.find(key);
     if (sPuts == puts_.end())
         return;
@@ -898,6 +1096,8 @@ DhtProxyServer::handleCancelPermamentPut(const asio::error_code &ec, const InfoH
         return;
     if (dht_)
         dht_->cancelPut(key, vid);
+    if (put->second.expireTimer)
+        put->second.expireTimer->cancel();
     if (put->second.expireNotifyTimer)
         put->second.expireNotifyTimer->cancel();
     sPutsMap.erase(put);
@@ -941,7 +1141,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     platform = pVal["platform"].asString();
                     sessionId = pVal["session_id"].asString();
                 }
-                std::unique_lock<std::mutex> lock(lockSearchPuts_);
+                std::lock_guard<std::mutex> lock(lockSearchPuts_);
                 auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
                 auto& sPuts = puts_[infoHash];
                 if (value->id == Value::INVALID_ID) {
@@ -970,18 +1170,20 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 auto vid = value->id;
                 auto& pput = sPuts.puts[vid];
                 pput.value = value;
+                pput.expiration = timeout;
                 if (not pput.expireTimer) {
                     auto &ctx = io_context();
                     // cancel permanent put
                     pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                     if (not pushToken.empty()){
+                        bool isAndroid = platform == "android";
                         pput.pushToken = pushToken;
                         pput.clientId = clientId;
+                        pput.type = isAndroid ? PushType::Android : PushType::iOS;
                         pput.sessionCtx = std::make_shared<PushSessionContext>();
                         pput.sessionCtx->sessionId = sessionId;
                         // notify push listen expire
-                        bool isAndroid = platform == "android";
                         auto jsonProvider = [infoHash, clientId, vid, sessionCtx = pput.sessionCtx](){
                             Json::Value json;
                             json["timeout"] = infoHash.toString();
@@ -998,7 +1200,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                             pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                         pput.expireNotifyTimer->async_wait(std::bind(
                             &DhtProxyServer::handleNotifyPushListenExpire, this,
-                            std::placeholders::_1, pushToken, std::move(jsonProvider), isAndroid));
+                            std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type));
                     }
 #endif
                 } else {
