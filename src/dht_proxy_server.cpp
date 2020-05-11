@@ -964,6 +964,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
                             return response.done();
                         }
                     }
+                    if (value->id == Value::INVALID_ID)
+                        value->id = std::uniform_int_distribution<Value::Id>{1}(rd);
                 }
 
                 auto vid = value->id;
