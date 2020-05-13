@@ -37,7 +37,7 @@ option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentati
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 find_package (Threads)
-find_package (PkgConfig)
+find_package (PkgConfig REQUIRED)
 find_package (GnuTLS 3.3 REQUIRED)
 pkg_search_module (Nettle nettle)
 find_package (Msgpack 1.2 REQUIRED)
@@ -45,7 +45,6 @@ if (OPENDHT_TOOLS)
     find_package (Readline 6 REQUIRED)
 endif ()
 if (NOT OPENDHT_ARGON2)
-    find_package(PkgConfig)
     pkg_search_module(argon2 libargon2)
     if (argon2_FOUND)
         message("-- Found Argon2: " ${argon2_LIBRARY_DIRS} " (found version \"" ${argon2_VERSION} "\")")
@@ -300,9 +299,9 @@ if (OPENDHT_STATIC)
     endif ()
     target_link_libraries(opendht-static
         PRIVATE  ${argon2_LIBRARIES}
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-               ${Jsoncpp_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
-               ${OPENSSL_LIBRARIES})
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
+               ${Jsoncpp_STATIC_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+               ${OPENSSL_STATIC_LIBRARIES})
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
@@ -380,7 +379,7 @@ install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATIO
 
 # Unit tests
 if (OPENDHT_TESTS)
-    FIND_PACKAGE(Cppunit REQUIRED)
+    pkg_search_module(Cppunit REQUIRED cppunit)
     # unit testing
     list (APPEND test_FILES
         tests/infohashtester.h
@@ -412,7 +411,8 @@ if (OPENDHT_TESTS)
         tests/tests_runner.cpp
         ${test_FILES}
     )
-    target_include_directories(opendht_unit_tests SYSTEM PRIVATE ${CPPUNIT_INCLUDE_DIRS})
+    target_include_directories(opendht_unit_tests SYSTEM PRIVATE ${Cppunit_INCLUDE_DIR})
+    target_link_directories(opendht_unit_tests PRIVATE ${Cppunit_LIBRARY_DIRS})
     if (OPENDHT_SHARED)
         target_link_libraries(opendht_unit_tests opendht)
     else ()
@@ -420,7 +420,7 @@ if (OPENDHT_TESTS)
     endif ()
     target_link_libraries(opendht_unit_tests
        ${CMAKE_THREAD_LIBS_INIT}
-       ${CPPUNIT_LIBRARIES}
+       ${Cppunit_LIBRARIES}
        ${GNUTLS_LIBRARIES}
        ${Jsoncpp_LIBRARIES}
     )
