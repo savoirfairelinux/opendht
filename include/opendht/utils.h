@@ -173,7 +173,13 @@ unpackMsg(Blob b) {
 
 msgpack::unpacked unpackMsg(Blob b);
 
-msgpack::object* findMapValue(const msgpack::object& map, const char* key);
-msgpack::object* findMapValue(const msgpack::object& map, const std::string& key);
+msgpack::object* findMapValue(const msgpack::object& map, const char* key, size_t length);
+
+inline msgpack::object* findMapValue(const msgpack::object& map, const char* key) {
+    return findMapValue(map, key, strlen(key));
+}
+inline msgpack::object* findMapValue(const msgpack::object& map, const std::string& key) {
+    return findMapValue(map, key.c_str(), key.size());
+}
 
 } // namespace dht
