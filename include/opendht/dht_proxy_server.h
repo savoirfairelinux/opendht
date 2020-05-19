@@ -368,6 +368,7 @@ private:
     struct PushSessionContext {
         std::mutex lock;
         std::string sessionId;
+        PushSessionContext(const std::string& id) : sessionId(id) {}
     };
     struct PermanentPut {
         time_point expiration;
