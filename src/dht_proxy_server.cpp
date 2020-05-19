@@ -832,6 +832,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         // Expiration
         auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
         listener.expiration = timeout;
+        listener.type = type;
         if (listener.expireNotifyTimer)
             listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
         else
