@@ -98,8 +98,10 @@ public:
     struct ServerStats {
         /** Current number of listen operations */
         size_t listenCount {0};
-        /** Current number of permanent put operations */
+        /** Current number of permanent put operations (hash used) */
         size_t putCount {0};
+        /** Current number of permanent put values */
+        size_t totalPermanentPuts {0};
         /** Current number of push tokens with at least one listen operation */
         size_t pushListenersCount {0};
         /** Average requests per second */
@@ -129,6 +131,7 @@ public:
             Json::Value result;
             result["listenCount"] = static_cast<Json::UInt64>(listenCount);
             result["putCount"] = static_cast<Json::UInt64>(putCount);
+            result["totalPermanentPuts"] = static_cast<Json::UInt64>(totalPermanentPuts);
             result["pushListenersCount"] = static_cast<Json::UInt64>(pushListenersCount);
             result["requestRate"] = requestRate;
             if (nodeInfo)
