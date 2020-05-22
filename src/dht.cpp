@@ -2550,7 +2550,8 @@ Dht::loadState(const std::string& path)
             auto state = oh.get().as<DhtState>();
             if (logger_)
                 logger_->d("Importing %zu nodes", state.nodes.size());
-            myid = state.id;
+            if (state.id)
+                myid = state.id;
             std::vector<Sp<Node>> tmpNodes;
             tmpNodes.reserve(state.nodes.size());
             for (const auto& node : state.nodes)
