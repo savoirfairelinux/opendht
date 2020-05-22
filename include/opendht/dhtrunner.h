@@ -389,7 +389,7 @@ public:
      * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
      * @param cb: Optional callback to receive general state information.
      */
-    void run(const SockAddr& local4, const SockAddr& local6, const Config& config, Context&& context = {});
+    void run(SockAddr& local4, SockAddr& local6, const Config& config, Context&& context = {});
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).

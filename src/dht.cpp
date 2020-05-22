@@ -1785,13 +1785,13 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, cons
     secret = std::uniform_int_distribution<uint64_t>{}(rd);
     rotateSecrets();
 
+    if (not persistPath.empty())
+        loadState(persistPath);
+
     expire();
 
     if (logger_)
         logger_->d("DHT node initialised with ID %s", myid.toString().c_str());
-
-    if (not persistPath.empty())
-        loadState(persistPath);
 }
 
 bool
@@ -2070,13 +2070,13 @@ Dht::importValues(const std::vector<ValuesExport>& import)
 {
     const auto& now = scheduler.time();
 
-    for (const auto& node : import) {
-        if (node.second.empty())
+    for (const auto& value : import) {
+        if (value.second.empty())
             continue;
 
         try {
             msgpack::unpacked msg;
-            msgpack::unpack(msg, (const char*)node.second.data(), node.second.size());
+            msgpack::unpack(msg, (const char*)value.second.data(), value.second.size());
             auto valarr = msg.get();
             if (valarr.type != msgpack::type::ARRAY)
                 throw msgpack::type_error();
@@ -2091,15 +2091,15 @@ Dht::importValues(const std::vector<ValuesExport>& import)
                     tmp_val.msgpack_unpack(valel.via.array.ptr[1]);
                 } catch (const std::exception&) {
                     if (logger_)
-                        logger_->e(node.first, "Error reading value at %s", node.first.toString().c_str());
+                        logger_->e(value.first, "Error reading value at %s", value.first.toString().c_str());
                     continue;
                 }
                 val_time = std::min(val_time, now);
-                storageStore(node.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
+                storageStore(value.first, std::make_shared<Value>(std::move(tmp_val)), val_time);
             }
         } catch (const std::exception&) {
             if (logger_)
-                logger_->e(node.first, "Error reading values at %s", node.first.toString().c_str());
+                logger_->e(value.first, "Error reading values at %s", value.first.toString().c_str());
             continue;
         }
     }
@@ -2504,12 +2504,24 @@ Dht::onAnnounceDone(const Sp<Node>& node, net::RequestAnswer& answer, Sp<Search>
 }
 
 
+struct DhtState {
+    unsigned v {1};
+    InfoHash id;
+    std::vector<NodeExport> nodes;
+    std::vector<ValuesExport> values;
+
+    MSGPACK_DEFINE_MAP(v, id, nodes, values)
+};
+
 void
 Dht::saveState(const std::string& path) const
 {
+    DhtState state;
+    state.id = myid;
+    state.nodes = exportNodes();
+    state.values = exportValues();
     std::ofstream file(path);
-    msgpack::pack(file, exportNodes());
-    msgpack::pack(file, exportValues());
+    msgpack::pack(file, state);    
 }
 
 void
@@ -2535,19 +2547,15 @@ Dht::loadState(const std::string& path)
         // Import nodes
         msgpack::object_handle oh;
         if (pac.next(oh)) {
-            {
-                auto imported_nodes = oh.get().as<std::vector<NodeExport>>();
-                if (logger_)
-                    logger_->d("Importing %zu nodes", imported_nodes.size());
-                for (const auto& node : imported_nodes)
-                    insertNode(node);
-            }
-            if (pac.next(oh)) {
-                auto imported_values = oh.get().as<std::vector<ValuesExport>>();
-                if (logger_)
-                    logger_->d("Importing %zu values", imported_values.size());
-                importValues(imported_values);
-            }
+            auto state = oh.get().as<DhtState>();
+            if (logger_)
+                logger_->d("Importing %zu nodes", state.nodes.size());
+            myid = state.id;
+            std::vector<Sp<Node>> tmpNodes;
+            tmpNodes.reserve(state.nodes.size());
+            for (const auto& node : state.nodes)
+                tmpNodes.emplace_back(network_engine.insertNode(node.id, SockAddr(node.ss, node.sslen)));
+            importValues(state.values);
         }
     } catch (const std::exception& e) {
         if (logger_)

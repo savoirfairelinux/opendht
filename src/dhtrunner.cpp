@@ -32,6 +32,8 @@
 #include "dht_proxy_client.h"
 #endif
 
+#include <fstream>
+
 namespace dht {
 
 constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
@@ -90,16 +92,46 @@ DhtRunner::run(const char* ip4, const char* ip6, const char* service, const Conf
 {
     auto res4 = SockAddr::resolve(ip4, service);
     auto res6 = SockAddr::resolve(ip6, service);
-    run(res4.empty() ? SockAddr() : res4.front(),
-        res6.empty() ? SockAddr() : res6.front(), config, std::move(context));
+    if (res4.empty())
+        res4.emplace_back();
+    if (res6.empty())
+        res6.emplace_back();
+    run(res4.front(), res6.front(), config, std::move(context));
 }
 
 void
-DhtRunner::run(const SockAddr& local4, const SockAddr& local6, const Config& config, Context&& context)
+DhtRunner::run(SockAddr& local4, SockAddr& local6, const Config& config, Context&& context)
 {
     if (running == State::Idle) {
+        auto state_path = config.dht_config.node_config.persist_path;
+        if (not state_path.empty()) {
+            state_path += "_port.txt";
+            std::ifstream inConfig(state_path);
+            if (inConfig.is_open()) {
+                in_port_t port;
+                if (inConfig >> port) {
+                    if (context.logger)
+                        context.logger->d("[runner %p] Using IPv4 port %hu from saved configuration", this, port);
+                    if (local4.getPort() == 0)
+                        local4.setPort(port);
+                }
+                if (inConfig >> port) {
+                    if (context.logger)
+                        context.logger->d("[runner %p] Using IPv6 port %hu from saved configuration", this, port);
+                    if (local6.getPort() == 0)
+                        local6.setPort(port);
+                }
+            }
+        }
+
         if (not context.sock)
             context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
+
+        if (not state_path.empty()) {
+            std::ofstream outConfig(state_path);
+            outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
+            outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
+        }
         run(config, std::move(context));
     }
 }
