@@ -7,7 +7,7 @@ stats_total = {"users":0, "pushListenersCount":0, "listenCount":0, "totalListene
 
 for i in range(80,101):
     print("Collecting stats for proxy " + str(i))
-    response = requests.request('STATS', 'http://dhtproxy.jami.net:' + str(i))
+    response = requests.request('STATS', 'http://127.0.0.1:' + str(i))
 
     if response.status_code == 200:
         result = response.json()
@@ -38,14 +38,11 @@ for i in range(80,101):
         except:
             pass
         try:
-            total = 0
-            for h,v in result["puts"].items():
-                total += int(v)
-            stats['totalPermanentPuts'] = total
-            stats_total['totalPermanentPuts'] += total
+            stats['totalPermanentPuts'] = int(result["totalPermanentPuts"])
+            stats_total['totalPermanentPuts'] += int(result["totalPermanentPuts"])
         except:
             pass
-        
+
         stats['timestamp'] = str(ts)
 
         #with open("stats_proxy_" + str(i), "a") as stat_file:

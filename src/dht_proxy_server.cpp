@@ -555,6 +555,10 @@ DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     stats.pushListenersCount = pushListeners_.size();
 #endif
+    stats.totalPermanentPuts = 0;
+    std::for_each(puts_.begin(), puts_.end(), [&stats](const auto& put) {
+        stats.totalPermanentPuts += put.second.puts.size();
+    });
     stats.putCount = puts_.size();
     stats.listenCount = listeners_.size();
     stats.nodeInfo = std::move(info);
@@ -1142,8 +1146,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 auto& sPuts = puts_[infoHash];
                 if (value->id == Value::INVALID_ID) {
                     for (auto& pp : sPuts.puts) {
-                        if (pp.second.pushToken == pushToken 
-                            and pp.second.clientId == clientId 
+                        if (pp.second.pushToken == pushToken
+                            and pp.second.clientId == clientId
                             and pp.second.value->contentEquals(*value))
                         {
                             pp.second.expireTimer->expires_at(timeout);
