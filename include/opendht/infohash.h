@@ -237,6 +237,9 @@ public:
 
     static Hash getRandom();
 
+    template <typename Rd>
+    static Hash getRandom(Rd&);
+
     template <size_t M>
     OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Hash<M>& h);
 
@@ -317,6 +320,19 @@ Hash<N>::getRandom()
 {
     Hash h;
     crypto::random_device rdev;
+    std::uniform_int_distribution<uint32_t> rand_int;
+    auto a = reinterpret_cast<uint32_t*>(h.data());
+    auto b = reinterpret_cast<uint32_t*>(h.data() + h.size());
+    std::generate(a, b, std::bind(rand_int, std::ref(rdev)));
+    return h;
+}
+
+template <size_t N>
+template <typename Rd>
+Hash<N>
+Hash<N>::getRandom(Rd& rdev)
+{
+    Hash h;
     std::uniform_int_distribution<uint32_t> rand_int;
     auto a = reinterpret_cast<uint32_t*>(h.data());
     auto b = reinterpret_cast<uint32_t*>(h.data() + h.size());

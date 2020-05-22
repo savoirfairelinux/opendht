@@ -1743,7 +1743,7 @@ Dht::Dht() : store(), network_engine(logger_, rd, scheduler, {}) {}
 
 Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l)
     : DhtInterface(l),
-    myid(config.node_id ? config.node_id : InfoHash::getRandom()),
+    myid(config.node_id ? config.node_id : InfoHash::getRandom(rd)),
     store(),
     store_quota(),
     max_store_keys(config.max_store_size ? (int)config.max_store_size : MAX_HASHES),

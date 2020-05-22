@@ -371,6 +371,8 @@ private:
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
+    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
+
     InfoHash myid {};
 
     uint64_t secret {};
@@ -412,7 +414,6 @@ private:
     std::map<size_t, std::tuple<size_t, size_t, size_t>> listeners {};
     size_t listener_token {1};
 
-    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
 
     // timing
     Scheduler scheduler;
