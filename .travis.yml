@@ -16,13 +16,12 @@ env:
 
 before_install:
   - |
-    # non llvm builds
-    if [[ "$OPENDHT_TEST_JOB" != *"opendht.llvm"* ]]; then
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.classic"* ]]; then
       docker pull aberaud/opendht-deps-bionic;
     fi
-
-  - |
-    # classic build
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclient"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserver"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
+      docker pull aberaud/opendht-deps;
+    fi
     if [[ "$OPENDHT_TEST_JOB" == *"opendht.llvm"* ]]; then
       docker pull aberaud/opendht-deps-llvm
     fi
