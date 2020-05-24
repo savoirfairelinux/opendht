@@ -379,19 +379,25 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                         pput.second.expireTimer = std::make_unique<asio::steady_timer>(io_context(), pput.second.expiration);
                         pput.second.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
                                                 std::placeholders::_1, put.first, pput.first));
-                        auto jsonProvider = [infoHash=put.first.toString(), clientId=pput.second.clientId, vid = pput.first, sessionCtx = pput.second.sessionCtx](){
-                            Json::Value json;
-                            json["timeout"] = infoHash;
-                            json["to"] = clientId;
-                            json["vid"] = std::to_string(vid);
-                            std::lock_guard<std::mutex> l(sessionCtx->lock);
-                            json["s"] = sessionCtx->sessionId;
-                            return json;
-                        };
-                        pput.second.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), pput.second.expiration - proxy::OP_MARGIN);
-                        pput.second.expireNotifyTimer->async_wait(std::bind(
-                            &DhtProxyServer::handleNotifyPushListenExpire, this,
-                            std::placeholders::_1, pput.second.pushToken, std::move(jsonProvider), pput.second.type));
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+                        if (not pput.second.pushToken.empty()) {
+                            auto jsonProvider = [infoHash=put.first.toString(), clientId=pput.second.clientId, vid = pput.first, sessionCtx = pput.second.sessionCtx](){
+                                Json::Value json;
+                                json["timeout"] = infoHash;
+                                json["to"] = clientId;
+                                json["vid"] = std::to_string(vid);
+                                if (sessionCtx) {
+                                    std::lock_guard<std::mutex> l(sessionCtx->lock);
+                                    json["s"] = sessionCtx->sessionId;
+                                }
+                                return json;
+                            };
+                            pput.second.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), pput.second.expiration - proxy::OP_MARGIN);
+                            pput.second.expireNotifyTimer->async_wait(std::bind(
+                                &DhtProxyServer::handleNotifyPushListenExpire, this,
+                                std::placeholders::_1, pput.second.pushToken, std::move(jsonProvider), pput.second.type));
+                        }
+#endif
                         dht_->put(put.first, pput.second.value, DoneCallbackSimple{}, time_point::max(), true);
                     }
                 }
