@@ -18,7 +18,7 @@ before_install:
   - |
     # non llvm builds
     if [[ "$OPENDHT_TEST_JOB" != *"opendht.llvm"* ]]; then
-      docker pull aberaud/opendht-deps;
+      docker pull aberaud/opendht-deps-bionic;
     fi
 
   - |

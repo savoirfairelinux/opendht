@@ -350,11 +350,13 @@ DhtProxyServer::saveState(Os& stream) {
         pk.pack("puts");
         pk.pack(puts_);
     }
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     {
         std::lock_guard<std::mutex> lock(lockListener_);
         pk.pack("pushListeners");
         pk.pack(pushListeners_);
     }
+#endif
 }
 
 template <typename Is>
