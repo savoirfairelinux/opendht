@@ -1,5 +1,7 @@
-FROM aberaud/opendht-deps
+FROM aberaud/opendht-deps-bionic
 MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+
+RUN apt-get update && apt-get install -y python3-pip && pip3 install --upgrade cmake
 
 COPY . /root/opendht
 RUN cd /root/opendht && mkdir build && cd build \
