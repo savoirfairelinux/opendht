@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <functional>
 #include <thread>
+#include <stdexcept>
 
 namespace dht {
 namespace crypto {
