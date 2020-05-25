@@ -21,6 +21,7 @@
 #include <random>
 #include <algorithm>
 #include <functional>
+#include <thread>
 
 namespace dht {
 namespace crypto {
@@ -111,11 +112,18 @@ using random_device = std::random_device;
 template<class T = std::mt19937, std::size_t N = T::state_size>
 auto getSeededRandomEngine () -> typename std::enable_if<!!N, T>::type {
     typename T::result_type random_data[N];
-    random_device source;
-    std::generate(std::begin(random_data), std::end(random_data), std::ref(source));
-    std::seed_seq seeds(std::begin(random_data), std::end(random_data));
-    T seededEngine (seeds);
-    return seededEngine;
+    for (unsigned i=0; i<256; i++) {
+        try {
+            random_device source;
+            std::generate(std::begin(random_data), std::end(random_data), std::ref(source));
+            std::seed_seq seeds(std::begin(random_data), std::end(random_data));
+            T seededEngine (seeds);
+            return seededEngine;
+        } catch (...) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    throw std::runtime_error("Can't seed random engine");
 }
 
 }} // dht::crypto
