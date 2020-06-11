@@ -96,6 +96,12 @@ struct Request {
             clear();
         }
     }
+    void setError() {
+        if (pending()) {
+            state_ = Request::State::COMPLETED;
+            clear();
+        }
+    }
 
     void cancel() {
         if (pending()) {
