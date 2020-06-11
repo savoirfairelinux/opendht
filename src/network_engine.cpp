@@ -1336,7 +1336,7 @@ NetworkEngine::sendError(const SockAddr& addr,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (include_id?1:0));
+    pk.pack_map(4 + (include_id?1:0) + (config.network?1:0));
 
     pk.pack(KEY_E); pk.pack_array(2);
       pk.pack(code);
