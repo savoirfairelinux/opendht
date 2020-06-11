@@ -560,6 +560,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             {
                 req->last_try = time_point::min();
                 req->reply_time = time_point::min();
+                req->setError();
                 onError(req, DhtProtocolException {msg->error_code});
             } else {
                 if (logIncoming_)

@@ -2175,7 +2175,6 @@ Dht::onError(Sp<net::Request> req, net::DhtProtocolException e) {
         if (logger_)
             logger_->e(node->id, "[node %s] token flush", node->toString().c_str());
         node->authError();
-        node->cancelRequest(req);
         for (auto& srp : searches(node->getFamily())) {
             auto& sr = srp.second;
             for (auto& n : sr->nodes) {
