@@ -211,6 +211,7 @@ private:
 
 public:
     using RequestCb = std::function<void(const Request&, RequestAnswer&&)>;
+    using RequestErrorCb = std::function<bool(const Request&, DhtProtocolException&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
     NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rd, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
@@ -403,6 +404,7 @@ public:
                                  const Value::Id& vid,
                                  const Blob& token,
                                  RequestCb&& on_done,
+                                 RequestErrorCb&& on_error,
                                  RequestExpiredCb&& on_expired);
     /**
      * Send a "update" request to a given node. Used for Listen operations
