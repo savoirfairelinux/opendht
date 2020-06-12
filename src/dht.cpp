@@ -591,33 +591,30 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
     std::weak_ptr<Search> ws = sr;
     for (const auto& l : sr->listeners) {
         const auto& query = l.second.query;
-        auto list_token = l.first;
-        if (n.getListenTime(query, listenExp) > scheduler.time())
+        
+        auto r = n.listenStatus.find(query);
+        if (n.getListenTime(r, listenExp) > scheduler.time())
             continue;
         // if (logger_)
         //     logger_->d(sr->id, n.node->id, "[search %s] [node %s] sending 'listen'",
         //        sr->id.toString().c_str(), n.node->toString().c_str());
 
-        auto r = n.listenStatus.find(query);
         if (r == n.listenStatus.end()) {
             r = n.listenStatus.emplace(std::piecewise_construct,
                 std::forward_as_tuple(query),
                 std::forward_as_tuple(
-                [ws,list_token](const std::vector<Sp<Value>>& values, bool expired){
-                    if (auto sr = ws.lock()) {
-                        auto l = sr->listeners.find(list_token);
-                        if (l != sr->listeners.end()) {
-                            l->second.get_cb(values, expired);
+                    l.second.get_cb,
+                    l.second.sync_cb,
+                    n.node->openSocket([this,ws,query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable {
+                        /* on new values */
+                        if (auto sr = ws.lock()) {
+                            scheduler.edit(sr->nextSearchStep, scheduler.time());
+                            sr->insertNode(node, scheduler.time(), answer.ntoken);
+                            if (auto sn = sr->getNode(node)) {
+                                sn->onValues(query, std::move(answer), types, scheduler);
+                            }
                         }
-                    }
-                }, [ws,list_token] (ListenSyncStatus status) {
-                    if (auto sr = ws.lock()) {
-                        auto l = sr->listeners.find(list_token);
-                        if (l != sr->listeners.end()) {
-                            l->second.sync_cb(status);
-                        }
-                    }
-                })).first;
+                    }))).first;
             r->second.cacheExpirationJob = scheduler.add(time_point::max(), [this,ws,query,node=n.node]{
                 if (auto sr = ws.lock()) {
                     if (auto sn = sr->getNode(node)) {
@@ -626,8 +623,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                 }
             });
         }
-        auto prev_req = r != n.listenStatus.end() ? r->second.req : nullptr;
-        auto new_req = network_engine.sendListen(n.node, sr->id, *query, n.token, prev_req,
+        auto new_req = network_engine.sendListen(n.node, sr->id, *query, n.token, r->second.socketId,
             [this,ws,query](const net::Request& req, net::RequestAnswer&& answer) mutable
             { /* on done */
                 if (auto sr = ws.lock()) {
@@ -646,16 +642,6 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
                     if (over)
                         if (auto sn = sr->getNode(req.node))
                             sn->listenStatus.erase(query);
-                }
-            },
-            [this,ws,query](const Sp<Node>& node, net::RequestAnswer&& answer) mutable
-            { /* on new values */
-                if (auto sr = ws.lock()) {
-                    scheduler.edit(sr->nextSearchStep, scheduler.time());
-                    sr->insertNode(node, scheduler.time(), answer.ntoken);
-                    if (auto sn = sr->getNode(node)) {
-                        sn->onValues(query, std::move(answer), types, scheduler);
-                    }
                 }
             }
         );

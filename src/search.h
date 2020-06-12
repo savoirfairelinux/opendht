@@ -65,10 +65,16 @@ struct Dht::SearchNode {
         ValueCache cache;
         Sp<Scheduler::Job> cacheExpirationJob {};
         Sp<net::Request> req {};
-        CachedListenStatus(ValueStateCallback&& cb, SyncCallback&& scb)
-         : cache(std::forward<ValueStateCallback>(cb), std::forward<SyncCallback>(scb)) {}
+        Tid socketId {0};
+        CachedListenStatus(ValueStateCallback&& cb, SyncCallback scb, Tid sid)
+         : cache(std::forward<ValueStateCallback>(cb), std::forward<SyncCallback>(scb)), socketId(sid) {}
         CachedListenStatus(CachedListenStatus&&) = delete;
         CachedListenStatus(const CachedListenStatus&) = delete;
+        ~CachedListenStatus() {
+            if (socketId and req and req->node) {
+                req->node->closeSocket(socketId);
+            }
+        }
     };
     using NodeListenerStatus = std::map<Sp<Query>, CachedListenStatus>;
 
@@ -344,12 +350,14 @@ struct Dht::SearchNode {
      * Assuming the node is synced, should the "listen" request with Query q be
      * sent to this node now ?
      */
-    time_point getListenTime(const Sp<Query>& q, duration listen_expire) const {
-        auto listen_status = listenStatus.find(q);
-        if (listen_status == listenStatus.end() or not listen_status->second.req)
+    time_point getListenTime(const decltype(listenStatus)::const_iterator listen_status, duration listen_expire) const {
+        if (listen_status == listenStatus.cend() or not listen_status->second.req)
             return time_point::min();
         return listen_status->second.req->pending() ? time_point::max() :
             listen_status->second.req->reply_time + listen_expire - REANNOUNCE_MARGIN;
+    }
+    time_point getListenTime(const Sp<Query>& q, duration listen_expire) const {
+        return getListenTime(listenStatus.find(q), listen_expire);
     }
 
     /**
