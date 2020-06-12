@@ -490,7 +490,29 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                     logger_->w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %d)",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                 sn->acked[a.value->id] = {
-                    network_engine.sendRefreshValue(sn->node, sr->id, a.value->id, sn->token, onDone, onExpired),
+                    network_engine.sendRefreshValue(sn->node, sr->id, a.value->id, sn->token, onDone,
+                    [this, ws, node=sn->node, v=a.value, 
+                     onDone, 
+                     onExpired, 
+                     created = a.permanent ? time_point::max() : a.created,
+                     next_refresh_time
+                    ](const net::Request& req, net::DhtProtocolException&& e){
+                        if (e.getCode() == net::DhtProtocolException::NOT_FOUND) {
+                            if (logger_)
+                                logger_->e(node->id, "[node %s] returned error 404: storage not found", node->toString().c_str());
+                            if (auto sr = ws.lock()) {
+                                if (auto sn = sr->getNode(node)) {
+                                    sn->acked[v->id] = {
+                                        network_engine.sendAnnounceValue(sn->node, sr->id, v, created, sn->token, onDone, onExpired),
+                                        next_refresh_time
+                                    };
+                                    scheduler.edit(sr->nextSearchStep, scheduler.time());
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    }, onExpired),
                     next_refresh_time
                 };
             } else {

@@ -560,8 +560,8 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             {
                 req->last_try = time_point::min();
                 req->reply_time = time_point::min();
-                req->setError();
-                onError(req, DhtProtocolException {msg->error_code});
+                if (not req->setError(DhtProtocolException {msg->error_code}))
+                    onError(req, DhtProtocolException {msg->error_code});
             } else {
                 if (logIncoming_)
                     if (logger_)
@@ -1264,6 +1264,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                 const Value::Id& vid,
                 const Blob& token,
                 RequestCb&& on_done,
+                RequestErrorCb&& on_error,
                 RequestExpiredCb&& on_expired)
 {
     Tid tid (n->getNewTid());
@@ -1299,6 +1300,7 @@ NetworkEngine::sendRefreshValue(Sp<Node> n,
                 }
             }
         },
+        on_error,
         [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired) {
                 on_expired(req_status, done);
