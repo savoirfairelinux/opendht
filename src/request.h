@@ -73,23 +73,18 @@ struct Request {
             Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
-            std::function<void(const Request&, bool)> on_expired,
-            Tid socket = 0) :
-        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)), socket(socket) { }
+            std::function<void(const Request&, bool)> on_expired) :
+        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)) { }
     Request(MessageType type, Tid tid,
             Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<bool(const Request&, DhtProtocolException&&)> on_error,
-            std::function<void(const Request&, bool)> on_expired,
-            Tid socket = 0) :
-        node(node), tid(tid), type(type), on_done(on_done), on_error(on_error), on_expired(on_expired), msg(std::move(msg)), socket(socket) { }
+            std::function<void(const Request&, bool)> on_expired) :
+        node(node), tid(tid), type(type), on_done(on_done), on_error(on_error), on_expired(on_expired), msg(std::move(msg)) { }
 
     Tid getTid() const { return tid; }
     MessageType getType() const { return type; }
-
-    Tid getSocket() const { return socket; }
-    Tid closeSocket() { auto ret = socket; socket = 0; return ret; }
 
     void setExpired() {
         if (pending()) {
@@ -152,7 +147,6 @@ private:
 
     Blob msg {};                      /* the serialized message. */
     std::vector<Blob> parts;
-    Tid socket;   /* the socket used for further reponses. */
 };
 
 } /* namespace net  */

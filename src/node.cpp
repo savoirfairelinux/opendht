@@ -116,7 +116,6 @@ Node::cancelRequest(const Sp<net::Request>& req)
 {
     if (req) {
         req->cancel();
-        closeSocket(req->closeSocket());
         requests_.erase(req->getTid());
     }
 }

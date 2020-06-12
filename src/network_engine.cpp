@@ -1073,27 +1073,11 @@ NetworkEngine::sendListen(Sp<Node> n,
         const InfoHash& hash,
         const Query& query,
         const Blob& token,
-        Sp<Request> previous,
+        Tid socketId,
         RequestCb&& on_done,
-        RequestExpiredCb&& on_expired,
-        SocketCb&& socket_cb)
+        RequestExpiredCb&& on_expired)
 {
-    Tid socket;
     Tid tid (n->getNewTid());
-    if (previous and previous->node == n) {
-        socket = previous->getSocket();
-    } else {
-        if (previous)
-            if (logger_)
-                logger_->e(hash, "[node %s] trying refresh listen contract with wrong node", previous->node->toString().c_str());
-        socket = n->openSocket(std::move(socket_cb));
-    }
-
-    if (not socket) {
-        if (logger_)
-            logger_->e(hash, "[node %s] unable to get a valid socket for listen. Aborting listen", n->toString().c_str());
-        return {};
-    }
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
@@ -1104,7 +1088,7 @@ NetworkEngine::sendListen(Sp<Node> n,
       pk.pack(KEY_VERSION);   pk.pack(1);
       pk.pack(KEY_REQ_H);     pk.pack(hash);
       pk.pack(KEY_REQ_TOKEN); packToken(pk, token);
-      pk.pack(KEY_REQ_SID);   pk.pack(socket);
+      pk.pack(KEY_REQ_SID);   pk.pack(socketId);
       if (has_query) {
           pk.pack(KEY_REQ_QUERY); pk.pack(query);
       }
@@ -1126,8 +1110,7 @@ NetworkEngine::sendListen(Sp<Node> n,
         [=](const Request& req_status, bool done) { /* on expired */
             if (on_expired)
                 on_expired(req_status, done);
-        },
-        socket
+        }
     );
     sendRequest(req);
     ++out_stats.listen;

@@ -362,10 +362,9 @@ public:
                            const InfoHash& hash,
                            const Query& query,
                            const Blob& token,
-                           Sp<Request> previous,
+                           Tid socketId,
                            RequestCb&& on_done,
-                           RequestExpiredCb&& on_expired,
-                           SocketCb&& socket_cb);
+                           RequestExpiredCb&& on_expired);
     /**
      * Send a "announce" request to a given node.
      *
