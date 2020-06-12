@@ -572,8 +572,11 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         case MessageType::Reply:
             if (req) { /* request reply */
                 auto& r = *req;
-                if (r.getType() == MessageType::AnnounceValue or r.getType() == MessageType::Listen)
+                if (r.getType() == MessageType::AnnounceValue
+                 or r.getType() == MessageType::Listen
+                 or r.getType() == MessageType::Refresh) {
                     r.node->authSuccess();
+                }
                 r.reply_time = scheduler.time();
 
                 deserializeNodes(*msg, from);
