@@ -138,7 +138,7 @@ CryptoTester::testCertificateRequest()
 
 void CryptoTester::testCertificateSerialNumber()
 {
-    std::string cert_pem = "-----BEGIN CERTIFICATE-----"
+    static const std::string cert_pem = "-----BEGIN CERTIFICATE-----"
 "MIICDjCCAZSgAwIBAgIIS90uAKp+u/swCgYIKoZIzj0EAwMwTDEQMA4GA1UEAxMH"
 "ZGh0bm9kZTE4MDYGCgmSJomT8ixkAQETKDBlNDQxZTA4YWJmYTQzYTc3ZTVjZDBm"
 "Y2QzMzAzMTc4MjYxMTk0MzIwHhcNMTkxMTA3MDA0MTMwWhcNMjkxMTA0MDA0MTMw"
@@ -152,15 +152,13 @@ void CryptoTester::testCertificateSerialNumber()
 "AjBgxXyXYqn0d7vz7S6oAY5TdaD5YFT5MD2c1MAAp8pxQSwdPa9k0ZSoGIEn31Z0"
 "GxU="
 "-----END CERTIFICATE-----";
-    auto identity = dht::crypto::generateIdentity();
-    identity.second = std::make_shared<dht::crypto::Certificate>(cert_pem);
     /*
      * $ openssl x509 -in cert.pem  -noout -serial
      * serial=4BDD2E00AA7EBBFB
      */
-    dht::Blob serial {{0x4b,0xdd,0x2e,0x00,0xaa,0x7e,0xbb,0xfb}};
-    auto blob = identity.second->getSerialNumber();
-    CPPUNIT_ASSERT(serial == blob);
+    static constexpr std::array<uint8_t, 8> SERIAL {{0x4b,0xdd,0x2e,0x00,0xaa,0x7e,0xbb,0xfb}};
+    auto serial = dht::crypto::Certificate(cert_pem).getSerialNumber();
+    CPPUNIT_ASSERT(std::equal(SERIAL.begin(), SERIAL.end(), serial.begin(), serial.end()));
 }
 
 void
