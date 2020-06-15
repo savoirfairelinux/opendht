@@ -483,7 +483,29 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
                 logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
         }
         if (jsoncb)
-            jsoncb(std::move(json), response.status_code);
+            jsoncb(std::move(json), response);
+    });
+}
+
+Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb, std::shared_ptr<dht::Logger> logger)
+    : logger_(std::move(logger)), id_(Request::ids_++), ctx_(ctx),
+      resolver_(std::make_shared<Resolver>(ctx, url, logger))
+{
+    init_default_headers();
+    set_header_field(restinio::http_field_t::accept, HTTP_HEADER_CONTENT_TYPE_JSON);
+    Json::StreamWriterBuilder wbuilder;
+    set_method(restinio::http_method_get());
+    add_on_done_callback([this, jsoncb](const Response& response){
+        Json::Value json;
+        if (response.status_code != 0) {
+            std::string err;
+            Json::CharReaderBuilder rbuilder;
+            auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
+            if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
+                logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
+        }
+        if (jsoncb)
+            jsoncb(std::move(json), response);
     });
 }
 
