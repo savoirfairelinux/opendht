@@ -107,7 +107,6 @@ ThreadPool::run(std::function<void()>&& cb)
     tasks_.emplace(std::move(cb));
 
     // notify thread
-    l.unlock();
     cv_.notify_one();
 }
 
