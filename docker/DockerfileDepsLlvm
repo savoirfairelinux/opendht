@@ -18,9 +18,9 @@ ENV CXX c++
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/a7a10e419d9089c5b8ee63f5e3098c892f22fae4.tar.gz \
-    && ls -l && tar -xzf a7a10e419d9089c5b8ee63f5e3098c892f22fae4.tar.gz \
-    && cd restinio-a7a10e419d9089c5b8ee63f5e3098c892f22fae4/dev \
+    && wget https://github.com/aberaud/restinio/archive/2c0b6f5e5ba04d7a74e8406a3df1fd433680599d.tar.gz \
+    && ls -l && tar -xzf 2c0b6f5e5ba04d7a74e8406a3df1fd433680599d.tar.gz \
+    && cd restinio-2c0b6f5e5ba04d7a74e8406a3df1fd433680599d/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
              -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
              -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
