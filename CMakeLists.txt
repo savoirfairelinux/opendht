@@ -4,7 +4,7 @@ include(CMakeDependentOption)
 
 project (opendht)
 set (opendht_VERSION_MAJOR 2)
-set (opendht_VERSION_MINOR 1.3)
+set (opendht_VERSION_MINOR 1.4)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
