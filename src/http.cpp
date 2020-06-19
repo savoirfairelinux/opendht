@@ -76,7 +76,7 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
     if (ssl){
-        ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
+        ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
         ssl_ctx_->set_default_verify_paths();
         ssl_ctx_->set_verify_mode(asio::ssl::verify_none);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
@@ -94,7 +94,7 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
                        const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
-    ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::sslv23);
+    ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
     ssl_ctx_->set_default_verify_paths();
     asio::error_code ec;
     if (server_ca){
@@ -160,15 +160,13 @@ Connection::is_ssl() const
 }
 
 void
-Connection::set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode)
+Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::verify_mode verify_mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (ssl_socket_ and verify_mode != asio::ssl::verify_none) {
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         ssl_socket_->asio_ssl_stream().set_verify_callback([
-                id = id_,
-                logger = logger_,
-                hostname = endpoint.address().to_string()
+                id = id_, logger = logger_, hostname
             ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
                 if (logger)
                     logger->d("[connection:%i] verify %s compliance to RFC 2818", id, hostname.c_str());
@@ -784,8 +782,8 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             eps.append(endpoint.address().to_string() + ":" + std::to_string(endpoint.port()) + " ");
         logger_->d("[http:request:%i] connect begin: %s", id_, eps.c_str());
     }
-    if (get_url().protocol == "https"){
-        if (server_ca_)
+    if (get_url().protocol == "https") {
+        if (server_ca_ or client_identity_.first)
             conn_ = std::make_shared<Connection>(ctx_, server_ca_, client_identity_, logger_);
         else
             conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
@@ -823,10 +821,10 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
 
             if (url.protocol == "https") {
                 if (this_.server_ca_)
-                    this_.conn_->set_ssl_verification(endpoint, asio::ssl::verify_peer
+                    this_.conn_->set_ssl_verification(url.host, asio::ssl::verify_peer
                                                           | asio::ssl::verify_fail_if_no_peer_cert);
 
-                if (this_.conn_ and this_.conn_->is_open() and this_.conn_->is_ssl()){
+                if (this_.conn_ and this_.conn_->is_open() and this_.conn_->is_ssl()) {
                     this_.conn_->async_handshake([id = this_.id_, cb, logger = this_.logger_](const asio::error_code& ec){
                         if (ec == asio::error::operation_aborted)
                             return;

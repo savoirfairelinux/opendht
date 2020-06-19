@@ -95,7 +95,7 @@ public:
     bool is_open() const;
     bool is_ssl() const;
 
-    void set_ssl_verification(const asio::ip::tcp::endpoint& endpoint, const asio::ssl::verify_mode verify_mode);
+    void set_ssl_verification(const std::string& hostname, const asio::ssl::verify_mode verify_mode);
 
     asio::streambuf& input();
     std::istream& data() { return istream_; }
