@@ -92,9 +92,15 @@ std::atomic_uint Connection::ids_ {1};
 Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
-    if (ssl){
+    if (ssl) {
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
-        ssl_ctx_->set_default_verify_paths();
+        asio::error_code ec;
+        ssl_ctx_->set_default_verify_paths(ec);
+        if (ec)
+            throw std::runtime_error("Error setting default certificate path: " + ec.message());
+#ifdef __ANDROID__
+        ssl_ctx_->add_verify_path("/etc/security/cacerts/");
+#endif
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
             logger_->d("[connection:%i] start https session", id_);
@@ -111,8 +117,13 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
     ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
-    ssl_ctx_->set_default_verify_paths();
     asio::error_code ec;
+    ssl_ctx_->set_default_verify_paths(ec);
+    if (ec)
+        throw std::runtime_error("Error setting default certificate path: " + ec.message());
+#ifdef __ANDROID__
+    ssl_ctx_->add_verify_path("/etc/security/cacerts/", ec);
+#endif
     if (server_ca){
         auto ca = server_ca->toString(false/*chain*/);
         ssl_ctx_->add_certificate_authority(asio::const_buffer{ca.data(), ca.size()}, ec);
