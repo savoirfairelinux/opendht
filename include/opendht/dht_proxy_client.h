@@ -264,11 +264,10 @@ public:
     std::vector<unsigned> getNodeMessageStats(bool) override { return {}; }
     void setStorageLimit(size_t) override {}
     void connectivityChanged(sa_family_t) override {
-        restartListeners();
+        getProxyInfos();
     }
     void connectivityChanged() override {
         getProxyInfos();
-        restartListeners();
         loopSignal_();
     }
 
@@ -385,7 +384,7 @@ private:
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
      */
-    void restartListeners();
+    void restartListeners(const asio::error_code &ec);
 
     /**
      * Refresh a listen via a token

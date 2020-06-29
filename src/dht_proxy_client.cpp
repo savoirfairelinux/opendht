@@ -720,7 +720,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     if (newStatus == NodeStatus::Connected) {
         if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
             listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
-            listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this));
+            listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
         }
         nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(15));
         nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
@@ -1078,8 +1078,16 @@ DhtProxyClient::getConnectivityStatus()
 }
 
 void
-DhtProxyClient::restartListeners()
+DhtProxyClient::restartListeners(const asio::error_code &ec)
 {
+    if (ec == asio::error::operation_aborted)
+        return;
+    else if (ec){
+        if (logger_)
+            logger_->e("[proxy:client] restart error: %s", ec.message().c_str());
+        return;
+    }
+
     if (isDestroying_)
         return;
     if (logger_)
