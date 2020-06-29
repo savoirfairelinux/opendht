@@ -189,26 +189,26 @@ void
 Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::verify_mode verify_mode)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (ssl_socket_ and verify_mode != asio::ssl::verify_none) {
+    if (ssl_socket_) {
+        // Set SNI Hostname (many hosts need this to handshake successfully)
+        SSL_set_tlsext_host_name(ssl_socket_->asio_ssl_stream().native_handle(), hostname.c_str());
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
-        ssl_socket_->asio_ssl_stream().set_verify_callback([
-                id = id_, logger = logger_, hostname
-            ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
-                if (logger)
-                    logger->d("[connection:%i] verify %s compliance to RFC 2818", id, hostname.c_str());
-                if (preverified)
-                    return preverified;
-                // starts from CA and goes down the presented chain
-                auto verifier = asio::ssl::rfc2818_verification(hostname);
-                bool verified = verifier(preverified, ctx);
-                auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
-                if (verify_ec != 0 /*X509_V_OK*/ and logger)
-                    logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
-                else if (logger)
-                    logger->w("ssl verification result: %d %d", verify_ec, verified);
-                return verified;
-            }
-        );
+        if (verify_mode != asio::ssl::verify_none) {
+            ssl_socket_->asio_ssl_stream().set_verify_callback([
+                    id = id_, logger = logger_, hostname
+                ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
+                    if (logger)
+                        logger->d("[connection:%i] verify %s compliance to RFC 2818", id, hostname.c_str());
+                    // starts from CA and goes down the presented chain
+                    auto verifier = asio::ssl::rfc2818_verification(hostname);
+                    bool verified = verifier(preverified, ctx);
+                    auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
+                    if (verify_ec != 0 /*X509_V_OK*/ and logger)
+                        logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
+                    return verified;
+                }
+            );
+        }
     }
 }
 
