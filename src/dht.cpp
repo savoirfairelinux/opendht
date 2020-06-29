@@ -496,7 +496,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                      onExpired, 
                      created = a.permanent ? time_point::max() : a.created,
                      next_refresh_time
-                    ](const net::Request& req, net::DhtProtocolException&& e){
+                    ](const net::Request& /*req*/, net::DhtProtocolException&& e){
                         if (e.getCode() == net::DhtProtocolException::NOT_FOUND) {
                             if (logger_)
                                 logger_->e(node->id, "[node %s] returned error 404: storage not found", node->toString().c_str());

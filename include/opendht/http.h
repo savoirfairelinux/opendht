@@ -72,15 +72,17 @@ using socket_t = asio::ip::tcp::socket;
 class OPENDHT_PUBLIC Url
 {
 public:
-    Url(){};
+    Url() = default;
     Url(const std::string& url);
     std::string url;
     std::string protocol {"http"};
     std::string host;
-    std::string service {"80"};
-    std::string target {"/"};
+    std::string service;
+    std::string target;
     std::string query;
     std::string fragment;
+
+    std::string toString() const;
 };
 
 class OPENDHT_PUBLIC Connection : public std::enable_shared_from_this<Connection>
@@ -303,6 +305,8 @@ private:
         OnDataCb on_body;
         OnStateChangeCb on_state_change;
     };
+
+    static std::string getRelativePath(const Url& origin, const std::string& path);
 
     void notify_state_change(State state);
 

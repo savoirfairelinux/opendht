@@ -82,13 +82,13 @@ private:
 };
 
 struct Logger {
-    LogMethod DBG = {};
-    LogMethod WARN = {};
     LogMethod ERR = {};
+    LogMethod WARN = {};
+    LogMethod DBG = {};
 
     Logger() = default;
     Logger(LogMethod&& err, LogMethod&& warn, LogMethod&& dbg)
-        : DBG(std::move(dbg)), WARN(std::move(warn)), ERR(std::move(err)) {}
+        : ERR(std::move(err)), WARN(std::move(warn)), DBG(std::move(dbg)) {}
     void setFilter(const InfoHash& f) {
         filter_ = f;
         filterEnable_ = static_cast<bool>(filter_);

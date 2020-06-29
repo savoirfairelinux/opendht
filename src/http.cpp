@@ -29,8 +29,11 @@
 namespace dht {
 namespace http {
 
-constexpr char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
-constexpr char HTTP_HEADER_DELIM[] = "\r\n\r\n";
+constexpr const char HTTP_HEADER_CONTENT_TYPE_JSON[] = "application/json";
+constexpr const char HTTP_HEADER_DELIM[] = "\r\n\r\n";
+constexpr const char HTTP_PROTOCOL[] = "http://";
+constexpr const char HTTPS_PROTOCOL[] = "https://";
+constexpr const char ORIGIN_PROTOCOL[] = "//";
 constexpr unsigned MAX_REDIRECTS {5};
 
 Url::Url(const std::string& url): url(url)
@@ -42,7 +45,6 @@ Url::Url(const std::string& url): url(url)
         addr_begin = proto_end + 3;
         if (url.substr(0, proto_end) == "https"){
             protocol = "https";
-            service = protocol;
         }
     }
     // host and service
@@ -68,6 +70,21 @@ Url::Url(const std::string& url): url(url)
     }
 }
 
+std::string
+Url::toString() const
+{
+    std::stringstream ss;
+    if (not protocol.empty()) {
+        ss << protocol << "://";
+    }
+    ss << host;
+    if (not service.empty()) {
+        ss << ':' << service;
+    }
+    ss << target;
+    return ss.str();
+}
+
 // connection
 
 std::atomic_uint Connection::ids_ {1};
@@ -78,7 +95,6 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
     if (ssl){
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
         ssl_ctx_->set_default_verify_paths();
-        ssl_ctx_->set_verify_mode(asio::ssl::verify_none);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
             logger_->d("[connection:%i] start https session", id_);
@@ -120,7 +136,6 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         else if (logger_)
             logger_->d("[connection:%i] client certificate %s", id_, identity.second->getUID().c_str());
     }
-    ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
 }
 
@@ -176,8 +191,10 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                 auto verifier = asio::ssl::rfc2818_verification(hostname);
                 bool verified = verifier(preverified, ctx);
                 auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
-                if (verified != 0 /*X509_V_OK*/ and logger)
-                    logger->e("[http::connection:%i] ssl verification error=%i", id, verify_ec);
+                if (verify_ec != 0 /*X509_V_OK*/ and logger)
+                    logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
+                else if (logger)
+                    logger->w("ssl verification result: %d %d", verify_ec, verified);
                 return verified;
             }
         );
@@ -240,7 +257,7 @@ Connection::async_handshake(HandlerCb cb)
                 if (this_.logger_) {
                     if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
                         || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
-                        this_.logger_->d("[connection:%i] allow self-signed certificate in handshake", this_.id_);
+                        this_.logger_->d("[connection:%i] self-signed certificate in handshake: %i", this_.id_, verify_ec);
                     else if (verify_ec != X509_V_OK)
                         this_.logger_->e("[connection:%i] verify handshake error: %i", this_.id_, verify_ec);
                 }
@@ -354,7 +371,7 @@ Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
 Resolver::Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger)
     : url_(url), resolver_(ctx), destroyed_(std::make_shared<bool>(false)), logger_(logger)
 {
-    resolve(url_.host, url_.service);
+    resolve(url_.host, url_.service.empty() ? url_.protocol : url_.service);
 }
 
 Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
@@ -364,7 +381,7 @@ Resolver::Resolver(asio::io_context& ctx, const std::string& host, const std::st
     url_.host = host;
     url_.service = service;
     url_.protocol = (ssl ? "https" : "http");
-    resolve(url_.host, url_.service);
+    resolve(url_.host, url_.service.empty() ? url_.protocol : url_.service);
 }
 
 Resolver::Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints, const bool ssl,
@@ -427,13 +444,12 @@ void
 Resolver::resolve(const std::string& host, const std::string& service)
 {
     asio::ip::tcp::resolver::query query_(host, service);
-
     resolver_.async_resolve(query_, [this, host, service, destroyed = destroyed_]
         (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
     {
         if (ec == asio::error::operation_aborted or *destroyed)
             return;
-        if (logger_){
+        if (logger_) {
             if (ec)
                 logger_->e("[http:client] [resolver] error for %s:%s: %s",
                            host.c_str(), service.c_str(), ec.message().c_str());
@@ -610,7 +626,7 @@ Request::set_method(restinio::http_method_id_t method) {
 
 void
 Request::set_target(std::string target) {
-    header_.request_target(std::move(target));
+    header_.request_target(target.empty() ? "/" : std::move(target));
 }
 
 void
@@ -782,18 +798,21 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             eps.append(endpoint.address().to_string() + ":" + std::to_string(endpoint.port()) + " ");
         logger_->d("[http:request:%i] connect begin: %s", id_, eps.c_str());
     }
-    if (get_url().protocol == "https") {
+    bool isHttps = get_url().protocol == "https";
+    if (isHttps) {
         if (server_ca_ or client_identity_.first)
             conn_ = std::make_shared<Connection>(ctx_, server_ca_, client_identity_, logger_);
         else
             conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
+        conn_->set_ssl_verification(get_url().host, asio::ssl::verify_peer
+                                                    | asio::ssl::verify_fail_if_no_peer_cert);
     }
     else
         conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
 
     // try to connect to any until one works
     std::weak_ptr<Request> wthis = shared_from_this();
-    conn_->async_connect(std::move(endpoints), [wthis, cb]
+    conn_->async_connect(std::move(endpoints), [wthis, cb, isHttps]
                         (const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint){
         auto sthis = wthis.lock();
         if (not sthis)
@@ -808,22 +827,15 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             if (this_.logger_)
                 this_.logger_->e("[http:request:%i] connect failed with all endpoints: %s", this_.id_, ec.message().c_str());
         } else {
-            // if (this_.logger_)
-            //     this_.logger_->d("[http:request:%i] connect success", this_.id_);
-
             const auto& url = this_.get_url();
             auto port = endpoint.port();
-            if ((url.protocol == "http" && port == (in_port_t)80)
-             || (url.protocol == "https" && port == (in_port_t)443))
+            if ((!isHttps && port == (in_port_t)80)
+             || (isHttps && port == (in_port_t)443))
                 this_.set_header_field(restinio::http_field_t::host, url.host);
             else
                 this_.set_header_field(restinio::http_field_t::host, url.host + ":" + std::to_string(port));
 
-            if (url.protocol == "https") {
-                if (this_.server_ca_)
-                    this_.conn_->set_ssl_verification(url.host, asio::ssl::verify_peer
-                                                          | asio::ssl::verify_fail_if_no_peer_cert);
-
+            if (isHttps) {
                 if (this_.conn_ and this_.conn_->is_open() and this_.conn_->is_ssl()) {
                     this_.conn_->async_handshake([id = this_.id_, cb, logger = this_.logger_](const asio::error_code& ec){
                         if (ec == asio::error::operation_aborted)
@@ -951,7 +963,7 @@ Request::handle_request(const asio::error_code& ec)
 }
 
 void
-Request::handle_response(const asio::error_code& ec, size_t n_bytes)
+Request::handle_response(const asio::error_code& ec, size_t /* n_bytes */)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (ec && ec != asio::error::eof){
@@ -1008,7 +1020,10 @@ Request::onHeadersComplete() {
         }
 
         if (follow_redirect and num_redirect < MAX_REDIRECTS) {
-            auto next = std::make_shared<Request>(ctx_, location_it->second, logger_);
+            auto newUrl = getRelativePath(get_url(), location_it->second);
+            if (logger_)
+                logger_->w("[http:client] [request:%i] redirect to %s", id_, newUrl.c_str());
+            auto next = std::make_shared<Request>(ctx_, newUrl, logger_);
             next->set_method(header_.method());
             next->headers_ = std::move(headers_);
             next->body_ = std::move(body_);
@@ -1036,6 +1051,31 @@ Request::onHeadersComplete() {
             });
         }
     }
+}
+
+bool startsWith(const std::string& haystack, const std::string& needle) {
+    return needle.length() <= haystack.length() 
+        && std::equal(needle.begin(), needle.end(), haystack.begin());
+}
+
+std::string
+Request::getRelativePath(const Url& origin, const std::string& path)
+{
+    if (startsWith(path, HTTP_PROTOCOL)
+    || startsWith(path, HTTPS_PROTOCOL)
+    || startsWith(path, ORIGIN_PROTOCOL)) {
+        // Absolute path
+        return path;
+    }
+    Url newPath = origin;
+    if (not path.empty() and path[0] == '/') {
+        newPath.target = path;
+    } else {
+        if (newPath.target.empty())
+            newPath.target.push_back('/');
+        newPath.target += path;
+    }
+    return newPath.toString();
 }
 
 } // namespace http
