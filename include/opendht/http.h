@@ -294,6 +294,7 @@ public:
      * User action to cancel the Request and call the completion callbacks.
      */
     void cancel();
+    void terminate(const asio::error_code& ec);
 
 private:
     using OnCompleteCb = std::function<void()>;
@@ -319,8 +320,6 @@ private:
     void init_parser();
 
     void connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb = {});
-
-    void terminate(const asio::error_code& ec);
 
     void post();
 
