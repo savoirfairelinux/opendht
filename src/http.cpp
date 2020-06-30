@@ -94,12 +94,10 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
 {
     if (ssl) {
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
-        asio::error_code ec;
-        ssl_ctx_->set_default_verify_paths(ec);
-        if (ec)
-            throw std::runtime_error("Error setting default certificate path: " + ec.message());
+        ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+        ssl_ctx_->set_default_verify_paths();
 #ifdef __ANDROID__
-        ssl_ctx_->add_verify_path("/etc/security/cacerts/");
+        ssl_ctx_->add_verify_path("/etc/security/cacerts");
 #endif
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
@@ -117,13 +115,12 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
     ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
-    asio::error_code ec;
-    ssl_ctx_->set_default_verify_paths(ec);
-    if (ec)
-        throw std::runtime_error("Error setting default certificate path: " + ec.message());
+    ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+    ssl_ctx_->set_default_verify_paths();
 #ifdef __ANDROID__
-    ssl_ctx_->add_verify_path("/etc/security/cacerts/", ec);
+    ssl_ctx_->add_verify_path("/etc/security/cacerts");
 #endif
+    asio::error_code ec;
     if (server_ca){
         auto ca = server_ca->toString(false/*chain*/);
         ssl_ctx_->add_certificate_authority(asio::const_buffer{ca.data(), ca.size()}, ec);
@@ -524,7 +521,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb,
     set_header_field(restinio::http_field_t::accept, HTTP_HEADER_CONTENT_TYPE_JSON);
     Json::StreamWriterBuilder wbuilder;
     set_method(restinio::http_method_get());
-    add_on_done_callback([this, jsoncb](const Response& response){
+    add_on_done_callback([this, jsoncb](const Response& response) {
         Json::Value json;
         if (response.status_code != 0) {
             std::string err;
