@@ -197,8 +197,12 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
             ssl_socket_->asio_ssl_stream().set_verify_callback([
                     id = id_, logger = logger_, hostname
                 ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
-                    if (logger)
-                        logger->d("[connection:%i] verify %s compliance to RFC 2818", id, hostname.c_str());
+                    if (logger) {
+                        char subject_name[1024];
+                        X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
+                        X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 1024);
+                        logger->d("[connection:%i] verify %s compliance to RFC 2818:\n%s", id, hostname.c_str(), subject_name);
+                    }
                     // starts from CA and goes down the presented chain
                     auto verifier = asio::ssl::rfc2818_verification(hostname);
                     bool verified = verifier(preverified, ctx);
