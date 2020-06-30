@@ -95,9 +95,10 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
     if (ssl) {
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
         ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-        ssl_ctx_->set_default_verify_paths();
 #ifdef __ANDROID__
-        ssl_ctx_->add_verify_path("/etc/security/cacerts");
+        ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
+#else
+        ssl_ctx_->set_default_verify_paths();
 #endif
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
@@ -116,9 +117,10 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
 {
     ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-    ssl_ctx_->set_default_verify_paths();
 #ifdef __ANDROID__
-    ssl_ctx_->add_verify_path("/etc/security/cacerts");
+        ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
+#else
+        ssl_ctx_->set_default_verify_paths();
 #endif
     asio::error_code ec;
     if (server_ca){
@@ -816,8 +818,12 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             conn_ = std::make_shared<Connection>(ctx_, server_ca_, client_identity_, logger_);
         else
             conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
+#if !defined(LINUX) || defined(__ANDROID__)
+        conn_->set_ssl_verification(get_url().host, asio::ssl::verify_none);
+#else
         conn_->set_ssl_verification(get_url().host, asio::ssl::verify_peer
                                                     | asio::ssl::verify_fail_if_no_peer_cert);
+#endif
     }
     else
         conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
