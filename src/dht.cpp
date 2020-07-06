@@ -432,7 +432,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
     { /* when put done */
         if (auto sr = ws.lock()) {
             onAnnounceDone(req.node, answer, sr);
-            searchStep(sr);
+            scheduler.edit(sr->nextSearchStep, scheduler.time());
         }
     };
 
