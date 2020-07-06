@@ -235,13 +235,13 @@ HttpTester::test_send_json() {
     Json::Value resp_val;
 
     // Act
-    auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(), 
+    auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
         "http://127.0.0.1:8080/key",
         json,
-        [&](Json::Value value, unsigned int status_code) {
+        [&](Json::Value value, const dht::http::Response& response) {
             std::lock_guard<std::mutex> lk(cv_m);
             resp_val = std::move(value);
-            status = status_code;
+            status = response.status_code;
             done = true;
             cv.notify_all();
         });
