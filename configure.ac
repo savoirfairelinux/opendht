@@ -154,7 +154,7 @@ AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
 ])
 
-AC_ARG_WITH([openssl], AS_HELP_STRING([--without-openssl], [Build with OpenSSL support]))
+AC_ARG_WITH([openssl], AS_HELP_STRING([--without-openssl], [Build without OpenSSL support]))
 AS_IF([test "x$with_openssl" != "xno"],
       [PKG_CHECK_MODULES([OpenSSL], [openssl >= 1.1], [have_openssl=yes], [have_openssl=no])],
       [have_openssl=no])
