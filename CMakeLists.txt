@@ -29,6 +29,7 @@ CMAKE_DEPENDENT_OPTION(OPENDHT_HTTP "Build embedded http(s) client" OFF "NOT OPE
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS "Add unit tests executable" OFF)
+option (OPENDHT_TESTS_NETWORK "Enable unit tests that require network access" ON)
 option (OPENDHT_C "Build C bindings" OFF)
 
 find_package(Doxygen)
@@ -393,19 +394,21 @@ if (OPENDHT_TESTS)
         tests/threadpooltester.h
         tests/threadpooltester.cpp
     )
-    if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
-        list (APPEND test_FILES
-            tests/httptester.h
-            tests/httptester.cpp
-            tests/dhtproxytester.h
-            tests/dhtproxytester.cpp
-        )
-    endif()
-    if (OPENDHT_PEER_DISCOVERY)
-        list (APPEND test_FILES
-            tests/peerdiscoverytester.h
-            tests/peerdiscoverytester.cpp
-        )
+    if (OPENDHT_TESTS_NETWORK)
+        if (OPENDHT_PROXY_SERVER AND OPENDHT_PROXY_CLIENT)
+            list (APPEND test_FILES
+                tests/httptester.h
+                tests/httptester.cpp
+                tests/dhtproxytester.h
+                tests/dhtproxytester.cpp
+            )
+        endif()
+        if (OPENDHT_PEER_DISCOVERY)
+            list (APPEND test_FILES
+                tests/peerdiscoverytester.h
+                tests/peerdiscoverytester.cpp
+            )
+        endif()
     endif()
     add_executable(opendht_unit_tests
         tests/tests_runner.cpp
