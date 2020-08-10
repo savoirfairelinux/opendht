@@ -61,16 +61,19 @@ AS_IF([test "x$enable_doc" = "xyes"], [
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
 dnl Check for Python
-AC_ARG_ENABLE([python], [AS_HELP_STRING([--disable-python], [Disble python binding])])
-AS_IF([test "x$enable_python" != "xno"], [
-       AM_PATH_PYTHON([3.3],, [:])
-       AS_IF([test -n "$PYTHON"],[
-              echo 'import Cython' | $PYTHON
-              AS_IF([test $? == 0],[CYTHON=yes],[AC_MSG_WARN([Cython not found - continuing without python support])])
-              AC_CHECK_PROGS([PIP], [pip3])
-              AS_IF([test -z "$PIP"],[AC_MSG_WARN([pip not found - continuing without python uninstall support])])
-              ])
-       ])
+AC_ARG_ENABLE([python], [AS_HELP_STRING([--disable-python], [Disable python binding])])
+AS_IF([test "x$enable_python" = "xyes"], [
+  AM_COND_IF([ENABLE_INDEXATION], [
+    AM_PATH_PYTHON([3.3],, [:])
+    AS_IF([test -n "$PYTHON"],[
+      echo 'import Cython' | $PYTHON
+      AS_IF([test $? == 0],
+        [CYTHON=yes],
+        [AC_MSG_ERROR([Cython not found, but required for Python support.])])
+      AC_CHECK_PROGS([PIP], [pip3])
+        AS_IF([test -z "$PIP"],
+        [AC_MSG_WARN([pip not found - continuing without python uninstall support])])])
+     ], [AC_MSG_ERROR([Python support requires DHT indexation to be turned on.])])])
 AM_CONDITIONAL([USE_CYTHON], [test -n "$CYTHON"])
 AM_CONDITIONAL([HAVE_PIP], [test -n "$PIP"])
 
