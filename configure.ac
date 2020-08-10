@@ -56,7 +56,8 @@ dnl Check for Doxygen
 AC_ARG_ENABLE([doc], AS_HELP_STRING([--enable-doc], [Enable documentation generation (doxygen)]))
 AS_IF([test "x$enable_doc" = "xyes"], [
        AC_CHECK_PROGS([DOXYGEN], [doxygen])
-       AS_IF([test -z "$DOXYGEN"], [AC_MSG_WARN([Doxygen not found - continuing without Doxygen support])])
+       AS_IF([test -z "$DOXYGEN"],
+          [AC_MSG_ERROR([Doxygen is required to generate the documentation.])])
 ])
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
