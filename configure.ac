@@ -192,8 +192,8 @@ CXXFLAGS="${CXXFLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
 AM_COND_IF([ENABLE_TOOLS], [
-  AC_CHECK_HEADERS([readline/readline.h readline/history.h], [], [
-    AC_MSG_ERROR([unable to find readline.h])
+  AC_CHECK_HEADERS([readline/readline.h readline/history.h], [],
+    [AC_MSG_ERROR([Unable to find readline.h. Readline is required for the tools.])
   ])
 ])
 
