@@ -97,7 +97,7 @@ esac
 
 AM_CONDITIONAL(WIN32, [test "x$SYS" = "xmingw32"])
 AS_IF([test "x$SYS" = "xandroid"],
-      [], [LDFLAGS="${LDFLAGS} -lpthread"])
+      [], [LDFLAGS="${LDFLAGS} -pthread"])
 
 LT_INIT()
 LT_LANG(C++)
@@ -133,6 +133,9 @@ PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
 
+PKGCONFIG_LIBS_PRIVATE="-pthread"
+PKGCONFIG_REQUIRES_PRIVATE="gnutls >= 3.3, nettle >= 2.4, msgpack >= 1.2"
+
 AC_ARG_WITH([jsoncpp], AS_HELP_STRING([--without-jsoncpp], [Build without JsonCpp support]))
 AS_IF([test "x$with_jsoncpp" != "xno"],
       [PKG_CHECK_MODULES([JsonCpp], [jsoncpp >= 1.7.2], [have_jsoncpp=yes], [have_jsoncpp=no])],
@@ -140,7 +143,7 @@ AS_IF([test "x$with_jsoncpp" != "xno"],
 AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AC_MSG_NOTICE([Using JsonCpp])
     CPPFLAGS+=" -DOPENDHT_JSONCPP"
-    AC_SUBST(jsoncpp_lib, [", jsoncpp"])
+    PKGCONFIG_REQUIRES_PRIVATE="${PKGCONFIG_REQUIRES_PRIVATE}, jsoncpp"
 ], [
     AC_MSG_NOTICE([Not using JsonCpp])
     AM_COND_IF(PROXY_CLIENT_OR_SERVER, AC_MSG_ERROR(["JsonCpp is required for proxy/push notification support"]))
@@ -152,7 +155,7 @@ AS_IF([test "x$with_openssl" != "xno"],
       [have_openssl=no])
 AS_IF([test "x$have_openssl" = "xyes"], [
     AC_MSG_NOTICE([Using OpenSSL])
-    AC_SUBST(openssl_lib, [", openssl"])
+    PKGCONFIG_REQUIRES_PRIVATE="${PKGCONFIG_REQUIRES_PRIVATE}, openssl"
 ], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
@@ -161,6 +164,7 @@ AC_ARG_WITH([http_parser_fork], AS_HELP_STRING([--with-http-parser-fork], [Build
 AS_IF([test "x$with_http_parser_fork" = "xyes"],[
     AC_MSG_NOTICE([Using http_parser fork])
     AC_DEFINE([OPENDHT_PROXY_HTTP_PARSER_FORK], [], [Define if using http parser fork])
+    PKGCONFIG_LIBS_PRIVATE="-lhttp_parser ${PKGCONFIG_LIBS_PRIVATE}"
 ], [
     AC_MSG_NOTICE([Not using http_parser fork])
 ])
@@ -171,14 +175,15 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0], [have_fmt=yes], [have_fmt=no])
     AS_IF([test "x$have_fmt" = "xyes"], [
         AC_MSG_NOTICE([Using libfmt])
+        PKGCONFIG_REQUIRES_PRIVATE="${PKGCONFIG_REQUIRES_PRIVATE}, fmt"
     ], [
         AC_MSG_NOTICE([Missing libfmt files])
     ])
     # http_parser has no pkgconfig, instead we check with:
     AC_CHECK_LIB(http_parser, exit,, AC_MSG_ERROR([Missing HttpParser library files]))
     AC_CHECK_HEADERS([http_parser.h], [http_parser_headers=yes; break;])
-    AC_SUBST(http_parser_lib, ["-lhttp_parser"])
     AS_IF([test "x$http_parser_headers" != "xyes"], AC_MSG_ERROR([Missing HttpParser headers files]))
+    PKGCONFIG_LIBS_PRIVATE="-lhttp_parser ${PKGCONFIG_LIBS_PRIVATE}"
 ])
 
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
@@ -190,7 +195,7 @@ AS_IF([test "x$with_argon2" != "xno"],
 			[have_argon2=no])
 AS_IF([test "x$have_argon2" = "xyes"], [
   AC_MSG_NOTICE([Using system Argon2])
-  AC_SUBST(argon2_lib, [", libargon2"])
+  PKGCONFIG_REQUIRES_PRIVATE="${PKGCONFIG_REQUIRES_PRIVATE}, libargon2"
 ], [
 		AS_IF([test "x$with_argon2" = "xyes"], [
 				AC_MSG_ERROR([Argon2 requested but not found])
@@ -222,6 +227,14 @@ AC_SUBST(CURRENT_SOURCE_DIR, ".")
 AC_SUBST(CURRENT_BINARY_DIR, ".")
 AC_SUBST(PROJECT_SOURCE_DIR, "..")
 AC_SUBST(PROJECT_BINARY_DIR, "../src/.libs")
+
+dnl Substitutions for opendht.pc
+AC_SUBST(CMAKE_INSTALL_PREFIX, "${prefix}")
+AC_SUBST(CMAKE_INSTALL_FULL_LIBDIR, "${libdir}")
+AC_SUBST(CMAKE_INSTALL_FULL_INCLUDEDIR, "${includedir}")
+AC_SUBST(PKGCONFIG_CFLAGS, "")
+AC_SUBST(PKGCONFIG_LIBS_PRIVATE, "${PKGCONFIG_LIBS_PRIVATE}")
+AC_SUBST(PKGCONFIG_REQUIRES_PRIVATE, "${PKGCONFIG_REQUIRES_PRIVATE}")
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile

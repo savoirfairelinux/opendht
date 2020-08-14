@@ -1,11 +1,13 @@
-prefix=@prefix@
-exec_prefix=@exec_prefix@
-libdir=@libdir@
-includedir=@includedir@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
+
 Name: OpenDHT
 Description: C++14 Distributed Hash Table library
 Version: @VERSION@
+Cflags: -I${includedir} @PKGCONFIG_CFLAGS@
 Libs: -L${libdir} -lopendht
-Libs.private: @http_parser_lib@ -pthread
-Requires.private: gnutls >= 3.3, nettle >= 2.4@argon2_lib@@jsoncpp_lib@@openssl_lib@
-Cflags: -I${includedir}
+Libs.private: @PKGCONFIG_LIBS_PRIVATE@
+Requires.private: @PKGCONFIG_REQUIRES_PRIVATE@
+
