@@ -61,7 +61,6 @@ HttpTester::test_parse_url() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "google.com");
-    CPPUNIT_ASSERT(parsed.service == "80");
     CPPUNIT_ASSERT(parsed.target == "/");
 }
 
@@ -75,7 +74,6 @@ HttpTester::test_parse_https_url_no_service() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "https");
     CPPUNIT_ASSERT(parsed.host == "jami.net");
-    CPPUNIT_ASSERT(parsed.service == "https");
     CPPUNIT_ASSERT(parsed.target == "/");
 }
 
@@ -89,8 +87,7 @@ HttpTester::test_parse_url_no_prefix_no_target() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "google.com");
-    CPPUNIT_ASSERT(parsed.service == "80");
-    CPPUNIT_ASSERT(parsed.target == "/");
+    CPPUNIT_ASSERT(parsed.target == "");
 }
 
 void
@@ -117,7 +114,6 @@ HttpTester::test_parse_url_query() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "google.com");
-    CPPUNIT_ASSERT(parsed.service == "80");
     CPPUNIT_ASSERT(parsed.target == "/?key=1");
     CPPUNIT_ASSERT(parsed.query == "key=1");
 }
@@ -132,7 +128,6 @@ HttpTester::test_parse_url_fragment() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "google.com");
-    CPPUNIT_ASSERT(parsed.service == "80");
     CPPUNIT_ASSERT(parsed.target == "/?key=1");
     CPPUNIT_ASSERT(parsed.query == "key=1");
     CPPUNIT_ASSERT(parsed.fragment == "#some-important-id");
@@ -148,7 +143,6 @@ HttpTester::test_parse_url_ipv4() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "172.217.13.132");
-    CPPUNIT_ASSERT(parsed.service == "80");
     CPPUNIT_ASSERT(parsed.target == "/");
 }
 
@@ -162,8 +156,6 @@ HttpTester::test_parse_url_no_prefix_no_target_ipv4() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "172.217.13.132");
-    CPPUNIT_ASSERT(parsed.service == "80");
-    CPPUNIT_ASSERT(parsed.target == "/");
 }
 
 void
@@ -190,7 +182,6 @@ HttpTester::test_parse_url_ipv6() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "2607:f8b0:4006:804::2004");
-    CPPUNIT_ASSERT(parsed.service == "80");
     CPPUNIT_ASSERT(parsed.target == "/");
 }
 
@@ -204,8 +195,6 @@ HttpTester::test_parse_url_no_prefix_no_target_ipv6() {
     CPPUNIT_ASSERT(parsed.url == url);
     CPPUNIT_ASSERT(parsed.protocol == "http");
     CPPUNIT_ASSERT(parsed.host == "2607:f8b0:4006:804::2004");
-    CPPUNIT_ASSERT(parsed.service == "80");
-    CPPUNIT_ASSERT(parsed.target == "/");
 }
 
 void
