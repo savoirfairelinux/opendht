@@ -21,6 +21,7 @@ from math import cos, sin, pi
 import urllib3
 import gzip
 import queue
+from geoip import geolite2
 
 sys.path.append('..')
 from opendht import *
@@ -55,7 +56,7 @@ plt.ion()
 plt.figaspect(2.)
 
 fig, axes = plt.subplots(2, 1)
-fig.set_size_inches(8,16,forward=True)
+#fig.set_size_inches(8,16,forward=True)
 fig.tight_layout()
 fig.canvas.set_window_title('OpenDHT scanner')
 
@@ -90,27 +91,12 @@ def exitcb(arg):
     run = False
 exitbtn.on_clicked(exitcb)
 
-def check_dl(fname, url):
-    if os.path.isfile(fname):
-        return
-    print('downloading', url)
-    ghandle = gzip.GzipFile(fileobj=http.request('GET', url, headers={'User-Agent': 'Mozilla/5.0'}, preload_content=False))
-    with open(fname, 'wb') as out:
-        for line in ghandle:
-            out.write(line)
-
-check_dl("GeoLiteCity.dat", "http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz")
-check_dl("GeoLiteCityv6.dat", "http://geolite.maxmind.com/download/geoip/database/GeoLiteCityv6-beta/GeoLiteCityv6.dat.gz")
-
-gi = GeoIP.open("GeoLiteCity.dat", GeoIP.GEOIP_INDEX_CACHE | GeoIP.GEOIP_CHECK_CACHE)
-gi6 = GeoIP.open("GeoLiteCityv6.dat", GeoIP.GEOIP_INDEX_CACHE | GeoIP.GEOIP_CHECK_CACHE)
-
 def gcb(v):
     return True
 
 r = DhtRunner()
 r.run(port=4112)
-r.bootstrap("bootstrap.ring.cx", "4222")
+r.bootstrap("bootstrap.jami.net", "4222")
 
 plt.pause(1)
 
@@ -143,9 +129,9 @@ def nextstep(cur_h, cur_depth, ok, nodes):
         depth = min(8, commonBits+6)
         if cur_depth < depth:
             for b in range(cur_depth, depth):
-                new_h = InfoHash(cur_h.toString());
-                new_h.setBit(b, 1);
-                step(new_h, b+1);
+                new_h = InfoHash(cur_h.toString())
+                new_h.setBit(b, 1)
+                step(new_h, b+1)
     else:
         print("step done with no nodes", ok, cur_h.toString().decode())
     done -= 1
@@ -186,23 +172,22 @@ def appendNewNode(n):
         if addr in nodes_ip6s:
             nodes_ip6s[addr][1] += 1
         else:
-            georecord = gi6.record_by_name_v6(addr)
+            georecord = geolite2.lookup(addr)
             nodes_ip6s[addr] = [n, 1, georecord]
     else:
         if addr in nodes_ip4s:
             nodes_ip4s[addr][1] += 1
         else:
-            georecord = gi.record_by_name(addr)
+            georecord = geolite2.lookup(addr)
             nodes_ip4s[addr] = [n, 1, georecord]
     if georecord:
         appendMapPoint(georecord)
 
 def appendMapPoint(res):
     global lons, lats, cities
-    lons.append(res['longitude'])
-    lats.append(res['latitude'])
-    cities.append(res['city'] if res['city'] else (str(int(res['latitude']))+'-'+str(int(res['longitude']))))
-
+    lons.append(res.location[1])
+    lats.append(res.location[0])
+    cities.append(res.city if res.city else (str(int(res.location[0]))+'-'+str(int(res.location[1]))))
 
 def restart(arg):
     global collection, all_lines, all_nodes, points, done, nodes_ip4s, nodes_ip6s, lats, lons, cities, xys, colors
