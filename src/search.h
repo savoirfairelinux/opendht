@@ -767,7 +767,6 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
         }
     }
 
-    bool new_search_node = false;
     if (not found) {
         // find if and where to trim excessive nodes
         auto t = nodes.cend();
@@ -791,9 +790,10 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
         }
 
         if (full) {
+            bool addNode = n < t;
             if (t != nodes.cend())
                 nodes.resize(std::distance(nodes.cbegin(), t));
-            if (n >= t)
+            if (not addNode)
                 return false;
         }
 
@@ -803,7 +803,6 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
         }
         n = nodes.emplace(n, std::make_unique<SearchNode>(snode));
         node.setTime(now);
-        new_search_node = true;
         if (node.isExpired()) {
             if (not expired)
                 bad++;
@@ -825,9 +824,9 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
             (*n)->token = token;
         expired = false;
     }
-    if (new_search_node)
+    if (not found)
         removeExpiredNode(now);
-    return new_search_node;
+    return not found;
 }
 
 std::vector<Sp<Node>>
