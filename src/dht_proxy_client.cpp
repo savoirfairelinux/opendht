@@ -683,7 +683,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
 {
     if (isDestroying_)
         return;
-    std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+    std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
     if (not proxyInfos.isMember("node_id")) {
@@ -729,6 +729,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
         nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(1));
         nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     }
+    l.unlock();
     loopSignal_();
 }
 
