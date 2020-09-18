@@ -7,7 +7,7 @@ stats_total = {"users":0, "pushListenersCount":0, "listenCount":0, "totalListene
 
 for i in range(80,101):
     print("Collecting stats for proxy " + str(i))
-    response = requests.request('STATS', 'http://127.0.0.1:' + str(i))
+    response = requests.request('STATS', 'http://127.0.0.1:' + str(i) + '/node/stats')
 
     if response.status_code == 200:
         result = response.json()
