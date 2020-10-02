@@ -26,6 +26,14 @@
 #include <http_parser.h>
 #include <json/json.h>
 
+#include <openssl/ocsp.h>
+#include <openssl/ssl.h>
+#include <openssl/asn1.h>
+
+#define MAXAGE_SEC (14*24*60*60)
+#define JITTER_SEC (60)
+#define OCSP_MAX_RESPONSE_SIZE (20480)
+
 namespace dht {
 namespace http {
 
@@ -184,6 +192,253 @@ Connection::is_ssl() const
     return ssl_ctx_ ? true : false;
 }
 
+static time_t
+parse_ocsp_time(ASN1_GENERALIZEDTIME* gt)
+{
+    struct tm tm;
+    time_t rv = -1;
+
+    if (gt == nullptr)
+        return -1;
+    // RFC 6960 specifies that all times in OCSP must be GENERALIZEDTIME
+    if (ASN1_time_parse((const char*)gt->data, gt->length, &tm, V_ASN1_GENERALIZEDTIME) == -1)
+        return -1;
+    if ((rv = timegm(&tm)) == -1)
+        return -1;
+    return rv;
+}
+
+static inline X509*
+cert_from_chain(STACK_OF(X509)* fullchain)
+{
+    return sk_X509_value(fullchain, 0);
+}
+
+static X509*
+issuer_from_chain(STACK_OF(X509)* fullchain)
+{
+    X509 *cert, *issuer;
+    X509_NAME *issuer_name;
+
+    cert = cert_from_chain(fullchain);
+    if ((issuer_name = X509_get_issuer_name(cert)) == nullptr)
+        return nullptr;
+
+    issuer = X509_find_by_subject(fullchain, issuer_name);
+    return issuer;
+}
+
+using OscpRequestPtr = std::unique_ptr<OCSP_REQUEST, decltype(&OCSP_REQUEST_free)>;
+struct OscpRequestInfo {
+    OscpRequestPtr req {nullptr, &OCSP_REQUEST_free};
+    std::vector<uint8_t> data;
+    std::string url;
+};
+
+static std::unique_ptr<OscpRequestInfo>
+ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& logger, bool nonce = false)
+{
+    if (fullchain == nullptr)
+        return {};
+
+    if (sk_X509_num(fullchain) <= 1) {
+        if (logger)
+            logger->e("Cert does not contain a cert chain");
+        return {};
+    }
+    X509* cert = cert_from_chain(fullchain);
+    if (cert == nullptr) {
+        if (logger)
+            logger->e("No certificate found");
+        return {};
+    }
+    X509* issuer = issuer_from_chain(fullchain);
+    if (issuer == nullptr) {
+        if (logger)
+            logger->e("Unable to find issuer for cert");
+        return {};
+    }
+
+    auto urls = X509_get1_ocsp(cert);
+    if (urls == nullptr || sk_OPENSSL_STRING_num(urls) <= 0) {
+        if (logger)
+            logger->e("Certificate contains no OCSP url");
+        return {};
+    }
+    auto url = sk_OPENSSL_STRING_value(urls, 0);
+    if (url == nullptr)
+        return {};
+
+    auto request = std::make_unique<OscpRequestInfo>();
+    request->req = OscpRequestPtr(OCSP_REQUEST_new(), &OCSP_REQUEST_free);
+    request->url = strdup(url);
+    X509_email_free(urls);
+
+    OCSP_CERTID* id = OCSP_cert_to_id(EVP_sha1(), cert, issuer);
+    if (id == nullptr) {
+        if (logger)
+            logger->e("Unable to get certificate id from cert");
+        return {};
+    }
+    if (OCSP_request_add0_id(request->req.get(), id) == nullptr) {
+        if (logger)
+            logger->e("Unable to add certificate id to request");
+        return {};
+    }
+
+    if (nonce)
+        OCSP_request_add1_nonce(request->req.get(), nullptr, -1);
+
+    int size;
+    uint8_t* data {nullptr};
+    if ((size = i2d_OCSP_REQUEST(request->req.get(), &data)) <= 0) {
+        if (logger)
+            logger->e("Unable to encode ocsp request");
+        return {};
+    }
+    if (data == nullptr) {
+        if (logger)
+            logger->e("Unable to allocte memory");
+        return {};
+    }
+    request->data = std::vector<uint8_t>(data, data+size);
+    free(data);
+    return request;
+}
+
+bool
+ocspValidateResponse(const OscpRequestInfo& info, STACK_OF(X509)* fullchain, const std::string& response, X509_STORE *store, const std::shared_ptr<Logger>& logger)
+{
+    ASN1_GENERALIZEDTIME *revtime = nullptr, *thisupd = nullptr, *nextupd = nullptr;
+    const uint8_t* p = (const uint8_t*)response.data();
+    int status, cert_status=0, crl_reason=0;
+    time_t now, rev_t = -1, this_t, next_t;
+    OCSP_RESPONSE *resp;
+    OCSP_BASICRESP *bresp;
+    OCSP_CERTID *cid;
+
+    X509* cert = cert_from_chain(fullchain);
+    if (cert == nullptr) {
+        if (logger)
+            logger->e("No certificate found");
+        return false;
+    }
+    X509* issuer = issuer_from_chain(fullchain);
+    if (issuer == nullptr) {
+        if (logger)
+            logger->e("Unable to find issuer for cert");
+        return false;
+    }
+    if ((cid = OCSP_cert_to_id(nullptr, cert, issuer)) == nullptr) {
+        if (logger)
+            logger->e("Unable to get issuer cert/CID");
+        return false;
+    }
+
+    if ((resp = d2i_OCSP_RESPONSE(nullptr, &p, response.size())) == nullptr) {
+        if (logger)
+            logger->e("OCSP response unserializable");
+        return false;
+    }
+
+    if ((bresp = OCSP_response_get1_basic(resp)) == nullptr) {
+        if (logger)
+            logger->e("Failed to load OCSP response");
+        return false;
+    }
+
+    if (OCSP_basic_verify(bresp, fullchain, store, OCSP_TRUSTOTHER) != 1) {
+        if (logger)
+            logger->w("OCSP verify failed");
+        return false;
+    }
+    printf("OCSP response signature validated\n");
+
+    status = OCSP_response_status(resp);
+    if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
+        if (logger)
+            logger->w("OCSP Failure: code %d (%s)", status, OCSP_response_status_str(status));
+        return false;
+    }
+
+    // Check the nonce if we sent one
+    if (OCSP_check_nonce(info.req.get(), bresp) <= 0) {
+        if (logger)
+            logger->w("No OCSP nonce, or mismatch");
+        return false;
+    }
+
+    if (OCSP_resp_find_status(bresp, cid, &cert_status, &crl_reason,
+        &revtime, &thisupd, &nextupd) != 1) {
+        if (logger)
+            logger->w("OCSP verify failed: no result for cert");
+        return false;
+    }
+
+    if (revtime && (rev_t = parse_ocsp_time(revtime)) == -1) {
+        if (logger)
+            logger->w("Unable to parse revocation time in OCSP reply");
+        return false;
+    }
+    // Belt and suspenders, Treat it as revoked if there is either
+    // a revocation time, or status revoked.
+    if (rev_t != -1 || cert_status == V_OCSP_CERTSTATUS_REVOKED) {
+        if (logger)
+            logger->w("Invalid OCSP reply: certificate is revoked");
+        if (rev_t != -1) {
+            if (logger)
+                logger->w("Certificate revoked at: %s", ctime(&rev_t));
+        }
+        return false;
+    }
+    if ((this_t = parse_ocsp_time(thisupd)) == -1) {
+        if (logger)
+            logger->w("unable to parse this update time in OCSP reply");
+        return false;
+    }
+    if ((next_t = parse_ocsp_time(nextupd)) == -1) {
+        if (logger)
+            logger->w("unable to parse next update time in OCSP reply");
+        return false;
+    }
+
+    // Don't allow this update to precede next update
+    if (this_t >= next_t) {
+        if (logger)
+            logger->w("Invalid OCSP reply: this update >= next update");
+        return false;
+    }
+
+    now = time(nullptr);
+    // Check that this update is not more than JITTER seconds in the future.
+    if (this_t > now + JITTER_SEC) {
+        if (logger)
+            logger->e("Invalid OCSP reply: this update is in the future (%s)", ctime(&this_t));
+        return false;
+    }
+
+    // Check that this update is not more than MAXSEC in the past.
+    if (this_t < now - MAXAGE_SEC) {
+        if (logger)
+            logger->e("Invalid OCSP reply: this update is too old (%s)", ctime(&this_t));
+        return false;
+    }
+
+    // Check that next update is still valid
+    if (next_t < now - JITTER_SEC) {
+        if (logger)
+            logger->w("Invalid OCSP reply: reply has expired (%s)", ctime(&next_t));
+        return false;
+    }
+
+    if (logger) {
+        logger->d("OCSP response validated");
+        logger->d("	   This Update: %s", ctime(&this_t));
+        logger->d("	   Next Update: %s", ctime(&next_t));
+    }
+    return true;
+}
+
 void
 Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::verify_mode verify_mode)
 {
@@ -196,9 +451,9 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
             ssl_socket_->asio_ssl_stream().set_verify_callback([
                     id = id_, logger = logger_, hostname
                 ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
+                    X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
                     if (logger) {
                         char subject_name[1024];
-                        X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
                         X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 1024);
                         logger->d("[connection:%i] verify %s compliance to RFC 2818:\n%s", id, hostname.c_str(), subject_name);
                     }
@@ -208,6 +463,29 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
                         logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
+                    if (verified) {
+                        auto chain = X509_STORE_CTX_get1_chain(ctx.native_handle());
+                        if (auto ocspInfo = ocspRequestFromCert(chain, logger)) {
+                            if (logger)
+                                logger->w("[http::connection:%i] TLS OCSP server: %s, request size: %zu", id, ocspInfo->url.c_str(), ocspInfo->data.size());
+                            bool ocspVerified = false;
+                            asio::io_context io_ctx;
+                            auto ocspReq = std::make_shared<Request>(io_ctx, ocspInfo->url, [&](const Response& ocspResp){
+                                if (ocspResp.status_code == 200) {
+                                    ocspVerified = ocspValidateResponse(*ocspInfo, chain, ocspResp.body, ctx.native_handle()->ctx, logger);
+                                } else {
+                                    if (logger)
+                                        logger->w("[http::connection:%i] TLS OCSP check error", id);
+                                }
+                            }, logger);
+                            ocspReq->set_method(restinio::http_method_post());
+                            ocspReq->set_body({ocspInfo->data.begin(), ocspInfo->data.end()});
+                            ocspReq->send();
+                            io_ctx.run();
+                            if (not ocspVerified)
+                                return false;
+                        }
+                    }
                     return verified;
                 }
             );
@@ -274,6 +552,8 @@ Connection::async_handshake(HandlerCb cb)
                         this_.logger_->d("[connection:%i] self-signed certificate in handshake: %i", this_.id_, verify_ec);
                     else if (verify_ec != X509_V_OK)
                         this_.logger_->e("[connection:%i] verify handshake error: %i", this_.id_, verify_ec);
+                    else
+                        this_.logger_->e("[connection:%i] verify handshake success", this_.id_);
                 }
             }
             if (cb)
@@ -818,12 +1098,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
             conn_ = std::make_shared<Connection>(ctx_, server_ca_, client_identity_, logger_);
         else
             conn_ = std::make_shared<Connection>(ctx_, true/*ssl*/, logger_);
-#if !defined(LINUX) || defined(__ANDROID__)
-        conn_->set_ssl_verification(get_url().host, asio::ssl::verify_none);
-#else
-        conn_->set_ssl_verification(get_url().host, asio::ssl::verify_peer
-                                                    | asio::ssl::verify_fail_if_no_peer_cert);
-#endif
+        conn_->set_ssl_verification(get_url().host, asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
     }
     else
         conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
