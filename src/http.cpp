@@ -1096,5 +1096,21 @@ Request::getRelativePath(const Url& origin, const std::string& path)
     return newPath.toString();
 }
 
+const Response&
+Request::await()
+{
+    std::mutex mtx;
+    std::unique_lock<std::mutex> lock(mtx);
+    std::condition_variable cv;
+    bool ok {false};
+    add_on_done_callback([&](const Response& resp){
+        std::lock_guard<std::mutex> lk(mtx);
+        ok = true;
+        cv.notify_all();
+    });
+    cv.wait(lock, [&]{ return ok; });
+    return response_;
+}
+
 } // namespace http
 } // namespace dht
