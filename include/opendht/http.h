@@ -290,6 +290,9 @@ public:
 
     void send();
 
+    /** Send and block for response */
+    const Response& await();
+
     /**
      * User action to cancel the Request and call the completion callbacks.
      */
