@@ -1162,6 +1162,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
         statusIpv4_ = NodeStatus::Connected;
         statusIpv6_ = NodeStatus::Connected;
     }
+    auto launchLoop = false;
     try {
         auto sessionId = notification.find("s");
         if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
@@ -1238,7 +1239,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                                 opstate->stop = true;
                         });
                     }
-                    loopSignal_();
+                    launchLoop = true;
                 }
             }
         }
@@ -1246,6 +1247,8 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
         if (logger_)
             logger_->e("[proxy:client] [push] receive error: %s", e.what());
     }
+    if (launchLoop)
+        loopSignal_();
 #else
     (void) notification;
 #endif
