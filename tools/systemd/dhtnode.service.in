@@ -14,7 +14,6 @@ LimitNOFILE=65536
 DynamicUser=yes
 EnvironmentFile=@sysconfdir@/dhtnode.conf
 KillMode=process
-LimitNOFILE=65536
 WorkingDirectory=/tmp
 
 # Hardening
