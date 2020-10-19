@@ -32,13 +32,14 @@
 #include <opendht/dht_proxy_server.h>
 #endif
 
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
 #include <getopt.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 #else
 #define SIGHUP 0
 #include "wingetopt.h"
+#include <io.h>
 #endif
 
 #include <sys/types.h>
@@ -377,7 +378,7 @@ static const constexpr char* PROMPT = ">> ";
 std::string
 readLine(const char* prefix = PROMPT)
 {
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
     const char* line_read = readline(prefix);
     if (line_read && *line_read)
         add_history(line_read);
@@ -424,7 +425,7 @@ void signal_handler(int sig)
 
 void setupSignals()
 {
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
     signal(SIGCHLD,SIG_IGN); /* ignore child */
     signal(SIGTSTP,SIG_IGN); /* ignore tty signals */
     signal(SIGTTOU,SIG_IGN);
@@ -437,7 +438,7 @@ void setupSignals()
 
 void daemonize()
 {
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
     pid_t pid = fork();
     if (pid < 0) exit(EXIT_FAILURE);
     if (pid > 0) exit(EXIT_SUCCESS);

@@ -117,7 +117,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
     print_node_info(node->getNodeInfo());
     std::cout << " (type 'h' or 'help' for a list of possible commands)" << std::endl << std::endl;
 
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
     // using the GNU History API
     using_history();
 #endif
@@ -507,7 +507,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 int
 main(int argc, char **argv)
 {
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_init();
 #endif
     auto params = parseArgs(argc, argv);
@@ -590,7 +590,7 @@ main(int argc, char **argv)
     cv.wait(lk, [&](){ return done; });
 
     node->join();
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_deinit();
 #endif
     return 0;
