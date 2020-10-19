@@ -36,65 +36,93 @@ option (OPENDHT_C "Build C bindings" OFF)
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
 
+# native windows build
+set (MSVC (CMAKE_CXX_COMPILER_ID MATCHES "MSVC"))
+
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
-find_package (Threads)
-find_package (PkgConfig REQUIRED)
-find_package (GnuTLS 3.3 REQUIRED)
-pkg_search_module (Nettle nettle)
-find_package (Msgpack 1.2 REQUIRED)
-if (OPENDHT_TOOLS)
-    find_package (Readline 6 REQUIRED)
-endif ()
-if (NOT OPENDHT_ARGON2)
-    pkg_search_module(argon2 libargon2)
-    if (argon2_FOUND)
-        message("-- Found Argon2: " ${argon2_LIBRARY_DIRS} " (found version \"" ${argon2_VERSION} "\")")
-        link_directories (${argon2_LIBRARY_DIRS})
-        set (argon2_lib ", libargon2")
-    else ()
-        message("Argon2 not found, using included version.")
-        set(OPENDHT_ARGON2 ON)
-    endif()
-endif ()
-
-pkg_search_module(Jsoncpp jsoncpp)
-if (Jsoncpp_FOUND)
-    add_definitions(-DOPENDHT_JSONCPP)
-    list (APPEND opendht_SOURCES
-      src/base64.h
-      src/base64.cpp
-    )
-    set (jsoncpp_lib ", jsoncpp")
-endif()
-
-if (OPENDHT_HTTP)
-    find_package(Restinio REQUIRED)
-    find_library(FMT_LIBRARY fmt)
-    add_library(fmt SHARED IMPORTED)
-    find_library(HTTP_PARSER_LIBRARY http_parser)
-    add_library(http_parser SHARED IMPORTED)
-    set (http_parser_lib "-lhttp_parser")
-    if (NOT Jsoncpp_FOUND)
-        message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
-    endif()
-    if (OPENDHT_PROXY_OPENSSL)
-        # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
-        pkg_search_module(OPENSSL REQUIRED openssl)
-        if (OPENSSL_FOUND)
-            message(STATUS "Found OpenSSL ${OPENSSL_VERSION}")
-            include_directories(${OPENSSL_INCLUDE_DIRS})
-            set(openssl_lib ", openssl")
+if (NOT MSVC)
+    find_package (Threads)
+    find_package (PkgConfig REQUIRED)
+    find_package (GnuTLS 3.3 REQUIRED)
+    pkg_search_module (Nettle nettle)
+    find_package (Msgpack 1.2 REQUIRED)
+    if (OPENDHT_TOOLS)
+        find_package (Readline 6 REQUIRED)
+    endif ()
+    if (NOT OPENDHT_ARGON2)
+        pkg_search_module(argon2 libargon2)
+        if (argon2_FOUND)
+            message("-- Found Argon2: " ${argon2_LIBRARY_DIRS} " (found version \"" ${argon2_VERSION} "\")")
+            link_directories (${argon2_LIBRARY_DIRS})
         else ()
-            message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+            message("Argon2 not found, using included version.")
+            set(OPENDHT_ARGON2 ON)
         endif()
+    endif ()
+
+    pkg_search_module(Jsoncpp jsoncpp)
+    if (Jsoncpp_FOUND)
+        add_definitions(-DOPENDHT_JSONCPP)
+        list (APPEND opendht_SOURCES
+          src/base64.h
+          src/base64.cpp
+        )
     endif()
-    if (OPENDHT_PROXY_HTTP_PARSER_FORK)
-        add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
-    endif()
-else()
-    set(OPENDHT_PROXY_OPENSSL OFF)
-endif()
+
+    if (OPENDHT_HTTP)
+        find_package(Restinio REQUIRED)
+        if (Restinio_FOUND)
+            find_library(FMT_LIBRARY fmt)
+            add_library(fmt SHARED IMPORTED)
+            find_library(HTTP_PARSER_LIBRARY http_parser)
+            add_library(http_parser SHARED IMPORTED)
+        endif()
+        if (NOT Jsoncpp_FOUND)
+            message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
+        endif()
+        if (OPENDHT_PROXY_OPENSSL)
+            # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
+            pkg_search_module(OPENSSL REQUIRED openssl)
+            if (OPENSSL_FOUND)
+                message(STATUS "Found OpenSSL ${OPENSSL_VERSION}")
+                include_directories(${OPENSSL_INCLUDE_DIRS})
+            else ()
+                message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+            endif()
+        endif()
+        if (OPENDHT_PROXY_HTTP_PARSER_FORK)
+            add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
+        endif()
+    else ()
+        set(OPENDHT_PROXY_OPENSSL OFF)
+    endif ()
+else ()
+    add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS
+                    -D_CRT_SECURE_NO_WARNINGS
+                    -DWIN32_LEAN_AND_MEAN)
+    
+    set (WIN32_DEP_DIR ${PROJECT_SOURCE_DIR}/../)
+    include_directories(${WIN32_DEP_DIR}/../msvc/include) # SMP gnutls
+    include_directories(${WIN32_DEP_DIR}/argon2/include)
+    include_directories(${WIN32_DEP_DIR}/jsoncpp/include)
+    list (APPEND opendht_SOURCES
+        src/base64.h
+        src/base64.cpp
+    )
+    add_definitions(-DOPENDHT_JSONCPP)
+    include_directories(${WIN32_DEP_DIR}/msgpack-c/include)
+    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+        include_directories(
+            ${WIN32_DEP_DIR}/asio/asio/include
+            ${WIN32_DEP_DIR}/openssl/include
+            ${WIN32_DEP_DIR}/restinio/dev
+            ${WIN32_DEP_DIR}/fmt/include
+            ${WIN32_DEP_DIR}/http_parser
+        )
+    endif ()
+endif ()
+
 if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
     add_definitions(-DASIO_STANDALONE)
 endif()
@@ -102,9 +130,20 @@ endif()
 # Build flags
 set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
-if (OPENDHT_SANITIZE)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
+
+if (NOT MSVC)
+    set(CXX_WARNINGS -Wno-return-type -Wall -Wextra
+                     -Wnon-virtual-dtor
+                     -pedantic-errors
+                     -fvisibility=hidden)
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_WARNINGS}")
+    if (OPENDHT_SANITIZE)
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
+    endif ()
+else ()
+    set(DISABLE_MSC_WARNINGS "/wd4101 /wd4244 /wd4267 /wd4273 /wd4804 /wd4834")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DISABLE_MSC_WARNINGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 
@@ -117,7 +156,7 @@ if (OPENDHT_LOG)
 else ()
     add_definitions(-DOPENDHT_LOG=false)
 endif()
-if (OPENDHT_LTO)
+if (OPENDHT_LTO AND NOT MSVC)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
     if (CMAKE_COMPILER_IS_GNUCC)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fuse-linker-plugin")
@@ -289,23 +328,81 @@ if(OPENDHT_ARGON2)
     include_directories(argon2/include/)
 endif()
 
+if (MSVC)
+    set (MSC_COMPAT_DIR ${PROJECT_SOURCE_DIR}/compat/msvc/)
+    list (APPEND opendht_HEADERS ${MSC_COMPAT_DIR}/unistd.h)
+    #include_directories(${PROJECT_SOURCE_DIR}/compat/msvc/)
+endif ()
+
 # Targets
 if (OPENDHT_STATIC)
-    add_library (opendht-static STATIC
-        ${opendht_SOURCES}
-        ${opendht_HEADERS}
-    )
-    set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
-    if (OPENDHT_ARGON2)
-        target_include_directories(opendht-static SYSTEM PRIVATE argon2)
+    if (NOT MSVC)
+        add_library (opendht-static STATIC
+            ${opendht_SOURCES}
+            ${opendht_HEADERS}
+        )
+        set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
+        if (OPENDHT_ARGON2)
+            target_include_directories(opendht-static SYSTEM PRIVATE argon2)
+        else ()
+            target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+        endif ()
+        target_link_libraries(opendht-static
+            PRIVATE  ${argon2_LIBRARIES}
+            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
+                   ${Jsoncpp_STATIC_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+                   ${OPENSSL_STATIC_LIBRARIES})
     else ()
-        target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
-    endif ()
-    target_link_libraries(opendht-static
-        PRIVATE  ${argon2_LIBRARIES}
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
-               ${Jsoncpp_STATIC_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
-               ${OPENSSL_STATIC_LIBRARIES})
+        if (OPENDHT_TOOLS)
+            function (add_obj_lib name libfile)
+                add_library(${name} OBJECT IMPORTED)
+                set_property(TARGET ${name} PROPERTY IMPORTED_OBJECTS ${libfile})
+            endfunction ()
+            add_obj_lib (win32_json ${WIN32_DEP_DIR}/../msvc/lib/x64/lib_json.lib)
+            add_obj_lib (win32_gnutls ${WIN32_DEP_DIR}/../msvc/lib/x64/libgnutls.lib)
+            add_obj_lib (win32_argon2 ${WIN32_DEP_DIR}/argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib)
+            list (APPEND obj_libs
+                $<TARGET_OBJECTS:win32_json>
+                $<TARGET_OBJECTS:win32_gnutls>
+                $<TARGET_OBJECTS:win32_argon2>
+            )
+            if (OPENDHT_HTTP)
+                add_obj_lib (win32_fmt ${WIN32_DEP_DIR}/fmt/msvc/Release/fmt.lib)
+                #add_obj_lib (win32_asio ${WIN32_DEP_DIR}/asio/asio/msvc/x64/Release/asio.lib)
+                add_obj_lib (win32_http_parser ${WIN32_DEP_DIR}/http_parser/x64/Release/http-parser.lib)
+                add_obj_lib (win32_ssl ${WIN32_DEP_DIR}/openssl/libssl_static.lib)
+                add_obj_lib (win32_crypto ${WIN32_DEP_DIR}/openssl/libcrypto_static.lib)
+                list (APPEND obj_libs
+                    $<TARGET_OBJECTS:win32_fmt>
+                    #$<TARGET_OBJECTS:win32_asio>
+                    $<TARGET_OBJECTS:win32_http_parser>
+                    $<TARGET_OBJECTS:win32_ssl>
+                    $<TARGET_OBJECTS:win32_crypto>
+                )       
+            endif ()
+        else ()
+            list (APPEND win32_Libs
+                ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/libgnutls.lib
+                ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/lib_json.lib
+                ${PROJECT_SOURCE_DIR}/../argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib
+            )
+            list (APPEND win32_Libs
+                ${PROJECT_SOURCE_DIR}/../fmt/msvc/Release/fmt.lib
+                ${PROJECT_SOURCE_DIR}/../http_parser/x64/Release/http-parser.lib
+                ${PROJECT_SOURCE_DIR}/../asio/asio/msvc/x64/Release/asio.lib
+                ${PROJECT_SOURCE_DIR}/../openssl/libssl.lib
+                ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
+            )
+        endif ()
+        add_library (opendht-static STATIC
+            ${opendht_SOURCES}
+            ${opendht_HEADERS}
+            ${obj_libs}
+        )
+        target_link_libraries(opendht-static PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})    
+        set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4006")
+        set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "libopendht")
+    endif()
     install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 

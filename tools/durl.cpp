@@ -20,7 +20,11 @@
 #include <opendht/log.h>
 
 #include <asio/io_context.hpp>
+#ifndef _MSC_VER
 #include <getopt.h>
+#else
+#include "wingetopt.h"
+#endif
 
 using namespace dht;
 
