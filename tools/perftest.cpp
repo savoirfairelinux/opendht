@@ -132,7 +132,7 @@ benchPingPong(unsigned netSize, unsigned n_parallel) {
 int
 main(int argc, char **argv)
 {
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_init();
 #endif
     auto params = parseArgs(argc, argv);
@@ -173,7 +173,7 @@ main(int argc, char **argv)
     std::cout << print_duration(totalTime/totalOps) << " per rt, "
             << totalOps/std::chrono::duration<double>(totalTime).count() << " ping per s" << std::endl << std::endl;
 
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_deinit();
 #endif
     return 0;

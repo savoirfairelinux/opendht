@@ -36,9 +36,6 @@ option (OPENDHT_C "Build C bindings" OFF)
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
 
-# native windows build
-set (MSVC (CMAKE_CXX_COMPILER_ID MATCHES "MSVC"))
-
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 if (NOT MSVC)
@@ -98,10 +95,6 @@ if (NOT MSVC)
         set(OPENDHT_PROXY_OPENSSL OFF)
     endif ()
 else ()
-    add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS
-                    -D_CRT_SECURE_NO_WARNINGS
-                    -DWIN32_LEAN_AND_MEAN)
-    
     set (WIN32_DEP_DIR ${PROJECT_SOURCE_DIR}/../)
     include_directories(${WIN32_DEP_DIR}/../msvc/include) # SMP gnutls
     include_directories(${WIN32_DEP_DIR}/argon2/include)
@@ -141,7 +134,12 @@ if (NOT MSVC)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
     endif ()
 else ()
-    set(DISABLE_MSC_WARNINGS "/wd4101 /wd4244 /wd4267 /wd4273 /wd4804 /wd4834")
+    add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS
+                    -D_CRT_SECURE_NO_WARNINGS
+                    -DWIN32_LEAN_AND_MEAN
+                    -DSTATIC_GETOPT
+                    -DGNUTLS_INTERNAL_BUILD)
+    set(DISABLE_MSC_WARNINGS "/wd4101 /wd4244 /wd4267 /wd4273 /wd4804 /wd4834 /wd4996")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DISABLE_MSC_WARNINGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 endif ()
@@ -328,10 +326,13 @@ if(OPENDHT_ARGON2)
     include_directories(argon2/include/)
 endif()
 
+# cross-platform compatibility sources
+set (COMPAT_DIR ${PROJECT_SOURCE_DIR}/src/compat/)
+list (APPEND opendht_SOURCES ${COMPAT_DIR}/os_cert.cpp)
+
 if (MSVC)
-    set (MSC_COMPAT_DIR ${PROJECT_SOURCE_DIR}/compat/msvc/)
-    list (APPEND opendht_HEADERS ${MSC_COMPAT_DIR}/unistd.h)
-    #include_directories(${PROJECT_SOURCE_DIR}/compat/msvc/)
+    set (MSC_COMPAT_DIR ${COMPAT_DIR}/msvc/)
+    list (APPEND opendht_SOURCES ${MSC_COMPAT_DIR}/unistd.h)
 endif ()
 
 # Targets
@@ -368,13 +369,11 @@ if (OPENDHT_STATIC)
             )
             if (OPENDHT_HTTP)
                 add_obj_lib (win32_fmt ${WIN32_DEP_DIR}/fmt/msvc/Release/fmt.lib)
-                #add_obj_lib (win32_asio ${WIN32_DEP_DIR}/asio/asio/msvc/x64/Release/asio.lib)
                 add_obj_lib (win32_http_parser ${WIN32_DEP_DIR}/http_parser/x64/Release/http-parser.lib)
                 add_obj_lib (win32_ssl ${WIN32_DEP_DIR}/openssl/libssl_static.lib)
                 add_obj_lib (win32_crypto ${WIN32_DEP_DIR}/openssl/libcrypto_static.lib)
                 list (APPEND obj_libs
                     $<TARGET_OBJECTS:win32_fmt>
-                    #$<TARGET_OBJECTS:win32_asio>
                     $<TARGET_OBJECTS:win32_http_parser>
                     $<TARGET_OBJECTS:win32_ssl>
                     $<TARGET_OBJECTS:win32_crypto>
@@ -389,7 +388,6 @@ if (OPENDHT_STATIC)
             list (APPEND win32_Libs
                 ${PROJECT_SOURCE_DIR}/../fmt/msvc/Release/fmt.lib
                 ${PROJECT_SOURCE_DIR}/../http_parser/x64/Release/http-parser.lib
-                ${PROJECT_SOURCE_DIR}/../asio/asio/msvc/x64/Release/asio.lib
                 ${PROJECT_SOURCE_DIR}/../openssl/libssl.lib
                 ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
             )

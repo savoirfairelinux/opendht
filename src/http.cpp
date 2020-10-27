@@ -20,6 +20,7 @@
 #include "log_enable.h"
 #include "crypto.h"
 #include "base64.h"
+#include "compat/os_cert.h"
 
 #include <asio.hpp>
 #include <restinio/impl/tls_socket.hpp>
@@ -29,6 +30,8 @@
 #include <openssl/ocsp.h>
 #include <openssl/ssl.h>
 #include <openssl/asn1.h>
+
+#include <crypto/x509.h>
 
 #define MAXAGE_SEC (14*24*60*60)
 #define JITTER_SEC (60)
@@ -105,6 +108,8 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
         ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
 #ifdef __ANDROID__
         ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
+#elif defined(WIN32) || defined(__APPLE__)
+        addSystemCaCertificates(ssl_ctx_->native_handle(), l);
 #else
         ssl_ctx_->set_default_verify_paths();
 #endif
@@ -126,9 +131,11 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
 #ifdef __ANDROID__
-        ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
+    ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
+#elif WIN32
+    addSystemCaCertificates(ssl_ctx_->native_handle(), l);
 #else
-        ssl_ctx_->set_default_verify_paths();
+    ssl_ctx_->set_default_verify_paths();
 #endif
     asio::error_code ec;
     if (server_ca){
@@ -457,6 +464,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                         X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 1024);
                         logger->d("[connection:%i] verify %s compliance to RFC 2818:\n%s", id, hostname.c_str(), subject_name);
                     }
+
                     // starts from CA and goes down the presented chain
                     auto verifier = asio::ssl::rfc2818_verification(hostname);
                     bool verified = verifier(preverified, ctx);
@@ -553,7 +561,7 @@ Connection::async_handshake(HandlerCb cb)
                     else if (verify_ec != X509_V_OK)
                         this_.logger_->e("[connection:%i] verify handshake error: %i", this_.id_, verify_ec);
                     else
-                        this_.logger_->e("[connection:%i] verify handshake success", this_.id_);
+                        this_.logger_->w("[connection:%i] verify handshake success", this_.id_);
                 }
             }
             if (cb)
