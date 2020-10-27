@@ -54,7 +54,7 @@ main(int argc, char **argv)
         print_usage();
         return 0;
     }
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_init();
 #endif
 
@@ -76,7 +76,7 @@ main(int argc, char **argv)
 
         const InfoHash myid = dht.getId();
 
-#ifndef WIN32_NATIVE
+#ifndef _MSC_VER
         // using the GNU History API
         using_history();
 #endif
@@ -144,7 +144,7 @@ main(int argc, char **argv)
 
     std::cout << std::endl <<  "Stopping node..." << std::endl;
     dht.join();
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_deinit();
 #endif
     return 0;

@@ -77,7 +77,7 @@ step(DhtRunner& dht, std::atomic_uint& done, std::shared_ptr<NodeSet> all_nodes,
 int
 main(int argc, char **argv)
 {
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_init();
 #endif
     auto params = parseArgs(argc, argv);
@@ -123,7 +123,7 @@ main(int argc, char **argv)
     }
 
     dht.join();
-#ifdef WIN32_NATIVE
+#ifdef _MSC_VER
     gnutls_global_deinit();
 #endif
     return 0;
