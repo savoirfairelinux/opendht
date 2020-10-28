@@ -24,17 +24,17 @@
 #include <windows.h>
 #include <wincrypt.h>
 #pragma comment(lib, "crypt32.lib")
+#endif
 #include <openssl/ssl.h>
-#undef X509_NAME
-#undef OCSP_REQUEST
-#undef OCSP_RESPONSE
-#endif /*WIN32*/
 
 #ifdef __APPLE__
 #include <Security/Security.h>
 #endif /*__APPLE__*/
 
 #ifdef _WIN32
+#undef X509_NAME
+#undef OCSP_REQUEST
+#undef OCSP_RESPONSE
 #define GENTIME_LENGTH 15
 #define UTCTIME_LENGTH 13
 #define ATOI2(ar)      ((ar) += 2, ((ar)[-2] - '0') * 10 + ((ar)[-1] - '0'))

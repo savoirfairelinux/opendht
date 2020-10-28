@@ -30,8 +30,7 @@
 #include <openssl/ocsp.h>
 #include <openssl/ssl.h>
 #include <openssl/asn1.h>
-
-#include <crypto/x509.h>
+#include <openssl/x509.h>
 
 #define MAXAGE_SEC (14*24*60*60)
 #define JITTER_SEC (60)

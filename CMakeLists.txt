@@ -1,6 +1,7 @@
 cmake_minimum_required (VERSION 3.1)
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
+include(FindPkgConfig)
 
 project (opendht)
 set (opendht_VERSION_MAJOR 2)
@@ -125,11 +126,7 @@ set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 
 if (NOT MSVC)
-    set(CXX_WARNINGS -Wno-return-type -Wall -Wextra
-                     -Wnon-virtual-dtor
-                     -pedantic-errors
-                     -fvisibility=hidden)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_WARNINGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
     if (OPENDHT_SANITIZE)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
     endif ()
