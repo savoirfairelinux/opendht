@@ -28,6 +28,7 @@
 #include <openssl/ssl.h>
 
 #ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
 #endif /*__APPLE__*/
 
