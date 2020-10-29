@@ -374,7 +374,7 @@ if (OPENDHT_STATIC)
                     $<TARGET_OBJECTS:win32_http_parser>
                     $<TARGET_OBJECTS:win32_ssl>
                     $<TARGET_OBJECTS:win32_crypto>
-                )       
+                )
             endif ()
         else ()
             list (APPEND win32_Libs
@@ -394,7 +394,7 @@ if (OPENDHT_STATIC)
             ${opendht_HEADERS}
             ${obj_libs}
         )
-        target_link_libraries(opendht-static PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})    
+        target_link_libraries(opendht-static PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
         set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4006")
         set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "libopendht")
     endif()
@@ -415,11 +415,20 @@ if (OPENDHT_SHARED)
         target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
         target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     endif ()
-    target_link_libraries(opendht
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
-        PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                ${Jsoncpp_LIBRARIES}
-                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+    if (APPLE)
+        target_link_libraries(opendht
+            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
+            PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+                    ${Jsoncpp_LIBRARIES}
+                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+            SYSTEM "-framework CoreFoundation" "-framework Security")
+    else ()
+        target_link_libraries(opendht
+            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
+            PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+                    ${Jsoncpp_LIBRARIES}
+                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+    endif ()
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
