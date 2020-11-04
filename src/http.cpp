@@ -114,7 +114,7 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
 #ifdef __ANDROID__
             ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
 #elif defined(WIN32) || defined(__APPLE__)
-            addSystemCaCertificates(ssl_ctx_->native_handle(), l);
+        PEMCache::instance(l).fillX509Store(ssl_ctx_->native_handle());
 #else
             ssl_ctx_->set_default_verify_paths();
 #endif
@@ -138,8 +138,8 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
     ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
 #ifdef __ANDROID__
     ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
-#elif WIN32
-    addSystemCaCertificates(ssl_ctx_->native_handle(), l);
+#elif WIN32 || defined(__APPLE__)
+    PEMCache::instance(l).fillX509Store(ssl_ctx_->native_handle());
 #else
     ssl_ctx_->set_default_verify_paths();
 #endif
