@@ -138,16 +138,9 @@ ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode)
 namespace dht {
 namespace http {
 
-void
-addSystemCaCertificates(SSL_CTX* ctx, const std::shared_ptr<Logger>& logger)
+PEMCache::PEMCache(const std::shared_ptr<Logger>& l)
+ : logger(l)
 {
-    X509_STORE* store = SSL_CTX_get_cert_store(ctx);
-    if (store == nullptr) {
-        if (logger)
-            logger->e("couldn't get the context cert store");
-        return;
-    }
-
     X509* x509cert;
 #ifdef _WIN32
     PCCERT_CONTEXT pContext = NULL;
@@ -162,13 +155,8 @@ addSystemCaCertificates(SSL_CTX* ctx, const std::shared_ptr<Logger>& logger)
         x509cert = nullptr;
         const uint8_t* encoded_cert = pContext->pbCertEncoded;
         x509cert = d2i_X509(nullptr, &encoded_cert, pContext->cbCertEncoded);
-        if (x509cert) {
-            if (X509_STORE_add_cert(store, x509cert) == 1) {
-                if (logger)
-                    logger->d("local certificate added");
-            }
-            X509_free(x509cert);
-        }
+        if (x509cert)
+            pems_.push_back(x509cert);
     }
     CertCloseStore(hSystemStore, 0);
 #elif __APPLE__
@@ -179,7 +167,7 @@ addSystemCaCertificates(SSL_CTX* ctx, const std::shared_ptr<Logger>& logger)
         if (logger) {
             CFStringRef statusString = SecCopyErrorMessageString(osStatus, NULL);
             logger->d("Error enumerating certificates: %s",
-                      CFStringGetCStringPtr(statusString, kCFStringEncodingASCII));
+                    CFStringGetCStringPtr(statusString, kCFStringEncodingASCII));
             CFRelease(statusString);
         }
         if (result != NULL) {
@@ -199,13 +187,8 @@ addSystemCaCertificates(SSL_CTX* ctx, const std::shared_ptr<Logger>& logger)
         }
         const uint8_t* rawDataPtr = CFDataGetBytePtr(rawData);
         x509cert = d2i_X509(nullptr, &rawDataPtr, CFDataGetLength(rawData));
-        if (x509cert) {
-            if (X509_STORE_add_cert(store, x509cert) == 1) {
-                if (logger)
-                    logger->d("local certificate added");
-            }
-            X509_free(x509cert);
-        }
+        if (x509cert)
+            pems_.push_back(x509cert);
         CFRelease(rawData);
         rawData = NULL;
     }
@@ -216,6 +199,32 @@ addSystemCaCertificates(SSL_CTX* ctx, const std::shared_ptr<Logger>& logger)
         CFRelease(rawData);
     }
 #endif /*__APPLE__, _WIN32*/
+}
+
+PEMCache::~PEMCache()
+{
+    for (const auto pem : pems_)
+        if (pem)
+            X509_free(pem);
+}
+
+void
+PEMCache::fillX509Store(SSL_CTX* ctx)
+{
+    if (logger)
+        logger->w("adding %d decoded certs to X509 store", pems_.size());
+    X509_STORE* store = SSL_CTX_get_cert_store(ctx);
+    if (store == nullptr) {
+        if (logger)
+            logger->e("couldn't get the context cert store");
+        return;
+    }
+    for (const auto pem : pems_) {
+        if (X509_STORE_add_cert(store, pem) == 1)
+            continue;
+        if (logger)
+            logger->d("couldn't add local certificate");
+    }
 }
 
 } /*namespace http*/

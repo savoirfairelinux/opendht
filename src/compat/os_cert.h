@@ -25,6 +25,7 @@
 #include <openssl/x509.h>
 
 #ifdef _WIN32
+#include <crypto/x509.h> // to expose x509_store_ctx_st
 #define V_ASN1_UTCTIME         23
 #define V_ASN1_GENERALIZEDTIME 24
 #define timegm                 _mkgmtime
@@ -33,6 +34,25 @@ int ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode);
 
 namespace dht {
 namespace http {
-void addSystemCaCertificates(SSL_CTX* ctx, const std::shared_ptr<Logger>& logger);
+
+// A singleton class used to cache the decoded certificates
+// loaded from local cert stores that need to be added to the
+// ssl context prior to each request.
+class PEMCache
+{
+    PEMCache(const std::shared_ptr<Logger>& l);
+    ~PEMCache();
+    std::vector<X509*> pems_;
+    std::shared_ptr<Logger> logger;
+
+public:
+    static PEMCache& instance(const std::shared_ptr<Logger>& l)
+    {
+        static PEMCache* instance_ = new PEMCache(l);
+        return *instance_;
+    }
+
+    void fillX509Store(SSL_CTX* ctx);
+};
 }
 } // namespace dht
