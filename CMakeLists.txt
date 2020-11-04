@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 3.1)
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
 include(FindPkgConfig)
+include(cmake/CheckAtomic.cmake)
 
 project (opendht)
 set (opendht_VERSION_MAJOR 2)
