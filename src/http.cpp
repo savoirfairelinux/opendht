@@ -99,26 +99,41 @@ Url::toString() const
 
 std::atomic_uint Connection::ids_ {1};
 
+std::shared_ptr<asio::ssl::context>
+newTlsClientContext(const std::shared_ptr<dht::Logger>& logger)
+{
+    auto ctx = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
+    ctx->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+
+    if (char* path = getenv("CA_ROOT_FILE")) {
+        if (logger)
+            logger->d("[connection:%i] using CA file: %s", path);
+        ctx->load_verify_file(path);
+    } else if (char* path = getenv("CA_ROOT_PATH")) {
+        if (logger)
+            logger->d("[connection:%i] using CA path: %s", path);
+        ctx->add_verify_path(path);
+    } else {
+#ifdef __ANDROID__
+        if (logger)
+            logger->d("[connection:%i] using CA path: /system/etc/security/cacerts");
+        ctx->add_verify_path("/system/etc/security/cacerts");
+#elif defined(WIN32) || defined(__APPLE__)
+        PEMCache::instance(logger).fillX509Store(ctx->native_handle());
+#else
+        if (logger)
+            logger->d("[connection:%i] using default CA path");
+        ctx->set_default_verify_paths();
+#endif
+    }
+    return ctx;
+}
+
 Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
     if (ssl) {
-        ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
-        ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-
-        if (char* path = getenv("CA_ROOT_FILE")) {
-            ssl_ctx_->load_verify_file(path);
-        } else if (char* path = getenv("CA_ROOT_PATH")) {
-            ssl_ctx_->add_verify_path(path);
-        } else {
-#ifdef __ANDROID__
-            ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
-#elif defined(WIN32) || defined(__APPLE__)
-        PEMCache::instance(l).fillX509Store(ssl_ctx_->native_handle());
-#else
-            ssl_ctx_->set_default_verify_paths();
-#endif
-        }
+        ssl_ctx_ = newTlsClientContext(l);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
             logger_->d("[connection:%i] start https session", id_);
@@ -134,23 +149,18 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
                        const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l)
     : id_(Connection::ids_++), ctx_(ctx), istream_(&read_buf_), logger_(l)
 {
-    ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
-    ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-#ifdef __ANDROID__
-    ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
-#elif WIN32 || defined(__APPLE__)
-    PEMCache::instance(l).fillX509Store(ssl_ctx_->native_handle());
-#else
-    ssl_ctx_->set_default_verify_paths();
-#endif
     asio::error_code ec;
-    if (server_ca){
+    if (server_ca) {
+        ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
+        ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
         auto ca = server_ca->toString(false/*chain*/);
         ssl_ctx_->add_certificate_authority(asio::const_buffer{ca.data(), ca.size()}, ec);
         if (ec)
             throw std::runtime_error("Error adding certificate authority: " + ec.message());
         else if (logger_)
             logger_->d("[connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
+    } else {
+        ssl_ctx_ = newTlsClientContext(l);
     }
     if (identity.first){
         auto key = identity.first->serialize();
@@ -493,6 +503,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                                 }
                             }, logger);
                             ocspReq->set_method(restinio::http_method_post());
+                            ocspReq->set_header_field(restinio::http_field_t::content_type, "application/ocsp-request");
                             ocspReq->set_body({ocspInfo->data.begin(), ocspInfo->data.end()});
                             ocspReq->send();
                             io_ctx.run();
