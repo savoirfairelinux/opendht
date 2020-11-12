@@ -192,11 +192,10 @@ private:
         auto v = values.find(vid);
         if (v == values.end())
             return {};
-        const std::vector<Sp<Value>> val {std::move(v->second.data)};
+        std::vector<Sp<Value>> val {std::move(v->second.data)};
         values.erase(v);
-        auto cb = callback;
         CallbackQueue ret;
-        ret.emplace_back([cb, val]{
+        ret.emplace_back([cb = callback, val = std::move(val)]{
             if (cb) cb(val, true);
         });
         return ret;

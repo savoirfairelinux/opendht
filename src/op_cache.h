@@ -39,8 +39,10 @@ public:
     }
 
     static ValueCallback cacheCallback(ValueCallback&& cb, std::function<void()>&& onCancel) {
-        auto cache = std::make_shared<OpValueCache>(std::forward<ValueCallback>(cb));
-        return [cache, onCancel](const std::vector<Sp<Value>>& vals, bool expired){
+        return [
+            cache = std::make_shared<OpValueCache>(std::forward<ValueCallback>(cb)),
+            onCancel = std::move(onCancel)
+        ](const std::vector<Sp<Value>>& vals, bool expired){
             auto ret = cache->onValue(vals, expired);
             if (not ret)
                 onCancel();
@@ -49,10 +51,9 @@ public:
     }
 
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired, const system_clock::time_point& t = system_clock::time_point::min()) {
-        if (expired)
-            return onValuesExpired(vals, t);
-        else
-            return onValuesAdded(vals, t);
+        return expired 
+            ? onValuesExpired(vals, t) 
+            : onValuesAdded(vals, t);
     }
 
     bool onValuesAdded(const std::vector<Sp<Value>>& vals, const system_clock::time_point& t = system_clock::time_point::min());
