@@ -105,13 +105,20 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
     if (ssl) {
         ssl_ctx_ = std::make_shared<asio::ssl::context>(asio::ssl::context::tls_client);
         ssl_ctx_->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+
+        if (char* path = getenv("CA_ROOT_FILE")) {
+            ssl_ctx_->load_verify_file(path);
+        } else if (char* path = getenv("CA_ROOT_PATH")) {
+            ssl_ctx_->add_verify_path(path);
+        } else {
 #ifdef __ANDROID__
-        ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
+            ssl_ctx_->add_verify_path("/system/etc/security/cacerts");
 #elif defined(WIN32) || defined(__APPLE__)
-        addSystemCaCertificates(ssl_ctx_->native_handle(), l);
+            addSystemCaCertificates(ssl_ctx_->native_handle(), l);
 #else
-        ssl_ctx_->set_default_verify_paths();
+            ssl_ctx_->set_default_verify_paths();
 #endif
+        }
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
             logger_->d("[connection:%i] start https session", id_);
