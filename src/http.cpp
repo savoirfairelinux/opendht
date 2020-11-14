@@ -107,22 +107,22 @@ newTlsClientContext(const std::shared_ptr<dht::Logger>& logger)
 
     if (char* path = getenv("CA_ROOT_FILE")) {
         if (logger)
-            logger->d("[connection:%i] using CA file: %s", path);
+            logger->d("Using CA file: %s", path);
         ctx->load_verify_file(path);
     } else if (char* path = getenv("CA_ROOT_PATH")) {
         if (logger)
-            logger->d("[connection:%i] using CA path: %s", path);
+            logger->d("Using CA path: %s", path);
         ctx->add_verify_path(path);
     } else {
 #ifdef __ANDROID__
         if (logger)
-            logger->d("[connection:%i] using CA path: /system/etc/security/cacerts");
+            logger->d("Using CA path: /system/etc/security/cacerts");
         ctx->add_verify_path("/system/etc/security/cacerts");
 #elif defined(WIN32) || defined(__APPLE__)
         PEMCache::instance(logger).fillX509Store(ctx->native_handle());
 #else
         if (logger)
-            logger->d("[connection:%i] using default CA path");
+            logger->d("Using default CA path");
         ctx->set_default_verify_paths();
 #endif
     }
@@ -254,7 +254,7 @@ issuer_from_chain(STACK_OF(X509)* fullchain)
 using OscpRequestPtr = std::unique_ptr<OCSP_REQUEST, decltype(&OCSP_REQUEST_free)>;
 struct OscpRequestInfo {
     OscpRequestPtr req {nullptr, &OCSP_REQUEST_free};
-    std::vector<uint8_t> data;
+    std::string data;
     std::string url;
 };
 
@@ -324,7 +324,7 @@ ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& lo
             logger->e("Unable to allocte memory");
         return {};
     }
-    request->data = std::vector<uint8_t>(data, data+size);
+    request->data = std::string((char*)data, (char*)data+size);
     free(data);
     return request;
 }
@@ -504,7 +504,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                             }, logger);
                             ocspReq->set_method(restinio::http_method_post());
                             ocspReq->set_header_field(restinio::http_field_t::content_type, "application/ocsp-request");
-                            ocspReq->set_body({ocspInfo->data.begin(), ocspInfo->data.end()});
+                            ocspReq->set_body(ocspInfo->data);
                             ocspReq->send();
                             io_ctx.run();
                             if (not ocspVerified)
