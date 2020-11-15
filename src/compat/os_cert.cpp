@@ -32,7 +32,7 @@
 #include <Security/Security.h>
 #endif /*__APPLE__*/
 
-#ifdef _WIN32
+#if !defined (LIBRESSL_VERSION_NUMBER) || (LIBRESSL_VERSION_NUMBER < 0x20501000L)
 #undef X509_NAME
 #undef OCSP_REQUEST
 #undef OCSP_RESPONSE
@@ -133,7 +133,7 @@ ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode)
 
     return (type);
 }
-#endif /*_WIN32*/
+#endif /*LIBRESSL*/
 
 namespace dht {
 namespace http {
