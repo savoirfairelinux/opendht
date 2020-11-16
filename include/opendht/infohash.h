@@ -354,6 +354,17 @@ private:
 
 OPENDHT_PUBLIC extern const HexMap hex_map;
 
+std::string
+toHex(const uint8_t* data, size_t size) {
+    std::string ret('\0', size * 2);
+    for (size_t i=0; i<size; i++) {
+        auto b = ret.data()+i*2;
+        const auto& m = hex_map[data[i]];
+        *((uint16_t*)b) = *((uint16_t*)&m);
+    }
+    return ret;
+}
+
 template <size_t N>
 const char*
 Hash<N>::to_c_str() const
