@@ -1162,13 +1162,11 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     Certificate ret {cert};
 
     setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
-    if (gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
-        std::cerr << "Error when setting certificate key" << std::endl;
-        return {};
+    if (int err = gnutls_x509_crt_set_key(cert, key.x509_key)) {
+        throw CryptoException(std::string("Error when setting certificate key ") + gnutls_strerror(err));
     }
-    if (gnutls_x509_crt_set_version(cert, 3) != GNUTLS_E_SUCCESS) {
-        std::cerr << "Error when setting certificate version" << std::endl;
-        return {};
+    if (int err = gnutls_x509_crt_set_version(cert, 3)) {
+        throw CryptoException(std::string("Error when setting certificate version ") + gnutls_strerror(err));
     }
 
     // TODO: compute the subject key using the recommended RFC method
@@ -1193,18 +1191,15 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
 
     if (ca.first && ca.second) {
         if (not ca.second->isCA()) {
-            // Signing certificate must be CA.
-            return {};
+            throw CryptoException("Signing certificate must be CA");
         }
-        if (gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0) != GNUTLS_E_SUCCESS) {
-            std::cerr << "Error when signing certificate" << std::endl;
-            return {};
+        if (int err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0)) {
+            throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
         ret.issuer = ca.second;
     } else {
-        if (gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0) != GNUTLS_E_SUCCESS) {
-            std::cerr << "Error when signing certificate" << std::endl;
-            return {};
+        if (int err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
+            throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
     }
 
