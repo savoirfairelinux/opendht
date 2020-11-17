@@ -31,7 +31,9 @@
 #endif
 
 #if EMBEDDED_ASN1_TIME_PARSE
+#if (defined(OPENSSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER > 0x30000000L))
 #include <crypto/x509.h> // to expose x509_store_ctx_st
+#endif
 #define V_ASN1_UTCTIME         23
 #define V_ASN1_GENERALIZEDTIME 24
 #define timegm                 _mkgmtime
