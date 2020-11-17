@@ -24,13 +24,19 @@
 
 #include <openssl/x509.h>
 
-#ifdef _WIN32
+#if (defined(LIBRESSL_VERSION_NUMBER) && (LIBRESSL_VERSION_NUMBER > 0x20501000L))
+#define EMBEDDED_ASN1_TIME_PARSE 0
+#else
+#define EMBEDDED_ASN1_TIME_PARSE 1
+#endif
+
+#if EMBEDDED_ASN1_TIME_PARSE
 #include <crypto/x509.h> // to expose x509_store_ctx_st
 #define V_ASN1_UTCTIME         23
 #define V_ASN1_GENERALIZEDTIME 24
 #define timegm                 _mkgmtime
 int ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode);
-#endif /*_WIN32*/
+#endif
 
 namespace dht {
 namespace http {
