@@ -34,6 +34,7 @@
 #define V_ASN1_UTCTIME         23
 #define V_ASN1_GENERALIZEDTIME 24
 
+extern "C" {
 /*
  * Parse an RFC 5280 format ASN.1 time string.
  *
@@ -50,6 +51,7 @@
  * Fills in *tm with the corresponding time if tm is non NULL.
  */
 int ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode);
+}
 #endif
 
 namespace dht {

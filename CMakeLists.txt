@@ -1,10 +1,11 @@
 cmake_minimum_required (VERSION 3.1)
+project (opendht)
+
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
 include(FindPkgConfig)
 include(cmake/CheckAtomic.cmake)
 
-project (opendht)
 set (opendht_VERSION_MAJOR 2)
 set (opendht_VERSION_MINOR 1.7)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
@@ -301,9 +302,11 @@ if (OPENDHT_HTTP)
   list (APPEND opendht_HEADERS
     include/opendht/proxy.h
     include/opendht/http.h
+    src/compat/os_cert.h
   )
   list (APPEND opendht_SOURCES
     src/http.cpp
+    src/compat/os_cert.cpp
   )
 endif ()
 
@@ -324,13 +327,8 @@ if(OPENDHT_ARGON2)
     include_directories(argon2/include/)
 endif()
 
-# cross-platform compatibility sources
-set (COMPAT_DIR ${PROJECT_SOURCE_DIR}/src/compat/)
-list (APPEND opendht_SOURCES ${COMPAT_DIR}/os_cert.cpp)
-
 if (MSVC)
-    set (MSC_COMPAT_DIR ${COMPAT_DIR}/msvc/)
-    list (APPEND opendht_SOURCES ${MSC_COMPAT_DIR}/unistd.h)
+    list (APPEND opendht_HEADERS src/compat/msvc/unistd.h)
 endif ()
 
 # Targets

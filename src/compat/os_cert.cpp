@@ -39,6 +39,7 @@
 #define GENTIME_LENGTH 15
 #define UTCTIME_LENGTH 13
 #define ATOI2(ar)      ((ar) += 2, ((ar)[-2] - '0') * 10 + ((ar)[-1] - '0'))
+extern "C" {
 // Taken from libressl/src/crypto/asn1/a_time_tm.c
 int
 ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode)
@@ -116,7 +117,8 @@ ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode)
         return (-1);
     }
 
-    return (type);
+    return type;
+}
 }
 #endif /* EMBEDDED_ASN1_TIME_PARSE */
 
