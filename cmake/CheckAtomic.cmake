@@ -40,6 +40,7 @@
 # SOFTWARE.
 
 include(CheckCXXSourceCompiles)
+include(CheckLibraryExists)
 
 # Sometimes linking against libatomic is required for atomic ops, if
 # the platform doesn't support lock-free atomics.
