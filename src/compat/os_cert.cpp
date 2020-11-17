@@ -40,21 +40,6 @@
 #define UTCTIME_LENGTH 13
 #define ATOI2(ar)      ((ar) += 2, ((ar)[-2] - '0') * 10 + ((ar)[-1] - '0'))
 // Taken from libressl/src/crypto/asn1/a_time_tm.c
-/*
- * Parse an RFC 5280 format ASN.1 time string.
- *
- * mode must be:
- * 0 if we expect to parse a time as specified in RFC 5280 for an X509 object.
- * V_ASN1_UTCTIME if we wish to parse an RFC5280 format UTC time.
- * V_ASN1_GENERALIZEDTIME if we wish to parse an RFC5280 format Generalized time.
- *
- * Returns:
- * -1 if the string was invalid.
- * V_ASN1_UTCTIME if the string validated as a UTC time string.
- * V_ASN1_GENERALIZEDTIME if the string validated as a Generalized time string.
- *
- * Fills in *tm with the corresponding time if tm is non NULL.
- */
 int
 ASN1_time_parse(const char* bytes, size_t len, struct tm* tm, int mode)
 {

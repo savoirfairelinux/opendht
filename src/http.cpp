@@ -31,10 +31,14 @@
 #include <openssl/ssl.h>
 #include <openssl/asn1.h>
 #include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 #define MAXAGE_SEC (14*24*60*60)
 #define JITTER_SEC (60)
 #define OCSP_MAX_RESPONSE_SIZE (20480)
+#ifdef _WIN32
+#define timegm                 _mkgmtime
+#endif
 
 namespace dht {
 namespace http {
@@ -496,7 +500,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                             asio::io_context io_ctx;
                             auto ocspReq = std::make_shared<Request>(io_ctx, ocspInfo->url, [&](const Response& ocspResp){
                                 if (ocspResp.status_code == 200) {
-                                    ocspVerified = ocspValidateResponse(*ocspInfo, chain, ocspResp.body, ctx.native_handle()->ctx, logger);
+                                    ocspVerified = ocspValidateResponse(*ocspInfo, chain, ocspResp.body, X509_STORE_CTX_get0_store(ctx.native_handle()), logger);
                                 } else {
                                     if (logger)
                                         logger->w("[http::connection:%i] TLS OCSP check error", id);
