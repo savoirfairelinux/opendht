@@ -50,8 +50,9 @@ function(check_working_cxx_atomics varname)
   set(CMAKE_REQUIRED_FLAGS ${compile_options})
   CHECK_CXX_SOURCE_COMPILES("
 #include <atomic>
+#include <cstdint>
 int main() {
-  struct Test { int val; };
+  struct Test { int64_t val; };
   std::atomic<Test> s;
   s.is_lock_free();
 }" ${varname})
