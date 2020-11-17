@@ -71,8 +71,8 @@ endif
 
 libopendht_la_SOURCES += base64.h base64.cpp
 if PROXY_CLIENT_OR_SERVER
-libopendht_la_SOURCES += http.cpp
-nobase_include_HEADERS += ../include/opendht/proxy.h ../include/opendht/http.h
+libopendht_la_SOURCES += http.cpp compat/os_cert.cpp
+nobase_include_HEADERS += ../include/opendht/proxy.h ../include/opendht/http.h compat/os_cert.h
 endif
 
 if ENABLE_PEER_DISCOVERY
