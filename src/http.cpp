@@ -122,7 +122,7 @@ newTlsClientContext(const std::shared_ptr<dht::Logger>& logger)
         if (logger)
             logger->d("Using CA path: /system/etc/security/cacerts");
         ctx->add_verify_path("/system/etc/security/cacerts");
-#elif defined(WIN32) || defined(__APPLE__)
+#elif defined(WIN32) || defined(TARGET_OS_OSX)
         PEMCache::instance(logger).fillX509Store(ctx->native_handle());
 #else
         if (logger)

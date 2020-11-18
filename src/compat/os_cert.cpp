@@ -27,10 +27,10 @@
 #endif
 #include <openssl/ssl.h>
 
-#ifdef __APPLE__
+#ifdef TARGET_OS_OSX
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
-#endif /*__APPLE__*/
+#endif /*TARGET_OS_OSX*/
 
 #if EMBEDDED_ASN1_TIME_PARSE
 #undef X509_NAME
@@ -144,7 +144,7 @@ PEMCache::PEMCache(const std::shared_ptr<Logger>& l)
             pems_.emplace_back(std::move(x509cert));
     }
     CertCloseStore(hSystemStore, 0);
-#elif __APPLE__
+#elif TARGET_OS_OSX
     CFArrayRef result = NULL;
     OSStatus osStatus;
 
@@ -182,7 +182,7 @@ PEMCache::PEMCache(const std::shared_ptr<Logger>& l)
     if (rawData != NULL) {
         CFRelease(rawData);
     }
-#endif /*__APPLE__, _WIN32*/
+#endif /*TARGET_OS_OSX, _WIN32*/
 }
 
 void
