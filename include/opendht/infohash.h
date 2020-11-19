@@ -365,6 +365,11 @@ toHex(const uint8_t* data, size_t size) {
     return ret;
 }
 
+inline std::string
+toHex(const std::vector<uint8_t>& data) {
+    return toHex(data.data(), data.size());
+}
+
 template <size_t N>
 const char*
 Hash<N>::to_c_str() const
