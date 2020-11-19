@@ -1034,7 +1034,7 @@ Certificate::getPreferredDigest() const
     return getPublicKey().getPreferredDigest();
 }
 
-std::pair<Blob,Blob>
+std::pair<Blob, Blob>
 Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
 {
     gnutls_ocsp_req_t rreq;
@@ -1301,65 +1301,47 @@ OcspResponse::getCertificateStatus() const
 gnutls_ocsp_verify_reason_t
 OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
 {
-    // https://www.gnutls.org/manual/html_node/Error-codes.html
-    int ret = -1;
-    // http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
-    unsigned int verify = 0;
-    // http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-cert-status-t
-    unsigned int status = 6; // by default assume GNUTLS_OCSP_RESP_UNAUTHORIZED
+    // Check OCSP response
+    int ret = gnutls_ocsp_resp_get_status(response);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    gnutls_ocsp_resp_status_t status = (gnutls_ocsp_resp_status_t)ret;
+    if (status != GNUTLS_OCSP_RESP_SUCCESSFUL)
+        throw CryptoException("OCSP request unsuccessful: " + std::to_string(ret));
 
-#if GNUTLS_VERSION_NUMBER >= 0x030103
-    /*
-     * This function will check whether the OCSP response is about the provided certificate.
-     *     index: Specifies response number to get. Use (0) to get the first one.
-     */
+    // Check whether the OCSP response is about the provided certificate.
     if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
-        goto end;
-#endif
-    /*
-     * Verify signature of the Basic OCSP Response against the public key in the issuer certificate.
-     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-resp-verify-direct
-     */
-    ret = gnutls_ocsp_resp_verify_direct(response, crt.issuer->cert /*signer*/, &verify, 0);
+        throw CryptoException(gnutls_strerror(ret));
+
+    // Verify signature of the Basic OCSP response against the public key in the issuer certificate.
+    unsigned int verify = 0;
+    ret = gnutls_ocsp_resp_verify_direct(response, crt.issuer->cert, &verify, 0);
     if (ret < 0)
-        goto end;
-    ret = gnutls_ocsp_resp_check_crt(response, 0 /*index*/, crt.cert);
+        throw CryptoException(gnutls_strerror(ret));
+
+    // Check certificate revocation status
+    unsigned status_ocsp;
+    ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
     if (ret < 0)
-        goto end;
-    /*
-     * This function will return the certificate information of the indx'ed response in the
-     * Basic OCSP Response resp. The information returned corresponds to the OCSP SingleResponse
-     * structure except the final singleExtensions.
-     * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-resp-get-single
-     */
-    ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status, NULL, NULL, NULL, NULL);
-    if (ret < 0)
-        goto end;
+        throw CryptoException(gnutls_strerror(ret));
+    gnutls_ocsp_cert_status_t certStatus = (gnutls_ocsp_cert_status_t)ret;
+    if (certStatus == GNUTLS_OCSP_CERT_REVOKED)
+        throw CryptoException("Certificate was revoked");
+    else if (certStatus != GNUTLS_OCSP_CERT_GOOD)
+        throw CryptoException("Certificate is unknown");
+
+    // Ensure no replay attack has been done
     gnutls_datum_t rnonce;
-    /*
-     * This function will return the Basic OCSP Response nonce extension data.
-     */
     ret = gnutls_ocsp_resp_get_nonce(response, NULL, &rnonce);
     if (ret < 0)
-        goto end;
-    // Ensure no replay attack has been done
-    if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
-        ret = GNUTLS_E_OCSP_RESPONSE_ERROR;
-        goto end;
-    }
-end:
-    /*
-     * OCSP validation outcome based on interogative aspects
-     */
-    if (ret != GNUTLS_E_SUCCESS)
         throw CryptoException(gnutls_strerror(ret));
-    else if (status != GNUTLS_OCSP_CERT_GOOD)
-        if (status == GNUTLS_OCSP_CERT_REVOKED)
-            throw CryptoException("Certificate was revoked");
-        else
-            throw CryptoException("Certificate is unknown");
-    else
-        return (gnutls_ocsp_verify_reason_t) verify;
+    if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
+        gnutls_free(rnonce.data);
+        throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
+    }
+    gnutls_free(rnonce.data);
+
+    return (gnutls_ocsp_verify_reason_t) verify;
 }
 
 // RevocationList
