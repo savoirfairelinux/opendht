@@ -565,7 +565,7 @@ struct OPENDHT_PUBLIC Certificate {
      * Return GnuTLS error code.
      * https://www.gnutls.org/manual/html_node/Error-codes.html
      */
-    std::pair<Blob,Blob> generateOcspRequest(gnutls_x509_crt_t& issuer);
+    std::pair<std::string, Blob> generateOcspRequest(gnutls_x509_crt_t& issuer);
 
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};

@@ -1034,7 +1034,7 @@ Certificate::getPreferredDigest() const
     return getPublicKey().getPreferredDigest();
 }
 
-std::pair<Blob, Blob>
+std::pair<std::string, Blob>
 Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
 {
     gnutls_ocsp_req_t rreq;
@@ -1055,9 +1055,9 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     err = gnutls_ocsp_req_export(req.get(), &rdata);
     if (err != 0)
         throw CryptoException(gnutls_strerror(err));
-    Blob ret(rdata.data, rdata.data + rdata.size);
+    std::string ret((char*)rdata.data, (char*)rdata.data + rdata.size);
     gnutls_free(rdata.data);
-    return std::make_pair<Blob,Blob>(std::move(ret), std::move(noncebuf));
+    return std::make_pair<std::string, Blob>(std::move(ret), std::move(noncebuf));
 }
 
 // PrivateKey
