@@ -298,7 +298,7 @@ ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& lo
 
     auto request = std::make_unique<OscpRequestInfo>();
     request->req = OscpRequestPtr(OCSP_REQUEST_new(), &OCSP_REQUEST_free);
-    request->url = strdup(url);
+    request->url = url;
     X509_email_free(urls);
 
     OCSP_CERTID* id = OCSP_cert_to_id(EVP_sha1(), cert, issuer);
@@ -340,9 +340,6 @@ ocspValidateResponse(const OscpRequestInfo& info, STACK_OF(X509)* fullchain, con
     const uint8_t* p = (const uint8_t*)response.data();
     int status, cert_status=0, crl_reason=0;
     time_t now, rev_t = -1, this_t, next_t;
-    OCSP_RESPONSE *resp;
-    OCSP_BASICRESP *bresp;
-    OCSP_CERTID *cid;
 
     X509* cert = cert_from_chain(fullchain);
     if (cert == nullptr) {
@@ -356,32 +353,39 @@ ocspValidateResponse(const OscpRequestInfo& info, STACK_OF(X509)* fullchain, con
             logger->e("Unable to find issuer for cert");
         return false;
     }
-    if ((cid = OCSP_cert_to_id(nullptr, cert, issuer)) == nullptr) {
+
+    OCSP_CERTID *cidr;
+    if ((cidr = OCSP_cert_to_id(nullptr, cert, issuer)) == nullptr) {
         if (logger)
             logger->e("Unable to get issuer cert/CID");
         return false;
     }
+    std::unique_ptr<OCSP_CERTID, decltype(&OCSP_CERTID_free)> cid(cidr, &OCSP_CERTID_free);
 
-    if ((resp = d2i_OCSP_RESPONSE(nullptr, &p, response.size())) == nullptr) {
+    OCSP_RESPONSE *r;
+    if ((r = d2i_OCSP_RESPONSE(nullptr, &p, response.size())) == nullptr) {
         if (logger)
             logger->e("OCSP response unserializable");
         return false;
     }
+    std::unique_ptr<OCSP_RESPONSE, decltype(&OCSP_RESPONSE_free)> resp(r, &OCSP_RESPONSE_free);
 
-    if ((bresp = OCSP_response_get1_basic(resp)) == nullptr) {
+    OCSP_BASICRESP *brespr;
+    if ((brespr = OCSP_response_get1_basic(resp.get())) == nullptr) {
         if (logger)
             logger->e("Failed to load OCSP response");
         return false;
     }
+    std::unique_ptr<OCSP_BASICRESP, decltype(&OCSP_BASICRESP_free)> bresp(brespr, &OCSP_BASICRESP_free);
 
-    if (OCSP_basic_verify(bresp, fullchain, store, OCSP_TRUSTOTHER) != 1) {
+    if (OCSP_basic_verify(bresp.get(), fullchain, store, OCSP_TRUSTOTHER) != 1) {
         if (logger)
             logger->w("OCSP verify failed");
         return false;
     }
     printf("OCSP response signature validated\n");
 
-    status = OCSP_response_status(resp);
+    status = OCSP_response_status(resp.get());
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
         if (logger)
             logger->w("OCSP Failure: code %d (%s)", status, OCSP_response_status_str(status));
@@ -389,13 +393,13 @@ ocspValidateResponse(const OscpRequestInfo& info, STACK_OF(X509)* fullchain, con
     }
 
     // Check the nonce if we sent one
-    if (OCSP_check_nonce(info.req.get(), bresp) <= 0) {
+    if (OCSP_check_nonce(info.req.get(), bresp.get()) <= 0) {
         if (logger)
             logger->w("No OCSP nonce, or mismatch");
         return false;
     }
 
-    if (OCSP_resp_find_status(bresp, cid, &cert_status, &crl_reason,
+    if (OCSP_resp_find_status(bresp.get(), cid.get(), &cert_status, &crl_reason,
         &revtime, &thisupd, &nextupd) != 1) {
         if (logger)
             logger->w("OCSP verify failed: no result for cert");
@@ -492,15 +496,17 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
                         logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
                     if (verified) {
-                        auto chain = X509_STORE_CTX_get1_chain(ctx.native_handle());
-                        if (auto ocspInfo = ocspRequestFromCert(chain, logger)) {
+                        std::unique_ptr<stack_st_X509, void(*)(stack_st_X509*)> chain(
+                            X509_STORE_CTX_get1_chain(ctx.native_handle()),
+                            [](stack_st_X509* c){ sk_X509_pop_free(c, X509_free); });
+                        if (auto ocspInfo = ocspRequestFromCert(chain.get(), logger)) {
                             if (logger)
                                 logger->w("[http::connection:%i] TLS OCSP server: %s, request size: %zu", id, ocspInfo->url.c_str(), ocspInfo->data.size());
                             bool ocspVerified = false;
                             asio::io_context io_ctx;
                             auto ocspReq = std::make_shared<Request>(io_ctx, ocspInfo->url, [&](const Response& ocspResp){
                                 if (ocspResp.status_code == 200) {
-                                    ocspVerified = ocspValidateResponse(*ocspInfo, chain, ocspResp.body, X509_STORE_CTX_get0_store(ctx.native_handle()), logger);
+                                    ocspVerified = ocspValidateResponse(*ocspInfo, chain.get(), ocspResp.body, X509_STORE_CTX_get0_store(ctx.native_handle()), logger);
                                 } else {
                                     if (logger)
                                         logger->w("[http::connection:%i] TLS OCSP check error", id);
@@ -1376,7 +1382,7 @@ Request::onHeadersComplete() {
 }
 
 bool startsWith(const std::string& haystack, const std::string& needle) {
-    return needle.length() <= haystack.length() 
+    return needle.length() <= haystack.length()
         && std::equal(needle.begin(), needle.end(), haystack.begin());
 }
 
