@@ -7,7 +7,7 @@ include(FindPkgConfig)
 include(cmake/CheckAtomic.cmake)
 
 set (opendht_VERSION_MAJOR 2)
-set (opendht_VERSION_MINOR 1.8)
+set (opendht_VERSION_MINOR 1.9)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
