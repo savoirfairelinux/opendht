@@ -96,7 +96,7 @@ public:
     inline unsigned int id() const { return  id_; };
     bool is_open() const;
     bool is_ssl() const;
-    bool checkOcsp(bool check = true) { checkOcsp_ = check; }
+    void checkOcsp(bool check = true) { checkOcsp_ = check; }
 
     void set_ssl_verification(const std::string& hostname, const asio::ssl::verify_mode verify_mode);
 
