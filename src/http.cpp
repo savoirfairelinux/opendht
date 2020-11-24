@@ -140,7 +140,7 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
         ssl_ctx_ = newTlsClientContext(l);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
-            logger_->d("[connection:%i] start https session", id_);
+            logger_->d("[connection:%i] start https session with system CA", id_);
     }
     else {
         socket_ = std::make_unique<socket_t>(ctx);
@@ -162,9 +162,11 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         if (ec)
             throw std::runtime_error("Error adding certificate authority: " + ec.message());
         else if (logger_)
-            logger_->d("[connection:%i] certficate authority %s", id_, server_ca->getUID().c_str());
+            logger_->d("[connection:%i] start https with custom CA %s", id_, server_ca->getUID().c_str());
     } else {
         ssl_ctx_ = newTlsClientContext(l);
+        if (logger_)
+            logger_->d("[connection:%i] start https session with system CA", id_);
     }
     if (identity.first){
         auto key = identity.first->serialize();
@@ -480,7 +482,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
         ssl_socket_->asio_ssl_stream().set_verify_mode(verify_mode);
         if (verify_mode != asio::ssl::verify_none) {
             ssl_socket_->asio_ssl_stream().set_verify_callback([
-                    id = id_, logger = logger_, hostname
+                    id = id_, logger = logger_, hostname, checkOcsp = checkOcsp_
                 ] (bool preverified, asio::ssl::verify_context& ctx) -> bool {
                     X509* cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
                     if (logger) {
@@ -495,7 +497,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
                         logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
-                    if (verified) {
+                    if (verified and checkOcsp) {
                         std::unique_ptr<stack_st_X509, void(*)(stack_st_X509*)> chain(
                             X509_STORE_CTX_get1_chain(ctx.native_handle()),
                             [](stack_st_X509* c){ sk_X509_pop_free(c, X509_free); });
