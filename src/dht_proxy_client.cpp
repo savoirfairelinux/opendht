@@ -636,6 +636,8 @@ DhtProxyClient::queryProxyInfo(const Sp<InfoState>& infoState, const Sp<http::Re
         logger_->d("[proxy:client] [status] query ipv%i info", family == AF_INET ? 4 : 6);
     try {
         auto request = std::make_shared<http::Request>(httpContext_, resolver, family);
+        if (serverCertificate_)
+            request->set_certificate_authority(serverCertificate_);
         auto reqid = request->id();
         request->set_method(restinio::http_method_get());
         setHeaderFields(*request);
