@@ -314,6 +314,7 @@ class OPENDHT_PUBLIC OcspResponse
 {
 public:
     OcspResponse(const uint8_t* dat_ptr, size_t dat_size);
+    OcspResponse(const std::string& response) : OcspResponse((const uint8_t*)response.data(), response.size()) {};
     ~OcspResponse();
 
     Blob pack() const;
