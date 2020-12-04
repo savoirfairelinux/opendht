@@ -52,10 +52,10 @@ function(check_working_cxx_atomics varname)
   CHECK_CXX_SOURCE_COMPILES("
 #include <atomic>
 #include <cstdint>
-int main() {
-  struct Test { int64_t val; };
-  std::atomic<Test> s;
-  s.is_lock_free();
+std::atomic<int64_t> v1;
+std::atomic<int64_t> v2;
+int main(int, char**) {
+  return v1 + v2;
 }" ${varname})
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endfunction(check_working_cxx_atomics)
