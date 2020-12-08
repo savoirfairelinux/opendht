@@ -356,7 +356,7 @@ OPENDHT_PUBLIC extern const HexMap hex_map;
 
 inline std::string
 toHex(const uint8_t* data, size_t size) {
-    std::string ret('\0', size * 2);
+    std::string ret(size * 2, '\0');
     for (size_t i=0; i<size; i++) {
         auto b = ret.data()+i*2;
         const auto& m = hex_map[data[i]];
