@@ -28,10 +28,11 @@ namespace test {
 class InfoHashTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(InfoHashTester);
     CPPUNIT_TEST(testConstructors);
-    CPPUNIT_TEST(testComperators);
+    CPPUNIT_TEST(testComparators);
     CPPUNIT_TEST(testLowBit);
     CPPUNIT_TEST(testCommonBits);
     CPPUNIT_TEST(testXorCmp);
+    CPPUNIT_TEST(testHex);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -50,7 +51,7 @@ class InfoHashTester : public CppUnit::TestFixture {
     /**
      * Test compare operators
      */
-    void testComperators();
+    void testComparators();
     /**
      * Test lowbit method
      */
@@ -64,6 +65,10 @@ class InfoHashTester : public CppUnit::TestFixture {
      */
     void testXorCmp();
 
+    /**
+     * Test hex conversion
+     */
+    void testHex();
 };
 
 }  // namespace test

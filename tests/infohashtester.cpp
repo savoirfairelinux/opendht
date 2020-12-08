@@ -73,7 +73,7 @@ InfoHashTester::testConstructors() {
 }
 
 void
-InfoHashTester::testComperators() {
+InfoHashTester::testComparators() {
     auto nullHash = dht::InfoHash();
     auto minHash = dht::InfoHash("0000000000000000000000000000000000111110");
     auto maxHash = dht::InfoHash("0111110000000000000000000000000000000000");
@@ -134,6 +134,14 @@ InfoHashTester::testXorCmp() {
     // Because hashes are circular in distance.
     CPPUNIT_ASSERT_EQUAL(maxHash.xorCmp(nullHash, minHash), -1);
     CPPUNIT_ASSERT_EQUAL(maxHash.xorCmp(minHash, nullHash), 1);
+}
+
+void
+InfoHashTester::testHex() {
+    const std::string TEST_HASH_STR("01b20304d5060708090a010203e05060708090ae");
+    dht::InfoHash TEST_HASH(TEST_HASH_STR);
+    CPPUNIT_ASSERT_EQUAL(TEST_HASH_STR, TEST_HASH.toString());
+    CPPUNIT_ASSERT_EQUAL(TEST_HASH_STR, dht::toHex(TEST_HASH.data(), TEST_HASH.size()));
 }
 
 void
