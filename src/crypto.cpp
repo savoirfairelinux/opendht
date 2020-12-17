@@ -1042,10 +1042,10 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     std::unique_ptr<struct gnutls_ocsp_req_int, decltype(&gnutls_ocsp_req_deinit)> req(rreq, &gnutls_ocsp_req_deinit);
-    err = gnutls_ocsp_req_add_cert(req.get(), GNUTLS_DIG_SHA512, issuer, cert);
+    err = gnutls_ocsp_req_add_cert(req.get(), GNUTLS_DIG_SHA1, issuer, cert);
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
-    Blob noncebuf(64);
+    Blob noncebuf(32);
     gnutls_datum_t nonce = { noncebuf.data(), (unsigned)noncebuf.size() };
     err = gnutls_rnd(GNUTLS_RND_NONCE, nonce.data, nonce.size);
     err = gnutls_ocsp_req_set_nonce(req.get(), 0, &nonce);
