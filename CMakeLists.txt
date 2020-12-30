@@ -42,6 +42,7 @@ option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentati
 # Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 if (NOT MSVC)
+    set (THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package (Threads)
     find_package (PkgConfig REQUIRED)
     find_package (GnuTLS 3.3 REQUIRED)
