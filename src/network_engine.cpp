@@ -460,9 +460,13 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
             pmsg_it->second.last_part = now;
             // check data completion
             if (pmsg_it->second.msg->complete()) {
-                // process the full message
-                process(std::move(pmsg_it->second.msg), from);
-                partial_messages.erase(pmsg_it);
+                try {
+                    // process the full message
+                    process(std::move(pmsg_it->second.msg), from);
+                    partial_messages.erase(pmsg_it);
+		} catch (...) {
+                    return;
+		}  
             } else
                 scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
         }
@@ -485,7 +489,11 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
     }
 
     if (msg->value_parts.empty()) {
-        process(std::move(msg), from);
+        try {	    
+            process(std::move(msg), from);
+	} catch(...) {
+            return;
+	}
     } else {
         // starting partial message session
         auto k = msg->tid;
