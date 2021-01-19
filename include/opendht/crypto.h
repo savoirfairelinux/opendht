@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -80,6 +80,8 @@ struct OPENDHT_PUBLIC PublicKey
      * Takes ownership of an existing gnutls_pubkey.
      */
     PublicKey(gnutls_pubkey_t k) : pk(k) {}
+
+    /** Import public key from serialized data */
     PublicKey(const uint8_t* dat, size_t dat_size);
     PublicKey(const Blob& pk) : PublicKey(pk.data(), pk.size()) {}
     PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };
@@ -106,12 +108,12 @@ struct OPENDHT_PUBLIC PublicKey
     PkId getLongId() const;
 
     bool checkSignature(const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) const;
-    bool checkSignature(const Blob& data, const Blob& signature) const {
+    inline bool checkSignature(const Blob& data, const Blob& signature) const {
         return checkSignature(data.data(), data.size(), signature.data(), signature.size());
     }
 
     Blob encrypt(const uint8_t* data, size_t data_len) const;
-    Blob encrypt(const Blob& data) const {
+    inline Blob encrypt(const Blob& data) const {
         return encrypt(data.data(), data.size());
     }
 
@@ -162,7 +164,9 @@ struct OPENDHT_PUBLIC PrivateKey
     ~PrivateKey();
     explicit operator bool() const { return key; }
 
-    PublicKey getPublicKey() const;
+    const PublicKey& getPublicKey() const;
+    const std::shared_ptr<PublicKey>& getSharedPublicKey() const;
+
     int serialize(uint8_t* out, size_t* out_len, const std::string& password = {}) const;
     Blob serialize(const std::string& password = {}) const;
 
@@ -170,14 +174,16 @@ struct OPENDHT_PUBLIC PrivateKey
      * Sign the provided binary object.
      * @returns the signature data.
      */
-    Blob sign(const Blob&) const;
+    Blob sign(const uint8_t* data, size_t data_len) const;
+    inline Blob sign(const Blob& dat) const { return sign(dat.data(), dat.size()); }
 
     /**
      * Try to decrypt the provided cypher text.
      * In case of failure a CryptoException is thrown.
      * @returns the decrypted data.
      */
-    Blob decrypt(const Blob& cypher) const;
+    Blob decrypt(const uint8_t* cypher, size_t cypher_len) const;
+    Blob decrypt(const Blob& cypher) const { return decrypt(cypher.data(), cypher.size()); }
 
     /**
      * Generate a new RSA key pair
@@ -195,7 +201,7 @@ private:
     PrivateKey& operator=(const PrivateKey&) = delete;
     Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
-    //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
+    mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 
 class OPENDHT_PUBLIC RevocationList
@@ -310,6 +316,24 @@ private:
     gnutls_x509_crq_t request {nullptr};
 };
 
+class OPENDHT_PUBLIC OcspRequest
+{
+public:
+    OcspRequest(gnutls_ocsp_req_t r) : request(r) {};
+    OcspRequest(const uint8_t* dat_ptr, size_t dat_size);
+    ~OcspRequest();
+
+    /*
+     * Get OCSP Request in readable format.
+     */
+    std::string toString(const bool compact = true) const;
+
+    Blob pack() const;
+    Blob getNonce() const;
+private:
+    gnutls_ocsp_req_t request;
+};
+
 class OPENDHT_PUBLIC OcspResponse
 {
 public:
@@ -331,11 +355,11 @@ public:
     gnutls_ocsp_cert_status_t getCertificateStatus() const;
 
     /*
-     * Verify OCSP response.
-     * Return OCSP verify reason.
+     * Verify OCSP response and return OCSP status.
+     * Throws CryptoException in case of error in the response.
      * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
      */
-    gnutls_ocsp_verify_reason_t verifyDirect(const Certificate& crt, const Blob& nonce);
+    gnutls_ocsp_cert_status_t verifyDirect(const Certificate& crt, const Blob& nonce);
 
 private:
     gnutls_ocsp_resp_t response;
@@ -517,8 +541,8 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
-    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false);
-    static Certificate generate(const CertificateRequest& request, const Identity& ca);
+    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false, int64_t validity = 0);
+    static Certificate generate(const CertificateRequest& request, const Identity& ca, int64_t validity = 0);
 
     gnutls_x509_crt_t getCopy() const {
         if (not cert)
@@ -568,12 +592,20 @@ struct OPENDHT_PUBLIC Certificate {
      */
     std::pair<std::string, Blob> generateOcspRequest(gnutls_x509_crt_t& issuer);
 
+    /**
+     * Change certificate's expiration
+     */
+    void setValidity(const Identity& ca, int64_t validity);
+    void setValidity(const PrivateKey& key, int64_t validity);
+
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
     std::shared_ptr<OcspResponse> ocspResponse;
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
+    mutable InfoHash cachedId_ {};
+    mutable PkId cachedLongId_ {};
 
     struct crlNumberCmp {
         bool operator() (const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const {
@@ -749,8 +781,10 @@ OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const std::string& password);
 /**
  * AES-GCM decryption.
  */
-OPENDHT_PUBLIC Blob aesDecrypt(const Blob& data, const Blob& key);
-OPENDHT_PUBLIC Blob aesDecrypt(const Blob& data, const std::string& password);
+OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key);
+OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, const Blob& key) { return aesDecrypt(data.data(), data.size(), key); }
+OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, const std::string& password);
+OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, const std::string& password) { return aesDecrypt(data.data(), data.size(), password); }
 
 }
 }

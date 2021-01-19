@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -445,7 +445,6 @@ private:
         std::map<InfoHash, std::vector<Listener>> listeners;
         MSGPACK_DEFINE_ARRAY(listeners)
     };
-    std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS

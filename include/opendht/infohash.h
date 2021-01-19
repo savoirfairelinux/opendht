@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -40,10 +40,12 @@ typedef uint16_t in_port_t;
 #include <iomanip>
 #include <array>
 #include <vector>
+#include <string_view>
 #include <algorithm>
 #include <stdexcept>
 #include <sstream>
 #include <cstring>
+#include <cstddef>
 
 namespace dht {
 
@@ -54,9 +56,9 @@ namespace crypto {
 }
 
 /**
- * Represents an InfoHash.
- * An InfoHash is a byte array of HASH_LEN bytes.
- * InfoHashes identify nodes and values in the Dht.
+ * Represents an Hash,
+ * a byte array of N bytes.
+ * Hashes identify nodes and values in the Dht.
  */
 template <size_t N>
 class OPENDHT_PUBLIC Hash {
@@ -65,10 +67,10 @@ public:
     typedef typename T::iterator iterator;
     typedef typename T::const_iterator const_iterator;
 
-    Hash () noexcept {
+    Hash() noexcept {
         data_.fill(0);
     }
-    Hash (const uint8_t* h, size_t data_len) {
+    Hash(const uint8_t* h, size_t data_len) {
         if (data_len < N)
             data_.fill(0);
         else
@@ -79,7 +81,12 @@ public:
      * hex must be at least 2.HASH_LEN characters long.
      * If too long, only the first 2.HASH_LEN characters are read.
      */
-    explicit Hash(const std::string& hex);
+    explicit Hash(std::string_view hex) {
+        if (hex.size() < 2*N)
+            data_.fill(0);
+        else
+            fromString(hex.data());
+    }
 
     Hash(const msgpack::object& o) {
         msgpack_unpack(o);
@@ -92,6 +99,8 @@ public:
     const_iterator cbegin() const { return data_.cbegin(); }
     iterator end() { return data_.end(); }
     const_iterator cend() const { return data_.cend(); }
+
+    static constexpr inline Hash zero() noexcept { return Hash{}; }
 
     bool operator==(const Hash& h) const {
         auto a = reinterpret_cast<const uint32_t*>(data_.data());
@@ -110,6 +119,14 @@ public:
                 return data_[i] < o.data_[i];
         }
         return false;
+    }
+
+    Hash operator^(const Hash& o) const {
+        Hash result;
+        for(auto i = 0u; i < N; i++) {
+            result[i] = data_[i] ^ o.data_[i];
+        }
+        return result;
     }
 
     explicit operator bool() const {
@@ -142,10 +159,6 @@ public:
         return 8 * i + j;
     }
 
-    /**
-     * Forget about the ``XOR-metric''.  An id is just a path from the
-     * root of the tree, so bits are numbered from the start.
-     */
     static inline int cmp(const Hash& id1, const Hash& id2) {
         return std::memcmp(id1.data_.data(), id2.data_.data(), N);
     }
@@ -179,16 +192,12 @@ public:
     int
     xorCmp(const Hash& id1, const Hash& id2) const
     {
-        for(unsigned i = 0; i < N; i++) {
-            uint8_t xor1, xor2;
+        for (unsigned i = 0; i < N; i++) {
             if(id1.data_[i] == id2.data_[i])
                 continue;
-            xor1 = id1.data_[i] ^ data_[i];
-            xor2 = id2.data_[i] ^ data_[i];
-            if(xor1 < xor2)
-                return -1;
-            else
-                return 1;
+            uint8_t xor1 = id1.data_[i] ^ data_[i];
+            uint8_t xor2 = id2.data_[i] ^ data_[i];
+            return (xor1 < xor2) ? -1 : 1;
         }
         return 0;
     }
@@ -217,7 +226,7 @@ public:
         return v;
     }
 
-    static inline Hash get(const std::string& data) {
+    static inline Hash get(std::string_view data) {
         return get((const uint8_t*)data.data(), data.size());
     }
 
@@ -290,14 +299,6 @@ std::istream& operator>> (std::istream& s, Hash<N>& h)
 }
 
 template <size_t N>
-Hash<N>::Hash(const std::string& hex) {
-    if (hex.size() < 2*N)
-        data_.fill(0);
-    else
-        fromString(hex.c_str());
-}
-
-template <size_t N>
 void
 Hash<N>::fromString(const char* in) {
     auto hex2bin = [](char c) -> uint8_t {
@@ -340,7 +341,7 @@ Hash<N>::getRandom(Rd& rdev)
     return h;
 }
 
-struct HexMap : public std::array<std::array<char, 2>, 256> {
+struct alignas(std::max_align_t) HexMap : public std::array<std::array<char, 2>, 256> {
     HexMap() {
         for (size_t i=0; i<size(); i++) {
             auto& e = (*this)[i];
@@ -374,7 +375,7 @@ template <size_t N>
 const char*
 Hash<N>::to_c_str() const
 {
-    thread_local std::array<char, N*2+1> buf;
+    alignas(std::max_align_t) thread_local std::array<char, N*2+1> buf;
     for (size_t i=0; i<N; i++) {
         auto b = buf.data()+i*2;
         const auto& m = hex_map[data_[i]];
@@ -389,8 +390,6 @@ Hash<N>::toString() const
 {
     return std::string(to_c_str(), N*2);
 }
-
-const InfoHash zeroes {};
 
 struct OPENDHT_PUBLIC NodeExport {
     InfoHash id;

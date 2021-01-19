@@ -1,10 +1,28 @@
+/*
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "def.h"
+#include <opendht/def.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdbool.h>
@@ -18,6 +36,8 @@ struct OPENDHT_C_PUBLIC dht_data_view {
 };
 typedef struct dht_data_view dht_data_view;
 
+OPENDHT_C_PUBLIC const char* dht_version();
+
 // dht::Blob
 struct OPENDHT_C_PUBLIC dht_blob;
 typedef struct dht_blob dht_blob;
@@ -30,6 +50,7 @@ typedef struct dht_infohash dht_infohash;
 OPENDHT_C_PUBLIC void dht_infohash_zero(dht_infohash* h);
 OPENDHT_C_PUBLIC void dht_infohash_random(dht_infohash* h);
 OPENDHT_C_PUBLIC void dht_infohash_from_hex(dht_infohash* h, const char* dat);
+OPENDHT_C_PUBLIC void dht_infohash_from_hex_null(dht_infohash* h, const char* dat);
 OPENDHT_C_PUBLIC void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size);
 OPENDHT_C_PUBLIC void dht_infohash_get_from_string(dht_infohash* h, const char* str);
 OPENDHT_C_PUBLIC const char* dht_infohash_print(const dht_infohash* h);
@@ -58,6 +79,7 @@ OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_generate(unsigned key_length_bit
 OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password);
 OPENDHT_C_PUBLIC int dht_privatekey_export(const dht_privatekey*, char* out, size_t* out_size, const char* password);
 OPENDHT_C_PUBLIC dht_publickey* dht_privatekey_get_publickey(const dht_privatekey*);
+OPENDHT_C_PUBLIC dht_blob* dht_privatekey_decrypt(const dht_privatekey*, const char* data, size_t data_size);
 OPENDHT_C_PUBLIC void dht_privatekey_delete(dht_privatekey*);
 
 // dht::crypto::Certificate
@@ -82,6 +104,7 @@ struct OPENDHT_C_PUBLIC dht_value;
 typedef struct dht_value dht_value;
 typedef uint64_t dht_value_id;
 OPENDHT_C_PUBLIC dht_value* dht_value_new(const uint8_t* data, size_t size);
+OPENDHT_C_PUBLIC dht_value* dht_value_new_from_string(const char* str);
 OPENDHT_C_PUBLIC dht_value* dht_value_ref(const dht_value*);
 OPENDHT_C_PUBLIC void dht_value_unref(dht_value*);
 OPENDHT_C_PUBLIC dht_data_view dht_value_get_data(const dht_value* data);
@@ -89,6 +112,7 @@ OPENDHT_C_PUBLIC dht_value_id dht_value_get_id(const dht_value* data);
 OPENDHT_C_PUBLIC dht_publickey* dht_value_get_owner(const dht_value* data);
 OPENDHT_C_PUBLIC dht_infohash dht_value_get_recipient(const dht_value* data);
 OPENDHT_C_PUBLIC const char* dht_value_get_user_type(const dht_value* data);
+OPENDHT_C_PUBLIC void dht_value_set_user_type(dht_value* data, const char* user_type);
 
 // callbacks
 typedef bool (*dht_get_cb)(const dht_value* value, void* user_data);
@@ -126,6 +150,7 @@ struct OPENDHT_PUBLIC dht_runner_config {
     bool peer_publish;
     dht_certificate* server_ca;
     dht_identity client_identity;
+    bool log;
 };
 typedef struct dht_runner_config dht_runner_config;
 OPENDHT_C_PUBLIC void dht_runner_config_default(dht_runner_config* config);
@@ -133,11 +158,13 @@ OPENDHT_C_PUBLIC void dht_runner_config_default(dht_runner_config* config);
 // dht::DhtRunner
 struct OPENDHT_C_PUBLIC dht_runner;
 typedef struct dht_runner dht_runner;
-OPENDHT_C_PUBLIC dht_runner* dht_runner_new();
+OPENDHT_C_PUBLIC dht_runner* dht_runner_new(void);
 OPENDHT_C_PUBLIC void dht_runner_delete(dht_runner* runner);
-OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
-OPENDHT_C_PUBLIC void dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);
-OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len);
+/* Returns 0 on success, standard error code on failure */
+OPENDHT_C_PUBLIC int dht_runner_run(dht_runner* runner, in_port_t port);
+/* Returns 0 on success, standard error code on failure */
+OPENDHT_C_PUBLIC int dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);
+OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC void dht_runner_bootstrap(dht_runner* runner, const char* host, const char* service);
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_op_token* dht_runner_listen(dht_runner* runner, const dht_infohash* hash, dht_value_cb cb, dht_shutdown_cb done_cb, void* cb_user_data);
@@ -149,6 +176,9 @@ OPENDHT_C_PUBLIC void dht_runner_cancel_put(dht_runner* runner, const dht_infoha
 OPENDHT_C_PUBLIC void dht_runner_shutdown(dht_runner* runner, dht_shutdown_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_node_id(const dht_runner* runner);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_id(const dht_runner* runner);
+OPENDHT_C_PUBLIC bool dht_runner_is_running(const dht_runner* runner);
+OPENDHT_C_PUBLIC in_port_t dht_runner_get_bound_port(const dht_runner* runner, sa_family_t af);
+/** Returns null-terminated array that must be freed after use as well as each element */
 OPENDHT_C_PUBLIC struct sockaddr** dht_runner_get_public_address(const dht_runner* runner);
 
 #ifdef __cplusplus

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -82,10 +82,6 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
    nodes6(std::move(msg.nodes6))
 {}
 
-NetworkEngine::NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rand, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
-    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rd(rand), cache(rd), rate_limiter((size_t)-1), scheduler(scheduler)
-{}
-
 NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
         std::unique_ptr<DatagramSocket>&& sock,
         const Sp<Logger>& log,
@@ -120,7 +116,7 @@ NetworkEngine::~NetworkEngine() {
 }
 
 void
-NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, want_t want,
+NetworkEngine::tellListener(const Sp<Node>& node, Tid socket_id, const InfoHash& hash, want_t want,
         const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
         std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
         const Query& query, int version)
@@ -139,7 +135,7 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
 }
 
 void
-NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
+NetworkEngine::tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -190,7 +186,7 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
 }
 
 void
-NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
+NetworkEngine::tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -223,7 +219,7 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
         Tid tid (n->getNewTid());
 
         pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
-        pk.pack(KEY_TID);     pk.pack(tid);
+        pk.pack(KEY_TID); pk.pack(tid);
 
         auto req = std::make_shared<Request>(MessageType::UpdateValue, tid, n,
             Blob(buffer.data(), buffer.data() + buffer.size()),
@@ -380,7 +376,7 @@ NetworkEngine::isMartian(const SockAddr& addr)
         const uint8_t* address = (const uint8_t*)&sin6.sin6_addr;
         return address[0] == 0xFF ||
               (address[0] == 0xFE && (address[1] & 0xC0) == 0x80) ||
-               memcmp(address, zeroes.data(), 16) == 0 ||
+               memcmp(address, InfoHash::zero().data(), 16) == 0 ||
                memcmp(address, v4prefix,      12) == 0;
     }
     default:
@@ -460,9 +456,13 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
             pmsg_it->second.last_part = now;
             // check data completion
             if (pmsg_it->second.msg->complete()) {
-                // process the full message
-                process(std::move(pmsg_it->second.msg), from);
-                partial_messages.erase(pmsg_it);
+                try {
+                    // process the full message
+                    process(std::move(pmsg_it->second.msg), from);
+                    partial_messages.erase(pmsg_it);
+                } catch (...) {
+                    return;
+                }
             } else
                 scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
         }
@@ -485,7 +485,11 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
     }
 
     if (msg->value_parts.empty()) {
-        process(std::move(msg), from);
+        try {
+            process(std::move(msg), from);
+        } catch(...) {
+            return;
+        }
     } else {
         // starting partial message session
         auto k = msg->tid;
@@ -515,8 +519,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find socket", msg->id};
         node->received(now, {});
         onNewNode(node, 2);
-        deserializeNodes(*msg, from);
-        rsocket->on_receive(node, std::move(*msg));
+        try {
+            deserializeNodes(*msg, from);
+            rsocket->on_receive(node, std::move(*msg));
+        } catch (DhtProtocolException &ex) {
+            if (logIncoming_)
+                if (logger_)
+                    logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
+            return;
+        }
     }
     else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         auto rsocket = node->getSocket(msg->tid);
@@ -579,13 +590,26 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     r.node->authSuccess();
                 }
                 r.reply_time = scheduler.time();
-
-                deserializeNodes(*msg, from);
-                r.setDone(std::move(*msg));
+                try {
+                    deserializeNodes(*msg, from);
+                    r.setDone(std::move(*msg));
+                } catch (DhtProtocolException &ex) {
+                    if (logIncoming_)
+                        if (logger_)
+                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
+                    return;
+                }
                 break;
             } else { /* request socket data */
-                deserializeNodes(*msg, from);
-                rsocket->on_receive(node, std::move(*msg));
+                try {
+                    deserializeNodes(*msg, from);
+                    rsocket->on_receive(node, std::move(*msg));
+                } catch (DhtProtocolException &ex) {
+                    if (logIncoming_)
+                        if (logger_)
+                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
+                    return;
+                }
             }
             break;
         default:
@@ -695,7 +719,7 @@ NetworkEngine::send(const SockAddr& addr, const char *buf, size_t len, bool conf
 }
 
 Sp<Request>
-NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     Tid tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -753,7 +777,7 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
 }
 
 Sp<Request>
-NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
+NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
@@ -798,7 +822,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
 
 
 Sp<Request>
-NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
+NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
@@ -951,8 +975,8 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
             pk.pack(KEY_TID); pk.pack(tid);
             pk.pack(KEY_V); pk.pack_map(1);
                 pk.pack(i); pk.pack_map(2);
-                    pk.pack(std::string("o")); pk.pack(start);
-                    pk.pack(std::string("d")); pk.pack_bin(end-start);
+                    pk.pack("o"sv); pk.pack(start);
+                    pk.pack("d"sv); pk.pack_bin(end-start);
                                                pk.pack_bin_body((const char*)v.data()+start, end-start);
             send(addr, buffer.data(), buffer.size());
             start = end;
@@ -994,8 +1018,8 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
             auto fields = query.select.getSelection();
             pk.pack(KEY_REQ_FIELDS);
             pk.pack_map(2);
-            pk.pack(std::string("f")); pk.pack(fields);
-            pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
+            pk.pack("f"sv); pk.pack(fields);
+            pk.pack("v"sv); pk.pack_array(st.size()*fields.size());
             for (const auto& v : st)
                 v->msgpack_pack_fields(fields, pk);
             //DHT_LOG_DBG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",
@@ -1069,7 +1093,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 Sp<Request>
-NetworkEngine::sendListen(Sp<Node> n,
+NetworkEngine::sendListen(const Sp<Node>& n,
         const InfoHash& hash,
         const Query& query,
         const Blob& token,
@@ -1138,7 +1162,7 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
 }
 
 Sp<Request>
-NetworkEngine::sendAnnounceValue(Sp<Node> n,
+NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
         const InfoHash& infohash,
         const Sp<Value>& value,
         time_point created,
@@ -1151,11 +1175,12 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
+    bool add_created = created < scheduler.time();
+    pk.pack(KEY_A); pk.pack_map(add_created ? 5 : 4);
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
       auto v = packValueHeader(buffer, {value});
-      if (created < scheduler.time()) {
+      if (add_created) {
           pk.pack(KEY_REQ_CREATION);
           pk.pack(to_time_t(created));
       }
@@ -1196,7 +1221,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
 }
 
 Sp<Request>
-NetworkEngine::sendUpdateValues(Sp<Node> n,
+NetworkEngine::sendUpdateValues(const Sp<Node>& n,
                                 const InfoHash& infohash,
                                 const std::vector<Sp<Value>>& values,
                                 time_point created,
@@ -1242,7 +1267,7 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
 }
 
 Sp<Request>
-NetworkEngine::sendRefreshValue(Sp<Node> n,
+NetworkEngine::sendRefreshValue(const Sp<Node>& n,
                 const InfoHash& infohash,
                 const Value::Id& vid,
                 const Blob& token,

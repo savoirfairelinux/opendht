@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -49,12 +49,21 @@ struct Dht::Announce {
 };
 
 struct Dht::SearchNode {
+
+    struct AnnounceStatus {
+        Sp<net::Request> req {};
+        Sp<Scheduler::Job> refresh {};
+        time_point refresh_time;
+        AnnounceStatus(){};
+        AnnounceStatus(Sp<net::Request> r, time_point t): req(std::move(r)), refresh_time(t)
+         {}
+    };
     /**
      * Foreach value id, we keep track of a pair (net::Request, time_point) where the
      * request is the request returned by the network engine and the time_point
      * is the next time at which the value must be refreshed.
      */
-    using AnnounceStatus = std::map<Value::Id, std::pair<Sp<net::Request>, time_point>>;
+    using AnnounceStatusMap = std::map<Value::Id, AnnounceStatus>;
     /**
      * Foreach Query, we keep track of the request returned by the network
      * engine when we sent the "get".
@@ -63,6 +72,7 @@ struct Dht::SearchNode {
 
     struct CachedListenStatus {
         ValueCache cache;
+        Sp<Scheduler::Job> refresh {};
         Sp<Scheduler::Job> cacheExpirationJob {};
         Sp<net::Request> req {};
         Tid socketId {0};
@@ -87,7 +97,7 @@ struct Dht::SearchNode {
 
     SyncStatus getStatus {};    /* get/sync status */
     NodeListenerStatus listenStatus {}; /* listen status */
-    AnnounceStatus acked {};    /* announcement status for a given value id */
+    AnnounceStatusMap acked {};    /* announcement status for a given value id */
 
     Blob token {};                                 /* last token the node sent to us after a get request */
     time_point last_get_reply {time_point::min()}; /* last time received valid token */
@@ -124,6 +134,14 @@ struct Dht::SearchNode {
         return last_get_reply + Node::NODE_EXPIRE_TIME;
     }
 
+    friend std::ostream& operator<< (std::ostream& s, const SearchNode& node) {
+        s << "getStatus:" << node.getStatus.size()
+            << " listenStatus:" << node.listenStatus.size()
+            << " acked:" << node.acked.size()
+            << " cache:" << (node.listenStatus.empty() ? 0 : node.listenStatus.begin()->second.cache.size()) << std::endl;
+        return s;
+    }
+
     /**
      * Could a particular "get" request be sent to this node now ?
      *
@@ -146,12 +164,12 @@ struct Dht::SearchNode {
         if (node->isExpired())
             return false;
 
-        bool pending {false},
+        bool is_pending {false},
              completed_sq_status {false},
              pending_sq_status {false};
         for (const auto& s : getStatus) {
             if (s.second and s.second->pending())
-                pending = true;
+                is_pending = true;
             if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
                 if (s.second->pending())
                     pending_sq_status = true;
@@ -162,7 +180,7 @@ struct Dht::SearchNode {
             }
         }
 
-        return (not pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
+        return (not is_pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
                 not (completed_sq_status or pending_sq_status or hasStartedPagination(q));
     }
 
@@ -231,9 +249,12 @@ struct Dht::SearchNode {
         }
     }
 
-    void onListenSynced(const Sp<Query>& q, bool synced = true) {
+    void onListenSynced(const Sp<Query>& q, bool synced = true, Sp<Scheduler::Job> refreshJob = {}) {
         auto l = listenStatus.find(q);
         if (l != listenStatus.end()) {
+            if (l->second.refresh)
+                l->second.refresh->cancel();
+            l->second.refresh = std::move(refreshJob);
             l->second.cache.onSynced(synced);
         }
     }
@@ -271,7 +292,7 @@ struct Dht::SearchNode {
         return std::find_if(status.cbegin(), status.cend(),
             [](const SyncStatus::value_type& r){
                 return r.second and r.second->pending();
-            }) != status.end();
+            }) != status.cend();
     }
     static bool pending(const NodeListenerStatus& status) {
         return std::find_if(status.begin(), status.end(),
@@ -284,16 +305,18 @@ struct Dht::SearchNode {
 
     bool isAnnounced(Value::Id vid) const {
         auto ack = acked.find(vid);
-        if (ack == acked.end() or not ack->second.first)
+        if (ack == acked.end() or not ack->second.req)
             return false;
-        return ack->second.first->completed();
+        return ack->second.req->completed();
     }
     void cancelAnnounce() {
         for (const auto& status : acked) {
-            const auto& req = status.second.first;
+            const auto& req = status.second.req;
             if (req and req->pending()) {
                 node->cancelRequest(req);
             }
+            if (status.second.refresh)
+                status.second.refresh->cancel();
         }
         acked.clear();
     }
@@ -320,14 +343,21 @@ struct Dht::SearchNode {
         return listen_status->second.req->reply_time + listen_expire > now;
     }
     void cancelListen() {
-        for (const auto& status : listenStatus)
+        for (const auto& status : listenStatus) {
             node->cancelRequest(status.second.req);
-        listenStatus.clear();
+            if (status.second.refresh)
+                status.second.refresh->cancel();
+            if (status.second.cacheExpirationJob)
+                status.second.cacheExpirationJob->cancel();
+        }
+        listenStatus.clear(); 
     }
     void cancelListen(const Sp<Query>& query) {
         auto it = listenStatus.find(query);
         if (it != listenStatus.end()) {
             node->cancelRequest(it->second.req);
+            if (it->second.refresh)
+                it->second.refresh->cancel();
             listenStatus.erase(it);
         }
     }
@@ -337,13 +367,13 @@ struct Dht::SearchNode {
      */
     time_point getAnnounceTime(Value::Id vid) const {
         const auto& ack = acked.find(vid);
-        if (ack == acked.cend() or not ack->second.first) {
+        if (ack == acked.cend() or not ack->second.req) {
             return time_point::min();
         }
-        if (ack->second.first->completed()) {
-            return ack->second.second - REANNOUNCE_MARGIN;
+        if (ack->second.req->completed()) {
+            return ack->second.refresh_time - REANNOUNCE_MARGIN;
         }
-        return ack->second.first->pending() ? time_point::max() : time_point::min();
+        return ack->second.req->pending() ? time_point::max() : time_point::min();
     }
 
     /**
@@ -407,14 +437,26 @@ struct Dht::Search {
     ~Search() {
         if (opExpirationJob)
             opExpirationJob->cancel();
-        for (auto& get : callbacks) {
-            get.second.done_cb(false, {});
-            get.second.done_cb = {};
+        for (auto& g : callbacks) {
+            g.second.done_cb(false, {});
+            g.second.done_cb = {};
         }
-        for (auto& put : announce) {
-            put.callback(false, {});
-            put.callback = {};
+        for (auto& a : announce) {
+            a.callback(false, {});
+            a.callback = {};
         }
+    }
+
+    friend std::ostream& operator<< (std::ostream& s, const Search& sr) {
+        auto csize = sr.cache.size();
+        s << "announce:" << sr.announce.size()
+            << " gets:" << sr.callbacks.size()
+            << " listeners:" << sr.listeners.size()
+            << " cache:" << csize.first << ',' << csize.second << std::endl;
+        s << "nodes:" << std::endl;
+        for (const auto& n : sr.nodes)
+            s << *n;
+        return s;
     }
 
     /**
@@ -423,7 +465,7 @@ struct Dht::Search {
     bool insertNode(const Sp<Node>& n, time_point now, const Blob& token={});
 
     SearchNode* getNode(const Sp<Node>& n) {
-        auto srn = std::find_if(nodes.begin(), nodes.end(), [&](std::unique_ptr<SearchNode>& sn) {
+        auto srn = std::find_if(nodes.begin(), nodes.end(), [&](const std::unique_ptr<SearchNode>& sn) {
             return n == sn->node;
         });
         return (srn == nodes.end()) ? nullptr : (*srn).get();
@@ -521,17 +563,15 @@ struct Dht::Search {
         if (not opExpirationJob)
             opExpirationJob = scheduler.add(time_point::max(), [this,&scheduler]{
                 auto nextExpire = cache.expire(scheduler.time(), [&](size_t t){
-                    Sp<Query> query;
                     const auto& ll = listeners.find(t);
                     if (ll != listeners.cend()) {
-                        query = ll->second.query;
+                        auto query = ll->second.query;
                         listeners.erase(ll);
-                    }
-                    for (auto& sn : nodes) {
-                        if (listeners.empty())
-                            sn->cancelListen();
-                        else if (query)
-                            sn->cancelListen(query);
+                        if (listeners.empty()) {
+                            for (auto& sn : nodes) sn->cancelListen();
+                        } else if (query) {
+                            for (auto& sn : nodes) sn->cancelListen(query);
+                        }
                     }
                 });
                 scheduler.edit(opExpirationJob, nextExpire);
@@ -568,8 +608,10 @@ struct Dht::Search {
         for (auto& n : nodes) {
             auto ackIt = n->acked.find(vid);
             if (ackIt != n->acked.end()) {
-                if (ackIt->second.first)
-                    ackIt->second.first->cancel();
+                if (ackIt->second.req)
+                    ackIt->second.req->cancel();
+                if (ackIt->second.refresh)
+                    ackIt->second.refresh->cancel();
                 n->acked.erase(ackIt);
             }
         }
@@ -586,7 +628,7 @@ struct Dht::Search {
             announce.emplace_back(Announce {permanent, value, created, callback});
             for (auto& n : nodes) {
                 n->probe_query.reset();
-                n->acked[value->id].first.reset();
+                n->acked[value->id].req.reset();
             }
         } else {
             a_sr->permanent = permanent;
@@ -594,7 +636,7 @@ struct Dht::Search {
             if (a_sr->value != value) {
                 a_sr->value = value;
                 for (auto& n : nodes) {
-                    n->acked[value->id].first.reset();
+                    n->acked[value->id].req.reset();
                     n->probe_query.reset();
                 }
             }
@@ -623,12 +665,11 @@ struct Dht::Search {
     }
     unsigned getNumberOfConsecutiveBadNodes() const {
         unsigned count = 0;
-        std::find_if(nodes.begin(), nodes.end(), [&count](const std::unique_ptr<SearchNode>& sn) {
+        for (const auto& sn : nodes) {
             if (not sn->node->isExpired())
-                return true;
+                break;
             ++count;
-            return false;
-        });
+        }
         return count;
     }
 
@@ -718,8 +759,8 @@ struct Dht::Search {
             for (auto& n : nodes) {
                 auto ackIt = n->acked.find(it->value->id);
                 if (ackIt != n->acked.end()) {
-                    if (ackIt->second.first)
-                        ackIt->second.first->cancel();
+                    if (ackIt->second.req)
+                        ackIt->second.req->cancel();
                     n->acked.erase(ackIt);
                 }
             }

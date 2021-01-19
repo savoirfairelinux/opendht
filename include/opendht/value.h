@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -27,6 +27,7 @@
 #include <msgpack.hpp>
 
 #include <string>
+#include <string_view>
 #include <sstream>
 #include <bitset>
 #include <vector>
@@ -42,8 +43,9 @@
 #endif
 
 namespace dht {
+using namespace std::literals;
 
-static const std::string VALUE_KEY_ID("id");
+static constexpr auto VALUE_KEY_ID("id");
 static const std::string VALUE_KEY_DAT("dat");
 static const std::string VALUE_KEY_PRIO("p");
 static const std::string VALUE_KEY_SIGNATURE("sig");
@@ -117,7 +119,7 @@ struct OPENDHT_PUBLIC ValueType {
 
     Id id {0};
     std::string name {};
-    duration expiration {60 * 10};
+    duration expiration {std::chrono::minutes(10)};
     StorePolicy storePolicy {DEFAULT_STORE_POLICY};
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
@@ -205,7 +207,7 @@ struct OPENDHT_PUBLIC Value
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return {};
-            return [f1,f2](const Value& v) {
+            return [f1=std::move(f1),f2=std::move(f2)](const Value& v) {
                 return f1(v) or f2(v);
             };
         }
@@ -231,8 +233,7 @@ struct OPENDHT_PUBLIC Value
     }
 
     static Filter TypeFilter(const ValueType& t) {
-        const auto tid = t.id;
-        return [tid](const Value& v) {
+        return [tid = t.id](const Value& v) {
             return v.type == tid;
         };
     }
@@ -270,8 +271,8 @@ struct OPENDHT_PUBLIC Value
         };
     }
 
-    static Filter UserTypeFilter(const std::string& ut) {
-        return [ut](const Value& v) {
+    static Filter UserTypeFilter(std::string ut) {
+        return [ut = std::move(ut)](const Value& v) {
             return v.user_type == ut;
         };
     }
@@ -357,7 +358,7 @@ struct OPENDHT_PUBLIC Value
     void sign(const crypto::PrivateKey& key) {
         if (isEncrypted())
             throw DhtException("Can't sign encrypted data.");
-        owner = std::make_shared<const crypto::PublicKey>(key.getPublicKey());
+        owner = key.getSharedPublicKey();
         signature = key.sign(getToSign());
     }
 
@@ -369,8 +370,8 @@ struct OPENDHT_PUBLIC Value
         return isSigned() and owner->checkSignature(getToSign(), signature);
     }
 
-    std::shared_ptr<const crypto::PublicKey> getOwner() const {
-        return std::static_pointer_cast<const crypto::PublicKey>(owner);
+    std::shared_ptr<crypto::PublicKey> getOwner() const {
+        return std::static_pointer_cast<crypto::PublicKey>(owner);
     }
 
     /**
@@ -595,7 +596,7 @@ struct OPENDHT_PUBLIC Value
     /**
      * Public key of the signer.
      */
-    std::shared_ptr<const crypto::PublicKey> owner {};
+    std::shared_ptr<crypto::PublicKey> owner {};
 
     /**
      * Hash of the recipient (optional).
@@ -660,7 +661,7 @@ struct OPENDHT_PUBLIC FieldValue
     FieldValue() {}
     FieldValue(Value::Field f, uint64_t int_value) : field(f), intValue(int_value) {}
     FieldValue(Value::Field f, InfoHash hash_value) : field(f), hashValue(hash_value) {}
-    FieldValue(Value::Field f, Blob blob_value) : field(f), blobValue(blob_value) {}
+    FieldValue(Value::Field f, Blob blob_value) : field(f), blobValue(std::move(blob_value)) {}
 
     bool operator==(const FieldValue& fd) const;
 
@@ -673,9 +674,9 @@ struct OPENDHT_PUBLIC FieldValue
     template <typename Packer>
     void msgpack_pack(Packer& p) const {
         p.pack_map(2);
-        p.pack(std::string("f")); p.pack(static_cast<uint8_t>(field));
+        p.pack("f"sv); p.pack(static_cast<uint8_t>(field));
 
-        p.pack(std::string("v"));
+        p.pack("v"sv);
         switch (field) {
             case Value::Field::Id:
             case Value::Field::ValueType:
@@ -697,12 +698,12 @@ struct OPENDHT_PUBLIC FieldValue
         hashValue = {};
         blobValue.clear();
 
-        if (auto f = findMapValue(msg, "f"))
+        if (auto f = findMapValue(msg, "f"sv))
             field = (Value::Field)f->as<unsigned>();
         else
             throw msgpack::type_error();
 
-        auto v = findMapValue(msg, "v");
+        auto v = findMapValue(msg, "v"sv);
         if (not v)
             throw msgpack::type_error();
         else
@@ -742,7 +743,7 @@ private:
 struct OPENDHT_PUBLIC Select
 {
     Select() { }
-    Select(const std::string& q_str);
+    Select(std::string_view q_str);
 
     bool isSatisfiedBy(const Select& os) const;
 
@@ -797,7 +798,7 @@ private:
 struct OPENDHT_PUBLIC Where
 {
     Where() { }
-    Where(const std::string& q_str);
+    Where(std::string_view q_str);
 
     bool isSatisfiedBy(const Where& where) const;
 
@@ -864,7 +865,7 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& userType(std::string user_type) {
+    Where& userType(std::string_view user_type) {
         FieldValue fv {Value::Field::UserType, Blob {user_type.begin(), user_type.end()}};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
@@ -937,11 +938,11 @@ struct OPENDHT_PUBLIC Query
      *  - $string$: a simple string WITHOUT SPACES.
      *  - $integer$: a simple integer.
      */
-    Query(std::string q_str) {
+    Query(std::string_view q_str) {
         auto pos_W = q_str.find("WHERE");
         auto pos_w = q_str.find("where");
-        auto pos = std::min(pos_W != std::string::npos ? pos_W : q_str.size(),
-                            pos_w != std::string::npos ? pos_w : q_str.size());
+        auto pos = std::min(pos_W != std::string_view::npos ? pos_W : q_str.size(),
+                            pos_w != std::string_view::npos ? pos_w : q_str.size());
         select = q_str.substr(0, pos);
         where = q_str.substr(pos, q_str.size()-pos);
     }

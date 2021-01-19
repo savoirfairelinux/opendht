@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -106,7 +106,7 @@ print_addr(const sockaddr* sa, socklen_t slen)
 {
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
-    std::stringstream out;
+    std::ostringstream out;
     if (sa and slen and !getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
         if (sa->sa_family == AF_INET6)
             out << "[" << hbuf << "]";

@@ -1,7 +1,7 @@
 dnl define macros
 m4_define([opendht_major_version], 2)
-m4_define([opendht_minor_version], 1)
-m4_define([opendht_patch_version], 9)
+m4_define([opendht_minor_version], 4)
+m4_define([opendht_patch_version], 3)
 m4_define([opendht_version],
 		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
 
@@ -30,6 +30,13 @@ AS_IF([test "x$enable_logs" != "xno"], [
 	AC_DEFINE([OPENDHT_LOG], [true], [Define if DHT logs are enabled])
 ], [
 	AC_DEFINE([OPENDHT_LOG], [false], [Define if DHT logs are enabled])
+])
+
+dnl Check for C binding
+AC_ARG_ENABLE([c], [AS_HELP_STRING([--disable-c], [Disable DHT C binding])])
+AM_CONDITIONAL(ENABLE_C, test x$enable_c != "xno")
+AM_COND_IF(ENABLE_C, [
+	AC_DEFINE([OPENDHT_C], [], [Define if DHT C biding is enabled])
 ])
 
 dnl Check for indexation
@@ -102,7 +109,7 @@ AS_IF([test "x$SYS" = "xandroid"],
 LT_INIT()
 LT_LANG(C++)
 
-AX_CXX_COMPILE_STDCXX(14,[noext],[mandatory])
+AX_CXX_COMPILE_STDCXX(17,[noext],[mandatory])
 
 PKG_PROG_PKG_CONFIG()
 
@@ -132,6 +139,8 @@ AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes || test x$pro
 PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
 PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
+PKG_CHECK_MODULES([Argon2], [libargon2])
+AC_SUBST(argon2_lib, [", libargon2"])
 
 AC_ARG_WITH([jsoncpp], AS_HELP_STRING([--without-jsoncpp], [Build without JsonCpp support]))
 AS_IF([test "x$with_jsoncpp" != "xno"],
@@ -157,14 +166,6 @@ AS_IF([test "x$have_openssl" = "xyes"], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
 
-AC_ARG_WITH([http_parser_fork], AS_HELP_STRING([--with-http-parser-fork], [Build with http_parser fork to support old API]))
-AS_IF([test "x$with_http_parser_fork" = "xyes"],[
-    AC_MSG_NOTICE([Using http_parser fork])
-    AC_DEFINE([OPENDHT_PROXY_HTTP_PARSER_FORK], [], [Define if using http parser fork])
-], [
-    AC_MSG_NOTICE([Not using http_parser fork])
-])
-
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     AC_CHECK_HEADERS([asio.hpp], exit,, AC_MSG_ERROR([Missing Asio headers files]))
     CXXFLAGS="${CXXFLAGS} -DASIO_STANDALONE"
@@ -181,28 +182,7 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     AS_IF([test "x$http_parser_headers" != "xyes"], AC_MSG_ERROR([Missing HttpParser headers files]))
 ])
 
-CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
-
-dnl Check for Argon2
-AC_ARG_WITH([argon2], AS_HELP_STRING([--without-argon2], [Use included Argon2]))
-AS_IF([test "x$with_argon2" != "xno"],
-			[PKG_CHECK_MODULES([Argon2], [libargon2], [have_argon2=yes], [have_argon2=no])],
-			[have_argon2=no])
-AS_IF([test "x$have_argon2" = "xyes"], [
-  AC_MSG_NOTICE([Using system Argon2])
-  AC_SUBST(argon2_lib, [", libargon2"])
-], [
-		AS_IF([test "x$with_argon2" = "xyes"], [
-				AC_MSG_ERROR([Argon2 requested but not found])
-		],[
-				AC_MSG_NOTICE([Using included Argon2])
-				AC_SUBST(Argon2_CFLAGS, "-I\${top_srcdir}/argon2/src -I\${top_srcdir}/argon2/include")
-				AC_SUBST(Argon2_LIBS, "libargon2.la")
-				AC_SUBST(Argon2_LDFLAGS, "-L\${abs_top_srcdir}/argon2/src/.libs")
-		])
-])
-
-AM_CONDITIONAL([WITH_INCLUDED_ARGON2], [test "x$have_argon2" = "xno"])
+CXXFLAGS="${CXXFLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
@@ -225,6 +205,7 @@ AC_SUBST(PROJECT_BINARY_DIR, "../src/.libs")
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
+                 c/Makefile
                  tools/Makefile
                  python/Makefile
                  python/setup.py

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -38,26 +38,7 @@
 
 using namespace std::placeholders;
 using namespace std::chrono_literals;
-
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-namespace restinio {
-struct custom_http_methods_t
-{
-    static constexpr restinio::http_method_id_t from_nodejs(int m) noexcept {
-        if(m == method_listen.raw_id())
-            return method_listen;
-        else if(m == method_stats.raw_id())
-            return method_stats;
-        else if(m == method_sign.raw_id())
-            return method_sign;
-        else if(m == method_encrypt.raw_id())
-            return method_encrypt;
-        else
-            return restinio::default_http_methods_t::from_nodejs(m);
-    }
-};
-}
-#endif
+using namespace std::literals;
 
 namespace dht {
 constexpr char RESP_MSG_JSON_INCORRECT[] = "{\"err:\":\"Incorrect JSON\"}";
@@ -119,7 +100,7 @@ class DhtProxyServer::ConnectionListener
 {
 public:
     ConnectionListener() {};
-    ConnectionListener(std::function<void(restinio::connection_id_t)> onClosed) : onClosed_(std::move(onClosed)) {};
+    explicit ConnectionListener(std::function<void(restinio::connection_id_t)> onClosed) : onClosed_(std::move(onClosed)) {};
     ~ConnectionListener() {};
 
     /**
@@ -156,9 +137,6 @@ DhtProxyServer::onConnectionClosed(restinio::connection_id_t id)
 struct DhtProxyServer::RestRouterTraitsTls : public restinio::default_tls_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-#endif
     using logger_t = opendht_logger_t;
     using request_handler_t = RestRouter;
     using connection_state_listener_t = ConnectionListener;
@@ -166,9 +144,6 @@ struct DhtProxyServer::RestRouterTraitsTls : public restinio::default_tls_traits
 struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-#endif
     using logger_t = opendht_logger_t;
     using request_handler_t = RestRouter;
     using connection_state_listener_t = ConnectionListener;
@@ -177,25 +152,25 @@ struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
 void
 DhtProxyServer::PermanentPut::msgpack_unpack(const msgpack::object& o)
 {
-    if (auto cid = findMapValue(o, "cid")) {
+    if (auto cid = findMapValue(o, "cid"sv)) {
         clientId = cid->as<std::string>();
     }
-    if (auto exp = findMapValue(o, "exp")) {
+    if (auto exp = findMapValue(o, "exp"sv)) {
         expiration = from_time_t(exp->as<time_t>());
     }
-    if (auto token = findMapValue(o, "token")) {
+    if (auto token = findMapValue(o, "token"sv)) {
         pushToken = token->as<std::string>();
     }
-    if (auto sid = findMapValue(o, "sid")) {
+    if (auto sid = findMapValue(o, "sid"sv)) {
         if (not sessionCtx)
             sessionCtx = std::make_shared<PushSessionContext>(sid->as<std::string>());
         else
             sessionCtx->sessionId = sid->as<std::string>();
     }
-    if (auto t = findMapValue(o, "t")) {
+    if (auto t = findMapValue(o, "t"sv)) {
         type = t->as<PushType>();
     }
-    if (auto val = findMapValue(o, "value")) {
+    if (auto val = findMapValue(o, "value"sv)) {
         value = std::make_shared<dht::Value>(*val);
     }
 }
@@ -204,19 +179,19 @@ DhtProxyServer::PermanentPut::msgpack_unpack(const msgpack::object& o)
 void
 DhtProxyServer::Listener::msgpack_unpack(const msgpack::object& o)
 {
-    if (auto cid = findMapValue(o, "cid")) {
+    if (auto cid = findMapValue(o, "cid"sv)) {
         clientId = cid->as<std::string>();
     }
-    if (auto exp = findMapValue(o, "exp")) {
+    if (auto exp = findMapValue(o, "exp"sv)) {
         expiration = from_time_t(exp->as<time_t>());
     }
-    if (auto sid = findMapValue(o, "sid")) {
+    if (auto sid = findMapValue(o, "sid"sv)) {
         if (not sessionCtx)
             sessionCtx = std::make_shared<PushSessionContext>(sid->as<std::string>());
         else
             sessionCtx->sessionId = sid->as<std::string>();
     }
-    if (auto t = findMapValue(o, "t")) {
+    if (auto t = findMapValue(o, "t"sv)) {
         type = t->as<PushType>();
     }
 }
@@ -371,7 +346,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
         while (pac.next(oh)) {
             if (oh.get().type != msgpack::type::MAP)
                 continue;
-            if (auto puts = findMapValue(oh.get(), "puts")) {
+            if (auto puts = findMapValue(oh.get(), "puts"sv)) {
                 std::lock_guard<std::mutex> lock(lockSearchPuts_);
                 puts_ = puts->as<decltype(puts_)>();
                 if (logger_)
@@ -408,9 +383,9 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                     logger_->d("No persistent puts in state");
             }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-            if (auto listeners = findMapValue(oh.get(), "pushListeners")) {
+            if (auto pushListeners = findMapValue(oh.get(), "pushListeners"sv)) {
                 std::lock_guard<std::mutex> lock(lockListener_);
-                pushListeners_ = listeners->as<decltype(pushListeners_)>();
+                pushListeners_ = pushListeners->as<decltype(pushListeners_)>();
                 if (logger_)
                     logger_->d("Loading %zu push listeners", pushListeners_.size());
                 for (auto& pushListener : pushListeners_) {
@@ -613,11 +588,6 @@ DhtProxyServer::createRestRouter()
     // **************************** LEGACY ROUTES ****************************
     // node.info
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    // node.stats
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_stats.raw_id()),
-                        "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
-#endif
     // key.options
     router->add_handler(restinio::http_method_options(),
                         "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
@@ -625,11 +595,6 @@ DhtProxyServer::createRestRouter()
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    // key.listen
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_listen.raw_id()),
-                        "/:hash", std::bind(&DhtProxyServer::listen, this, _1, _2));
-#endif
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     // key.subscribe
     router->add_handler(restinio::http_method_subscribe(),
@@ -639,14 +604,6 @@ DhtProxyServer::createRestRouter()
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    // key.sign
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_sign.raw_id()),
-                        "/:hash", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
-    // key.encrypt
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_encrypt.raw_id()),
-                        "/:hash", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
-#endif
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     // **************************** NEW ROUTES ****************************
@@ -727,9 +684,9 @@ DhtProxyServer::get(restinio::request_handle_t request,
 {
     requestNum_++;
     try {
-        InfoHash infoHash(params["hash"].to_string());
+        InfoHash infoHash(params["hash"]);
         if (!infoHash)
-            infoHash = InfoHash::get(params["hash"].to_string());
+            infoHash = InfoHash::get(params["hash"]);
         auto response = std::make_shared<ResponseByPartsBuilder>(
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
@@ -758,9 +715,9 @@ DhtProxyServer::listen(restinio::request_handle_t request,
     requestNum_++;
 
     try {
-        InfoHash infoHash(params["hash"].to_string());
+        InfoHash infoHash(params["hash"]);
         if (!infoHash)
-            infoHash = InfoHash::get(params["hash"].to_string());
+            infoHash = InfoHash::get(params["hash"]);
         auto response = std::make_shared<ResponseByPartsBuilder>(
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
@@ -794,9 +751,9 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 {
     requestNum_++;
     try {
-        InfoHash infoHash(params["hash"].to_string());
+        InfoHash infoHash(params["hash"]);
         if (!infoHash)
-            infoHash = InfoHash::get(params["hash"].to_string());
+            infoHash = InfoHash::get(params["hash"]);
 
         std::string err;
         Json::Value r;
@@ -822,7 +779,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             logger_->d("[proxy:server] [subscribe %s] [client %s] [session %s]", infoHash.toString().c_str(), clientId.c_str(), sessionId.c_str());
 
         // Insert new or return existing push listeners of a token
-        std::lock_guard<std::mutex> lock(lockPushListeners_);
+        std::lock_guard<std::mutex> lock(lockListener_);
         auto& pushListener = pushListeners_[pushToken];
         auto& pushListeners = pushListener.listeners[infoHash];
 
@@ -936,9 +893,9 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 {
     requestNum_++;
 
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (logger_)
         logger_->d("[proxy:server] [unsubscribe %s]", infoHash.toString().c_str());
@@ -1048,7 +1005,13 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         notification["platform"] = type == PushType::Android ? 2 : 1;
         notification["data"] = std::move(json);
         notification["priority"] = highPriority ? "high" : "normal";
-        notification["time_to_live"] = 600;
+        if (type == PushType::Android)
+            notification["time_to_live"] = 3600 * 24; // 24 hours
+        else {
+            const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
+            uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
+            notification["expiration"] = exp;
+        }
 
         Json::Value notifications(Json::arrayValue);
         notifications[0] = notification;
@@ -1118,9 +1081,9 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     restinio::router::route_params_t params)
 {
     requestNum_++;
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (request->body().empty()){
         auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
@@ -1259,9 +1222,9 @@ DhtProxyServer::putSigned(restinio::request_handle_t request,
                           restinio::router::route_params_t params) const
 {
     requestNum_++;
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (request->body().empty()){
         auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
@@ -1309,9 +1272,9 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
                              restinio::router::route_params_t params)
 {
     requestNum_++;
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (request->body().empty()){
         auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
@@ -1381,10 +1344,10 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
                             restinio::router::route_params_t params)
 {
     requestNum_++;
-    auto value = params["value"].to_string();
-    InfoHash infoHash(params["hash"].to_string());
+    auto query = params["value"];
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     try {
         auto response = std::make_shared<ResponseByPartsBuilder>(
@@ -1399,7 +1362,7 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
             [response] (bool /*ok*/){
                 response->done();
             },
-            {}, value);
+            {}, query);
         return restinio::request_handling_status_t::accepted;
     } catch (const std::exception& e){
         return serverError(*request);

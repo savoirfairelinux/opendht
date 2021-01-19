@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -20,6 +20,8 @@
 
 #include "infohash.h"
 #include "log_enable.h"
+
+#include <queue>
 
 namespace dht {
 
@@ -46,6 +48,10 @@ public:
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
 
+    void addOnConnectedCallback(std::function<void()> cb) {
+        onConnectCallbacks_.emplace(std::move(cb));
+    }
+
     virtual net::DatagramSocket* getSocket() const { return {}; };
 
     /**
@@ -55,8 +61,10 @@ public:
 
     /**
      * Performs final operations before quitting.
+     * stop: if true, cancel ongoing operations and call their 'done'
+     *       callbacks synchronously.
      */
-    virtual void shutdown(ShutdownCallback cb) = 0;
+    virtual void shutdown(ShutdownCallback cb, bool stop = false) = 0;
 
     /**
      * Returns true if the node is running (have access to an open socket).
@@ -213,6 +221,7 @@ public:
      * Set the in-memory storage limit in bytes
      */
     virtual void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) = 0;
+    virtual size_t getStorageLimit() const = 0;
 
     /**
      * Returns the total memory usage of stored values and the number
@@ -264,6 +273,7 @@ public:
 
 protected:
     std::shared_ptr<Logger> logger_ {};
+    std::queue<std::function<void()>> onConnectCallbacks_ {};
 };
 
 } // namespace dht

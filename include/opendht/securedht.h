@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -45,15 +45,13 @@ public:
         return c;
     }
 
-    SecureDht() {}
-
     /**
      * s, s6: bound socket descriptors for IPv4 and IPv6, respectively.
      *        For the Dht to be initialised, at least one of them must be >= 0.
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(std::unique_ptr<DhtInterface> dht, Config config);
+    SecureDht(std::unique_ptr<DhtInterface> dht, Config config, IdentityAnnouncedCb iacb = {}, const std::shared_ptr<Logger>& l = {});
 
     virtual ~SecureDht();
 
@@ -62,6 +60,9 @@ public:
     }
     PkId getLongId() const {
         return key_ ? key_->getPublicKey().getLongId() : PkId();
+    }
+    Sp<crypto::PublicKey> getPublicKey() const {
+        return key_ ? key_->getSharedPublicKey() : Sp<crypto::PublicKey>{};
     }
 
     ValueType secureType(ValueType&& type);
@@ -117,6 +118,10 @@ public:
     void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
+    void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Value&& v, DoneCallback callback, bool permanent = false) {
+        putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
+    }
 
     /**
      * Take ownership of the value and sign it using our private key.
@@ -128,13 +133,13 @@ public:
     Value decrypt(const Value& v);
 
     void findCertificate(const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb);
-    void findPublicKey(const InfoHash& node, const std::function<void(const Sp<const crypto::PublicKey>)>& cb);
+    void findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
-    const Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
+    Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
     void registerCertificate(Sp<crypto::Certificate>& cert);
 
-    const Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
-    const Sp<const crypto::PublicKey> getPublicKey(const InfoHash& node) const;
+    Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
+    Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
 
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.
@@ -148,8 +153,8 @@ public:
     /**
      * SecureDht to Dht proxy
      */
-    void shutdown(ShutdownCallback cb) override {
-        dht_->shutdown(cb);
+    void shutdown(ShutdownCallback cb, bool stop = false) override {
+        dht_->shutdown(cb, stop);
     }
     void dumpTables() const override {
         dht_->dumpTables();
@@ -168,6 +173,10 @@ public:
     void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
         dht_->setStorageLimit(limit);
     }
+    size_t getStorageLimit() const override {
+        return dht_->getStorageLimit();
+    }
+
     std::vector<NodeExport> exportNodes() const override {
         return dht_->exportNodes();
     }
@@ -356,7 +365,7 @@ private:
 
     // our certificate cache
     std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};
-    std::map<InfoHash, Sp<const crypto::PublicKey>> nodesPubKeys_ {};
+    std::map<InfoHash, Sp<crypto::PublicKey>> nodesPubKeys_ {};
 
     std::atomic_bool forward_all_ {false};
     bool enableCache_ {false};

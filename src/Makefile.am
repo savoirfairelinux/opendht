@@ -2,7 +2,7 @@ lib_LTLIBRARIES = libopendht.la
 
 libopendht_la_CPPFLAGS = @CPPFLAGS@ -I$(top_srcdir)/include/opendht @Argon2_CFLAGS@ @JsonCpp_CFLAGS@ @MsgPack_CFLAGS@ @OpenSSL_CFLAGS@ @Fmt_CFLAGS@
 libopendht_la_LIBADD   = @Argon2_LIBS@ @JsonCpp_LIBS@ @GnuTLS_LIBS@ @Nettle_LIBS@ @OpenSSL_LIBS@ @Fmt_LIBS@
-libopendht_la_LDFLAGS  = @LDFLAGS@ @Argon2_LDFLAGS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
+libopendht_la_LDFLAGS  = @LDFLAGS@ -version-number @OPENDHT_MAJOR_VERSION@:@OPENDHT_MINOR_VERSION@:@OPENDHT_PATCH_VERSION@
 libopendht_la_SOURCES  = \
         dht.cpp \
         storage.h \
@@ -87,30 +87,3 @@ endif
 
 clean-local:
 	rm -rf libargon2.la
-
-######################
-#  ARGON2 submodule  #
-######################
-
-if WITH_INCLUDED_ARGON2
-noinst_LTLIBRARIES         = libargon2.la
-libopendht_la_DEPENDENCIES = libargon2.la
-
-libargon2_la_CFLAGS  = -std=c89 -fPIC -pthread -O3 -Wall -I@top_builddir@/argon2/include -I@top_builddir@/argon2/src
-libargon2_la_SOURCES = \
-        @top_builddir@/argon2/src/argon2.c \
-        @top_builddir@/argon2/src/core.c \
-        @top_builddir@/argon2/src/blake2/blake2b.c \
-        @top_builddir@/argon2/src/thread.c \
-        @top_builddir@/argon2/src/ref.c \
-        @top_builddir@/argon2/src/encoding.c
-
-noinst_HEADERS = \
-        @top_builddir@/argon2/include/argon2.h \
-        @top_builddir@/argon2/src/blake2/blake2.h \
-        @top_builddir@/argon2/src/blake2/blake2-impl.h \
-        @top_builddir@/argon2/src/blake2/blamka-round-ref.h \
-        @top_builddir@/argon2/src/core.h \
-        @top_builddir@/argon2/src/encoding.h \
-        @top_builddir@/argon2/src/thread.h
-endif

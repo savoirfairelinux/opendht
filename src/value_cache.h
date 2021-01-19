@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -28,7 +28,7 @@ using CallbackQueue = std::list<std::function<void()>>;
 
 class ValueCache {
 public:
-    ValueCache(ValueStateCallback&& cb, SyncCallback&& scb = {})
+    explicit ValueCache(ValueStateCallback&& cb, SyncCallback&& scb = {})
         : callback(std::forward<ValueStateCallback>(cb)), syncCallback(std::move(scb))
     {
         if (syncCallback)
@@ -53,13 +53,12 @@ public:
     CallbackQueue clear() {
         std::vector<Sp<Value>> expired_values;
         expired_values.reserve(values.size());
-        for (const auto& v : values)
+        for (auto& v : values)
             expired_values.emplace_back(std::move(v.second.data));
         values.clear();
         CallbackQueue ret;
         if (not expired_values.empty() and callback) {
-            auto cb = callback;
-            ret.emplace_back([expired_values, cb]{
+            ret.emplace_back([expired_values = std::move(expired_values), cb = callback]{
                 cb(expired_values, true);
             });
         }
@@ -103,24 +102,23 @@ public:
         }
         CallbackQueue ret;
         if (not expired_values.empty() and callback) {
-            auto cb = callback;
-            ret.emplace_back([cb, expired_values]{
-                if (cb) cb(expired_values, true);
+            ret.emplace_back([cb = callback, expired_values = std::move(expired_values)]{
+                cb(expired_values, true);
             });
         }
         return ret;
     }
 
     time_point onValues
-        (const std::vector<Sp<Value>>& values,
+        (const std::vector<Sp<Value>>& new_values,
         const std::vector<Value::Id>& refreshed_values,
         const std::vector<Value::Id>& expired_values,
         const TypeStore& types, const time_point& now)
     {
         CallbackQueue cbs;
         time_point ret = time_point::max();
-        if (not values.empty())
-            cbs.splice(cbs.end(), addValues(values, types, now));
+        if (not new_values.empty())
+            cbs.splice(cbs.end(), addValues(new_values, types, now));
         for (const auto& vid : refreshed_values)
             refreshValue(vid, types, now);
         for (const auto& vid : expired_values)
@@ -140,6 +138,10 @@ public:
             if (syncCallback)
                 syncCallback(newStatus);
         }
+    }
+
+    size_t size() const {
+        return values.size();
     }
 
 private:
@@ -180,11 +182,10 @@ private:
                 v->second.expiration = now + types.getType(v->second.data->type).expiration;
             }
         }
-        auto cb = callback;
         CallbackQueue ret;
-        if (not nvals.empty())
-            ret.emplace_back([cb, nvals]{
-                if (cb) cb(nvals, false);
+        if (callback and not nvals.empty())
+            ret.emplace_back([cb = callback, nvals = std::move(nvals)]{
+                cb(nvals, false);
             });
         return ret;
     }

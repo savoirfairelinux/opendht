@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -61,9 +61,6 @@ struct LocalListener;
  */
 class OPENDHT_PUBLIC Dht final : public DhtInterface {
 public:
-
-    Dht();
-
     /**
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
@@ -98,7 +95,7 @@ public:
     /**
      * Performs final operations before quitting.
      */
-    void shutdown(ShutdownCallback cb) override;
+    void shutdown(ShutdownCallback cb, bool stop = false) override;
 
     /**
      * Returns true if the node is running (have access to an open socket).
@@ -117,7 +114,7 @@ public:
 
     void addBootstrap(const std::string& host, const std::string& service) override {
         bootstrap_nodes.emplace_back(host, service);
-        onDisconnected();
+        startBootstrap();
     }
 
     void clearBootstrap() override {
@@ -305,6 +302,9 @@ public:
     void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
         max_store_size = limit;
     }
+    size_t getStorageLimit() const override {
+        return max_store_size;
+    }
 
     /**
      * Returns the total memory usage of stored values and the number
@@ -343,7 +343,7 @@ private:
     static constexpr unsigned LISTEN_NODES {4};
 
     /* The maximum number of hashes we're willing to track. */
-    static constexpr unsigned MAX_HASHES {1024 * 1024};
+    static constexpr unsigned MAX_HASHES {1024 * 1024 * 1024};
 
     /* The maximum number of searches we keep data about. */
     static constexpr unsigned MAX_SEARCHES {1024 * 1024};
@@ -358,6 +358,8 @@ private:
     static constexpr duration LISTEN_EXPIRE_TIME_PUBLIC {std::chrono::minutes(5)};
 
     static constexpr duration REANNOUNCE_MARGIN {std::chrono::seconds(10)};
+
+    static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
 
     static constexpr size_t TOKEN_SIZE {32};
 
@@ -396,7 +398,7 @@ private:
     Kad dht6 {};
 
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
-    std::chrono::steady_clock::duration bootstrap_period {std::chrono::seconds(10)};
+    std::chrono::steady_clock::duration bootstrap_period {BOOTSTRAP_PERIOD};
     Sp<Scheduler::Job> bootstrapJob {};
 
     std::map<InfoHash, Storage> store;
@@ -448,13 +450,13 @@ private:
     // Storage
     void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
     bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {}, bool permanent = false);
-    bool storageErase(const InfoHash& id, Value::Id vid);
     bool storageRefresh(const InfoHash& id, Value::Id vid);
     void expireStore();
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);
 
-    void storageChanged(const InfoHash& id, Storage& st, ValueStorage&, bool newValue);
+    void storageRemoved(const InfoHash& id, Storage& st, const std::vector<Sp<Value>>& values, size_t totalSize);
+    void storageChanged(const InfoHash& id, Storage& st, const Sp<Value>&, bool newValue);
     std::string printStorageLog(const decltype(store)::value_type&) const;
 
     /**
@@ -483,6 +485,9 @@ private:
     void sendCachedPing(Bucket& b);
     bool bucketMaintenance(RoutingTable&);
     void dumpBucket(const Bucket& b, std::ostream& out) const;
+    void bootstrap();
+    void startBootstrap();
+    void stopBootstrap();
 
     // Nodes
     void onNewNode(const Sp<Node>& node, int confirm);
@@ -490,7 +495,6 @@ private:
     bool trySearchInsert(const Sp<Node>& node);
 
     // Searches
-
     inline SearchMap& searches(sa_family_t af) { return dht(af).searches; }
     inline const SearchMap& searches(sa_family_t af) const { return dht(af).searches; }
 
@@ -515,6 +519,8 @@ private:
 
     void confirmNodes();
     void expire();
+
+    void onConnected();
     void onDisconnected();
 
     /**
@@ -570,7 +576,8 @@ private:
      *
      * @param sr  The search to execute its operations.
      */
-    void searchStep(Sp<Search>);
+    void searchStep(std::weak_ptr<Search> ws);
+
     void searchSynchedNodeListen(const Sp<Search>&, SearchNode&);
 
     void dumpSearch(const Search& sr, std::ostream& out) const;

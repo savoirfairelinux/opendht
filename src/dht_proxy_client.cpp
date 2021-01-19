@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -41,15 +41,15 @@ struct DhtProxyClient::OperationState {
 struct DhtProxyClient::Listener
 {
     Listener(OpValueCache&& c):
-        cache(std::move(c))
-    {}
+        cache(std::move(c)) {}
 
-    unsigned callbackId;
     OpValueCache cache;
     CacheValueCallback cb;
     Sp<OperationState> opstate;
     std::shared_ptr<http::Request> request;
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     std::unique_ptr<asio::steady_timer> refreshSubscriberTimer;
+#endif
 };
 
 struct PermanentPut {
@@ -155,10 +155,10 @@ DhtProxyClient::startProxy()
     if (logger_)
         logger_->d("[proxy:client] start proxy with %s", proxyUrl_.c_str());
 
-    nextProxyConfirmationTimer_ = std::make_shared<asio::steady_timer>(httpContext_, std::chrono::steady_clock::now());
+    nextProxyConfirmationTimer_ = std::make_unique<asio::steady_timer>(httpContext_, std::chrono::steady_clock::now());
     nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
 
-    listenerRestartTimer_ = std::make_shared<asio::steady_timer>(httpContext_);
+    listenerRestartTimer_ = std::make_unique<asio::steady_timer>(httpContext_);
 
     loopSignal_();
 }
@@ -242,7 +242,7 @@ DhtProxyClient::cancelAllListeners()
 }
 
 void
-DhtProxyClient::shutdown(ShutdownCallback cb)
+DhtProxyClient::shutdown(ShutdownCallback cb, bool)
 {
     stop();
     if (cb)
@@ -720,9 +720,19 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     }
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
     if (newStatus == NodeStatus::Connected) {
-        if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
+        if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting || launchConnectedCbs_) {
+            launchConnectedCbs_ = false;
             listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
             listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
+            if (not onConnectCallbacks_.empty()) {
+                std::lock_guard<std::mutex> lock(lockCallbacks_);
+                callbacks_.emplace_back([cbs = std::move(onConnectCallbacks_)]() mutable {
+                    while (not cbs.empty()) {
+                        cbs.front()();
+                        cbs.pop();
+                    }
+                });
+            }
         }
         nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(15));
         nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
@@ -804,6 +814,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             }
             return false;
         };
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         if (not deviceKey_.empty()) {
             /*
              * Relaunch push listeners even if a timeout is not received
@@ -816,17 +827,13 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             l->second.refreshSubscriberTimer->async_wait(std::bind(&DhtProxyClient::handleResubscribe, this,
                                                          std::placeholders::_1, key, token, opstate));
         }
+#endif
         ListenMethod method;
         restinio::http_request_header_t header;
         if (deviceKey_.empty()){ // listen
             method = ListenMethod::LISTEN;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-            header.method(restinio::method_listen);
-            header.request_target("/" + key.toString());
-#else
             header.method(restinio::http_method_get());
             header.request_target("/key/" + key.toString() + "/listen");
-#endif
         }
         else {
             method = ListenMethod::SUBSCRIBE;
@@ -1142,13 +1149,8 @@ DhtProxyClient::restartListeners(const asio::error_code &ec)
             auto cb = listener.cb;
             // define header
             restinio::http_request_header_t header;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-            header.method(restinio::method_listen);
-            header.request_target("/" + search.first.toString());
-#else
             header.method(restinio::http_method_get());
             header.request_target("/key/" + search.first.toString() + "/listen");
-#endif
             sendListen(header, cb, opstate, listener, ListenMethod::LISTEN);
         }
     }
@@ -1161,6 +1163,9 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
     {
         // If a push notification is received, the proxy is up and running
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+        auto oldStatus = std::max(statusIpv4_, statusIpv6_);
+        if (oldStatus != NodeStatus::Connected)
+            launchConnectedCbs_ = true;
         statusIpv4_ = NodeStatus::Connected;
         statusIpv6_ = NodeStatus::Connected;
     }
@@ -1226,7 +1231,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                         ids.emplace_back(std::stoull(substr));
                     }
                     {
-                        std::lock_guard<std::mutex> lock(lockCallbacks_);
+                        std::lock_guard<std::mutex> lockCb(lockCallbacks_);
                         callbacks_.emplace_back([this, key, token, opstate, ids, sendTime]() {
                             if (opstate->stop)
                                 return;
@@ -1266,11 +1271,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
         logger_->d("[proxy:client] [resubscribe] [search %s]", key.to_c_str());
 
     auto opstate = listener.opstate;
-    opstate->stop = true;
-    if (listener.request){
-        listener.request.reset();
-    }
-    opstate->stop = false;
+    listener.request.reset(); // This will update ok to false
     opstate->ok = true;
 
     restinio::http_request_header_t header;

@@ -1,20 +1,53 @@
-#include <c/opendht_c.h>
+/*
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+#include <opendht_c.h>
 
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdatomic.h>
+
+#include <getopt.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 #include <arpa/inet.h>
 
 struct op_context {
     dht_runner* runner;
-    int d;
+    atomic_bool stop;
+};
+struct listen_context {
+    dht_runner* runner;
+    dht_op_token* token;
+    size_t count;
 };
 
 bool dht_value_callback(const dht_value* value, bool expired, void* user_data)
 {
+    struct listen_context* ctx = (struct listen_context*) user_data;
+    if (expired)
+        ctx->count--;
+    else
+        ctx->count++;
     dht_data_view data = dht_value_get_data(value);
-    printf("Value callback %s: %.*s.\n", expired ? "expired" : "new", (int)data.size, data.data);
+    printf("Listen: %s value: %.*s (total %zu).\n", expired ? "expired" : "new", (int)data.size, data.data, ctx->count);
     return true;
 }
 
@@ -26,16 +59,30 @@ bool dht_get_callback(const dht_value* value, void* user_data)
     return true;
 }
 
-void dht_done_callback(bool ok, void* user_data)
+void dht_get_done_callback(bool ok, void* user_data)
 {
     dht_runner* runner = (dht_runner*)user_data;
-    printf("Done callback. %s\n", ok ? "Success !" : "Failure :-(");
+    printf("Get completed: %s\n", ok ? "success !" : "failure :-(");
 }
 
-void op_context_free(void* user_data)
+void dht_put_done_callback(bool ok, void* user_data)
 {
+    dht_runner* runner = (dht_runner*)user_data;
+    printf("Put completed: %s\n", ok ? "success !" : "failure :-(");
+}
+
+void dht_shutdown_callback(void* user_data)
+{
+    printf("Stopped.\n");
     struct op_context* ctx = (struct op_context*)user_data;
-    printf("op_context_free %d.\n", ctx->d);
+    atomic_store(&ctx->stop, true);
+}
+
+void listen_context_free(void* user_data)
+{
+    printf("listen_context_free.\n");
+    struct listen_context* ctx = (struct listen_context*)user_data;
+    dht_op_token_delete(ctx->token);
     free(ctx);
 }
 
@@ -60,66 +107,181 @@ char* print_addr(const struct sockaddr* addr) {
     return s;
 }
 
-int main()
+struct dht_params {
+    bool help;
+    bool version;
+    bool generate_identity;
+    bool service;
+    bool peer_discovery;
+    bool log;
+    const char* bootstrap;
+    unsigned network;
+    in_port_t port;
+};
+
+static const struct option long_options[] = {
+    {"help",                no_argument      , NULL, 'h'},
+    {"port",                required_argument, NULL, 'p'},
+    {"net",                 required_argument, NULL, 'n'},
+    {"bootstrap",           required_argument, NULL, 'b'},
+    {"identity",            no_argument      , NULL, 'i'},
+    {"verbose",             no_argument      , NULL, 'v'},
+    {"service",             no_argument      , NULL, 's'},
+    {"peer-discovery",      no_argument      , NULL, 'D'},
+    {"no-rate-limit",       no_argument      , NULL, 'U'},
+    {"persist",             required_argument, NULL, 'f'},
+    {"logfile",             required_argument, NULL, 'l'},
+    {"syslog",              no_argument      , NULL, 'L'},
+    {"version",             no_argument      , NULL, 'V'},
+    {NULL,                  0                , NULL,  0}
+};
+
+struct dht_params
+parse_args(int argc, char **argv) {
+    struct dht_params params;
+    memset(&params, 0, sizeof params);
+    int opt;
+    while ((opt = getopt_long(argc, argv, "hisvDp:n:b:f:l:", long_options, NULL)) != -1) {
+        switch (opt) {
+        case 'p': {
+                int port_arg = atoi(optarg);
+                if (port_arg >= 0 && port_arg < 0x10000)
+                    params.port = port_arg;
+            }
+            break;
+        case 'D':
+            params.peer_discovery = true;
+            break;
+        case 'n':
+            params.network = strtoul(optarg, NULL, 0);
+            break;
+        case 'b':
+            params.bootstrap = (optarg[0] == '=') ? optarg+1 : optarg;
+            break;
+        case 'h':
+            params.help = true;
+            break;
+        case 'v':
+            params.log = true;
+            break;
+        case 'i':
+            params.generate_identity = true;
+            break;
+        case 's':
+            params.service = true;
+            break;
+        case 'V':
+            params.version = true;
+            break;
+        default:
+            break;
+        }
+    }
+    return params;
+}
+
+dht_infohash parse_key(const char* key_str) {
+    dht_infohash key;
+    dht_infohash_from_hex_null(&key, key_str);
+    if (dht_infohash_is_zero(&key)) {
+        dht_infohash_get_from_string(&key, key_str);
+        printf("Using h(%s) = %s\n", key_str, dht_infohash_print(&key));
+    }
+    return key;
+}
+
+int main(int argc, char **argv)
 {
-    dht_identity id = dht_identity_generate("testNode", NULL);
-    dht_infohash cert_id = dht_certificate_get_id(id.certificate);
-    printf("Cert ID: %s\n", dht_infohash_print(&cert_id));
+    struct dht_params params = parse_args(argc, argv);
 
-    dht_publickey* pk = dht_certificate_get_publickey(id.certificate);
-    dht_infohash pk_id = dht_publickey_get_id(pk);
-    printf("PK ID: %s\n", dht_infohash_print(&pk_id));
-    dht_publickey_delete(pk);
-
-    pk = dht_privatekey_get_publickey(id.privatekey);
-    pk_id = dht_publickey_get_id(pk);
-    printf("Key ID: %s\n", dht_infohash_print(&pk_id));
-    dht_publickey_delete(pk);
-
-    dht_identity_delete(&id);
+    if (params.version) {
+        printf("OpenDHT version %s\n", dht_version());
+        return EXIT_SUCCESS;
+    }
 
     dht_runner* runner = dht_runner_new();
-    dht_runner_run(runner, 4040);
+    dht_runner_config dht_config;
+    dht_runner_config_default(&dht_config);
+    dht_config.peer_discovery = params.peer_discovery; // Look for other peers on the network
+    dht_config.peer_publish = params.peer_discovery; // Publish our own peer info
+    dht_config.dht_config.node_config.network = params.network;
+    dht_config.log = params.log;
+    dht_runner_run_config(runner, params.port, &dht_config);
 
-    dht_infohash h;
-    dht_infohash_random(&h);
-
-    printf("random hash: %s\n", dht_infohash_print(&h));
-
-    // Put data
-    const char* data_str = "yo, this is some data";
-    dht_value* val = dht_value_new(data_str, strlen(data_str));
-    dht_runner_put(runner, &h, val, dht_done_callback, runner, false);
-    dht_value_unref(val);
-
-    // Get data
-    dht_runner_get(runner, &h, dht_get_callback, dht_done_callback, runner);
-
-    // Listen for data
-    struct op_context* ctx = malloc(sizeof(struct op_context));
-    ctx->runner = runner;
-    ctx->d = 42;
-    dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, op_context_free, ctx);
-
-    sleep(1);
-
-    dht_runner_bootstrap(runner, "bootstrap.jami.net", NULL);
-
-    sleep(2);
-
-    struct sockaddr** addrs = dht_runner_get_public_address(runner);
-    for (struct sockaddr** addrIt = addrs; *addrIt; addrIt++) {
-        struct sockaddr* addr = *addrIt;
-        char* addr_str = print_addr(addr);
-        free(addr);
-        printf("Found public address: %s\n", addr_str);
-        free(addr_str);
+    if (params.bootstrap) {
+        printf("Bootstrap using %s\n", params.bootstrap);
+        dht_runner_bootstrap(runner, params.bootstrap, NULL);
     }
-    free(addrs);
 
-    dht_runner_cancel_listen(runner, &h, token);
-    dht_op_token_delete(token);
+    char cmd[64];
+    char arg[64];
+    char value[256];
+    dht_infohash key;
+    while (true) {
+        const char* line_read = readline("> ");
+        if (!line_read)
+            break;
+        if (!*line_read)
+            continue;
+        add_history(line_read);
 
+        memset(cmd, 0, sizeof cmd);
+        memset(arg, 0, sizeof arg);
+        memset(value, 0, sizeof value);
+        sscanf(line_read, "%64s %64s %256s", cmd, arg, value);
+
+        if (!strcmp(cmd, "la")) {
+            struct sockaddr** addrs = dht_runner_get_public_address(runner);
+            if (addrs) {
+                for (struct sockaddr** addrIt = addrs; *addrIt; addrIt++) {
+                    struct sockaddr* addr = *addrIt;
+                    char* addr_str = print_addr(addr);
+                    free(addr);
+                    printf("Found public address: %s\n", addr_str);
+                    free(addr_str);
+                }
+                free(addrs);
+            }
+            continue;
+        }
+        else if (!strcmp(cmd, "ll")) {
+            dht_infohash key = dht_runner_get_node_id(runner);
+            printf("DHT node %s running on port %u\n", dht_infohash_print(&key), dht_runner_get_bound_port(runner, AF_INET));
+            continue;
+        }
+        else if (!strcmp(cmd, "g")) {
+            key = parse_key(arg);
+            dht_runner_get(runner, &key, dht_get_callback, dht_get_done_callback, runner);
+        }
+        else if (!strcmp(cmd, "l")) {
+            key = parse_key(arg);
+            struct listen_context* ctx = malloc(sizeof(struct listen_context));
+            ctx->runner = runner;
+            ctx->count = 0;
+            ctx->token = dht_runner_listen(runner, &key, dht_value_callback, listen_context_free, ctx);
+        }
+        else if (!strcmp(cmd, "p")) {
+            key = parse_key(arg);
+            dht_value* val = dht_value_new_from_string(value);
+            dht_runner_put(runner, &key, val, dht_put_done_callback, runner, true);
+            dht_value_unref(val);
+        }
+        else {
+            printf("Unkown command: %s\n", cmd);
+        }
+    }
+
+    // Graceful shutdown
+    printf("Stopping…\n");
+    struct op_context ctx;
+    ctx.runner = runner;
+    atomic_init(&ctx.stop, false);
+    dht_runner_shutdown(runner, dht_shutdown_callback, &ctx);
+
+    // Wait until shutdown callback is called
+    while (!atomic_load(&ctx.stop)) {
+        usleep(10000);
+    }
     dht_runner_delete(runner);
-    return 0;
+    return EXIT_SUCCESS;
 }
