@@ -576,20 +576,27 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         }
         case MessageType::Reply:
             if (req) { /* request reply */
-                auto& r = *req;
-                if (r.getType() == MessageType::AnnounceValue
-                 or r.getType() == MessageType::Listen
-                 or r.getType() == MessageType::Refresh) {
-                    r.node->authSuccess();
-                }
-                r.reply_time = scheduler.time();
-
-                deserializeNodes(*msg, from);
-                r.setDone(std::move(*msg));
+                try {
+		    deserializeNodes(*msg, from);
+                    auto& r = *req;
+                    if (r.getType() == MessageType::AnnounceValue
+                        or r.getType() == MessageType::Listen
+                        or r.getType() == MessageType::Refresh) {
+                        r.node->authSuccess();
+                    }
+                    r.reply_time = scheduler.time();
+                    r.setDone(std::move(*msg));
+		} catch (...) {
+                    req->node->authError();
+		}    
                 break;
             } else { /* request socket data */
-                deserializeNodes(*msg, from);
-                rsocket->on_receive(node, std::move(*msg));
+		try {    
+                    deserializeNodes(*msg, from);
+                    rsocket->on_receive(node, std::move(*msg));
+		} catch(DhtProtocolException &ex) {
+                    node->authError();
+                }
             }
             break;
         default:
