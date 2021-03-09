@@ -124,6 +124,14 @@ struct Dht::SearchNode {
         return last_get_reply + Node::NODE_EXPIRE_TIME;
     }
 
+    friend std::ostream& operator<< (std::ostream& s, const SearchNode& node) {
+        s << "getStatus:" << node.getStatus.size()
+            << " listenStatus:" << node.listenStatus.size()
+            << " acked:" << node.acked.size()
+            << " cache:" << (node.listenStatus.empty() ? 0 : node.listenStatus.begin()->second.cache.size()) << std::endl;
+        return s;
+    }
+
     /**
      * Could a particular "get" request be sent to this node now ?
      *
@@ -415,6 +423,18 @@ struct Dht::Search {
             put.callback(false, {});
             put.callback = {};
         }
+    }
+
+    friend std::ostream& operator<< (std::ostream& s, const Search& sr) {
+        auto csize = sr.cache.size();
+        s << "announce:" << sr.announce.size()
+            << " gets:" << sr.callbacks.size()
+            << " listeners:" << sr.listeners.size()
+            << " cache:" << csize.first << ',' << csize.second << std::endl;
+        s << "nodes:" << std::endl;
+        for (const auto& n : sr.nodes)
+            s << *n;
+        return s;
     }
 
     /**

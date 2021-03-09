@@ -142,6 +142,10 @@ public:
         }
     }
 
+    size_t size() const {
+        return values.size();
+    }
+
 private:
     // prevent copy
     ValueCache(const ValueCache&) = delete;
