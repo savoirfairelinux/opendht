@@ -26,7 +26,7 @@ namespace dht {
 
 
 GetCallbackSimple
-bindGetCb(const GetCallbackRaw& raw_cb, void* user_data)
+bindGetCb(GetCallbackRaw raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](const std::shared_ptr<Value>& value) {
@@ -35,10 +35,10 @@ bindGetCb(const GetCallbackRaw& raw_cb, void* user_data)
 }
 
 GetCallback
-bindGetCb(const GetCallbackSimple& cb)
+bindGetCb(GetCallbackSimple cb)
 {
     if (not cb) return {};
-    return [=](const std::vector<std::shared_ptr<Value>>& values) {
+    return [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& values) {
         for (const auto& v : values)
             if (not cb(v))
                 return false;
@@ -47,7 +47,7 @@ bindGetCb(const GetCallbackSimple& cb)
 }
 
 ValueCallback
-bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data)
+bindValueCb(ValueCallbackRaw raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
@@ -59,7 +59,7 @@ bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data)
 }
 
 ShutdownCallback
-bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data)
+bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data)
 {
     return [=]() { shutdown_cb_raw(user_data); };
 }
@@ -69,11 +69,11 @@ bindDoneCb(DoneCallbackSimple donecb)
 {
     if (not donecb) return {};
     using namespace std::placeholders;
-    return std::bind(donecb, _1);
+    return std::bind(std::move(donecb), _1);
 }
 
 DoneCallback
-bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data)
+bindDoneCb(DoneCallbackRaw raw_cb, void* user_data)
 {
     if (not raw_cb) return {};
     return [=](bool success, const std::vector<std::shared_ptr<Node>>& nodes) {
@@ -82,7 +82,7 @@ bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data)
 }
 
 DoneCallbackSimple
-bindDoneCbSimple(const DoneCallbackSimpleRaw& raw_cb, void* user_data) {
+bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
     if (not raw_cb) return {};
     return [=](bool success) {
         raw_cb(success, user_data);

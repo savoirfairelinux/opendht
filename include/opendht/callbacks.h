@@ -132,7 +132,7 @@ struct OPENDHT_PUBLIC Config {
     /* If non-0, overrides the default maximum store size. -1 means no limit.  */
     ssize_t max_store_size {0};
 
-    /** 
+    /**
      * Use appropriate bahavior for a public IP, stable node:
      *   - No connectivity change triggered when a search fails
      *   - Larger listen refresh time
@@ -148,7 +148,7 @@ struct OPENDHT_PUBLIC SecureDhtConfig
     Config node_config {};
     crypto::Identity id {};
 
-    /** 
+    /**
      * Cache all encountered public keys and certificates,
      * for use by the certificate store, putEncrypted and putSigned
      */
@@ -178,13 +178,13 @@ typedef bool (*FilterRaw)(const Value&, void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
-OPENDHT_PUBLIC GetCallbackSimple bindGetCb(const GetCallbackRaw& raw_cb, void* user_data);
-OPENDHT_PUBLIC GetCallback bindGetCb(const GetCallbackSimple& cb);
-OPENDHT_PUBLIC ValueCallback bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data);
-OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data);
+OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
+OPENDHT_PUBLIC GetCallback bindGetCb(GetCallbackSimple cb);
+OPENDHT_PUBLIC ValueCallback bindValueCb(ValueCallbackRaw raw_cb, void* user_data);
+OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data);
 OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackSimple donecb);
-OPENDHT_PUBLIC DoneCallback bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data);
-OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(const DoneCallbackSimpleRaw& raw_cb, void* user_data);
-OPENDHT_PUBLIC Value::Filter bindFilterRaw(const FilterRaw& raw_filter, void* user_data);
+OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
+OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data);
+OPENDHT_PUBLIC Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data);
 
 }

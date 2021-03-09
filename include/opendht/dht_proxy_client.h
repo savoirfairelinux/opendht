@@ -107,13 +107,13 @@ public:
      */
     virtual void get(const InfoHash& key, GetCallback cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override;
     virtual void get(const InfoHash& key, GetCallback cb, DoneCallbackSimple donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
-        get(key, cb, bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
+        get(key, cb, bindDoneCb(std::move(donecb)), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallback donecb={}, Value::Filter&& f={}, Where&& w = {}) override {
-        get(key, bindGetCb(cb), donecb, std::forward<Value::Filter>(f), std::forward<Where>(w));
+        get(key, bindGetCb(cb), std::move(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     virtual void get(const InfoHash& key, GetCallbackSimple cb, DoneCallbackSimple donecb, Value::Filter&& f={}, Where&& w = {}) override {
-        get(key, bindGetCb(cb), bindDoneCb(donecb), std::forward<Value::Filter>(f), std::forward<Where>(w));
+        get(key, bindGetCb(cb), bindDoneCb(std::move(donecb)), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
 
     /**
@@ -134,7 +134,7 @@ public:
             time_point created=time_point::max(),
             bool permanent = false) override
     {
-        put(key, v, bindDoneCb(cb), created, permanent);
+        put(key, v, bindDoneCb(std::move(cb)), created, permanent);
     }
 
     void put(const InfoHash& key,
@@ -143,7 +143,7 @@ public:
             time_point created=time_point::max(),
             bool permanent = false) override
     {
-        put(key, std::make_shared<Value>(std::move(v)), cb, created, permanent);
+        put(key, std::make_shared<Value>(std::move(v)), std::move(cb), created, permanent);
     }
     void put(const InfoHash& key,
             Value&& v,
@@ -151,7 +151,7 @@ public:
             time_point created=time_point::max(),
             bool permanent = false) override
     {
-        put(key, std::forward<Value>(v), bindDoneCb(cb), created, permanent);
+        put(key, std::forward<Value>(v), bindDoneCb(std::move(cb)), created, permanent);
     }
 
     /**
@@ -176,14 +176,14 @@ public:
     virtual size_t listen(const InfoHash&, ValueCallback, Value::Filter={}, Where={}) override;
 
     virtual size_t listen(const InfoHash& key, GetCallback cb, Value::Filter f={}, Where w={}) override {
-        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
+        return listen(key, [cb=std::move(cb)](const std::vector<Sp<Value>>& vals, bool expired){
             if (not expired)
                 return cb(vals);
             return true;
         }, std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     virtual size_t listen(const InfoHash& key, GetCallbackSimple cb, Value::Filter f={}, Where w={}) override {
-        return listen(key, bindGetCb(cb), std::forward<Value::Filter>(f), std::forward<Where>(w));
+        return listen(key, bindGetCb(std::move(cb)), std::forward<Value::Filter>(f), std::forward<Where>(w));
     }
     /*
      * This function relies on the cache implementation.
@@ -214,7 +214,7 @@ public:
      */
     virtual void query(const InfoHash& /*key*/, QueryCallback /*cb*/, DoneCallback /*done_cb*/ = {}, Query&& /*q*/ = {}) override { }
     virtual void query(const InfoHash& key, QueryCallback cb, DoneCallbackSimple done_cb = {}, Query&& q = {}) override {
-        query(key, cb, bindDoneCb(done_cb), std::forward<Query>(q));
+        query(key, cb, bindDoneCb(std::move(done_cb)), std::forward<Query>(q));
     }
 
     /**

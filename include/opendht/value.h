@@ -205,7 +205,7 @@ struct OPENDHT_PUBLIC Value
         }
         static Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return {};
-            return [f1,f2](const Value& v) {
+            return [f1=std::move(f1),f2=std::move(f2)](const Value& v) {
                 return f1(v) or f2(v);
             };
         }
@@ -231,8 +231,7 @@ struct OPENDHT_PUBLIC Value
     }
 
     static Filter TypeFilter(const ValueType& t) {
-        const auto tid = t.id;
-        return [tid](const Value& v) {
+        return [tid = t.id](const Value& v) {
             return v.type == tid;
         };
     }

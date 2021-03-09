@@ -97,7 +97,7 @@ public:
     template <class T>
     void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, DoneCallbackSimple dcb={})
     {
-        get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+        get(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
         dcb,
@@ -106,7 +106,7 @@ public:
     template <class T>
     void get(InfoHash hash, std::function<bool(T&&)> cb, DoneCallbackSimple dcb={})
     {
-        get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+        get(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
@@ -155,7 +155,7 @@ public:
     std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = {}, Where w = {});
 
     std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f={}, Where w={}) {
-        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
+        return listen(key, [cb=std::move(cb)](const std::vector<Sp<Value>>& vals, bool expired){
             if (not expired)
                 return cb(vals);
             return true;
@@ -169,7 +169,7 @@ public:
     template <class T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
     {
-        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
         getFilterSet<T>());
@@ -177,7 +177,7 @@ public:
     template <class T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&, bool)> cb)
     {
-        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
+        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
             return cb(unpackVector<T>(vals), expired);
         },
         getFilterSet<T>());
@@ -186,7 +186,7 @@ public:
     template <typename T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = {}, Where w = {})
     {
-        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
+        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
@@ -202,7 +202,7 @@ public:
     template <typename T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = {}, Where w = {})
     {
-        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
+        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v), expired))
