@@ -116,7 +116,6 @@ NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point
             cleanup_counter = 0;
         }
     } else if (confirm and node->isOld(now)) {
-	// confirm or node->isOld(now) allowed replay or impersonation attacks
         node->update(addr);
     }
     return node;
