@@ -54,7 +54,7 @@ static std::uniform_int_distribution<uint8_t> rand_byte;
 #define GNUTLS_PKCS_PBES2_AES_256 GNUTLS_PKCS_USE_PBES2_AES_256
 #endif
 
-#define DHT_AES_LEGACY_ENCRYPT 1
+#define DHT_AES_LEGACY_ENCRYPT 0
 #define DHT_AES_LEGACY_DECRYPT 1
 
 namespace dht {
