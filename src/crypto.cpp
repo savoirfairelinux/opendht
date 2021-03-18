@@ -128,37 +128,37 @@ Blob aesEncrypt(const Blob& data, const std::string& password)
     return encrypted;
 }
 
-Blob aesDecrypt(const Blob& data, const Blob& key)
+Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
 
-    if (data.size() <= GCM_IV_SIZE + GCM_DIGEST_SIZE)
+    if (data_length <= GCM_IV_SIZE + GCM_DIGEST_SIZE)
         throw DecryptError("Wrong data size");
 
     std::array<uint8_t, GCM_DIGEST_SIZE> digest;
 
     struct gcm_aes_ctx aes;
     gcm_aes_set_key(&aes, key.size(), key.data());
-    gcm_aes_set_iv(&aes, GCM_IV_SIZE, data.data());
+    gcm_aes_set_iv(&aes, GCM_IV_SIZE, data);
 
-    size_t data_sz = data.size() - GCM_IV_SIZE - GCM_DIGEST_SIZE;
+    size_t data_sz = data_length - GCM_IV_SIZE - GCM_DIGEST_SIZE;
     Blob ret(data_sz);
-    gcm_aes_decrypt(&aes, data_sz, ret.data(), data.data() + GCM_IV_SIZE);
+    gcm_aes_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
     gcm_aes_digest(&aes, GCM_DIGEST_SIZE, digest.data());
 
-    if (not std::equal(digest.begin(), digest.end(), data.end() - GCM_DIGEST_SIZE)) {
+    if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE)) {
 #if DHT_AES_LEGACY_DECRYPT
-        //gcm_aes_decrypt(&aes, data_sz, ret.data(), data.data() + GCM_IV_SIZE);
+        //gcm_aes_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
         Blob ret_tmp(data_sz);
         struct gcm_aes_ctx aes_d;
         gcm_aes_set_key(&aes_d, key.size(), key.data());
-        gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data.data());
+        gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data);
         gcm_aes_update(&aes_d, ret.size(), ret.data());
         gcm_aes_encrypt(&aes_d, ret.size(), ret_tmp.data(), ret.data());
         gcm_aes_digest(&aes_d, GCM_DIGEST_SIZE, digest.data());
 
-        if (not std::equal(digest.begin(), digest.end(), data.end() - GCM_DIGEST_SIZE))
+        if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE))
             throw DecryptError("Can't decrypt data");
 #else
         throw DecryptError("Can't decrypt data");
@@ -168,14 +168,13 @@ Blob aesDecrypt(const Blob& data, const Blob& key)
     return ret;
 }
 
-Blob aesDecrypt(const Blob& data, const std::string& password)
+Blob aesDecrypt(const uint8_t* data, size_t data_len, const std::string& password)
 {
-    if (data.size() <= PASSWORD_SALT_LENGTH)
+    if (data_len <= PASSWORD_SALT_LENGTH)
         throw DecryptError("Wrong data size");
-    Blob salt {data.begin(), data.begin()+PASSWORD_SALT_LENGTH};
+    Blob salt {data, data+PASSWORD_SALT_LENGTH};
     Blob key = stretchKey(password, salt, 256/8);
-    Blob encrypted {data.begin()+PASSWORD_SALT_LENGTH, data.end()};
-    return aesDecrypt(encrypted, key);
+    return aesDecrypt(data+PASSWORD_SALT_LENGTH, data_len - PASSWORD_SALT_LENGTH, key);
 }
 
 Blob stretchKey(const std::string& password, Blob& salt, size_t key_length)
@@ -292,14 +291,14 @@ PrivateKey::operator=(PrivateKey&& o) noexcept
 }
 
 Blob
-PrivateKey::sign(const Blob& data) const
+PrivateKey::sign(const uint8_t* data, size_t data_length) const
 {
     if (!key)
         throw CryptoException("Can't sign data: no private key set !");
-    if (std::numeric_limits<unsigned>::max() < data.size())
+    if (std::numeric_limits<unsigned>::max() < data_length)
         throw CryptoException("Can't sign data: too large !");
     gnutls_datum_t sig;
-    const gnutls_datum_t dat {(unsigned char*)data.data(), (unsigned)data.size()};
+    const gnutls_datum_t dat {(unsigned char*)data, (unsigned)data_length};
     if (gnutls_privkey_sign_data(key, GNUTLS_DIG_SHA512, 0, &dat, &sig) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't sign data !");
     Blob ret(sig.data, sig.data+sig.size);
@@ -321,7 +320,7 @@ PrivateKey::decryptBloc(const uint8_t* src, size_t src_size) const
 }
 
 Blob
-PrivateKey::decrypt(const Blob& cipher) const
+PrivateKey::decrypt(const uint8_t* cypher, size_t cypher_len) const
 {
     if (!key)
         throw CryptoException("Can't decrypt data without private key !");
@@ -334,12 +333,12 @@ PrivateKey::decrypt(const Blob& cipher) const
         throw CryptoException("Must be an RSA key");
 
     unsigned cypher_block_sz = key_len / 8;
-    if (cipher.size() < cypher_block_sz)
+    if (cypher_len < cypher_block_sz)
         throw DecryptError("Unexpected cipher length");
-    else if (cipher.size() == cypher_block_sz)
-        return decryptBloc(cipher.data(), cypher_block_sz);
+    else if (cypher_len == cypher_block_sz)
+        return decryptBloc(cypher, cypher_block_sz);
 
-    return aesDecrypt(Blob {cipher.begin() + cypher_block_sz, cipher.end()}, decryptBloc(cipher.data(), cypher_block_sz));
+    return aesDecrypt(cypher + cypher_block_sz, cypher_len - cypher_block_sz, decryptBloc(cypher, cypher_block_sz));
 }
 
 Blob
