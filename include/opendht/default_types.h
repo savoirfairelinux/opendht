@@ -144,7 +144,7 @@ public:
     static const ValueType TYPE;
 
     TrustRequest() {}
-    TrustRequest(std::string s, std::string ci) : service(s), conversationId(ci) {}
+    TrustRequest(std::string s, std::string ci = {}) : service(s), conversationId(ci) {}
     TrustRequest(std::string s, std::string ci, const Blob& d) : service(s), conversationId(ci), payload(d) {}
 
     static Value::Filter getFilter() {
