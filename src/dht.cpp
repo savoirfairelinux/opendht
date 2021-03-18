@@ -1747,8 +1747,6 @@ fromDhtConfig(const Config& config)
     return netConf;
 }
 
-Dht::Dht() : store(), network_engine(logger_, rd, scheduler, {}) {}
-
 Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l)
     : DhtInterface(l),
     myid(config.node_id ? config.node_id : InfoHash::getRandom(rd)),

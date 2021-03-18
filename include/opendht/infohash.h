@@ -54,9 +54,9 @@ namespace crypto {
 }
 
 /**
- * Represents an InfoHash.
- * An InfoHash is a byte array of HASH_LEN bytes.
- * InfoHashes identify nodes and values in the Dht.
+ * Represents an Hash,
+ * a byte array of N bytes.
+ * Hashes identify nodes and values in the Dht.
  */
 template <size_t N>
 class OPENDHT_PUBLIC Hash {
@@ -93,6 +93,8 @@ public:
     iterator end() { return data_.end(); }
     const_iterator cend() const { return data_.cend(); }
 
+    static constexpr inline Hash zero() noexcept { return Hash{}; }
+
     bool operator==(const Hash& h) const {
         auto a = reinterpret_cast<const uint32_t*>(data_.data());
         auto b = reinterpret_cast<const uint32_t*>(h.data_.data());
@@ -110,6 +112,14 @@ public:
                 return data_[i] < o.data_[i];
         }
         return false;
+    }
+
+    Hash operator^(const Hash& o) const {
+        Hash result;
+        for(auto i = 0u; i < N; i++) {
+            result[i] = data_[i] ^ o.data_[i];
+        }
+        return result;
     }
 
     explicit operator bool() const {
@@ -142,10 +152,6 @@ public:
         return 8 * i + j;
     }
 
-    /**
-     * Forget about the ``XOR-metric''.  An id is just a path from the
-     * root of the tree, so bits are numbered from the start.
-     */
     static inline int cmp(const Hash& id1, const Hash& id2) {
         return std::memcmp(id1.data_.data(), id2.data_.data(), N);
     }
@@ -179,16 +185,12 @@ public:
     int
     xorCmp(const Hash& id1, const Hash& id2) const
     {
-        for(unsigned i = 0; i < N; i++) {
-            uint8_t xor1, xor2;
+        for (unsigned i = 0; i < N; i++) {
             if(id1.data_[i] == id2.data_[i])
                 continue;
-            xor1 = id1.data_[i] ^ data_[i];
-            xor2 = id2.data_[i] ^ data_[i];
-            if(xor1 < xor2)
-                return -1;
-            else
-                return 1;
+            uint8_t xor1 = id1.data_[i] ^ data_[i];
+            uint8_t xor2 = id2.data_[i] ^ data_[i];
+            return (xor1 < xor2) ? -1 : 1;
         }
         return 0;
     }
@@ -245,14 +247,6 @@ public:
 
     template <size_t M>
     OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, Hash<M>& h);
-
-    Hash operator^(const Hash& o) const {
-        Hash result;
-        for(auto i = 0u; i < N; i++) {
-            result[i] = data_[i] ^ o.data_[i];
-        }
-        return result;
-    }
 
     const char* to_c_str() const;
 
@@ -397,8 +391,6 @@ Hash<N>::toString() const
 {
     return std::string(to_c_str(), N*2);
 }
-
-const InfoHash zeroes {};
 
 struct OPENDHT_PUBLIC NodeExport {
     InfoHash id;

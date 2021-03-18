@@ -214,7 +214,6 @@ public:
     using RequestErrorCb = std::function<bool(const Request&, DhtProtocolException&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
-    NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rd, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
     NetworkEngine(
             InfoHash& myid,
             NetworkConfig config,
@@ -293,7 +292,7 @@ public:
      */
     Sp<Request>
     sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-        return sendPing(std::make_shared<Node>(zeroes, std::move(sa), rd),
+        return sendPing(std::make_shared<Node>(InfoHash::zero(), std::move(sa), rd),
                 std::forward<RequestCb>(on_done),
                 std::forward<RequestExpiredCb>(on_expired));
     }

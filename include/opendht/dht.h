@@ -61,9 +61,6 @@ struct LocalListener;
  */
 class OPENDHT_PUBLIC Dht final : public DhtInterface {
 public:
-
-    Dht();
-
     /**
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
