@@ -1323,7 +1323,7 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    gnutls_ocsp_cert_status_t certStatus = (gnutls_ocsp_cert_status_t)ret;
+    gnutls_ocsp_cert_status_t certStatus = (gnutls_ocsp_cert_status_t)status_ocsp;
     if (certStatus == GNUTLS_OCSP_CERT_REVOKED)
         throw CryptoException("Certificate was revoked");
     else if (certStatus != GNUTLS_OCSP_CERT_GOOD)
