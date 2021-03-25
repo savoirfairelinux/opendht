@@ -1240,6 +1240,70 @@ Certificate::getRevocationLists() const
     return ret;
 }
 
+// OcspRequest
+
+OcspRequest::OcspRequest(const uint8_t* dat_ptr, size_t dat_size)
+{
+    int ret = gnutls_ocsp_req_init(&request);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    gnutls_datum_t dat = {(unsigned char*)dat_ptr,(unsigned int)dat_size};
+    ret = gnutls_ocsp_req_import(request, &dat);
+    if (ret < 0){
+        gnutls_ocsp_req_deinit(request);
+        throw CryptoException(gnutls_strerror(ret));
+    }
+}
+
+OcspRequest::~OcspRequest()
+{
+    if (request) {
+        gnutls_ocsp_req_deinit(request);
+        request = nullptr;
+    }
+}
+
+std::string
+OcspRequest::toString(const bool compact) const
+{
+    int ret;
+    gnutls_datum_t dat;
+    ret = gnutls_ocsp_req_print(request, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &dat);
+
+    std::string str;
+    if (ret == 0) {
+        str = std::string((const char*)dat.data, (size_t)dat.size);
+        gnutls_free(dat.data);
+    } else
+        throw CryptoException(gnutls_strerror(ret));
+    return str;
+}
+
+Blob
+OcspRequest::pack() const
+{
+    gnutls_datum_t dat;
+    int err = gnutls_ocsp_req_export(request, &dat);
+    if (err < 0)
+        throw CryptoException(gnutls_strerror(err));
+    Blob ret {dat.data, dat.data + dat.size};
+    gnutls_free(dat.data);
+    return ret;
+}
+
+Blob
+OcspRequest::getNonce() const
+{
+    gnutls_datum_t dat;
+    unsigned critical;
+    int err = gnutls_ocsp_req_get_nonce(request, &critical, &dat);
+    if (err < 0)
+        throw CryptoException(gnutls_strerror(err));
+    Blob ret {dat.data, dat.data + dat.size};
+    gnutls_free(dat.data);
+    return ret;
+}
+
 // OcspResponse
 
 OcspResponse::OcspResponse(const uint8_t* dat_ptr, size_t dat_size)

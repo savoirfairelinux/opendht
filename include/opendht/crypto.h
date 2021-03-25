@@ -312,6 +312,24 @@ private:
     gnutls_x509_crq_t request {nullptr};
 };
 
+class OPENDHT_PUBLIC OcspRequest
+{
+public:
+    OcspRequest(gnutls_ocsp_req_t r) : request(r) {};
+    OcspRequest(const uint8_t* dat_ptr, size_t dat_size);
+    ~OcspRequest();
+
+    /*
+     * Get OCSP Request in readable format.
+     */
+    std::string toString(const bool compact = true) const;
+
+    Blob pack() const;
+    Blob getNonce() const;
+private:
+    gnutls_ocsp_req_t request;
+};
+
 class OPENDHT_PUBLIC OcspResponse
 {
 public:
