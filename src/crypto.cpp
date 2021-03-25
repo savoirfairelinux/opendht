@@ -1392,8 +1392,23 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     ret = gnutls_ocsp_resp_verify_direct(response, crt.issuer->cert, &verify, 0);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    if (verify != 0)
-        throw CryptoException("Error verifying response signature " + std::to_string(verify));
+    if (verify) {
+        if (verify & GNUTLS_OCSP_VERIFY_SIGNER_NOT_FOUND)
+            throw CryptoException("Signer cert not found");
+        if (verify & GNUTLS_OCSP_VERIFY_SIGNER_KEYUSAGE_ERROR)
+            throw CryptoException("Signer cert keyusage error");
+        if (verify & GNUTLS_OCSP_VERIFY_UNTRUSTED_SIGNER)
+            throw CryptoException("Signer cert is not trusted");
+        if (verify & GNUTLS_OCSP_VERIFY_INSECURE_ALGORITHM)
+            throw CryptoException("Insecure algorithm");
+        if (verify & GNUTLS_OCSP_VERIFY_SIGNATURE_FAILURE)
+            throw CryptoException("Signature failure");
+        if (verify & GNUTLS_OCSP_VERIFY_CERT_NOT_ACTIVATED)
+            throw CryptoException("Signer cert not yet activated");
+        if (verify & GNUTLS_OCSP_VERIFY_CERT_EXPIRED)
+            throw CryptoException("Signer cert expired");
+        throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
+    }
 
     // Check whether the OCSP response is about the provided certificate.
     if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
