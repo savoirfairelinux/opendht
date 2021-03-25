@@ -1299,7 +1299,7 @@ OcspResponse::getCertificateStatus() const
     return (gnutls_ocsp_cert_status_t) status;
 }
 
-gnutls_ocsp_verify_reason_t
+gnutls_ocsp_cert_status_t
 OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
 {
     // Check OCSP response
@@ -1310,14 +1310,29 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     if (status != GNUTLS_OCSP_RESP_SUCCESSFUL)
         throw CryptoException("OCSP request unsuccessful: " + std::to_string(ret));
 
-    // Check whether the OCSP response is about the provided certificate.
-    if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
-        throw CryptoException(gnutls_strerror(ret));
+    if (not nonce.empty()) {
+        // Ensure no replay attack has been done
+        gnutls_datum_t rnonce;
+        ret = gnutls_ocsp_resp_get_nonce(response, NULL, &rnonce);
+        if (ret < 0)
+            throw CryptoException(gnutls_strerror(ret));
+        if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
+            gnutls_free(rnonce.data);
+            throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
+        }
+        gnutls_free(rnonce.data);
+    }
 
     // Verify signature of the Basic OCSP response against the public key in the issuer certificate.
     unsigned int verify = 0;
     ret = gnutls_ocsp_resp_verify_direct(response, crt.issuer->cert, &verify, 0);
     if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    if (verify != 0)
+        throw CryptoException("Error verifying response signature " + std::to_string(verify));
+
+    // Check whether the OCSP response is about the provided certificate.
+    if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
         throw CryptoException(gnutls_strerror(ret));
 
     // Check certificate revocation status
@@ -1325,24 +1340,7 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    gnutls_ocsp_cert_status_t certStatus = (gnutls_ocsp_cert_status_t)status_ocsp;
-    if (certStatus == GNUTLS_OCSP_CERT_REVOKED)
-        throw CryptoException("Certificate was revoked");
-    else if (certStatus != GNUTLS_OCSP_CERT_GOOD)
-        throw CryptoException("Certificate is unknown");
-
-    // Ensure no replay attack has been done
-    gnutls_datum_t rnonce;
-    ret = gnutls_ocsp_resp_get_nonce(response, NULL, &rnonce);
-    if (ret < 0)
-        throw CryptoException(gnutls_strerror(ret));
-    if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
-        gnutls_free(rnonce.data);
-        throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
-    }
-    gnutls_free(rnonce.data);
-
-    return (gnutls_ocsp_verify_reason_t) verify;
+    return (gnutls_ocsp_cert_status_t)status_ocsp;
 }
 
 // RevocationList

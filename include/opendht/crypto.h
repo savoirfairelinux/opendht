@@ -333,11 +333,11 @@ public:
     gnutls_ocsp_cert_status_t getCertificateStatus() const;
 
     /*
-     * Verify OCSP response.
-     * Return OCSP verify reason.
+     * Verify OCSP response and return OCSP status.
+     * Throws CryptoException in case of error in the response.
      * http://www.gnu.org/software/gnutls/reference/gnutls-ocsp.html#gnutls-ocsp-verify-reason-t
      */
-    gnutls_ocsp_verify_reason_t verifyDirect(const Certificate& crt, const Blob& nonce);
+    gnutls_ocsp_cert_status_t verifyDirect(const Certificate& crt, const Blob& nonce);
 
 private:
     gnutls_ocsp_resp_t response;
