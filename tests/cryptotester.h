@@ -32,6 +32,7 @@ class CryptoTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testCertificateRevocation);
     CPPUNIT_TEST(testCertificateRequest);
     CPPUNIT_TEST(testCertificateSerialNumber);
+    CPPUNIT_TEST(testOcsp);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -59,6 +60,10 @@ class CryptoTester : public CppUnit::TestFixture {
      * Test certificate serial number extraction
      */
     void testCertificateSerialNumber();
+    /**
+     * Test OCSP
+     */
+    void testOcsp();
 };
 
 }  // namespace test
