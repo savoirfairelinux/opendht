@@ -1264,10 +1264,12 @@ Blob
 OcspResponse::pack() const
 {
     gnutls_datum_t dat;
-    int ret = gnutls_ocsp_resp_export(response, &dat);
-    if (ret < 0)
-        throw CryptoException(gnutls_strerror(ret));
-    return {dat.data, dat.data + dat.size};
+    int err = gnutls_ocsp_resp_export(response, &dat);
+    if (err < 0)
+        throw CryptoException(gnutls_strerror(err));
+    Blob ret {dat.data, dat.data + dat.size};
+    gnutls_free(dat.data);
+    return ret;
 }
 
 std::string
