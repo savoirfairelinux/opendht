@@ -246,6 +246,14 @@ public:
     template <size_t M>
     OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, Hash<M>& h);
 
+    Hash operator^(const Hash& o) const {
+        Hash result;
+        for(auto i = 0u; i < N; i++) {
+            result[i] = data_[i] ^ o.data_[i];
+        }
+        return result;
+    }
+
     const char* to_c_str() const;
 
     std::string toString() const;
