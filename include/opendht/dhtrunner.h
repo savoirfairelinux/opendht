@@ -65,6 +65,7 @@ public:
         bool peer_publish {false};
         std::shared_ptr<dht::crypto::Certificate> server_ca;
         dht::crypto::Identity client_identity;
+        SockAddr bind4 {}, bind6 {};
     };
 
     struct Context {
@@ -379,22 +380,12 @@ public:
         config.threaded = threaded;
         run(port, config);
     }
-    void run(in_port_t port, const Config& config, Context&& context = {});
-
-    /**
-     * @param local4: Local IPv4 address and port to bind. Can be null.
-     * @param local6: Local IPv6 address and port to bind. Can be null.
-     *         You should allways bind to a global IPv6 address.
-     * @param identity: RSA key pair to use for cryptographic operations.
-     * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
-     * @param cb: Optional callback to receive general state information.
-     */
-    void run(SockAddr& local4, SockAddr& local6, const Config& config, Context&& context = {});
+    void run(in_port_t port, Config& config, Context&& context = {});
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, const Config& config, Context&& context = {});
+    void run(const char* ip4, const char* ip6, const char* service, Config& config, Context&& context = {});
 
     void run(const Config& config, Context&& context);
 
