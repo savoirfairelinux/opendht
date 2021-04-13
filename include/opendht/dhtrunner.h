@@ -360,6 +360,7 @@ public:
     std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;
     std::vector<SockAddr> getPublicAddress(sa_family_t af = AF_UNSPEC);
     std::vector<std::string> getPublicAddressStr(sa_family_t af = AF_UNSPEC);
+    void getPublicAddress(std::function<void(std::vector<SockAddr>&&)>, sa_family_t af = AF_UNSPEC);
 
     // securedht methods
 
