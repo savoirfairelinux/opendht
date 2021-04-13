@@ -109,7 +109,12 @@ DhtRunner::run(const Config& config, Context&& context)
 
     auto local4 = config.bind4;
     auto local6 = config.bind6;
-
+    if (not local4 and not local6) {
+        if (context.logger)
+            context.logger->w("[runner %p] No address to bind specified in the configuration, using default addresses");
+        local4.setFamily(AF_INET);
+        local6.setFamily(AF_INET6);
+    }
     auto state_path = config.dht_config.node_config.persist_path;
     if (not state_path.empty()) {
         state_path += "_port.txt";
