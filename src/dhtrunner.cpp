@@ -595,6 +595,18 @@ DhtRunner::getPublicAddressStr(sa_family_t af)
 }
 
 void
+DhtRunner::getPublicAddress(std::function<void(std::vector<SockAddr>&&)> cb, sa_family_t af)
+{
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    ongoing_ops++;
+    pending_ops_prio.emplace([cb = std::move(cb), this, af](SecureDht& dht){
+        cb(dht.getPublicAddress(af));
+        opEnded();
+    });
+    cv.notify_all();
+}
+
+void
 DhtRunner::registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     activeDht()->registerCertificate(cert);
