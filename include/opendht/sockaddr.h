@@ -144,7 +144,7 @@ public:
             if (len) addr.reset((sockaddr*)::calloc(len, 1));
             else     addr.reset();
         }
-        if (len > sizeof(sa_family_t))
+        if (len)
             addr->sa_family = af;
     }
 
@@ -223,16 +223,16 @@ public:
      */
     sockaddr* get() { return addr.get(); }
 
-    const sockaddr_in& getIPv4() const {
+    inline const sockaddr_in& getIPv4() const {
         return *reinterpret_cast<const sockaddr_in*>(get());
     }
-    const sockaddr_in6& getIPv6() const {
+    inline const sockaddr_in6& getIPv6() const {
         return *reinterpret_cast<const sockaddr_in6*>(get());
     }
-    sockaddr_in& getIPv4() {
+    inline sockaddr_in& getIPv4() {
         return *reinterpret_cast<sockaddr_in*>(get());
     }
-    sockaddr_in6& getIPv6() {
+    inline sockaddr_in6& getIPv6() {
         return *reinterpret_cast<sockaddr_in6*>(get());
     }
 
