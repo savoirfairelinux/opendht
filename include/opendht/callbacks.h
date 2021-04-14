@@ -164,6 +164,7 @@ using GetCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>
 using ValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired)>;
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;
+using IdentityAnnouncedCb = std::function<void(bool)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 

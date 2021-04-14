@@ -169,7 +169,7 @@ DhtRunner::run(const Config& config, Context&& context)
     });
 
     auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger));
-    dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config));
+    dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config, std::move(context.identityAnnouncedCb)));
 
 #ifdef OPENDHT_PROXY_CLIENT
     config_ = config;

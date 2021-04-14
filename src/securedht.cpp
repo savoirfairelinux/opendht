@@ -36,8 +36,8 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
-: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, const IdentityAnnouncedCb& iacb)
+: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all), iacb_(iacb)
 {
     if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
@@ -58,6 +58,7 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
             *certificate_,
             1
         }, [this, certId](bool ok) {
+            if (iacb_) iacb_(ok);
             if (ok)
                 if (logger_)
                     logger_->d(certId, "SecureDht: public key announced successfully");
