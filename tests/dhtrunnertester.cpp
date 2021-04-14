@@ -60,6 +60,12 @@ void
 DhtRunnerTester::testConstructors() {
     CPPUNIT_ASSERT(node1.getBoundPort() == 42222);
     CPPUNIT_ASSERT(node2.getBoundPort() == 42232);
+
+    dht::DhtRunner::Config config {};
+    dht::DhtRunner::Context context {};
+    dht::DhtRunner testNode;
+    testNode.run(config, std::move(context));
+    CPPUNIT_ASSERT(testNode.getBoundPort());
 }
 
 void
