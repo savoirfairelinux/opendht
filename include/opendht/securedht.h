@@ -53,7 +53,7 @@ public:
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(std::unique_ptr<DhtInterface> dht, Config config);
+    SecureDht(std::unique_ptr<DhtInterface> dht, Config config, const IdentityAnnouncedCb& iacb = {});
 
     virtual ~SecureDht();
 
@@ -347,6 +347,8 @@ private:
     Sp<Value> checkValue(const Sp<Value>& v);
     ValueCallback getCallbackFilter(const ValueCallback&, Value::Filter&&);
     GetCallback getCallbackFilter(const GetCallback&, Value::Filter&&);
+
+    IdentityAnnouncedCb iacb_ {};
 
     Sp<crypto::PrivateKey> key_ {};
     Sp<crypto::Certificate> certificate_ {};

@@ -74,6 +74,7 @@ public:
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
+        IdentityAnnouncedCb identityAnnouncedCb {};
         Context() {}
     };
 
