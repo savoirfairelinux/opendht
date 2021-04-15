@@ -61,7 +61,7 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, 
             }, [this, certId, cb=std::move(cb)](bool ok) {
                 if (cb) cb(ok);
                 if (logger_)
-                    logger_->d(certId, "SecureDht: certificate annoucement %s", ok ? "succeeded" : "failed");
+                    logger_->d(certId, "SecureDht: certificate announcement %s", ok ? "succeeded" : "failed");
             }, {}, true);
         });
     }
