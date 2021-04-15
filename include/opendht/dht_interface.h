@@ -21,6 +21,8 @@
 #include "infohash.h"
 #include "log_enable.h"
 
+#include <queue>
+
 namespace dht {
 
 namespace net {
@@ -45,6 +47,10 @@ public:
     virtual NodeStatus updateStatus(sa_family_t af) { return getStatus(af); };
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
+
+    void addOnConnectedCallback(std::function<void()> cb) {
+        onConnectCallbacks_.emplace(std::move(cb));
+    }
 
     virtual net::DatagramSocket* getSocket() const { return {}; };
 
@@ -264,6 +270,7 @@ public:
 
 protected:
     std::shared_ptr<Logger> logger_ {};
+    std::queue<std::function<void()>> onConnectCallbacks_ {};
 };
 
 } // namespace dht

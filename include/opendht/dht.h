@@ -512,6 +512,8 @@ private:
 
     void confirmNodes();
     void expire();
+
+    void onConnected();
     void onDisconnected();
 
     /**

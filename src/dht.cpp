@@ -52,12 +52,7 @@ Dht::updateStatus(sa_family_t af)
         if (other.status == NodeStatus::Disconnected && d.status == NodeStatus::Disconnected)
             onDisconnected();
         else if (other.status == NodeStatus::Connected || d.status == NodeStatus::Connected) {
-            // On connected
-            if (bootstrapJob) {
-                bootstrapJob->cancel();
-                bootstrapJob.reset();
-            }
-            bootstrap_period = std::chrono::seconds(10);
+            onConnected();
         }
     }
     return d.status;
@@ -491,9 +486,9 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                 sn->acked[a.value->id] = {
                     network_engine.sendRefreshValue(sn->node, sr->id, a.value->id, sn->token, onDone,
-                    [this, ws, node=sn->node, v=a.value, 
-                     onDone, 
-                     onExpired, 
+                    [this, ws, node=sn->node, v=a.value,
+                     onDone,
+                     onExpired,
                      created = a.permanent ? time_point::max() : a.created,
                      next_refresh_time
                     ](const net::Request& /*req*/, net::DhtProtocolException&& e){
@@ -591,7 +586,7 @@ Dht::searchSynchedNodeListen(const Sp<Search>& sr, SearchNode& n)
     std::weak_ptr<Search> ws = sr;
     for (const auto& l : sr->listeners) {
         const auto& query = l.second.query;
-        
+
         auto r = n.listenStatus.find(query);
         if (n.getListenTime(r, listenExp) > scheduler.time())
             continue;
@@ -725,7 +720,7 @@ Dht::searchStep(Sp<Search> sr)
 
     while (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES and searchSendGetValues(sr));
 
-    
+
     if (sr->getNumberOfConsecutiveBadNodes() >= std::min<size_t>(sr->nodes.size(), SEARCH_MAX_BAD_NODES))
     {
         if (logger_)
@@ -1982,6 +1977,21 @@ Dht::expire()
 }
 
 void
+Dht::onConnected()
+{
+    if (bootstrapJob) {
+        bootstrapJob->cancel();
+        bootstrapJob.reset();
+    }
+    bootstrap_period = std::chrono::seconds(10);
+    while (not onConnectCallbacks_.empty()) {
+        auto cb = std::move(onConnectCallbacks_.front());
+        onConnectCallbacks_.pop();
+        cb();
+    }
+}
+
+void
 Dht::onDisconnected()
 {
     if (dht4.status != NodeStatus::Disconnected || dht6.status != NodeStatus::Disconnected)
@@ -2526,7 +2536,7 @@ Dht::saveState(const std::string& path) const
     state.nodes = exportNodes();
     state.values = exportValues();
     std::ofstream file(path);
-    msgpack::pack(file, state);    
+    msgpack::pack(file, state);
 }
 
 void
