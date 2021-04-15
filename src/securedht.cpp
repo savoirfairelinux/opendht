@@ -36,8 +36,8 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, const IdentityAnnouncedCb& iacb)
-: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all), iacb_(iacb)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, IdentityAnnouncedCb iacb)
+: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
 {
     if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
@@ -53,16 +53,15 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, 
         if (key_ and certId != key_->getPublicKey().getId())
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
 
-        dht_->addOnConnectedCallback([&]{
+        dht_->addOnConnectedCallback([&, cb=std::move(iacb)]{
             dht_->put(certId, Value {
                 CERTIFICATE_TYPE,
                 *certificate_,
                 1
-            }, [this, certId](bool ok) {
-                if (iacb_) iacb_(ok);
-                if (ok)
-                    if (logger_)
-                        logger_->d(certId, "SecureDht: public key announced successfully");
+            }, [this, certId, cb=std::move(cb)](bool ok) {
+                if (cb) cb(ok);
+                if (logger_)
+                    logger_->d(certId, "SecureDht: certificate annoucement %s", ok ? "succeeded" : "failed");
             }, {}, true);
         });
     }
