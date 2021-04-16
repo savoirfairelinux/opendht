@@ -23,6 +23,7 @@
 #include <mutex>
 #include <condition_variable>
 using namespace std::chrono_literals;
+using namespace std::literals;
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
@@ -171,6 +172,76 @@ DhtRunnerTester::testListen() {
     node1.cancelListen(b, std::move(ftokenb));
     node1.cancelListen(c, tokenc);
     node1.cancelListen(d, tokend);
+}
+
+void
+DhtRunnerTester::testIdOps() {
+    std::mutex mutex;
+    std::condition_variable cv;
+    unsigned valueCount(0);
+
+    dht::DhtRunner::Config config2;
+    config2.dht_config.node_config.max_peer_req_per_sec = -1;
+    config2.dht_config.node_config.max_req_per_sec = -1;
+    config2.dht_config.id = dht::crypto::generateIdentity();
+
+    dht::DhtRunner::Context context2;
+    context2.identityAnnouncedCb = [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    };
+
+    node2.join();
+    node2.run(42232, config2, std::move(context2));
+    node2.bootstrap(node1.getBound());
+
+    node1.findCertificate(node2.getId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt){
+        CPPUNIT_ASSERT(crt);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    });
+
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 2; }));
+    }
+
+    dht::DhtRunner::Context context1;
+    context1.identityAnnouncedCb = [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    };
+
+    config2.dht_config.id = dht::crypto::generateIdentity();
+    node1.join();
+    node1.run(42222, config2, std::move(context1));
+    node1.bootstrap(node2.getBound());
+
+    auto key = dht::InfoHash::get("key");
+    node1.putEncrypted(key, node2.getId(), dht::Value("yo"), [&](bool ok){
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    });
+
+    node2.listen<std::string>(key, [&](std::string&& value){
+        CPPUNIT_ASSERT_EQUAL("yo"s, value);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+        return false;
+    });
+
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 4; }));
+    }
 }
 
 void

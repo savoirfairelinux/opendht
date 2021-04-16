@@ -33,6 +33,7 @@ class DhtRunnerTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testListenLotOfBytes);
+    CPPUNIT_TEST(testIdOps);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
@@ -58,6 +59,10 @@ class DhtRunnerTester : public CppUnit::TestFixture {
      * Test listen method
      */
     void testListen();
+    /**
+     * Test methods requiring a node identity
+     */
+    void testIdOps();
     /**
      * Test listen method with lot of datas
      */
