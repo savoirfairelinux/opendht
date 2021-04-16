@@ -52,8 +52,7 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, 
         auto certId = certificate_->getId();
         if (key_ and certId != key_->getPublicKey().getId())
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
-
-        dht_->addOnConnectedCallback([&, cb=std::move(iacb)]{
+        dht_->addOnConnectedCallback([this, certId, cb=std::move(iacb)]{
             dht_->put(certId, Value {
                 CERTIFICATE_TYPE,
                 *certificate_,
