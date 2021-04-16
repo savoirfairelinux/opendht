@@ -155,10 +155,10 @@ DhtProxyClient::startProxy()
     if (logger_)
         logger_->d("[proxy:client] start proxy with %s", proxyUrl_.c_str());
 
-    nextProxyConfirmationTimer_ = std::make_shared<asio::steady_timer>(httpContext_, std::chrono::steady_clock::now());
+    nextProxyConfirmationTimer_ = std::make_unique<asio::steady_timer>(httpContext_, std::chrono::steady_clock::now());
     nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
 
-    listenerRestartTimer_ = std::make_shared<asio::steady_timer>(httpContext_);
+    listenerRestartTimer_ = std::make_unique<asio::steady_timer>(httpContext_);
 
     loopSignal_();
 }

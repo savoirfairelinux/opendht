@@ -378,8 +378,8 @@ private:
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
     void handleProxyConfirm(const asio::error_code &ec);
-    Sp<asio::steady_timer> nextProxyConfirmationTimer_;
-    Sp<asio::steady_timer> listenerRestartTimer_;
+    std::unique_ptr<asio::steady_timer> nextProxyConfirmationTimer_;
+    std::unique_ptr<asio::steady_timer> listenerRestartTimer_;
 
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.
