@@ -104,8 +104,11 @@ DhtRunner::run(const Config& config, Context&& context)
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
     auto expected = State::Idle;
-    if (not running.compare_exchange_strong(expected, State::Running))
+    if (not running.compare_exchange_strong(expected, State::Running)) {
+        if (context.logger)
+            context.logger->w("[runner %p] Node is already running. Call join() first before calling run() again.");
         return;
+    }
 
     auto local4 = config.bind4;
     auto local6 = config.bind6;
