@@ -474,6 +474,7 @@ private:
 
     /** Current configuration */
     Config config_;
+    IdentityAnnouncedCb identityAnnouncedCb_;
 
     /**
      * reset dht clients

@@ -45,15 +45,13 @@ public:
         return c;
     }
 
-    SecureDht() {}
-
     /**
      * s, s6: bound socket descriptors for IPv4 and IPv6, respectively.
      *        For the Dht to be initialised, at least one of them must be >= 0.
      * id:    the identity to use for the crypto layer and to compute
      *        our own hash on the Dht.
      */
-    SecureDht(std::unique_ptr<DhtInterface> dht, Config config, IdentityAnnouncedCb iacb = {});
+    SecureDht(std::unique_ptr<DhtInterface> dht, Config config, IdentityAnnouncedCb iacb = {}, const std::shared_ptr<Logger>& l = {});
 
     virtual ~SecureDht();
 

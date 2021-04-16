@@ -36,8 +36,8 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, IdentityAnnouncedCb iacb)
-: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, IdentityAnnouncedCb iacb, const std::shared_ptr<Logger>& l)
+: DhtInterface(l), dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
 {
     if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
