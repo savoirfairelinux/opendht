@@ -1984,10 +1984,10 @@ Dht::onConnected()
         bootstrapJob.reset();
     }
     bootstrap_period = std::chrono::seconds(10);
-    while (not onConnectCallbacks_.empty()) {
-        auto cb = std::move(onConnectCallbacks_.front());
-        onConnectCallbacks_.pop();
-        cb();
+    auto callbacks = std::move(onConnectCallbacks_);
+    while (not callbacks.empty()) {
+        callbacks.front()();
+        callbacks.pop();
     }
 }
 

@@ -727,9 +727,8 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
                 std::lock_guard<std::mutex> lock(lockCallbacks_);
                 callbacks_.emplace_back([cbs = std::move(onConnectCallbacks_)]() mutable {
                     while (not cbs.empty()) {
-                        auto cb = std::move(cbs.front());
+                        cbs.front()();
                         cbs.pop();
-                        cb();
                     }
                 });
             }
