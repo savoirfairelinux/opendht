@@ -1136,7 +1136,7 @@ DhtRunner::enableProxy(bool proxify)
         if (not config_.push_token.empty())
             dht_via_proxy->setPushNotificationToken(config_.push_token);
 #endif
-        dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config));
+        dht_via_proxy_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht_via_proxy), config_.dht_config, identityAnnouncedCb_, logger_));
         // add current listeners
         for (auto& l: listeners_)
             l.second.tokenProxyDht = dht_via_proxy_->listen(l.second.hash, l.second.gcb, l.second.f, l.second.w);
