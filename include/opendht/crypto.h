@@ -80,6 +80,8 @@ struct OPENDHT_PUBLIC PublicKey
      * Takes ownership of an existing gnutls_pubkey.
      */
     PublicKey(gnutls_pubkey_t k) : pk(k) {}
+
+    /** Import public key from serialized data */
     PublicKey(const uint8_t* dat, size_t dat_size);
     PublicKey(const Blob& pk) : PublicKey(pk.data(), pk.size()) {}
     PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };

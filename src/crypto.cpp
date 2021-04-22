@@ -710,13 +710,13 @@ CertificateRequest::sign(const PrivateKey& key, const std::string& password)
 }
 
 bool
-CertificateRequest::verify() const 
+CertificateRequest::verify() const
 {
     return gnutls_x509_crq_verify(request, 0) >= 0;
 }
 
-Blob 
-CertificateRequest::pack() const 
+Blob
+CertificateRequest::pack() const
 {
     gnutls_datum_t dat {nullptr, 0};
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
@@ -727,7 +727,7 @@ CertificateRequest::pack() const
 }
 
 std::string
-CertificateRequest::toString() const 
+CertificateRequest::toString() const
 {
     gnutls_datum_t dat {nullptr, 0};
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
@@ -1147,8 +1147,8 @@ void
 setRandomSerial(gnutls_x509_crt_t cert)
 {
     random_device rdev;
-    std::uniform_int_distribution<uint64_t> dist{};
-    uint64_t cert_serial = dist(rdev);
+    std::uniform_int_distribution<int64_t> dist{1};
+    int64_t cert_serial = dist(rdev);
     gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
 }
 
