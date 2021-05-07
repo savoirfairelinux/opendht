@@ -36,6 +36,7 @@ from libcpp.memory cimport shared_ptr
 from cython.parallel import parallel, prange
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
+from datetime import timedelta
 
 cimport opendht_cpp as cpp
 
@@ -235,8 +236,9 @@ cdef class Where(object):
 
 cdef class Value(object):
     cdef shared_ptr[cpp.Value] _value
-    def __init__(self, bytes val=b''):
-        self._value.reset(new cpp.Value(val, len(val)))
+    def __init__(self, bytes val=b'', cpp.uint16_t id=0):
+        self._value.reset(new cpp.Value(id, val, len(val)))
+
     def __str__(self):
         return self._value.get().toString().decode()
     property owner:
@@ -269,6 +271,14 @@ cdef class Value(object):
     property size:
         def __get__(self):
             return self._value.get().size()
+
+cdef class ValueType(object):
+    cdef cpp.ValueType * _value
+    def __init__(self, cpp.uint16_t id, str name, expiration: timedelta):
+        if not isinstance(expiration, timedelta):
+            raise TypeError("expiration argument must be of type timedelta")
+        cdef cpp.seconds duration = cpp.seconds(int(expiration.total_seconds()))
+        self._value =  new cpp.ValueType(id, name.encode(), duration)
 
 cdef class NodeSetIter(object):
     cdef map[cpp.InfoHash, shared_ptr[cpp.Node]]* _nodes
@@ -513,6 +523,8 @@ cdef class DhtRunner(_WithID):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.get().shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
+    def registerType(self, ValueType type):
+        self.thisptr.get().registerType(deref(type._value))
     def enableLogging(self):
         cpp.enableLogging(self.thisptr.get()[0])
     def disableLogging(self):
