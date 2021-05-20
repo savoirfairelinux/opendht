@@ -29,6 +29,7 @@ class ThreadPoolTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(ThreadPoolTester);
     CPPUNIT_TEST(testThreadPool);
     CPPUNIT_TEST(testExecutor);
+    CPPUNIT_TEST(testContext);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -43,6 +44,7 @@ class ThreadPoolTester : public CppUnit::TestFixture {
 
     void testThreadPool();
     void testExecutor();
+    void testContext();
 };
 
 }  // namespace test

@@ -93,4 +93,71 @@ private:
     void schedule();
 };
 
+class OPENDHT_PUBLIC ExecutionContext {
+public:
+    ExecutionContext(ThreadPool& pool)
+     : threadPool_(pool), state_(std::make_shared<SharedState>())
+    {}
+
+    ~ExecutionContext() {
+        state_->destroy();
+    }
+
+    /** Wait for ongoing tasks to complete execution and drop other pending tasks */
+    void stop() {
+        state_->destroy(false);
+    }
+
+    void run(std::function<void()>&& task) {
+        std::lock_guard<std::mutex> lock(state_->mtx);
+        if (state_->shutdown_) return;
+        state_->pendingTasks++;
+        threadPool_.get().run([task = std::move(task), state = state_] {
+            state->run(task);
+        });
+    }
+
+private:
+    struct SharedState {
+        std::mutex mtx {};
+        std::condition_variable cv {};
+        unsigned pendingTasks {0};
+        unsigned ongoingTasks {0};
+        /** When true, prevents new tasks to be scheduled */
+        bool shutdown_ {false};
+        /** When true, prevents scheduled tasks to be executed */
+        std::atomic_bool destroyed {false};
+
+        void destroy(bool wait = true) {
+            std::unique_lock<std::mutex> lock(mtx);
+            if (destroyed) return;
+            if (wait) {
+                cv.wait(lock, [this] { return pendingTasks == 0 && ongoingTasks == 0; });
+            }
+            shutdown_ = true;
+            if (not wait) {
+                cv.wait(lock, [this] { return ongoingTasks == 0; });
+            }
+            destroyed = true;
+        }
+
+        void run(const std::function<void()>& task) {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                pendingTasks--;
+                ongoingTasks++;
+            }
+                if (destroyed) return;
+                task();
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                ongoingTasks--;
+                cv.notify_all();
+            }
+        }
+    };
+    std::reference_wrapper<ThreadPool> threadPool_;
+    std::shared_ptr<SharedState> state_;
+};
+
 }
