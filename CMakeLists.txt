@@ -71,8 +71,11 @@ if (NOT MSVC)
         )
     endif()
 
-    if (OPENDHT_HTTP)
+    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
         find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
+    endif ()
+
+    if (OPENDHT_HTTP)
         find_package(Restinio REQUIRED)
         find_library(FMT_LIBRARY fmt)
         add_library(fmt SHARED IMPORTED)
