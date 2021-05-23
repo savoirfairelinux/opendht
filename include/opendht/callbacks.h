@@ -78,6 +78,7 @@ struct OPENDHT_PUBLIC NodeStats {
 
 struct OPENDHT_PUBLIC NodeInfo {
     InfoHash id;
+    PkId pkid;
     InfoHash node_id;
     NodeStats ipv4 {};
     NodeStats ipv6 {};
@@ -94,7 +95,7 @@ struct OPENDHT_PUBLIC NodeInfo {
     explicit NodeInfo(const Json::Value& v);
 #endif
 
-    MSGPACK_DEFINE_MAP(id, node_id, ipv4, ipv6)
+    MSGPACK_DEFINE_MAP(id, pkid, node_id, ipv4, ipv6)
 };
 
 /**

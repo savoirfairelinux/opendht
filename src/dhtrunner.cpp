@@ -509,6 +509,7 @@ DhtRunner::getNodeInfo() const {
     NodeInfo info {};
     if (auto dht = activeDht()) {
         info.id = dht->getId();
+        info.pkid = dht->getLongId();
         info.node_id = dht->getNodeId();
         info.ipv4 = dht->getNodesStats(AF_INET);
         info.ipv6 = dht->getNodesStats(AF_INET6);
@@ -530,6 +531,7 @@ DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
         auto sinfo = std::make_shared<NodeInfo>();
         auto& info = *sinfo;
         info.id = dht.getId();
+        info.pkid = dht.getLongId();
         info.node_id = dht.getNodeId();
         info.ipv4 = dht.getNodesStats(AF_INET);
         info.ipv6 = dht.getNodesStats(AF_INET6);

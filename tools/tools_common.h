@@ -200,6 +200,8 @@ void print_node_info(const dht::NodeInfo& info) {
         std::cout << "IPv4 port " << info.bound4 << ", IPv6 port " << info.bound6 << std::endl;
     if (info.id)
         std::cout << "Public key ID " << info.id << std::endl;
+    if (info.pkid)
+        std::cout << "Public key long ID " << info.pkid << std::endl;
 }
 
 static const constexpr struct option long_options[] = {
