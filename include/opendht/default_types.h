@@ -66,8 +66,11 @@ private:
 
 public:
     virtual void unpackValue(const Value& v) override {
-        if (v.owner)
+        if (v.owner) {
+            owner = v.owner;
             from = v.owner->getId();
+            fromId = v.owner->getLongId();
+        }
         BaseClass::unpackValue(v);
     }
 
@@ -75,7 +78,9 @@ public:
         return [](const Value& v){ return v.isSigned(); };
     }
 
+    Sp<const crypto::PublicKey> owner;
     dht::InfoHash from;
+    dht::PkId fromId;
 };
 
 template <typename T>
