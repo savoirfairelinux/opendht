@@ -303,6 +303,7 @@ public:
      * Get the public key fingerprint if an identity is used with this node, 0 otherwise.
      */
     InfoHash getId() const;
+    PkId getLongId() const;
 
     /**
      * Get the ID of the DHT node.

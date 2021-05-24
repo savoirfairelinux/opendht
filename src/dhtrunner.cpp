@@ -398,6 +398,15 @@ DhtRunner::getId() const
     return {};
 }
 
+PkId
+DhtRunner::getLongId() const
+{
+    if (auto dht = activeDht())
+        return dht->getLongId();
+    return {};
+}
+
+
 InfoHash
 DhtRunner::getNodeId() const
 {
