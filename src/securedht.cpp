@@ -118,7 +118,7 @@ SecureDht::secureType(ValueType&& type)
     return type;
 }
 
-const Sp<crypto::Certificate>
+Sp<crypto::Certificate>
 SecureDht::getCertificate(const InfoHash& node) const
 {
     if (node == getId())
@@ -130,7 +130,7 @@ SecureDht::getCertificate(const InfoHash& node) const
         return it->second;
 }
 
-const Sp<const crypto::PublicKey>
+Sp<crypto::PublicKey>
 SecureDht::getPublicKey(const InfoHash& node) const
 {
     if (node == getId())
@@ -142,7 +142,7 @@ SecureDht::getPublicKey(const InfoHash& node) const
         return it->second;
 }
 
-const Sp<crypto::Certificate>
+Sp<crypto::Certificate>
 SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
 {
     Sp<crypto::Certificate> crt;
@@ -220,7 +220,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
 }
 
 void
-SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp<const crypto::PublicKey>)>& cb)
+SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb)
 {
     auto pk = getPublicKey(node);
     if (pk && *pk) {
@@ -405,7 +405,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
             callback(false, {});
         return;
     }
-    findPublicKey(to, [=](const Sp<const crypto::PublicKey>& pk) {
+    findPublicKey(to, [this, hash, val = std::move(val), callback = std::move(callback), permanent](const Sp<crypto::PublicKey>& pk) {
         if(!pk || !*pk) {
             if (callback)
                 callback(false, {});
