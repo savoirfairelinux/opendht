@@ -445,7 +445,6 @@ private:
         std::map<InfoHash, std::vector<Listener>> listeners;
         MSGPACK_DEFINE_ARRAY(listeners)
     };
-    std::mutex lockPushListeners_;
     std::map<std::string, PushListener> pushListeners_;
     proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS

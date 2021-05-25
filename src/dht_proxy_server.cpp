@@ -822,7 +822,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             logger_->d("[proxy:server] [subscribe %s] [client %s] [session %s]", infoHash.toString().c_str(), clientId.c_str(), sessionId.c_str());
 
         // Insert new or return existing push listeners of a token
-        std::lock_guard<std::mutex> lock(lockPushListeners_);
+        std::lock_guard<std::mutex> lock(lockListener_);
         auto& pushListener = pushListeners_[pushToken];
         auto& pushListeners = pushListener.listeners[infoHash];
 
