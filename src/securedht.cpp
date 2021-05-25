@@ -200,8 +200,6 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
 
     auto found = std::make_shared<bool>(false);
     dht_->get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
-        if (*found)
-            return false;
         for (const auto& v : vals) {
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
@@ -212,7 +210,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
                 return false;
             }
         }
-        return true;
+        return !*found;
     }, [cb,found](bool) {
         if (!*found and cb)
             cb(nullptr);
@@ -527,6 +525,53 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
                 callback(false, {});
         }
     });
+}
+
+void
+SecureDht::putEncrypted(const InfoHash& hash, const PkId& to, Sp<Value> val, DoneCallback callback, bool permanent)
+{
+    if (not key_)  {
+        if (callback)
+            callback(false, {});
+        return;
+    }
+    findPublicKey(to, [this, hash, val = std::move(val), callback = std::move(callback), permanent](const Sp<crypto::PublicKey>& pk) {
+        if(!pk || !*pk) {
+            if (callback)
+                callback(false, {});
+            return;
+        }
+        if (logger_)
+            logger_->w("Encrypting data for PK: %s", pk->getLongId().toString().c_str());
+        try {
+            dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
+        } catch (const std::exception& e) {
+            if (logger_)
+                logger_->e("Error putting encrypted data: %s", e.what());
+            if (callback)
+                callback(false, {});
+        }
+    });
+}
+
+void
+SecureDht::putEncrypted(const InfoHash& hash, const crypto::PublicKey& pk, Sp<Value> val, DoneCallback callback, bool permanent)
+{
+    if (not key_)  {
+        if (callback)
+            callback(false, {});
+        return;
+    }
+    if (logger_)
+        logger_->w("Encrypting data for PK: %s", pk.getLongId().to_c_str());
+    try {
+        dht_->put(hash, encrypt(*val, pk), callback, time_point::max(), permanent);
+    } catch (const std::exception& e) {
+        if (logger_)
+            logger_->e("Error putting encrypted data: %s", e.what());
+        if (callback)
+            callback(false, {});
+    }
 }
 
 void

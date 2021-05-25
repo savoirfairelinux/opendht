@@ -115,6 +115,14 @@ public:
     void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
+    void putEncrypted(const InfoHash& hash, const PkId& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const PkId& to, Value&& v, DoneCallback callback, bool permanent = false) {
+        putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
+    }
+    void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
+    void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Value&& v, DoneCallback callback, bool permanent = false) {
+        putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
+    }
 
     /**
      * Take ownership of the value and sign it using our private key.

@@ -954,6 +954,55 @@ DhtRunner::putEncrypted(const std::string& key, InfoHash to, Value&& value, Done
     putEncrypted(InfoHash::get(key), to, std::forward<Value>(value), std::move(cb), permanent);
 }
 
+
+void
+DhtRunner::putEncrypted(InfoHash hash, PkId to, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
+{
+    if (running != State::Running) {
+        if (cb) cb(false, {});
+        return;
+    }
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    ongoing_ops++;
+    pending_ops.emplace([=,
+        cb = std::move(cb),
+        value = std::move(value)
+    ] (SecureDht& dht) mutable {
+        dht.putEncrypted(hash, to, value, bindOpDoneCallback(std::move(cb)), permanent);
+    });
+    cv.notify_all();
+}
+
+void
+DhtRunner::putEncrypted(InfoHash hash, PkId to, Value&& value, DoneCallback cb, bool permanent)
+{
+    putEncrypted(hash, to, std::make_shared<Value>(std::move(value)), std::move(cb), permanent);
+}
+
+void
+DhtRunner::putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
+{
+    if (running != State::Running) {
+        if (cb) cb(false, {});
+        return;
+    }
+    std::lock_guard<std::mutex> lck(storage_mtx);
+    ongoing_ops++;
+    pending_ops.emplace([=,
+        cb = std::move(cb),
+        value = std::move(value)
+    ] (SecureDht& dht) mutable {
+        dht.putEncrypted(hash, *to, value, bindOpDoneCallback(std::move(cb)), permanent);
+    });
+    cv.notify_all();
+}
+
+void
+DhtRunner::putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, Value&& value, DoneCallback cb, bool permanent)
+{
+    putEncrypted(hash, to, std::make_shared<Value>(std::move(value)), std::move(cb), permanent);
+}
+
 void
 DhtRunner::bootstrap(const std::string& host, const std::string& service)
 {
