@@ -163,7 +163,7 @@ Value::msgpack_unpack_body(const msgpack::object& o)
                 throw msgpack::type_error();
             crypto::PublicKey new_owner;
             new_owner.msgpack_unpack(*rowner);
-            owner = std::make_shared<const crypto::PublicKey>(std::move(new_owner));
+            owner = std::make_shared<crypto::PublicKey>(std::move(new_owner));
             if (auto rrecipient = findMapValue(*rbody, VALUE_KEY_TO)) {
                 recipient = rrecipient->as<InfoHash>();
             }
@@ -193,7 +193,7 @@ Value::Value(const Json::Value& json)
     if (jowner.isString()) {
         auto ownerStr = jowner.asString();
         auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
-        owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
+        owner = std::make_shared<crypto::PublicKey>(ownerBlob);
     }
     const auto& jto = json[VALUE_KEY_TO];
     if (jto.isString())

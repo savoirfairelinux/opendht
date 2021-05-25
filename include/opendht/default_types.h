@@ -77,7 +77,7 @@ public:
         return [](const Value& v){ return v.isSigned(); };
     }
 
-    Sp<const crypto::PublicKey> owner;
+    Sp<crypto::PublicKey> owner;
     dht::InfoHash from;
 };
 
