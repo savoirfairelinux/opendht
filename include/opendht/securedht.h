@@ -145,8 +145,9 @@ public:
      * The search key used is the public key ID, so there may be multiple certificates retured, signed with
      * the same private key.
      */
-    void setLocalCertificateStore(CertificateStoreQuery&& query_method) {
+    void setLocalCertificateStore(CertificateStoreQuery&& query_method, CertificateStoreLongQuery&& query_sha256_method) {
         localQueryMethod_ = std::move(query_method);
+        localQuerySha256Method_ = std::move(query_sha256_method);
     }
 
     /**
@@ -357,6 +358,7 @@ private:
 
     // method to query the local certificate store
     CertificateStoreQuery localQueryMethod_ {};
+    CertificateStoreLongQuery localQuerySha256Method_ {};
 
     // our certificate cache
     std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};

@@ -168,6 +168,7 @@ using ShutdownCallback = std::function<void()>;
 using IdentityAnnouncedCb = std::function<void(bool)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
+using CertificateStoreLongQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const PkId& pk_id)>;
 
 typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
 typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data);

@@ -254,10 +254,21 @@ SecureDht::findCertificate(const PkId& node, const std::function<void(const Sp<c
         if (cb)
             cb(b);
         return;
-    } else {
-        if (cb)
-            cb(nullptr);
     }
+    if (localQueryMethod_) {
+        auto res = localQuerySha256Method_(node);
+        if (not res.empty()) {
+            if (logger_)
+                logger_->d("Registering certificate from local store for %s", node.to_c_str());
+            nodesCertificates_.emplace(res.front()->getId(), res.front());
+            nodesCertificatesLong_.emplace(node, res.front());
+            if (cb)
+                cb(res.front());
+            return;
+        }
+    }
+    if (cb)
+        cb(nullptr);
 }
 
 void

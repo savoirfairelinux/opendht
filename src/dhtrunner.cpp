@@ -185,10 +185,10 @@ DhtRunner::run(const Config& config, Context&& context)
     if (context.statusChangedCallback) {
         statusCb = std::move(context.statusChangedCallback);
     }
-    if (context.certificateStore) {
-        dht_->setLocalCertificateStore(std::move(context.certificateStore));
+    if (context.certificateStore || context.certificateStoreSha256) {
+        dht_->setLocalCertificateStore(std::move(context.certificateStore), std::move(context.certificateStoreSha256));
         if (dht_via_proxy_)
-            dht_via_proxy_->setLocalCertificateStore(std::move(context.certificateStore));
+            dht_via_proxy_->setLocalCertificateStore(std::move(context.certificateStore), std::move(context.certificateStoreSha256));
     }
 
     if (not config.threaded)
@@ -627,14 +627,14 @@ DhtRunner::registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
     activeDht()->registerCertificate(cert);
 }
 void
-DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method) {
+DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method, CertificateStoreLongQuery&& query_sha256_method) {
     std::lock_guard<std::mutex> lck(dht_mtx);
 #ifdef OPENDHT_PROXY_CLIENT
     if (dht_via_proxy_)
-        dht_via_proxy_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
+        dht_via_proxy_->setLocalCertificateStore(std::move(query_method), std::move(query_sha256_method));
 #endif
     if (dht_)
-        dht_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
+        dht_->setLocalCertificateStore(std::move(query_method), std::move(query_sha256_method));
 }
 
 time_point

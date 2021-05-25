@@ -74,6 +74,7 @@ public:
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
+        CertificateStoreLongQuery certificateStoreSha256 {};
         IdentityAnnouncedCb identityAnnouncedCb {};
         Context() {}
     };
@@ -368,7 +369,7 @@ public:
 
     void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
     void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
-    void setLocalCertificateStore(CertificateStoreQuery&& query_method);
+    void setLocalCertificateStore(CertificateStoreQuery&& query_method, CertificateStoreLongQuery&& query_sha256_method = {});
 
     /**
      * @param port: Local port to bind. Both IPv4 and IPv6 will be tried (ANY).
