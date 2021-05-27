@@ -19,6 +19,8 @@
 
 #include "dhtrunnertester.h"
 
+#include <opendht/thread_pool.h>
+
 #include <chrono>
 #include <mutex>
 #include <condition_variable>
@@ -297,5 +299,40 @@ DhtRunnerTester::testListenLotOfBytes() {
 
     node3.cancelListen(foo, ftokenfoo.get());
 }
+
+
+void
+DhtRunnerTester::testMultithread() {
+    std::mutex mutex;
+    std::condition_variable cv;
+    unsigned putCount(0);
+    unsigned putOkCount(0);
+
+    constexpr unsigned N = 2048;
+
+    for (unsigned i=0; i<N; i++) {
+        dht::ThreadPool::computation().run([&]{
+            node2.put(dht::InfoHash::get("123" + std::to_string(i)), "hehe", [&](bool ok) {
+                std::lock_guard<std::mutex> lock(mutex);
+                putCount++;
+                if (ok) putOkCount++;
+                cv.notify_all();
+            });
+            node2.get(dht::InfoHash::get("123" + std::to_string(N-i-1)), [](const std::shared_ptr<dht::Value>&){
+                return true;
+            }, [&](bool ok) {
+                std::lock_guard<std::mutex> lock(mutex);
+                putCount++;
+                if (ok) putOkCount++;
+                cv.notify_all();
+            });
+        });
+    }
+    std::unique_lock<std::mutex> lk(mutex);
+    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == 2*N; }));
+    CPPUNIT_ASSERT_EQUAL(2*N, putOkCount);
+
+}
+
 
 }  // namespace test

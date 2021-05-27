@@ -67,6 +67,11 @@ class DhtRunnerTester : public CppUnit::TestFixture {
      * Test listen method with lot of datas
      */
     void testListenLotOfBytes();
+    /**
+     * Test multithread
+     */
+    void testMultithread();
+
 };
 
 }  // namespace test
