@@ -230,6 +230,13 @@ DhtRunnerTester::testIdOps() {
         cv.notify_all();
     });
 
+    node1.putEncrypted(key, node2.getPublicKey(), dht::Value("yo"), [&](bool ok){
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    });
+
     node2.listen<std::string>(key, [&](std::string&& value){
         CPPUNIT_ASSERT_EQUAL("yo"s, value);
         std::lock_guard<std::mutex> lk(mutex);
