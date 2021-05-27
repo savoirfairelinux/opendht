@@ -119,22 +119,24 @@ DhtRunner::run(const Config& config, Context&& context)
         local6.setFamily(AF_INET6);
     }
     auto state_path = config.dht_config.node_config.persist_path;
-    if (not state_path.empty()) {
+    if (not state_path.empty() && (local4.getPort() == 0 || local6.getPort() == 0)) {
         state_path += "_port.txt";
         std::ifstream inConfig(state_path);
         if (inConfig.is_open()) {
             in_port_t port;
             if (inConfig >> port) {
-                if (context.logger)
-                    context.logger->d("[runner %p] Using IPv4 port %hu from saved configuration", this, port);
-                if (local4.getPort() == 0)
+                if (local4.getPort() == 0) {
+                    if (context.logger)
+                        context.logger->d("[runner %p] Using IPv4 port %hu from saved configuration", this, port);
                     local4.setPort(port);
+                }
             }
             if (inConfig >> port) {
-                if (context.logger)
-                    context.logger->d("[runner %p] Using IPv6 port %hu from saved configuration", this, port);
-                if (local6.getPort() == 0)
+                if (local6.getPort() == 0) {
+                    if (context.logger)
+                        context.logger->d("[runner %p] Using IPv6 port %hu from saved configuration", this, port);
                     local6.setPort(port);
+                }
             }
         }
     }
