@@ -71,7 +71,7 @@ DhtProxyTester::tearDown() {
         cv.notify_all();
     });
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 5s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&]{ return done; }));
     serverProxy.reset();
     nodeProxy.reset();
 }
