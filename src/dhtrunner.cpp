@@ -406,6 +406,14 @@ DhtRunner::getId() const
     return {};
 }
 
+std::shared_ptr<crypto::PublicKey>
+DhtRunner::getPublicKey() const
+{
+    if (auto dht = activeDht())
+        return dht->getPublicKey();
+    return {};
+}
+
 InfoHash
 DhtRunner::getNodeId() const
 {
