@@ -496,10 +496,10 @@ Query::msgpack_unpack(const msgpack::object& o)
 }
 
 template <typename T>
-bool subset(std::vector<T> fds, std::vector<T> qfds)
+bool subset(const std::vector<T>& fds, const std::vector<T>& qfds)
 {
-    for (auto& fd : fds) {
-        if (std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; }) == qfds.end())
+    for (const auto& fd : fds) {
+        if (std::find_if(qfds.begin(), qfds.end(), [&fd](const T& _vfd) { return fd == _vfd; }) == qfds.end())
             return false;
     }
     return true;
