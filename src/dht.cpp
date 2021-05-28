@@ -77,10 +77,26 @@ Dht::Kad::getStatus(time_point now) const
 }
 
 void
-Dht::shutdown(ShutdownCallback cb)
+Dht::shutdown(ShutdownCallback cb, bool stop)
 {
     if (not persistPath.empty())
         saveState(persistPath);
+
+    if (stop) {
+        for (auto dht : {&dht4, &dht6}) {
+            for (auto& sr : dht->searches) {
+                for (const auto& r : sr.second->callbacks)
+                    r.second.done_cb(false, {});
+                sr.second->callbacks.clear();
+                for (const auto& a : sr.second->announce) {
+                    if (a.callback) a.callback(false, {});
+                }
+                sr.second->announce.clear();
+                sr.second->listeners.clear();
+            }
+        }
+        network_engine.clear();
+    }
 
     if (not maintain_storage) {
         if (cb) cb();

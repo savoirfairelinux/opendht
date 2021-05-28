@@ -268,29 +268,31 @@ DhtRunner::run(const Config& config, Context&& context)
 }
 
 void
-DhtRunner::shutdown(ShutdownCallback cb) {
+DhtRunner::shutdown(ShutdownCallback cb, bool stop) {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     auto expected = State::Running;
     if (not running.compare_exchange_strong(expected, State::Stopping)) {
         if (expected == State::Stopping and ongoing_ops) {
-            std::lock_guard<std::mutex> lck(storage_mtx);
             shutdownCallbacks_.emplace_back(std::move(cb));
         }
-        else if (cb) cb();
+        else if (cb) {
+            lck.unlock();
+            cb();
+        }
         return;
     }
     if (logger_)
         logger_->d("[runner %p] state changed to Stopping, %zu ongoing ops", this, ongoing_ops.load());
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     shutdownCallbacks_.emplace_back(std::move(cb));
-    pending_ops_prio.emplace([=](SecureDht&) mutable {
+    pending_ops.emplace([=](SecureDht&) mutable {
         auto onShutdown = [this]{ opEnded(); };
 #ifdef OPENDHT_PROXY_CLIENT
         if (dht_via_proxy_)
-            dht_via_proxy_->shutdown(onShutdown);
+            dht_via_proxy_->shutdown(onShutdown, stop);
 #endif
         if (dht_)
-            dht_->shutdown(onShutdown);
+            dht_->shutdown(onShutdown, stop);
     });
     cv.notify_all();
 }
@@ -319,11 +321,11 @@ DhtRunner::bindOpDoneCallback(DoneCallbackSimple&& cb) {
 
 bool
 DhtRunner::checkShutdown() {
-    if (running != State::Stopping or ongoing_ops)
-        return false;
     decltype(shutdownCallbacks_) cbs;
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
+        if (running != State::Stopping or ongoing_ops)
+            return false;
         cbs = std::move(shutdownCallbacks_);
     }
     for (auto& cb : cbs)
@@ -355,9 +357,13 @@ DhtRunner::join()
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
+        if (ongoing_ops and logger_) {
+            logger_->w("[runner %p] stopping with %zu remaining ops", this, ongoing_ops.load());
+        }
         pending_ops = decltype(pending_ops)();
         pending_ops_prio = decltype(pending_ops_prio)();
         ongoing_ops = 0;
+        shutdownCallbacks_.clear();
     }
     {
         std::lock_guard<std::mutex> lck(dht_mtx);
@@ -709,11 +715,12 @@ DhtRunner::loop_()
 void
 DhtRunner::get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f, Where w)
 {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (dcb) dcb(false, {});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([=](SecureDht& dht) mutable {
         dht.get(hash, std::move(vcb), bindOpDoneCallback(std::move(dcb)), std::move(f), std::move(w));
@@ -728,11 +735,12 @@ DhtRunner::get(const std::string& key, GetCallback vcb, DoneCallbackSimple dcb, 
 }
 void
 DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Query q) {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (done_cb) done_cb(false, {});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([=](SecureDht& dht) mutable {
         dht.query(hash, std::move(cb), bindOpDoneCallback(std::move(done_cb)), std::move(q));
@@ -744,11 +752,12 @@ std::future<size_t>
 DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
 {
     auto ret_token = std::make_shared<std::promise<size_t>>();
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         ret_token->set_value(0);
         return ret_token->get_future();
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops.emplace([=](SecureDht& dht) mutable {
 #ifdef OPENDHT_PROXY_CLIENT
         auto tokenbGlobal = listener_token_++;
@@ -829,11 +838,12 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
 void
 DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb, time_point created, bool permanent)
 {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (cb) cb(false, {});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([=,
         cb = std::move(cb),
@@ -847,11 +857,12 @@ DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb, time_point created
 void
 DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, time_point created, bool permanent)
 {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (cb) cb(false, {});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([=, cb = std::move(cb)](SecureDht& dht) mutable {
         dht.put(hash, value, bindOpDoneCallback(std::move(cb)), created, permanent);
@@ -888,11 +899,12 @@ DhtRunner::cancelPut(const InfoHash& h, const std::shared_ptr<Value>& value)
 void
 DhtRunner::putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
 {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (cb) cb(false, {});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([=,
         cb = std::move(cb),
@@ -918,11 +930,12 @@ DhtRunner::putSigned(const std::string& key, Value&& value, DoneCallbackSimple c
 void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
 {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (cb) cb(false, {});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([=,
         cb = std::move(cb),
@@ -1008,11 +1021,12 @@ DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb)
 void
 DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
 {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         if (cb) cb(false);
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops_prio.emplace([addr, cb = bindOpDoneCallback(std::move(cb))](SecureDht& dht) mutable {
         dht.pingNode(std::move(addr), std::move(cb));
@@ -1023,9 +1037,9 @@ DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
 void
 DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
 {
+    std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    std::unique_lock<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
         dht.insertNode(id, address);
     });
@@ -1035,9 +1049,9 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
 void
 DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
 {
+    std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) {
         for (auto& node : nodes)
             dht.insertNode(node);
@@ -1061,11 +1075,12 @@ DhtRunner::connectivityChanged()
 
 void
 DhtRunner::findCertificate(InfoHash hash, std::function<void(const Sp<crypto::Certificate>&)> cb) {
+    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
+        lck.unlock();
         cb({});
         return;
     }
-    std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
     pending_ops.emplace([this, hash, cb = std::move(cb)] (SecureDht& dht) {
         dht.findCertificate(hash, [this, cb = std::move(cb)](const Sp<crypto::Certificate>& crt){

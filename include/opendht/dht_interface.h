@@ -61,8 +61,10 @@ public:
 
     /**
      * Performs final operations before quitting.
+     * stop: if true, cancel ongoing operations and call their 'done'
+     *       callbacks synchronously.
      */
-    virtual void shutdown(ShutdownCallback cb) = 0;
+    virtual void shutdown(ShutdownCallback cb, bool stop = false) = 0;
 
     /**
      * Returns true if the node is running (have access to an open socket).

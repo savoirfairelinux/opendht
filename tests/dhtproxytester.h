@@ -36,6 +36,7 @@ class DhtProxyTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testResubscribeGetValues);
     CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST(testFuzzy);
+    CPPUNIT_TEST(testShutdownStop);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -67,6 +68,8 @@ class DhtProxyTester : public CppUnit::TestFixture {
    void testPutGet40KChars();
 
    void testFuzzy();
+
+   void testShutdownStop();
 
  private:
     dht::DhtRunner::Config clientConfig {};

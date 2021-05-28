@@ -95,7 +95,7 @@ public:
     /**
      * Performs final operations before quitting.
      */
-    void shutdown(ShutdownCallback cb) override;
+    void shutdown(ShutdownCallback cb, bool stop = false) override;
 
     /**
      * Returns true if the node is running (have access to an open socket).
