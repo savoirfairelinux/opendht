@@ -68,7 +68,7 @@ public:
      * Build from existing address.
      */
     SockAddr(const sockaddr* sa, socklen_t length) {
-        if (length > sizeof(sockaddr_storage))
+        if (length > static_cast<socklen_t>(sizeof(sockaddr_storage)))
             throw std::runtime_error("Socket address length is too large");
         set(sa, length);
     }
