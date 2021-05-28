@@ -61,6 +61,9 @@ public:
     PkId getLongId() const {
         return key_ ? key_->getPublicKey().getLongId() : PkId();
     }
+    Sp<crypto::PublicKey> getPublicKey() const {
+        return key_ ? key_->getSharedPublicKey() : Sp<crypto::PublicKey>{};
+    }
 
     ValueType secureType(ValueType&& type);
 

@@ -329,11 +329,11 @@ cdef class PrivateKey(_WithID):
     cdef shared_ptr[cpp.PrivateKey] _key
     def getId(self):
         h = InfoHash()
-        h._infohash = self._key.get().getPublicKey().getId()
+        h._infohash = self._key.get().getSharedPublicKey().get().getId()
         return h
     def getPublicKey(self):
         pk = PublicKey()
-        pk._key = self._key.get().getPublicKey()
+        pk._key = self._key.get().getSharedPublicKey()
         return pk
     def decrypt(self, bytes dat):
         cdef size_t d_len = len(dat)
@@ -358,17 +358,17 @@ cdef class PrivateKey(_WithID):
         return k
 
 cdef class PublicKey(_WithID):
-    cdef cpp.PublicKey _key
+    cdef cpp.shared_ptr[cpp.PublicKey] _key
     def getId(self):
         h = InfoHash()
-        h._infohash = self._key.getId()
+        h._infohash = self._key.get().getId()
         return h
     def encrypt(self, bytes dat):
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
         cdef cpp.Blob indat
         indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
-        cdef cpp.Blob encrypted = self._key.encrypt(indat)
+        cdef cpp.Blob encrypted = self._key.get().encrypt(indat)
         cdef char* encrypted_c_str = <char *>encrypted.data()
         cdef Py_ssize_t length = encrypted.size()
         return encrypted_c_str[:length]
@@ -440,7 +440,7 @@ cdef class Identity(object):
     property publickey:
         def __get__(self):
             k = PublicKey()
-            k._key = self._id.first.get().getPublicKey()
+            k._key = self._id.first.get().getSharedPublicKey()
             return k
     property certificate:
         def __get__(self):

@@ -33,7 +33,7 @@ CryptoTester::setUp() {
 void
 CryptoTester::testSignatureEncryption() {
     auto key = dht::crypto::PrivateKey::generate();
-    auto public_key = key.getPublicKey();
+    const auto& public_key = key.getPublicKey();
 
     std::vector<uint8_t> data1 {5, 10};
     std::vector<uint8_t> data2(64 * 1024, 10);

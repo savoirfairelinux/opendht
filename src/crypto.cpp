@@ -368,13 +368,22 @@ PrivateKey::serialize(uint8_t* out, size_t* out_len, const std::string& password
         : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, out, out_len);
 }
 
-PublicKey
+const PublicKey&
 PrivateKey::getPublicKey() const
 {
-    PublicKey pk;
-    if (auto err = gnutls_pubkey_import_privkey(pk.pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
+    return *getSharedPublicKey();
+}
+
+const std::shared_ptr<PublicKey>&
+PrivateKey::getSharedPublicKey() const
+{
+    if (publicKey_)
+        return publicKey_;
+    auto pk = std::make_shared<PublicKey>();
+    if (auto err = gnutls_pubkey_import_privkey(pk->pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
         throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
-    return pk;
+    publicKey_ = pk;
+    return publicKey_;
 }
 
 PublicKey::PublicKey()
@@ -540,12 +549,7 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-#if GNUTLS_VERSION_NUMBER < 0x030401
-    const int flags = 0;
-#else
-    const int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
-#endif
-    if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
+    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get public key ID: wrong output length.");
@@ -1169,7 +1173,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     }
 
     // TODO: compute the subject key using the recommended RFC method
-    auto pk = key.getPublicKey();
+    const auto& pk = key.getPublicKey();
     auto pk_id = pk.getId();
     const std::string uid_str = pk_id.toString();
 

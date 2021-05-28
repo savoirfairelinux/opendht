@@ -97,7 +97,7 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
     cdef cppclass PrivateKey:
         PrivateKey()
-        PublicKey getPublicKey() const
+        shared_ptr[PublicKey] getSharedPublicKey() const
         Blob decrypt(Blob data) const
         @staticmethod
         PrivateKey generate()
