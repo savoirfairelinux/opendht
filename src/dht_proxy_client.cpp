@@ -242,7 +242,7 @@ DhtProxyClient::cancelAllListeners()
 }
 
 void
-DhtProxyClient::shutdown(ShutdownCallback cb)
+DhtProxyClient::shutdown(ShutdownCallback cb, bool)
 {
     stop();
     if (cb)

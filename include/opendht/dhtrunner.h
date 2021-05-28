@@ -408,7 +408,7 @@ public:
     /**
      * Gracefuly disconnect from network.
      */
-    void shutdown(ShutdownCallback cb = {});
+    void shutdown(ShutdownCallback cb = {}, bool stop = false);
 
     /**
      * Quit and wait for all threads to terminate.

@@ -146,8 +146,8 @@ public:
     /**
      * SecureDht to Dht proxy
      */
-    void shutdown(ShutdownCallback cb) override {
-        dht_->shutdown(cb);
+    void shutdown(ShutdownCallback cb, bool stop = false) override {
+        dht_->shutdown(cb, stop);
     }
     void dumpTables() const override {
         dht_->dumpTables();
