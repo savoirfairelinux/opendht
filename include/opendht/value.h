@@ -356,7 +356,7 @@ struct OPENDHT_PUBLIC Value
     void sign(const crypto::PrivateKey& key) {
         if (isEncrypted())
             throw DhtException("Can't sign encrypted data.");
-        owner = std::make_shared<crypto::PublicKey>(key.getPublicKey());
+        owner = key.getSharedPublicKey();
         signature = key.sign(getToSign());
     }
 

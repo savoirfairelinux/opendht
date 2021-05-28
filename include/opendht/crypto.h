@@ -164,7 +164,9 @@ struct OPENDHT_PUBLIC PrivateKey
     ~PrivateKey();
     explicit operator bool() const { return key; }
 
-    PublicKey getPublicKey() const;
+    const PublicKey& getPublicKey() const;
+    const std::shared_ptr<PublicKey>& getSharedPublicKey() const;
+
     int serialize(uint8_t* out, size_t* out_len, const std::string& password = {}) const;
     Blob serialize(const std::string& password = {}) const;
 
@@ -199,7 +201,7 @@ private:
     PrivateKey& operator=(const PrivateKey&) = delete;
     Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
-    //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
+    mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 
 class OPENDHT_PUBLIC RevocationList
