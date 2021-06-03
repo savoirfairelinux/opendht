@@ -873,6 +873,11 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filte
 size_t
 Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
 {
+    if (not id) {
+        if (logger_)
+            logger_->w(id, "Listen called with invalid key");
+        return 0;
+    }
     scheduler.syncTime();
 
     auto token = ++listener_token;
@@ -955,7 +960,9 @@ struct GetStatus : public OpStatus {
 void
 Dht::put(const InfoHash& id, Sp<Value> val, DoneCallback callback, time_point created, bool permanent)
 {
-    if (not val) {
+    if (not id or not val) {
+        if (logger_)
+            logger_->w(id, "Put called with invalid key or value");
         if (callback)
             callback(false, {});
         return;
@@ -1025,6 +1032,13 @@ bool callbackWrapper(Cb get_cb, DoneCallback done_cb, const std::vector<Sp<T>>& 
 void
 Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filter&& filter, Where&& where)
 {
+    if (not id) {
+        if (logger_)
+            logger_->w(id, "Get called with invalid key");
+        if (donecb)
+            donecb(false, {});
+        return;
+    }
     scheduler.syncTime();
 
     auto op = std::make_shared<GetStatus<std::map<Value::Id, Sp<Value>>>>();
@@ -1065,6 +1079,13 @@ Dht::get(const InfoHash& id, GetCallback getcb, DoneCallback donecb, Value::Filt
 
 void Dht::query(const InfoHash& id, QueryCallback cb, DoneCallback done_cb, Query&& q)
 {
+    if (not id) {
+        if (logger_)
+            logger_->w(id, "Query called with invalid key");
+        if (done_cb)
+            done_cb(false, {});
+        return;
+    }
     scheduler.syncTime();
     auto op = std::make_shared<GetStatus<std::vector<Sp<FieldValueIndex>>>>();
     auto f = q.where.getFilter();
