@@ -294,11 +294,6 @@ DhtRunner::shutdown(ShutdownCallback cb, bool stop) {
         if (dht_)
             dht_->shutdown(onShutdown, stop);
     });
-    // Force execution of pending ops
-    if (getStatus() == NodeStatus::Connecting) {
-        status4 = NodeStatus::Disconnected;
-        status6 = NodeStatus::Disconnected;
-    }
     cv.notify_all();
 }
 
@@ -373,7 +368,6 @@ DhtRunner::join()
     {
         std::lock_guard<std::mutex> lck(dht_mtx);
         resetDht();
-        std::lock_guard<std::mutex> lck2(storage_mtx);
         status4 = NodeStatus::Disconnected;
         status6 = NodeStatus::Disconnected;
     }
@@ -709,11 +703,8 @@ DhtRunner::loop_()
     NodeStatus nstatus4 = dht->updateStatus(AF_INET);
     NodeStatus nstatus6 = dht->updateStatus(AF_INET6);
     if (nstatus4 != status4 || nstatus6 != status6) {
-        {
-            std::lock_guard<std::mutex> lck(storage_mtx);
-            status4 = nstatus4;
-            status6 = nstatus6;
-        }
+        status4 = nstatus4;
+        status6 = nstatus6;
         if (statusCb)
             statusCb(status4, status6);
     }
