@@ -19,6 +19,9 @@
 *.exe
 *.out
 *.app
+**/dhtnode
+**/dhtchat
+**/dhtscanner
 
 # Autotools
 /ac
