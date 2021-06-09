@@ -20,7 +20,6 @@ option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_SYSTEMD_UNIT_FILE_LOCATION "Where to install systemd unit file")
-option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
 option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
 option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restinio and jsoncpp" OFF)
@@ -28,7 +27,6 @@ option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
-option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
 CMAKE_DEPENDENT_OPTION(OPENDHT_HTTP "Build embedded http(s) client" OFF "NOT OPENDHT_PROXY_SERVER;NOT OPENDHT_PROXY_CLIENT" ON)
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
@@ -46,22 +44,12 @@ if (NOT MSVC)
     find_package (Threads)
     find_package (PkgConfig REQUIRED)
     find_package (GnuTLS 3.3 REQUIRED)
-    pkg_search_module (Nettle nettle)
+    pkg_search_module (Nettle REQUIRED nettle)
     find_package (Msgpack 1.2 REQUIRED)
     if (OPENDHT_TOOLS)
         find_package (Readline 6 REQUIRED)
     endif ()
-    if (NOT OPENDHT_ARGON2)
-        pkg_search_module(argon2 libargon2)
-        if (argon2_FOUND)
-            message("-- Found Argon2: " ${argon2_LIBRARY_DIRS} " (found version \"" ${argon2_VERSION} "\")")
-            link_directories (${argon2_LIBRARY_DIRS})
-        else ()
-            message("Argon2 not found, using included version.")
-            set(OPENDHT_ARGON2 ON)
-        endif()
-    endif ()
-
+    pkg_search_module(argon2 REQUIRED libargon2)
     pkg_search_module(Jsoncpp jsoncpp)
     if (Jsoncpp_FOUND)
         add_definitions(-DOPENDHT_JSONCPP)
@@ -94,9 +82,6 @@ if (NOT MSVC)
             else ()
                 message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
             endif()
-        endif()
-        if (OPENDHT_PROXY_HTTP_PARSER_FORK)
-            add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
         endif()
     else ()
         set(OPENDHT_PROXY_OPENSSL OFF)
@@ -187,6 +172,7 @@ if (Jsoncpp_INCLUDE_DIRS)
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 link_directories (${Jsoncpp_LIBRARY_DIRS})
+link_directories (${argon2_LIBRARY_DIRS})
 include_directories (
     ./
     include/
@@ -314,23 +300,6 @@ if (OPENDHT_HTTP)
   )
 endif ()
 
-if(OPENDHT_ARGON2)
-    # make sure argon2 submodule is up to date and initialized
-    message("Initializing Argon2 submodule")
-    execute_process(COMMAND git submodule update --init)
-
-    # add local argon2 files to build
-    list (APPEND opendht_SOURCES
-        argon2/src/argon2.c
-        argon2/src/core.c
-        argon2/src/blake2/blake2b.c
-        argon2/src/thread.c
-        argon2/src/ref.c
-        argon2/src/encoding.c
-    )
-    include_directories(argon2/include/)
-endif()
-
 if (MSVC)
     list (APPEND opendht_HEADERS src/compat/msvc/unistd.h)
 endif ()
@@ -343,11 +312,7 @@ if (OPENDHT_STATIC)
             ${opendht_HEADERS}
         )
         set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
-        if (OPENDHT_ARGON2)
-            target_include_directories(opendht-static SYSTEM PRIVATE argon2)
-        else ()
-            target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
-        endif ()
+        target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
         target_link_libraries(opendht-static
             PRIVATE  ${argon2_LIBRARIES}
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
@@ -412,25 +377,20 @@ if (OPENDHT_SHARED)
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
-    if (OPENDHT_ARGON2)
-        target_include_directories(opendht SYSTEM PRIVATE argon2)
-    else ()
-        target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
-        target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
-    endif ()
+    target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     if (APPLE)
         target_link_libraries(opendht
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
             PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                     ${Jsoncpp_LIBRARIES}
-                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
+                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES}
             SYSTEM "-framework CoreFoundation" "-framework Security")
     else ()
         target_link_libraries(opendht
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
             PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                     ${Jsoncpp_LIBRARIES}
-                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES})
     endif ()
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)

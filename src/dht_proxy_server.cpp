@@ -39,26 +39,6 @@
 using namespace std::placeholders;
 using namespace std::chrono_literals;
 
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-namespace restinio {
-struct custom_http_methods_t
-{
-    static constexpr restinio::http_method_id_t from_nodejs(int m) noexcept {
-        if(m == method_listen.raw_id())
-            return method_listen;
-        else if(m == method_stats.raw_id())
-            return method_stats;
-        else if(m == method_sign.raw_id())
-            return method_sign;
-        else if(m == method_encrypt.raw_id())
-            return method_encrypt;
-        else
-            return restinio::default_http_methods_t::from_nodejs(m);
-    }
-};
-}
-#endif
-
 namespace dht {
 constexpr char RESP_MSG_JSON_INCORRECT[] = "{\"err:\":\"Incorrect JSON\"}";
 constexpr char RESP_MSG_SERVICE_UNAVAILABLE[] = "{\"err\":\"Incorrect DhtRunner\"}";
@@ -156,9 +136,6 @@ DhtProxyServer::onConnectionClosed(restinio::connection_id_t id)
 struct DhtProxyServer::RestRouterTraitsTls : public restinio::default_tls_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-#endif
     using logger_t = opendht_logger_t;
     using request_handler_t = RestRouter;
     using connection_state_listener_t = ConnectionListener;
@@ -166,9 +143,6 @@ struct DhtProxyServer::RestRouterTraitsTls : public restinio::default_tls_traits
 struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
 {
     using timer_manager_t = restinio::asio_timer_manager_t;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    using http_methods_mapper_t = restinio::custom_http_methods_t;
-#endif
     using logger_t = opendht_logger_t;
     using request_handler_t = RestRouter;
     using connection_state_listener_t = ConnectionListener;
@@ -613,11 +587,6 @@ DhtProxyServer::createRestRouter()
     // **************************** LEGACY ROUTES ****************************
     // node.info
     router->http_get("/", std::bind(&DhtProxyServer::getNodeInfo, this, _1, _2));
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    // node.stats
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_stats.raw_id()),
-                        "/", std::bind(&DhtProxyServer::getStats, this, _1, _2));
-#endif
     // key.options
     router->add_handler(restinio::http_method_options(),
                         "/:hash", std::bind(&DhtProxyServer::options, this, _1, _2));
@@ -625,11 +594,6 @@ DhtProxyServer::createRestRouter()
     router->http_get("/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
     router->http_post("/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    // key.listen
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_listen.raw_id()),
-                        "/:hash", std::bind(&DhtProxyServer::listen, this, _1, _2));
-#endif
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     // key.subscribe
     router->add_handler(restinio::http_method_subscribe(),
@@ -639,14 +603,6 @@ DhtProxyServer::createRestRouter()
                         "/:hash", std::bind(&DhtProxyServer::unsubscribe, this, _1, _2));
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 #ifdef OPENDHT_PROXY_SERVER_IDENTITY
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-    // key.sign
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_sign.raw_id()),
-                        "/:hash", std::bind(&DhtProxyServer::putSigned, this, _1, _2));
-    // key.encrypt
-    router->add_handler(restinio::custom_http_methods_t::from_nodejs(restinio::method_encrypt.raw_id()),
-                        "/:hash", std::bind(&DhtProxyServer::putEncrypted, this, _1, _2));
-#endif
 #endif // OPENDHT_PROXY_SERVER_IDENTITY
 
     // **************************** NEW ROUTES ****************************

@@ -829,13 +829,8 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         restinio::http_request_header_t header;
         if (deviceKey_.empty()){ // listen
             method = ListenMethod::LISTEN;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-            header.method(restinio::method_listen);
-            header.request_target("/" + key.toString());
-#else
             header.method(restinio::http_method_get());
             header.request_target("/key/" + key.toString() + "/listen");
-#endif
         }
         else {
             method = ListenMethod::SUBSCRIBE;
@@ -1151,13 +1146,8 @@ DhtProxyClient::restartListeners(const asio::error_code &ec)
             auto cb = listener.cb;
             // define header
             restinio::http_request_header_t header;
-#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
-            header.method(restinio::method_listen);
-            header.request_target("/" + search.first.toString());
-#else
             header.method(restinio::http_method_get());
             header.request_target("/key/" + search.first.toString() + "/listen");
-#endif
             sendListen(header, cb, opstate, listener, ListenMethod::LISTEN);
         }
     }
