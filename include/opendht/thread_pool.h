@@ -59,6 +59,10 @@ public:
         return get(std::move(cb));
     }
 
+    void onThreadCreated(std::function<void(void)>&& cb) {
+        onThreadCreated_ = std::move(cb);
+    }
+
     void stop();
     void join();
 
@@ -69,7 +73,7 @@ private:
     unsigned readyThreads_ {0};
     std::mutex lock_ {};
     std::condition_variable cv_ {};
-
+    std::function<void(void)> onThreadCreated_;
     const unsigned maxThreads_;
     bool running_ {true};
 };

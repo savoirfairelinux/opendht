@@ -74,6 +74,9 @@ ThreadPool::run(std::function<void()>&& cb)
         threads_.emplace_back(new ThreadState());
         auto& t = *threads_.back();
         t.thread = std::thread([&]() {
+            if (onThreadCreated_) {
+                onThreadCreated_();
+            }
             while (t.run) {
                 std::function<void()> task;
 
