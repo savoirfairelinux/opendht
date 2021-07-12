@@ -103,7 +103,7 @@ for r in results:
 
 ## Contact
 
-IRC: join us on Freenode at [`#opendht`](https://webchat.freenode.net/?channels=%23opendht).
+IRC: join us on Libera.chat at [`#opendht`](https://web.libera.chat/#opendht).
 
 ## License
 Copyright (C) 2014-2020 Savoir-faire Linux Inc.
