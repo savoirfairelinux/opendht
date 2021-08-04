@@ -30,6 +30,8 @@
 #include <sstream>
 #include <fstream>
 
+#include <inttypes.h>
+
 namespace dht {
 
 using namespace std::placeholders;
@@ -489,7 +491,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
             /* only put the value if the node doesn't already have it */
             if (not hasValue or seq_no < a.value->seq) {
                 if (logger_)
-                    logger_->d(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
+                    logger_->d(sr->id, sn->node->id, "[search %s] [node %s] sending 'put' (vid: %016" PRIx64 ")",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                 auto created = a.permanent ? time_point::max() : a.created;
                 sn->acked[a.value->id] = {
@@ -498,7 +500,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                 };
             } else if (hasValue and a.permanent) {
                 if (logger_)
-                    logger_->w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %d)",
+                    logger_->w(sr->id, sn->node->id, "[search %s] [node %s] sending 'refresh' (vid: %016" PRIx64 ")",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                 sn->acked[a.value->id] = {
                     network_engine.sendRefreshValue(sn->node, sr->id, a.value->id, sn->token, onDone,
@@ -528,7 +530,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                 };
             } else {
                 if (logger_)
-                    logger_->w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %d). Aborting.",
+                    logger_->w(sr->id, sn->node->id, "[search %s] [node %s] already has value (vid: %016" PRIx64 "). Aborting.",
                         sr->id.toString().c_str(), sn->node->toString().c_str(), a.value->id);
                 auto ack_req = std::make_shared<net::Request>(net::Request::State::COMPLETED);
                 ack_req->reply_time = now;
@@ -567,7 +569,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                     sendQuery = true;
                 } else {
                     if (logger_)
-                        logger_->w(sr->id, n.node->id, "[search %s] [node %s] sending 'put' (vid: %d)",
+                        logger_->w(sr->id, n.node->id, "[search %s] [node %s] sending 'put' (vid: %016" PRIx64 ")",
                             sr->id.toString().c_str(), n.node->toString().c_str(), a.value->id);
                     n.acked[a.value->id] = {
                         network_engine.sendAnnounceValue(n.node, sr->id, a.value, a.created, n.token, onDone, onExpired),

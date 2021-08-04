@@ -467,7 +467,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                                   << "   hash: " << p.hash() << std::endl;
                         std::cout << "   entries:" << std::endl;
                         for (const auto& v : vals)
-                             std::cout << "      " << v->first.toString() << "[vid: " << v->second << "]" << std::endl;
+                             std::cout << "      " << v->first.toString() << "[vid: " << std::hex << v->second << std::dec << "]" << std::endl;
                     },
                     [start](bool ok) {
                         auto end = std::chrono::high_resolution_clock::now();
