@@ -54,7 +54,7 @@ DhtRunnerTester::tearDown() {
     node1.shutdown(shutdown);
     node2.shutdown(shutdown);
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 5s, [&]{ return done == 2; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 12s, [&]{ return done == 2; }));
     node1.join();
     node2.join();
 }
@@ -244,12 +244,12 @@ DhtRunnerTester::testIdOps() {
         std::lock_guard<std::mutex> lk(mutex);
         valueCount++;
         cv.notify_all();
-        return false;
+        return true;
     });
 
     {
         std::unique_lock<std::mutex> lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 4; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 7; }));
     }
 }
 
