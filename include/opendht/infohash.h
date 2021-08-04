@@ -342,7 +342,7 @@ Hash<N>::getRandom(Rd& rdev)
     return h;
 }
 
-struct HexMap : public std::array<std::array<char, 2>, 256> {
+struct alignas(std::max_align_t) HexMap : public std::array<std::array<char, 2>, 256> {
     HexMap() {
         for (size_t i=0; i<size(); i++) {
             auto& e = (*this)[i];
@@ -376,7 +376,7 @@ template <size_t N>
 const char*
 Hash<N>::to_c_str() const
 {
-    thread_local std::array<char, N*2+1> buf;
+    alignas(std::max_align_t) thread_local std::array<char, N*2+1> buf;
     for (size_t i=0; i<N; i++) {
         auto b = buf.data()+i*2;
         const auto& m = hex_map[data_[i]];
