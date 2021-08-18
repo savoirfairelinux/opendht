@@ -1265,11 +1265,7 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
         logger_->d("[proxy:client] [resubscribe] [search %s]", key.to_c_str());
 
     auto opstate = listener.opstate;
-    opstate->stop = true;
-    if (listener.request){
-        listener.request.reset();
-    }
-    opstate->stop = false;
+    listener.request.reset(); // This will update ok to false
     opstate->ok = true;
 
     restinio::http_request_header_t header;
