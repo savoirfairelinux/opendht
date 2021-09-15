@@ -27,6 +27,8 @@
 #include <future>
 #include <functional>
 
+#include <ciso646> // fix windows compiler bug
+
 namespace dht {
 
 class OPENDHT_PUBLIC ThreadPool {
