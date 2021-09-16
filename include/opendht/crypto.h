@@ -598,6 +598,8 @@ struct OPENDHT_PUBLIC Certificate {
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
+    InfoHash cachedId_ {};
+    PkId cachedLongId_ {};
 
     struct crlNumberCmp {
         bool operator() (const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const {

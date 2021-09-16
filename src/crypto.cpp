@@ -853,12 +853,15 @@ Certificate::getId() const
 {
     if (not cert)
         return {};
+    if (cachedId_)
+        return cachedId_;
     InfoHash id;
     size_t sz = id.size();
     if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
         throw CryptoException(std::string("Can't get certificate public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get certificate public key ID: wrong output length.");
+    cachedId_ = id;
     return id;
 }
 
@@ -867,6 +870,8 @@ Certificate::getLongId() const
 {
     if (not cert)
         return {};
+    if (cachedLongId_)
+        return cachedLongId_;
 #if GNUTLS_VERSION_NUMBER < 0x030401
     throw CryptoException("Can't get certificate 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
 #else
@@ -876,6 +881,7 @@ Certificate::getLongId() const
         throw CryptoException(std::string("Can't get certificate 256 bits public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
+    cachedLongId_ = id;
     return id;
 #endif
 }
