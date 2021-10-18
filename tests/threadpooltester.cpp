@@ -21,6 +21,7 @@
 
 #include "opendht/thread_pool.h"
 #include <atomic>
+#include <thread>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(ThreadPoolTester);
