@@ -173,7 +173,7 @@ int dht_privatekey_export(const dht_privatekey* k, char* out, size_t* out_size, 
 
 dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
     const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
-    return reinterpret_cast<dht_publickey*>(new PubkeySp(std::make_shared<dht::crypto::PublicKey>(key->getPublicKey())));
+    return reinterpret_cast<dht_publickey*>(new PubkeySp(key->getSharedPublicKey()));
 }
 
 void dht_privatekey_delete(dht_privatekey* pk) {
