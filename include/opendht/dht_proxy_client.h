@@ -337,6 +337,7 @@ private:
     NodeStats stats6_ {};
     SockAddr publicAddressV4_;
     SockAddr publicAddressV6_;
+    std::atomic_bool launchConnectedCbs_ {false};
 
     InfoHash myid {};
 
