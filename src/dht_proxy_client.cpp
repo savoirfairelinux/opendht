@@ -720,7 +720,8 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     }
     auto newStatus = std::max(statusIpv4_, statusIpv6_);
     if (newStatus == NodeStatus::Connected) {
-        if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting) {
+        if (oldStatus == NodeStatus::Disconnected || oldStatus == NodeStatus::Connecting || launchConnectedCbs_) {
+            launchConnectedCbs_ = false;
             listenerRestartTimer_->expires_at(std::chrono::steady_clock::now());
             listenerRestartTimer_->async_wait(std::bind(&DhtProxyClient::restartListeners, this, std::placeholders::_1));
             if (not onConnectCallbacks_.empty()) {
@@ -1160,6 +1161,9 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
     {
         // If a push notification is received, the proxy is up and running
         std::lock_guard<std::mutex> l(lockCurrentProxyInfos_);
+        auto oldStatus = std::max(statusIpv4_, statusIpv6_);
+        if (oldStatus != NodeStatus::Connected)
+            launchConnectedCbs_ = true;
         statusIpv4_ = NodeStatus::Connected;
         statusIpv6_ = NodeStatus::Connected;
     }
