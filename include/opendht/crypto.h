@@ -541,8 +541,8 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
-    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false);
-    static Certificate generate(const CertificateRequest& request, const Identity& ca);
+    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false, int64_t validity = 0);
+    static Certificate generate(const CertificateRequest& request, const Identity& ca, int64_t validity = 0);
 
     gnutls_x509_crt_t getCopy() const {
         if (not cert)
@@ -591,6 +591,12 @@ struct OPENDHT_PUBLIC Certificate {
      * https://www.gnutls.org/manual/html_node/Error-codes.html
      */
     std::pair<std::string, Blob> generateOcspRequest(gnutls_x509_crt_t& issuer);
+
+    /**
+     * Change certificate's expiration
+     */
+    void setValidity(const Identity& ca, int64_t validity);
+    void setValidity(const PrivateKey& key, int64_t validity);
 
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
