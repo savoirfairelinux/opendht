@@ -1163,14 +1163,14 @@ setRandomSerial(gnutls_x509_crt_t cert)
 }
 
 Certificate
-Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca)
+Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca, int64_t validity)
 {
     gnutls_x509_crt_t cert;
     if (not key.x509_key or gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         return {};
     Certificate ret {cert};
 
-    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
+    setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
     if (int err = gnutls_x509_crt_set_key(cert, key.x509_key)) {
         throw CryptoException(std::string("Error when setting certificate key ") + gnutls_strerror(err));
     }
@@ -1216,7 +1216,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
 }
 
 Certificate
-Certificate::generate(const CertificateRequest& request, const Identity& ca)
+Certificate::generate(const CertificateRequest& request, const Identity& ca, int64_t validity)
 {
     gnutls_x509_crt_t cert;
     if (auto err = gnutls_x509_crt_init(&cert))
@@ -1229,7 +1229,7 @@ Certificate::generate(const CertificateRequest& request, const Identity& ca)
         throw CryptoException(std::string("Can't set certificate version: ") + gnutls_strerror(err));
     }
 
-    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
+    setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
     setRandomSerial(cert);
 
     if (auto err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
@@ -1238,6 +1238,32 @@ Certificate::generate(const CertificateRequest& request, const Identity& ca)
     ret.issuer = ca.second;
 
     return ret.getPacked();
+}
+
+void
+Certificate::setValidity(const Identity& ca, int64_t validity)
+{
+    setValidityPeriod(cert, validity);
+    setRandomSerial(cert);
+    if (ca.first && ca.second) {
+        if (not ca.second->isCA()) {
+            throw CryptoException("Signing certificate must be CA");
+        }
+        if (int err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
+            throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
+        }
+    }
+}
+
+void
+Certificate::setValidity(const PrivateKey& key, int64_t validity)
+{
+    setValidityPeriod(cert, validity);
+    setRandomSerial(cert);
+    const auto& pk = key.getPublicKey();
+    if (int err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
+        throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
+    }
 }
 
 std::vector<std::shared_ptr<RevocationList>>
