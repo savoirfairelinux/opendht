@@ -1,7 +1,7 @@
 dnl define macros
 m4_define([opendht_major_version], 2)
 m4_define([opendht_minor_version], 3)
-m4_define([opendht_patch_version], 0)
+m4_define([opendht_patch_version], 2)
 m4_define([opendht_version],
 		  [opendht_major_version.opendht_minor_version.opendht_patch_version])
 
