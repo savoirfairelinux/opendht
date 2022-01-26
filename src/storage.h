@@ -283,7 +283,7 @@ Storage::expire(const InfoHash& id, time_point now)
     });
     std::vector<Sp<Value>> ret;
     ret.reserve(std::distance(r, values.end()));
-    ssize_t size_diff {};
+    ssize_t size_diff {0};
     std::for_each(r, values.end(), [&](const ValueStorage& v) {
         size_diff -= v.data->size();
         if (v.store_bucket)
