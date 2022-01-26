@@ -102,7 +102,7 @@ benchPingPong(unsigned netSize, unsigned n_parallel) {
 
     auto start = clock::now();
 
-    for (unsigned i=0; i<n_parallel; i++) 
+    for (unsigned i=0; i<n_parallel; i++)
         ping(pong_node, locs[i].first);
 
     {
