@@ -69,7 +69,7 @@ constexpr gnutls_digest_algorithm_t gnutlsHashAlgo(size_t min_res) {
                                GNUTLS_DIG_SHA1));
 }
 
-constexpr size_t gnutlsHashSize(int algo) {
+constexpr size_t gnutlsHashSize(gnutls_digest_algorithm_t algo) {
     return (algo == GNUTLS_DIG_SHA512) ? 512/8 : (
            (algo == GNUTLS_DIG_SHA256) ? 256/8 : (
            (algo == GNUTLS_DIG_SHA1)   ? 160/8 : 0 ));
