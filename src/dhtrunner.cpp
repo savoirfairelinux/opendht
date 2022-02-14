@@ -705,8 +705,8 @@ DhtRunner::loop_()
             rcv_free.splice(rcv_free.end(), std::move(received_treated));
     }
 
-    if (dropped)
-        std::cerr << "Dropped " << dropped << " packets with high delay" << std::endl;
+    if (dropped && logger_)
+        logger_->e("[runner %p] Dropped %zu packets with high delay.", this, dropped);
 
     NodeStatus nstatus4 = dht->updateStatus(AF_INET);
     NodeStatus nstatus6 = dht->updateStatus(AF_INET6);
