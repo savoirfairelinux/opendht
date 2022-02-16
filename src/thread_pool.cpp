@@ -28,12 +28,6 @@ namespace dht {
 
 constexpr const size_t IO_THREADS_MAX {64};
 
-struct ThreadPool::ThreadState
-{
-    std::thread thread {};
-    std::atomic_bool run {true};
-};
-
 ThreadPool&
 ThreadPool::computation()
 {
@@ -67,14 +61,12 @@ void
 ThreadPool::run(std::function<void()>&& cb)
 {
     std::unique_lock<std::mutex> l(lock_);
-    if (not running_) return;
+    if (not cb or not running_) return;
 
     // launch new thread if necessary
     if (not readyThreads_ && threads_.size() < maxThreads_) {
-        threads_.emplace_back(new ThreadState());
-        auto& t = *threads_.back();
-        t.thread = std::thread([&]() {
-            while (t.run) {
+        threads_.emplace_back(std::make_unique<std::thread>([this]() {
+            while (true) {
                 std::function<void()> task;
 
                 // pick task from queue
@@ -82,10 +74,10 @@ ThreadPool::run(std::function<void()>&& cb)
                     std::unique_lock<std::mutex> l(lock_);
                     readyThreads_++;
                     cv_.wait(l, [&](){
-                        return not t.run or not tasks_.empty();
+                        return not running_ or not tasks_.empty();
                     });
                     readyThreads_--;
-                    if (not t.run)
+                    if (not running_)
                         break;
                     task = std::move(tasks_.front());
                     tasks_.pop();
@@ -93,14 +85,13 @@ ThreadPool::run(std::function<void()>&& cb)
 
                 // run task
                 try {
-                    if (task)
-                        task();
+                    task();
                 } catch (const std::exception& e) {
                     // LOG_ERR("Exception running task: %s", e.what());
                     std::cerr << "Exception running task: " << e.what() << std::endl;
                 }
             }
-        });
+        }));
     }
 
     // push task to queue
@@ -113,12 +104,8 @@ ThreadPool::run(std::function<void()>&& cb)
 void
 ThreadPool::stop()
 {
-    {
-        std::lock_guard<std::mutex> l(lock_);
-        running_ = false;
-    }
-    for (auto& t : threads_)
-        t->run = false;
+    std::lock_guard<std::mutex> l(lock_);
+    running_ = false;
     cv_.notify_all();
 }
 
@@ -127,7 +114,7 @@ ThreadPool::join()
 {
     stop();
     for (auto& t : threads_)
-        t->thread.join();
+        t->join();
     threads_.clear();
 }
 
@@ -147,7 +134,7 @@ Executor::run_(std::function<void()>&& task)
 {
     current_++;
     std::weak_ptr<Executor> w = shared_from_this();
-    threadPool_.get().run([w,task] {
+    threadPool_.get().run([w,task = std::move(task)] {
         try {
             task();
         } catch (const std::exception& e) {

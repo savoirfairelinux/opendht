@@ -48,7 +48,7 @@ ThreadPoolTester::testThreadPool() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     pool.join();
-    CPPUNIT_ASSERT(count.load() == N);
+    CPPUNIT_ASSERT_EQUAL(N, count.load());
 }
 
 void

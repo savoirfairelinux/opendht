@@ -65,15 +65,14 @@ public:
     void join();
 
 private:
-    struct ThreadState;
-    std::queue<std::function<void()>> tasks_ {};
-    std::vector<std::unique_ptr<ThreadState>> threads_;
-    unsigned readyThreads_ {0};
     std::mutex lock_ {};
     std::condition_variable cv_ {};
+    std::queue<std::function<void()>> tasks_ {};
+    std::vector<std::unique_ptr<std::thread>> threads_;
+    unsigned readyThreads_ {0};
+    bool running_ {true};
 
     const unsigned maxThreads_;
-    bool running_ {true};
 };
 
 class OPENDHT_PUBLIC Executor : public std::enable_shared_from_this<Executor> {
