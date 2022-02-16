@@ -37,8 +37,7 @@ public:
         storedValues_.emplace(expiration, std::pair<InfoHash, Value::Id>(id, value.id));
     }
     void erase(const InfoHash& id, const Value& value, time_point expiration) {
-        auto size = value.size();
-        totalSize_ -= size;
+        totalSize_ -= value.size();
         auto range = storedValues_.equal_range(expiration);
         for (auto rit = range.first; rit != range.second;) {
             if (rit->second.first == id && rit->second.second == value.id) {
