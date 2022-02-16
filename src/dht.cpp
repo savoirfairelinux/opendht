@@ -1438,6 +1438,7 @@ Dht::connectivityChanged(sa_family_t af)
     reported_addr.erase(std::remove_if(reported_addr.begin(), reported_addr.end(), [&](const ReportedAddr& addr){
         return addr.second.getFamily() == af;
     }), reported_addr.end());
+    startBootstrap(); // will only happen if disconnected
 }
 
 void
