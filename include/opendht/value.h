@@ -117,7 +117,7 @@ struct OPENDHT_PUBLIC ValueType {
 
     Id id {0};
     std::string name {};
-    duration expiration {60 * 10};
+    duration expiration {std::chrono::minutes(10)};
     StorePolicy storePolicy {DEFAULT_STORE_POLICY};
     EditPolicy editPolicy {DEFAULT_EDIT_POLICY};
 };
