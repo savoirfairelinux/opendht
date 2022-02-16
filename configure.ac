@@ -175,7 +175,7 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     AS_IF([test "x$http_parser_headers" != "xyes"], AC_MSG_ERROR([Missing HttpParser headers files]))
 ])
 
-CXXFLAGS="${CXXFLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
+CXXFLAGS="${CXXFLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
