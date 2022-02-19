@@ -84,6 +84,7 @@ public:
      * @return The time for the next job to run.
      */
     time_point run() {
+        size_t count {0};
         while (not timers.empty()) {
             auto timer = timers.begin();
             /*
@@ -99,7 +100,9 @@ public:
 
             if (job->do_)
                 job->do_();
+            count++;
         }
+        std::cerr << "run " << count << " scheduled " << timers.size() << std::endl;
         return getNextJobTime();
     }
 

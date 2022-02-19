@@ -428,7 +428,7 @@ if (OPENDHT_C)
     )
     install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
     install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht-c.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-    install (FILES c/opendht_c.h DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
+    install (FILES c/opendht_c.h DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opendht)
 endif ()
 
 if (OPENDHT_TOOLS)
