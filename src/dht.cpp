@@ -38,6 +38,7 @@ using namespace std::placeholders;
 
 constexpr std::chrono::minutes Dht::MAX_STORAGE_MAINTENANCE_EXPIRE_TIME;
 constexpr std::chrono::minutes Dht::SEARCH_EXPIRE_TIME;
+constexpr std::chrono::seconds Dht::BOOTSTRAP_PERIOD;
 constexpr duration Dht::LISTEN_EXPIRE_TIME;
 constexpr duration Dht::LISTEN_EXPIRE_TIME_PUBLIC;
 constexpr duration Dht::REANNOUNCE_MARGIN;
@@ -51,9 +52,9 @@ Dht::updateStatus(sa_family_t af)
     d.status = d.getStatus(scheduler.time());
     if (d.status != old) {
         auto& other = dht(af == AF_INET ? AF_INET6 : AF_INET);
-        if (other.status == NodeStatus::Disconnected && d.status == NodeStatus::Disconnected)
+        if (other.status == NodeStatus::Disconnected && d.status == NodeStatus::Disconnected) {
             onDisconnected();
-        else if (other.status == NodeStatus::Connected || d.status == NodeStatus::Connected) {
+        } else if (other.status == NodeStatus::Connected || d.status == NodeStatus::Connected) {
             onConnected();
         }
     }
@@ -2018,11 +2019,7 @@ Dht::expire()
 void
 Dht::onConnected()
 {
-    if (bootstrapJob) {
-        bootstrapJob->cancel();
-        bootstrapJob.reset();
-    }
-    bootstrap_period = std::chrono::seconds(10);
+    stopBootstrap();
     auto callbacks = std::move(onConnectCallbacks_);
     while (not callbacks.empty()) {
         callbacks.front()();
@@ -2032,6 +2029,13 @@ Dht::onConnected()
 
 void
 Dht::onDisconnected()
+{
+    if (not bootstrapJob)
+        bootstrap();
+}
+
+void
+Dht::bootstrap()
 {
     if (dht4.status != NodeStatus::Disconnected || dht6.status != NodeStatus::Disconnected)
         return;
@@ -2052,8 +2056,25 @@ Dht::onDisconnected()
     }
     if (bootstrapJob)
         bootstrapJob->cancel();
-    bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::onDisconnected, this));
+    bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::bootstrap, this));
     bootstrap_period *= 2;
+}
+
+void
+Dht::startBootstrap()
+{
+    stopBootstrap();
+    bootstrapJob = scheduler.add(scheduler.time(), std::bind(&Dht::bootstrap, this));
+}
+
+void
+Dht::stopBootstrap()
+{
+    if (bootstrapJob) {
+        bootstrapJob->cancel();
+        bootstrapJob.reset();
+    }
+    bootstrap_period = BOOTSTRAP_PERIOD;
 }
 
 void
