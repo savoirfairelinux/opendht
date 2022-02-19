@@ -30,6 +30,7 @@ endif ()
 if (OPENDHT_C)
     add_executable (dhtcnode dhtcnode.c)
     target_link_libraries (dhtcnode LINK_PUBLIC opendht-c ${READLINE_LIBRARIES})
+    target_include_directories (dhtcnode SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/c)
 endif ()
 
 if (NOT DEFINED CMAKE_INSTALL_BINDIR)
