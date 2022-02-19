@@ -43,6 +43,7 @@ constexpr duration Dht::LISTEN_EXPIRE_TIME;
 constexpr duration Dht::LISTEN_EXPIRE_TIME_PUBLIC;
 constexpr duration Dht::REANNOUNCE_MARGIN;
 static constexpr size_t MAX_REQUESTS_PER_SEC {8 * 1024};
+static constexpr duration BOOTSTRAP_PERIOD_MAX {std::chrono::hours(24)};
 
 NodeStatus
 Dht::updateStatus(sa_family_t af)
@@ -2058,7 +2059,7 @@ Dht::bootstrap()
     if (bootstrapJob)
         bootstrapJob->cancel();
     bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::bootstrap, this));
-    bootstrap_period *= 2;
+    bootstrap_period = std::min(bootstrap_period * 2, BOOTSTRAP_PERIOD_MAX);
 }
 
 void
