@@ -36,7 +36,6 @@
 
 namespace dht {
 
-constexpr std::chrono::seconds DhtRunner::BOOTSTRAP_PERIOD;
 static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
 
 struct DhtRunner::Listener {

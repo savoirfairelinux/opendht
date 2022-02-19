@@ -456,8 +456,6 @@ public:
     void forwardAllMessages(bool forward);
 
 private:
-    static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
-
     enum class State {
         Idle,
         Running,
