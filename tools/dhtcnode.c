@@ -1,4 +1,4 @@
-#include <c/opendht_c.h>
+#include <opendht_c.h>
 
 #include <stdio.h>
 #include <string.h>
