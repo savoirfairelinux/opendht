@@ -97,8 +97,18 @@ const char* dht_value_get_user_type(const dht_value* data) {
     return vsp->user_type.c_str();
 }
 
+void dht_value_set_user_type(dht_value* data, const char* user_type) {
+    (*reinterpret_cast<ValueSp*>(data))->user_type = user_type;
+}
+
 dht_value* dht_value_new(const uint8_t* data, size_t size) {
     return reinterpret_cast<dht_value*>(new ValueSp(std::make_shared<dht::Value>(data, size)));
+}
+
+dht_value* dht_value_new_from_string(const char* str) {
+    ValueSp value = std::make_shared<dht::Value>((const uint8_t*)str, strlen(str));
+    value->user_type = "text/plain";
+    return reinterpret_cast<dht_value*>(new ValueSp(std::move(value)));
 }
 
 dht_value* dht_value_ref(const dht_value* v) {
