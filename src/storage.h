@@ -58,6 +58,7 @@ struct ValueStorage {
     Sp<Value> data {};
     time_point created {};
     time_point expiration {};
+    Sp<Scheduler::Job> expiration_job {};
     StorageBucket* store_bucket {nullptr};
 
     ValueStorage() {}
@@ -142,14 +143,15 @@ struct Storage {
      * @param vid  The value id
      * @return time of the next expiration, time_point::max() if no expiration
      */
-    time_point refresh(const time_point& now, const Value::Id& vid, const TypeStore& types) {
+    std::pair<ValueStorage*, time_point>
+    refresh(const time_point& now, const Value::Id& vid, const TypeStore& types) {
         for (auto& vs : values)
             if (vs.data->id == vid) {
                 vs.created = now;
                 vs.expiration = std::max(vs.expiration, now + types.getType(vs.data->type).expiration);
-                return vs.expiration;
+                return {&vs, vs.expiration};
             }
-        return time_point::max();
+        return {nullptr, time_point::max()};
     }
 
     size_t listen(ValueCallback& cb, Value::Filter& f, const Sp<Query>& q);
@@ -197,9 +199,9 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
     if (it != values.end()) {
         /* Already there, only need to refresh */
         it->created = created;
-        size_t size_old = it->data->size();
-        ssize_t size_diff = size_new - (ssize_t)size_old;
         if (it->data != value) {
+            size_t size_old = it->data->size();
+            ssize_t size_diff = size_new - (ssize_t)size_old;
             //DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             // clear quota for previous value
             if (it->store_bucket)
@@ -213,7 +215,6 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
             total_size += size_diff;
             return std::make_pair(&(*it), StoreDiff{size_diff, 0, 0});
         }
-        return std::make_pair(nullptr, StoreDiff{});
     } else {
         //DHT_LOG.DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
         if (values.size() < MAX_VALUES) {
@@ -224,8 +225,8 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
                 sb->insert(id, *value, expiration);
             return std::make_pair(&values.back(), StoreDiff{size_new, 1, 0});
         }
-        return std::make_pair(nullptr, StoreDiff{});
     }
+    return std::make_pair(nullptr, StoreDiff{});
 }
 
 Storage::StoreDiff
@@ -239,6 +240,8 @@ Storage::remove(const InfoHash& id, Value::Id vid)
     ssize_t size = it->data->size();
     if (it->store_bucket)
         it->store_bucket->erase(id, *it->data, it->expiration);
+    if (it->expiration_job)
+        it->expiration_job->cancel();
     total_size -= size;
     values.erase(it);
     return {-size, -1, 0};
@@ -287,6 +290,8 @@ Storage::expire(const InfoHash& id, time_point now)
         size_diff -= v.data->size();
         if (v.store_bucket)
             v.store_bucket->erase(id, *v.data, v.expiration);
+        if (v.expiration_job)
+            v.expiration_job->cancel();
         ret.emplace_back(std::move(v.data));
     });
     total_size += size_diff;
