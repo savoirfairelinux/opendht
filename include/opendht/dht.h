@@ -573,7 +573,8 @@ private:
      *
      * @param sr  The search to execute its operations.
      */
-    void searchStep(Sp<Search>);
+    void searchStep(std::weak_ptr<Search> ws);
+
     void searchSynchedNodeListen(const Sp<Search>&, SearchNode&);
 
     void dumpSearch(const Search& sr, std::ostream& out) const;
