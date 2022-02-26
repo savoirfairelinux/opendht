@@ -58,8 +58,7 @@ public:
         values.clear();
         CallbackQueue ret;
         if (not expired_values.empty() and callback) {
-            auto cb = callback;
-            ret.emplace_back([expired_values, cb]{
+            ret.emplace_back([expired_values = std::move(expired_values), cb = callback]{
                 cb(expired_values, true);
             });
         }
@@ -103,24 +102,23 @@ public:
         }
         CallbackQueue ret;
         if (not expired_values.empty() and callback) {
-            auto cb = callback;
-            ret.emplace_back([cb, expired_values]{
-                if (cb) cb(expired_values, true);
+            ret.emplace_back([cb = callback, expired_values = std::move(expired_values)]{
+                cb(expired_values, true);
             });
         }
         return ret;
     }
 
     time_point onValues
-        (const std::vector<Sp<Value>>& values,
+        (const std::vector<Sp<Value>>& new_values,
         const std::vector<Value::Id>& refreshed_values,
         const std::vector<Value::Id>& expired_values,
         const TypeStore& types, const time_point& now)
     {
         CallbackQueue cbs;
         time_point ret = time_point::max();
-        if (not values.empty())
-            cbs.splice(cbs.end(), addValues(values, types, now));
+        if (not new_values.empty())
+            cbs.splice(cbs.end(), addValues(new_values, types, now));
         for (const auto& vid : refreshed_values)
             refreshValue(vid, types, now);
         for (const auto& vid : expired_values)
@@ -184,11 +182,10 @@ private:
                 v->second.expiration = now + types.getType(v->second.data->type).expiration;
             }
         }
-        auto cb = callback;
         CallbackQueue ret;
-        if (not nvals.empty())
-            ret.emplace_back([cb, nvals]{
-                if (cb) cb(nvals, false);
+        if (callback and not nvals.empty())
+            ret.emplace_back([cb = callback, nvals = std::move(nvals)]{
+                cb(nvals, false);
             });
         return ret;
     }
