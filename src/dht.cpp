@@ -491,10 +491,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
 
             auto next_refresh_time = now + getType(a.value->type).expiration;
             auto& acked = sn->acked[a.value->id];
-            if (acked.refresh) {
-                acked.refresh->cancel();
-                acked.refresh.reset();
-            }
+            scheduler.cancel(acked.refresh);
             /* only put the value if the node doesn't already have it */
             if (not hasValue or seq_no < a.value->seq) {
                 if (logger_)
@@ -1280,8 +1277,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
     if (auto vs = store.first) {
         total_store_size += store.second.size_diff;
         total_values += store.second.values_diff;
-        if (vs->expiration_job)
-            vs->expiration_job->cancel();
+        scheduler.cancel(vs->expiration_job);
         if (not permanent) {
             vs->expiration_job = scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
         }
@@ -2060,8 +2056,7 @@ Dht::bootstrap()
                 logger_->e(myid, "Can't resolve %s:%s: %s", boootstrap.first.c_str(), boootstrap.second.c_str(), e.what());
         }
     }
-    if (bootstrapJob)
-        bootstrapJob->cancel();
+    scheduler.cancel(bootstrapJob);
     bootstrapJob = scheduler.add(scheduler.time() + bootstrap_period, std::bind(&Dht::bootstrap, this));
     bootstrap_period = std::min(bootstrap_period * 2, BOOTSTRAP_PERIOD_MAX);
 }
@@ -2076,10 +2071,7 @@ Dht::startBootstrap()
 void
 Dht::stopBootstrap()
 {
-    if (bootstrapJob) {
-        bootstrapJob->cancel();
-        bootstrapJob.reset();
-    }
+    scheduler.cancel(bootstrapJob);
     bootstrap_period = BOOTSTRAP_PERIOD;
 }
 
@@ -2568,10 +2560,7 @@ Dht::storageRefresh(const InfoHash& id, Value::Id vid)
 
         auto expiration = s->second.refresh(now, vid, types);
         if (expiration.first) {
-            if (expiration.first->expiration_job) {
-                expiration.first->expiration_job->cancel();
-                expiration.first->expiration_job.reset();
-            }
+            scheduler.cancel(expiration.first->expiration_job);
             if (expiration.second != time_point::max()) {
                 expiration.first->expiration_job = scheduler.add(expiration.second, std::bind(&Dht::expireStorage, this, id));
             }
