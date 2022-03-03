@@ -135,7 +135,7 @@ OPENDHT_C_PUBLIC void dht_runner_config_default(dht_runner_config* config);
 // dht::DhtRunner
 struct OPENDHT_C_PUBLIC dht_runner;
 typedef struct dht_runner dht_runner;
-OPENDHT_C_PUBLIC dht_runner* dht_runner_new();
+OPENDHT_C_PUBLIC dht_runner* dht_runner_new(void);
 OPENDHT_C_PUBLIC void dht_runner_delete(dht_runner* runner);
 OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
 OPENDHT_C_PUBLIC void dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);

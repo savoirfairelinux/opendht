@@ -257,7 +257,7 @@ void dht_runner_config_default(dht_runner_config* config) {
 }
 
 // dht::DhtRunner
-dht_runner* dht_runner_new() {
+dht_runner* dht_runner_new(void) {
     return reinterpret_cast<dht_runner*>(new dht::DhtRunner);
 }
 
