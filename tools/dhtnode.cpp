@@ -156,7 +156,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                     if (auto stats = proxy.second->stats())
                         std::cout << "  " << stats->toString() << std::endl;
                     else
-                        std::cout << "  (stats not available yet)" << std::endl;                
+                        std::cout << "  (stats not available yet)" << std::endl;
                 }
 #endif
             });
