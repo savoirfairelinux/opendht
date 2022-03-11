@@ -137,8 +137,10 @@ struct OPENDHT_C_PUBLIC dht_runner;
 typedef struct dht_runner dht_runner;
 OPENDHT_C_PUBLIC dht_runner* dht_runner_new(void);
 OPENDHT_C_PUBLIC void dht_runner_delete(dht_runner* runner);
-OPENDHT_C_PUBLIC void dht_runner_run(dht_runner* runner, in_port_t port);
-OPENDHT_C_PUBLIC void dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);
+/* Returns 0 on success, standard error code on failure */
+OPENDHT_C_PUBLIC int dht_runner_run(dht_runner* runner, in_port_t port);
+/* Returns 0 on success, standard error code on failure */
+OPENDHT_C_PUBLIC int dht_runner_run_config(dht_runner* runner, in_port_t port, const dht_runner_config* config);
 OPENDHT_C_PUBLIC void dht_runner_ping(dht_runner* runner, struct sockaddr* addr, socklen_t addr_len);
 OPENDHT_C_PUBLIC void dht_runner_bootstrap(dht_runner* runner, const char* host, const char* service);
 OPENDHT_C_PUBLIC void dht_runner_get(dht_runner* runner, const dht_infohash* hash, dht_get_cb cb, dht_done_cb done_cb, void* cb_user_data);
