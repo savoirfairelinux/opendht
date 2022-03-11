@@ -192,7 +192,7 @@ DhtRunner::run(const Config& config, Context&& context)
         dht_via_proxy_.reset();
 #endif
         running = State::Idle;
-        throw std::runtime_error(std::string("Error starting the node: ") + e.what());
+        throw;
     }
 
     if (context.logger and dht_via_proxy_) {
