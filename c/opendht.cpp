@@ -305,9 +305,15 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
     return 0;
 }
 
-void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len) {
+void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len, dht_done_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
-    runner->bootstrap(dht::SockAddr(addr, addr_len));
+    if (done_cb) {
+        runner->bootstrap(dht::SockAddr(addr, addr_len), [done_cb, cb_user_data](bool ok){
+            done_cb(ok, cb_user_data);
+        });
+    } else {
+        runner->bootstrap(dht::SockAddr(addr, addr_len));
+    }
 }
 
 void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service) {
@@ -346,8 +352,11 @@ dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto fret = new std::future<size_t>;
-    auto guard = done_cb ? std::make_shared<ScopeGuardCb>(done_cb, cb_user_data) : std::shared_ptr<ScopeGuardCb>{};
-    *fret = runner->listen(*hash, [cb,cb_user_data, guard](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+    *fret = runner->listen(*hash, [
+        cb,
+        cb_user_data,
+        guard = done_cb ? std::make_shared<ScopeGuardCb>(done_cb, cb_user_data) : std::shared_ptr<ScopeGuardCb>{}
+    ](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         for (const auto& value : values) {
             if (not cb(reinterpret_cast<const dht_value*>(&value), expired, cb_user_data))
                 return false;
