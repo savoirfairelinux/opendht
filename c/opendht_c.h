@@ -153,6 +153,9 @@ OPENDHT_C_PUBLIC void dht_runner_cancel_put(dht_runner* runner, const dht_infoha
 OPENDHT_C_PUBLIC void dht_runner_shutdown(dht_runner* runner, dht_shutdown_cb done_cb, void* cb_user_data);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_node_id(const dht_runner* runner);
 OPENDHT_C_PUBLIC dht_infohash dht_runner_get_id(const dht_runner* runner);
+OPENDHT_C_PUBLIC bool dht_runner_is_running(const dht_runner* runner);
+OPENDHT_C_PUBLIC in_port_t dht_runner_get_bound_port(const dht_runner* runner, sa_family_t af);
+/** Returns null-terminated array that must be freed after use as well as each element */
 OPENDHT_C_PUBLIC struct sockaddr** dht_runner_get_public_address(const dht_runner* runner);
 
 #ifdef __cplusplus

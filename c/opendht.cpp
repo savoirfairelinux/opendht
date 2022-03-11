@@ -413,6 +413,17 @@ void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_d
     });
 }
 
+bool dht_runner_is_running(const dht_runner* r) {
+    if (not r) return false;
+    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
+    return runner->isRunning();
+}
+
+in_port_t dht_runner_get_bound_port(const dht_runner* r, sa_family_t af) {
+    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
+    return runner->getBoundPort(af);
+}
+
 dht_infohash dht_runner_get_node_id(const dht_runner* r) {
     auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
     dht_infohash ret;
