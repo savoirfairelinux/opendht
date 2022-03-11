@@ -1036,7 +1036,7 @@ DhtRunner::clearBootstrap()
 }
 
 void
-DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb)
+DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple cb)
 {
     if (running != State::Running) {
         cb(false);
@@ -1066,7 +1066,7 @@ DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb)
 }
 
 void
-DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb)
+DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple cb)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {

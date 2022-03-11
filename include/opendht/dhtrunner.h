@@ -272,8 +272,8 @@ public:
      * Insert known nodes to the routing table, without necessarly ping them.
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
-    void bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb={});
-    void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
+    void bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple cb={});
+    void bootstrap(const SockAddr& addr, DoneCallbackSimple cb={});
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
