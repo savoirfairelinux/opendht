@@ -10,6 +10,8 @@ using CertSp = std::shared_ptr<dht::crypto::Certificate>;
 extern "C" {
 #endif
 
+#include <errno.h>
+
 // dht::InfoHash
 
 inline dht_infohash dht_infohash_to_c(const dht::InfoHash& h) {
