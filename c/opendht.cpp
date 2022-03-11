@@ -154,9 +154,13 @@ bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, si
 
 dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size) {
     const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
-    auto rdata = new dht::Blob;
-    *rdata = pkey->encrypt((const uint8_t*)data, data_size);
-    return (dht_blob*)rdata;
+    try {
+        auto rdata = std::make_unique<dht::Blob>();
+        *rdata = pkey->encrypt((const uint8_t*)data, data_size);
+        return (dht_blob*)rdata.release();
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 // dht::crypto::PrivateKey
@@ -184,6 +188,17 @@ int dht_privatekey_export(const dht_privatekey* k, char* out, size_t* out_size, 
 dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
     const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
     return reinterpret_cast<dht_publickey*>(new PubkeySp(key->getSharedPublicKey()));
+}
+
+dht_blob* dht_privatekey_decrypt(const dht_privatekey* k, const char* data, size_t data_size) {
+    const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
+    try {
+        auto rdata = std::make_unique<dht::Blob>();
+        *rdata = key->decrypt((const uint8_t*)data, data_size);
+        return (dht_blob*)rdata.release();
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 void dht_privatekey_delete(dht_privatekey* pk) {
@@ -454,9 +469,9 @@ struct sockaddr** dht_runner_get_public_address(const dht_runner* r) {
         return nullptr;
     auto ret = (struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
     for (size_t i=0; i<addrs.size(); i++) {
-        if (auto len = addrs[i].getLength()) {
-            ret[i] = (struct sockaddr*)malloc(len);
-            memcpy((struct sockaddr*)ret[i], addrs[i].get(), len);
+        if (const auto& addr = addrs[i]) {
+            ret[i] = (struct sockaddr*)malloc(addr.getLength());
+            memcpy((struct sockaddr*)ret[i], addr.get(), addr.getLength());
         } else {
             ret[i] = nullptr;
         }

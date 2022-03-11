@@ -58,6 +58,7 @@ OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_generate(unsigned key_length_bit
 OPENDHT_C_PUBLIC dht_privatekey* dht_privatekey_import(const uint8_t* dat, size_t dat_size, const char* password);
 OPENDHT_C_PUBLIC int dht_privatekey_export(const dht_privatekey*, char* out, size_t* out_size, const char* password);
 OPENDHT_C_PUBLIC dht_publickey* dht_privatekey_get_publickey(const dht_privatekey*);
+OPENDHT_C_PUBLIC dht_blob* dht_privatekey_decrypt(const dht_privatekey*, const char* data, size_t data_size);
 OPENDHT_C_PUBLIC void dht_privatekey_delete(dht_privatekey*);
 
 // dht::crypto::Certificate
