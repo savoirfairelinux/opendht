@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2022 Savoir-faire Linux Inc.
 # Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
 #
