@@ -19,7 +19,7 @@ include(FindPkgConfig)
 include(cmake/CheckAtomic.cmake)
 
 set (opendht_VERSION_MAJOR 2)
-set (opendht_VERSION_MINOR 3.5)
+set (opendht_VERSION_MINOR 4.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -124,7 +124,7 @@ if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
 endif()
 
 # Build flags
-set (CMAKE_CXX_STANDARD 14)
+set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 
 if (NOT MSVC)
