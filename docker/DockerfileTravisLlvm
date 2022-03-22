@@ -1,5 +1,5 @@
 FROM aberaud/opendht-deps-llvm
-MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 
 COPY . /root/opendht
 RUN cd /root/opendht && mkdir build && cd build \
