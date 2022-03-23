@@ -7,7 +7,9 @@ RUN git clone https://github.com/savoirfairelinux/opendht.git \
 	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
 				-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
 				-DOPENDHT_C=On \
+				-DOPENDHT_PEER_DISCOVERY=On \
 				-DOPENDHT_PYTHON=On \
+				-DOPENDHT_TOOLS=On \
 				-DOPENDHT_PROXY_SERVER=On \
 				-DOPENDHT_PROXY_CLIENT=On \
 	&& make -j8 && make install \
