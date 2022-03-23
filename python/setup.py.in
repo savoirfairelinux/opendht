@@ -50,8 +50,8 @@ setup(name="opendht",
           ["@CURRENT_SOURCE_DIR@/opendht.pyx"],
           include_dirs = ['@PROJECT_SOURCE_DIR@/include'],
           language="c++",
-          extra_compile_args=["-std=c++14"],
-          extra_link_args=["-std=c++14"],
+          extra_compile_args=["-std=c++17"],
+          extra_link_args=["-std=c++17"],
           libraries=["opendht"],
           library_dirs = ['@CURRENT_BINARY_DIR@', '@PROJECT_BINARY_DIR@']
       ))

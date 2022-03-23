@@ -1,5 +1,5 @@
 # distutils: language = c++
-# distutils: extra_compile_args = -std=c++14
+# distutils: extra_compile_args = -std=c++17
 # distutils: include_dirs = ../../include
 # distutils: library_dirs = ../../src
 # distutils: libraries = opendht gnutls
