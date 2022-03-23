@@ -1,5 +1,6 @@
-FROM aberaud/opendht-deps
+FROM ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
+LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
 
 RUN git clone https://github.com/savoirfairelinux/opendht.git \
 	&& cd opendht && mkdir build && cd build \

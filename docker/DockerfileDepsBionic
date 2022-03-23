@@ -1,5 +1,6 @@
 FROM ubuntu:18.04
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
+LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
 
 RUN echo "APT::Acquire::Retries \"3\";" > /etc/apt/apt.conf.d/80-retries
 RUN apt-get update && apt-get install -y \
