@@ -406,8 +406,8 @@ void trim_str(std::string& str) {
     str = str.substr(first, last - first + 1);
 }
 
-Select::Select(const std::string& q_str) {
-    std::istringstream q_iss {q_str};
+Select::Select(std::string_view q_str) {
+    std::istringstream q_iss {std::string(q_str)};
     std::string token {};
     q_iss >> token;
 
@@ -431,8 +431,8 @@ Select::Select(const std::string& q_str) {
     }
 }
 
-Where::Where(const std::string& q_str) {
-    std::istringstream q_iss {q_str};
+Where::Where(std::string_view q_str) {
+    std::istringstream q_iss {std::string(q_str)};
     std::string token {};
     q_iss >> token;
     if (token == "WHERE" or token == "where") {

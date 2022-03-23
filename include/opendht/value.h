@@ -27,6 +27,7 @@
 #include <msgpack.hpp>
 
 #include <string>
+#include <string_view>
 #include <sstream>
 #include <bitset>
 #include <vector>
@@ -741,7 +742,7 @@ private:
 struct OPENDHT_PUBLIC Select
 {
     Select() { }
-    Select(const std::string& q_str);
+    Select(std::string_view q_str);
 
     bool isSatisfiedBy(const Select& os) const;
 
@@ -796,7 +797,7 @@ private:
 struct OPENDHT_PUBLIC Where
 {
     Where() { }
-    Where(const std::string& q_str);
+    Where(std::string_view q_str);
 
     bool isSatisfiedBy(const Where& where) const;
 
@@ -936,11 +937,11 @@ struct OPENDHT_PUBLIC Query
      *  - $string$: a simple string WITHOUT SPACES.
      *  - $integer$: a simple integer.
      */
-    Query(std::string q_str) {
+    Query(std::string_view q_str) {
         auto pos_W = q_str.find("WHERE");
         auto pos_w = q_str.find("where");
-        auto pos = std::min(pos_W != std::string::npos ? pos_W : q_str.size(),
-                            pos_w != std::string::npos ? pos_w : q_str.size());
+        auto pos = std::min(pos_W != std::string_view::npos ? pos_W : q_str.size(),
+                            pos_w != std::string_view::npos ? pos_w : q_str.size());
         select = q_str.substr(0, pos);
         where = q_str.substr(pos, q_str.size()-pos);
     }
