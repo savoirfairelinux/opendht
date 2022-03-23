@@ -683,9 +683,9 @@ DhtProxyServer::get(restinio::request_handle_t request,
 {
     requestNum_++;
     try {
-        InfoHash infoHash(params["hash"].to_string());
+        InfoHash infoHash(params["hash"]);
         if (!infoHash)
-            infoHash = InfoHash::get(params["hash"].to_string());
+            infoHash = InfoHash::get(params["hash"]);
         auto response = std::make_shared<ResponseByPartsBuilder>(
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
@@ -714,9 +714,9 @@ DhtProxyServer::listen(restinio::request_handle_t request,
     requestNum_++;
 
     try {
-        InfoHash infoHash(params["hash"].to_string());
+        InfoHash infoHash(params["hash"]);
         if (!infoHash)
-            infoHash = InfoHash::get(params["hash"].to_string());
+            infoHash = InfoHash::get(params["hash"]);
         auto response = std::make_shared<ResponseByPartsBuilder>(
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
@@ -750,9 +750,9 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
 {
     requestNum_++;
     try {
-        InfoHash infoHash(params["hash"].to_string());
+        InfoHash infoHash(params["hash"]);
         if (!infoHash)
-            infoHash = InfoHash::get(params["hash"].to_string());
+            infoHash = InfoHash::get(params["hash"]);
 
         std::string err;
         Json::Value r;
@@ -892,9 +892,9 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 {
     requestNum_++;
 
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (logger_)
         logger_->d("[proxy:server] [unsubscribe %s]", infoHash.toString().c_str());
@@ -1080,9 +1080,9 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     restinio::router::route_params_t params)
 {
     requestNum_++;
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (request->body().empty()){
         auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
@@ -1221,9 +1221,9 @@ DhtProxyServer::putSigned(restinio::request_handle_t request,
                           restinio::router::route_params_t params) const
 {
     requestNum_++;
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (request->body().empty()){
         auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
@@ -1271,9 +1271,9 @@ DhtProxyServer::putEncrypted(restinio::request_handle_t request,
                              restinio::router::route_params_t params)
 {
     requestNum_++;
-    InfoHash infoHash(params["hash"].to_string());
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     if (request->body().empty()){
         auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
@@ -1343,10 +1343,10 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
                             restinio::router::route_params_t params)
 {
     requestNum_++;
-    auto value = params["value"].to_string();
-    InfoHash infoHash(params["hash"].to_string());
+    auto query = params["value"];
+    InfoHash infoHash(params["hash"]);
     if (!infoHash)
-        infoHash = InfoHash::get(params["hash"].to_string());
+        infoHash = InfoHash::get(params["hash"]);
 
     try {
         auto response = std::make_shared<ResponseByPartsBuilder>(
@@ -1361,7 +1361,7 @@ DhtProxyServer::getFiltered(restinio::request_handle_t request,
             [response] (bool /*ok*/){
                 response->done();
             },
-            {}, value);
+            {}, query);
         return restinio::request_handling_status_t::accepted;
     } catch (const std::exception& e){
         return serverError(*request);
