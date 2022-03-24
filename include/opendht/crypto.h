@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -80,6 +80,8 @@ struct OPENDHT_PUBLIC PublicKey
      * Takes ownership of an existing gnutls_pubkey.
      */
     PublicKey(gnutls_pubkey_t k) : pk(k) {}
+
+    /** Import public key from serialized data */
     PublicKey(const uint8_t* dat, size_t dat_size);
     PublicKey(const Blob& pk) : PublicKey(pk.data(), pk.size()) {}
     PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };
@@ -162,7 +164,9 @@ struct OPENDHT_PUBLIC PrivateKey
     ~PrivateKey();
     explicit operator bool() const { return key; }
 
-    PublicKey getPublicKey() const;
+    const PublicKey& getPublicKey() const;
+    const std::shared_ptr<PublicKey>& getSharedPublicKey() const;
+
     int serialize(uint8_t* out, size_t* out_len, const std::string& password = {}) const;
     Blob serialize(const std::string& password = {}) const;
 
@@ -197,7 +201,7 @@ private:
     PrivateKey& operator=(const PrivateKey&) = delete;
     Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
-    //friend dht::crypto::Identity dht::crypto::generateIdentity(const std::string&, dht::crypto::Identity, unsigned key_length);
+    mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 
 class OPENDHT_PUBLIC RevocationList
@@ -537,8 +541,8 @@ struct OPENDHT_PUBLIC Certificate {
     void addRevocationList(RevocationList&&);
     void addRevocationList(std::shared_ptr<RevocationList>);
 
-    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false);
-    static Certificate generate(const CertificateRequest& request, const Identity& ca);
+    static Certificate generate(const PrivateKey& key, const std::string& name = "dhtnode", const Identity& ca = {}, bool is_ca = false, int64_t validity = 0);
+    static Certificate generate(const CertificateRequest& request, const Identity& ca, int64_t validity = 0);
 
     gnutls_x509_crt_t getCopy() const {
         if (not cert)
@@ -588,12 +592,20 @@ struct OPENDHT_PUBLIC Certificate {
      */
     std::pair<std::string, Blob> generateOcspRequest(gnutls_x509_crt_t& issuer);
 
+    /**
+     * Change certificate's expiration
+     */
+    void setValidity(const Identity& ca, int64_t validity);
+    void setValidity(const PrivateKey& key, int64_t validity);
+
     gnutls_x509_crt_t cert {nullptr};
     std::shared_ptr<Certificate> issuer {};
     std::shared_ptr<OcspResponse> ocspResponse;
 private:
     Certificate(const Certificate&) = delete;
     Certificate& operator=(const Certificate&) = delete;
+    mutable InfoHash cachedId_ {};
+    mutable PkId cachedLongId_ {};
 
     struct crlNumberCmp {
         bool operator() (const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const {

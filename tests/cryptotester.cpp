@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -33,7 +33,7 @@ CryptoTester::setUp() {
 void
 CryptoTester::testSignatureEncryption() {
     auto key = dht::crypto::PrivateKey::generate();
-    auto public_key = key.getPublicKey();
+    const auto& public_key = key.getPublicKey();
 
     std::vector<uint8_t> data1 {5, 10};
     std::vector<uint8_t> data2(64 * 1024, 10);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -36,8 +36,9 @@ namespace dht {
 class Scheduler {
 public:
     struct Job {
-        Job(std::function<void()>&& f) : do_(std::move(f)) {}
+        Job(std::function<void()>&& f, time_point t) : do_(std::move(f)), t_(t) {}
         std::function<void()> do_;
+        const time_point t_;
         void cancel() { do_ = {}; }
     };
 
@@ -50,15 +51,10 @@ public:
      * @return pointer to the newly scheduled job.
      */
     Sp<Scheduler::Job> add(time_point t, std::function<void()>&& job_func) {
-        auto job = std::make_shared<Job>(std::move(job_func));
+        auto job = std::make_shared<Job>(std::move(job_func), t);
         if (t != time_point::max())
             timers.emplace(std::move(t), job);
         return job;
-    }
-
-    void add(const Sp<Scheduler::Job>& job, time_point t) {
-        if (t != time_point::max())
-            timers.emplace(std::move(t), job);
     }
 
     /**
@@ -68,14 +64,27 @@ public:
      * @param t  The time at which the job shall be rescheduled.
      */
     void edit(Sp<Scheduler::Job>& job, time_point t) {
-        if (not job) {
+        if (not job)
             return;
-        }
         // std::function move doesn't garantee to leave the object empty.
         // Force clearing old value.
         auto task = std::move(job->do_);
-        job->do_ = {};
+        cancel(job);
         job = add(t, std::move(task));
+    }
+
+    bool cancel(Sp<Scheduler::Job>& job) {
+        if (job) {
+            job->cancel();
+            for (auto r = timers.equal_range(job->t_); r.first != r.second; ++r.first) {
+                if (r.first->second == job) {
+                    timers.erase(r.first);
+                    job.reset();
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**

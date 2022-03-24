@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -68,7 +68,7 @@ public:
      * Build from existing address.
      */
     SockAddr(const sockaddr* sa, socklen_t length) {
-        if (length > sizeof(sockaddr_storage))
+        if (length > static_cast<socklen_t>(sizeof(sockaddr_storage)))
             throw std::runtime_error("Socket address length is too large");
         set(sa, length);
     }
@@ -144,7 +144,7 @@ public:
             if (len) addr.reset((sockaddr*)::calloc(len, 1));
             else     addr.reset();
         }
-        if (len > sizeof(sa_family_t))
+        if (len)
             addr->sa_family = af;
     }
 
@@ -223,16 +223,16 @@ public:
      */
     sockaddr* get() { return addr.get(); }
 
-    const sockaddr_in& getIPv4() const {
+    inline const sockaddr_in& getIPv4() const {
         return *reinterpret_cast<const sockaddr_in*>(get());
     }
-    const sockaddr_in6& getIPv6() const {
+    inline const sockaddr_in6& getIPv6() const {
         return *reinterpret_cast<const sockaddr_in6*>(get());
     }
-    sockaddr_in& getIPv4() {
+    inline sockaddr_in& getIPv4() {
         return *reinterpret_cast<sockaddr_in*>(get());
     }
-    sockaddr_in6& getIPv6() {
+    inline sockaddr_in6& getIPv6() {
         return *reinterpret_cast<sockaddr_in6*>(get());
     }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -85,7 +85,7 @@ public:
     /**
      * Performs final operations before quitting.
      */
-    void shutdown(ShutdownCallback cb) override;
+    void shutdown(ShutdownCallback cb, bool) override;
 
     /**
      * Returns true if the node is running (have access to an open socket).
@@ -337,6 +337,7 @@ private:
     NodeStats stats6_ {};
     SockAddr publicAddressV4_;
     SockAddr publicAddressV6_;
+    std::atomic_bool launchConnectedCbs_ {false};
 
     InfoHash myid {};
 
@@ -378,8 +379,8 @@ private:
      * Retrieve if we can connect to the proxy (update statusIpvX_)
      */
     void handleProxyConfirm(const asio::error_code &ec);
-    Sp<asio::steady_timer> nextProxyConfirmationTimer_;
-    Sp<asio::steady_timer> listenerRestartTimer_;
+    std::unique_ptr<asio::steady_timer> nextProxyConfirmationTimer_;
+    std::unique_ptr<asio::steady_timer> listenerRestartTimer_;
 
     /**
      * Relaunch LISTEN requests if the client disconnect/reconnect.

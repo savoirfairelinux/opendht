@@ -1,4 +1,4 @@
-#include <c/opendht_c.h>
+#include <opendht_c.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -88,7 +88,7 @@ int main()
 
     // Put data
     const char* data_str = "yo, this is some data";
-    dht_value* val = dht_value_new(data_str, strlen(data_str));
+    dht_value* val = dht_value_new_from_string(data_str);
     dht_runner_put(runner, &h, val, dht_done_callback, runner, false);
     dht_value_unref(val);
 

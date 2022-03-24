@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -95,7 +95,7 @@ public:
     /**
      * Performs final operations before quitting.
      */
-    void shutdown(ShutdownCallback cb) override;
+    void shutdown(ShutdownCallback cb, bool stop = false) override;
 
     /**
      * Returns true if the node is running (have access to an open socket).
@@ -114,7 +114,7 @@ public:
 
     void addBootstrap(const std::string& host, const std::string& service) override {
         bootstrap_nodes.emplace_back(host, service);
-        onDisconnected();
+        startBootstrap();
     }
 
     void clearBootstrap() override {
@@ -356,6 +356,8 @@ private:
 
     static constexpr duration REANNOUNCE_MARGIN {std::chrono::seconds(10)};
 
+    static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
+
     static constexpr size_t TOKEN_SIZE {32};
 
     // internal structures
@@ -393,7 +395,7 @@ private:
     Kad dht6 {};
 
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
-    std::chrono::steady_clock::duration bootstrap_period {std::chrono::seconds(10)};
+    std::chrono::steady_clock::duration bootstrap_period {BOOTSTRAP_PERIOD};
     Sp<Scheduler::Job> bootstrapJob {};
 
     std::map<InfoHash, Storage> store;
@@ -480,6 +482,9 @@ private:
     void sendCachedPing(Bucket& b);
     bool bucketMaintenance(RoutingTable&);
     void dumpBucket(const Bucket& b, std::ostream& out) const;
+    void bootstrap();
+    void startBootstrap();
+    void stopBootstrap();
 
     // Nodes
     void onNewNode(const Sp<Node>& node, int confirm);
@@ -487,7 +492,6 @@ private:
     bool trySearchInsert(const Sp<Node>& node);
 
     // Searches
-
     inline SearchMap& searches(sa_family_t af) { return dht(af).searches; }
     inline const SearchMap& searches(sa_family_t af) const { return dht(af).searches; }
 
@@ -512,6 +516,8 @@ private:
 
     void confirmNodes();
     void expire();
+
+    void onConnected();
     void onDisconnected();
 
     /**
@@ -567,7 +573,8 @@ private:
      *
      * @param sr  The search to execute its operations.
      */
-    void searchStep(Sp<Search>);
+    void searchStep(std::weak_ptr<Search> ws);
+
     void searchSynchedNodeListen(const Sp<Search>&, SearchNode&);
 
     void dumpSearch(const Search& sr, std::ostream& out) const;

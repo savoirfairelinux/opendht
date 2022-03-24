@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -164,6 +164,7 @@ using GetCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>
 using ValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired)>;
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;
+using IdentityAnnouncedCb = std::function<void(bool)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 

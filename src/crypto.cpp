@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -69,7 +69,7 @@ constexpr gnutls_digest_algorithm_t gnutlsHashAlgo(size_t min_res) {
                                GNUTLS_DIG_SHA1));
 }
 
-constexpr size_t gnutlsHashSize(int algo) {
+constexpr size_t gnutlsHashSize(gnutls_digest_algorithm_t algo) {
     return (algo == GNUTLS_DIG_SHA512) ? 512/8 : (
            (algo == GNUTLS_DIG_SHA256) ? 256/8 : (
            (algo == GNUTLS_DIG_SHA1)   ? 160/8 : 0 ));
@@ -368,13 +368,22 @@ PrivateKey::serialize(uint8_t* out, size_t* out_len, const std::string& password
         : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, out, out_len);
 }
 
-PublicKey
+const PublicKey&
 PrivateKey::getPublicKey() const
 {
-    PublicKey pk;
-    if (auto err = gnutls_pubkey_import_privkey(pk.pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
+    return *getSharedPublicKey();
+}
+
+const std::shared_ptr<PublicKey>&
+PrivateKey::getSharedPublicKey() const
+{
+    if (publicKey_)
+        return publicKey_;
+    auto pk = std::make_shared<PublicKey>();
+    if (auto err = gnutls_pubkey_import_privkey(pk->pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
         throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
-    return pk;
+    publicKey_ = pk;
+    return publicKey_;
 }
 
 PublicKey::PublicKey()
@@ -540,12 +549,7 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-#if GNUTLS_VERSION_NUMBER < 0x030401
-    const int flags = 0;
-#else
-    const int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
-#endif
-    if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
+    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get public key ID: wrong output length.");
@@ -710,13 +714,13 @@ CertificateRequest::sign(const PrivateKey& key, const std::string& password)
 }
 
 bool
-CertificateRequest::verify() const 
+CertificateRequest::verify() const
 {
     return gnutls_x509_crq_verify(request, 0) >= 0;
 }
 
-Blob 
-CertificateRequest::pack() const 
+Blob
+CertificateRequest::pack() const
 {
     gnutls_datum_t dat {nullptr, 0};
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
@@ -727,7 +731,7 @@ CertificateRequest::pack() const
 }
 
 std::string
-CertificateRequest::toString() const 
+CertificateRequest::toString() const
 {
     gnutls_datum_t dat {nullptr, 0};
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
@@ -849,12 +853,15 @@ Certificate::getId() const
 {
     if (not cert)
         return {};
+    if (cachedId_)
+        return cachedId_;
     InfoHash id;
     size_t sz = id.size();
     if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
         throw CryptoException(std::string("Can't get certificate public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get certificate public key ID: wrong output length.");
+    cachedId_ = id;
     return id;
 }
 
@@ -863,6 +870,8 @@ Certificate::getLongId() const
 {
     if (not cert)
         return {};
+    if (cachedLongId_)
+        return cachedLongId_;
 #if GNUTLS_VERSION_NUMBER < 0x030401
     throw CryptoException("Can't get certificate 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
 #else
@@ -872,6 +881,7 @@ Certificate::getLongId() const
         throw CryptoException(std::string("Can't get certificate 256 bits public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
+    cachedLongId_ = id;
     return id;
 #endif
 }
@@ -1147,20 +1157,20 @@ void
 setRandomSerial(gnutls_x509_crt_t cert)
 {
     random_device rdev;
-    std::uniform_int_distribution<uint64_t> dist{};
-    uint64_t cert_serial = dist(rdev);
+    std::uniform_int_distribution<int64_t> dist{1};
+    int64_t cert_serial = dist(rdev);
     gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
 }
 
 Certificate
-Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca)
+Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca, int64_t validity)
 {
     gnutls_x509_crt_t cert;
     if (not key.x509_key or gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         return {};
     Certificate ret {cert};
 
-    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
+    setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
     if (int err = gnutls_x509_crt_set_key(cert, key.x509_key)) {
         throw CryptoException(std::string("Error when setting certificate key ") + gnutls_strerror(err));
     }
@@ -1169,7 +1179,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     }
 
     // TODO: compute the subject key using the recommended RFC method
-    auto pk = key.getPublicKey();
+    const auto& pk = key.getPublicKey();
     auto pk_id = pk.getId();
     const std::string uid_str = pk_id.toString();
 
@@ -1206,7 +1216,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
 }
 
 Certificate
-Certificate::generate(const CertificateRequest& request, const Identity& ca)
+Certificate::generate(const CertificateRequest& request, const Identity& ca, int64_t validity)
 {
     gnutls_x509_crt_t cert;
     if (auto err = gnutls_x509_crt_init(&cert))
@@ -1219,7 +1229,7 @@ Certificate::generate(const CertificateRequest& request, const Identity& ca)
         throw CryptoException(std::string("Can't set certificate version: ") + gnutls_strerror(err));
     }
 
-    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
+    setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
     setRandomSerial(cert);
 
     if (auto err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
@@ -1228,6 +1238,32 @@ Certificate::generate(const CertificateRequest& request, const Identity& ca)
     ret.issuer = ca.second;
 
     return ret.getPacked();
+}
+
+void
+Certificate::setValidity(const Identity& ca, int64_t validity)
+{
+    setValidityPeriod(cert, validity);
+    setRandomSerial(cert);
+    if (ca.first && ca.second) {
+        if (not ca.second->isCA()) {
+            throw CryptoException("Signing certificate must be CA");
+        }
+        if (int err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
+            throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
+        }
+    }
+}
+
+void
+Certificate::setValidity(const PrivateKey& key, int64_t validity)
+{
+    setValidityPeriod(cert, validity);
+    setRandomSerial(cert);
+    const auto& pk = key.getPublicKey();
+    if (int err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
+        throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
+    }
 }
 
 std::vector<std::shared_ptr<RevocationList>>

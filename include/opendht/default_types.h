@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -66,8 +66,10 @@ private:
 
 public:
     virtual void unpackValue(const Value& v) override {
-        if (v.owner)
+        if (v.owner) {
+            owner = v.owner;
             from = v.owner->getId();
+        }
         BaseClass::unpackValue(v);
     }
 
@@ -75,6 +77,7 @@ public:
         return [](const Value& v){ return v.isSigned(); };
     }
 
+    Sp<crypto::PublicKey> owner;
     dht::InfoHash from;
 };
 

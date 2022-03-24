@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *
  *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
