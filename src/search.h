@@ -289,7 +289,7 @@ struct Dht::SearchNode {
      * @return true if there exists an expired request, else false.
      */
     static bool pending(const SyncStatus& status) {
-        return std::find_if(status.cbegin(), status.cend(),
+        return std::find_if(status.begin(), status.end(),
             [](const SyncStatus::value_type& r){
                 return r.second and r.second->pending();
             }) != status.cend();
