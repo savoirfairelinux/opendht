@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -80,10 +80,6 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
    fields(std::move(msg.fields)),
    nodes4(std::move(msg.nodes4)),
    nodes6(std::move(msg.nodes6))
-{}
-
-NetworkEngine::NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rand, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock)
-    : myid(zeroes), dht_socket(std::move(sock)), logger_(log), rd(rand), cache(rd), rate_limiter((size_t)-1), scheduler(scheduler)
 {}
 
 NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
@@ -380,7 +376,7 @@ NetworkEngine::isMartian(const SockAddr& addr)
         const uint8_t* address = (const uint8_t*)&sin6.sin6_addr;
         return address[0] == 0xFF ||
               (address[0] == 0xFE && (address[1] & 0xC0) == 0x80) ||
-               memcmp(address, zeroes.data(), 16) == 0 ||
+               memcmp(address, InfoHash::zero().data(), 16) == 0 ||
                memcmp(address, v4prefix,      12) == 0;
     }
     default:

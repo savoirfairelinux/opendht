@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -19,10 +19,13 @@
 
 #include "dhtrunnertester.h"
 
+#include <opendht/thread_pool.h>
+
 #include <chrono>
 #include <mutex>
 #include <condition_variable>
 using namespace std::chrono_literals;
+using namespace std::literals;
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(DhtRunnerTester);
@@ -51,7 +54,7 @@ DhtRunnerTester::tearDown() {
     node1.shutdown(shutdown);
     node2.shutdown(shutdown);
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 5s, [&]{ return done == 2; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 12s, [&]{ return done == 2; }));
     node1.join();
     node2.join();
 }
@@ -60,6 +63,12 @@ void
 DhtRunnerTester::testConstructors() {
     CPPUNIT_ASSERT(node1.getBoundPort() == 42222);
     CPPUNIT_ASSERT(node2.getBoundPort() == 42232);
+
+    dht::DhtRunner::Config config {};
+    dht::DhtRunner::Context context {};
+    dht::DhtRunner testNode;
+    testNode.run(config, std::move(context));
+    CPPUNIT_ASSERT(testNode.getBoundPort());
 }
 
 void
@@ -168,6 +177,83 @@ DhtRunnerTester::testListen() {
 }
 
 void
+DhtRunnerTester::testIdOps() {
+    std::mutex mutex;
+    std::condition_variable cv;
+    unsigned valueCount(0);
+
+    dht::DhtRunner::Config config2;
+    config2.dht_config.node_config.max_peer_req_per_sec = -1;
+    config2.dht_config.node_config.max_req_per_sec = -1;
+    config2.dht_config.id = dht::crypto::generateIdentity();
+
+    dht::DhtRunner::Context context2;
+    context2.identityAnnouncedCb = [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    };
+
+    node2.join();
+    node2.run(42232, config2, std::move(context2));
+    node2.bootstrap(node1.getBound());
+
+    node1.findCertificate(node2.getId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt){
+        CPPUNIT_ASSERT(crt);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    });
+
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 2; }));
+    }
+
+    dht::DhtRunner::Context context1;
+    context1.identityAnnouncedCb = [&](bool ok) {
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    };
+
+    config2.dht_config.id = dht::crypto::generateIdentity();
+    node1.join();
+    node1.run(42222, config2, std::move(context1));
+    node1.bootstrap(node2.getBound());
+
+    auto key = dht::InfoHash::get("key");
+    node1.putEncrypted(key, node2.getId(), dht::Value("yo"), [&](bool ok){
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    });
+
+    node1.putEncrypted(key, node2.getPublicKey(), dht::Value("yo"), [&](bool ok){
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+    });
+
+    node2.listen<std::string>(key, [&](std::string&& value){
+        CPPUNIT_ASSERT_EQUAL("yo"s, value);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCount++;
+        cv.notify_all();
+        return true;
+    });
+
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 7; }));
+    }
+}
+
+void
 DhtRunnerTester::testListenLotOfBytes() {
     std::mutex mutex;
     std::condition_variable cv;
@@ -213,5 +299,40 @@ DhtRunnerTester::testListenLotOfBytes() {
 
     node3.cancelListen(foo, ftokenfoo.get());
 }
+
+
+void
+DhtRunnerTester::testMultithread() {
+    std::mutex mutex;
+    std::condition_variable cv;
+    unsigned putCount(0);
+    unsigned putOkCount(0);
+
+    constexpr unsigned N = 2048;
+
+    for (unsigned i=0; i<N; i++) {
+        dht::ThreadPool::computation().run([&]{
+            node2.put(dht::InfoHash::get("123" + std::to_string(i)), "hehe", [&](bool ok) {
+                std::lock_guard<std::mutex> lock(mutex);
+                putCount++;
+                if (ok) putOkCount++;
+                cv.notify_all();
+            });
+            node2.get(dht::InfoHash::get("123" + std::to_string(N-i-1)), [](const std::shared_ptr<dht::Value>&){
+                return true;
+            }, [&](bool ok) {
+                std::lock_guard<std::mutex> lock(mutex);
+                putCount++;
+                if (ok) putOkCount++;
+                cv.notify_all();
+            });
+        });
+    }
+    std::unique_lock<std::mutex> lk(mutex);
+    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == 2*N; }));
+    CPPUNIT_ASSERT_EQUAL(2*N, putOkCount);
+
+}
+
 
 }  // namespace test

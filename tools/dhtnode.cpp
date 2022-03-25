@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
  *
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
@@ -156,7 +156,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                     if (auto stats = proxy.second->stats())
                         std::cout << "  " << stats->toString() << std::endl;
                     else
-                        std::cout << "  (stats not available yet)" << std::endl;                
+                        std::cout << "  (stats not available yet)" << std::endl;
                 }
 #endif
             });
@@ -467,7 +467,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                                   << "   hash: " << p.hash() << std::endl;
                         std::cout << "   entries:" << std::endl;
                         for (const auto& v : vals)
-                             std::cout << "      " << v->first.toString() << "[vid: " << v->second << "]" << std::endl;
+                             std::cout << "      " << v->first.toString() << "[vid: " << std::hex << v->second << std::dec << "]" << std::endl;
                     },
                     [start](bool ok) {
                         auto end = std::chrono::high_resolution_clock::now();

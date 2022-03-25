@@ -1,5 +1,7 @@
 FROM ubuntu:20.04
-MAINTAINER Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
+LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
+
 RUN apt-get update && apt-get install -y \
         dialog apt-utils \
     && apt-get clean \
@@ -11,16 +13,17 @@ RUN apt-get update \
        python3-setuptools libcppunit-dev python3-pip \
        autotools-dev autoconf libssl-dev libargon2-dev \
        libfmt-dev libhttp-parser-dev libasio-dev \
-    && apt-get remove -y gcc g++ && apt-get autoremove -y && apt-get clean
+    && apt-get remove -y gcc g++ && apt-get autoremove -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 ENV CC cc
 ENV CXX c++
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/2c0b6f5e5ba04d7a74e8406a3df1fd433680599d.tar.gz \
-    && ls -l && tar -xzf 2c0b6f5e5ba04d7a74e8406a3df1fd433680599d.tar.gz \
-    && cd restinio-2c0b6f5e5ba04d7a74e8406a3df1fd433680599d/dev \
+    && wget https://github.com/aberaud/restinio/archive/e0a261dd8488246a3cb8bbb3ea781ea5139c3c94.tar.gz \
+    && ls -l && tar -xzf e0a261dd8488246a3cb8bbb3ea781ea5139c3c94.tar.gz \
+    && cd restinio-e0a261dd8488246a3cb8bbb3ea781ea5139c3c94/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
              -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
              -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
