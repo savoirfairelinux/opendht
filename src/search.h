@@ -292,7 +292,7 @@ struct Dht::SearchNode {
         return std::find_if(status.cbegin(), status.cend(),
             [](const SyncStatus::value_type& r){
                 return r.second and r.second->pending();
-            }) != status.end();
+            }) != status.cend();
     }
     static bool pending(const NodeListenerStatus& status) {
         return std::find_if(status.begin(), status.end(),
