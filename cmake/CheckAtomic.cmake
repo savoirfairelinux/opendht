@@ -34,6 +34,21 @@ int main() {
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endfunction(check_working_cxx_atomics64)
 
+function(check_working_cxx_atomics_for_risc_v varname)
+  set(OLD_CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS})
+  set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++11")
+  CHECK_CXX_SOURCE_COMPILES("
+#include <atomic>
+std::atomic<uint8_t> x;
+std::atomic<uint16_t> y;
+int main() {
+  x++;
+  y++;
+  return 0;
+}
+" ${varname})
+  set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+endfunction(check_working_cxx_atomics_for_risc_v)
 
 # This isn't necessary on MSVC, so avoid command-line switch annoyance
 # by only running on GCC-like hosts.
@@ -73,6 +88,22 @@ if(NOT HAVE_CXX_ATOMICS64_WITHOUT_LIB)
     endif()
   else()
     message(FATAL_ERROR "Host compiler appears to require libatomic for 64-bit operations, but cannot find it.")
+  endif()
+endif()
+
+# Check for RISC-V atomic operations.
+if(MSVC)
+  set(HAVE_CXX_ATOMICS_RISC_V_WITHOUT_LIB True)
+else()
+  check_working_cxx_atomics_for_risc_v(HAVE_CXX_ATOMICS_RISC_V_WITHOUT_LIB)
+endif()
+
+# If not, check if the library exists, and atomics work with it.
+if(NOT HAVE_CXX_ATOMICS_RISC_V_WITHOUT_LIB)
+  list(APPEND CMAKE_REQUIRED_LIBRARIES "atomic")
+  check_working_cxx_atomics_for_risc_v(HAVE_CXX_ATOMICS_RISC_V_WITH_LIB)
+  if (NOT HAVE_CXX_ATOMICS_RISC_V_WITH_LIB)
+    message(FATAL_ERROR "Host compiler must support RISC-V std::atomic!")
   endif()
 endif()
 
