@@ -320,8 +320,8 @@ if (OPENDHT_STATIC)
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
                    ${Jsoncpp_STATIC_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
                    ${OPENSSL_STATIC_LIBRARIES})
-        if (NOT HAVE_CXX_ATOMICS_RISC_V_WITHOUT_LIB)
-            target_link_libraries(opendht-static PUBLIC "atomic")
+        if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB)
+            target_link_libraries(opendht-static PUBLIC atomic)
         endif ()
     else ()
         if (OPENDHT_TOOLS)
@@ -396,8 +396,8 @@ if (OPENDHT_SHARED)
             PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                     ${Jsoncpp_LIBRARIES}
                     ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES})
-        if (NOT HAVE_CXX_ATOMICS_RISC_V_WITHOUT_LIB)
-            target_link_libraries(opendht PUBLIC "atomic")
+        if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB)
+            target_link_libraries(opendht PUBLIC atomic)
         endif ()
     endif ()
 
@@ -503,8 +503,8 @@ if (OPENDHT_TESTS)
        ${GNUTLS_LIBRARIES}
        ${Jsoncpp_LIBRARIES}
     )
-    if (NOT HAVE_CXX_ATOMICS_RISC_V_WITHOUT_LIB)
-        target_link_libraries(opendht_unit_tests "atomic")
+    if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB)
+        target_link_libraries(opendht_unit_tests atomic)
     endif ()
     if (OPENDHT_PROXY_OPENSSL)
         target_link_libraries(opendht_unit_tests ${OPENSSL_LIBRARIES})
