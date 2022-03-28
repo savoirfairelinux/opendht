@@ -38,6 +38,7 @@ int main() {
   set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
 endfunction(check_working_cxx_atomics64)
 
+
 # This isn't necessary on MSVC, so avoid command-line switch annoyance
 # by only running on GCC-like hosts.
 if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
