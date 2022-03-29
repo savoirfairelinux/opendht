@@ -164,12 +164,12 @@ struct Dht::SearchNode {
         if (node->isExpired())
             return false;
 
-        bool pending {false},
+        bool is_pending {false},
              completed_sq_status {false},
              pending_sq_status {false};
         for (const auto& s : getStatus) {
             if (s.second and s.second->pending())
-                pending = true;
+                is_pending = true;
             if (s.first and q and q->isSatisfiedBy(*s.first) and s.second) {
                 if (s.second->pending())
                     pending_sq_status = true;
@@ -180,7 +180,7 @@ struct Dht::SearchNode {
             }
         }
 
-        return (not pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
+        return (not is_pending and now > last_get_reply + Node::NODE_EXPIRE_TIME) or
                 not (completed_sq_status or pending_sq_status or hasStartedPagination(q));
     }
 
@@ -437,13 +437,13 @@ struct Dht::Search {
     ~Search() {
         if (opExpirationJob)
             opExpirationJob->cancel();
-        for (auto& get : callbacks) {
-            get.second.done_cb(false, {});
-            get.second.done_cb = {};
+        for (auto& g : callbacks) {
+            g.second.done_cb(false, {});
+            g.second.done_cb = {};
         }
-        for (auto& put : announce) {
-            put.callback(false, {});
-            put.callback = {};
+        for (auto& a : announce) {
+            a.callback(false, {});
+            a.callback = {};
         }
     }
 
@@ -465,7 +465,7 @@ struct Dht::Search {
     bool insertNode(const Sp<Node>& n, time_point now, const Blob& token={});
 
     SearchNode* getNode(const Sp<Node>& n) {
-        auto srn = std::find_if(nodes.begin(), nodes.end(), [&](std::unique_ptr<SearchNode>& sn) {
+        auto srn = std::find_if(nodes.begin(), nodes.end(), [&](const std::unique_ptr<SearchNode>& sn) {
             return n == sn->node;
         });
         return (srn == nodes.end()) ? nullptr : (*srn).get();
@@ -665,12 +665,11 @@ struct Dht::Search {
     }
     unsigned getNumberOfConsecutiveBadNodes() const {
         unsigned count = 0;
-        std::find_if(nodes.begin(), nodes.end(), [&count](const std::unique_ptr<SearchNode>& sn) {
+        for (const auto& sn : nodes) {
             if (not sn->node->isExpired())
-                return true;
+                break;
             ++count;
-            return false;
-        });
+        }
         return count;
     }
 

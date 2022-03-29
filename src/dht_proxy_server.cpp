@@ -99,7 +99,7 @@ class DhtProxyServer::ConnectionListener
 {
 public:
     ConnectionListener() {};
-    ConnectionListener(std::function<void(restinio::connection_id_t)> onClosed) : onClosed_(std::move(onClosed)) {};
+    explicit ConnectionListener(std::function<void(restinio::connection_id_t)> onClosed) : onClosed_(std::move(onClosed)) {};
     ~ConnectionListener() {};
 
     /**
@@ -382,9 +382,9 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                     logger_->d("No persistent puts in state");
             }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-            if (auto listeners = findMapValue(oh.get(), "pushListeners")) {
+            if (auto pushListeners = findMapValue(oh.get(), "pushListeners")) {
                 std::lock_guard<std::mutex> lock(lockListener_);
-                pushListeners_ = listeners->as<decltype(pushListeners_)>();
+                pushListeners_ = pushListeners->as<decltype(pushListeners_)>();
                 if (logger_)
                     logger_->d("Loading %zu push listeners", pushListeners_.size());
                 for (auto& pushListener : pushListeners_) {

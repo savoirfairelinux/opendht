@@ -28,7 +28,7 @@ using CallbackQueue = std::list<std::function<void()>>;
 
 class ValueCache {
 public:
-    ValueCache(ValueStateCallback&& cb, SyncCallback&& scb = {})
+    explicit ValueCache(ValueStateCallback&& cb, SyncCallback&& scb = {})
         : callback(std::forward<ValueStateCallback>(cb)), syncCallback(std::move(scb))
     {
         if (syncCallback)

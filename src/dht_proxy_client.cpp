@@ -40,16 +40,17 @@ struct DhtProxyClient::OperationState {
 
 struct DhtProxyClient::Listener
 {
-    Listener(OpValueCache&& c):
+    explicit Listener(OpValueCache&& c):
         cache(std::move(c))
     {}
 
-    unsigned callbackId;
     OpValueCache cache;
     CacheValueCallback cb;
     Sp<OperationState> opstate;
     std::shared_ptr<http::Request> request;
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     std::unique_ptr<asio::steady_timer> refreshSubscriberTimer;
+#endif
 };
 
 struct PermanentPut {
@@ -814,6 +815,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             }
             return false;
         };
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
         if (not deviceKey_.empty()) {
             /*
              * Relaunch push listeners even if a timeout is not received
@@ -826,6 +828,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
             l->second.refreshSubscriberTimer->async_wait(std::bind(&DhtProxyClient::handleResubscribe, this,
                                                          std::placeholders::_1, key, token, opstate));
         }
+#endif
         ListenMethod method;
         restinio::http_request_header_t header;
         if (deviceKey_.empty()){ // listen
@@ -1229,7 +1232,7 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
                         ids.emplace_back(std::stoull(substr));
                     }
                     {
-                        std::lock_guard<std::mutex> lock(lockCallbacks_);
+                        std::lock_guard<std::mutex> lockCb(lockCallbacks_);
                         callbacks_.emplace_back([this, key, token, opstate, ids, sendTime]() {
                             if (opstate->stop)
                                 return;
