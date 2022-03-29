@@ -237,8 +237,8 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             throw msgpack::type_error();
         for (size_t i = 0; i < parsed.v->via.map.size; ++i) {
             auto& vdat = parsed.v->via.map.ptr[i];
-            auto o = findMapValue(vdat.val, "o");
-            auto d = findMapValue(vdat.val, "d");
+            auto o = findMapValue(vdat.val, "o"sv);
+            auto d = findMapValue(vdat.val, "d"sv);
             if (not o or not d)
                 continue;
             value_parts.emplace(vdat.key.as<unsigned>(), std::pair<size_t, Blob>(o->as<size_t>(), unpackBlob(*d)));
@@ -341,9 +341,9 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             }
         }
     } else if (parsedReq.fields) {
-        if (auto rfields = findMapValue(*parsedReq.fields, "f")) {
+        if (auto rfields = findMapValue(*parsedReq.fields, "f"sv)) {
             auto vfields = rfields->as<std::set<Value::Field>>();
-            if (auto rvalues = findMapValue(*parsedReq.fields, "v")) {
+            if (auto rvalues = findMapValue(*parsedReq.fields, "v"sv)) {
                 if (rvalues->type != msgpack::type::ARRAY)
                     throw msgpack::type_error();
                 size_t val_num = rvalues->via.array.size / vfields.size();

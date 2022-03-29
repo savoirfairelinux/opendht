@@ -38,6 +38,7 @@
 
 using namespace std::placeholders;
 using namespace std::chrono_literals;
+using namespace std::literals;
 
 namespace dht {
 constexpr char RESP_MSG_JSON_INCORRECT[] = "{\"err:\":\"Incorrect JSON\"}";
@@ -151,25 +152,25 @@ struct DhtProxyServer::RestRouterTraits : public restinio::default_traits_t
 void
 DhtProxyServer::PermanentPut::msgpack_unpack(const msgpack::object& o)
 {
-    if (auto cid = findMapValue(o, "cid")) {
+    if (auto cid = findMapValue(o, "cid"sv)) {
         clientId = cid->as<std::string>();
     }
-    if (auto exp = findMapValue(o, "exp")) {
+    if (auto exp = findMapValue(o, "exp"sv)) {
         expiration = from_time_t(exp->as<time_t>());
     }
-    if (auto token = findMapValue(o, "token")) {
+    if (auto token = findMapValue(o, "token"sv)) {
         pushToken = token->as<std::string>();
     }
-    if (auto sid = findMapValue(o, "sid")) {
+    if (auto sid = findMapValue(o, "sid"sv)) {
         if (not sessionCtx)
             sessionCtx = std::make_shared<PushSessionContext>(sid->as<std::string>());
         else
             sessionCtx->sessionId = sid->as<std::string>();
     }
-    if (auto t = findMapValue(o, "t")) {
+    if (auto t = findMapValue(o, "t"sv)) {
         type = t->as<PushType>();
     }
-    if (auto val = findMapValue(o, "value")) {
+    if (auto val = findMapValue(o, "value"sv)) {
         value = std::make_shared<dht::Value>(*val);
     }
 }
@@ -178,19 +179,19 @@ DhtProxyServer::PermanentPut::msgpack_unpack(const msgpack::object& o)
 void
 DhtProxyServer::Listener::msgpack_unpack(const msgpack::object& o)
 {
-    if (auto cid = findMapValue(o, "cid")) {
+    if (auto cid = findMapValue(o, "cid"sv)) {
         clientId = cid->as<std::string>();
     }
-    if (auto exp = findMapValue(o, "exp")) {
+    if (auto exp = findMapValue(o, "exp"sv)) {
         expiration = from_time_t(exp->as<time_t>());
     }
-    if (auto sid = findMapValue(o, "sid")) {
+    if (auto sid = findMapValue(o, "sid"sv)) {
         if (not sessionCtx)
             sessionCtx = std::make_shared<PushSessionContext>(sid->as<std::string>());
         else
             sessionCtx->sessionId = sid->as<std::string>();
     }
-    if (auto t = findMapValue(o, "t")) {
+    if (auto t = findMapValue(o, "t"sv)) {
         type = t->as<PushType>();
     }
 }
@@ -345,7 +346,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
         while (pac.next(oh)) {
             if (oh.get().type != msgpack::type::MAP)
                 continue;
-            if (auto puts = findMapValue(oh.get(), "puts")) {
+            if (auto puts = findMapValue(oh.get(), "puts"sv)) {
                 std::lock_guard<std::mutex> lock(lockSearchPuts_);
                 puts_ = puts->as<decltype(puts_)>();
                 if (logger_)
@@ -382,7 +383,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                     logger_->d("No persistent puts in state");
             }
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-            if (auto pushListeners = findMapValue(oh.get(), "pushListeners")) {
+            if (auto pushListeners = findMapValue(oh.get(), "pushListeners"sv)) {
                 std::lock_guard<std::mutex> lock(lockListener_);
                 pushListeners_ = pushListeners->as<decltype(pushListeners_)>();
                 if (logger_)
