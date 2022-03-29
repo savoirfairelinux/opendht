@@ -33,7 +33,7 @@ struct OpCacheValueStorage
 
 class OpValueCache {
 public:
-    explicit OpValueCache(ValueCallback&& cb) noexcept : callback(std::forward<ValueCallback>(cb)) {}
+    OpValueCache(ValueCallback&& cb) noexcept : callback(std::forward<ValueCallback>(cb)) {}
     explicit OpValueCache(OpValueCache&& o) noexcept : values(std::move(o.values)), callback(std::move(o.callback)) {
         o.callback = {};
     }

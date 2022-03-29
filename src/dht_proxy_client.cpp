@@ -40,9 +40,8 @@ struct DhtProxyClient::OperationState {
 
 struct DhtProxyClient::Listener
 {
-    explicit Listener(OpValueCache&& c):
-        cache(std::move(c))
-    {}
+    Listener(OpValueCache&& c):
+        cache(std::move(c)) {}
 
     OpValueCache cache;
     CacheValueCallback cb;
