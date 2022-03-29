@@ -43,8 +43,9 @@
 #endif
 
 namespace dht {
+using namespace std::literals;
 
-static const std::string VALUE_KEY_ID("id");
+static constexpr auto VALUE_KEY_ID("id");
 static const std::string VALUE_KEY_DAT("dat");
 static const std::string VALUE_KEY_PRIO("p");
 static const std::string VALUE_KEY_SIGNATURE("sig");
