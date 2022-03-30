@@ -327,15 +327,17 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         if (op == "g") {
             std::string rem;
             std::getline(iss, rem);
-            node->get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
+            auto total = std::make_shared<size_t>();
+            node->get(id, [start, total](const std::vector<std::shared_ptr<Value>>& values) {
                 auto now = std::chrono::high_resolution_clock::now();
-                std::cout << "Get: found " << values.size() << " value(s) after " << print_duration(now-start) << std::endl;
+                (*total) += values.size();
+                std::cout << "Get: found " << values.size() << " value(s) after " << print_duration(now-start) << " (total " << *total << ')' << std::endl;
                 for (const auto& value : values)
                     std::cout << "\t" << *value << std::endl;
                 return true;
-            }, [start](bool ok) {
+            }, [start, total](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Get: " << (ok ? "completed" : "failure") << ", took " << print_duration(end-start) << std::endl;
+                std::cout << "Get: " << (ok ? "completed" : "failure") << ", took " << print_duration(end-start) << " (total " << *total << ')' << std::endl;
             }, {}, dht::Where {rem});
         }
         else if (op == "q") {
@@ -356,8 +358,13 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         else if (op == "l") {
             std::string rem;
             std::getline(iss, rem);
-            auto token = node->listen(id, [](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
-                std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << std::endl;
+            auto total = std::make_shared<size_t>();
+            auto token = node->listen(id, [total](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                if (expired)
+                    (*total) -= values.size();
+                else
+                    (*total) += values.size();
+                std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << " (total " << *total << ')' << std::endl;
                 for (const auto& value : values)
                     std::cout << "\t" << *value << std::endl;
                 return true;
