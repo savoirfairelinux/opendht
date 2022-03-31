@@ -22,47 +22,50 @@
 #include "net.h"
 
 #include <map>
+#include <string_view>
+
+using namespace std::literals;
 
 namespace dht {
 namespace net {
 
-static const std::string KEY_Y {"y"};
-static const std::string KEY_R {"r"};
-static const std::string KEY_U {"u"};
-static const std::string KEY_E {"e"};
-static const std::string KEY_V {"p"};
-static const std::string KEY_TID {"t"};
-static const std::string KEY_UA {"v"};
-static const std::string KEY_NETID {"n"};
-static const std::string KEY_ISCLIENT {"s"};
-static const std::string KEY_Q {"q"};
-static const std::string KEY_A {"a"};
+static constexpr auto KEY_Y = "y"sv;
+static constexpr auto KEY_R = "r"sv;
+static constexpr auto KEY_U = "u"sv;
+static constexpr auto KEY_E = "e"sv;
+static constexpr auto KEY_V = "p"sv;
+static constexpr auto KEY_TID = "t"sv;
+static constexpr auto KEY_UA = "v"sv;
+static constexpr auto KEY_NETID = "n"sv;
+static constexpr auto KEY_ISCLIENT = "s"sv;
+static constexpr auto KEY_Q = "q"sv;
+static constexpr auto KEY_A = "a"sv;
 
-static const std::string KEY_REQ_SID {"sid"};
-static const std::string KEY_REQ_ID {"id"};
-static const std::string KEY_REQ_H {"h"};
-static const std::string KEY_REQ_TARGET {"target"};
-static const std::string KEY_REQ_QUERY {"q"};
-static const std::string KEY_REQ_TOKEN {"token"};
-static const std::string KEY_REQ_VALUE_ID {"vid"};
-static const std::string KEY_REQ_NODES4 {"n4"};
-static const std::string KEY_REQ_NODES6 {"n6"};
-static const std::string KEY_REQ_CREATION {"c"};
-static const std::string KEY_REQ_ADDRESS {"sa"};
-static const std::string KEY_REQ_VALUES {"values"};
-static const std::string KEY_REQ_EXPIRED {"exp"};
-static const std::string KEY_REQ_REFRESHED {"re"};
-static const std::string KEY_REQ_FIELDS {"fileds"};
-static const std::string KEY_REQ_WANT {"w"};
-static const std::string KEY_VERSION {"ve"};
+static constexpr auto KEY_REQ_SID = "sid"sv;
+static constexpr auto KEY_REQ_ID = "id"sv;
+static constexpr auto KEY_REQ_H = "h"sv;
+static constexpr auto KEY_REQ_TARGET = "target"sv;
+static constexpr auto KEY_REQ_QUERY = "q"sv;
+static constexpr auto KEY_REQ_TOKEN = "token"sv;
+static constexpr auto KEY_REQ_VALUE_ID = "vid"sv;
+static constexpr auto KEY_REQ_NODES4 = "n4"sv;
+static constexpr auto KEY_REQ_NODES6 = "n6"sv;
+static constexpr auto KEY_REQ_CREATION = "c"sv;
+static constexpr auto KEY_REQ_ADDRESS = "sa"sv;
+static constexpr auto KEY_REQ_VALUES = "values"sv;
+static constexpr auto KEY_REQ_EXPIRED = "exp"sv;
+static constexpr auto KEY_REQ_REFRESHED = "re"sv;
+static constexpr auto KEY_REQ_FIELDS = "fileds"sv;
+static constexpr auto KEY_REQ_WANT = "w"sv;
+static constexpr auto KEY_VERSION = "ve"sv;
 
-static const std::string QUERY_PING {"ping"};
-static const std::string QUERY_FIND {"find"};
-static const std::string QUERY_GET {"get"};
-static const std::string QUERY_UPDATE {"update"};
-static const std::string QUERY_PUT {"put"};
-static const std::string QUERY_LISTEN {"listen"};
-static const std::string QUERY_REFRESH {"refresh"};
+static constexpr auto QUERY_PING = "ping"sv;
+static constexpr auto QUERY_FIND = "find"sv;
+static constexpr auto QUERY_GET = "get"sv;
+static constexpr auto QUERY_UPDATE = "update"sv;
+static constexpr auto QUERY_PUT = "put"sv;
+static constexpr auto QUERY_LISTEN = "listen"sv;
+static constexpr auto QUERY_REFRESH = "refresh"sv;
 
 Tid unpackTid(const msgpack::object& o) {
     switch (o.type) {
@@ -173,14 +176,14 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         msgpack::object* e;
         msgpack::object* v;
         msgpack::object* a;
-        std::string q;
+        std::string_view q;
     } parsed {};
 
     for (unsigned i = 0; i < msg.via.map.size; i++) {
         auto& o = msg.via.map.ptr[i];
         if (o.key.type != msgpack::type::STR)
             continue;
-        auto key = o.key.as<std::string>();
+        auto key = o.key.as<std::string_view>();
         if (key == KEY_Y)
             parsed.y = &o.val;
         else if (key == KEY_R)
@@ -200,7 +203,7 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         else if (key == KEY_ISCLIENT)
             is_client = o.val.as<bool>();
         else if (key == KEY_Q)
-            parsed.q = o.val.as<std::string>();
+            parsed.q = o.val.as<std::string_view>();
         else if (key == KEY_A)
             parsed.a = &o.val;
     }
@@ -213,7 +216,7 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         type = MessageType::ValueData;
     else if (parsed.u)
         type = MessageType::ValueUpdate;
-    else if (parsed.y and parsed.y->as<std::string>() != "q")
+    else if (parsed.y and parsed.y->as<std::string_view>() != "q"sv)
         throw msgpack::type_error();
     else if (parsed.q == QUERY_PING)
         type = MessageType::Ping;
@@ -267,7 +270,7 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
         auto& o = req.via.map.ptr[i];
         if (o.key.type != msgpack::type::STR)
             continue;
-        auto key = o.key.as<std::string>();
+        auto key = o.key.as<std::string_view>();
         if (key == KEY_REQ_SID)
             socket_id = unpackTid(o.val);
         else if (key == KEY_REQ_ID)
