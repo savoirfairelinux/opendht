@@ -23,6 +23,7 @@
                 "-DCMAKE_BUILD_TYPE=Debug",
                 "-DOPENDHT_PROXY_CLIENT=On",
                 "-DOPENDHT_PROXY_SERVER=On",
+                "-DOPENDHT_TESTS=On",
                 "-DOPENDHT_C=On"
             ],
             "dependsOn": "builddir"
