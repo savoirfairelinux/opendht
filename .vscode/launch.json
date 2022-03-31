@@ -9,7 +9,6 @@
             "args": ["-v", "-p", "4222"],
             "cwd": "${workspaceFolder}/build",
             "environment": [],
-            "MIMode": "gdb",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
@@ -17,7 +16,15 @@
                     "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "build"
+            "preLaunchTask": "build",
+            "linux": {
+                "MIMode": "gdb",
+                "externalConsole": false,
+              },
+              "osx": {
+                "MIMode": "lldb",
+                "externalConsole": true,
+              },
         },
         {
             "name": "tests",
@@ -26,7 +33,6 @@
             "program": "${workspaceFolder}/build/opendht_unit_tests",
             "cwd": "${workspaceFolder}/build",
             "environment": [],
-            "MIMode": "gdb",
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",
@@ -34,7 +40,15 @@
                     "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "build"
+            "preLaunchTask": "build",
+                        "linux": {
+                "MIMode": "gdb",
+                "externalConsole": false,
+              },
+              "osx": {
+                "MIMode": "lldb",
+                "externalConsole": true,
+              },
         }
     ]
 }
