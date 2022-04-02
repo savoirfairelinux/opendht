@@ -175,7 +175,7 @@ SearchCache::listen(const ValueCallback& get_cb, const Sp<Query>& q, const Value
     auto op = getOp(q);
     if (op == ops.end()) {
         // New query
-        op = ops.emplace(q, std::unique_ptr<OpCache>(new OpCache)).first;
+        op = ops.emplace(q, std::make_unique<OpCache>()).first;
         auto& cache = *op->second;
         cache.searchToken = onListen(q, [&](const std::vector<Sp<Value>>& values, bool expired){
             return cache.onValue(values, expired);

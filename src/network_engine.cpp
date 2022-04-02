@@ -219,7 +219,7 @@ NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, c
         Tid tid (n->getNewTid());
 
         pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
-        pk.pack(KEY_TID);     pk.pack(tid);
+        pk.pack(KEY_TID); pk.pack(tid);
 
         auto req = std::make_shared<Request>(MessageType::UpdateValue, tid, n,
             Blob(buffer.data(), buffer.data() + buffer.size()),
@@ -460,9 +460,9 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
                     // process the full message
                     process(std::move(pmsg_it->second.msg), from);
                     partial_messages.erase(pmsg_it);
-		} catch (...) {
+                } catch (...) {
                     return;
-		}  
+                }
             } else
                 scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
         }
@@ -485,11 +485,11 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
     }
 
     if (msg->value_parts.empty()) {
-        try {	    
+        try {
             process(std::move(msg), from);
-	} catch(...) {
+        } catch(...) {
             return;
-	}
+        }
     } else {
         // starting partial message session
         auto k = msg->tid;
@@ -962,8 +962,8 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
             pk.pack(KEY_TID); pk.pack(tid);
             pk.pack(KEY_V); pk.pack_map(1);
                 pk.pack(i); pk.pack_map(2);
-                    pk.pack(std::string("o")); pk.pack(start);
-                    pk.pack(std::string("d")); pk.pack_bin(end-start);
+                    pk.pack("o"sv); pk.pack(start);
+                    pk.pack("d"sv); pk.pack_bin(end-start);
                                                pk.pack_bin_body((const char*)v.data()+start, end-start);
             send(addr, buffer.data(), buffer.size());
             start = end;
@@ -1005,8 +1005,8 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
             auto fields = query.select.getSelection();
             pk.pack(KEY_REQ_FIELDS);
             pk.pack_map(2);
-            pk.pack(std::string("f")); pk.pack(fields);
-            pk.pack(std::string("v")); pk.pack_array(st.size()*fields.size());
+            pk.pack("f"sv); pk.pack(fields);
+            pk.pack("v"sv); pk.pack_array(st.size()*fields.size());
             for (const auto& v : st)
                 v->msgpack_pack_fields(fields, pk);
             //DHT_LOG_DBG("sending closest nodes (%d+%d nodes.), %u value headers containing %u fields",

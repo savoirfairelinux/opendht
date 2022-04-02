@@ -482,13 +482,13 @@ Query::msgpack_unpack(const msgpack::object& o)
 	if (o.type != msgpack::type::MAP)
 		throw msgpack::type_error();
 
-	auto rfilters = findMapValue(o, "w"); /* unpacking filters */
+	auto rfilters = findMapValue(o, "w"sv); /* unpacking filters */
 	if (rfilters)
         where.msgpack_unpack(*rfilters);
 	else
 		throw msgpack::type_error();
 
-	auto rfield_selector = findMapValue(o, "s"); /* unpacking field selectors */
+	auto rfield_selector = findMapValue(o, "s"sv); /* unpacking field selectors */
 	if (rfield_selector)
         select.msgpack_unpack(*rfield_selector);
 	else
