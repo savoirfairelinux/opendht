@@ -28,13 +28,13 @@ struct OpCacheValueStorage
     Sp<Value> data {};
     unsigned refCount {1};
     system_clock::time_point updated {system_clock::time_point::min()};
-    OpCacheValueStorage(Sp<Value> val) : data(val) {}
+    explicit OpCacheValueStorage(Sp<Value> val) : data(val) {}
 };
 
 class OpValueCache {
 public:
     OpValueCache(ValueCallback&& cb) noexcept : callback(std::forward<ValueCallback>(cb)) {}
-    OpValueCache(OpValueCache&& o) noexcept : values(std::move(o.values)), callback(std::move(o.callback)) {
+    explicit OpValueCache(OpValueCache&& o) noexcept : values(std::move(o.values)), callback(std::move(o.callback)) {
         o.callback = {};
     }
 
@@ -150,7 +150,7 @@ public:
         return cache.size();
     }
 
-    size_t searchToken;
+    size_t searchToken {0};
 private:
     constexpr static const std::chrono::seconds EXPIRATION {60};
     OpCache(const OpCache&) = delete;

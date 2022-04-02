@@ -43,8 +43,9 @@
 #endif
 
 namespace dht {
+using namespace std::literals;
 
-static const std::string VALUE_KEY_ID("id");
+static constexpr auto VALUE_KEY_ID("id");
 static const std::string VALUE_KEY_DAT("dat");
 static const std::string VALUE_KEY_PRIO("p");
 static const std::string VALUE_KEY_SIGNATURE("sig");
@@ -270,8 +271,8 @@ struct OPENDHT_PUBLIC Value
         };
     }
 
-    static Filter UserTypeFilter(const std::string& ut) {
-        return [ut](const Value& v) {
+    static Filter UserTypeFilter(std::string ut) {
+        return [ut = std::move(ut)](const Value& v) {
             return v.user_type == ut;
         };
     }
@@ -660,7 +661,7 @@ struct OPENDHT_PUBLIC FieldValue
     FieldValue() {}
     FieldValue(Value::Field f, uint64_t int_value) : field(f), intValue(int_value) {}
     FieldValue(Value::Field f, InfoHash hash_value) : field(f), hashValue(hash_value) {}
-    FieldValue(Value::Field f, Blob blob_value) : field(f), blobValue(blob_value) {}
+    FieldValue(Value::Field f, Blob blob_value) : field(f), blobValue(std::move(blob_value)) {}
 
     bool operator==(const FieldValue& fd) const;
 
@@ -673,9 +674,9 @@ struct OPENDHT_PUBLIC FieldValue
     template <typename Packer>
     void msgpack_pack(Packer& p) const {
         p.pack_map(2);
-        p.pack(std::string("f")); p.pack(static_cast<uint8_t>(field));
+        p.pack("f"sv); p.pack(static_cast<uint8_t>(field));
 
-        p.pack(std::string("v"));
+        p.pack("v"sv);
         switch (field) {
             case Value::Field::Id:
             case Value::Field::ValueType:
@@ -697,12 +698,12 @@ struct OPENDHT_PUBLIC FieldValue
         hashValue = {};
         blobValue.clear();
 
-        if (auto f = findMapValue(msg, "f"))
+        if (auto f = findMapValue(msg, "f"sv))
             field = (Value::Field)f->as<unsigned>();
         else
             throw msgpack::type_error();
 
-        auto v = findMapValue(msg, "v");
+        auto v = findMapValue(msg, "v"sv);
         if (not v)
             throw msgpack::type_error();
         else
@@ -864,7 +865,7 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& userType(std::string user_type) {
+    Where& userType(std::string_view user_type) {
         FieldValue fv {Value::Field::UserType, Blob {user_type.begin(), user_type.end()}};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));

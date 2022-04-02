@@ -38,7 +38,7 @@ printLog(std::ostream& s, char const *m, va_list args) {
     // print log to buffer
     std::array<char, 8192> buffer;
     int ret = vsnprintf(buffer.data(), buffer.size(), m, args);
-    if (ret < 0)
+    if (ret <= 0)
         return;
 
     // write timestamp
@@ -89,7 +89,7 @@ std::shared_ptr<Logger>
 getSyslogLogger(const char* name) {
 #ifndef _WIN32
     struct Syslog {
-        Syslog(const char* n) {
+        explicit Syslog(const char* n) {
             openlog(n, LOG_NDELAY, LOG_USER);
         }
         ~Syslog() {

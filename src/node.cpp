@@ -137,10 +137,7 @@ Node::openSocket(SocketCb&& cb)
     if (++transaction_id == 0)
         transaction_id = 1;
 
-    auto sock = std::make_shared<Socket>(std::move(cb));
-    auto s = sockets_.emplace(transaction_id, std::move(sock));
-    if (not s.second)
-        s.first->second = std::move(sock);
+    sockets_[transaction_id] = std::make_shared<Socket>(std::move(cb));
     return transaction_id;
 }
 

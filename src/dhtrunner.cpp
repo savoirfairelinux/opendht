@@ -181,8 +181,8 @@ DhtRunner::run(const Config& config, Context&& context)
         config_ = config;
         identityAnnouncedCb_ = context.identityAnnouncedCb;
 #endif
-        auto dht = std::unique_ptr<DhtInterface>(new Dht(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger));
-        dht_ = std::unique_ptr<SecureDht>(new SecureDht(std::move(dht), config.dht_config, std::move(context.identityAnnouncedCb), context.logger));
+        auto dht = std::make_unique<Dht>(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger);
+        dht_ = std::make_unique<SecureDht>(std::move(dht), config.dht_config, std::move(context.identityAnnouncedCb), context.logger);
         enableProxy(not config.proxy_server.empty());
     } catch(const std::exception& e) {
         config_ = {};

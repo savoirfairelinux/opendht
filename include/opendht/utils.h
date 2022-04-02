@@ -178,8 +178,8 @@ msgpack::object* findMapValue(const msgpack::object& map, const char* key, size_
 inline msgpack::object* findMapValue(const msgpack::object& map, const char* key) {
     return findMapValue(map, key, strlen(key));
 }
-inline msgpack::object* findMapValue(const msgpack::object& map, const std::string& key) {
-    return findMapValue(map, key.c_str(), key.size());
+inline msgpack::object* findMapValue(const msgpack::object& map, std::string_view key) {
+    return findMapValue(map, key.data(), key.size());
 }
 
 } // namespace dht

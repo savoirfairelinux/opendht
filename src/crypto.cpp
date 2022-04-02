@@ -1057,6 +1057,8 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     Blob noncebuf(32);
     gnutls_datum_t nonce = { noncebuf.data(), (unsigned)noncebuf.size() };
     err = gnutls_rnd(GNUTLS_RND_NONCE, nonce.data, nonce.size);
+    if (err < 0)
+        throw CryptoException(gnutls_strerror(err));
     err = gnutls_ocsp_req_set_nonce(req.get(), 0, &nonce);
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
@@ -1473,7 +1475,7 @@ RevocationList::RevocationList(const Blob& b)
     } catch (const std::exception& e) {
         gnutls_x509_crl_deinit(crl);
         crl = nullptr;
-        throw e;
+        throw;
     }
 }
 
