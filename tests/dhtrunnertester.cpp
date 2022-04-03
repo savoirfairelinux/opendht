@@ -147,6 +147,7 @@ DhtRunnerTester::testListen() {
             if (ok) putOkCount++;
             cv.notify_all();
         });
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     {
