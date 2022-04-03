@@ -109,15 +109,19 @@ NodeCache::NodeMap::getNode(const InfoHash& id, const SockAddr& addr, time_point
     auto& nref = (*this)[id];
     auto node = nref.lock();
     if (not node) {
+
         node = std::make_shared<Node>(id, addr, rd, client);
         nref = node;
         if (cleanup_counter++ == CLEANUP_FREQ) {
             cleanup();
             cleanup_counter = 0;
         }
-    } else if (confirm or node->isOld(now)) {
+    } else if (confirm and (node->isOld(now) or node->getAddr() == addr)) {
+    	// Update the addr from node if it is old or it is a confirmation of
+    	// the node. It preventives an impersonation attack within NODE_EXPIRE_TIME.
         node->update(addr);
     }
+
     return node;
 }
 
