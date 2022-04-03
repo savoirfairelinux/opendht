@@ -2,6 +2,7 @@
 
 INCLUDE(CheckCXXSourceCompiles)
 INCLUDE(CheckLibraryExists)
+INCLUDE("${CMAKE_CURRENT_LIST_DIR}/DetermineGCCCompatible.cmake")
 
 # Sometimes linking against libatomic is required for atomic ops, if
 # the platform doesn't support lock-free atomics.
@@ -32,6 +33,7 @@ function(check_working_cxx_atomics64 varname)
 std::atomic<uint64_t> x (0);
 int main() {
   uint64_t i = x.load(std::memory_order_relaxed);
+  (void)i;
   return 0;
 }
 " ${varname})
@@ -39,9 +41,10 @@ int main() {
 endfunction(check_working_cxx_atomics64)
 
 
-# This isn't necessary on MSVC, so avoid command-line switch annoyance
-# by only running on GCC-like hosts.
-if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
+# Check for (non-64-bit) atomic operations.
+if(MSVC)
+  set(HAVE_CXX_ATOMICS_WITHOUT_LIB True)
+elseif(LLVM_COMPILER_IS_GCC_COMPATIBLE OR CMAKE_CXX_COMPILER_ID MATCHES "XL")
   # First check if atomics work without the library.
   check_working_cxx_atomics(HAVE_CXX_ATOMICS_WITHOUT_LIB)
   # If not, check if the library exists, and atomics work with it.
@@ -57,16 +60,16 @@ endif()
 # Check for 64 bit atomic operations.
 if(MSVC)
   set(HAVE_CXX_ATOMICS64_WITHOUT_LIB True)
-else()
+elseif(LLVM_COMPILER_IS_GCC_COMPATIBLE OR CMAKE_CXX_COMPILER_ID MATCHES "XL")
+  # First check if atomics work without the library.
   check_working_cxx_atomics64(HAVE_CXX_ATOMICS64_WITHOUT_LIB)
-endif()
-
-# If not, check if the library exists, and atomics work with it.
-if(NOT HAVE_CXX_ATOMICS64_WITHOUT_LIB)
-  list(APPEND CMAKE_REQUIRED_LIBRARIES "atomic")
-  check_working_cxx_atomics64(HAVE_CXX_ATOMICS64_WITH_LIB)
-  if (NOT HAVE_CXX_ATOMICS64_WITH_LIB)
-    message(FATAL_ERROR "Host compiler must support 64-bit std::atomic!")
+  # If not, check if the library exists, and atomics work with it.
+  if(NOT HAVE_CXX_ATOMICS64_WITHOUT_LIB)
+    list(APPEND CMAKE_REQUIRED_LIBRARIES "atomic")
+    check_working_cxx_atomics64(HAVE_CXX_ATOMICS64_WITH_LIB)
+    if (NOT HAVE_CXX_ATOMICS64_WITH_LIB)
+      message(FATAL_ERROR "Host compiler must support 64-bit std::atomic!")
+    endif()
   endif()
 endif()
 
