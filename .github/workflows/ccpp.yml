@@ -1,6 +1,6 @@
 name: C/C++ CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build-ubuntu:
@@ -63,6 +63,3 @@ jobs:
 
     - name: make
       run: cd build && make
-
-    - name: make check
-      run: cd build && ./opendht_unit_tests
