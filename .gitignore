@@ -76,4 +76,5 @@ doc/Doxyfile
 
 # build dir
 build
+build_dev
 .DS_Store

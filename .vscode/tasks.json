@@ -5,7 +5,7 @@
             "label": "build",
             "type": "shell",
             "options": {
-                "cwd": "${workspaceRoot}/build"
+                "cwd": "${workspaceRoot}/build_dev"
             },
             "command": "make",
             "args": ["-j4"],
@@ -15,7 +15,7 @@
             "label": "cmake",
             "type": "shell",
             "options": {
-                "cwd": "${workspaceRoot}/build"
+                "cwd": "${workspaceRoot}/build_dev"
             },
             "command": "cmake",
             "args": [
@@ -37,7 +37,7 @@
             "command": "mkdir",
             "args": [
                 "-p",
-                "${workspaceRoot}/build"
+                "${workspaceRoot}/build_dev"
             ]
         },
     ]
