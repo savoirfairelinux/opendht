@@ -817,6 +817,9 @@ void
 DhtRunner::cancelListen(InfoHash h, size_t token)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
+    if (running != State::Running)
+        return;
+    ongoing_ops++;
 #ifdef OPENDHT_PROXY_CLIENT
     pending_ops.emplace([=](SecureDht&) {
         auto it = listeners_.find(token);
@@ -826,10 +829,12 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
         if (it->second.tokenProxyDht and dht_via_proxy_)
             dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
         listeners_.erase(it);
+        opEnded();
     });
 #else
     pending_ops.emplace([=](SecureDht& dht) {
         dht.cancelListen(h, token);
+        opEnded();
     });
 #endif // OPENDHT_PROXY_CLIENT
     cv.notify_all();
@@ -839,8 +844,11 @@ void
 DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
+    if (running != State::Running)
+        return;
+    ongoing_ops++;
 #ifdef OPENDHT_PROXY_CLIENT
-    pending_ops.emplace([=](SecureDht&) {
+    pending_ops.emplace([this, h, ftoken = std::move(ftoken)](SecureDht&) {
         auto it = listeners_.find(ftoken.get());
         if (it == listeners_.end()) return;
         if (it->second.tokenClassicDht)
@@ -848,10 +856,12 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
         if (it->second.tokenProxyDht and dht_via_proxy_)
             dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
         listeners_.erase(it);
+        opEnded();
     });
 #else
-    pending_ops.emplace([=](SecureDht& dht) {
+    pending_ops.emplace([this, h, ftoken = std::move(ftoken)](SecureDht& dht) {
         dht.cancelListen(h, ftoken.get());
+        opEnded();
     });
 #endif // OPENDHT_PROXY_CLIENT
     cv.notify_all();
@@ -886,7 +896,7 @@ DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, tim
         return;
     }
     ongoing_ops++;
-    pending_ops.emplace([=, cb = std::move(cb)](SecureDht& dht) mutable {
+    pending_ops.emplace([=, value = std::move(value), cb = std::move(cb)](SecureDht& dht) mutable {
         dht.put(hash, value, bindOpDoneCallback(std::move(cb)), created, permanent);
     });
     cv.notify_all();
@@ -1066,7 +1076,7 @@ DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple cb)
 }
 
 void
-DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple cb)
+DhtRunner::bootstrap(SockAddr addr, DoneCallbackSimple cb)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
@@ -1075,7 +1085,7 @@ DhtRunner::bootstrap(const SockAddr& addr, DoneCallbackSimple cb)
         return;
     }
     ongoing_ops++;
-    pending_ops_prio.emplace([addr, cb = bindOpDoneCallback(std::move(cb))](SecureDht& dht) mutable {
+    pending_ops_prio.emplace([addr = std::move(addr), cb = bindOpDoneCallback(std::move(cb))](SecureDht& dht) mutable {
         dht.pingNode(std::move(addr), std::move(cb));
     });
     cv.notify_all();
@@ -1094,12 +1104,12 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
 }
 
 void
-DhtRunner::bootstrap(const std::vector<NodeExport>& nodes)
+DhtRunner::bootstrap(std::vector<NodeExport> nodes)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    pending_ops_prio.emplace([=](SecureDht& dht) {
+    pending_ops_prio.emplace([nodes = std::move(nodes)](SecureDht& dht) {
         for (auto& node : nodes)
             dht.insertNode(node);
     });

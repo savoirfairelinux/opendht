@@ -53,7 +53,7 @@ public:
     CallbackQueue clear() {
         std::vector<Sp<Value>> expired_values;
         expired_values.reserve(values.size());
-        for (const auto& v : values)
+        for (auto& v : values)
             expired_values.emplace_back(std::move(v.second.data));
         values.clear();
         CallbackQueue ret;

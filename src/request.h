@@ -74,14 +74,14 @@ struct Request {
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<void(const Request&, bool)> on_expired) :
-        node(node), tid(tid), type(type), on_done(on_done), on_expired(on_expired), msg(std::move(msg)) { }
+        node(std::move(node)), tid(tid), type(type), on_done(std::move(on_done)), on_expired(std::move(on_expired)), msg(std::move(msg)) { }
     Request(MessageType type, Tid tid,
             Sp<Node> node,
             Blob&& msg,
             std::function<void(const Request&, ParsedMessage&&)> on_done,
             std::function<bool(const Request&, DhtProtocolException&&)> on_error,
             std::function<void(const Request&, bool)> on_expired) :
-        node(node), tid(tid), type(type), on_done(on_done), on_error(on_error), on_expired(on_expired), msg(std::move(msg)) { }
+        node(std::move(node)), tid(tid), type(type), on_done(std::move(on_done)), on_error(std::move(on_error)), on_expired(std::move(on_expired)), msg(std::move(msg)) { }
 
     Tid getTid() const { return tid; }
     MessageType getType() const { return type; }

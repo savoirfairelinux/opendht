@@ -116,7 +116,7 @@ NetworkEngine::~NetworkEngine() {
 }
 
 void
-NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, want_t want,
+NetworkEngine::tellListener(const Sp<Node>& node, Tid socket_id, const InfoHash& hash, want_t want,
         const Blob& ntoken, std::vector<Sp<Node>>&& nodes,
         std::vector<Sp<Node>>&& nodes6, std::vector<Sp<Value>>&& values,
         const Query& query, int version)
@@ -135,7 +135,7 @@ NetworkEngine::tellListener(Sp<Node> node, Tid socket_id, const InfoHash& hash, 
 }
 
 void
-NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
+NetworkEngine::tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -186,7 +186,7 @@ NetworkEngine::tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash&,
 }
 
 void
-NetworkEngine::tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
+NetworkEngine::tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoHash&, const Blob& token, const std::vector<Value::Id>& values, int version)
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -699,7 +699,7 @@ NetworkEngine::send(const SockAddr& addr, const char *buf, size_t len, bool conf
 }
 
 Sp<Request>
-NetworkEngine::sendPing(Sp<Node> node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
+NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     Tid tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
@@ -757,7 +757,7 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
 }
 
 Sp<Request>
-NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
+NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
@@ -802,7 +802,7 @@ NetworkEngine::sendFindNode(Sp<Node> n, const InfoHash& target, want_t want,
 
 
 Sp<Request>
-NetworkEngine::sendGetValues(Sp<Node> n, const InfoHash& info_hash, const Query& query, want_t want,
+NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const Query& query, want_t want,
         RequestCb&& on_done, RequestExpiredCb&& on_expired) {
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
@@ -1073,7 +1073,7 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, want_t want,
 }
 
 Sp<Request>
-NetworkEngine::sendListen(Sp<Node> n,
+NetworkEngine::sendListen(const Sp<Node>& n,
         const InfoHash& hash,
         const Query& query,
         const Blob& token,
@@ -1142,7 +1142,7 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
 }
 
 Sp<Request>
-NetworkEngine::sendAnnounceValue(Sp<Node> n,
+NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
         const InfoHash& infohash,
         const Sp<Value>& value,
         time_point created,
@@ -1200,7 +1200,7 @@ NetworkEngine::sendAnnounceValue(Sp<Node> n,
 }
 
 Sp<Request>
-NetworkEngine::sendUpdateValues(Sp<Node> n,
+NetworkEngine::sendUpdateValues(const Sp<Node>& n,
                                 const InfoHash& infohash,
                                 const std::vector<Sp<Value>>& values,
                                 time_point created,
@@ -1246,7 +1246,7 @@ NetworkEngine::sendUpdateValues(Sp<Node> n,
 }
 
 Sp<Request>
-NetworkEngine::sendRefreshValue(Sp<Node> n,
+NetworkEngine::sendRefreshValue(const Sp<Node>& n,
                 const InfoHash& infohash,
                 const Value::Id& vid,
                 const Blob& token,

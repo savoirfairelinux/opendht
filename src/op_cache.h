@@ -28,7 +28,7 @@ struct OpCacheValueStorage
     Sp<Value> data {};
     unsigned refCount {1};
     system_clock::time_point updated {system_clock::time_point::min()};
-    explicit OpCacheValueStorage(Sp<Value> val) : data(val) {}
+    explicit OpCacheValueStorage(Sp<Value> val) : data(std::move(val)) {}
 };
 
 class OpValueCache {
