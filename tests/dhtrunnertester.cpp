@@ -199,6 +199,11 @@ DhtRunnerTester::testIdOps() {
     node2.run(42232, config2, std::move(context2));
     node2.bootstrap(node1.getBound());
 
+    {
+        std::unique_lock<std::mutex> lk(mutex);
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 1; }));
+    }
+
     node1.findCertificate(node2.getId(), [&](const std::shared_ptr<dht::crypto::Certificate>& crt){
         CPPUNIT_ASSERT(crt);
         std::lock_guard<std::mutex> lk(mutex);
