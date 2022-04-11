@@ -75,37 +75,41 @@ int main()
     pk_id = dht_publickey_get_id(pk);
     printf("Key ID: %s\n", dht_infohash_print(&pk_id));
     dht_publickey_delete(pk);
-
     dht_identity_delete(&id);
 
-    dht_runner* runner = dht_runner_new();
-    dht_runner_run(runner, 4040);
-
     dht_infohash h;
-    dht_infohash_random(&h);
-
-    printf("random hash: %s\n", dht_infohash_print(&h));
+    //dht_infohash_random(&h);
+    dht_infohash_get_from_string(&h, "bad_actors_test");
+    printf("hash: %s\n", dht_infohash_print(&h));
 
     // Put data
     const char* data_str = "yo, this is some data";
     dht_value* val = dht_value_new_from_string(data_str);
-    dht_runner_put(runner, &h, val, dht_done_callback, runner, false);
-    dht_value_unref(val);
 
-    // Get data
-    dht_runner_get(runner, &h, dht_get_callback, dht_done_callback, runner);
-
-    // Listen for data
     struct op_context* ctx = malloc(sizeof(struct op_context));
     ctx->runner = runner;
     ctx->d = 42;
+
+    dht_runner* runner = dht_runner_new();
+    dht_runner_config dht_config;
+	dht_runner_config_default(&dht_config);
+	dht_config.peer_discovery = true; // Look for other peers on the network
+	dht_config.peer_publish = true; // Publish our own peer info
+    dht_runner_run_config(runner, 4040, &dht_config);
+
+
+    // Get data
+    //dht_runner_get(runner, &h, dht_get_callback, dht_done_callback, runner);
+
+    // Listen for data
     dht_op_token* token = dht_runner_listen(runner, &h, dht_value_callback, op_context_free, ctx);
-
-    sleep(1);
-
     dht_runner_bootstrap(runner, "bootstrap.jami.net", NULL);
+    dht_runner_put(runner, &h, val, dht_done_callback, runner, true);
+    dht_runner_get(runner, &h, dht_get_callback, dht_done_callback, runner);
+    dht_value_unref(val);
 
-    sleep(2);
+    //sleep(1);
+    //sleep(20);
 
     struct sockaddr** addrs = dht_runner_get_public_address(runner);
     for (struct sockaddr** addrIt = addrs; *addrIt; addrIt++) {

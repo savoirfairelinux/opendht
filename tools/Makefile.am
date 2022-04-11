@@ -11,3 +11,10 @@ dhtchat_LDFLAGS = -lopendht -lreadline -L@top_builddir@/src/.libs @GnuTLS_LIBS@
 
 dhtscanner_SOURCES = dhtscanner.cpp
 dhtscanner_LDFLAGS = -lopendht -lreadline -L@top_builddir@/src/.libs @GnuTLS_LIBS@
+
+if ENABLE_C
+bin_PROGRAMS += dhtcnode
+dhtcnode_CFLAGS = -isystem @top_srcdir@/c -isystem @top_srcdir@/include
+dhtcnode_SOURCES = dhtcnode.c
+dhtcnode_LDFLAGS = -lopendht-c -L@top_builddir@/c/.libs
+endif

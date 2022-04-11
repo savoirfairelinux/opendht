@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#include "def.h"
+#include <opendht/def.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <stdbool.h>
