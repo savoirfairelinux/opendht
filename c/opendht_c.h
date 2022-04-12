@@ -147,6 +147,7 @@ struct OPENDHT_PUBLIC dht_runner_config {
     bool peer_publish;
     dht_certificate* server_ca;
     dht_identity client_identity;
+    bool log;
 };
 typedef struct dht_runner_config dht_runner_config;
 OPENDHT_C_PUBLIC void dht_runner_config_default(dht_runner_config* config);

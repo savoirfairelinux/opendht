@@ -17,7 +17,9 @@
  */
 
 #include "opendht_c.h"
-#include "opendht.h"
+
+#include <opendht.h>
+#include <opendht/log.h>
 
 using ValueSp = std::shared_ptr<dht::Value>;
 using PrivkeySp = std::shared_ptr<dht::crypto::PrivateKey>;
@@ -333,7 +335,12 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
         config.push_token = conf->push_token ? std::string(conf->push_token) : std::string{};
         config.peer_discovery = conf->peer_discovery;
         config.peer_publish = conf->peer_publish;
-        runner->run(port, config);
+
+        dht::DhtRunner::Context context;
+        if (conf->log) {
+            context.logger = dht::log::getStdLogger();
+        }
+        runner->run(port, config, std::move(context));
     } catch(...) {
         return ENOTCONN;
     }
