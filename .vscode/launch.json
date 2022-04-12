@@ -41,14 +41,14 @@
                 }
             ],
             "preLaunchTask": "build",
-                        "linux": {
+            "linux": {
                 "MIMode": "gdb",
                 "externalConsole": false,
-              },
-              "osx": {
+            },
+            "osx": {
                 "MIMode": "lldb",
                 "externalConsole": true,
-              },
+            },
         }
     ]
 }
