@@ -14,7 +14,7 @@ dhtscanner_LDFLAGS = -lopendht -lreadline -L@top_builddir@/src/.libs @GnuTLS_LIB
 
 if ENABLE_C
 bin_PROGRAMS += dhtcnode
-dhtcnode_CFLAGS = -isystem @top_srcdir@/c -isystem @top_srcdir@/include
+dhtcnode_CFLAGS = -std=c11 -isystem @top_srcdir@/c -isystem @top_srcdir@/include
 dhtcnode_SOURCES = dhtcnode.c
-dhtcnode_LDFLAGS = -lopendht-c -L@top_builddir@/c/.libs
+dhtcnode_LDFLAGS = -lopendht-c -lreadline -L@top_builddir@/c/.libs
 endif
