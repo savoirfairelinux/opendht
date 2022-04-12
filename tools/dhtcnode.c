@@ -1,3 +1,21 @@
+/*
+ *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include <opendht_c.h>
 
 #include <getopt.h>
@@ -114,6 +132,7 @@ static const struct option long_options[] = {
 struct dht_params
 parse_args(int argc, char **argv) {
     struct dht_params params;
+    bzero(&params, sizeof params);
     int opt;
     while ((opt = getopt_long(argc, argv, "hisvDp:n:b:f:l:", long_options, NULL)) != -1) {
         switch (opt) {
@@ -185,7 +204,6 @@ int main(int argc, char **argv)
         bzero(arg, sizeof arg);
         bzero(value, sizeof value);
         sscanf(line_read, "%64s %64s %256s", cmd, arg, value);
-        //printf("%s -> %s\n", cmd, arg);
 
         if (!strcmp(cmd, "la")) {
             struct sockaddr** addrs = dht_runner_get_public_address(runner);
