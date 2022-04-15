@@ -1202,7 +1202,7 @@ Dht::cancelPut(const InfoHash& id, const Value::Id& vid)
 // Storage
 
 void
-Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v, bool newValue)
+Dht::storageChanged(const InfoHash& id, Storage& st, const Sp<Value>& v, bool newValue)
 {
     if (newValue) {
         if (not st.local_listeners.empty()) {
@@ -1212,8 +1212,8 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v, bool newVa
             cbs.reserve(st.local_listeners.size());
             for (const auto& l : st.local_listeners) {
                 std::vector<Sp<Value>> vals;
-                if (not l.second.filter or l.second.filter(*v.data))
-                    vals.push_back(v.data);
+                if (not l.second.filter or l.second.filter(*v))
+                    vals.push_back(v);
                 if (not vals.empty()) {
                     if (logger_)
                         logger_->d(id, "[store %s] sending update local listener with token %lu",
@@ -1234,14 +1234,14 @@ Dht::storageChanged(const InfoHash& id, Storage& st, ValueStorage& v, bool newVa
         for (const auto& node_listeners : st.listeners) {
             for (const auto& l : node_listeners.second) {
                 auto f = l.second.query.where.getFilter();
-                if (f and not f(*v.data))
+                if (f and not f(*v))
                     continue;
                 if (logger_)
                     logger_->w(id, node_listeners.first->id, "[store %s] [node %s] sending update",
                         id.toString().c_str(),
                         node_listeners.first->toString().c_str());
                 std::vector<Sp<Value>> vals {};
-                vals.push_back(v.data);
+                vals.push_back(v);
                 Blob ntoken = makeToken(node_listeners.first->getAddr(), false);
                 network_engine.tellListener(node_listeners.first, l.first, id, 0, ntoken, {}, {},
                         std::move(vals), l.second.query, l.second.version);
@@ -1284,7 +1284,7 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
         if (total_store_size > max_store_size) {
             expireStore();
         }
-        storageChanged(id, st->second, *vs, store.second.values_diff > 0);
+        storageChanged(id, st->second, vs->data, store.second.values_diff > 0);
     }
 
     return std::get<0>(store);

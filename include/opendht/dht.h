@@ -453,7 +453,7 @@ private:
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);
 
-    void storageChanged(const InfoHash& id, Storage& st, ValueStorage&, bool newValue);
+    void storageChanged(const InfoHash& id, Storage& st, const Sp<Value>&, bool newValue);
     std::string printStorageLog(const decltype(store)::value_type&) const;
 
     /**
