@@ -1403,23 +1403,23 @@ Dht::expireStore()
             break;
         }
         auto largest = store_quota.begin();
-        for (auto it = ++largest; it != store_quota.end(); ++it) {
+        for (auto it = std::next(largest); it != store_quota.end(); ++it) {
             if (it->second.size() > largest->second.size())
                 largest = it;
         }
-        if (logger_)
-            logger_->w("No space left: discarding value of largest consumer %s", largest->first.toString().c_str());
-        while (true) {
-            auto exp_value = largest->second.getOldest();
-            auto storage = store.find(exp_value.first);
-            if (storage != store.end()) {
-                auto ret = storage->second.remove(exp_value.first, exp_value.second);
-                total_store_size += ret.size_diff;
-                total_values += ret.values_diff;
-                if (logger_)
-                    logger_->w("Discarded %ld bytes, still %ld used", largest->first.toString().c_str(), total_store_size);
-                if (ret.values_diff)
-                    break;
+        if (largest != store_quota.end()) {
+            while (true) {
+                auto exp_value = largest->second.getOldest();
+                auto storage = store.find(exp_value.first);
+                if (storage != store.end()) {
+                    if (logger_)
+                        logger_->w("Storage quota full: discarding value from %s at %s %016" PRIx64, largest->first.toString().c_str(), exp_value.first.to_c_str(), exp_value.second);
+                    auto ret = storage->second.remove(exp_value.first, exp_value.second);
+                    total_store_size += ret.size_diff;
+                    total_values += ret.values_diff;
+                    if (ret.values_diff)
+                        break;
+                }
             }
         }
     }
