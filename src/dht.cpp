@@ -1282,9 +1282,13 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
             vs->expiration_job = scheduler.add(expiration, std::bind(&Dht::expireStorage, this, id));
         }
         if (total_store_size > max_store_size) {
+            auto value = vs->data;
+            auto value_diff = store.second.values_diff;
             expireStore();
+            storageChanged(id, st->second, value, value_diff > 0);
+        } else {
+            storageChanged(id, st->second, vs->data, store.second.values_diff > 0);
         }
-        storageChanged(id, st->second, vs->data, store.second.values_diff > 0);
     }
 
     return std::get<0>(store);
