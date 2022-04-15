@@ -2558,7 +2558,7 @@ Dht::storageRefresh(const InfoHash& id, Value::Id vid)
             }
         }
 
-        auto expiration = s->second.refresh(now, vid, types);
+        auto expiration = s->second.refresh(id, now, vid, types);
         if (expiration.first) {
             scheduler.cancel(expiration.first->expiration_job);
             if (expiration.second != time_point::max()) {

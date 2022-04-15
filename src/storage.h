@@ -37,15 +37,29 @@ public:
         storedValues_.emplace(expiration, std::pair<InfoHash, Value::Id>(id, value.id));
     }
     void erase(const InfoHash& id, const Value& value, time_point expiration) {
-        totalSize_ -= value.size();
         auto range = storedValues_.equal_range(expiration);
         for (auto rit = range.first; rit != range.second;) {
             if (rit->second.first == id && rit->second.second == value.id) {
+                totalSize_ -= value.size();
                 storedValues_.erase(rit);
-                break;
+                return;
             } else
                 ++rit;
         }
+        // printf("StorageBucket::erase can't find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
+    }
+    void refresh(const InfoHash& id, const Value& value, time_point old_expiration, time_point expiration) {
+        auto range = storedValues_.equal_range(old_expiration);
+        for (auto rit = range.first; rit != range.second;) {
+            if (rit->second.first == id && rit->second.second == value.id) {
+                storedValues_.erase(rit);
+                storedValues_.emplace(expiration, std::pair<InfoHash, Value::Id>(id, value.id));
+                return;
+            } else
+                ++rit;
+        }
+        // printf("StorageBucket::refresh can't find value %s %016" PRIx64 "\n", id.to_c_str(), value.id);
+        insert(id, value, expiration);
     }
     size_t size() const { return totalSize_; }
     std::pair<InfoHash, Value::Id> getOldest() const { return storedValues_.begin()->second; }
@@ -144,11 +158,14 @@ struct Storage {
      * @return time of the next expiration, time_point::max() if no expiration
      */
     std::pair<ValueStorage*, time_point>
-    refresh(const time_point& now, const Value::Id& vid, const TypeStore& types) {
+    refresh(const InfoHash& id, const time_point& now, const Value::Id& vid, const TypeStore& types) {
         for (auto& vs : values)
             if (vs.data->id == vid) {
                 vs.created = now;
-                vs.expiration = std::max(vs.expiration, now + types.getType(vs.data->type).expiration);
+                auto oldExp = vs.expiration;
+                vs.expiration = std::max(oldExp, now + types.getType(vs.data->type).expiration);
+                if (vs.store_bucket)
+                    vs.store_bucket->refresh(id, *vs.data, oldExp, vs.expiration);
                 return {&vs, vs.expiration};
             }
         return {nullptr, time_point::max()};
