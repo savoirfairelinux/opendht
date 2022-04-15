@@ -36,8 +36,8 @@ DhtRunnerTester::setUp() {
     config.dht_config.node_config.max_peer_req_per_sec = -1;
     config.dht_config.node_config.max_req_per_sec = -1;
 
-    node1.run(42222, config);
-    node2.run(42232, config);
+    node1.run(0, config);
+    node2.run(0, config);
     node2.bootstrap(node1.getBound());
 }
 
@@ -54,15 +54,17 @@ DhtRunnerTester::tearDown() {
     node1.shutdown(shutdown);
     node2.shutdown(shutdown);
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 12s, [&]{ return done == 2; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return done == 2u; }));
     node1.join();
     node2.join();
 }
 
 void
 DhtRunnerTester::testConstructors() {
-    CPPUNIT_ASSERT(node1.getBoundPort() == 42222);
-    CPPUNIT_ASSERT(node2.getBoundPort() == 42232);
+    CPPUNIT_ASSERT(node1.getBoundPort());
+    CPPUNIT_ASSERT_EQUAL(node1.getBoundPort(), node1.getBound().getPort());
+    CPPUNIT_ASSERT(node2.getBoundPort());
+    CPPUNIT_ASSERT_EQUAL(node2.getBoundPort(), node2.getBound().getPort());
 
     dht::DhtRunner::Config config {};
     dht::DhtRunner::Context context {};
