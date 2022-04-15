@@ -297,16 +297,24 @@ DhtRunner::shutdown(ShutdownCallback cb, bool stop) {
     }
     if (logger_)
         logger_->d("[runner %p] state changed to Stopping, %zu ongoing ops", this, ongoing_ops.load());
+#ifdef OPENDHT_PROXY_CLIENT
+    ongoing_ops += 2;
+#else
     ongoing_ops++;
+#endif
     shutdownCallbacks_.emplace_back(std::move(cb));
     pending_ops.emplace([=](SecureDht&) mutable {
         auto onShutdown = [this]{ opEnded(); };
 #ifdef OPENDHT_PROXY_CLIENT
         if (dht_via_proxy_)
             dht_via_proxy_->shutdown(onShutdown, stop);
+        else
+            opEnded();
 #endif
         if (dht_)
             dht_->shutdown(onShutdown, stop);
+        else
+            opEnded();
     });
     cv.notify_all();
 }
@@ -823,12 +831,16 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
 #ifdef OPENDHT_PROXY_CLIENT
     pending_ops.emplace([=](SecureDht&) {
         auto it = listeners_.find(token);
-        if (it == listeners_.end()) return;
-        if (it->second.tokenClassicDht)
-            dht_->cancelListen(h, it->second.tokenClassicDht);
-        if (it->second.tokenProxyDht and dht_via_proxy_)
-            dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
-        listeners_.erase(it);
+        if (it != listeners_.end()) {
+            if (it->second.tokenClassicDht)
+                dht_->cancelListen(h, it->second.tokenClassicDht);
+            if (it->second.tokenProxyDht and dht_via_proxy_)
+                dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
+            listeners_.erase(it);
+        } else {
+            if (logger_)
+                logger_->w("[runner %p] cancelListen: unknown token %zu.", this, token);
+        }
         opEnded();
     });
 #else
@@ -849,13 +861,18 @@ DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
     ongoing_ops++;
 #ifdef OPENDHT_PROXY_CLIENT
     pending_ops.emplace([this, h, ftoken = std::move(ftoken)](SecureDht&) {
-        auto it = listeners_.find(ftoken.get());
-        if (it == listeners_.end()) return;
-        if (it->second.tokenClassicDht)
-            dht_->cancelListen(h, it->second.tokenClassicDht);
-        if (it->second.tokenProxyDht and dht_via_proxy_)
-            dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
-        listeners_.erase(it);
+        auto token = ftoken.get();
+        auto it = listeners_.find(token);
+        if (it != listeners_.end()) {
+            if (it->second.tokenClassicDht)
+                dht_->cancelListen(h, it->second.tokenClassicDht);
+            if (it->second.tokenProxyDht and dht_via_proxy_)
+                dht_via_proxy_->cancelListen(h, it->second.tokenProxyDht);
+            listeners_.erase(it);
+        } else {
+            if (logger_)
+                logger_->w("[runner %p] cancelListen: unknown token %zu.", this, token);
+        }
         opEnded();
     });
 #else
