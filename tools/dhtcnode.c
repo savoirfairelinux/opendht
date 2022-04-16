@@ -245,7 +245,7 @@ int main(int argc, char **argv)
     atomic_init(&ctx.stop, false);
     dht_runner_shutdown(runner, dht_shutdown_callback, &ctx);
     while (!atomic_load(&ctx.stop)) {
-        usleep(250);
+        usleep(10000);
     }
     dht_runner_delete(runner);
     return 0;
