@@ -62,7 +62,7 @@ public:
         insert(id, value, expiration);
     }
     size_t size() const { return totalSize_; }
-    std::pair<InfoHash, Value::Id> getOldest() const { return storedValues_.begin()->second; }
+    std::pair<InfoHash, Value::Id> getOldest() const { return storedValues_.empty() ? std::pair<InfoHash, Value::Id>{} : storedValues_.begin()->second; }
 private:
     std::multimap<time_point, std::pair<InfoHash, Value::Id>> storedValues_;
     size_t totalSize_ {0};
