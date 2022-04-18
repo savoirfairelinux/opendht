@@ -42,7 +42,7 @@ namespace dht {
 namespace net {
 
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
-static const constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
+static const constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 64;
 static const constexpr std::chrono::milliseconds RX_QUEUE_MAX_DELAY(650);
 
 int bindSocket(const SockAddr& addr, SockAddr& bound);
