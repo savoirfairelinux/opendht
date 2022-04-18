@@ -447,12 +447,12 @@ private:
     // Storage
     void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
     bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {}, bool permanent = false);
-    bool storageErase(const InfoHash& id, Value::Id vid);
     bool storageRefresh(const InfoHash& id, Value::Id vid);
     void expireStore();
     void expireStorage(InfoHash h);
     void expireStore(decltype(store)::iterator);
 
+    void storageRemoved(const InfoHash& id, Storage& st, const std::vector<Sp<Value>>& values, size_t totalSize);
     void storageChanged(const InfoHash& id, Storage& st, const Sp<Value>&, bool newValue);
     std::string printStorageLog(const decltype(store)::value_type&) const;
 

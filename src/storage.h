@@ -177,7 +177,7 @@ struct Storage {
         local_listeners.erase(token);
     }
 
-    StoreDiff remove(const InfoHash& id, Value::Id);
+    Sp<Value> remove(const InfoHash& id, Value::Id);
 
     std::pair<ssize_t, std::vector<Sp<Value>>> expire(const InfoHash& id, time_point now);
 
@@ -246,7 +246,7 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
     return std::make_pair(nullptr, StoreDiff{});
 }
 
-Storage::StoreDiff
+Sp<Value>
 Storage::remove(const InfoHash& id, Value::Id vid)
 {
     auto it = std::find_if (values.begin(), values.end(), [&](const ValueStorage& vr) {
@@ -260,8 +260,9 @@ Storage::remove(const InfoHash& id, Value::Id vid)
     if (it->expiration_job)
         it->expiration_job->cancel();
     total_size -= size;
+    auto value = it->data;
     values.erase(it);
-    return {-size, -1, 0};
+    return value;
 }
 
 Storage::StoreDiff
