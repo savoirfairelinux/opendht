@@ -94,13 +94,15 @@ DhtRunnerTester::testListen() {
     std::condition_variable cv;
     std::atomic_uint valueCount(0);
     unsigned putCount(0);
-    unsigned putOkCount(0);
+    unsigned putOkCount1(0);
+    unsigned putOkCount2(0);
+    unsigned putOkCount3(0);
 
     auto a = dht::InfoHash::get("234");
     auto b = dht::InfoHash::get("2345");
     auto c = dht::InfoHash::get("23456");
     auto d = dht::InfoHash::get("234567");
-    constexpr unsigned N = 256;
+    constexpr unsigned N = 2048;
     constexpr unsigned SZ = 56 * 1024;
 
     auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&) {
@@ -132,13 +134,13 @@ DhtRunnerTester::testListen() {
         node2.put(a, dht::Value("v1"), [&](bool ok) {
             std::lock_guard<std::mutex> lock(mutex);
             putCount++;
-            if (ok) putOkCount++;
+            if (ok) putOkCount1++;
             cv.notify_all();
         });
         node2.put(b, dht::Value("v2"), [&](bool ok) {
             std::lock_guard<std::mutex> lock(mutex);
             putCount++;
-            if (ok) putOkCount++;
+            if (ok) putOkCount2++;
             cv.notify_all();
         });
         auto bigVal = std::make_shared<dht::Value>();
@@ -146,7 +148,7 @@ DhtRunnerTester::testListen() {
         node2.put(c, bigVal, [&](bool ok) {
             std::lock_guard<std::mutex> lock(mutex);
             putCount++;
-            if (ok) putOkCount++;
+            if (ok) putOkCount3++;
             cv.notify_all();
         });
     }
@@ -154,7 +156,9 @@ DhtRunnerTester::testListen() {
     {
         std::unique_lock<std::mutex> lk(mutex);
         CPPUNIT_ASSERT(cv.wait_for(lk, 30s, [&]{ return putCount == N * 3u; }));
-        CPPUNIT_ASSERT_EQUAL(N * 3u, putOkCount);
+        CPPUNIT_ASSERT_EQUAL(N, putOkCount1);
+        CPPUNIT_ASSERT_EQUAL(N, putOkCount2);
+        CPPUNIT_ASSERT_EQUAL(N, putOkCount3);
     }
 
     CPPUNIT_ASSERT(ftokena.valid());
