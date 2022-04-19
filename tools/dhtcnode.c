@@ -132,7 +132,7 @@ static const struct option long_options[] = {
 struct dht_params
 parse_args(int argc, char **argv) {
     struct dht_params params;
-    bzero(&params, sizeof params);
+    memset(&params, 0, sizeof params);
     int opt;
     while ((opt = getopt_long(argc, argv, "hisvDp:n:b:f:l:", long_options, NULL)) != -1) {
         switch (opt) {
@@ -200,9 +200,9 @@ int main(int argc, char **argv)
         if (!strcmp(line_read, "\0"))
             continue;
 
-        bzero(cmd, sizeof cmd);
-        bzero(arg, sizeof arg);
-        bzero(value, sizeof value);
+        memset(cmd, 0, sizeof cmd);
+        memset(arg, 0, sizeof arg);
+        memset(value, 0, sizeof value);
         sscanf(line_read, "%64s %64s %256s", cmd, arg, value);
 
         if (!strcmp(cmd, "la")) {
