@@ -163,14 +163,15 @@ DhtRunner::run(const Config& config, Context&& context)
             net::PacketList ret;
             {
                 std::lock_guard<std::mutex> lck(sock_mtx);
-                auto maxSize = net::RX_QUEUE_MAX_SIZE - pkts.size();
-                while (rcv.size() > maxSize) {
-                    if (logger_)
-                        logger_->e("Dropping packet: queue is full!");
-                    rcv.pop_front();
-                }
-
                 rcv.splice(rcv.end(), std::move(pkts));
+                size_t dropped = 0;
+                while (rcv.size() > net::RX_QUEUE_MAX_SIZE) {
+                    rcv.pop_front();
+                    dropped++;
+                }
+                if (dropped and logger_) {
+                    logger_->w("[runner %p] dropped %zu packets: queue is full!", this, dropped);
+                }
                 ret = std::move(rcv_free);
             }
             cv.notify_all();
