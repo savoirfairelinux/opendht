@@ -95,6 +95,11 @@ DhtRunnerTester::testListen() {
     std::mutex mutex;
     std::condition_variable cv;
     std::atomic_uint valueCount(0);
+    std::atomic_uint valueCounta(0);
+    std::atomic_uint valueCountb(0);
+    std::atomic_uint valueCountc(0);
+    std::atomic_uint valueCountd(0);
+
     unsigned putCount(0);
     unsigned putOkCount1(0);
     unsigned putOkCount2(0);
@@ -109,33 +114,34 @@ DhtRunnerTester::testListen() {
 
     auto ftokena = node1.listen(a, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         if (expired)
-            valueCount -= values.size();
+            valueCounta -= values.size();
         else
-            valueCount += values.size();
+            valueCounta += values.size();
         return true;
     });
 
-    auto ftokenb = node1.listen(b, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
-        if (expired)
-            valueCount -= values.size();
+    auto ftokenb = node1.listen(b, [&](const std::shared_ptr<dht::Value>&) {
+        /*if (expired)
+            valueCountb -= values.size();
         else
-            valueCount += values.size();
+            valueCountb += values.size();*/
+        valueCountb++;
         return false;
     });
 
     auto ftokenc = node1.listen(c, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         if (expired)
-            valueCount -= values.size();
+            valueCountc -= values.size();
         else
-            valueCount += values.size();
+            valueCountc += values.size();
         return true;
     });
 
     auto ftokend = node1.listen(d, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         if (expired)
-            valueCount -= values.size();
+            valueCountd -= values.size();
         else
-            valueCount += values.size();
+            valueCountd += values.size();
         return true;
     });
 
@@ -188,7 +194,10 @@ DhtRunnerTester::testListen() {
     CPPUNIT_ASSERT(tokena);
     CPPUNIT_ASSERT(tokenc);
     CPPUNIT_ASSERT(tokend);
-    CPPUNIT_ASSERT_EQUAL(N * 2u + 1u, valueCount.load());
+    CPPUNIT_ASSERT_EQUAL(N, valueCounta.load());
+    CPPUNIT_ASSERT_EQUAL(1u, valueCountb.load());
+    CPPUNIT_ASSERT_EQUAL(N, valueCountc.load());
+    CPPUNIT_ASSERT_EQUAL(0u, valueCountd.load());
 
     node1.cancelListen(a, tokena);
     node1.cancelListen(b, std::move(ftokenb));
