@@ -572,6 +572,7 @@ DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
         info.node_id = dht.getNodeId();
         info.ipv4 = dht.getNodesStats(AF_INET);
         info.ipv6 = dht.getNodesStats(AF_INET6);
+        std::tie(info.storage_size, info.storage_values) = dht.getStoreSize();
         if (auto sock = dht.getSocket()) {
             info.bound4 = sock->getBoundRef(AF_INET).getPort();
             info.bound6 = sock->getBoundRef(AF_INET6).getPort();
