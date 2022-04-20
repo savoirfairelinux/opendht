@@ -36,12 +36,18 @@ struct op_context {
 struct listen_context {
     dht_runner* runner;
     dht_op_token* token;
+    size_t count;
 };
 
 bool dht_value_callback(const dht_value* value, bool expired, void* user_data)
 {
+    struct listen_context* ctx = (struct listen_context*) user_data;
+    if (expired)
+        ctx->count--;
+    else
+        ctx->count++;
     dht_data_view data = dht_value_get_data(value);
-    printf("Value callback %s: %.*s.\n", expired ? "expired" : "new", (int)data.size, data.data);
+    printf("Listen: %s value: %.*s (total %zu).\n", expired ? "expired" : "new", (int)data.size, data.data, ctx->count);
     return true;
 }
 
@@ -176,9 +182,9 @@ int main(int argc, char **argv)
 
     dht_runner* runner = dht_runner_new();
     dht_runner_config dht_config;
-	dht_runner_config_default(&dht_config);
-	dht_config.peer_discovery = params.peer_discovery; // Look for other peers on the network
-	dht_config.peer_publish = params.peer_discovery; // Publish our own peer info
+    dht_runner_config_default(&dht_config);
+    dht_config.peer_discovery = params.peer_discovery; // Look for other peers on the network
+    dht_config.peer_publish = params.peer_discovery; // Publish our own peer info
     dht_config.dht_config.node_config.network = params.network;
     dht_config.log = params.log;
     dht_runner_run_config(runner, params.port, &dht_config);
@@ -193,12 +199,11 @@ int main(int argc, char **argv)
     char value[256];
     while (true) {
         const char* line_read = readline("> ");
-        if (line_read && *line_read)
-            add_history(line_read);
         if (!line_read)
             break;
-        if (!strcmp(line_read, "\0"))
+        if (!*line_read)
             continue;
+        add_history(line_read);
 
         memset(cmd, 0, sizeof cmd);
         memset(arg, 0, sizeof arg);
@@ -218,6 +223,10 @@ int main(int argc, char **argv)
                 free(addrs);
             }
             continue;
+        } else if (!strcmp(cmd, "ll")) {
+            dht_infohash node_id = dht_runner_get_node_id(runner);
+            printf("DHT node %s running on port %u\n", dht_infohash_print(&node_id), dht_runner_get_bound_port(runner, AF_INET));
+            continue;
         }
 
         dht_infohash key;
@@ -231,6 +240,7 @@ int main(int argc, char **argv)
         } else if (!strcmp(cmd, "l")) {
             struct listen_context* ctx = malloc(sizeof(struct listen_context));
             ctx->runner = runner;
+            ctx->count = 0;
             ctx->token = dht_runner_listen(runner, &key, dht_value_callback, listen_context_free, ctx);
         } else if (!strcmp(cmd, "p")) {
             dht_value* val = dht_value_new_from_string(value);
