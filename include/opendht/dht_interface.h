@@ -221,6 +221,7 @@ public:
      * Set the in-memory storage limit in bytes
      */
     virtual void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) = 0;
+    virtual size_t getStorageLimit() const = 0;
 
     /**
      * Returns the total memory usage of stored values and the number

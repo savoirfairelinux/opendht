@@ -302,6 +302,9 @@ public:
     void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT) override {
         max_store_size = limit;
     }
+    size_t getStorageLimit() const override {
+        return max_store_size;
+    }
 
     /**
      * Returns the total memory usage of stored values and the number

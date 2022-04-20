@@ -263,6 +263,7 @@ public:
     void dumpTables() const override {}
     std::vector<unsigned> getNodeMessageStats(bool) override { return {}; }
     void setStorageLimit(size_t) override {}
+    virtual size_t getStorageLimit() const { return 0; }
     void connectivityChanged(sa_family_t) override {
         getProxyInfos();
     }
