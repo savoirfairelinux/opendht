@@ -146,6 +146,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             node->getNodeInfo([&](const std::shared_ptr<dht::NodeInfo>& nodeInfo) {
                 print_node_info(*nodeInfo);
                 std::cout << nodeInfo->ongoing_ops << " ongoing operations" << std::endl;
+                std::cout << "Storage has " << nodeInfo->storage_values <<  " values, using " << (nodeInfo->storage_size/1024) << " KB" << std::endl;
                 std::cout << "IPv4 stats:" << std::endl;
                 std::cout << nodeInfo->ipv4.toString() << std::endl;
                 std::cout << "IPv6 stats:" << std::endl;
