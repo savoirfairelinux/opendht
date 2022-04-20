@@ -18,16 +18,16 @@
 
 #include <opendht_c.h>
 
-#include <getopt.h>
-#include <readline/readline.h>
-#include <readline/history.h>
-#include <arpa/inet.h>
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+
+#include <getopt.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+#include <arpa/inet.h>
 
 struct op_context {
     dht_runner* runner;
