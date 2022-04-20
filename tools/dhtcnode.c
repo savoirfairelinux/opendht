@@ -178,6 +178,8 @@ parse_args(int argc, char **argv) {
 
 int main(int argc, char **argv)
 {
+    printf("OpenDHT version %s\n", dht_version());
+
     struct dht_params params = parse_args(argc, argv);
 
     dht_runner* runner = dht_runner_new();
