@@ -32,6 +32,11 @@ extern "C" {
 
 #include <errno.h>
 
+const char* dht_version()
+{
+    return dht::version();
+}
+
 // dht::InfoHash
 
 inline dht_infohash dht_infohash_to_c(const dht::InfoHash& h) {
