@@ -134,6 +134,9 @@ struct OPENDHT_PUBLIC Config {
     /* If non-0, overrides the default maximum store size. -1 means no limit.  */
     ssize_t max_store_size {0};
 
+    /* If non-0, overrides the default maximum store key count. -1 means no limit.  */
+    ssize_t max_store_keys {0};
+
     /**
      * Use appropriate bahavior for a public IP, stable node:
      *   - No connectivity change triggered when a search fails
