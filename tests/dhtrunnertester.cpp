@@ -105,23 +105,35 @@ DhtRunnerTester::testListen() {
     constexpr unsigned N = 2048;
     constexpr unsigned SZ = 56 * 1024;
 
-    auto ftokena = node1.listen(a, [&](const std::shared_ptr<dht::Value>&) {
-        valueCount++;
+    auto ftokena = node1.listen(a, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+        if (expired)
+            valueCount -= values.size();
+        else
+            valueCount += values.size();
         return true;
     });
 
-    auto ftokenb = node1.listen(b, [&](const std::shared_ptr<dht::Value>&) {
-        valueCount++;
+    auto ftokenb = node1.listen(b, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+        if (expired)
+            valueCount -= values.size();
+        else
+            valueCount += values.size();
         return false;
     });
 
-    auto ftokenc = node1.listen(c, [&](const std::shared_ptr<dht::Value>&) {
-        valueCount++;
+    auto ftokenc = node1.listen(c, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+        if (expired)
+            valueCount -= values.size();
+        else
+            valueCount += values.size();
         return true;
     });
 
-    auto ftokend = node1.listen(d, [&](const std::shared_ptr<dht::Value>&) {
-        valueCount++;
+    auto ftokend = node1.listen(d, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+        if (expired)
+            valueCount -= values.size();
+        else
+            valueCount += values.size();
         return true;
     });
 
@@ -145,7 +157,7 @@ DhtRunnerTester::testListen() {
         });
         auto bigVal = std::make_shared<dht::Value>();
         bigVal->data = mtu;
-        node2.put(c, bigVal, [&](bool ok) {
+        node2.put(c, std::move(bigVal), [&](bool ok) {
             std::lock_guard<std::mutex> lock(mutex);
             putCount++;
             if (ok) putOkCount3++;
