@@ -50,6 +50,7 @@ typedef struct dht_infohash dht_infohash;
 OPENDHT_C_PUBLIC void dht_infohash_zero(dht_infohash* h);
 OPENDHT_C_PUBLIC void dht_infohash_random(dht_infohash* h);
 OPENDHT_C_PUBLIC void dht_infohash_from_hex(dht_infohash* h, const char* dat);
+OPENDHT_C_PUBLIC void dht_infohash_from_hex_null(dht_infohash* h, const char* dat);
 OPENDHT_C_PUBLIC void dht_infohash_get(dht_infohash* h, const uint8_t* dat, size_t dat_size);
 OPENDHT_C_PUBLIC void dht_infohash_get_from_string(dht_infohash* h, const char* str);
 OPENDHT_C_PUBLIC const char* dht_infohash_print(const dht_infohash* h);

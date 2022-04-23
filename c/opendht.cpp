@@ -76,7 +76,11 @@ bool dht_infohash_is_zero(const dht_infohash* h) {
 }
 
 void dht_infohash_from_hex(dht_infohash* h, const char* dat) {
-    *h = dht_infohash_to_c(dht::InfoHash(std::string(dat, HASH_LEN*2)));
+    *h = dht_infohash_to_c(dht::InfoHash(std::string_view(dat, HASH_LEN*2)));
+}
+
+void dht_infohash_from_hex_null(dht_infohash* h, const char* dat) {
+    *h = dht_infohash_to_c(dht::InfoHash(std::string_view(dat)));
 }
 
 const char* dht_pkid_print(const dht_pkid* h) {
