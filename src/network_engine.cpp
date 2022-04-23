@@ -1155,11 +1155,12 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 5 : 4));
+    bool add_created = created < scheduler.time();
+    pk.pack(KEY_A); pk.pack_map(add_created ? 5 : 4);
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
       auto v = packValueHeader(buffer, {value});
-      if (created < scheduler.time()) {
+      if (add_created) {
           pk.pack(KEY_REQ_CREATION);
           pk.pack(to_time_t(created));
       }
