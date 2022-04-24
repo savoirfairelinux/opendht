@@ -120,19 +120,20 @@ struct dht_params {
 };
 
 static const struct option long_options[] = {
-    {"help",                    no_argument      , NULL, 'h'},
-    {"port",                    required_argument, NULL, 'p'},
-    {"net",                     required_argument, NULL, 'n'},
-    {"bootstrap",               required_argument, NULL, 'b'},
-    {"identity",                no_argument      , NULL, 'i'},
-    {"verbose",                 no_argument      , NULL, 'v'},
-    {"service",                 no_argument      , NULL, 's'},
-    {"peer-discovery",          no_argument      , NULL, 'D'},
-    {"no-rate-limit",           no_argument      , NULL, 'U'},
-    {"persist",                 required_argument, NULL, 'f'},
-    {"logfile",                 required_argument, NULL, 'l'},
-    {"syslog",                  no_argument      , NULL, 'L'},
-    {NULL,                      0                , NULL,  0}
+    {"help",                no_argument      , NULL, 'h'},
+    {"port",                required_argument, NULL, 'p'},
+    {"net",                 required_argument, NULL, 'n'},
+    {"bootstrap",           required_argument, NULL, 'b'},
+    {"identity",            no_argument      , NULL, 'i'},
+    {"verbose",             no_argument      , NULL, 'v'},
+    {"service",             no_argument      , NULL, 's'},
+    {"peer-discovery",      no_argument      , NULL, 'D'},
+    {"no-rate-limit",       no_argument      , NULL, 'U'},
+    {"persist",             required_argument, NULL, 'f'},
+    {"logfile",             required_argument, NULL, 'l'},
+    {"syslog",              no_argument      , NULL, 'L'},
+    {"version",             no_argument      , NULL, 'V'},
+    {NULL,                  0                , NULL,  0}
 };
 
 struct dht_params
@@ -169,6 +170,9 @@ parse_args(int argc, char **argv) {
         case 's':
             params.service = true;
             break;
+        case 'V':
+            params.version = true;
+            break;
         default:
             break;
         }
@@ -176,11 +180,24 @@ parse_args(int argc, char **argv) {
     return params;
 }
 
+dht_infohash parse_key(const char* key_str) {
+    dht_infohash key;
+    dht_infohash_from_hex_null(&key, key_str);
+    if (dht_infohash_is_zero(&key)) {
+        dht_infohash_get_from_string(&key, key_str);
+        printf("Using h(%s) = %s\n", key_str, dht_infohash_print(&key));
+    }
+    return key;
+}
+
 int main(int argc, char **argv)
 {
-    printf("OpenDHT version %s\n", dht_version());
-
     struct dht_params params = parse_args(argc, argv);
+
+    if (params.version) {
+        printf("OpenDHT version %s\n", dht_version());
+        return EXIT_SUCCESS;
+    }
 
     dht_runner* runner = dht_runner_new();
     dht_runner_config dht_config;
@@ -199,6 +216,7 @@ int main(int argc, char **argv)
     char cmd[64];
     char arg[64];
     char value[256];
+    dht_infohash key;
     while (true) {
         const char* line_read = readline("> ");
         if (!line_read)
@@ -225,40 +243,45 @@ int main(int argc, char **argv)
                 free(addrs);
             }
             continue;
-        } else if (!strcmp(cmd, "ll")) {
-            dht_infohash node_id = dht_runner_get_node_id(runner);
-            printf("DHT node %s running on port %u\n", dht_infohash_print(&node_id), dht_runner_get_bound_port(runner, AF_INET));
+        }
+        else if (!strcmp(cmd, "ll")) {
+            dht_infohash key = dht_runner_get_node_id(runner);
+            printf("DHT node %s running on port %u\n", dht_infohash_print(&key), dht_runner_get_bound_port(runner, AF_INET));
             continue;
         }
-
-        dht_infohash key;
-        dht_infohash_from_hex(&key, arg);
-        if (dht_infohash_is_zero(&key)) {
-            dht_infohash_get_from_string(&key, arg);
-            printf("Using h(%s) = %s\n", arg, dht_infohash_print(&key));
-        }
-        if (!strcmp(cmd, "g")) {
+        else if (!strcmp(cmd, "g")) {
+            key = parse_key(arg);
             dht_runner_get(runner, &key, dht_get_callback, dht_get_done_callback, runner);
-        } else if (!strcmp(cmd, "l")) {
+        }
+        else if (!strcmp(cmd, "l")) {
+            key = parse_key(arg);
             struct listen_context* ctx = malloc(sizeof(struct listen_context));
             ctx->runner = runner;
             ctx->count = 0;
             ctx->token = dht_runner_listen(runner, &key, dht_value_callback, listen_context_free, ctx);
-        } else if (!strcmp(cmd, "p")) {
+        }
+        else if (!strcmp(cmd, "p")) {
+            key = parse_key(arg);
             dht_value* val = dht_value_new_from_string(value);
             dht_runner_put(runner, &key, val, dht_put_done_callback, runner, true);
             dht_value_unref(val);
         }
+        else {
+            printf("Unkown command: %s\n", cmd);
+        }
     }
-    printf("Stopping..\n");
 
+    // Graceful shutdown
+    printf("Stopping…\n");
     struct op_context ctx;
     ctx.runner = runner;
     atomic_init(&ctx.stop, false);
     dht_runner_shutdown(runner, dht_shutdown_callback, &ctx);
+
+    // Wait until shutdown callback is called
     while (!atomic_load(&ctx.stop)) {
         usleep(10000);
     }
     dht_runner_delete(runner);
-    return 0;
+    return EXIT_SUCCESS;
 }
