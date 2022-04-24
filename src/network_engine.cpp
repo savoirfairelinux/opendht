@@ -525,7 +525,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
         } catch (DhtProtocolException &ex) {
             if (logIncoming_)
                 if (logger_)
-                    logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg(), ex.getCode());
+                    logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
             return;
         }
     }
@@ -596,7 +596,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 } catch (DhtProtocolException &ex) {
                     if (logIncoming_)
                         if (logger_)
-                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg(), ex.getCode());
+                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
                     return;
                 }
                 break;
@@ -607,7 +607,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 } catch (DhtProtocolException &ex) {
                     if (logIncoming_)
                         if (logger_)
-                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg(), ex.getCode());
+                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
                     return;
                 }
             }
