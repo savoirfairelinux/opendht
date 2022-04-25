@@ -36,7 +36,7 @@ struct OPENDHT_C_PUBLIC dht_data_view {
 };
 typedef struct dht_data_view dht_data_view;
 
-OPENDHT_C_PUBLIC const char* dht_version();
+OPENDHT_C_PUBLIC const char* dht_version(void);
 
 // dht::Blob
 struct OPENDHT_C_PUBLIC dht_blob;
