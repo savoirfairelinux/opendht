@@ -343,10 +343,10 @@ struct OPENDHT_PUBLIC Value
         return unpack<T>(*this);
     }
 
-    bool isEncrypted() const {
+    inline bool isEncrypted() const {
         return not cypher.empty();
     }
-    bool isSigned() const {
+    inline bool isSigned() const {
         return owner and not signature.empty();
     }
 
@@ -355,7 +355,7 @@ struct OPENDHT_PUBLIC Value
      * Afterward, checkSignature() will return true and owner will
      * be set to the corresponding public key.
      */
-    void sign(const crypto::PrivateKey& key) {
+    inline void sign(const crypto::PrivateKey& key) {
         if (isEncrypted())
             throw DhtException("Can't sign encrypted data.");
         owner = key.getSharedPublicKey();
@@ -366,18 +366,18 @@ struct OPENDHT_PUBLIC Value
      * Check that the value is signed and that the signature matches.
      * If true, the owner field will contain the signer public key.
      */
-    bool checkSignature() const {
+    inline bool checkSignature() const {
         return isSigned() and owner->checkSignature(getToSign(), signature);
     }
 
-    std::shared_ptr<crypto::PublicKey> getOwner() const {
+    inline std::shared_ptr<crypto::PublicKey> getOwner() const {
         return std::static_pointer_cast<crypto::PublicKey>(owner);
     }
 
     /**
      * Sign the value with from and returns the encrypted version for to.
      */
-    Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to) {
+    inline Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to) {
         if (isEncrypted())
             throw DhtException("Data is already encrypted.");
         setRecipient(to.getId());
@@ -453,18 +453,18 @@ struct OPENDHT_PUBLIC Value
         return id == o.id and contentEquals(o);
     }
 
-    void setRecipient(const InfoHash& r) {
+    inline void setRecipient(const InfoHash& r) {
         recipient = r;
     }
 
-    void setCypher(Blob&& c) {
+    inline void setCypher(Blob&& c) {
         cypher = std::move(c);
     }
 
     /**
      * Pack part of the data to be signed (must always be done the same way)
      */
-    Blob getToSign() const {
+    inline Blob getToSign() const {
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
         msgpack_pack_to_sign(pk);
@@ -474,7 +474,7 @@ struct OPENDHT_PUBLIC Value
     /**
      * Pack part of the data to be encrypted
      */
-    Blob getToEncrypt() const {
+    inline Blob getToEncrypt() const {
         msgpack::sbuffer buffer;
         msgpack::packer<msgpack::sbuffer> pk(&buffer);
         msgpack_pack_to_encrypt(pk);
@@ -484,7 +484,7 @@ struct OPENDHT_PUBLIC Value
     /** print value for debugging */
     OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Value& v);
 
-    std::string toString() const {
+    inline std::string toString() const {
         std::stringstream ss;
         ss << *this;
         return ss.str();
