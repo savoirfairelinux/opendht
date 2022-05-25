@@ -29,6 +29,24 @@ jobs:
     - name: make check
       run: make check
 
+  build-ubuntu-minimal:
+    name: Ubuntu/GCC minimal build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: deps
+      run: |
+        sudo apt install libncurses5-dev libreadline-dev nettle-dev \
+        libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-0-dev
+    - name: cmake
+      run: |
+        mkdir build && cd build
+        cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Debug \
+                 -DOPENDHT_C=Off -DOPENDHT_TESTS=On -DOPENDHT_PEER_DISCOVERY=Off -DOPENDHT_PYTHON=Off \
+                 -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=Off -DOPENDHT_PROXY_CLIENT=Off
+    - name: make
+      run: cd build && make
+
   build-macos:
     name: macOS/Clang build
     runs-on: macos-11
@@ -37,7 +55,7 @@ jobs:
     - name: deps
       run: |
         brew install msgpack-cxx asio gnutls nettle readline fmt jsoncpp argon2 openssl http-parser cppunit
-    
+
     - name: restinio
       run: |
         mkdir restinio && cd restinio
