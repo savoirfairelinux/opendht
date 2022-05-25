@@ -254,6 +254,27 @@ unpackId(const Json::Value& json, const std::string& key) {
 }
 #endif
 
+void
+Value::sign(const crypto::PrivateKey& key)
+{
+    if (isEncrypted())
+        throw DhtException("Can't sign encrypted data.");
+    owner = key.getSharedPublicKey();
+    signature = key.sign(getToSign());
+}
+
+Value
+Value::encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to)
+{
+    if (isEncrypted())
+        throw DhtException("Data is already encrypted.");
+    setRecipient(to.getId());
+    sign(from);
+    Value nv {id};
+    nv.setCypher(to.encrypt(getToEncrypt()));
+    return nv;
+}
+
 bool
 Value::checkSignature()
 {

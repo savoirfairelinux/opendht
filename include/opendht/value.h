@@ -213,7 +213,7 @@ struct OPENDHT_PUBLIC Value
         }
         static Filter notFilter(Filter&& f) {
             if (not f) return [](const Value&) { return false; };
-            return [f](const Value& v) { return not f(v); };
+            return [f = std::move(f)](const Value& v) { return not f(v); };
         }
         std::vector<Sp<Value>> filter(const std::vector<Sp<Value>>& values) {
             if (not (*this))
@@ -355,12 +355,7 @@ struct OPENDHT_PUBLIC Value
      * Afterward, checkSignature() will return true and owner will
      * be set to the corresponding public key.
      */
-    inline void sign(const crypto::PrivateKey& key) {
-        if (isEncrypted())
-            throw DhtException("Can't sign encrypted data.");
-        owner = key.getSharedPublicKey();
-        signature = key.sign(getToSign());
-    }
+    void sign(const crypto::PrivateKey& key);
 
     /**
      * Check that the value is signed and that the signature matches.
@@ -371,21 +366,13 @@ struct OPENDHT_PUBLIC Value
     }
 
     inline std::shared_ptr<crypto::PublicKey> getOwner() const {
-        return std::static_pointer_cast<crypto::PublicKey>(owner);
+        return owner;
     }
 
     /**
      * Sign the value with from and returns the encrypted version for to.
      */
-    inline Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to) {
-        if (isEncrypted())
-            throw DhtException("Data is already encrypted.");
-        setRecipient(to.getId());
-        sign(from);
-        Value nv {id};
-        nv.setCypher(to.encrypt(getToEncrypt()));
-        return nv;
-    }
+    Value encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to);
 
     Value() {}
 
