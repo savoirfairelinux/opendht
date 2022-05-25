@@ -239,6 +239,21 @@ Value::toJson() const
     return val;
 }
 
+uint64_t
+unpackId(const Json::Value& json, const std::string& key) {
+    uint64_t ret = 0;
+    try {
+        const auto& t = json[key];
+        if (t.isString()) {
+            ret = std::stoull(t.asString());
+        } else {
+            ret = t.asLargestUInt();
+        }
+    } catch (...) {}
+    return ret;
+}
+#endif
+
 bool
 Value::checkSignature()
 {
@@ -273,21 +288,6 @@ Value::decrypt(const crypto::PrivateKey& key)
     }
     return decryptedValue;
 }
-
-uint64_t
-unpackId(const Json::Value& json, const std::string& key) {
-    uint64_t ret = 0;
-    try {
-        const auto& t = json[key];
-        if (t.isString()) {
-            ret = std::stoull(t.asString());
-        } else {
-            ret = t.asLargestUInt();
-        }
-    } catch (...) {}
-    return ret;
-}
-#endif
 
 bool
 FieldValue::operator==(const FieldValue& vfd) const
