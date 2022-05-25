@@ -20,6 +20,7 @@
             "command": "cmake",
             "args": [
                 "${workspaceRoot}",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=On",
                 "-DCMAKE_BUILD_TYPE=Debug",
                 "-DOPENDHT_PROXY_CLIENT=On",
                 "-DOPENDHT_PROXY_SERVER=On",
