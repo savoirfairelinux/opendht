@@ -129,8 +129,8 @@ AC_ARG_ENABLE([proxy_client], AS_HELP_STRING([--enable-proxy-client], [Enable pr
 AM_CONDITIONAL(ENABLE_PROXY_CLIENT, test x$proxy_client == xyes)
 
 AC_ARG_ENABLE([tests], AS_HELP_STRING([--enable-tests], [Enable tests]), build_tests=yes, build_tests=no)
-AM_CONDITIONAL(ENABLE_TESTS, test x$build_tests == xyes)
-AM_COND_IF([ENABLE_TESTS], [
+AM_CONDITIONAL(ENABLE_TESTS, test "x$build_tests" == xyes)
+AS_IF([test "x$build_tests" == xyes], [
 	PKG_CHECK_MODULES([CppUnit], [cppunit >= 1.12])
 ])
 
