@@ -30,7 +30,7 @@ import traceback
 import ipaddress
 import netifaces
 import numpy as np
-from pyroute2.netns.process.proxy import NSPopen
+from pyroute2 import NSPopen
 import msgpack
 
 from opendht import *

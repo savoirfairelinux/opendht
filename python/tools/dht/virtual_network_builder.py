@@ -18,8 +18,7 @@
 
 import argparse, subprocess
 
-from pyroute2 import IPDB, NetNS
-from pyroute2.netns.process.proxy import NSPopen
+from pyroute2 import NDB, NetNS, NSPopen
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Creates a virtual network topology for testing')
@@ -39,7 +38,7 @@ if __name__ == "__main__":
 
     ip = None
     try:
-        ip = IPDB()
+        ip = NDB()
         if args.remove:
             # cleanup interfaces
             for ifn in range(args.ifnum):
@@ -61,11 +60,19 @@ if __name__ == "__main__":
             for ifn in range(args.ifnum):
                 iface = args.ifname+str(ifn)
                 if not iface in ip.interfaces:
-                    ip.create(kind='veth', ifname=iface, peer=iface+'.1').commit()
+                    ip.interfaces.create(
+                        kind='veth',
+                        ifname=iface,
+                        peer=iface+'.1',
+                    ).commit()
 
-            ip.create(kind='tuntap', ifname='tap'+args.ifname, mode='tap').commit()
+            ip.interfaces.create(
+                kind='tuntap',
+                ifname='tap'+args.ifname,
+                mode='tap',
+            ).commit()
 
-            with ip.create(kind='bridge', ifname=brige_name) as i:
+            with ip.interfaces.create(kind='bridge', ifname=brige_name) as i:
                 for ifn in range(args.ifnum):
                     iface = args.ifname+str(ifn)
                     i.add_port(ip.interfaces[iface])
@@ -74,37 +81,43 @@ if __name__ == "__main__":
                     i.add_ip(local_addr4+'1/24')
                 if args.ipv6:
                     i.add_ip(local_addr6+'1/64')
-                i.up()
+                i.set('state', 'up')
 
             with ip.interfaces['tap'+args.ifname] as tap:
-                tap.up()
+                tap.set('state', 'up')
 
             for ifn in range(args.ifnum):
                 iface = args.ifname+str(ifn)
 
-                nns = NetNS('node'+str(ifn))
+                nsname = 'node'+str(ifn)
+                nns = NetNS(nsname)
                 iface1 = iface+'.1'
                 with ip.interfaces[iface1] as i:
-                    i.net_ns_fd = nns.netns
+                    i['net_ns_fd'] = nns.netns
 
                 with ip.interfaces[iface] as i:
-                    i.up()
+                    i.set('state', 'up')
 
-                ip_ns = IPDB(nl=nns)
+                ip_ns = NDB(sources=[
+                    {
+                        'target': 'localhost',
+                        'netns': nsname,
+                        'kind': 'netns',
+                    }
+                ])
                 try:
-                    with ip_ns.interfaces.lo as lo:
-                        lo.up()
+                    with ip_ns.interfaces['lo'] as lo:
+                        lo.set('state', 'up')
                     with ip_ns.interfaces[iface1] as i:
                         if args.ipv4:
                             i.add_ip(local_addr4+str(ifn+8)+'/24')
                         if args.ipv6:
                             i.add_ip(local_addr6+str(ifn+8)+'/64')
-                        i.up()
+                        i.set('state', 'up')
                 finally:
-                    ip_ns.release()
+                    ip_ns.close()
 
                 nsp = NSPopen(nns.netns, ["tc", "qdisc", "add", "dev", iface1, "root", "netem", "delay", str(args.delay)+"ms", str(int(args.delay/2))+"ms", "loss", str(args.loss)+"%", "25%"], stdout=subprocess.PIPE)
-                #print(nsp.communicate()[0].decode())
                 nsp.communicate()
                 nsp.wait()
                 nsp.release()
@@ -118,4 +131,4 @@ if __name__ == "__main__":
           print('Error',e)
     finally:
         if ip:
-            ip.release()
+            ip.close()
