@@ -119,8 +119,9 @@ DhtRunner::run(const Config& config, Context&& context)
             local6.setFamily(AF_INET6);
         }
         auto state_path = config.dht_config.node_config.persist_path;
-        if (not state_path.empty() && (local4.getPort() == 0 || local6.getPort() == 0)) {
+        if (not state_path.empty())
             state_path += "_port.txt";
+        if (not state_path.empty() && (local4.getPort() == 0 || local6.getPort() == 0)) {
             std::ifstream inConfig(state_path);
             if (inConfig.is_open()) {
                 in_port_t port;
@@ -149,7 +150,7 @@ DhtRunner::run(const Config& config, Context&& context)
             context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
         }
 
-        if (not state_path.empty()) {
+        if (not state_path.empty() and config.proxy_server.empty()) {
             std::ofstream outConfig(state_path);
             outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
             outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
