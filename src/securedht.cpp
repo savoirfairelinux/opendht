@@ -71,7 +71,7 @@ SecureDht::~SecureDht() = default;
 ValueType
 SecureDht::secureType(ValueType&& type)
 {
-    type.storePolicy = [this,type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
+    type.storePolicy = [type](InfoHash id, Sp<Value>& v, const InfoHash& nid, const SockAddr& a) {
         if (v->isSigned())
             return v->checkSignature();
         return type.storePolicy(id, v, nid, a);
