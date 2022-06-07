@@ -15,120 +15,253 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; If not, see <http://www.gnu.org/licenses/>.
+import argparse
+import os
+import subprocess
 
-import argparse, subprocess
+from pyroute2 import NDB, NSPopen
 
-from pyroute2 import NDB, NetNS, NSPopen
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Creates a virtual network topology for testing')
-    parser.add_argument('-i', '--ifname', help='interface name', default='ethdht')
-    parser.add_argument('-n', '--ifnum', type=int, help='number of isolated interfaces to create', default=1)
-    parser.add_argument('-r', '--remove', help='remove instead of adding network interfaces', action="store_true")
-    parser.add_argument('-l', '--loss', help='simulated packet loss (percent)', type=int, default=0)
-    parser.add_argument('-d', '--delay', help='simulated latency (ms)', type=int, default=0)
-    parser.add_argument('-4', '--ipv4', help='Enable IPv4', action="store_true")
-    parser.add_argument('-6', '--ipv6', help='Enable IPv6', action="store_true")
+def int_range(mini, maxi):
+    def check_ifnum(arg):
+        try:
+            ret = int(arg)
+        except ValueError:
+            raise argparse.ArgumentTypeError('must be an integer')
+        if ret > maxi or ret < mini:
+            raise argparse.ArgumentTypeError(
+                f'must be {mini} <= int <= {maxi}'
+            )
+        return ret
+
+    return check_ifnum
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Creates a virtual network topology for testing'
+    )
+    parser.add_argument(
+        '-i', '--ifname', help='interface name', default='ethdht'
+    )
+    parser.add_argument(
+        '-n',
+        '--ifnum',
+        type=int_range(1, 245),
+        help='number of isolated interfaces to create',
+        default=1,
+    )
+    parser.add_argument(
+        '-r',
+        '--remove',
+        help='remove instead of adding network interfaces',
+        action='store_true',
+    )
+    parser.add_argument(
+        '-l',
+        '--loss',
+        help='simulated packet loss (percent)',
+        type=int,
+        default=0,
+    )
+    parser.add_argument(
+        '-d', '--delay', help='simulated latency (ms)', type=int, default=0
+    )
+    parser.add_argument(
+        '-4', '--ipv4', help='Enable IPv4', action='store_true'
+    )
+    parser.add_argument(
+        '-6', '--ipv6', help='Enable IPv6', action='store_true'
+    )
+    parser.add_argument(
+        '-b',
+        '--debug',
+        help='Turn on debug logging and dump topology databases',
+        action='store_true',
+    )
+    parser.add_argument(
+        '-v',
+        '--verbose',
+        help='Turn on verbose output on netns and interfaces operations',
+        action='store_true',
+    )
 
     args = parser.parse_args()
 
     local_addr4 = '10.0.42.'
     local_addr6 = '2001:db9::'
-    brige_name = 'br'+args.ifname
+    bripv4 = f'{local_addr4}1/24'
+    bripv6 = f'{local_addr6}1/64'
+    bridge_name = f'br{args.ifname}'
+    tap_name = f'tap{args.ifname}'
+    veth_names = []
+    namespaces = []
+    ipv4addrs = []
+    ipv6addrs = []
+    for ifn in range(args.ifnum):
+        namespaces.append(f'node{ifn}')
+        veth_names.append(f'{args.ifname}{ifn}')
+        ipv4addrs.append(f'{local_addr4}{ifn+8}/24' if args.ipv4 else None)
+        ipv6addrs.append(f'{local_addr6}{ifn+8}/64' if args.ipv6 else None)
 
-    ip = None
-    try:
-        ip = NDB()
+    with NDB(log='debug' if args.debug else None) as ndb:
         if args.remove:
-            # cleanup interfaces
-            for ifn in range(args.ifnum):
-                iface = args.ifname+str(ifn)
-                if iface in ip.interfaces:
-                    with ip.interfaces[iface] as i:
-                        i.remove()
-            if 'tap'+args.ifname in ip.interfaces:
-                with ip.interfaces['tap'+args.ifname] as i:
-                    i.remove()
-            if brige_name in ip.interfaces:
-                with ip.interfaces[brige_name] as i:
-                    i.remove()
-            for ifn in range(args.ifnum):
-                netns = NetNS('node'+str(ifn))
-                netns.close()
-                netns.remove()
-        else:
-            for ifn in range(args.ifnum):
-                iface = args.ifname+str(ifn)
-                if not iface in ip.interfaces:
-                    ip.interfaces.create(
-                        kind='veth',
-                        ifname=iface,
-                        peer=iface+'.1',
-                    ).commit()
+            # cleanup interfaces in the main namespace
+            for iface in veth_names + [bridge_name] + [tap_name]:
+                if iface in ndb.interfaces:
+                    ndb.interfaces[iface].remove().commit()
+                    if args.verbose:
+                        print(f'link: del main/{iface}')
 
-            ip.interfaces.create(
-                kind='tuntap',
-                ifname='tap'+args.ifname,
-                mode='tap',
-            ).commit()
-
-            with ip.interfaces.create(kind='bridge', ifname=brige_name) as i:
-                for ifn in range(args.ifnum):
-                    iface = args.ifname+str(ifn)
-                    i.add_port(ip.interfaces[iface])
-                i.add_port(ip.interfaces['tap'+args.ifname])
-                if args.ipv4:
-                    i.add_ip(local_addr4+'1/24')
-                if args.ipv6:
-                    i.add_ip(local_addr6+'1/64')
-                i.set('state', 'up')
-
-            with ip.interfaces['tap'+args.ifname] as tap:
-                tap.set('state', 'up')
-
-            for ifn in range(args.ifnum):
-                iface = args.ifname+str(ifn)
-
-                nsname = 'node'+str(ifn)
-                nns = NetNS(nsname)
-                iface1 = iface+'.1'
-                with ip.interfaces[iface1] as i:
-                    i['net_ns_fd'] = nns.netns
-
-                with ip.interfaces[iface] as i:
-                    i.set('state', 'up')
-
-                ip_ns = NDB(sources=[
-                    {
-                        'target': 'localhost',
-                        'netns': nsname,
-                        'kind': 'netns',
-                    }
-                ])
+            # cleanup namespaces
+            for nsname in namespaces:
                 try:
-                    with ip_ns.interfaces['lo'] as lo:
-                        lo.set('state', 'up')
-                    with ip_ns.interfaces[iface1] as i:
-                        if args.ipv4:
-                            i.add_ip(local_addr4+str(ifn+8)+'/24')
-                        if args.ipv6:
-                            i.add_ip(local_addr6+str(ifn+8)+'/64')
-                        i.set('state', 'up')
-                finally:
-                    ip_ns.close()
-
-                nsp = NSPopen(nns.netns, ["tc", "qdisc", "add", "dev", iface1, "root", "netem", "delay", str(args.delay)+"ms", str(int(args.delay/2))+"ms", "loss", str(args.loss)+"%", "25%"], stdout=subprocess.PIPE)
+                    ndb.netns[nsname].remove().commit()
+                    if args.verbose:
+                        print(f'netns: del {nsname}')
+                except KeyError:
+                    pass
+        else:
+            # create ports
+            for veth, nsname, ipv4addr, ipv6addr in zip(
+                veth_names, namespaces, ipv4addrs, ipv6addrs
+            ):
+                # create a network namespace and launch NDB for it
+                #
+                # another possible solution could be simply to attach
+                # the namespace to the main NDB instance, but it can
+                # take a lot of memory in case of many interfaces, thus
+                # launch and discard netns NDB instances
+                netns = NDB(
+                    log='debug' if args.debug else None,
+                    sources=[
+                        {
+                            'target': 'localhost',
+                            'netns': nsname,
+                            'kind': 'netns',
+                        }
+                    ],
+                )
+                if args.verbose:
+                    print(f'netns: add {nsname}')
+                # create the port and push the peer into the namespace
+                (
+                    ndb.interfaces.create(
+                        **{
+                            'ifname': veth,
+                            'kind': 'veth',
+                            'state': 'up',
+                            'peer': {'ifname': veth, 'net_ns_fd': nsname},
+                        }
+                    ).commit()
+                )
+                if args.verbose:
+                    print(f'link: add main/{veth} <-> {nsname}/{veth}')
+                # bring up namespace's loopback
+                (
+                    netns.interfaces.wait(ifname='lo', timeout=3)
+                    .set('state', 'up')
+                    .commit()
+                )
+                if args.verbose:
+                    print(f'link: set {nsname}/lo')
+                # bring up the peer
+                with netns.interfaces.wait(ifname=veth, timeout=3) as i:
+                    i.set('state', 'up')
+                    if args.ipv4:
+                        i.add_ip(ipv4addr)
+                    if args.ipv6:
+                        i.add_ip(ipv6addr)
+                if args.verbose:
+                    print(f'link: set {nsname}/{veth}, {ipv4addr}, {ipv6addr}')
+                # disconnect the namespace NDB agent, not removing the NS
+                if args.debug:
+                    fname = f'{nsname}-ndb.db'
+                    print(f'dump: netns topology database {fname}')
+                    netns.schema.backup(fname)
+                netns.close()
+                # set up the emulation QDisc
+                nsp = NSPopen(
+                    nsname,
+                    [
+                        'tc',
+                        'qdisc',
+                        'add',
+                        'dev',
+                        veth,
+                        'root',
+                        'netem',
+                        'delay',
+                        f'{args.delay}ms',
+                        f'{int(args.delay)/2}ms',
+                        'loss',
+                        f'{args.loss}%',
+                        '25%',
+                    ],
+                    stdout=subprocess.PIPE,
+                )
                 nsp.communicate()
                 nsp.wait()
                 nsp.release()
+                if args.verbose:
+                    print(
+                        f'netem: add {nsname}/{veth}, '
+                        f'{args.delay}, {args.loss}'
+                    )
 
-            if args.ipv4:
-                subprocess.call(["sysctl", "-w", "net.ipv4.conf."+brige_name+".forwarding=1"])
-            if args.ipv6:
-                subprocess.call(["sysctl", "-w", "net.ipv6.conf."+brige_name+".forwarding=1"])
+            # create the tap
+            #
+            # for some reason we should create the tap inteface first,
+            # and only then bring it up, thus two commit() calls
+            (
+                ndb.interfaces.create(
+                    kind='tuntap', ifname=tap_name, mode='tap'
+                )
+                .commit()
+                .set('state', 'up')
+                .commit()
+            )
+            if args.verbose:
+                print(f'link: add main/{tap_name}')
 
-    except Exception as e:
-          print('Error',e)
-    finally:
-        if ip:
-            ip.close()
+            # create the bridge and add all the ports
+            with ndb.interfaces.create(
+                ifname=bridge_name, kind='bridge', state='up'
+            ) as i:
+                if args.ipv4:
+                    i.add_ip(bripv4)
+                if args.ipv6:
+                    i.add_ip(bripv6)
+                for iface in veth_names + [tap_name]:
+                    i.add_port(iface)
+            if args.verbose:
+                print(f'link: add main/{bridge_name}, {bripv4}, {bripv6}')
+
+            with open(os.devnull, 'w') as fnull:
+                if args.ipv4:
+                    subprocess.call(
+                        [
+                            'sysctl',
+                            '-w',
+                            f'net.ipv4.conf.{bridge_name}.forwarding=1',
+                        ],
+                        stdout=fnull,
+                    )
+                if args.verbose:
+                    print(f'sysctl: set {bridge_name} ipv4 forwarding')
+                if args.ipv6:
+                    subprocess.call(
+                        [
+                            'sysctl',
+                            '-w',
+                            f'net.ipv6.conf.{bridge_name}.forwarding=1',
+                        ],
+                        stdout=fnull,
+                    )
+                if args.verbose:
+                    print(f'sysctl: set {bridge_name} ipv4 forwarding')
+
+            if args.debug:
+                fname = 'main-ndb.db'
+                print('dump: the main netns topology database')
+                ndb.schema.backup(fname)
