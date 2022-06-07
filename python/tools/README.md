@@ -20,7 +20,7 @@ help).
 
 ## Python dependencies
 
-- pyroute2 >=0.3.14
+- pyroute2 >=0.6.9
 - matplotlib
 - GeoIP (used by `scanner.py` for drawing map of the world)
 - ipaddress
