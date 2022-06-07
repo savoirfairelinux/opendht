@@ -415,7 +415,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         return;
     }
 
-    std::unique_ptr<ParsedMessage> msg {new ParsedMessage};
+    auto msg = std::make_unique<ParsedMessage>();
     try {
         msgpack::unpacked msg_res = msgpack::unpack((const char*)buf, buflen);
         msg->msgpack_unpack(msg_res.get());
