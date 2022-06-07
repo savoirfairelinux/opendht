@@ -296,8 +296,8 @@ Value::decrypt(const crypto::PrivateKey& key)
         decrypted = true;
         if (isEncrypted()) {
             auto decryptedBlob = key.decrypt(cypher);
-            std::unique_ptr<Value> v {new Value(id)};
             auto msg = msgpack::unpack((const char*)decryptedBlob.data(), decryptedBlob.size());
+            auto v = std::make_unique<Value>(id);
             v->msgpack_unpack_body(msg.get());
             if (v->recipient != key.getPublicKey().getId())
                 throw crypto::DecryptError("Recipient mismatch");
