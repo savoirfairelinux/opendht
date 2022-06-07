@@ -437,7 +437,6 @@ public:
     /**
      * Start or stop the proxy
      * @param proxify if we want to use the proxy
-     * @param deviceKey non empty to enable push notifications
      */
     void enableProxy(bool proxify);
 
@@ -474,11 +473,8 @@ private:
     DoneCallback bindOpDoneCallback(DoneCallback&& cb);
     DoneCallbackSimple bindOpDoneCallback(DoneCallbackSimple&& cb);
 
-    /** Local DHT instance */
+    /** DHT instance */
     std::unique_ptr<SecureDht> dht_;
-
-    /** Proxy client instance */
-    std::unique_ptr<SecureDht> dht_via_proxy_;
 
     /** true if we are currently using a proxy */
     std::atomic_bool use_proxy {false};
@@ -491,17 +487,6 @@ private:
      * reset dht clients
      */
     void resetDht();
-    /**
-     * @return the current active DHT
-     */
-    SecureDht* activeDht() const;
-
-    /**
-     * Store current listeners and translates global tokens for each client.
-     */
-    struct Listener;
-    std::map<size_t, Listener> listeners_;
-    size_t listener_token_ {1};
 
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
