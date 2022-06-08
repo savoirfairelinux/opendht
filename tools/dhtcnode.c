@@ -242,12 +242,10 @@ int main(int argc, char **argv)
                 }
                 free(addrs);
             }
-            continue;
         }
         else if (!strcmp(cmd, "ll")) {
-            dht_infohash key = dht_runner_get_node_id(runner);
+            key = dht_runner_get_node_id(runner);
             printf("DHT node %s running on port %u\n", dht_infohash_print(&key), dht_runner_get_bound_port(runner, AF_INET));
-            continue;
         }
         else if (!strcmp(cmd, "g")) {
             key = parse_key(arg);
