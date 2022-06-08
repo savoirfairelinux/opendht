@@ -238,8 +238,10 @@ SecureDht::checkValue(const Sp<Value>& v)
             return {};
         }
         try {
+            auto isDecrypted = v->isDecrypted();
             if (auto decrypted_val = v->decrypt(*key_)) {
-                if (decrypted_val->owner)
+                auto cacheValue = not isDecrypted and decrypted_val->owner;
+                if (cacheValue)
                     nodesPubKeys_[decrypted_val->owner->getId()] = decrypted_val->owner;
                 return decrypted_val;
             }
@@ -250,8 +252,9 @@ SecureDht::checkValue(const Sp<Value>& v)
     }
     // Check signed values
     else if (v->isSigned()) {
+        auto cacheValue = not v->isSignatureChecked() and enableCache_ and v->owner;
         if (v->checkSignature()) {
-            if (enableCache_ and v->owner)
+            if (cacheValue)
                 nodesPubKeys_[v->owner->getId()] = v->owner;
             return v;
         } else if (logger_)

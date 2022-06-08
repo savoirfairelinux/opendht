@@ -625,6 +625,12 @@ struct OPENDHT_PUBLIC Value
      */
     unsigned priority {0};
 
+    inline bool isSignatureChecked() const {
+        return signatureChecked;
+    }
+    inline bool isDecrypted() const {
+        return decrypted;
+    }
     bool checkSignature();
     Sp<Value> decrypt(const crypto::PrivateKey& key);
 
