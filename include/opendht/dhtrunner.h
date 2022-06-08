@@ -372,8 +372,8 @@ public:
     std::string getRoutingTablesLog(sa_family_t af) const;
     std::string getSearchesLog(sa_family_t af = AF_UNSPEC) const;
     std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;
-    std::vector<SockAddr> getPublicAddress(sa_family_t af = AF_UNSPEC);
-    std::vector<std::string> getPublicAddressStr(sa_family_t af = AF_UNSPEC);
+    std::vector<SockAddr> getPublicAddress(sa_family_t af = AF_UNSPEC) const;
+    std::vector<std::string> getPublicAddressStr(sa_family_t af = AF_UNSPEC) const;
     void getPublicAddress(std::function<void(std::vector<SockAddr>&&)>, sa_family_t af = AF_UNSPEC);
 
     // securedht methods
