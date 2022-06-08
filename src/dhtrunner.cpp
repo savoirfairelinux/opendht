@@ -583,7 +583,7 @@ DhtRunner::getSearchLog(const InfoHash& f, sa_family_t af) const
     return dht_->getSearchLog(f, af);
 }
 std::vector<SockAddr>
-DhtRunner::getPublicAddress(sa_family_t af)
+DhtRunner::getPublicAddress(sa_family_t af) const
 {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)
@@ -591,7 +591,7 @@ DhtRunner::getPublicAddress(sa_family_t af)
     return {};
 }
 std::vector<std::string>
-DhtRunner::getPublicAddressStr(sa_family_t af)
+DhtRunner::getPublicAddressStr(sa_family_t af) const
 {
     auto addrs = getPublicAddress(af);
     std::vector<std::string> ret(addrs.size());
