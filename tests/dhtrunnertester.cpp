@@ -36,7 +36,7 @@ DhtRunnerTester::setUp() {
     config.dht_config.node_config.max_peer_req_per_sec = -1;
     config.dht_config.node_config.max_req_per_sec = -1;
     config.dht_config.node_config.max_store_size = -1;
-    config.dht_config.node_config.max_store_keys = -1;
+    //config.dht_config.node_config.max_store_keys = -1;
 
     node1.run(0, config);
     node2.run(0, config);
