@@ -504,14 +504,8 @@ struct sockaddr** dht_runner_get_public_address(const dht_runner* r) {
     if (addrs.empty())
         return nullptr;
     auto ret = (struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
-    for (size_t i=0; i<addrs.size(); i++) {
-        if (const auto& addr = addrs[i]) {
-            ret[i] = (struct sockaddr*)malloc(addr.getLength());
-            memcpy((struct sockaddr*)ret[i], addr.get(), addr.getLength());
-        } else {
-            ret[i] = nullptr;
-        }
-    }
+    for (size_t i=0; i<addrs.size(); i++)
+        ret[i] = addrs[i].release();
     ret[addrs.size()] = nullptr;
     return ret;
 }
