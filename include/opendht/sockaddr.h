@@ -236,6 +236,15 @@ public:
         return *reinterpret_cast<sockaddr_in6*>(get());
     }
 
+    /** 
+     * Releases the ownership of the managed object, if any.
+     * The caller is responsible for deleting the object with free().
+     */
+    inline sockaddr* release() {
+        len = 0;
+        return addr.release();
+    }
+
     /**
      * Return true if address is a loopback IP address.
      */
