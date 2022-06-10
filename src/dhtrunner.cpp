@@ -132,46 +132,41 @@ DhtRunner::run(const Config& config, Context&& context)
 
         if (context.logger) {
             logger_ = context.logger;
-        }
-
-        if (not context.sock) {
-            context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
-        }
-
-        if (not state_path.empty() and config.proxy_server.empty()) {
-            std::ofstream outConfig(state_path);
-            outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
-            outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
-        }
-
-        if (context.logger) {
             logger_->d("[runner %p] state changed to Running", this);
         }
-
-        context.sock->setOnReceive([&] (net::PacketList&& pkts) {
-            net::PacketList ret;
-            {
-                std::lock_guard<std::mutex> lck(sock_mtx);
-                rcv.splice(rcv.end(), std::move(pkts));
-                size_t dropped = 0;
-                while (rcv.size() > net::RX_QUEUE_MAX_SIZE) {
-                    rcv.pop_front();
-                    dropped++;
-                }
-                if (dropped and logger_) {
-                    logger_->w("[runner %p] dropped %zu packets: queue is full!", this, dropped);
-                }
-                ret = std::move(rcv_free);
-            }
-            cv.notify_all();
-            return ret;
-        });
 
 #ifdef OPENDHT_PROXY_CLIENT
         config_ = config;
         identityAnnouncedCb_ = context.identityAnnouncedCb;
 #endif
+
         if (config.proxy_server.empty()) {
+            if (not context.sock) {
+                context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
+            }
+            context.sock->setOnReceive([&] (net::PacketList&& pkts) {
+                net::PacketList ret;
+                {
+                    std::lock_guard<std::mutex> lck(sock_mtx);
+                    rcv.splice(rcv.end(), std::move(pkts));
+                    size_t dropped = 0;
+                    while (rcv.size() > net::RX_QUEUE_MAX_SIZE) {
+                        rcv.pop_front();
+                        dropped++;
+                    }
+                    if (dropped and logger_) {
+                        logger_->w("[runner %p] dropped %zu packets: queue is full!", this, dropped);
+                    }
+                    ret = std::move(rcv_free);
+                }
+                cv.notify_all();
+                return ret;
+            });
+            if (not state_path.empty()) {
+                std::ofstream outConfig(state_path);
+                outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
+                outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
+            }
             auto dht = std::make_unique<Dht>(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger);
             dht_ = std::make_unique<SecureDht>(std::move(dht), config.dht_config, std::move(context.identityAnnouncedCb), context.logger);
         } else {
