@@ -1,0 +1,36 @@
+name: Python Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+
+permissions:
+  contents: read
+
+jobs:
+  build_wheels:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Build wheels
+      uses: pypa/cibuildwheel@v2.6.1
+      # to supply options, put them in 'env', like:
+      # env:
+      #   CIBW_SOME_OPTION: value
+
+    - uses: actions/upload-artifact@v2
+      with:
+        path: ./wheelhouse/*.whl
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build_wheels
+    steps:
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
