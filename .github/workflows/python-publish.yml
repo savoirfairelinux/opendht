@@ -24,7 +24,8 @@ jobs:
     - name: Build wheels
       uses: pypa/cibuildwheel@v2.6.1
       env:
-        CIBW_BEFORE_ALL: >
+        CIBW_BEFORE_ALL: |
+          apt-get -y install cython3
           cd python && cmake .
       with:
         package-dir: python
