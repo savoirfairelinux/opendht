@@ -3,6 +3,7 @@ name: Python Package
 on:
   release:
     types: [published]
+  push:
   workflow_dispatch:
 
 
@@ -18,7 +19,8 @@ jobs:
     - name: Build wheels
       uses: pypa/cibuildwheel@v2.6.1
       env:
-        CIBW_BEFORE_BUILD: cmake
+        CIBW_BEFORE_ALL: >
+          cmake
       with:
         package-dir: python
 
