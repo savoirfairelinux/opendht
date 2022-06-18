@@ -1,0 +1,7 @@
+# System dependencies for building OpenDHT wheels on AlmaLinux
+#
+#   dnf install -y $(grep "^[^#]" dependencies.txt)
+#     or
+#   apt-get -y install $(grep "^[^#]" dependencies.txt)a
+
+python3-Cython

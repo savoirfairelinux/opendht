@@ -26,7 +26,7 @@ jobs:
       env:
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
         CIBW_BEFORE_ALL: >
-          dnf install -y cython3 &&
+          dnf install -y $(grep "^[^#]" dependencies.txt) &&
           cd python && cmake .
       with:
         package-dir: python
