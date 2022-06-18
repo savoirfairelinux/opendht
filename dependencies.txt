@@ -4,4 +4,3 @@
 #     or
 #   apt-get -y install $(grep "^[^#]" dependencies.txt)a
 
-python3-Cython
