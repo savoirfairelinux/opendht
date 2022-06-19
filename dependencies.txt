@@ -6,3 +6,4 @@
 
 gnutls-devel
 msgpack-devel
+readline-devel
