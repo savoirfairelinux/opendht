@@ -8,3 +8,4 @@ gnutls-devel
 msgpack-devel
 readline-devel
 libargon2-devel
+asio-devel
