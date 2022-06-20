@@ -30,7 +30,15 @@ jobs:
         CIBW_BEFORE_ALL: >
           dnf install -y epel-release &&
           dnf module enable -y mariadb-devel &&
-          dnf install -y $(grep "^[^#]" dependencies.txt)
+          dnf install -y $(grep "^[^#]" dependencies.txt) &&
+          echo "need newer asio-devel version" &&
+            curl -OL https://download.sourceforge.net/asio/asio-1.21.0.tar.bz2 &&
+            tar xf asio-1.21.0.tar.bz2 &&
+            cd asio-1.21.0 &&
+            ./configure &&
+            make &&
+            make install &&
+            cd ..
         CIBW_BEFORE_BUILD: >
           pip install Cython &&
           cmake -DOPENDHT_PYTHON=ON . &&
