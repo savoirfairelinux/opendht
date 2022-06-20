@@ -33,7 +33,8 @@ jobs:
           dnf install -y $(grep "^[^#]" dependencies.txt)
         CIBW_BEFORE_BUILD: >
           pip install Cython &&
-          cmake -DOPENDHT_PYTHON=ON .
+          cmake -DOPENDHT_PYTHON=ON . &&
+          make
       with:
         package-dir: python
 
