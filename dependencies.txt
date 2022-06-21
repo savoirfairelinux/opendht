@@ -1,11 +1,12 @@
-# System dependencies for building OpenDHT wheels on AlmaLinux
+# System dependencies for building OpenDHT wheels on AlmaLinux 8
 #
 #   dnf install -y $(grep "^[^#]" dependencies.txt)
-#     or
-#   apt-get -y install $(grep "^[^#]" dependencies.txt)a
 
 gnutls-devel
 msgpack-devel
 readline-devel
 libargon2-devel
-asio-devel
+
+# asio-devel 1.10.x in AlmaLinux 8 is too old and OpenDHT needs 1.12+
+# 
+#asio-devel
