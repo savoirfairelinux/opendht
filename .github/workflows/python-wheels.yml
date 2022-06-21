@@ -45,7 +45,7 @@ jobs:
           make
         # The way to point `auditwheel` to "libopendht.so.2" in the current dir
         CIBW_REPAIR_WHEEL_COMMAND_LINUX: >
-          LD_LIBRARY_PATH=. auditwheel repair -w {dest_dir} {wheel}
+          LD_LIBRARY_PATH=$PWD auditwheel repair -w {dest_dir} {wheel}
       with:
         package-dir: python
 
