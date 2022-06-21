@@ -50,14 +50,19 @@ jobs:
       with:
         package-dir: python
 
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       with:
+        name: linux-wheels
         path: ./wheelhouse/*.whl
 
   publish:
     runs-on: ubuntu-latest
     needs: build_wheels
     steps:
+    - uses: actions/download-artifact@v3
+      with:
+        name: linux-wheels
+
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
