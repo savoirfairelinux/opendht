@@ -24,6 +24,8 @@ jobs:
     - name: Build wheels
       uses: pypa/cibuildwheel@v2.7.0
       env:
+        CIBW_BUILD: cp39-* cp310-*
+        CIBW_ARCHS: x86_64
         CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
         # installing packages in AlmaLinux is a quest
         # https://bugs.almalinux.org/view.php?id=208&nbn=3
