@@ -19,7 +19,7 @@ AC_SUBST(OPENDHT_PATCH_VERSION, opendht_patch_version)
 AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Build in debug mode, adds stricter warnings, disables optimization]))
 AS_IF([test "x$enable_debug" = "xyes"],
       [CXXFLAGS="${CXXFLAGS} -g -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -O0 -pedantic-errors"],
-      [CXXFLAGS="${CXXFLAGS} -O3 -pedantic-errors"])
+      [CXXFLAGS="${CXXFLAGS} -O3 -pedantic-errors -fvisibility=hidden"])
 
 AC_PROG_CXX
 AM_PROG_AR
