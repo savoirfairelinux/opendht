@@ -3,7 +3,7 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 Name: OpenDHT
-Description: C++14 Distributed Hash Table library
+Description: C++17 Distributed Hash Table library
 Version: @VERSION@
 Libs: -L${libdir} -lopendht
 Libs.private: @http_parser_lib@ -pthread
