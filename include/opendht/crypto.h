@@ -32,6 +32,7 @@ extern "C" {
 
 #include <vector>
 #include <memory>
+#include <atomic>
 
 #ifdef _WIN32
 #include <iso646.h>
@@ -140,6 +141,8 @@ struct OPENDHT_PUBLIC PublicKey
 private:
     mutable InfoHash cachedId_ {};
     mutable PkId cachedLongId_ {};
+    mutable std::atomic_bool idCached_ {false};
+    mutable std::atomic_bool longIdCached_ {false};
 
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
@@ -609,6 +612,8 @@ private:
     Certificate& operator=(const Certificate&) = delete;
     mutable InfoHash cachedId_ {};
     mutable PkId cachedLongId_ {};
+    mutable std::atomic_bool idCached_ {false};
+    mutable std::atomic_bool longIdCached_ {false};
 
     struct crlNumberCmp {
         bool operator() (const std::shared_ptr<RevocationList>& lhs, const std::shared_ptr<RevocationList>& rhs) const {

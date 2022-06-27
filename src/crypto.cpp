@@ -529,7 +529,7 @@ PublicKey::encrypt(const uint8_t* data, size_t data_len) const
 const InfoHash&
 PublicKey::getId() const
 {
-    if (pk and not cachedId_) {
+    if (pk and not idCached_.load()) {
         InfoHash id;
         size_t sz = id.size();
         if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
@@ -537,6 +537,7 @@ PublicKey::getId() const
         if (sz != id.size())
             throw CryptoException("Can't get public key ID: wrong output length.");
         cachedId_ = id;
+        idCached_.store(true);
     }
     return cachedId_;
 }
@@ -544,7 +545,7 @@ PublicKey::getId() const
 const PkId&
 PublicKey::getLongId() const
 {
-    if (pk and not cachedLongId_) {
+    if (pk and not longIdCached_.load()) {
         PkId h;
         size_t sz = h.size();
         if (auto err = gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz))
@@ -552,6 +553,7 @@ PublicKey::getLongId() const
         if (sz != h.size())
             throw CryptoException("Can't get 256 bits public key ID: wrong output length.");
         cachedLongId_ = h;
+        longIdCached_.store(true);
     }
     return cachedLongId_;
 }
@@ -833,7 +835,7 @@ Certificate::getPublicKey() const
 const InfoHash&
 Certificate::getId() const
 {
-    if (cert and not cachedId_) {
+    if (cert and not idCached_.load()) {
         InfoHash id;
         size_t sz = id.size();
         if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
@@ -841,6 +843,7 @@ Certificate::getId() const
         if (sz != id.size())
             throw CryptoException("Can't get certificate public key ID: wrong output length.");
         cachedId_ = id;
+        idCached_.store(true);
     }
     return cachedId_;
 }
@@ -848,7 +851,7 @@ Certificate::getId() const
 const PkId&
 Certificate::getLongId() const
 {
-    if (cert and not cachedLongId_) {
+    if (cert and not longIdCached_.load()) {
         PkId id;
         size_t sz = id.size();
         if (auto err = gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz))
@@ -856,6 +859,7 @@ Certificate::getLongId() const
         if (sz != id.size())
             throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
         cachedLongId_ = id;
+        longIdCached_.store(true);
     }
     return cachedLongId_;
 }
