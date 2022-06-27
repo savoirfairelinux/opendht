@@ -361,12 +361,12 @@ PrivateKey::getPublicKey() const
 const std::shared_ptr<PublicKey>&
 PrivateKey::getSharedPublicKey() const
 {
-    if (publicKey_)
-        return publicKey_;
-    auto pk = std::make_shared<PublicKey>();
-    if (auto err = gnutls_pubkey_import_privkey(pk->pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
-        throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
-    publicKey_ = pk;
+    if (not publicKey_) {
+        auto pk = std::make_shared<PublicKey>();
+        if (auto err = gnutls_pubkey_import_privkey(pk->pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
+            throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
+        publicKey_ = pk;
+    }
     return publicKey_;
 }
 
@@ -526,36 +526,34 @@ PublicKey::encrypt(const uint8_t* data, size_t data_len) const
     return ret;
 }
 
-InfoHash
+const InfoHash&
 PublicKey::getId() const
 {
-    if (not pk)
-        return {};
-    InfoHash id;
-    size_t sz = id.size();
-    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
-        throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
-    if (sz != id.size())
-        throw CryptoException("Can't get public key ID: wrong output length.");
-    return id;
+    if (pk and not cachedId_) {
+        InfoHash id;
+        size_t sz = id.size();
+        if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
+            throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
+        if (sz != id.size())
+            throw CryptoException("Can't get public key ID: wrong output length.");
+        cachedId_ = id;
+    }
+    return cachedId_;
 }
 
-PkId
+const PkId&
 PublicKey::getLongId() const
 {
-    if (not pk)
-        return {};
-#if GNUTLS_VERSION_NUMBER < 0x030401
-    throw CryptoException("Can't get 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
-#else
-    PkId h;
-    size_t sz = h.size();
-    if (auto err = gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz))
-        throw CryptoException(std::string("Can't get 256 bits public key ID: ") + gnutls_strerror(err));
-    if (sz != h.size())
-        throw CryptoException("Can't get 256 bits public key ID: wrong output length.");
-    return h;
-#endif
+    if (pk and not cachedLongId_) {
+        PkId h;
+        size_t sz = h.size();
+        if (auto err = gnutls_pubkey_get_key_id(pk, GNUTLS_KEYID_USE_SHA256, h.data(), &sz))
+            throw CryptoException(std::string("Can't get 256 bits public key ID: ") + gnutls_strerror(err));
+        if (sz != h.size())
+            throw CryptoException("Can't get 256 bits public key ID: wrong output length.");
+        cachedLongId_ = h;
+    }
+    return cachedLongId_;
 }
 
 gnutls_digest_algorithm_t
@@ -832,42 +830,34 @@ Certificate::getPublicKey() const
     return pk_ret;
 }
 
-InfoHash
+const InfoHash&
 Certificate::getId() const
 {
-    if (not cert)
-        return {};
-    if (cachedId_)
-        return cachedId_;
-    InfoHash id;
-    size_t sz = id.size();
-    if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
-        throw CryptoException(std::string("Can't get certificate public key ID: ") + gnutls_strerror(err));
-    if (sz != id.size())
-        throw CryptoException("Can't get certificate public key ID: wrong output length.");
-    cachedId_ = id;
-    return id;
+    if (cert and not cachedId_) {
+        InfoHash id;
+        size_t sz = id.size();
+        if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
+            throw CryptoException(std::string("Can't get certificate public key ID: ") + gnutls_strerror(err));
+        if (sz != id.size())
+            throw CryptoException("Can't get certificate public key ID: wrong output length.");
+        cachedId_ = id;
+    }
+    return cachedId_;
 }
 
-PkId
+const PkId&
 Certificate::getLongId() const
 {
-    if (not cert)
-        return {};
-    if (cachedLongId_)
-        return cachedLongId_;
-#if GNUTLS_VERSION_NUMBER < 0x030401
-    throw CryptoException("Can't get certificate 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
-#else
-    PkId id;
-    size_t sz = id.size();
-    if (auto err = gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz))
-        throw CryptoException(std::string("Can't get certificate 256 bits public key ID: ") + gnutls_strerror(err));
-    if (sz != id.size())
-        throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
-    cachedLongId_ = id;
-    return id;
-#endif
+    if (cert and not cachedLongId_) {
+        PkId id;
+        size_t sz = id.size();
+        if (auto err = gnutls_x509_crt_get_key_id(cert, GNUTLS_KEYID_USE_SHA256, id.data(), &sz))
+            throw CryptoException(std::string("Can't get certificate 256 bits public key ID: ") + gnutls_strerror(err));
+        if (sz != id.size())
+            throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
+        cachedLongId_ = id;
+    }
+    return cachedLongId_;
 }
 
 Blob
