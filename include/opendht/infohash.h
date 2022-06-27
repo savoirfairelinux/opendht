@@ -103,11 +103,8 @@ public:
     static constexpr inline Hash zero() noexcept { return Hash{}; }
 
     bool operator==(const Hash& h) const {
-        auto a = reinterpret_cast<const uint32_t*>(data_.data());
-        auto b = reinterpret_cast<const uint32_t*>(h.data_.data());
-        constexpr unsigned n = N / sizeof(uint32_t);
-        for (unsigned i=0; i < n; i++)
-            if (a[i] != b[i])
+        for (unsigned i=0; i < N; i++)
+            if (data_[i] != h.data_[i])
                 return false;
         return true;
     }
