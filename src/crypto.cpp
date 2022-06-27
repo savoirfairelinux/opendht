@@ -43,18 +43,6 @@ static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint
 static std::uniform_int_distribution<uint8_t> rand_byte;
 #endif
 
-// support for GnuTLS < 3.4.
-#if GNUTLS_VERSION_NUMBER < 0x030400
-#define GNUTLS_PKCS_PKCS12_3DES GNUTLS_PKCS_USE_PKCS12_3DES
-#define GNUTLS_PKCS_PKCS12_ARCFOUR GNUTLS_PKCS_USE_PKCS12_ARCFOUR
-#define GNUTLS_PKCS_PKCS12_RC2_40 GNUTLS_PKCS_USE_PKCS12_RC2_40
-#define GNUTLS_PKCS_PBES2_3DES GNUTLS_PKCS_USE_PBES2_3DES
-#define GNUTLS_PKCS_PBES2_AES_128 GNUTLS_PKCS_USE_PBES2_AES_128
-#define GNUTLS_PKCS_PBES2_AES_192 GNUTLS_PKCS_USE_PBES2_AES_192
-#define GNUTLS_PKCS_PBES2_AES_256 GNUTLS_PKCS_USE_PBES2_AES_256
-#endif
-
-#define DHT_AES_LEGACY_ENCRYPT 0
 #define DHT_AES_LEGACY_DECRYPT 1
 
 namespace dht {
@@ -110,10 +98,6 @@ Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
     struct gcm_aes_ctx aes;
     gcm_aes_set_key(&aes, key.size(), key.data());
     gcm_aes_set_iv(&aes, GCM_IV_SIZE, ret.data());
-#if DHT_AES_LEGACY_ENCRYPT
-    gcm_aes_update(&aes, data_length, data);
-#endif
-
     gcm_aes_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
     gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
     return ret;
@@ -1771,10 +1755,8 @@ std::ostream& operator<< (std::ostream& o, const TrustList::VerifyResult& h)
             o << "* Certificate has expired" << std::endl;
         if (h.result & GNUTLS_CERT_UNEXPECTED_OWNER)
             o << "* The owner is not the expected one" << std::endl;
-#if GNUTLS_VERSION_NUMBER >= 0x030401
         if (h.result & GNUTLS_CERT_PURPOSE_MISMATCH)
             o << "* Certificate or an intermediate does not match the intended purpose" << std::endl;
-#endif
         if (h.result & GNUTLS_CERT_MISMATCH)
             o << "* Certificate presented isn't the expected one" << std::endl;
     } else {
