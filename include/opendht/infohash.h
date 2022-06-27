@@ -103,10 +103,7 @@ public:
     static constexpr inline Hash zero() noexcept { return Hash{}; }
 
     bool operator==(const Hash& h) const {
-        for (unsigned i=0; i < N; i++)
-            if (data_[i] != h.data_[i])
-                return false;
-        return true;
+        return data_ == h.data_;
     }
     bool operator!=(const Hash& h) const { return !(*this == h); }
 
