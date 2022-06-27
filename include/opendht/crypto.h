@@ -100,12 +100,12 @@ struct OPENDHT_PUBLIC PublicKey
     /**
      * Get public key fingerprint
      */
-    InfoHash getId() const;
+   const InfoHash& getId() const;
 
     /**
      * Get public key long fingerprint
      */
-    PkId getLongId() const;
+    const PkId& getLongId() const;
 
     bool checkSignature(const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) const;
     inline bool checkSignature(const Blob& data, const Blob& signature) const {
@@ -138,6 +138,9 @@ struct OPENDHT_PUBLIC PublicKey
 
     gnutls_pubkey_t pk {nullptr};
 private:
+    mutable InfoHash cachedId_ {};
+    mutable PkId cachedLongId_ {};
+
     PublicKey(const PublicKey&) = delete;
     PublicKey& operator=(const PublicKey&) = delete;
     void encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t dst_size) const;
@@ -486,9 +489,9 @@ struct OPENDHT_PUBLIC Certificate {
     PublicKey getPublicKey() const;
 
     /** Same as getPublicKey().getId() */
-    InfoHash getId() const;
+    const InfoHash& getId() const;
     /** Same as getPublicKey().getLongId() */
-    PkId getLongId() const;
+    const PkId& getLongId() const;
 
     Blob getSerialNumber() const;
 
