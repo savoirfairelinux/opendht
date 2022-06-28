@@ -21,6 +21,12 @@ AS_IF([test "x$enable_debug" = "xyes"],
       [CXXFLAGS="${CXXFLAGS} -g -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -O0 -pedantic-errors"],
       [CXXFLAGS="${CXXFLAGS} -O3 -pedantic-errors -fvisibility=hidden"])
 
+CPPFLAGS+=" -DOPENDHT_BUILD"
+AM_CONDITIONAL([OPENDHT_SHARED], [test "x$enable_shared" != xno])
+AM_COND_IF(OPENDHT_SHARED, [
+  CPPFLAGS+=" -Dopendht_EXPORTS"
+])
+
 AM_PROG_AR
 LT_INIT()
 LT_LANG(C++)
@@ -30,10 +36,8 @@ AX_CXX_COMPILE_STDCXX(17,[noext],[mandatory])
 
 dnl Check for logs
 AC_ARG_ENABLE([logs], [AS_HELP_STRING([--disable-logs], [Disable DHT logs])])
-AS_IF([test "x$enable_logs" != "xno"], [
-	AC_DEFINE([OPENDHT_LOG], [true], [Define if DHT logs are enabled])
-], [
-	AC_DEFINE([OPENDHT_LOG], [false], [Define if DHT logs are enabled])
+AS_IF([test "x$enable_logs" != "xno"], [], [
+	AC_DEFINE([OPENDHT_LOG], [false], [Define if DHT logs are disabled])
 ])
 
 dnl Check for C binding

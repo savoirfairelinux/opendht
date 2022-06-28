@@ -84,6 +84,3 @@ if ENABLE_INDEXATION
 libopendht_la_SOURCES += indexation/pht.cpp
 nobase_include_HEADERS += ../include/opendht/indexation/pht.h
 endif
-
-clean-local:
-	rm -rf libargon2.la
