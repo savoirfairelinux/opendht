@@ -33,6 +33,7 @@ extern "C" {
 #include <vector>
 #include <memory>
 #include <atomic>
+#include <mutex>
 
 #ifdef _WIN32
 #include <iso646.h>
@@ -207,6 +208,7 @@ private:
     PrivateKey& operator=(const PrivateKey&) = delete;
     Blob decryptBloc(const uint8_t* src, size_t src_size) const;
 
+    mutable std::mutex publicKeyMutex_ {};
     mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 
