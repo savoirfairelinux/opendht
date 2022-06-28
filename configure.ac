@@ -21,8 +21,12 @@ AS_IF([test "x$enable_debug" = "xyes"],
       [CXXFLAGS="${CXXFLAGS} -g -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -O0 -pedantic-errors"],
       [CXXFLAGS="${CXXFLAGS} -O3 -pedantic-errors -fvisibility=hidden"])
 
-AC_PROG_CXX
 AM_PROG_AR
+LT_INIT()
+LT_LANG(C++)
+AC_LANG(C++)
+AC_PROG_CXX
+AX_CXX_COMPILE_STDCXX(17,[noext],[mandatory])
 
 dnl Check for logs
 AC_ARG_ENABLE([logs], [AS_HELP_STRING([--disable-logs], [Disable DHT logs])])
@@ -106,11 +110,6 @@ AM_CONDITIONAL(WIN32, [test "x$SYS" = "xmingw32"])
 AS_IF([test "x$SYS" = "xandroid"],
       [], [LDFLAGS="${LDFLAGS} -lpthread"])
 
-LT_INIT()
-LT_LANG(C++)
-
-AX_CXX_COMPILE_STDCXX(17,[noext],[mandatory])
-
 PKG_PROG_PKG_CONFIG()
 
 AC_ARG_ENABLE([proxy_server], AS_HELP_STRING([--enable-proxy-server], [Enable proxy server ability]), proxy_server=yes, proxy_server=no)
@@ -138,7 +137,9 @@ AM_CONDITIONAL(PROXY_CLIENT_OR_SERVER, test x$proxy_client == xyes || test x$pro
 
 PKG_CHECK_MODULES([Nettle], [nettle >= 2.4])
 PKG_CHECK_MODULES([GnuTLS], [gnutls >= 3.3])
-PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
+AC_CHECK_HEADERS([msgpack.hpp], [], [
+  PKG_CHECK_MODULES([MsgPack], [msgpack >= 1.2])
+])
 PKG_CHECK_MODULES([Argon2], [libargon2])
 AC_SUBST(argon2_lib, [", libargon2"])
 
@@ -167,7 +168,7 @@ AS_IF([test "x$have_openssl" = "xyes"], [
 ])
 
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
-    AC_CHECK_HEADERS([asio.hpp], exit,, AC_MSG_ERROR([Missing Asio headers files]))
+    AC_CHECK_HEADERS([asio.hpp],, AC_MSG_ERROR([Missing Asio headers files]))
     CXXFLAGS="${CXXFLAGS} -DASIO_STANDALONE"
     PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0], [have_fmt=yes], [have_fmt=no])
     AS_IF([test "x$have_fmt" = "xyes"], [
