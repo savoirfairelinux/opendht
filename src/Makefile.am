@@ -30,6 +30,12 @@ libopendht_la_SOURCES  = \
         network_utils.cpp \
         thread_pool.cpp
 
+if APPLE
+libopendht_la_SOURCES += \
+        compat/apple/apple_utils.h \
+        compat/apple/apple_utils.mm
+endif
+
 if WIN32
 libopendht_la_SOURCES += rng.cpp
 endif

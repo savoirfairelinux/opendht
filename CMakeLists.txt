@@ -223,6 +223,13 @@ list (APPEND opendht_SOURCES
     src/thread_pool.cpp
 )
 
+if (APPLE)
+    list (APPEND opendht_SOURCES
+        src/compat/apple/apple_utils.h
+        src/compat/apple/apple_utils.mm
+    )
+endif()
+
 list (APPEND opendht_HEADERS
     include/opendht/def.h
     include/opendht/utils.h

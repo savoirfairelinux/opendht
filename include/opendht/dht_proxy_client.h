@@ -67,6 +67,14 @@ public:
 #endif
     }
 
+    virtual void setPushNotificationTopic(const std::string& topic) override {
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+        notificationTopic_ = topic;
+#else
+        (void) topic;
+#endif
+    }
+
     virtual ~DhtProxyClient();
 
     /**
@@ -399,6 +407,11 @@ private:
      * NOTE: empty by default to avoid to use services like FCM or APN.
      */
     std::string deviceKey_ {};
+
+    /**
+     * Notification topic for ios notifications.
+     */
+    std::string notificationTopic_ {};
 
     const std::function<void()> loopSignal_;
 

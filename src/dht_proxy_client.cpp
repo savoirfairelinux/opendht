@@ -22,9 +22,13 @@
 #include "dhtrunner.h"
 #include "op_cache.h"
 #include "utils.h"
+#ifdef __APPLE__
+#include "compat/apple/apple_utils.h"
+#endif
 
 #include <http_parser.h>
 #include <deque>
+
 
 namespace dht {
 
@@ -1303,7 +1307,8 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
     body["platform"] = "android";
 #endif
 #ifdef __APPLE__
-    body["platform"] = "apple";
+    body["topic"] = notificationTopic_;
+    body["platform"] = apple_utils::getPlatformVersion();
 #endif
 }
 
