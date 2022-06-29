@@ -372,7 +372,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                             pput.second.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), pput.second.expiration - proxy::OP_MARGIN);
                             pput.second.expireNotifyTimer->async_wait(std::bind(
                                 &DhtProxyServer::handleNotifyPushListenExpire, this,
-                                std::placeholders::_1, pput.second.pushToken, std::move(jsonProvider), pput.second.type));
+                                std::placeholders::_1, pput.second.pushToken, std::move(jsonProvider), pput.second.type, pput.second.topic));
                         }
 #endif
                         dht_->put(put.first, pput.second.value, DoneCallbackSimple{}, time_point::max(), true);
@@ -392,7 +392,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                     for (auto& listeners : pushListener.second.listeners) {
                         for (auto& listener : listeners.second) {
                             listener.internalToken = dht_->listen(listeners.first,
-                                [this, infoHash=listeners.first, pushToken=pushListener.first, type=listener.type, clientId=listener.clientId, sessionCtx = listener.sessionCtx]
+                                [this, infoHash=listeners.first, pushToken=pushListener.first, type=listener.type, clientId=listener.clientId, sessionCtx = listener.sessionCtx, topic=listener.topic]
                                 (const std::vector<std::shared_ptr<Value>>& values, bool expired) {
                                     // Build message content
                                     Json::Value json;
@@ -414,7 +414,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                                     auto maxPrio = 1000u;
                                     for (const auto& v : values)
                                         maxPrio = std::min(maxPrio, v->priority);
-                                    sendPushNotification(pushToken, std::move(json), type, !expired and maxPrio == 0);
+                                    sendPushNotification(pushToken, std::move(json), type, !expired and maxPrio == 0, topic);
                                     return true;
                                 }
                             );
@@ -429,7 +429,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                                 return json;
                             };
                             listener.expireNotifyTimer->async_wait(std::bind(&DhtProxyServer::handleNotifyPushListenExpire, this,
-                                                                std::placeholders::_1, pushListener.first, std::move(jsonProvider), listener.type));
+                                                                std::placeholders::_1, pushListener.first, std::move(jsonProvider), listener.type, listener.topic));
                             // cancel push listen
                             listener.expireTimer = std::make_unique<asio::steady_timer>(io_context(), listener.expiration);
                             listener.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPushListen, this,
@@ -745,6 +745,21 @@ DhtProxyServer::listen(restinio::request_handle_t request,
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
 
+PushType
+DhtProxyServer::getTypeFromString(const std::string& type) {
+    if (type == "android") {
+        return PushType::Android;
+    }
+    if (type == "apple") {
+        // proxy_client is not updated or using ios < 14.5
+        return PushType::iOSLegacy;
+    }
+    if (type == "ios") {
+        return PushType::iOS;
+    }
+    return PushType::None;
+}
+
 RequestStatus
 DhtProxyServer::subscribe(restinio::request_handle_t request,
                           restinio::router::route_params_t params)
@@ -771,7 +786,8 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             response.set_body(RESP_MSG_NO_TOKEN);
             return response.done();
         }
-        auto type = root["platform"].asString() == "android" ? PushType::Android : PushType::iOS;
+        auto type = getTypeFromString(root["platform"].asString());
+        auto topic = root["topic"].asString();
         auto clientId = root["client_id"].asString();
         auto sessionId = root["session_id"].asString();
 
@@ -802,6 +818,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
         listener.expiration = timeout;
         listener.type = type;
+        listener.topic = topic;
         if (listener.expireNotifyTimer)
             listener.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
         else
@@ -815,7 +832,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             return json;
         };
         listener.expireNotifyTimer->async_wait(std::bind(&DhtProxyServer::handleNotifyPushListenExpire, this,
-                                               std::placeholders::_1, pushToken, std::move(jsonProvider), listener.type));
+                                               std::placeholders::_1, pushToken, std::move(jsonProvider), listener.type, listener.topic));
         if (!listener.expireTimer)
             listener.expireTimer = std::make_unique<asio::steady_timer>(io_context(), timeout);
         else
@@ -850,7 +867,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             // =========== No existing listener for an infoHash ============
             // Add listen on dht
             listener.internalToken = dht_->listen(infoHash,
-                [this, infoHash, pushToken, type, clientId, sessionCtx = listener.sessionCtx]
+                [this, infoHash, pushToken, type, clientId, sessionCtx = listener.sessionCtx, topic]
                 (const std::vector<std::shared_ptr<Value>>& values, bool expired){
                     // Build message content
                     Json::Value json;
@@ -872,7 +889,7 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                     auto maxPrio = 1000u;
                     for (const auto& v : values)
                         maxPrio = std::min(maxPrio, v->priority);
-                    sendPushNotification(pushToken, std::move(json), type, !expired and maxPrio == 0);
+                    sendPushNotification(pushToken, std::move(json), type, !expired and maxPrio == 0, topic);
                     return true;
                 }
             );
@@ -928,7 +945,7 @@ DhtProxyServer::unsubscribe(restinio::request_handle_t request,
 
 void
 DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
-                                             std::function<Json::Value()> jsonProvider, PushType type)
+                                             std::function<Json::Value()> jsonProvider, PushType type, const std::string& topic)
 {
     if (ec == asio::error::operation_aborted)
         return;
@@ -938,7 +955,7 @@ DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const s
     }
     if (logger_)
         logger_->d("[proxy:server] [subscribe] sending put refresh to %s token", pushToken.c_str());
-    sendPushNotification(pushToken, jsonProvider(), type, false);
+    sendPushNotification(pushToken, jsonProvider(), type, false, topic);
 }
 
 void
@@ -980,7 +997,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 }
 
 void
-DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, PushType type, bool highPriority)
+DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, PushType type, bool highPriority, const std::string& topic)
 {
     if (pushServer_.empty())
         return;
@@ -1011,6 +1028,22 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
             uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
             notification["expiration"] = exp;
+            if (!topic.empty())
+                notification["topic"] = topic;
+            if (type == PushType::iOS) {
+                if (highPriority) {
+                    Json::Value alert(Json::objectValue);
+                    alert["title"]="hello";
+                    notification["push_type"] = "alert";
+                    notification["alert"] = alert;
+                    notification["mutable_content"] = true;
+                } else {
+                    notification["push_type"] = "background";
+                    notification["content_available"] = true;
+                }
+            } else if (type == PushType::iOSLegacy) {
+                notification["push_type"] = "voip";
+            }
         }
 
         Json::Value notifications(Json::arrayValue);
@@ -1104,13 +1137,14 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 logger_->d("[proxy:server] [put %s] %s %s", infoHash.toString().c_str(),
                           value->toString().c_str(), (permanent ? "permanent" : ""));
             if (permanent) {
-                std::string pushToken, clientId, sessionId, platform;
+                std::string pushToken, clientId, sessionId, platform, topic;
                 auto& pVal = root["permanent"];
                 if (pVal.isObject()){
                     pushToken = pVal["key"].asString();
                     clientId = pVal["client_id"].asString();
                     platform = pVal["platform"].asString();
                     sessionId = pVal["session_id"].asString();
+                    topic = pVal["topic"].asString();
                 }
                 std::lock_guard<std::mutex> lock(lockSearchPuts_);
                 auto timeout = std::chrono::steady_clock::now() + proxy::OP_TIMEOUT;
@@ -1153,7 +1187,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
                         bool isAndroid = platform == "android";
                         pput.pushToken = pushToken;
                         pput.clientId = clientId;
-                        pput.type = isAndroid ? PushType::Android : PushType::iOS;
+                        pput.type = getTypeFromString(platform);
+                        pput.topic = topic;
                         pput.sessionCtx = std::make_shared<PushSessionContext>(sessionId);
                         // notify push listen expire
                         auto jsonProvider = [infoHash, clientId, vid, sessionCtx = pput.sessionCtx](){
@@ -1172,7 +1207,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                             pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                         pput.expireNotifyTimer->async_wait(std::bind(
                             &DhtProxyServer::handleNotifyPushListenExpire, this,
-                            std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type));
+                            std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type, pput.topic));
                     }
 #endif
                 } else {

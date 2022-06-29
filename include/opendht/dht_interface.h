@@ -265,6 +265,8 @@ public:
 
     virtual void setPushNotificationToken(const std::string&) {};
 
+    virtual void setPushNotificationTopic(const std::string&) {};
+
     /**
      * Call linked callback with a push notification
      * @param notification to process

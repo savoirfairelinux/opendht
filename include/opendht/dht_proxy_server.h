@@ -40,7 +40,8 @@ namespace dht {
 enum class PushType {
     None = 0,
     Android,
-    iOS
+    iOS,
+    iOSLegacy
 };
 }
 MSGPACK_ADD_ENUM(dht::PushType)
@@ -273,6 +274,7 @@ private:
                            restinio::router::route_params_t params);
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    PushType getTypeFromString(const std::string& type);
     /**
      * Subscribe to push notifications for an iOS or Android device.
      * Method: SUBSCRIBE "/{InfoHash: .*}"
@@ -300,7 +302,7 @@ private:
      * @param key of the device
      * @param json, the content to send
      */
-    void sendPushNotification(const std::string& key, Json::Value&& json, PushType type, bool highPriority);
+    void sendPushNotification(const std::string& key, Json::Value&& json, PushType type, bool highPriority, const std::string& topic);
 
     /**
      * Send push notification with an expire timeout.
@@ -308,9 +310,10 @@ private:
      * @param pushToken
      * @param json
      * @param type
+     * @param topic
      */
     void handleNotifyPushListenExpire(const asio::error_code &ec, const std::string pushToken,
-                                      std::function<Json::Value()> json, PushType type);
+                                      std::function<Json::Value()> json, PushType type, const std::string& topic);
 
     /**
      * Remove a push listener between a client and a hash
@@ -382,6 +385,7 @@ private:
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
         Sp<Value> value;
         PushType type;
+        std::string topic;
 
         template <typename Packer>
         void msgpack_pack(Packer& p) const
@@ -425,6 +429,7 @@ private:
         std::unique_ptr<asio::steady_timer> expireTimer;
         std::unique_ptr<asio::steady_timer> expireNotifyTimer;
         PushType type;
+        std::string topic;
 
         template <typename Packer>
         void msgpack_pack(Packer& p) const

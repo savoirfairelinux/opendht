@@ -342,6 +342,7 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
         config.proxy_server = conf->proxy_server ? std::string(conf->proxy_server) : std::string{};
         config.push_node_id = conf->push_node_id ? std::string(conf->push_node_id) : std::string{};
         config.push_token = conf->push_token ? std::string(conf->push_token) : std::string{};
+        config.push_topic = conf->push_topic ? std::string(conf->push_topic) : std::string{};
         config.peer_discovery = conf->peer_discovery;
         config.peer_publish = conf->peer_publish;
 

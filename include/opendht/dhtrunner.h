@@ -61,6 +61,7 @@ public:
         std::string proxy_server {};
         std::string push_node_id {};
         std::string push_token {};
+        std::string push_topic {};
         bool peer_discovery {false};
         bool peer_publish {false};
         std::shared_ptr<dht::crypto::Certificate> server_ca;
@@ -446,6 +447,11 @@ public:
      * Updates the push notification device token
      */
     void setPushNotificationToken(const std::string& token);
+
+     /**
+     * Sets the push notification topic
+     */
+    void setPushNotificationTopic(const std::string& topic);
 
     /**
      * Insert a push notification to process for OpenDHT
