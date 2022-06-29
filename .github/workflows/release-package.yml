@@ -1,0 +1,64 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Create and publish Docker images
+
+on:
+  push
+  #release:
+  #  types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_DEPS: ${{ github.repository }}/opendht
+  IMAGE_NAME: ${{ github.repository }}/opendht-deps
+  IMAGE_NAME_DEPS_LLVM: ${{ github.repository }}/opendht-llvm
+  IMAGE_NAME_LLVM: ${{ github.repository }}/opendht-deps-llvm
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DEPS }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DEPS_LLVM }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LLVM }}
+
+      - name: Build and push Docker image for dependencies
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: docker/DockerfileDeps
+          #push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: docker/Dockerfile
+          #push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
