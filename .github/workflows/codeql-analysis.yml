@@ -11,6 +11,9 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
+
     permissions:
       actions: read
       contents: read
