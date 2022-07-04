@@ -205,7 +205,8 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         dht_(dht), persistPath_(config.persistStatePath), logger_(logger),
         printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
-        pushServer_(config.pushServer)
+        pushServer_(config.pushServer),
+        bundleId_(config.bundleId)
 {
     if (not dht_)
         throw std::invalid_argument("A DHT instance must be provided");
@@ -760,6 +761,20 @@ DhtProxyServer::getTypeFromString(const std::string& type) {
     return PushType::None;
 }
 
+const std::string&
+DhtProxyServer::getDefaultTopic(PushType type) {
+    if (bundleId_.empty()) {
+        return {};
+    }
+    if (type == PushType::iOSLegacy) {
+        return bundleId_  + ".voip";
+    }
+    if (type == PushType::iOS) {
+        return bundleId_;
+    }
+    return {};
+}
+
 RequestStatus
 DhtProxyServer::subscribe(restinio::request_handle_t request,
                           restinio::router::route_params_t params)
@@ -788,6 +803,9 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
         }
         auto type = getTypeFromString(root["platform"].asString());
         auto topic = root["topic"].asString();
+        if (topic.empty()) {
+            topic = getDefaultTopic(type);
+        }
         auto clientId = root["client_id"].asString();
         auto sessionId = root["session_id"].asString();
 
@@ -1188,6 +1206,9 @@ DhtProxyServer::put(restinio::request_handle_t request,
                         pput.pushToken = pushToken;
                         pput.clientId = clientId;
                         pput.type = getTypeFromString(platform);
+                        if (topic.empty()) {
+                            topic = getDefaultTopic(pput.type);
+                        }
                         pput.topic = topic;
                         pput.sessionCtx = std::make_shared<PushSessionContext>(sessionId);
                         // notify push listen expire
