@@ -65,9 +65,9 @@ using RequestStatus = restinio::request_handling_status_t;
 struct ProxyServerConfig {
     in_port_t port {8000};
     std::string pushServer {};
-    std::string bundleId {};
     std::string persistStatePath {};
     dht::crypto::Identity identity {};
+    std::string bundleId {};
 };
 
 /**
