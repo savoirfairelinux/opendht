@@ -43,7 +43,7 @@ void print_version() {
 }
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port] [--proxyserverssl local_port]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port] [--proxyserverssl local_port] [--bundleid bundleid]" << std::endl << std::endl;
     print_info();
 }
 
@@ -550,6 +550,7 @@ main(int argc, char **argv)
 #ifdef OPENDHT_PROXY_SERVER
             ProxyServerConfig serverConfig;
             serverConfig.pushServer = params.pushserver;
+            serverConfig.bundleId = params.bundle_id;
             if (params.proxyserverssl and params.proxy_id.first and params.proxy_id.second){
                 serverConfig.identity = params.proxy_id;
                 serverConfig.port = params.proxyserverssl;

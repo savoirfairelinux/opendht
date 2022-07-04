@@ -65,6 +65,7 @@ using RequestStatus = restinio::request_handling_status_t;
 struct ProxyServerConfig {
     in_port_t port {8000};
     std::string pushServer {};
+    std::string bundleId {};
     std::string persistStatePath {};
     dht::crypto::Identity identity {};
 };
@@ -275,6 +276,7 @@ private:
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     PushType getTypeFromString(const std::string& type);
+    const std::string& getDefaultTopic(PushType type);
     /**
      * Subscribe to push notifications for an iOS or Android device.
      * Method: SUBSCRIBE "/{InfoHash: .*}"
@@ -419,6 +421,7 @@ private:
     mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
 
     std::string pushServer_;
+    std::string bundleId_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     struct Listener {
