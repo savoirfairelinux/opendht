@@ -22,6 +22,7 @@
                 "${workspaceRoot}",
                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=On",
                 "-DCMAKE_BUILD_TYPE=Debug",
+                "-DOPENDHT_SANITIZE=On",
                 "-DOPENDHT_PROXY_CLIENT=On",
                 "-DOPENDHT_PROXY_SERVER=On",
                 "-DOPENDHT_TESTS=On",
