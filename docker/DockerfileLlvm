@@ -12,5 +12,6 @@ RUN git clone https://github.com/savoirfairelinux/opendht.git \
 				-DOPENDHT_TOOLS=On \
 				-DOPENDHT_PROXY_SERVER=On \
 				-DOPENDHT_PROXY_CLIENT=On \
+				-DOPENDHT_SYSTEMD=On \
 	&& make -j8 && make install \
 	&& cd ../.. && rm -rf opendht
