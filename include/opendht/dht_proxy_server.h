@@ -276,7 +276,7 @@ private:
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     PushType getTypeFromString(const std::string& type);
-    const std::string& getDefaultTopic(PushType type);
+    std::string getDefaultTopic(PushType type);
     /**
      * Subscribe to push notifications for an iOS or Android device.
      * Method: SUBSCRIBE "/{InfoHash: .*}"

@@ -748,30 +748,23 @@ DhtProxyServer::listen(restinio::request_handle_t request,
 
 PushType
 DhtProxyServer::getTypeFromString(const std::string& type) {
-    if (type == "android") {
+    if (type == "android")
         return PushType::Android;
-    }
-    if (type == "apple") {
-        // proxy_client is not updated or using ios < 14.5
-        return PushType::iOSLegacy;
-    }
-    if (type == "ios") {
+    else if (type == "ios")
         return PushType::iOS;
-    }
+    else if (type == "apple")
+        return PushType::iOSLegacy; // proxy_client is not updated or using ios < 14.5
     return PushType::None;
 }
 
-const std::string&
+std::string
 DhtProxyServer::getDefaultTopic(PushType type) {
-    if (bundleId_.empty()) {
+    if (bundleId_.empty())
         return {};
-    }
-    if (type == PushType::iOSLegacy) {
-        return bundleId_  + ".voip";
-    }
-    if (type == PushType::iOS) {
+    if (type == PushType::iOS)
         return bundleId_;
-    }
+    else if (type == PushType::iOSLegacy)
+        return bundleId_  + ".voip";
     return {};
 }
 
@@ -1201,14 +1194,12 @@ DhtProxyServer::put(restinio::request_handle_t request,
                     // cancel permanent put
                     pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
-                    if (not pushToken.empty()){
-                        bool isAndroid = platform == "android";
+                    if (not pushToken.empty()) {
                         pput.pushToken = pushToken;
                         pput.clientId = clientId;
                         pput.type = getTypeFromString(platform);
-                        if (topic.empty()) {
+                        if (topic.empty())
                             topic = getDefaultTopic(pput.type);
-                        }
                         pput.topic = topic;
                         pput.sessionCtx = std::make_shared<PushSessionContext>(sessionId);
                         // notify push listen expire
