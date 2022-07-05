@@ -153,25 +153,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-python-wheel:
-    name: Build Python Wheel package
+    name: Release and build Python Wheel package
     runs-on: ubuntu-latest
     container: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
 
     permissions:
-      contents: read
+      contents: write
 
     steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.AUTH_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: true
-          prerelease: false
-
       - name: Checkout repository
         uses: actions/checkout@v3
 
@@ -196,12 +185,9 @@ jobs:
           name: opendht-wheels-linux
           path: build/python/dist/*.whl
 
-      - name: Upload Release Asset
-        id: upload-release-asset 
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.AUTH_TOKEN }}
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: build/python/dist/*.whl
-          asset_name: opendht-${{ github.ref }}-cp310-cp310-linux_x86_64.whl
+          draft: true
+          files: build/python/dist/*.whl
