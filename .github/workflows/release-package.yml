@@ -84,7 +84,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  build-and-push-deps-image:
+  build-and-push-deps-image-llvm:
     name: Build and publish dependency Docker image (LLVM)
     runs-on: ubuntu-latest
     permissions:
@@ -117,7 +117,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  build-and-push-image:
+  build-and-push-image-llvm:
     name: Build and publish OpenDHT Docker image (LLVM)
     runs-on: ubuntu-latest
     permissions:
