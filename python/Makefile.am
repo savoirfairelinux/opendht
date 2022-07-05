@@ -2,7 +2,8 @@ if USE_CYTHON
 
 noinst_HEADERS = \
 	opendht.pyx \
-	opendht_cpp.pxd
+	opendht_cpp.pxd \
+	pyproject.toml
 
 PYTHON_INSTALL_RECORD = $(builddir)/install_record.txt
 
