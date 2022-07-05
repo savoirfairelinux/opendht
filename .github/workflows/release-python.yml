@@ -3,7 +3,7 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Create and publish Docker images
+name: Python Wheel package
 
 on:
   release:
@@ -25,7 +25,15 @@ jobs:
       - name: cmake
         run: |
           mkdir build && cd build && \
-          cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DOPENDHT_C=Off -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=On -DOPENDHT_TOOLS=Off -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -DOPENDHT_STATIC=Off \
+                   -DOPENDHT_PYTHON=On \
+                   -DOPENDHT_C=Off \
+                   -DOPENDHT_PEER_DISCOVERY=On \
+                   -DOPENDHT_TOOLS=Off \
+                   -DOPENDHT_PROXY_SERVER=On \
+                   -DOPENDHT_PROXY_CLIENT=On
 
       - name: build
         run: cd build && make dist
