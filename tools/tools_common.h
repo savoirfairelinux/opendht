@@ -131,6 +131,7 @@ struct dht_params {
     in_port_t proxyserver {0};
     in_port_t proxyserverssl {0};
     std::string proxyclient {};
+    std::string proxy_address {};
     std::string pushserver {};
     std::string devicekey {};
     std::string bundle_id {};
@@ -224,6 +225,7 @@ static const constexpr struct option long_options[] = {
     {"syslog",                  no_argument      , nullptr, 'L'},
     {"proxyserver",             required_argument, nullptr, 'S'},
     {"proxyserverssl",          required_argument, nullptr, 'e'},
+    {"proxy-addr",              required_argument, nullptr, 'a'},
     {"proxy-certificate",       required_argument, nullptr, 'w'},
     {"proxy-privkey",           required_argument, nullptr, 'K'},
     {"proxy-privkey-password",  required_argument, nullptr, 'M'},
@@ -269,6 +271,9 @@ parseArgs(int argc, char **argv) {
             break;
         case 'D':
             params.peer_discovery = true;
+            break;
+        case 'a':
+            params.proxy_address = optarg;
             break;
         case 'y':
             params.pushserver = optarg;

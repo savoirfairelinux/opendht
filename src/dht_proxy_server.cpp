@@ -265,6 +265,8 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         // build http server
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>();
         addServerSettings(settings);
+        if (not config.address.empty())
+            settings.address(config.address);
         settings.port(config.port);
         settings.tls_context(std::move(tls_context));
         httpsServer_ = std::make_unique<restinio::http_server_t<RestRouterTraitsTls>>(
@@ -282,6 +284,8 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
     else {
         auto settings = restinio::run_on_this_thread_settings_t<RestRouterTraits>();
         addServerSettings(settings);
+        if (not config.address.empty())
+            settings.address(config.address);
         settings.port(config.port);
         httpServer_ = std::make_unique<restinio::http_server_t<RestRouterTraits>>(
             ioContext_,

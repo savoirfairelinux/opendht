@@ -551,6 +551,7 @@ main(int argc, char **argv)
             ProxyServerConfig serverConfig;
             serverConfig.pushServer = params.pushserver;
             serverConfig.bundleId = params.bundle_id;
+            serverConfig.address = params.proxy_address;
             if (params.proxyserverssl and params.proxy_id.first and params.proxy_id.second){
                 serverConfig.identity = params.proxy_id;
                 serverConfig.port = params.proxyserverssl;

@@ -63,6 +63,7 @@ using RestRouter = restinio::router::express_router_t<>;
 using RequestStatus = restinio::request_handling_status_t;
 
 struct ProxyServerConfig {
+    std::string address {};
     in_port_t port {8000};
     std::string pushServer {};
     std::string persistStatePath {};
