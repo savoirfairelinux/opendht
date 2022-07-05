@@ -3,11 +3,12 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Create and publish Docker images
+name: Create release, publish Docker images and python package
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+    - 'v*'
 
 env:
   REGISTRY: ghcr.io
@@ -18,7 +19,7 @@ env:
 
 jobs:
   build-and-push-deps-image:
-    name: Build and publish dependency Docker image
+    name: Dependency Docker image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,7 +42,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DEPS }}
 
-      - name: Build and push Docker image for dependencies
+      - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -51,7 +52,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-and-push-image:
-    name: Build and publish OpenDHT Docker image
+    name: OpenDHT Docker image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,7 +86,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-and-push-deps-image-llvm:
-    name: Build and publish dependency Docker image (LLVM)
+    name: Dependency Docker image (LLVM)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -108,7 +109,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_DEPS }}
 
-      - name: Build and push Docker image for dependencies
+      - name: Build and push Docker image
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -118,7 +119,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   build-and-push-image-llvm:
-    name: Build and publish OpenDHT Docker image (LLVM)
+    name: OpenDHT Docker image (LLVM)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -150,3 +151,57 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  build-python-wheel:
+    name: Build Python Wheel package
+    runs-on: ubuntu-latest
+    container: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          draft: true
+          prerelease: false
+
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: cmake
+        run: |
+          mkdir build && cd build && \
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -DOPENDHT_STATIC=Off \
+                   -DOPENDHT_PYTHON=On \
+                   -DOPENDHT_C=Off \
+                   -DOPENDHT_PEER_DISCOVERY=On \
+                   -DOPENDHT_TOOLS=Off \
+                   -DOPENDHT_PROXY_SERVER=On \
+                   -DOPENDHT_PROXY_CLIENT=On
+
+      - name: build
+        run: cd build && make dist
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: opendht-wheels-linux
+          path: build/python/dist/*.whl
+
+      - name: Upload Release Asset
+        id: upload-release-asset 
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/python/dist/*.whl
+          asset_name: opendht-${{ github.ref }}-cp310-cp310-linux_x86_64.whl
