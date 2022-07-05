@@ -325,10 +325,13 @@ if (OPENDHT_STATIC)
         set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
         target_link_libraries(opendht-static
-            PRIVATE  ${argon2_LIBRARIES}
+            PRIVATE ${argon2_LIBRARIES}
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
                    ${Jsoncpp_STATIC_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
                    ${OPENSSL_STATIC_LIBRARIES})
+        if (APPLE)
+            target_link_libraries(opendht-static PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
+        endif()
     else ()
         if (OPENDHT_TOOLS)
             function (add_obj_lib name libfile)
@@ -389,19 +392,13 @@ if (OPENDHT_SHARED)
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
     target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+    target_link_libraries(opendht
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
+        PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
+                ${Jsoncpp_LIBRARIES}
+                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES})
     if (APPLE)
-        target_link_libraries(opendht
-            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
-            PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                    ${Jsoncpp_LIBRARIES}
-                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES}
-            SYSTEM "-framework CoreFoundation" "-framework Security")
-    else ()
-        target_link_libraries(opendht
-            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
-            PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                    ${Jsoncpp_LIBRARIES}
-                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES})
+        target_link_libraries(opendht PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
     endif ()
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
