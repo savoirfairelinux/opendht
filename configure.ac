@@ -18,8 +18,8 @@ AC_SUBST(OPENDHT_PATCH_VERSION, opendht_patch_version)
 
 AC_ARG_ENABLE([debug], AS_HELP_STRING([--enable-debug], [Build in debug mode, adds stricter warnings, disables optimization]))
 AS_IF([test "x$enable_debug" = "xyes"],
-      [CXXFLAGS="${CXXFLAGS} -g -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -O0 -pedantic-errors"],
-      [CXXFLAGS="${CXXFLAGS} -O3 -pedantic-errors -fvisibility=hidden"])
+      [CXXFLAGS="${CXXFLAGS} -g -Og -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -Wno-deprecated -pedantic-errors"],
+      [CXXFLAGS="${CXXFLAGS} -O3 -Wno-deprecated -pedantic-errors -fvisibility=hidden"])
 
 CPPFLAGS+=" -DOPENDHT_BUILD"
 AM_CONDITIONAL([OPENDHT_SHARED], [test "x$enable_shared" != xno])
