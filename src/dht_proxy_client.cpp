@@ -315,7 +315,7 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         return;
     }
     try {
-        auto request = buildRequest("/" + key.toString());
+        auto request = buildRequest("/key/" + key.toString());
         auto reqid = request->id();
         //request->set_connection_type(restinio::http_connection_header_t::keep_alive);
         request->set_method(restinio::http_method_get());
@@ -485,7 +485,7 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
         logger_->d("[proxy:client] [put] [search %s] executing for %s", key.to_c_str(), val->toString().c_str());
 
     try {
-        auto request = buildRequest("/" + key.toString());
+        auto request = buildRequest("/key/" + key.toString());
         auto reqid = request->id();
         request->set_method(restinio::http_method_post());
         setHeaderFields(*request);
@@ -842,7 +842,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
         else {
             method = ListenMethod::SUBSCRIBE;
             header.method(restinio::http_method_subscribe());
-            header.request_target("/" + key.toString());
+            header.request_target("/key/" + key.toString());
         }
         sendListen(header, l->second.cb, opstate, l->second, method);
         return token;
@@ -928,7 +928,7 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
 
         if (not deviceKey_.empty()) {
             // UNSUBSCRIBE
-            auto request = buildRequest("/" + key.toString());
+            auto request = buildRequest("/key/" + key.toString());
             auto reqid = request->id();
             try {
                 request->set_method(restinio::http_method_unsubscribe());
