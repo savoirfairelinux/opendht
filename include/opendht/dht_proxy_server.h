@@ -62,7 +62,7 @@ class DhtRunner;
 using RestRouter = restinio::router::express_router_t<>;
 using RequestStatus = restinio::request_handling_status_t;
 
-struct ProxyServerConfig {
+struct OPENDHT_PUBLIC ProxyServerConfig {
     std::string address {};
     in_port_t port {8000};
     std::string pushServer {};
@@ -455,7 +455,6 @@ private:
         MSGPACK_DEFINE_ARRAY(listeners)
     };
     std::map<std::string, PushListener> pushListeners_;
-    proxy::ListenToken tokenPushNotif_ {0};
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 };
 
