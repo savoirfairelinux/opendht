@@ -194,7 +194,7 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
     if (not lrunning_)
         return;
 
-    sockFd_.async_send_to(asio::buffer(sbuf_.data(), sbuf_.size()), peer,
+    sockFd_.async_send_to(asio::buffer((const void*)sbuf_.data(), sbuf_.size()), peer,
             [logger=logger_, peer] (const asio::error_code& ec, size_t)
             {
                 if (ec and (ec != asio::error::operation_aborted) and logger)
@@ -209,8 +209,8 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
 void
 PeerDiscovery::DomainPeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer &pack_buf)
 {
-    msgpack::sbuffer pack_buf_c;
-    pack_buf_c.write(pack_buf.data(),pack_buf.size());
+    msgpack::sbuffer pack_buf_c(pack_buf.size());
+    pack_buf_c.write(pack_buf.data(), pack_buf.size());
 
     std::lock_guard<std::mutex> lck(mtx_);
     messages_[type] = std::move(pack_buf_c);
