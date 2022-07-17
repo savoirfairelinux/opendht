@@ -148,6 +148,8 @@ UdpSocket::sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool r
 #ifdef MSG_CONFIRM
     if (replied)
         flags |= MSG_CONFIRM;
+#else
+    (void) replied;
 #endif
 #ifdef MSG_NOSIGNAL
     flags |= MSG_NOSIGNAL;

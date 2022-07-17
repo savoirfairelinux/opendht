@@ -309,13 +309,13 @@ DhtProxyTester::testShutdownStop()
     for (size_t i = 0; i < C; i++) {
         auto nodeTest = std::make_shared<dht::DhtRunner>();
         nodeTest->run(0, clientConfig);
-        nodeTest->put(key, dht::Value(mtu), [&](bool ok) {
+        nodeTest->put(key, dht::Value(mtu), [&](bool /*ok*/) {
             callback_count++;
         });
         nodeTest->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
             values.insert(values.end(), vals.begin(), vals.end());
             return true;
-        },[&](bool ok){
+        },[&](bool /*ok*/){
             callback_count++;
         });
         bool done = false;

@@ -567,6 +567,8 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
     }
     auto& base = ssl_socket_? ssl_socket_->lowest_layer() : *socket_;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
     ConnectHandlerCb wcb = [&base, cb=std::move(cb)](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
         if (!ec) {
             auto socket = base.native_handle();
@@ -614,6 +616,8 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
         if (cb)
             cb(ec, endpoint);
     };
+#pragma GCC diagnostic pop
+
     if (ssl_socket_)
         asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), wrapCallabck(std::move(wcb)));
     else

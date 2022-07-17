@@ -94,7 +94,6 @@ void
 DhtRunnerTester::testListen() {
     std::mutex mutex;
     std::condition_variable cv;
-    std::atomic_uint valueCount(0);
     std::atomic_uint valueCounta(0);
     std::atomic_uint valueCountb(0);
     std::atomic_uint valueCountc(0);
