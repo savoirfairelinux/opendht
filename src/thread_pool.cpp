@@ -106,8 +106,7 @@ ThreadPool::stop()
 {
     std::lock_guard<std::mutex> l(lock_);
     running_ = false;
-    while (not tasks_.empty())
-        tasks_.pop();
+    tasks_ = {};
     cv_.notify_all();
 }
 
