@@ -40,8 +40,7 @@ namespace dht {
 enum class PushType {
     None = 0,
     Android,
-    iOS,
-    iOSLegacy
+    iOS
 };
 }
 MSGPACK_ADD_ENUM(dht::PushType)

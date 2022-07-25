@@ -756,20 +756,12 @@ DhtProxyServer::getTypeFromString(const std::string& type) {
         return PushType::Android;
     else if (type == "ios")
         return PushType::iOS;
-    else if (type == "apple")
-        return PushType::iOSLegacy; // proxy_client is not updated or using ios < 14.5
     return PushType::None;
 }
 
 std::string
 DhtProxyServer::getDefaultTopic(PushType type) {
-    if (bundleId_.empty())
-        return {};
-    if (type == PushType::iOS)
-        return bundleId_;
-    else if (type == PushType::iOSLegacy)
-        return bundleId_  + ".voip";
-    return {};
+    return bundleId_;
 }
 
 RequestStatus
@@ -1045,19 +1037,15 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             notification["expiration"] = exp;
             if (!topic.empty())
                 notification["topic"] = topic;
-            if (type == PushType::iOS) {
-                if (highPriority) {
-                    Json::Value alert(Json::objectValue);
-                    alert["title"]="hello";
-                    notification["push_type"] = "alert";
-                    notification["alert"] = alert;
-                    notification["mutable_content"] = true;
-                } else {
-                    notification["push_type"] = "background";
-                    notification["content_available"] = true;
-                }
-            } else if (type == PushType::iOSLegacy) {
-                notification["push_type"] = "voip";
+            if (highPriority) {
+                Json::Value alert(Json::objectValue);
+                alert["title"]="hello";
+                notification["push_type"] = "alert";
+                notification["alert"] = alert;
+                notification["mutable_content"] = true;
+            } else {
+                notification["push_type"] = "background";
+                notification["content_available"] = true;
             }
         }
 

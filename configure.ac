@@ -32,7 +32,6 @@ LT_INIT()
 LT_LANG(C++)
 AC_LANG(C++)
 AC_PROG_CXX
-AC_PROG_OBJCXX
 AX_CXX_COMPILE_STDCXX(17,[noext],[mandatory])
 
 dnl Check for logs
@@ -92,7 +91,6 @@ case "${host_os}" in
     SYS=linux
     ;;
   darwin*)
-    APPLE=1
     SYS=darwin
     ;;
   mingw32*)
@@ -112,7 +110,6 @@ case "${host_os}" in
     ;;
 esac
 
-AM_CONDITIONAL(APPLE, [test "x$SYS" = "xdarwin"])
 AM_CONDITIONAL(WIN32, [test "x$SYS" = "xmingw32"])
 AS_IF([test "x$SYS" = "xandroid"],
       [], [LDFLAGS="${LDFLAGS} -lpthread"])
@@ -191,7 +188,6 @@ AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
 ])
 
 CXXFLAGS="${CXXFLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT"
-OBJCXX="$CXX $CXXFLAGS"
 
 AC_ARG_ENABLE([tools], AS_HELP_STRING([--disable-tools],[Disable tools (CLI DHT node)]),,build_tools=yes)
 AM_CONDITIONAL(ENABLE_TOOLS, test x$build_tools == xyes)
