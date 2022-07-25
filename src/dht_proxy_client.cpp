@@ -22,9 +22,6 @@
 #include "dhtrunner.h"
 #include "op_cache.h"
 #include "utils.h"
-#ifdef __APPLE__
-#include "compat/apple/apple_utils.h"
-#endif
 
 #include <http_parser.h>
 #include <deque>
@@ -1308,7 +1305,7 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
 #endif
 #ifdef __APPLE__
     body["topic"] = notificationTopic_;
-    body["platform"] = apple_utils::getPlatformVersion();
+    body["platform"] = "ios";
 #endif
 }
 
