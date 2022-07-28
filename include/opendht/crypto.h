@@ -34,6 +34,7 @@ extern "C" {
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <string_view>
 
 #ifdef _WIN32
 #include <iso646.h>
@@ -86,7 +87,8 @@ struct OPENDHT_PUBLIC PublicKey
     /** Import public key from serialized data */
     PublicKey(const uint8_t* dat, size_t dat_size);
     PublicKey(const Blob& pk) : PublicKey(pk.data(), pk.size()) {}
-    PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; };
+    PublicKey(std::string_view pk) : PublicKey((const uint8_t*)pk.data(), pk.size()) {}
+    PublicKey(PublicKey&& o) noexcept : pk(o.pk) { o.pk = nullptr; }
 
     ~PublicKey();
     explicit operator bool() const { return pk; }
@@ -167,7 +169,9 @@ struct OPENDHT_PUBLIC PrivateKey
     PrivateKey& operator=(PrivateKey&& o) noexcept;
 
     PrivateKey(const uint8_t* src, size_t src_size, const char* password = nullptr);
-    PrivateKey(const Blob& src, const std::string& password = {}) : PrivateKey(src.data(), src.size(), password.data()) {}
+    PrivateKey(const Blob& src, const std::string& password = {}) : PrivateKey(src.data(), src.size(), password.c_str()) {}
+    PrivateKey(std::string_view src, const std::string& password = {}) : PrivateKey((const uint8_t*)src.data(), src.size(), password.c_str()) {}
+
     ~PrivateKey();
     explicit operator bool() const { return key; }
 
@@ -294,6 +298,7 @@ class OPENDHT_PUBLIC CertificateRequest {
 public:
     CertificateRequest();
     CertificateRequest(const uint8_t* data, size_t size);
+    CertificateRequest(std::string_view src) : CertificateRequest((const uint8_t*)src.data(), src.size()) {}
     CertificateRequest(const Blob& data) : CertificateRequest(data.data(), data.size()) {}
 
     CertificateRequest(CertificateRequest&& o) noexcept : request(std::move(o.request)) {
@@ -327,8 +332,9 @@ private:
 class OPENDHT_PUBLIC OcspRequest
 {
 public:
-    OcspRequest(gnutls_ocsp_req_t r) : request(r) {};
+    OcspRequest(gnutls_ocsp_req_t r) : request(r) {}
     OcspRequest(const uint8_t* dat_ptr, size_t dat_size);
+    OcspRequest(std::string_view dat): OcspRequest((const uint8_t*)dat.data(), dat.size()) {}
     ~OcspRequest();
 
     /*
@@ -346,7 +352,7 @@ class OPENDHT_PUBLIC OcspResponse
 {
 public:
     OcspResponse(const uint8_t* dat_ptr, size_t dat_size);
-    OcspResponse(const std::string& response) : OcspResponse((const uint8_t*)response.data(), response.size()) {};
+    OcspResponse(std::string_view response) : OcspResponse((const uint8_t*)response.data(), response.size()) {}
     ~OcspResponse();
 
     Blob pack() const;
@@ -388,12 +394,10 @@ struct OPENDHT_PUBLIC Certificate {
      * ordered from subject to issuer
      */
     Certificate(const Blob& crt);
-    Certificate(const std::string& pem) : cert(nullptr) {
-        unpack((const uint8_t*)pem.data(), pem.size());
-    }
     Certificate(const uint8_t* dat, size_t dat_size) : cert(nullptr) {
         unpack(dat, dat_size);
     }
+    Certificate(std::string_view pem) : Certificate((const uint8_t*)pem.data(), pem.size()) {}
 
     /**
      * Import certificate chain (PEM or DER),
