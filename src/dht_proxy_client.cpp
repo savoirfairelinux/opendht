@@ -117,6 +117,9 @@ DhtProxyClient::DhtProxyClient(
     , loopSignal_(signal)
     , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
 {
+    localAddrv4_.setFamily(AF_INET);
+    localAddrv6_.setFamily(AF_INET6);
+
     jsonBuilder_["commentStyle"] = "None";
     jsonBuilder_["indentation"] = "";
     if (logger_) {
@@ -658,6 +661,12 @@ DhtProxyClient::queryProxyInfo(const Sp<InfoState>& infoState, const Sp<http::Re
                 if (!jsonReader_->parse(response.body.data(), response.body.data() + response.body.size(), &proxyInfos, &err)){
                     onProxyInfos(Json::Value{}, family);
                 } else if (not infoState->cancel) {
+                    if (auto req = response.request.lock()) {
+                        if (auto conn = req->get_connection()) {
+                            const auto& localAddr = conn->local_address();
+                            proxyInfos["local_ip"] = localAddr.to_string();
+                        }
+                    }
                     onProxyInfos(proxyInfos, family);
                 }
             }
@@ -689,10 +698,17 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
     std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
     auto oldStatus = std::max(statusIpv4_, statusIpv6_);
     auto& status = family == AF_INET ? statusIpv4_ : statusIpv6_;
+    auto ipChanged = false;
+    auto& pubAddress = family == AF_INET? publicAddressV4_ : publicAddressV6_;
+    auto& localAddress = family == AF_INET? localAddrv4_ : localAddrv6_;
     if (not proxyInfos.isMember("node_id")) {
         if (logger_)
             logger_->e("[proxy:client] [info] request failed for %s", family == AF_INET ? "ipv4" : "ipv6");
         status = NodeStatus::Disconnected;
+        if (pubAddress) {
+            pubAddress = {};
+            ipChanged = true;
+        }
     } else {
         if (logger_)
             logger_->d("[proxy:client] [info] got proxy reply for %s",
@@ -701,19 +717,24 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
             myid = InfoHash(proxyInfos["node_id"].asString());
             stats4_ = NodeStats(proxyInfos["ipv4"]);
             stats6_ = NodeStats(proxyInfos["ipv6"]);
-            if (stats4_.good_nodes + stats6_.good_nodes)
+            auto publicIp = parsePublicAddress(proxyInfos["public_ip"]);
+            ipChanged = pubAddress && pubAddress.toString() != publicIp.toString();
+            pubAddress = publicIp;
+
+            if (auto localIp = proxyInfos["local_ip"]) {
+                if (localAddress.toString() != localIp.asString()) {
+                    localAddress.setAddress(localIp.asString().c_str());
+                    ipChanged = (bool)localAddress;
+                }
+            }
+
+            if (!ipChanged && stats4_.good_nodes + stats6_.good_nodes)
                 status = NodeStatus::Connected;
-            else if (stats4_.dubious_nodes + stats6_.dubious_nodes)
+            else if (!ipChanged && stats4_.dubious_nodes + stats6_.dubious_nodes)
                 status = NodeStatus::Connecting;
             else
                 status = NodeStatus::Disconnected;
 
-            auto publicIp = parsePublicAddress(proxyInfos["public_ip"]);
-            auto publicFamily = publicIp.getFamily();
-            if (publicFamily == AF_INET)
-                publicAddressV4_ = publicIp;
-            else if (publicFamily == AF_INET6)
-                publicAddressV6_ = publicIp;
         } catch (const std::exception& e) {
             if (logger_)
                 logger_->e("[proxy:client] [info] error processing: %s", e.what());
@@ -739,7 +760,10 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
         nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     }
     else if (newStatus == NodeStatus::Disconnected) {
-        nextProxyConfirmationTimer_->expires_at(std::chrono::steady_clock::now() + std::chrono::minutes(1));
+        auto next = std::chrono::steady_clock::now();
+        if (!ipChanged)
+            next += std::chrono::minutes(1);
+        nextProxyConfirmationTimer_->expires_at(next);
         nextProxyConfirmationTimer_->async_wait(std::bind(&DhtProxyClient::handleProxyConfirm, this, std::placeholders::_1));
     }
     l.unlock();

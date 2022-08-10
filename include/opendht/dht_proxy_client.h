@@ -344,6 +344,8 @@ private:
     NodeStatus statusIpv6_ {NodeStatus::Disconnected};
     NodeStats stats4_ {};
     NodeStats stats6_ {};
+    SockAddr localAddrv4_;
+    SockAddr localAddrv6_;
     SockAddr publicAddressV4_;
     SockAddr publicAddressV6_;
     std::atomic_bool launchConnectedCbs_ {false};
