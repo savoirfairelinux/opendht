@@ -569,9 +569,10 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    ConnectHandlerCb wcb = [&base, cb=std::move(cb)](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
+    ConnectHandlerCb wcb = [this, &base, cb=std::move(cb)](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
         if (!ec) {
             auto socket = base.native_handle();
+            local_address_ = base.local_endpoint().address();
             // Once connected, set a keep alive on the TCP socket with 30 seconds delay
             // This will generate broken pipes as soon as possible.
             // Note this needs to be done once connected to have a valid native_handle()
@@ -725,6 +726,12 @@ Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
     };
     if (ssl_socket_)  ssl_socket_->async_read_some(buf, onEnd);
     else              socket_->async_read_some(buf, onEnd);
+}
+
+const asio::ip::address&
+Connection::local_address() const
+{
+    return local_address_;
 }
 
 void

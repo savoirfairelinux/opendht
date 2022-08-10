@@ -114,6 +114,8 @@ public:
     void async_read(size_t bytes, BytesHandlerCb cb);
     void async_read_some(size_t bytes, BytesHandlerCb cb);
 
+    const asio::ip::address& local_address() const;
+
     void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
     void close();
 
@@ -141,6 +143,8 @@ private:
     asio::streambuf write_buf_;
     asio::streambuf read_buf_;
     std::istream istream_;
+
+    asio::ip::address local_address_;
 
     std::unique_ptr<asio::steady_timer> timeout_timer_;
     std::shared_ptr<dht::Logger> logger_;
