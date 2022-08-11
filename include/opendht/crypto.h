@@ -120,7 +120,9 @@ struct OPENDHT_PUBLIC PublicKey
     inline Blob encrypt(const Blob& data) const {
         return encrypt(data.data(), data.size());
     }
-
+    inline Blob encrypt(std::string_view data) const {
+        return encrypt((const uint8_t*)data.data(), data.size());
+    }
     void pack(Blob& b) const;
     int pack(uint8_t* out, size_t* out_len) const;
     void unpack(const uint8_t* dat, size_t dat_size);
@@ -186,6 +188,7 @@ struct OPENDHT_PUBLIC PrivateKey
      * @returns the signature data.
      */
     Blob sign(const uint8_t* data, size_t data_len) const;
+    inline Blob sign(std::string_view dat) const { return sign((const uint8_t*)dat.data(), dat.size()); }
     inline Blob sign(const Blob& dat) const { return sign(dat.data(), dat.size()); }
 
     /**
