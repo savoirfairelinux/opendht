@@ -721,9 +721,10 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
             ipChanged = pubAddress && pubAddress.toString() != publicIp.toString();
             pubAddress = publicIp;
 
-            if (auto localIp = proxyInfos["local_ip"]) {
-                if (localAddress.toString() != localIp.asString()) {
-                    localAddress.setAddress(localIp.asString().c_str());
+            if (proxyInfos.isMember("local_ip")) {
+                std::string localIp = proxyInfos["local_ip"].asString();
+                if (localAddress.toString() != localIp) {
+                    localAddress.setAddress(localIp.c_str());
                     ipChanged = (bool)localAddress;
                 }
             }
