@@ -116,13 +116,14 @@ public:
 
     const asio::ip::address& local_address() const;
 
-    void timeout(const std::chrono::seconds timeout, HandlerCb cb = {});
+    void timeout(const std::chrono::seconds& timeout, HandlerCb cb = {});
+
     void close();
 
 private:
 
     template<typename T>
-    T wrapCallabck(T cb) const {
+    T wrapCallback(T cb) const {
         return [t=shared_from_this(),cb=std::move(cb)](auto ...params) {
             cb(params...);
         };
@@ -265,6 +266,11 @@ public:
         return resolver_->get_url();
     };
 
+    void timeout(const std::chrono::seconds& timeout, HandlerCb cb = {}) {
+        timeout_ = timeout;
+        timeoutCb_ = cb;
+    }
+
     /** The previous request in case of redirect following */
     std::shared_ptr<Request> getPrevious() const {
         return prev_.lock();
@@ -374,6 +380,9 @@ private:
     std::weak_ptr<Request> prev_;
     unsigned num_redirect {0};
     bool follow_redirect {true};
+
+    HandlerCb timeoutCb_ {};
+    std::chrono::seconds timeout_ {0};
 };
 
 } // namespace http

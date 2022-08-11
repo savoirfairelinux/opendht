@@ -620,9 +620,9 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 #pragma GCC diagnostic pop
 
     if (ssl_socket_)
-        asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), wrapCallabck(std::move(wcb)));
+        asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), wrapCallback(std::move(wcb)));
     else
-        asio::async_connect(*socket_, std::move(endpoints), wrapCallabck(std::move(wcb)));
+        asio::async_connect(*socket_, std::move(endpoints), wrapCallback(std::move(wcb)));
 }
 
 void
@@ -667,8 +667,8 @@ Connection::async_write(BytesHandlerCb cb)
         if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
-    if (ssl_socket_)  asio::async_write(*ssl_socket_, write_buf_, wrapCallabck(std::move(cb)));
-    else if (socket_) asio::async_write(*socket_, write_buf_, wrapCallabck(std::move(cb)));
+    if (ssl_socket_)  asio::async_write(*ssl_socket_, write_buf_, wrapCallback(std::move(cb)));
+    else if (socket_) asio::async_write(*socket_, write_buf_, wrapCallback(std::move(cb)));
     else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
@@ -680,8 +680,8 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
         if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
-    if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallabck(std::move(cb)));
-    else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallabck(std::move(cb)));
+    if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
+    else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallback(std::move(cb)));
     else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
@@ -693,8 +693,8 @@ Connection::async_read_until(char delim, BytesHandlerCb cb)
         if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
-    if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallabck(std::move(cb)));
-    else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallabck(std::move(cb)));
+    if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
+    else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallback(std::move(cb)));
     else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
@@ -706,8 +706,8 @@ Connection::async_read(size_t bytes, BytesHandlerCb cb)
         if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
-    if (ssl_socket_)  asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallabck(std::move(cb)));
-    else if (socket_) asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallabck(std::move(cb)));
+    if (ssl_socket_)  asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallback(std::move(cb)));
+    else if (socket_) asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallback(std::move(cb)));
     else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
@@ -735,15 +735,8 @@ Connection::local_address() const
 }
 
 void
-Connection::timeout(const std::chrono::seconds timeout, HandlerCb cb)
+Connection::timeout(const std::chrono::seconds& timeout, HandlerCb cb)
 {
-    if (!is_open()){
-        if (logger_)
-            logger_->e("[connection:%i] closed, can't timeout", id_);
-        if (cb)
-            cb(asio::error::operation_aborted);
-        return;
-    }
     if (!timeout_timer_)
         timeout_timer_ = std::make_unique<asio::steady_timer>(ctx_);
     timeout_timer_->expires_at(std::chrono::steady_clock::now() + timeout);
@@ -1201,6 +1194,9 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
     }
     else
         conn_ = std::make_shared<Connection>(ctx_, false/*ssl*/, logger_);
+
+    if (conn_ && timeoutCb_)
+        conn_->timeout(timeout_, std::move(timeoutCb_));
 
     // try to connect to any until one works
     std::weak_ptr<Request> wthis = shared_from_this();
