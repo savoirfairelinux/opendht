@@ -190,6 +190,9 @@ extern {
     pub fn dht_runner_run(dht: *mut DhtRunner, port: in_port_t);
     pub fn dht_runner_run_config(dht: *mut DhtRunner, port: in_port_t, config: *const DhtRunnerConfig);
     pub fn dht_runner_bootstrap(dht: *mut DhtRunner, host: *const c_char, service: *const c_char);
+    pub fn dht_runner_bootstrap2(dht: *mut DhtRunner, addrs: *const *const OsSocketAddr,
+                                 addr_lens: *const *const libc::socklen_t,
+                                 done_cb: *mut c_void, cb_user_data: *mut c_void);
     pub fn dht_runner_get(dht: *mut DhtRunner, h: *const InfoHash,
                           get_cb: extern fn(*mut Value, *mut c_void) -> bool,
                           done_cb: extern fn(bool, *mut c_void),
