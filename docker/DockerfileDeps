@@ -18,9 +18,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/e0a261dd8488246a3cb8bbb3ea781ea5139c3c94.tar.gz \
-    && ls -l && tar -xzf e0a261dd8488246a3cb8bbb3ea781ea5139c3c94.tar.gz \
-    && cd restinio-e0a261dd8488246a3cb8bbb3ea781ea5139c3c94/dev \
+    && wget https://github.com/aberaud/restinio/archive/bbaa034dbcc7555ce67df0f8a1475591a7441733.tar.gz \
+    && ls -l && tar -xzf bbaa034dbcc7555ce67df0f8a1475591a7441733.tar.gz \
+    && cd restinio-bbaa034dbcc7555ce67df0f8a1475591a7441733/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
              -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
              -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
