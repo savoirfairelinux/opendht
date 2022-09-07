@@ -760,7 +760,7 @@ DhtProxyServer::getTypeFromString(const std::string& type) {
 }
 
 std::string
-DhtProxyServer::getDefaultTopic(PushType type) {
+DhtProxyServer::getDefaultTopic(PushType) {
     return bundleId_;
 }
 
@@ -1182,9 +1182,8 @@ DhtProxyServer::put(restinio::request_handle_t request,
                 pput.value = value;
                 pput.expiration = timeout;
                 if (not pput.expireTimer) {
-                    auto &ctx = io_context();
                     // cancel permanent put
-                    pput.expireTimer = std::make_unique<asio::steady_timer>(ctx, timeout);
+                    pput.expireTimer = std::make_unique<asio::steady_timer>(io_context(), timeout);
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                     if (not pushToken.empty()) {
                         pput.pushToken = pushToken;
@@ -1194,24 +1193,6 @@ DhtProxyServer::put(restinio::request_handle_t request,
                             topic = getDefaultTopic(pput.type);
                         pput.topic = topic;
                         pput.sessionCtx = std::make_shared<PushSessionContext>(sessionId);
-                        // notify push listen expire
-                        auto jsonProvider = [infoHash, clientId, vid, sessionCtx = pput.sessionCtx](){
-                            Json::Value json;
-                            json["timeout"] = infoHash.toString();
-                            json["to"] = clientId;
-                            json["vid"] = std::to_string(vid);
-                            std::lock_guard<std::mutex> l(sessionCtx->lock);
-                            json["s"] = sessionCtx->sessionId;
-                            return json;
-                        };
-                        if (!pput.expireNotifyTimer)
-                            pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(ctx,
-                                                     timeout - proxy::OP_MARGIN);
-                        else
-                            pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
-                        pput.expireNotifyTimer->async_wait(std::bind(
-                            &DhtProxyServer::handleNotifyPushListenExpire, this,
-                            std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type, pput.topic));
                     }
 #endif
                 } else {
@@ -1224,12 +1205,32 @@ DhtProxyServer::put(restinio::request_handle_t request,
                         }
                     }
                     pput.expireTimer->expires_at(timeout);
-                    if (pput.expireNotifyTimer)
-                        pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
                 }
                 pput.expireTimer->async_wait(std::bind(&DhtProxyServer::handleCancelPermamentPut, this,
                                                 std::placeholders::_1, infoHash, vid));
+
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+                // notify put permanent expiration
+                auto jsonProvider = [infoHash, clientId, vid, sessionCtx = pput.sessionCtx](){
+                    Json::Value json;
+                    json["timeout"] = infoHash.toString();
+                    json["to"] = clientId;
+                    json["vid"] = std::to_string(vid);
+                    std::lock_guard<std::mutex> l(sessionCtx->lock);
+                    json["s"] = sessionCtx->sessionId;
+                    return json;
+                };
+                if (!pput.expireNotifyTimer)
+                    pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(),
+                                                timeout - proxy::OP_MARGIN);
+                else
+                    pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
+                pput.expireNotifyTimer->async_wait(std::bind(
+                    &DhtProxyServer::handleNotifyPushListenExpire, this,
+                    std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type, pput.topic));
+#endif
             }
+
             dht_->put(infoHash, value, [this, request, value](bool ok){
                 if (ok){
                     auto response = initHttpResponse(request->create_response());
