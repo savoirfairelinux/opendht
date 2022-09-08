@@ -173,6 +173,9 @@ DhtProxyServer::PermanentPut::msgpack_unpack(const msgpack::object& o)
     if (auto val = findMapValue(o, "value"sv)) {
         value = std::make_shared<dht::Value>(*val);
     }
+    if (auto top = findMapValue(o, "top"sv)) {
+        topic = top->as<std::string>();
+    }
 }
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -193,6 +196,9 @@ DhtProxyServer::Listener::msgpack_unpack(const msgpack::object& o)
     }
     if (auto t = findMapValue(o, "t"sv)) {
         type = t->as<PushType>();
+    }
+    if (auto top = findMapValue(o, "top"sv)) {
+        topic = top->as<std::string>();
     }
 }
 #endif
