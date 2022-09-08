@@ -392,7 +392,7 @@ private:
         template <typename Packer>
         void msgpack_pack(Packer& p) const
         {
-            p.pack_map(2 + (sessionCtx ? 1 : 0) + (clientId.empty() ? 0 : 1) + (type == PushType::None ? 0 : 2));
+            p.pack_map(2 + (sessionCtx ? 1 : 0) + (clientId.empty() ? 0 : 1) + (type == PushType::None ? 0 : 2) + (topic.empty() ? 0 : 1));
             p.pack("value"); p.pack(value);
             p.pack("exp"); p.pack(to_time_t(expiration));
             if (not clientId.empty()) {
@@ -405,6 +405,9 @@ private:
             if (type != PushType::None) {
                 p.pack("t"); p.pack(type);
                 p.pack("token"); p.pack(pushToken);
+            }
+            if (not topic.empty()) {
+                p.pack("top"); p.pack(topic);
             }
         }
 
@@ -437,7 +440,7 @@ private:
         template <typename Packer>
         void msgpack_pack(Packer& p) const
         {
-            p.pack_map(sessionCtx ? 4 : 3);
+            p.pack_map(3 + (sessionCtx ? 1 : 0) + (topic.empty() ? 0 : 1));
             p.pack("cid"); p.pack(clientId);
             p.pack("exp"); p.pack(to_time_t(expiration));
             if (sessionCtx) {
@@ -445,6 +448,9 @@ private:
                 p.pack("sid"); p.pack(sessionCtx->sessionId);
             }
             p.pack("t"); p.pack(type);
+            if (!topic.empty()) {
+                p.pack("top"); p.pack(topic);
+            }
         }
 
         void msgpack_unpack(const msgpack::object& o);
