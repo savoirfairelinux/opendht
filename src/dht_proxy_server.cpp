@@ -1176,7 +1176,7 @@ DhtProxyServer::put(restinio::request_handle_t request,
                                 }
                             }
                             auto response = initHttpResponse(request->create_response());
-                            response.append_body(Json::writeString(jsonBuilder_, value->toJson()) + "\n");
+                            response.append_body(Json::writeString(jsonBuilder_, pp.second.value->toJson()) + "\n");
                             return response.done();
                         }
                     }
