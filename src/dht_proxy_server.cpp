@@ -415,7 +415,7 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                                         json["s"] = sessionCtx->sessionId;
                                     }
                                     if (expired and values.size() < 2){
-                                        std::stringstream ss;
+                                        std::ostringstream ss;
                                         for(size_t i = 0; i < values.size(); ++i){
                                             if(i != 0) ss << ",";
                                             ss << values[i]->id;
@@ -892,8 +892,8 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
                         json["s"] = sessionCtx->sessionId;
                     }
                     if (expired and values.size() < 2){
-                        std::stringstream ss;
-                        for(size_t i = 0; i < values.size(); ++i){
+                        std::ostringstream ss;
+                        for(size_t i = 0; i < values.size(); ++i) {
                             if(i != 0) ss << ",";
                             ss << values[i]->id;
                         }
@@ -967,7 +967,7 @@ DhtProxyServer::handleNotifyPushListenExpire(const asio::error_code &ec, const s
             logger_->e("[proxy:server] [subscribe] error sending put refresh: %s", ec.message().c_str());
     }
     if (logger_)
-        logger_->d("[proxy:server] [subscribe] sending put refresh to %s token", pushToken.c_str());
+        logger_->d("[proxy:server] [subscribe] sending refresh to %s token", pushToken.c_str());
     sendPushNotification(pushToken, jsonProvider(), type, false, topic);
 }
 
@@ -1217,23 +1217,25 @@ DhtProxyServer::put(restinio::request_handle_t request,
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
                 // notify put permanent expiration
-                auto jsonProvider = [infoHash, clientId, vid, sessionCtx = pput.sessionCtx](){
-                    Json::Value json;
-                    json["timeout"] = infoHash.toString();
-                    json["to"] = clientId;
-                    json["vid"] = std::to_string(vid);
-                    std::lock_guard<std::mutex> l(sessionCtx->lock);
-                    json["s"] = sessionCtx->sessionId;
-                    return json;
-                };
-                if (!pput.expireNotifyTimer)
-                    pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(),
-                                                timeout - proxy::OP_MARGIN);
-                else
-                    pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
-                pput.expireNotifyTimer->async_wait(std::bind(
-                    &DhtProxyServer::handleNotifyPushListenExpire, this,
-                    std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type, pput.topic));
+                if (pput.sessionCtx) {
+                    auto jsonProvider = [infoHash, clientId, vid, sessionCtx = pput.sessionCtx](){
+                        Json::Value json;
+                        json["timeout"] = infoHash.toString();
+                        json["to"] = clientId;
+                        json["vid"] = std::to_string(vid);
+                        std::lock_guard<std::mutex> l(sessionCtx->lock);
+                        json["s"] = sessionCtx->sessionId;
+                        return json;
+                    };
+                    if (!pput.expireNotifyTimer)
+                        pput.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(),
+                                                    timeout - proxy::OP_MARGIN);
+                    else
+                        pput.expireNotifyTimer->expires_at(timeout - proxy::OP_MARGIN);
+                    pput.expireNotifyTimer->async_wait(std::bind(
+                        &DhtProxyServer::handleNotifyPushListenExpire, this,
+                        std::placeholders::_1, pushToken, std::move(jsonProvider), pput.type, pput.topic));
+                }
 #endif
             }
 
