@@ -1,6 +1,6 @@
 name: Clang Static Analysis
-on:
-  push
+on: [push, pull_request]
+
 jobs:
   clang-analyzer:
     name: Clang Static Analysis
@@ -30,6 +30,6 @@ jobs:
       - name: cmake
         run: |
           mkdir build && cd build && \
-          cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Debug -DOPENDHT_C=On -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Debug -DOPENDHT_C=On -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On -DOPENDHT_PUSH_NOTIFICATIONS=On
       - name: scan-build
         run: cd build && scan-build --status-bugs make

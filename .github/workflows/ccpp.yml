@@ -77,7 +77,7 @@ jobs:
         export PKG_CONFIG_PATH="/usr/local/opt/openssl@3/lib/pkgconfig"
         cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Debug \
                  -DOPENDHT_C=On -DOPENDHT_TESTS=On -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off \
-                 -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On
+                 -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On -DOPENDHT_PUSH_NOTIFICATIONS=On
 
     - name: make
       run: cd build && make
