@@ -212,6 +212,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
         pushServer_(config.pushServer),
+        unifiedPushEndpoint_(config.unifiedPushEndpoint),
         bundleId_(config.bundleId)
 {
     if (not dht_)
@@ -762,6 +763,8 @@ DhtProxyServer::getTypeFromString(const std::string& type) {
         return PushType::Android;
     else if (type == "ios")
         return PushType::iOS;
+    else if (type == "unifiedpush")
+        return PushType::UnifiedPush;
     return PushType::None;
 }
 
@@ -1012,55 +1015,65 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 void
 DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, PushType type, bool highPriority, const std::string& topic)
 {
-    if (pushServer_.empty())
+    if (pushServer_.empty() and unifiedPushEndpoint_.empty())
         return;
 
     unsigned reqid = 0;
     try {
-        auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second,
-                                                            pushHostPort_.first.find("https://") == 0, logger_);
+        auto request = type == PushType::UnifiedPush
+            ? std::make_shared<http::Request>(io_context(), unifiedPushEndpoint_, logger_)
+            : std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second, pushHostPort_.first.find("https://") == 0, logger_);
         reqid = request->id();
-        request->set_target("/api/push");
+        request->set_target(type == PushType::UnifiedPush ? ("/" + token) : "/api/push");
         request->set_method(restinio::http_method_post());
-        request->set_header_field(restinio::http_field_t::host, pushServer_.c_str());
+        request->set_header_field(restinio::http_field_t::host, type == PushType::UnifiedPush ? unifiedPushEndpoint_.c_str() : pushServer_.c_str());
         request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
         request->set_header_field(restinio::http_field_t::accept, "*/*");
         request->set_header_field(restinio::http_field_t::content_type, "application/json");
 
-        // NOTE: see https://github.com/appleboy/gorush
-        Json::Value notification(Json::objectValue);
-        Json::Value tokens(Json::arrayValue);
-        tokens[0] = token;
-        notification["tokens"] = std::move(tokens);
-        notification["platform"] = type == PushType::Android ? 2 : 1;
-        notification["data"] = std::move(json);
-        notification["priority"] = highPriority ? "high" : "normal";
-        if (type == PushType::Android)
-            notification["time_to_live"] = 3600 * 24; // 24 hours
-        else {
-            const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
-            uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
-            notification["expiration"] = exp;
-            if (!topic.empty())
-                notification["topic"] = topic;
-            if (highPriority) {
-                Json::Value alert(Json::objectValue);
-                alert["title"]="hello";
-                notification["push_type"] = "alert";
-                notification["alert"] = alert;
-                notification["mutable_content"] = true;
-            } else {
-                notification["push_type"] = "background";
-                notification["content_available"] = true;
+        if (type == PushType::UnifiedPush) {
+            Json::Value notification(Json::objectValue);
+            notification["message"] = Json::writeString(jsonBuilder_, std::move(json));
+            notification["topic"] = token;
+            notification["priority"] = highPriority ? 5 : 1;
+            request->set_body(Json::writeString(jsonBuilder_, std::move(json)));
+        } else {
+            // NOTE: see https://github.com/appleboy/gorush
+            Json::Value notification(Json::objectValue);
+            Json::Value tokens(Json::arrayValue);
+            tokens[0] = token;
+            notification["tokens"] = std::move(tokens);
+            notification["platform"] = type == PushType::Android ? 2 : 1;
+            notification["data"] = std::move(json);
+            notification["priority"] = highPriority ? "high" : "normal";
+            if (type == PushType::Android)
+                notification["time_to_live"] = 3600 * 24; // 24 hours
+            else {
+                const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
+                uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
+                notification["expiration"] = exp;
+                if (!topic.empty())
+                    notification["topic"] = topic;
+                if (highPriority) {
+                    Json::Value alert(Json::objectValue);
+                    alert["title"]="hello";
+                    notification["push_type"] = "alert";
+                    notification["alert"] = alert;
+                    notification["mutable_content"] = true;
+                } else {
+                    notification["push_type"] = "background";
+                    notification["content_available"] = true;
+                }
             }
+
+            Json::Value notifications(Json::arrayValue);
+            notifications[0] = notification;
+
+            Json::Value content;
+            content["notifications"] = std::move(notifications);
+            request->set_body(Json::writeString(jsonBuilder_, content));
         }
 
-        Json::Value notifications(Json::arrayValue);
-        notifications[0] = notification;
-
-        Json::Value content;
-        content["notifications"] = std::move(notifications);
-        request->set_body(Json::writeString(jsonBuilder_, content));
         request->add_on_state_change_callback([this, reqid]
                                               (http::Request::State state, const http::Response& response){
             if (state == http::Request::State::DONE){
