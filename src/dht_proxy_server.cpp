@@ -1018,7 +1018,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     unsigned reqid = 0;
     try {
         auto request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second,
-                                                                    httpsServer_ ? true : false, logger_);
+                                                            pushHostPort_.first.find("https://") == 0, logger_);
         reqid = request->id();
         request->set_target("/api/push");
         request->set_method(restinio::http_method_post());
@@ -1078,7 +1078,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
     }
     catch (const std::exception &e){
         if (logger_)
-            logger_->e("[proxy:server] [notification] error send push: %i", e.what());
+            logger_->e("[proxy:server] [notification] error send push: %s", e.what());
         if (reqid) {
             std::lock_guard<std::mutex> l(requestLock_);
             requests_.erase(reqid);
