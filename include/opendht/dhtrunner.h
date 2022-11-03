@@ -62,6 +62,7 @@ public:
         std::string push_node_id {};
         std::string push_token {};
         std::string push_topic {};
+        std::string push_platform {};
         bool peer_discovery {false};
         bool peer_publish {false};
         std::shared_ptr<dht::crypto::Certificate> server_ca;
@@ -452,6 +453,11 @@ public:
      * Sets the push notification topic
      */
     void setPushNotificationTopic(const std::string& topic);
+
+     /**
+     * Sets the push notification platform
+     */
+    void setPushNotificationPlatform(const std::string& platform);
 
     /**
      * Insert a push notification to process for OpenDHT

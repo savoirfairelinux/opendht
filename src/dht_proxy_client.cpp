@@ -1325,13 +1325,8 @@ DhtProxyClient::getPushRequest(Json::Value& body) const
     body["key"] = deviceKey_;
     body["client_id"] = pushClientId_;
     body["session_id"] = pushSessionId_;
-#ifdef __ANDROID__
-    body["platform"] = "android";
-#endif
-#ifdef __APPLE__
     body["topic"] = notificationTopic_;
-    body["platform"] = "ios";
-#endif
+    body["platform"] = platform_;
 }
 
 std::string

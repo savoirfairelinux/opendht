@@ -75,6 +75,14 @@ public:
 #endif
     }
 
+    virtual void setPushNotificationPlatform(const std::string& platform) override {
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+        platform_ = platform;
+#else
+        (void) platform;
+#endif
+    }
+
     virtual ~DhtProxyClient();
 
     /**
@@ -414,6 +422,20 @@ private:
      * Notification topic for ios notifications.
      */
     std::string notificationTopic_ {};
+
+    /**
+     * Platform for push notifications (supported android, ios, unifiedpush)
+     */
+    std::string platform_
+#ifdef __ANDROID__
+    {"android"};
+#else
+#ifdef __APPLE__
+    {"ios"};
+#else
+    {};
+#endif
+#endif
 
     const std::function<void()> loopSignal_;
 

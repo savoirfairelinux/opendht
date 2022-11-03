@@ -1115,6 +1115,8 @@ DhtRunner::enableProxy(bool proxify)
             dht_via_proxy->setPushNotificationToken(config_.push_token);
         if (not config_.push_topic.empty())
             dht_via_proxy->setPushNotificationTopic(config_.push_topic);
+        if (not config_.push_platform.empty())
+            dht_via_proxy->setPushNotificationPlatform(config_.push_platform);
         dht_ = std::make_unique<SecureDht>(std::move(dht_via_proxy), config_.dht_config, identityAnnouncedCb_, logger_);
         // and use it
         use_proxy = proxify;
@@ -1159,6 +1161,18 @@ DhtRunner::setPushNotificationTopic(const std::string& topic) {
         dht_->setPushNotificationTopic(topic);
 #else
     (void) topic;
+#endif
+}
+
+void
+DhtRunner::setPushNotificationPlatform(const std::string& platform) {
+    std::lock_guard<std::mutex> lck(dht_mtx);
+#if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
+    config_.push_platform = platform;
+    if (dht_)
+        dht_->setPushNotificationPlatform(platform);
+#else
+    (void) platform;
 #endif
 }
 
