@@ -48,6 +48,7 @@ impl DhtRunnerConfig {
             push_node_id: ptr::null(),
             push_token: ptr::null(),
             push_topic: ptr::null(),
+            push_platform: ptr::null(),
             peer_discovery: false,
             peer_publish: false,
             server_ca: ptr::null_mut(),
@@ -76,6 +77,10 @@ impl DhtRunnerConfig {
 
     pub fn set_push_topic(&mut self, push_topic: &str) {
         self.push_topic = CString::new(push_topic).unwrap().as_ptr();
+    }
+
+    pub fn set_push_platform(&mut self, push_platform: &str) {
+        self.push_platform = CString::new(push_platform).unwrap().as_ptr();
     }
 
     pub fn set_identity(&mut self, certificate: Box<DhtCertificate>, privatekey: Box<PrivateKey>) {
