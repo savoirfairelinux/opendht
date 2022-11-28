@@ -66,7 +66,6 @@ struct OPENDHT_PUBLIC ProxyServerConfig {
     std::string address {};
     in_port_t port {8000};
     std::string pushServer {};
-    std::string unifiedPushEndpoint {};
     std::string persistStatePath {};
     dht::crypto::Identity identity {};
     std::string bundleId {};
@@ -426,7 +425,6 @@ private:
     mutable std::atomic<time_point> lastStatsReset_ {time_point::min()};
 
     std::string pushServer_;
-    std::string unifiedPushEndpoint_;
     std::string bundleId_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS

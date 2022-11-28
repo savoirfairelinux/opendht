@@ -130,7 +130,6 @@ struct dht_params {
     in_port_t port {0};
     in_port_t proxyserver {0};
     in_port_t proxyserverssl {0};
-    std::string unifiedPushEndpoint {};
     std::string proxyclient {};
     std::string proxy_address {};
     std::string pushserver {};
@@ -226,7 +225,6 @@ static const constexpr struct option long_options[] = {
     {"syslog",                  no_argument      , nullptr, 'L'},
     {"proxyserver",             required_argument, nullptr, 'S'},
     {"proxyserverssl",          required_argument, nullptr, 'e'},
-    {"unifiedpush",             required_argument, nullptr, 'O'},
     {"proxy-addr",              required_argument, nullptr, 'a'},
     {"proxy-certificate",       required_argument, nullptr, 'w'},
     {"proxy-privkey",           required_argument, nullptr, 'K'},
@@ -262,9 +260,6 @@ parseArgs(int argc, char **argv) {
                 else
                     std::cout << "Invalid port: " << port_arg << std::endl;
             }
-            break;
-        case 'O':
-            params.unifiedPushEndpoint = optarg;
             break;
         case 'e': {
                 int port_arg = atoi(optarg);
