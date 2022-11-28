@@ -212,7 +212,6 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
         pushServer_(config.pushServer),
-        unifiedPushEndpoint_(config.unifiedPushEndpoint),
         bundleId_(config.bundleId)
 {
     if (not dht_)
@@ -1015,18 +1014,21 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 void
 DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, PushType type, bool highPriority, const std::string& topic)
 {
-    if (pushServer_.empty() and unifiedPushEndpoint_.empty())
+    if (pushServer_.empty())
         return;
 
     unsigned reqid = 0;
     try {
-        auto request = type == PushType::UnifiedPush
-            ? std::make_shared<http::Request>(io_context(), unifiedPushEndpoint_, logger_)
-            : std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second, pushHostPort_.first.find("https://") == 0, logger_);
+        std::shared_ptr<http::Request> request;
+        http::Url tokenUrl(token);
+        if (type == PushType::UnifiedPush)
+            request = std::make_shared<http::Request>(io_context(), tokenUrl.protocol + "://" + tokenUrl.host, logger_);
+        else
+            request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second, pushHostPort_.first.find("https://") == 0, logger_);;
         reqid = request->id();
-        request->set_target(type == PushType::UnifiedPush ? ("/" + token) : "/api/push");
+        request->set_target(type == PushType::UnifiedPush ? (tokenUrl.target) : "/api/push");
         request->set_method(restinio::http_method_post());
-        request->set_header_field(restinio::http_field_t::host, type == PushType::UnifiedPush ? unifiedPushEndpoint_.c_str() : pushServer_.c_str());
+        request->set_header_field(restinio::http_field_t::host, type == PushType::UnifiedPush ? tokenUrl.host.c_str() : pushServer_.c_str());
         request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
         request->set_header_field(restinio::http_field_t::accept, "*/*");
         request->set_header_field(restinio::http_field_t::content_type, "application/json");
