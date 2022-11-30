@@ -249,6 +249,8 @@ public:
     template <size_t M>
     OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, Hash<M>& h);
 
+    /** Returns view to thread-allocated memory, only valid until the next call to this function. */
+    std::string_view to_view() const { return std::string_view(to_c_str(), N*2); }
     const char* to_c_str() const;
 
     std::string toString() const;
