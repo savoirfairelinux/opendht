@@ -804,11 +804,11 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& id(Value::Id id) {
+    Where&& id(Value::Id id) {
         FieldValue fv {Value::Field::Id, id};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
-        return *this;
+        return std::move(*this);
     }
 
     /**
@@ -818,11 +818,11 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& valueType(ValueType::Id type) {
+    Where&& valueType(ValueType::Id type) {
         FieldValue fv {Value::Field::ValueType, type};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
-        return *this;
+        return std::move(*this);
     }
 
     /**
@@ -832,11 +832,11 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& owner(InfoHash owner_pk_hash) {
+    Where&& owner(InfoHash owner_pk_hash) {
         FieldValue fv {Value::Field::OwnerPk, owner_pk_hash};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
-        return *this;
+        return std::move(*this);
     }
 
     /**
@@ -846,11 +846,11 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& seq(uint16_t seq_no) {
+    Where&& seq(uint16_t seq_no) {
         FieldValue fv {Value::Field::SeqNum, seq_no};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
-        return *this;
+        return std::move(*this);
     }
 
     /**
@@ -860,11 +860,11 @@ struct OPENDHT_PUBLIC Where
      *
      * @return the resulting Where instance.
      */
-    Where& userType(std::string_view user_type) {
+    Where&& userType(std::string_view user_type) {
         FieldValue fv {Value::Field::UserType, Blob {user_type.begin(), user_type.end()}};
         if (std::find(filters_.begin(), filters_.end(), fv) == filters_.end())
             filters_.emplace_back(std::move(fv));
-        return *this;
+        return std::move(*this);
     }
 
     /**
@@ -873,7 +873,10 @@ struct OPENDHT_PUBLIC Where
      * @return the resulting Value::Filter.
      */
     Value::Filter getFilter() const {
-        if (filters_.empty()) return {};
+        if (filters_.empty())
+            return {};
+        if (filters_.size() == 1)
+            return filters_[0].getLocalFilter();
         std::vector<Value::Filter> fset;
         fset.reserve(filters_.size());
         for (const auto& f : filters_) {

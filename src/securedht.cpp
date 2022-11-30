@@ -326,7 +326,7 @@ SecureDht::listen(const InfoHash& id, GetCallback cb, Value::Filter f, Where w)
 void
 SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback, bool permanent)
 {
-    if (not key_)  {
+    if (not key_ or not hash or not val)  {
         if (callback)
             callback(false, {});
         return;
@@ -365,7 +365,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
             dht_->put(hash, val, callback, time_point::max(), permanent);
         },
         Value::IdFilter(val->id),
-        std::move(Where().id(val->id))
+        Where().id(val->id)
     );
 }
 
