@@ -171,29 +171,29 @@ struct OPENDHT_PUBLIC Value
         template<typename Functor>
         Filter(Functor f) : std::function<bool(const Value&)>::function(f) {}
 
-        Filter chain(Filter&& f2) {
+        inline Filter chain(Filter&& f2) {
             auto f1 = *this;
             return chain(std::move(f1), std::move(f2));
         }
-        Filter chainOr(Filter&& f2) {
+        inline Filter chainOr(Filter&& f2) {
             auto f1 = *this;
             return chainOr(std::move(f1), std::move(f2));
         }
-        static Filter chain(Filter&& f1, Filter&& f2) {
+        static inline Filter chain(Filter&& f1, Filter&& f2) {
             if (not f1) return std::move(f2);
             if (not f2) return std::move(f1);
             return [f1 = std::move(f1), f2 = std::move(f2)](const Value& v) {
                 return f1(v) and f2(v);
             };
         }
-        static Filter chain(const Filter& f1, const Filter& f2) {
+        static inline Filter chain(const Filter& f1, const Filter& f2) {
             if (not f1) return f2;
             if (not f2) return f1;
             return [f1,f2](const Value& v) {
                 return f1(v) and f2(v);
             };
         }
-        static Filter chainAll(std::vector<Filter>&& set) {
+        static inline Filter chainAll(std::vector<Filter>&& set) {
             if (set.empty()) return {};
             return [set = std::move(set)](const Value& v) {
                 for (const auto& f : set)
@@ -202,16 +202,16 @@ struct OPENDHT_PUBLIC Value
                 return true;
             };
         }
-        static Filter chain(std::initializer_list<Filter> l) {
+        static inline Filter chain(std::initializer_list<Filter> l) {
             return chainAll(std::vector<Filter>(l.begin(), l.end()));
         }
-        static Filter chainOr(Filter&& f1, Filter&& f2) {
+        static inline Filter chainOr(Filter&& f1, Filter&& f2) {
             if (not f1 or not f2) return {};
             return [f1=std::move(f1),f2=std::move(f2)](const Value& v) {
                 return f1(v) or f2(v);
             };
         }
-        static Filter notFilter(Filter&& f) {
+        static inline Filter notFilter(Filter&& f) {
             if (not f) return [](const Value&) { return false; };
             return [f = std::move(f)](const Value& v) { return not f(v); };
         }
@@ -228,50 +228,50 @@ struct OPENDHT_PUBLIC Value
 
     /* Sneaky functions disguised in classes */
 
-    static const Filter AllFilter() {
+    static inline Filter AllFilter() {
         return {};
     }
 
-    static Filter TypeFilter(const ValueType& t) {
+    static inline Filter TypeFilter(const ValueType& t) {
         return [tid = t.id](const Value& v) {
             return v.type == tid;
         };
     }
-    static Filter TypeFilter(const ValueType::Id& tid) {
+    static inline Filter TypeFilter(const ValueType::Id& tid) {
         return [tid](const Value& v) {
             return v.type == tid;
         };
     }
 
-    static Filter IdFilter(const Id id) {
+    static inline Filter IdFilter(const Id id) {
         return [id](const Value& v) {
             return v.id == id;
         };
     }
 
-    static Filter RecipientFilter(const InfoHash& r) {
+    static inline Filter RecipientFilter(const InfoHash& r) {
         return [r](const Value& v) {
             return v.recipient == r;
         };
     }
 
-    static Filter OwnerFilter(const crypto::PublicKey& pk) {
+    static inline Filter OwnerFilter(const crypto::PublicKey& pk) {
         return OwnerFilter(pk.getId());
     }
 
-    static Filter OwnerFilter(const InfoHash& pkh) {
+    static inline Filter OwnerFilter(const InfoHash& pkh) {
         return [pkh](const Value& v) {
             return v.owner and v.owner->getId() == pkh;
         };
     }
 
-    static Filter SeqNumFilter(uint16_t seq_no) {
+    static inline Filter SeqNumFilter(uint16_t seq_no) {
         return [seq_no](const Value& v) {
             return v.seq == seq_no;
         };
     }
 
-    static Filter UserTypeFilter(std::string ut) {
+    static inline Filter UserTypeFilter(std::string ut) {
         return [ut = std::move(ut)](const Value& v) {
             return v.user_type == ut;
         };
