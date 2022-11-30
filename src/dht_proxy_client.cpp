@@ -322,19 +322,23 @@ DhtProxyClient::get(const InfoHash& key, GetCallback cb, DoneCallback donecb, Va
         setHeaderFields(*request);
 
         auto opstate = std::make_shared<OperationState>();
-        Value::Filter filter = w.empty() ? f : f.chain(w.getFilter());
 
-        auto rxBuf = std::make_shared<LineSplit>();
-        request->add_on_body_callback([this, key, opstate, filter, rxBuf, cb](const char* at, size_t length){
+        request->add_on_body_callback([
+            this,
+            key,
+            opstate,
+            filter = Value::Filter::chain(std::move(f), w.getFilter()),
+            rxBuf = std::make_shared<LineSplit>(),
+            cb
+        ](const char* at, size_t length){
             try {
-                auto& b = *rxBuf;
-                b.append(at, length);
+                rxBuf->append(at, length);
                 // one value per body line
                 std::vector<Sp<Value>> values;
-                while (b.getLine('\n') and !opstate->stop) {
+                while (rxBuf->getLine('\n') and !opstate->stop) {
                     std::string err;
                     Json::Value json;
-                    const auto& line = b.line();
+                    const auto& line = rxBuf->line();
                     if (!jsonReader_->parse(line.data(), line.data() + line.size(), &json, &err)){
                         opstate->ok.store(false);
                         return;
