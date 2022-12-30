@@ -413,6 +413,7 @@ if (OPENDHT_C)
             c/opendht.cpp
             c/opendht_c.h
         )
+        set_target_properties (opendht-c-static PROPERTIES OUTPUT_NAME "opendht-c")
         target_link_libraries(opendht-c-static PRIVATE opendht-static)
         install (TARGETS opendht-c-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c-static)
     endif ()
