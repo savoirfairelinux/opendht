@@ -870,7 +870,7 @@ Dht::listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filte
         throw DhtException("Can't create search");
     if (logger_)
         logger_->w(id, "[search %s IPv%c] listen", id.to_c_str(), (af == AF_INET) ? '4' : '6');
-    return sr->listen(cb, f, q, scheduler);
+    return sr->listen(cb, std::move(f), q, scheduler);
 }
 
 size_t
@@ -889,7 +889,7 @@ Dht::listen(const InfoHash& id, ValueCallback cb, Value::Filter f, Where where)
     });
 
     auto query = std::make_shared<Query>(Select{}, std::move(where));
-    auto filter = f.chain(query->where.getFilter());
+    auto filter = Value::Filter::chain(std::move(f), query->where.getFilter());
     auto st = store.find(id);
     if (st == store.end() && store.size() < max_store_keys)
         st = store.emplace(id, scheduler.time() + MAX_STORAGE_MAINTENANCE_EXPIRE_TIME).first;

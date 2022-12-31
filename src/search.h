@@ -547,9 +547,9 @@ struct Dht::Search {
         }
     }
 
-    size_t listen(const ValueCallback& cb, const Value::Filter& f, const Sp<Query>& q, Scheduler& scheduler) {
+    size_t listen(const ValueCallback& cb, Value::Filter&& f, const Sp<Query>& q, Scheduler& scheduler) {
         //DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
-        return cache.listen(cb, q, f, [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb){
+        return cache.listen(cb, q, std::move(f), [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb){
             done = false;
             auto token = ++listener_token;
             listeners.emplace(token, SearchListener{q, vcb, scb});
