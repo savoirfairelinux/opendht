@@ -191,7 +191,10 @@ void
 DhtProxyClient::stop()
 {
     if (not isDestroying_.exchange(true)) {
-        resolver_.reset();
+        {
+            std::lock_guard<std::mutex> l(resolverLock_);
+            resolver_.reset();
+        }
         cancelAllListeners();
         if (infoState_)
             infoState_->cancel = true;
@@ -468,7 +471,9 @@ DhtProxyClient::handleRefreshPut(const asio::error_code &ec, InfoHash key, Value
 std::shared_ptr<http::Request>
 DhtProxyClient::buildRequest(const std::string& target)
 {
+    std::unique_lock<std::mutex> l(resolverLock_);
     auto resolver = resolver_;
+    l.unlock();
     if (not resolver)
         resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
     auto request = target.empty()
@@ -634,6 +639,7 @@ DhtProxyClient::getProxyInfos()
     auto resolver = std::make_shared<http::Resolver>(httpContext_, proxyUrl_, logger_);
     queryProxyInfo(infoState, resolver, AF_INET);
     queryProxyInfo(infoState, resolver, AF_INET6);
+    std::lock_guard<std::mutex> l(resolverLock_);
     resolver_ = resolver;
 }
 
@@ -806,7 +812,7 @@ DhtProxyClient::listen(const InfoHash& key, ValueCallback cb, Value::Filter filt
     std::lock_guard<std::mutex> lock(searchLock_);
     auto& search = searches_[key];
     auto query = std::make_shared<Query>(Select{}, std::move(where));
-    return search.ops.listen(cb, query, filter, [this, key](Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
+    return search.ops.listen(cb, query, std::move(filter), [this, key](Sp<Query>, ValueCallback cb, SyncCallback) -> size_t {
         // Find search
         auto search = searches_.find(key);
         if (search == searches_.end()) {

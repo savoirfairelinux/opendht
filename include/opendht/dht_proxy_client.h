@@ -368,6 +368,7 @@ private:
      * Note: Each context is used in one thread only
      */
     asio::io_context httpContext_;
+    mutable std::mutex resolverLock_;
     std::shared_ptr<http::Resolver> resolver_;
 
     mutable std::mutex requestLock_;
