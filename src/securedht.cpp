@@ -79,13 +79,16 @@ SecureDht::secureType(ValueType&& type)
     type.editPolicy = [this,type](InfoHash id, const Sp<Value>& o, Sp<Value>& n, const InfoHash& nid, const SockAddr& a) {
         if (not o->isSigned())
             return type.editPolicy(id, o, n, nid, a);
-        if (o->owner != n->owner or not n->isSigned()) {
+        if (*o->owner != *n->owner or not n->isSigned()) {
+            if (logger_)
+                logger_->w("Edition forbidden: not signed or wrong owner.");
+            return false;
+        }
+        if (not n->checkSignature()) {
             if (logger_)
                 logger_->w("Edition forbidden: signature verification failed.");
             return false;
         }
-        if (not n->checkSignature())
-            return false;
         if (o->seq == n->seq) {
             // If the data is exactly the same,
             // it can be reannounced, possibly by someone else.
