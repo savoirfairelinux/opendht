@@ -100,6 +100,8 @@ struct Storage {
         ssize_t values_diff;
         /** Difference in number of listeners */
         ssize_t listeners_diff;
+        /** Number of edited values */
+        size_t edited_values;
     };
 
     Storage() {}
@@ -230,7 +232,7 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
                 sb->insert(id, *value, expiration);
             it->data = value;
             total_size += size_diff;
-            return std::make_pair(&(*it), StoreDiff{size_diff, 0, 0});
+            return std::make_pair(&(*it), StoreDiff{size_diff, 0, 0, 1});
         }
     } else {
         //DHT_LOG.DEBUG("Storing %s -> %s", id.toString().c_str(), value->toString().c_str());
@@ -240,7 +242,7 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
             values.back().store_bucket = sb;
             if (sb)
                 sb->insert(id, *value, expiration);
-            return std::make_pair(&values.back(), StoreDiff{size_new, 1, 0});
+            return std::make_pair(&values.back(), StoreDiff{size_new, 1, 0, 0});
         }
     }
     return std::make_pair(nullptr, StoreDiff{});
@@ -272,7 +274,7 @@ Storage::clear()
     ssize_t tot_size = total_size;
     values.clear();
     total_size = 0;
-    return {-tot_size, -num_values, 0};
+    return {-tot_size, -num_values, 0, 0};
 }
 
 std::pair<ssize_t, std::vector<Sp<Value>>>

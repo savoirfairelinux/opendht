@@ -427,7 +427,7 @@ struct OPENDHT_PUBLIC Value
     /**
      * Returns true if value contents are equals (not considering the value ID)
      */
-    inline bool contentEquals(const Value& o) {
+    inline bool contentEquals(const Value& o) const {
         return isEncrypted() ? cypher == o.cypher :
             ((owner == o.owner || (owner and o.owner and *owner == *o.owner))
                 && type == o.type
@@ -436,8 +436,11 @@ struct OPENDHT_PUBLIC Value
                 && signature == o.signature);
     }
 
-    inline bool operator== (const Value& o) {
+    inline bool operator== (const Value& o) const {
         return id == o.id and contentEquals(o);
+    }
+    inline bool operator!= (const Value& o) const {
+        return !(*this == o);
     }
 
     inline void setRecipient(const InfoHash& r) {

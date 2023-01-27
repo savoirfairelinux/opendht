@@ -1289,10 +1289,11 @@ Dht::storageStore(const InfoHash& id, const Sp<Value>& value, time_point created
         if (total_store_size > max_store_size) {
             auto value = vs->data;
             auto value_diff = store.second.values_diff;
+            auto value_edit = store.second.edited_values;
             expireStore();
-            storageChanged(id, st->second, value, value_diff > 0);
+            storageChanged(id, st->second, value, value_diff > 0 || value_edit > 0);
         } else {
-            storageChanged(id, st->second, vs->data, store.second.values_diff > 0);
+            storageChanged(id, st->second, vs->data, store.second.values_diff > 0 || store.second.edited_values > 0);
         }
     }
 
