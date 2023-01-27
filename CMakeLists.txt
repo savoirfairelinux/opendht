@@ -58,7 +58,7 @@ if (NOT MSVC)
     find_package (Threads)
     find_package (PkgConfig REQUIRED)
     find_package (GnuTLS 3.3 REQUIRED)
-    pkg_search_module (Nettle REQUIRED nettle)
+    pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
     check_include_file_cxx(msgpack.hpp HAVE_MSGPACKCXX)
     if (NOT HAVE_MSGPACKCXX)
         find_package (msgpack REQUIRED)
@@ -66,12 +66,12 @@ if (NOT MSVC)
     if (OPENDHT_TOOLS)
         find_package (Readline 6 REQUIRED)
     endif ()
-    pkg_search_module(argon2 REQUIRED libargon2)
+    pkg_search_module(argon2 REQUIRED IMPORTED_TARGET libargon2)
     set(argon2_lib ", libargon2")
-    pkg_search_module(Jsoncpp jsoncpp)
+    pkg_search_module(Jsoncpp IMPORTED_TARGET jsoncpp)
     if (Jsoncpp_FOUND)
         add_definitions(-DOPENDHT_JSONCPP)
-	set(jsoncpp_lib ", jsoncpp")
+        set(jsoncpp_lib ", jsoncpp")
         list (APPEND opendht_SOURCES
           src/base64.h
           src/base64.cpp
@@ -88,18 +88,16 @@ if (NOT MSVC)
         add_library(fmt SHARED IMPORTED)
         find_library(HTTP_PARSER_LIBRARY http_parser)
         add_library(http_parser SHARED IMPORTED)
-	set(http_parser_lib "-lhttp_parser")
+        set(http_parser_lib "-lhttp_parser")
         if (NOT Jsoncpp_FOUND)
             message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
         endif()
         if (OPENDHT_PROXY_OPENSSL)
             # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
-            pkg_search_module(OPENSSL REQUIRED openssl)
+            pkg_search_module(OPENSSL REQUIRED IMPORTED_TARGET openssl)
             if (OPENSSL_FOUND)
                 message(STATUS "Found OpenSSL ${OPENSSL_VERSION} ${OPENSSL_INCLUDE_DIRS}")
-                include_directories(SYSTEM ${OPENSSL_INCLUDE_DIRS})
-                link_directories (${OPENSSL_LIBRARY_DIRS})
-		set(openssl_lib ", openssl")
+                set(openssl_lib ", openssl")
             else ()
                 message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
             endif()
@@ -166,21 +164,12 @@ endif ()
 if (GNUTLS_INCLUDE_DIRS)
     include_directories (SYSTEM "${GNUTLS_INCLUDE_DIRS}")
 endif ()
-if (Nettle_INCLUDE_DIRS)
-    include_directories (SYSTEM "${Nettle_INCLUDE_DIRS}")
-endif ()
 if (ASIO_INCLUDE_DIR)
     include_directories (SYSTEM "${ASIO_INCLUDE_DIR}")
 endif ()
 if (Restinio_INCLUDE_DIR)
     include_directories (SYSTEM "${Restinio_INCLUDE_DIR}")
 endif ()
-if (Jsoncpp_INCLUDE_DIRS)
-    include_directories (SYSTEM "${Jsoncpp_INCLUDE_DIRS}")
-endif ()
-link_directories (${Nettle_LIBRARY_DIRS})
-link_directories (${Jsoncpp_LIBRARY_DIRS})
-link_directories (${argon2_LIBRARY_DIRS})
 include_directories (
     ./
     include/
@@ -322,10 +311,12 @@ if (OPENDHT_STATIC)
         set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
         target_link_libraries(opendht-static
-            PRIVATE ${argon2_LIBRARIES}
-            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
-                   ${Jsoncpp_STATIC_LIBRARIES} ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
-                   ${OPENSSL_STATIC_LIBRARIES})
+            PRIVATE PkgConfig::argon2
+            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} PkgConfig::Nettle
+                PkgConfig::Jsoncpp ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+        if (OPENDHT_PROXY_OPENSSL)
+            target_link_libraries(opendht-static PUBLIC PkgConfig::OPENSSL)
+        endif()
         if (APPLE)
             target_link_libraries(opendht-static PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
         endif()
@@ -388,12 +379,13 @@ if (OPENDHT_SHARED)
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
-    target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
     target_link_libraries(opendht
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
-        PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
-                ${Jsoncpp_LIBRARIES}
-                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES})
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT}
+        PRIVATE ${GNUTLS_LIBRARIES} PkgConfig::Nettle PkgConfig::Jsoncpp
+                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} PkgConfig::argon2)
+    if (OPENDHT_PROXY_OPENSSL)
+        target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
+    endif()    
     if (APPLE)
         target_link_libraries(opendht PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
     endif ()
@@ -461,7 +453,7 @@ install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATIO
 
 # Unit tests
 if (OPENDHT_TESTS)
-    pkg_search_module(Cppunit REQUIRED cppunit)
+    pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
     # unit testing
     list (APPEND test_FILES
         tests/infohashtester.h
@@ -504,12 +496,12 @@ if (OPENDHT_TESTS)
     endif ()
     target_link_libraries(opendht_unit_tests
        ${CMAKE_THREAD_LIBS_INIT}
-       ${Cppunit_LIBRARIES}
+       PkgConfig::Cppunit
        ${GNUTLS_LIBRARIES}
-       ${Jsoncpp_LIBRARIES}
+       PkgConfig::Jsoncpp
     )
     if (OPENDHT_PROXY_OPENSSL)
-        target_link_libraries(opendht_unit_tests ${OPENSSL_LIBRARIES})
+        target_link_libraries(opendht_unit_tests PkgConfig::OPENSSL)
     endif()
     enable_testing()
     add_test(TEST opendht_unit_tests)
