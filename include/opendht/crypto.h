@@ -93,7 +93,7 @@ struct OPENDHT_PUBLIC PublicKey
     ~PublicKey();
     explicit operator bool() const { return pk; }
     bool operator ==(const PublicKey& o) const {
-        return pk == o.pk || getId() == o.getId();
+        return pk == o.pk || getLongId() == o.getLongId();
     }
     bool operator !=(const PublicKey& o) const {
         return !(*this == o);
