@@ -209,6 +209,7 @@ DhtRunnerTester::testIdOps() {
     std::mutex mutex;
     std::condition_variable cv;
     unsigned valueCount(0);
+    unsigned valueCountEdit(0);
 
     dht::DhtRunner::Config config2;
     config2.dht_config.node_config.max_peer_req_per_sec = -1;
@@ -280,10 +281,44 @@ DhtRunnerTester::testIdOps() {
         return true;
     });
 
+    auto key2 = dht::InfoHash::get("key2");
+    auto editValue = std::make_shared<dht::Value>("v1");
+    node1.putSigned(key2, editValue, [&](bool ok){
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCountEdit++;
+        cv.notify_all();
+    });
+    node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired){
+        for (const auto& v : values) {
+            if (v->seq == 0)
+                CPPUNIT_ASSERT_EQUAL("v1"s, dht::unpackMsg<std::string>(v->data));
+            else if (v->seq == 1)
+                CPPUNIT_ASSERT_EQUAL("v2"s, dht::unpackMsg<std::string>(v->data));
+            CPPUNIT_ASSERT_EQUAL(v->owner->getLongId(), node1.getPublicKey()->getLongId());
+        }
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCountEdit += values.size();
+        cv.notify_all();
+        return true;
+    });
+
     {
         std::unique_lock<std::mutex> lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 7; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 7 && valueCountEdit == 2; }));
     }
+
+    // editValue->data = dht::packMsg("v2");
+    editValue = std::make_shared<dht::Value>(editValue->id);
+    editValue->data = dht::packMsg("v2");
+    node1.putSigned(key2, editValue, [&](bool ok){
+        CPPUNIT_ASSERT(ok);
+        std::lock_guard<std::mutex> lk(mutex);
+        valueCountEdit++;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lk(mutex);
+    CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCountEdit == 4; }));
 }
 
 void
@@ -297,7 +332,7 @@ DhtRunnerTester::testListenLotOfBytes() {
     std::string data(10000, 'a');
 
     auto foo = dht::InfoHash::get("foo");
-    constexpr unsigned N = 50;
+    constexpr unsigned N = 1024;
 
     for (unsigned i=0; i<N; i++) {
         node2.put(foo, data, [&](bool ok) {

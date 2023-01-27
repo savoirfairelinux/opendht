@@ -28,6 +28,12 @@ OpValueCache::onValuesAdded(const std::vector<Sp<Value>>& vals, const system_clo
         auto viop = values.emplace(v->id, v);
         if (viop.second) {
             newValues.emplace_back(v);
+        } else if (*viop.first->second.data != *v) {
+            // Special case for edition
+            if (v->seq > viop.first->second.data->seq) {
+                viop.first->second.data = v;
+                newValues.emplace_back(v);
+            }
         } else {
             viop.first->second.refCount++;
         }
