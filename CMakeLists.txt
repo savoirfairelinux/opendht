@@ -57,12 +57,9 @@ if (NOT MSVC)
     set (THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package (Threads)
     find_package (PkgConfig REQUIRED)
-    find_package (GnuTLS 3.3 REQUIRED)
+    pkg_search_module (GnuTLS REQUIRED IMPORTED_TARGET gnutls)
     pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
-    check_include_file_cxx(msgpack.hpp HAVE_MSGPACKCXX)
-    if (NOT HAVE_MSGPACKCXX)
-        find_package (msgpack REQUIRED)
-    endif()
+    find_package (msgpack REQUIRED NAMES msgpackc-cxx msgpack msgpack-cxx)
     if (OPENDHT_TOOLS)
         find_package (Readline 6 REQUIRED)
     endif ()
@@ -158,12 +155,6 @@ else ()
     add_definitions(-DOPENDHT_LOG=false)
 endif()
 
-if (MSGPACK_INCLUDE_DIRS)
-    include_directories (SYSTEM "${MSGPACK_INCLUDE_DIRS}")
-endif ()
-if (GNUTLS_INCLUDE_DIRS)
-    include_directories (SYSTEM "${GNUTLS_INCLUDE_DIRS}")
-endif ()
 if (ASIO_INCLUDE_DIR)
     include_directories (SYSTEM "${ASIO_INCLUDE_DIR}")
 endif ()
@@ -312,8 +303,11 @@ if (OPENDHT_STATIC)
         target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
         target_link_libraries(opendht-static
             PRIVATE PkgConfig::argon2
-            PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} PkgConfig::Nettle
-                PkgConfig::Jsoncpp ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+            PUBLIC ${CMAKE_THREAD_LIBS_INIT} PkgConfig::GnuTLS PkgConfig::Nettle msgpackc-cxx
+                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
+        if (Jsoncpp_FOUND)
+            target_link_libraries(opendht-static PUBLIC PkgConfig::Jsoncpp)
+        endif()
         if (OPENDHT_PROXY_OPENSSL)
             target_link_libraries(opendht-static PUBLIC PkgConfig::OPENSSL)
         endif()
@@ -380,9 +374,12 @@ if (OPENDHT_SHARED)
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
     target_link_libraries(opendht
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT}
-        PRIVATE ${GNUTLS_LIBRARIES} PkgConfig::Nettle PkgConfig::Jsoncpp
+        PUBLIC ${CMAKE_THREAD_LIBS_INIT} msgpackc-cxx
+        PRIVATE PkgConfig::GnuTLS PkgConfig::Nettle
                 ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} PkgConfig::argon2)
+    if (Jsoncpp_FOUND)
+        target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
+    endif()
     if (OPENDHT_PROXY_OPENSSL)
         target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
     endif()    
@@ -498,7 +495,6 @@ if (OPENDHT_TESTS)
        ${CMAKE_THREAD_LIBS_INIT}
        PkgConfig::Cppunit
        ${GNUTLS_LIBRARIES}
-       PkgConfig::Jsoncpp
     )
     if (OPENDHT_PROXY_OPENSSL)
         target_link_libraries(opendht_unit_tests PkgConfig::OPENSSL)
