@@ -398,6 +398,7 @@ if (OPENDHT_C)
         )
         target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
         target_link_libraries(opendht-c PRIVATE opendht)
+        set_target_properties (opendht-c PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
         install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
     endif ()
 
