@@ -48,7 +48,9 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 
 # Dependencies
-if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB)
+if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB
+        # For ARM EABI (armel), little-endian MIPS (mipsel), etc.
+        OR NOT HAVE_CXX_ATOMICS64_WITHOUT_LIB)
     link_libraries (atomic)
 endif ()
 
