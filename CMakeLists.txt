@@ -20,8 +20,8 @@ set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
 
 # Options
-option (OPENDHT_STATIC "Build static library" ON)
-option (OPENDHT_SHARED "Build shared library" ON)
+option (BUILD_SHARED_LIBS "Build shared library" ON)
+CMAKE_DEPENDENT_OPTION (OPENDHT_STATIC "Build static library" OFF BUILD_SHARED_LIBS ON)
 option (OPENDHT_LOG "Build with logs" ON)
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
@@ -145,9 +145,6 @@ else ()
 endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 
-if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
-endif ()
 add_definitions(-DPACKAGE_VERSION="${opendht_VERSION}")
 if (OPENDHT_LOG)
     add_definitions(-DOPENDHT_LOG=true)
@@ -293,28 +290,8 @@ if (MSVC)
 endif ()
 
 # Targets
-if (OPENDHT_STATIC)
-    if (NOT MSVC)
-        add_library (opendht-static STATIC
-            ${opendht_SOURCES}
-            ${opendht_HEADERS}
-        )
-        set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
-        target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
-        target_link_libraries(opendht-static
-            PRIVATE PkgConfig::argon2
-            PUBLIC ${CMAKE_THREAD_LIBS_INIT} PkgConfig::GnuTLS PkgConfig::Nettle msgpackc-cxx
-                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
-        if (Jsoncpp_FOUND)
-            target_link_libraries(opendht-static PUBLIC PkgConfig::Jsoncpp)
-        endif()
-        if (OPENDHT_PROXY_OPENSSL)
-            target_link_libraries(opendht-static PUBLIC PkgConfig::OPENSSL)
-        endif()
-        if (APPLE)
-            target_link_libraries(opendht-static PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
-        endif()
-    else ()
+if (MSVC)
+    if (OPENDHT_STATIC)
         if (OPENDHT_TOOLS)
             function (add_obj_lib name libfile)
                 add_library(${name} OBJECT IMPORTED)
@@ -353,64 +330,59 @@ if (OPENDHT_STATIC)
                 ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
             )
         endif ()
-        add_library (opendht-static STATIC
-            ${opendht_SOURCES}
-            ${opendht_HEADERS}
-            ${obj_libs}
-        )
-        target_link_libraries(opendht-static PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
         set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4006")
-        set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "libopendht")
     endif()
-    install (TARGETS opendht-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
-if (OPENDHT_SHARED)
-    add_library (opendht SHARED
-        ${opendht_SOURCES}
-        ${opendht_HEADERS}
-    )
+add_library (opendht
+    ${opendht_SOURCES}
+    ${opendht_HEADERS}
+    ${obj_libs}
+)
+set_target_properties (opendht PROPERTIES OUTPUT_NAME "opendht")
+target_link_libraries(opendht
+    PRIVATE
+        PkgConfig::argon2
+        PkgConfig::Nettle
+        ${HTTP_PARSER_LIBRARY}
+    PUBLIC
+        ${CMAKE_THREAD_LIBS_INIT}
+        PkgConfig::GnuTLS
+        msgpackc-cxx
+        ${FMT_LIBRARY}
+)
+if (Jsoncpp_FOUND)
+    target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
+endif()
+if (OPENDHT_PROXY_OPENSSL)
+    target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
+endif()
+if (APPLE)
+    target_link_libraries(opendht PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
+endif()
+if (MSVC)
+    if (OPENDHT_STATIC)
+        target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
+        set_target_properties (opendht PROPERTIES OUTPUT_NAME "libopendht")
+    endif()
+endif ()
+
+if (BUILD_SHARED_LIBS)
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
-    target_link_libraries(opendht
-        PUBLIC ${CMAKE_THREAD_LIBS_INIT} msgpackc-cxx
-        PRIVATE PkgConfig::GnuTLS PkgConfig::Nettle
-                ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} PkgConfig::argon2)
-    if (Jsoncpp_FOUND)
-        target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
-    endif()
-    if (OPENDHT_PROXY_OPENSSL)
-        target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
-    endif()    
-    if (APPLE)
-        target_link_libraries(opendht PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
-    endif ()
-
-    install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
+install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 
 if (OPENDHT_C)
-    if (OPENDHT_SHARED)
-        add_library (opendht-c SHARED
-            c/opendht.cpp
-            c/opendht_c.h
-        )
-        target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
-        target_link_libraries(opendht-c PRIVATE opendht)
-        set_target_properties (opendht-c PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
-        install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
-    endif ()
-
-    if (OPENDHT_STATIC)
-        add_library (opendht-c-static STATIC
-            c/opendht.cpp
-            c/opendht_c.h
-        )
-        set_target_properties (opendht-c-static PROPERTIES OUTPUT_NAME "opendht-c")
-        target_link_libraries(opendht-c-static PRIVATE opendht-static)
-        install (TARGETS opendht-c-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c-static)
-    endif ()
+    add_library (opendht-c
+        c/opendht.cpp
+        c/opendht_c.h
+    )
+    target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
+    target_link_libraries(opendht-c PRIVATE opendht)
+    set_target_properties (opendht-c PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
+    install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
 
     # PkgConfig module
     configure_file (
@@ -485,21 +457,11 @@ if (OPENDHT_TESTS)
         tests/tests_runner.cpp
         ${test_FILES}
     )
-    target_include_directories(opendht_unit_tests SYSTEM PRIVATE ${Cppunit_INCLUDE_DIR})
-    target_link_directories(opendht_unit_tests PRIVATE ${Cppunit_LIBRARY_DIRS})
-    if (OPENDHT_SHARED)
-        target_link_libraries(opendht_unit_tests opendht)
-    else ()
-        target_link_libraries(opendht_unit_tests opendht-static)
-    endif ()
-    target_link_libraries(opendht_unit_tests
+    target_link_libraries(opendht_unit_tests PRIVATE
+       opendht
        ${CMAKE_THREAD_LIBS_INIT}
        PkgConfig::Cppunit
-       ${GNUTLS_LIBRARIES}
     )
-    if (OPENDHT_PROXY_OPENSSL)
-        target_link_libraries(opendht_unit_tests PkgConfig::OPENSSL)
-    endif()
     enable_testing()
     add_test(TEST opendht_unit_tests)
 endif()
