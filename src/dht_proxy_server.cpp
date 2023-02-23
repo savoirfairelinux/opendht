@@ -631,6 +631,8 @@ DhtProxyServer::createRestRouter()
     // key.listen
     router->http_get("/key/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    // node.pingPush
+    router->http_post("/node/pingPush", std::bind(&DhtProxyServer::pingPush, this, _1, _2));
     // key.subscribe
     router->add_handler(restinio::http_method_subscribe(),
                         "/key/:hash", std::bind(&DhtProxyServer::subscribe, this, _1, _2));
@@ -770,6 +772,43 @@ DhtProxyServer::getTypeFromString(const std::string& type) {
 std::string
 DhtProxyServer::getDefaultTopic(PushType) {
     return bundleId_;
+}
+
+RequestStatus
+DhtProxyServer::pingPush(restinio::request_handle_t request,
+                         restinio::router::route_params_t /*params*/)
+{
+    requestNum_++;
+    try {
+        std::string err;
+        Json::Value r;
+        auto* char_data = reinterpret_cast<const char*>(request->body().data());
+        auto reader = std::unique_ptr<Json::CharReader>(jsonReaderBuilder_.newCharReader());
+        if (!reader->parse(char_data, char_data + request->body().size(), &r, &err)){
+            auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
+            response.set_body(RESP_MSG_JSON_INCORRECT);
+            return response.done();
+        }
+        const Json::Value& root(r); // parse using const Json so [] never creates element
+        auto pushToken = root["key"].asString();
+        if (pushToken.empty()){
+            auto response = initHttpResponse(request->create_response(restinio::status_bad_request()));
+            response.set_body(RESP_MSG_NO_TOKEN);
+            return response.done();
+        }
+        auto type = getTypeFromString(root["platform"].asString());
+        auto topic = root["topic"].asString();
+        if (topic.empty()) {
+            topic = getDefaultTopic(type);
+        }
+        Json::Value json;
+        json["to"] = root["client_id"];
+        json["pong"] = true;
+        sendPushNotification(pushToken, std::move(json), type, true, topic);
+    } catch (...) {
+        return serverError(*request);
+    }
+    return restinio::request_handling_status_t::accepted;
 }
 
 RequestStatus
