@@ -278,6 +278,9 @@ private:
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     PushType getTypeFromString(const std::string& type);
     std::string getDefaultTopic(PushType type);
+
+    RequestStatus pingPush(restinio::request_handle_t request,
+                         restinio::router::route_params_t /*params*/);
     /**
      * Subscribe to push notifications for an iOS or Android device.
      * Method: SUBSCRIBE "/{InfoHash: .*}"
