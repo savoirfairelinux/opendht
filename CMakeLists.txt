@@ -12,6 +12,7 @@ include(CMakeDependentOption)
 include(CheckIncludeFileCXX)
 include(FindPkgConfig)
 include(cmake/CheckAtomic.cmake)
+include(CTest)
 
 set (opendht_VERSION_MAJOR 2)
 set (opendht_VERSION_MINOR 4.12)
@@ -36,7 +37,6 @@ option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 CMAKE_DEPENDENT_OPTION(OPENDHT_HTTP "Build embedded http(s) client" OFF "NOT OPENDHT_PROXY_SERVER;NOT OPENDHT_PROXY_CLIENT" ON)
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
-option (OPENDHT_TESTS "Add unit tests executable" OFF)
 option (OPENDHT_TESTS_NETWORK "Enable unit tests that require network access" ON)
 option (OPENDHT_C "Build C bindings" OFF)
 
@@ -422,7 +422,7 @@ install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE o
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
 
 # Unit tests
-if (OPENDHT_TESTS)
+if (BUILD_TESTING)
     pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
     # unit testing
     list (APPEND test_FILES
@@ -462,6 +462,5 @@ if (OPENDHT_TESTS)
        ${CMAKE_THREAD_LIBS_INIT}
        PkgConfig::Cppunit
     )
-    enable_testing()
     add_test(TEST opendht_unit_tests)
 endif()
