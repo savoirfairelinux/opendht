@@ -25,11 +25,6 @@ See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
 Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
 
-#### How-to build a simple client app
-```bash
-g++ main.cpp -std=c++17 -lopendht
-```
-
 ## Examples
 ### C++ example
 The `tools` directory includes simple example programs :
@@ -117,6 +112,3 @@ See COPYING or https://www.gnu.org/licenses/gpl-3.0.en.html for the full GPLv3 l
 ## Acknowledgements
 This project was originally based on https://github.com/jech/dht by Juliusz Chroboczek.
 It is independent from another project called OpenDHT (Sean Rhea. Ph.D. Thesis, 2005), now extinct.
-
-## Donations
-We gratefully accept Bitcoin donations to support OpenDHT development at: `bitcoin:3EykSd1An888efq4Bq3KaV3hJ3JQ4FPnwm`.
