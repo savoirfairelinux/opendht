@@ -12,6 +12,7 @@ env:
   IMAGE_NAME_DEPS_LLVM: ${{ github.repository }}/opendht-deps-llvm
   IMAGE_NAME_LLVM: ${{ github.repository }}/opendht-llvm
   IMAGE_NAME_DHTNODE: ${{ github.repository }}/dhtnode
+  IMAGE_NAME_ALPINE: ${{ github.repository }}/opendht-alpine
 
 jobs:
   build-and-push-deps-image:
@@ -178,6 +179,40 @@ jobs:
         with:
           context: .
           file: docker/DockerfileDhtnode
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  build-and-push-image-dhtnode:
+    name: Alpine Docker image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ALPINE }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          file: docker/DockerfileAlpine
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

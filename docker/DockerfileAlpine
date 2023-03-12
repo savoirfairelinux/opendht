@@ -1,0 +1,57 @@
+FROM alpine:3.17 AS build
+LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
+LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
+
+RUN apk add --no-cache \
+        build-base cmake ninja git wget \
+        cython python3-dev py3-setuptools \
+        ncurses-dev readline-dev nettle-dev \
+        cppunit-dev gnutls-dev jsoncpp-dev \
+        argon2-dev openssl-dev fmt-dev \
+        http-parser-dev asio-dev msgpack-cxx-dev \
+    && rm -rf /var/cache/apk/*
+
+RUN echo "*** Downloading RESTinio ***" \
+    && mkdir restinio && cd restinio \
+    && wget https://github.com/aberaud/restinio/archive/bbaa034dbcc7555ce67df0f8a1475591a7441733.tar.gz \
+    && tar -xzf bbaa034dbcc7555ce67df0f8a1475591a7441733.tar.gz \
+    && cd restinio-bbaa034dbcc7555ce67df0f8a1475591a7441733/dev \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
+             -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
+             -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
+    && make -j8 && make install \
+    && cd ../../.. && rm -rf restinio
+
+COPY . opendht
+
+RUN mkdir /install
+ENV DESTDIR /install
+
+RUN cd opendht && mkdir build && cd build \
+	&& cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
+				-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=On \
+				-DOPENDHT_C=On \
+				-DOPENDHT_PEER_DISCOVERY=On \
+				-DOPENDHT_PYTHON=On \
+				-DOPENDHT_TOOLS=On \
+				-DOPENDHT_PROXY_SERVER=On \
+				-DOPENDHT_PROXY_CLIENT=On \
+				-DOPENDHT_SYSTEMD=On \
+	&& make -j8 && make install
+
+FROM alpine:3.17 AS install
+COPY --from=build /install /
+RUN apk add --no-cache \
+        libstdc++ \
+        gnutls \
+        nettle \
+        openssl \
+        argon2-dev \
+        jsoncpp \
+        fmt \
+        http-parser \
+        readline \
+        ncurses
+CMD ["dhtnode", "-b", "bootstrap.jami.net", "-p", "4222", "--proxyserver", "8080"]
+EXPOSE 4222/udp
+EXPOSE 8080/tcp
