@@ -183,7 +183,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  build-and-push-image-dhtnode:
+  build-and-push-image-alpine:
     name: Alpine Docker image
     runs-on: ubuntu-latest
     permissions:
