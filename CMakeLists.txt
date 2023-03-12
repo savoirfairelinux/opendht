@@ -348,7 +348,7 @@ target_link_libraries(opendht
     PUBLIC
         ${CMAKE_THREAD_LIBS_INIT}
         PkgConfig::GnuTLS
-        msgpack-cxx
+        msgpackc-cxx
         ${FMT_LIBRARY}
 )
 if (Jsoncpp_FOUND)
