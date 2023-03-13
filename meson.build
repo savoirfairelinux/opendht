@@ -71,5 +71,9 @@ opendht = shared_library('opendht',
     dependencies : deps,
     cpp_args : ['-DOPENHT_BUILD', '-Dopendht_EXPORTS'])
 
-readline = meson.get_compiler('c').find_library('readline')
-dhtnode = executable('dhtnode', 'tools/dhtnode.cpp', link_with : opendht, dependencies : [readline, msgpack])
+readline = meson.get_compiler('c').find_library('readline', required: get_option('tools'))
+if get_option('tools').enabled()
+    dhtnode = executable('dhtnode', 'tools/dhtnode.cpp',
+        link_with : opendht,
+        dependencies : [readline, msgpack])
+endif
