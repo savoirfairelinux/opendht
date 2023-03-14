@@ -26,7 +26,7 @@
 
 namespace dht {
 
-constexpr const size_t IO_THREADS_MAX {64};
+constexpr const size_t IO_THREADS_MAX {512};
 
 ThreadPool&
 ThreadPool::computation()
