@@ -59,7 +59,10 @@ if (NOT MSVC)
     find_package (PkgConfig REQUIRED)
     pkg_search_module (GnuTLS REQUIRED IMPORTED_TARGET gnutls)
     pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
-    find_package (msgpack REQUIRED NAMES msgpackc-cxx msgpack msgpack-cxx)
+    check_include_file_cxx(msgpack.hpp HAVE_MSGPACKCXX)
+    if (NOT HAVE_MSGPACKCXX)
+        find_package (msgpack REQUIRED CONFIG)
+    endif()
     if (OPENDHT_TOOLS)
         find_package (Readline 6 REQUIRED)
     endif ()
@@ -348,9 +351,11 @@ target_link_libraries(opendht
     PUBLIC
         ${CMAKE_THREAD_LIBS_INIT}
         PkgConfig::GnuTLS
-        msgpackc-cxx
         ${FMT_LIBRARY}
 )
+if (NOT HAVE_MSGPACKCXX)
+    target_link_libraries(opendht PUBLIC msgpackc-cxx)
+endif()
 if (Jsoncpp_FOUND)
     target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
 endif()
