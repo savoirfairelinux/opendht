@@ -2638,7 +2638,7 @@ Dht::loadState(const std::string& path)
             std::vector<Sp<Node>> tmpNodes;
             tmpNodes.reserve(state.nodes.size());
             for (const auto& node : state.nodes)
-                tmpNodes.emplace_back(network_engine.insertNode(node.id, SockAddr(node.ss, node.sslen)));
+                tmpNodes.emplace_back(network_engine.insertNode(node.id, node.addr));
             importValues(state.values);
         }
     } catch (const std::exception& e) {

@@ -27,6 +27,7 @@
 #include "sockaddr.h"
 #include "log_enable.h"
 #include "network_utils.h"
+#include "node_export.h"
 
 #include <thread>
 #include <mutex>

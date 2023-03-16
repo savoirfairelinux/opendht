@@ -181,7 +181,6 @@ set (top_srcdir "${CMAKE_CURRENT_SOURCE_DIR}")
 # Sources
 list (APPEND opendht_SOURCES
     src/utils.cpp
-    src/infohash.cpp
     src/crypto.cpp
     src/default_types.cpp
     src/node.cpp

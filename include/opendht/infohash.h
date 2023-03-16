@@ -44,6 +44,7 @@ typedef uint16_t in_port_t;
 #include <algorithm>
 #include <stdexcept>
 #include <sstream>
+
 #include <cstring>
 #include <cstddef>
 
@@ -386,26 +387,5 @@ Hash<N>::toString() const
 {
     return std::string(to_c_str(), N*2);
 }
-
-struct OPENDHT_PUBLIC NodeExport {
-    InfoHash id;
-    sockaddr_storage ss;
-    socklen_t sslen;
-
-    template <typename Packer>
-    void msgpack_pack(Packer& pk) const
-    {
-        pk.pack_map(2);
-        pk.pack(std::string("id"));
-        pk.pack(id);
-        pk.pack(std::string("addr"));
-        pk.pack_bin(sslen);
-        pk.pack_bin_body((char*)&ss, sslen);
-    }
-
-    void msgpack_unpack(msgpack::object o);
-
-    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const NodeExport& h);
-};
 
 }

@@ -171,4 +171,30 @@ std::ostream& operator<< (std::ostream& s, const Node& h)
     return s;
 }
 
+void
+NodeExport::msgpack_unpack(msgpack::object o)
+{
+    if (o.type != msgpack::type::MAP)
+        throw msgpack::type_error();
+    if (o.via.map.size < 2)
+        throw msgpack::type_error();
+    if (o.via.map.ptr[0].key.as<std::string_view>() != "id"sv)
+        throw msgpack::type_error();
+    if (o.via.map.ptr[1].key.as<std::string_view>() != "addr"sv)
+        throw msgpack::type_error();
+    const auto& maddr = o.via.map.ptr[1].val;
+    if (maddr.type != msgpack::type::BIN)
+        throw msgpack::type_error();
+    if (maddr.via.bin.size > sizeof(sockaddr_storage))
+        throw msgpack::type_error();
+    id.msgpack_unpack(o.via.map.ptr[0].val);
+    addr = {(const sockaddr*)maddr.via.bin.ptr, (socklen_t)maddr.via.bin.size};
+}
+
+std::ostream& operator<< (std::ostream& s, const NodeExport& h)
+{
+    msgpack::pack(s, h);
+    return s;
+}
+
 }

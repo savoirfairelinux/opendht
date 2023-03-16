@@ -20,6 +20,7 @@
 
 #include "infohash.h"
 #include "log_enable.h"
+#include "node_export.h"
 
 #include <queue>
 

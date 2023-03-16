@@ -128,7 +128,7 @@ public:
      */
     void insertNode(const InfoHash& id, const SockAddr&) override;
     void insertNode(const NodeExport& n) override {
-        insertNode(n.id, SockAddr(n.ss, n.sslen));
+        insertNode(n.id, n.addr);
     }
 
     void pingNode(SockAddr, DoneCallbackSimple&& cb={}) override;

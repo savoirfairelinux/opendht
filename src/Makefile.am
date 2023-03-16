@@ -19,7 +19,6 @@ libopendht_la_SOURCES  = \
         routing_table.cpp \
         network_engine.cpp \
         utils.cpp \
-        infohash.cpp \
         node.cpp \
         value.cpp \
         crypto.cpp \

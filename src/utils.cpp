@@ -35,11 +35,13 @@
 
 namespace dht {
 
-static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
-
 const char* version() {
     return PACKAGE_VERSION;
 }
+
+const HexMap hex_map = {};
+
+static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
 
 std::pair<std::string, std::string>
 splitPort(const std::string& s) {
