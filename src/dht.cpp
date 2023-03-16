@@ -1642,7 +1642,7 @@ Dht::dumpSearch(const Search& sr, std::ostream& out) const
 void
 Dht::dumpTables() const
 {
-    std::stringstream out;
+    std::ostringstream out;
     out << "My id " << myid << std::endl;
 
     out << "Buckets IPv4 :" << std::endl;
@@ -1694,7 +1694,7 @@ Dht::getStorageLog(const InfoHash& h) const
 {
     auto s = store.find(h);
     if (s == store.end()) {
-        std::stringstream out;
+        std::ostringstream out;
         out << "Storage " << h << " empty" << std::endl;
         return out.str();
     }
@@ -1704,7 +1704,7 @@ Dht::getStorageLog(const InfoHash& h) const
 std::string
 Dht::printStorageLog(const decltype(store)::value_type& s) const
 {
-    std::stringstream out;
+    std::ostringstream out;
     using namespace std::chrono;
     const auto& st = s.second;
     out << "Storage " << s.first << " "
@@ -1723,7 +1723,7 @@ Dht::printStorageLog(const decltype(store)::value_type& s) const
 std::string
 Dht::getRoutingTablesLog(sa_family_t af) const
 {
-    std::stringstream out;
+    std::ostringstream out;
     for (const auto& b : buckets(af))
         dumpBucket(b, out);
     return out.str();
@@ -1732,7 +1732,7 @@ Dht::getRoutingTablesLog(sa_family_t af) const
 std::string
 Dht::getSearchesLog(sa_family_t af) const
 {
-    std::stringstream out;
+    std::ostringstream out;
     auto num_searches = dht4.searches.size() + dht6.searches.size();
     if (num_searches > 8) {
         if (not af or af == AF_INET)
@@ -1757,7 +1757,7 @@ Dht::getSearchesLog(sa_family_t af) const
 std::string
 Dht::getSearchLog(const InfoHash& id, sa_family_t af) const
 {
-    std::stringstream out;
+    std::ostringstream out;
     if (af == AF_UNSPEC) {
         out << getSearchLog(id, AF_INET) << getSearchLog(id, AF_INET6);
     } else {

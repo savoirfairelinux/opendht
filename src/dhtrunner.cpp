@@ -1088,6 +1088,7 @@ DhtRunner::setProxyServer(const std::string& proxy, const std::string& pushNodeI
 #else
     if (not proxy.empty())
         throw std::runtime_error("DHT proxy requested but OpenDHT built without proxy support.");
+    (void) pushNodeId;
 #endif
 }
 

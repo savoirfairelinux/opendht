@@ -87,7 +87,7 @@ Url::Url(const std::string& url): url(url)
 std::string
 Url::toString() const
 {
-    std::stringstream ss;
+    std::ostringstream ss;
     if (not protocol.empty()) {
         ss << protocol << "://";
     }
@@ -1044,7 +1044,7 @@ Request::set_auth(const std::string& username, const std::string& password)
 void
 Request::build()
 {
-    std::stringstream request;
+    std::ostringstream request;
     bool append_body = !body_.empty();
 
     // first header

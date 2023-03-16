@@ -32,7 +32,7 @@ namespace indexation {
  * @return string that represent the blob into a readable way
  */
 static std::string blobToString(const Blob &bl) {
-    std::stringstream ss;
+    std::ostringstream ss;
     auto bn = bl.size() % 8;
     auto n = bl.size() / 8;
 
@@ -46,7 +46,7 @@ static std::string blobToString(const Blob &bl) {
 }
 
 std::string Prefix::toString() const {
-    std::stringstream ss;
+    std::ostringstream ss;
 
     ss << "Prefix : " << std::endl << "\tContent_ : \"";
     ss << blobToString(content_);

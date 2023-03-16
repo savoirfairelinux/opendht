@@ -92,7 +92,7 @@ bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data) {
 std::string
 NodeStats::toString() const
 {
-    std::stringstream ss;
+    std::ostringstream ss;
     ss << "Known nodes: " << good_nodes << " good, " << dubious_nodes << " dubious, " << incoming_nodes << " incoming." << std::endl;
     ss << searches << " searches, " << node_cache_size << " total cached nodes" << std::endl;
     if (table_depth > 1) {

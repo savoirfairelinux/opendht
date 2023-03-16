@@ -475,7 +475,7 @@ struct OPENDHT_PUBLIC Value
     OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Value& v);
 
     inline std::string toString() const {
-        std::stringstream ss;
+        std::ostringstream ss;
         ss << *this;
         return ss.str();
     }
@@ -774,7 +774,7 @@ struct OPENDHT_PUBLIC Select
     }
 
     std::string toString() const {
-        std::stringstream ss;
+        std::ostringstream ss;
         ss << *this;
         return ss.str();
     }
@@ -897,7 +897,7 @@ struct OPENDHT_PUBLIC Where
     }
 
     std::string toString() const {
-        std::stringstream ss;
+        std::ostringstream ss;
         ss << *this;
         return ss.str();
     }
@@ -963,7 +963,7 @@ struct OPENDHT_PUBLIC Query
     void msgpack_unpack(const msgpack::object& o);
 
     std::string toString() const {
-        std::stringstream ss;
+        std::ostringstream ss;
         ss << *this;
         return ss.str();
     }

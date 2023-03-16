@@ -704,7 +704,7 @@ DhtProxyServer::get(restinio::request_handle_t request,
             initHttpResponse(request->create_response<ResponseByParts>()));
         response->flush();
         dht_->get(infoHash, [this, response](const std::vector<Sp<Value>>& values) {
-            std::stringstream output;
+            std::ostringstream output;
             for (const auto& value : values) {
                 output << Json::writeString(jsonBuilder_, value->toJson()) << "\n";
             }
