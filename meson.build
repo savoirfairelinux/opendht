@@ -76,4 +76,9 @@ if get_option('tools').enabled()
     dhtnode = executable('dhtnode', 'tools/dhtnode.cpp',
         link_with : opendht,
         dependencies : [readline, msgpack])
+    if http_parser.found()
+        durl = executable('durl', 'tools/durl.cpp',
+        link_with : opendht,
+        dependencies : [msgpack, openssl])
+    endif
 endif
