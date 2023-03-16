@@ -121,7 +121,7 @@ Sp<crypto::PublicKey>
 SecureDht::getPublicKey(const InfoHash& node) const
 {
     if (node == getId())
-        return std::make_shared<crypto::PublicKey>(certificate_->getPublicKey());
+        return certificate_->getSharedPublicKey();
     auto it = nodesPubKeys_.find(node);
     if (it == nodesPubKeys_.end())
         return nullptr;
@@ -217,7 +217,7 @@ SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp
     }
     findCertificate(node, [=](const Sp<crypto::Certificate>& crt) {
         if (crt && *crt) {
-            auto pk = std::make_shared<crypto::PublicKey>(crt->getPublicKey());
+            auto pk = crt->getSharedPublicKey();
             if (*pk) {
                 nodesPubKeys_[pk->getId()] = pk;
                 if (cb) cb(pk);

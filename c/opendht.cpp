@@ -261,7 +261,7 @@ dht_pkid dht_certificate_get_long_id(const dht_certificate* c) {
 
 dht_publickey* dht_certificate_get_publickey(const dht_certificate* c) {
     const auto& cert = *reinterpret_cast<const CertSp*>(c);
-    return reinterpret_cast<dht_publickey*>(new PubkeySp(std::make_shared<dht::crypto::PublicKey>(cert->getPublicKey())));
+    return reinterpret_cast<dht_publickey*>(new PubkeySp(cert->getSharedPublicKey()));
 }
 
 // dht::crypto::Identity

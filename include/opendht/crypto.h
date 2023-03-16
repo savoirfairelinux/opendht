@@ -390,7 +390,11 @@ struct OPENDHT_PUBLIC Certificate {
      */
     Certificate(gnutls_x509_crt_t crt) noexcept : cert(crt) {}
 
-    Certificate(Certificate&& o) noexcept : cert(o.cert), issuer(std::move(o.issuer)) { o.cert = nullptr; };
+    Certificate(Certificate&& o) noexcept
+        : cert(o.cert)
+        , issuer(std::move(o.issuer))
+        , publicKey_(std::move(o.publicKey_))
+        { o.cert = nullptr; };
 
     /**
      * Import certificate (PEM or DER) or certificate chain (PEM),
@@ -498,7 +502,8 @@ struct OPENDHT_PUBLIC Certificate {
     void msgpack_unpack(const msgpack::object& o);
 
     explicit operator bool() const { return cert; }
-    PublicKey getPublicKey() const;
+    const PublicKey& getPublicKey() const;
+    const std::shared_ptr<PublicKey>& getSharedPublicKey() const;
 
     /** Same as getPublicKey().getId() */
     const InfoHash& getId() const;
@@ -631,6 +636,9 @@ private:
     };
 
     std::set<std::shared_ptr<RevocationList>, crlNumberCmp> revocation_lists;
+
+    mutable std::mutex publicKeyMutex_ {};
+    mutable std::shared_ptr<PublicKey> publicKey_ {};
 };
 
 struct OPENDHT_PUBLIC TrustList

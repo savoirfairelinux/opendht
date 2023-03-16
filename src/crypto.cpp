@@ -366,7 +366,7 @@ PrivateKey::getSharedPublicKey() const
         auto pk = std::make_shared<PublicKey>();
         if (auto err = gnutls_pubkey_import_privkey(pk->pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
             throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
-        publicKey_ = pk;
+        publicKey_ = std::move(pk);
     }
     return publicKey_;
 }
@@ -824,13 +824,23 @@ Certificate::~Certificate()
     }
 }
 
-PublicKey
+const PublicKey&
 Certificate::getPublicKey() const
 {
-    PublicKey pk_ret;
-    if (auto err = gnutls_pubkey_import_x509(pk_ret.pk, cert, 0))
-        throw CryptoException(std::string("Can't get certificate public key: ") + gnutls_strerror(err));
-    return pk_ret;
+    return *getSharedPublicKey();
+}
+
+const std::shared_ptr<PublicKey>&
+Certificate::getSharedPublicKey() const
+{
+    std::lock_guard<std::mutex> lock(publicKeyMutex_);
+    if (not publicKey_) {
+        auto pk = std::make_shared<PublicKey>();
+        if (auto err = gnutls_pubkey_import_x509(pk->pk, cert, 0))
+            throw CryptoException(std::string("Can't get certificate public key: ") + gnutls_strerror(err));
+        publicKey_ = std::move(pk);
+    }
+    return publicKey_;
 }
 
 const InfoHash&
