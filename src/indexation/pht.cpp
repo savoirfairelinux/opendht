@@ -25,39 +25,30 @@ namespace dht {
 namespace indexation {
 
 /**
- * Output the blob into string and readable way
+ * Get bit string representation of a blob for a specified length.
  *
- * @param bl   : Blob to print
+ * @param bl   A Blob
+ * @param len  The number of bits to consider.
  *
- * @return string that represent the blob into a readable way
+ * @return string that represent the blob
  */
-static std::string blobToString(const Blob &bl) {
+std::string Prefix::firstBitsToString(const Blob &bl, size_t len) const {
+    if (len >= bl.size() * 8)
+        throw std::out_of_range("specified length larger than blob size");
     std::stringstream ss;
-    auto bn = bl.size() % 8;
-    auto n = bl.size() / 8;
+    auto bn = len % 8;
 
-    for (size_t i = 0; i < bl.size(); i++)
-        ss << std::bitset<8>(bl[i]) << " ";
+    for (size_t i = 0; i < len/8; i++)
+        ss << std::bitset<8>(bl[i]);
     if (bn)
-        for (unsigned b=0; b < bn; b++)
-            ss << (char)((bl[n] & (1 << (7 - b))) ? '1':'0');
+        for (unsigned b = 0; b < bn; b++)
+            ss << (char)((bl[len/8] & (1 << (7 - b))) ? '1':'0');
 
     return ss.str();
 }
 
-std::string Prefix::toString() const {
-    std::stringstream ss;
-
-    ss << "Prefix : " << std::endl << "\tContent_ : \"";
-    ss << blobToString(content_);
-    ss << "\"" << std::endl;
-
-    ss << "\tFlags_   : \"";
-    ss << blobToString(flags_);
-    ss << "\"" << std::endl;
-
-    return ss.str();
-}
+std::string Prefix::toString() const { return firstBitsToString(content_, size_); }
+std::string Prefix::flagsToString() const { return firstBitsToString(flags_, size_); }
 
 void Pht::Cache::insert(const Prefix& p) {
     size_t i = 0;
