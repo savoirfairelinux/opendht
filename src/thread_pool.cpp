@@ -65,33 +65,39 @@ ThreadPool::run(std::function<void()>&& cb)
 
     // launch new thread if necessary
     if (not readyThreads_ && threads_.size() < maxThreads_) {
-        threads_.emplace_back(std::make_unique<std::thread>([this]() {
-            while (true) {
-                std::function<void()> task;
+        try {
+            threads_.emplace_back(std::make_unique<std::thread>([this]() {
+                while (true) {
+                    std::function<void()> task;
 
-                // pick task from queue
-                {
-                    std::unique_lock<std::mutex> l(lock_);
-                    readyThreads_++;
-                    cv_.wait(l, [&](){
-                        return not running_ or not tasks_.empty();
-                    });
-                    readyThreads_--;
-                    if (not running_)
-                        break;
-                    task = std::move(tasks_.front());
-                    tasks_.pop();
-                }
+                    // pick task from queue
+                    {
+                        std::unique_lock<std::mutex> l(lock_);
+                        readyThreads_++;
+                        cv_.wait(l, [&](){
+                            return not running_ or not tasks_.empty();
+                        });
+                        readyThreads_--;
+                        if (not running_)
+                            break;
+                        task = std::move(tasks_.front());
+                        tasks_.pop();
+                    }
 
-                // run task
-                try {
-                    task();
-                } catch (const std::exception& e) {
-                    // LOG_ERR("Exception running task: %s", e.what());
-                    std::cerr << "Exception running task: " << e.what() << std::endl;
+                    // run task
+                    try {
+                        task();
+                    } catch (const std::exception& e) {
+                        // LOG_ERR("Exception running task: %s", e.what());
+                        std::cerr << "Exception running task: " << e.what() << std::endl;
+                    }
                 }
-            }
-        }));
+            }));
+        } catch(const std::exception& e) {
+            std::cerr << "Exception starting thread: " << e.what() << std::endl;
+            if (threads_.empty())
+                throw;
+        }
     }
 
     // push task to queue
