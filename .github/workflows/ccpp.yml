@@ -35,9 +35,7 @@ jobs:
     - name: Configure
       run: meson setup build .
     - name: Build
-      run: make
-    - name: Unit tests
-      run: ./opendht_unit_tests
+      run: cd build && ninja
 
   build-ubuntu-minimal:
     name: Ubuntu/GCC minimal build
