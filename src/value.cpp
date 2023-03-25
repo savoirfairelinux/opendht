@@ -98,7 +98,7 @@ ValueType::DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const
 size_t
 Value::size() const
 {
-    return cypher.size() + data.size() + signature.size()  + user_type.size();
+    return cypher.size() + data.size() + signature.size() + user_type.size();
 }
 
 void

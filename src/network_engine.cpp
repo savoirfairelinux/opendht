@@ -124,9 +124,9 @@ NetworkEngine::tellListener(const Sp<Node>& node, Tid socket_id, const InfoHash&
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         if (version >= 1) {
-            sendUpdateValues(node, hash, values, scheduler.time(), ntoken, socket_id);
+            sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id);
         } else {
-            sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, values, query, ntoken);
+            sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, std::move(values), query, ntoken);
         }
     } catch (const std::overflow_error& e) {
         if (logger_)
@@ -501,9 +501,8 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
             pmsg.last_part = now;
             scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
             scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
-        } else
-            if (logger_)
-                logger_->e("Partial message with given TID already exists");
+        } else if (logger_)
+            logger_->e("Partial message with given TID %u already exists", k);
     }
 }
 
@@ -912,12 +911,16 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
 }
 
 std::vector<Blob>
-NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, const std::vector<Sp<Value>>& st)
+NetworkEngine::packValueHeader(msgpack::sbuffer& buffer, std::vector<Sp<Value>>::const_iterator b, std::vector<Sp<Value>>::const_iterator e) const
 {
-    auto svals = serializeValues(st);
+    std::vector<Blob> svals;
     size_t total_size = 0;
-    for (const auto& v : svals)
-        total_size += v.size();
+
+    svals.reserve(std::distance(b, e));
+    for (; b != e; ++b) {
+        svals.emplace_back(packMsg(*b));
+        total_size += svals.back().size();
+    }
 
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack(KEY_REQ_VALUES);
@@ -1200,13 +1203,39 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     return req;
 }
 
+void
+NetworkEngine::sendUpdateValues(const Sp<Node>& n,
+                                const InfoHash& infohash,
+                                std::vector<Sp<Value>>&& values,
+                                time_point created,
+                                const Blob& token,
+                                size_t socket_id)
+{
+    size_t total_size = 0;
+
+    auto b = values.begin(), e = values.begin();
+    while (e != values.end()) {
+        if (total_size >= MAX_MESSAGE_VALUE_SIZE) {
+            sendUpdateValues(n, infohash, b, e, created, token, socket_id);
+            b = e;
+            total_size = 0;
+        }
+        total_size += (*e)->size();
+        ++e;
+    }
+    if (b != e) {
+        sendUpdateValues(n, infohash, b, e, created, token, socket_id);
+    }
+}
+
 Sp<Request>
 NetworkEngine::sendUpdateValues(const Sp<Node>& n,
                                 const InfoHash& infohash,
-                                const std::vector<Sp<Value>>& values,
+                                std::vector<Sp<Value>>::iterator begin,
+                                std::vector<Sp<Value>>::iterator end,
                                 time_point created,
                                 const Blob& token,
-                                const size_t& socket_id)
+                                size_t socket_id)
 {
     Tid tid (n->getNewTid());
     Tid sid (socket_id);
@@ -1220,7 +1249,7 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
       pk.pack(KEY_VERSION);    pk.pack(1);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
       pk.pack(KEY_REQ_SID);   pk.pack(sid);
-      auto v = packValueHeader(buffer, values);
+      auto v = packValueHeader(buffer, begin, end);
       if (created < scheduler.time()) {
           pk.pack(KEY_REQ_CREATION);
           pk.pack(to_time_t(created));

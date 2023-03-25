@@ -416,12 +416,19 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendUpdateValues(const Sp<Node>& n,
+    void sendUpdateValues(const Sp<Node>& n,
                                  const InfoHash& infohash,
-                                 const std::vector<Sp<Value>>& values,
+                                 std::vector<Sp<Value>>&& values,
                                  time_point created,
                                  const Blob& token,
-                                 const size_t& sid);
+                                 size_t sid);
+    Sp<Request> sendUpdateValues(const Sp<Node>& n,
+                                 const InfoHash& infohash,
+                                 std::vector<Sp<Value>>::iterator begin,
+                                 std::vector<Sp<Value>>::iterator end,
+                                 time_point created,
+                                 const Blob& token,
+                                 size_t sid);
 
     /**
      * Parses a message and calls appropriate callbacks.
@@ -492,6 +499,7 @@ private:
 
     static constexpr size_t MTU {1280};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
+    static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
 
     static const std::string my_v;
 
@@ -525,7 +533,10 @@ private:
     int send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
 
     void sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr);
-    std::vector<Blob> packValueHeader(msgpack::sbuffer&, const std::vector<Sp<Value>>&);
+    std::vector<Blob> packValueHeader(msgpack::sbuffer&, std::vector<Sp<Value>>::const_iterator, std::vector<Sp<Value>>::const_iterator) const;
+    std::vector<Blob> packValueHeader(msgpack::sbuffer& buf, const std::vector<Sp<Value>>& values) const {
+        return packValueHeader(buf, values.begin(), values.end());
+    }
     void maintainRxBuffer(Tid tid);
 
     /*************

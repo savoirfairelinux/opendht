@@ -152,9 +152,10 @@ bool
 ParsedMessage::complete()
 {
     for (auto& e : value_parts) {
-        //std::cout << "part " << e.first << ": " << e.second.second.size() << "/" << e.second.first << std::endl;
-        if (e.second.first > e.second.second.size())
+        if (e.second.first > e.second.second.size()) {
+            //std::cout << "uncomplete part " << e.first << ": " << e.second.second.size() << "/" << e.second.first << std::endl;
             return false;
+        }
     }
     for (auto& e : value_parts) {
         msgpack::unpacked msg;
