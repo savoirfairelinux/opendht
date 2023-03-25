@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   build-ubuntu:
-    name: Ubuntu/GCC autotools build
+    name: Ubuntu/GCC Autotools build
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
