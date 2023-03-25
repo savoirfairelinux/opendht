@@ -20,7 +20,10 @@
 #include "infohash.h"
 #include "sockaddr.h"
 
+#include <string_view>
+
 namespace dht {
+using namespace std::literals;
 
 struct OPENDHT_PUBLIC NodeExport {
     InfoHash id;
