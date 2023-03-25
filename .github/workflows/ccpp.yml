@@ -22,7 +22,7 @@ jobs:
     - name: Unit tests
       run: ./opendht_unit_tests
 
-  build-ubuntu:
+  build-ubuntu-meson:
     name: Ubuntu/GCC Meson build
     runs-on: ubuntu-latest
     steps:
