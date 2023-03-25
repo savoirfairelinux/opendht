@@ -7,7 +7,7 @@ project('opendht', 'c', 'cpp',
 
 gnutls = dependency('gnutls')
 nettle = dependency('nettle')
-msgpack = dependency('msgpack-cxx')
+msgpack = dependency('msgpack-cxx', required : false)
 argon2 = dependency('libargon2')
 openssl = dependency('openssl', required: get_option('proxy_client'))
 jsoncpp = dependency('jsoncpp', required: get_option('proxy_client'))
@@ -25,6 +25,7 @@ add_project_arguments('-DMSGPACK_NO_BOOST', language : 'cpp')
 add_project_arguments(['-Wno-return-type','-Wno-deprecated','-Wnon-virtual-dtor','-pedantic-errors','-fvisibility=hidden'], language : 'cpp')
 
 opendht_inc = include_directories('include/opendht')
+opendht_interface_inc = include_directories('include', is_system: true)
 opendht_src = [
     'src/utils.cpp',
     'src/crypto.cpp',
@@ -65,18 +66,22 @@ if get_option('peer_discovery').enabled()
     add_project_arguments('-DOPENDHT_PEER_DISCOVERY', language : 'cpp')
 endif
 opendht = shared_library('opendht',
-    opendht_src, 
+    opendht_src,
     include_directories : opendht_inc,
     dependencies : deps,
-    cpp_args : ['-DOPENHT_BUILD', '-Dopendht_EXPORTS'])
+    cpp_args : ['-DOPENHT_BUILD', '-Dopendht_EXPORTS'],
+    install : true)
 
 readline = meson.get_compiler('c').find_library('readline', required: get_option('tools'))
 if get_option('tools').enabled()
     dhtnode = executable('dhtnode', 'tools/dhtnode.cpp',
+        include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack])
+        dependencies : [readline, msgpack],
+        install : true)
     if http_parser.found()
         durl = executable('durl', 'tools/durl.cpp',
+        include_directories : opendht_interface_inc,
         link_with : opendht,
         dependencies : [msgpack, openssl])
     endif
