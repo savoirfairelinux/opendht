@@ -167,7 +167,7 @@ Node::toString() const
 
 std::ostream& operator<< (std::ostream& s, const Node& h)
 {
-    s << h.id << " " << h.addr.toString();
+    s << h.id << " " << h.addr;
     return s;
 }
 
@@ -188,7 +188,8 @@ NodeExport::msgpack_unpack(msgpack::object o)
     if (maddr.via.bin.size > sizeof(sockaddr_storage))
         throw msgpack::type_error();
     id.msgpack_unpack(o.via.map.ptr[0].val);
-    addr = {(const sockaddr*)maddr.via.bin.ptr, (socklen_t)maddr.via.bin.size};
+    //addr = {(const sockaddr*)maddr.via.bin.ptr, (socklen_t)maddr.via.bin.size};
+    // TODO
 }
 
 std::ostream& operator<< (std::ostream& s, const NodeExport& h)

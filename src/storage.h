@@ -72,7 +72,7 @@ struct ValueStorage {
     Sp<Value> data {};
     time_point created {};
     time_point expiration {};
-    Sp<Scheduler::Job> expiration_job {};
+    std::unique_ptr<asio::steady_timer> expiration_job {};
     StorageBucket* store_bucket {nullptr};
 
     ValueStorage() {}
@@ -83,6 +83,7 @@ struct ValueStorage {
 
 struct Storage {
     time_point maintenance_time {};
+    std::unique_ptr<asio::steady_timer> maintenance_job {};
     std::map<Sp<Node>, std::map<size_t, Listener>> listeners;
     std::map<size_t, LocalListener> local_listeners {};
     size_t listener_token {1};

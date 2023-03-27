@@ -24,10 +24,10 @@
 #include "infohash.h"
 #include "value.h"
 #include "callbacks.h"
-#include "sockaddr.h"
 #include "log_enable.h"
-#include "network_utils.h"
 #include "node_export.h"
+#include "network_utils.h"
+#include "udp_socket.h"
 
 #include <thread>
 #include <mutex>
@@ -52,10 +52,7 @@ struct SecureDhtConfig;
  * thread that will update the DHT when appropriate.
  */
 class OPENDHT_PUBLIC DhtRunner {
-
 public:
-    using StatusCallback = std::function<void(NodeStatus, NodeStatus)>;
-
     struct Config {
         SecureDhtConfig dht_config {};
         bool threaded {true};
@@ -74,6 +71,7 @@ public:
     struct Context {
         std::shared_ptr<Logger> logger {};
         std::unique_ptr<net::DatagramSocket> sock;
+        std::shared_ptr<asio::io_context> ioContext {};
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
@@ -407,20 +405,6 @@ public:
 
     void run(const Config& config, Context&& context);
 
-    void setOnStatusChanged(StatusCallback&& cb) {
-        statusCb = std::move(cb);
-    }
-
-    /**
-     * In non-threaded mode, the user should call this method
-     * regularly and everytime a new packet is received.
-     * @return the next op
-     */
-    time_point loop() {
-        std::lock_guard<std::mutex> lck(dht_mtx);
-        return loop_();
-    }
-
     /**
      * Gracefuly disconnect from network.
      */
@@ -475,16 +459,19 @@ private:
         Stopping
     };
 
-    time_point loop_();
-
-    NodeStatus getStatus() const {
-        return std::max(status4, status6);
-    }
-
     bool checkShutdown();
     void opEnded();
     DoneCallback bindOpDoneCallback(DoneCallback&& cb);
     DoneCallbackSimple bindOpDoneCallback(DoneCallbackSimple&& cb);
+
+    inline void post(std::function<void()>&& op, bool prio = false) {
+        ioContext_->post(asio::bind_executor(*strand_, std::move(op)));
+    }
+
+    void postOp(std::function<void(SecureDht&)>&& op, bool prio = false);
+
+    std::shared_ptr<asio::io_context> ioContext_;
+    std::shared_ptr<asio::io_context::strand> strand_;
 
     /** DHT instance */
     std::unique_ptr<SecureDht> dht_;
@@ -504,21 +491,13 @@ private:
     mutable std::mutex dht_mtx {};
     std::thread dht_thread {};
     std::condition_variable cv {};
-    std::mutex sock_mtx {};
-    net::PacketList rcv {};
-    decltype(rcv) rcv_free {};
-
-    std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};
+    /*std::queue<std::function<void(SecureDht&)>> pending_ops_prio {};*/
     std::queue<std::function<void(SecureDht&)>> pending_ops {};
     std::mutex storage_mtx {};
 
     std::atomic<State> running {State::Idle};
     std::atomic_size_t ongoing_ops {0};
     std::vector<ShutdownCallback> shutdownCallbacks_;
-
-    NodeStatus status4 {NodeStatus::Disconnected},
-               status6 {NodeStatus::Disconnected};
-    StatusCallback statusCb {nullptr};
 
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;

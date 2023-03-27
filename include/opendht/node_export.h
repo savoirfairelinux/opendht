@@ -18,7 +18,9 @@
 
 #include "def.h"
 #include "infohash.h"
-#include "sockaddr.h"
+#include <asio/ip/udp.hpp>
+
+#include <string_view>
 
 #include <string_view>
 
@@ -27,7 +29,7 @@ using namespace std::literals;
 
 struct OPENDHT_PUBLIC NodeExport {
     InfoHash id;
-    SockAddr addr;
+    asio::ip::udp::endpoint addr;
 
     template <typename Packer>
     void msgpack_pack(Packer& pk) const
@@ -36,8 +38,8 @@ struct OPENDHT_PUBLIC NodeExport {
         pk.pack("id"sv);
         pk.pack(id);
         pk.pack("addr"sv);
-        pk.pack_bin(addr.getLength());
-        pk.pack_bin_body((const char*)addr.get(), (size_t)addr.getLength());
+        pk.pack_bin(addr.size());
+        pk.pack_bin_body((const char*)addr.data(), addr.size());
     }
 
     void msgpack_unpack(msgpack::object o);

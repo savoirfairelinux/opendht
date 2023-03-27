@@ -62,6 +62,8 @@ DhtProxyTester::tearDown() {
     nodePeer.join();
     nodeClient.join();
 
+    serverProxy->stop();
+
     bool done = false;
     std::condition_variable cv;
     std::mutex cv_m;

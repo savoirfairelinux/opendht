@@ -47,6 +47,7 @@ HttpTester::setUp() {
 
 void
 HttpTester::tearDown() {
+    serverProxy->stop();
     serverProxy.reset();
     nodePeer->join();
 }

@@ -24,7 +24,6 @@
 
 #include "dhtrunner.h"
 #include "securedht.h"
-#include "network_utils.h"
 #ifdef OPENDHT_PEER_DISCOVERY
 #include "peer_discovery.h"
 #endif
@@ -65,24 +64,22 @@ DhtRunner::~DhtRunner()
 void
 DhtRunner::run(in_port_t port, Config& config, Context&& context)
 {
-    config.bind4.setFamily(AF_INET);
-    config.bind4.setPort(port);
-    config.bind6.setFamily(AF_INET6);
-    config.bind6.setPort(port);
+    config.bind4 = {asio::ip::address_v4::any(), port};
+    config.bind6 = {asio::ip::address_v6::any(), port};
     run(config, std::move(context));
 }
 
 void
 DhtRunner::run(const char* ip4, const char* ip6, const char* service, Config& config, Context&& context)
 {
-    auto res4 = SockAddr::resolve(ip4, service);
-    auto res6 = SockAddr::resolve(ip6, service);
-    if (res4.empty())
-        res4.emplace_back();
-    if (res6.empty())
-        res6.emplace_back();
-    config.bind4 = std::move(res4.front());
-    config.bind6 = std::move(res6.front());
+    auto s = asio::ip::udp::resolver::query(service);
+    asio::ip::udp::resolver resolver(*context.ioContext);
+    auto res4 = resolver.resolve(ip4, service);
+    auto res6 = resolver.resolve(ip6, service);
+    if (not res4.empty())
+        config.bind4 = std::move(*res4.begin());
+    if (not res6.empty())
+        config.bind6 = std::move(*res6.begin());
     run(config, std::move(context));
 }
 
@@ -100,31 +97,25 @@ DhtRunner::run(const Config& config, Context&& context)
     try {
         auto local4 = config.bind4;
         auto local6 = config.bind6;
-        if (not local4 and not local6) {
-            if (context.logger)
-                context.logger->w("[runner %p] No address to bind specified in the configuration, using default addresses", this);
-            local4.setFamily(AF_INET);
-            local6.setFamily(AF_INET6);
-        }
         auto state_path = config.dht_config.node_config.persist_path;
         if (not state_path.empty())
             state_path += "_port.txt";
-        if (not state_path.empty() && (local4.getPort() == 0 || local6.getPort() == 0)) {
+        if (not state_path.empty() && (local4.port() == 0 || local6.port() == 0)) {
             std::ifstream inConfig(state_path);
             if (inConfig.is_open()) {
                 in_port_t port;
                 if (inConfig >> port) {
-                    if (local4.getPort() == 0) {
+                    if (local4.port() == 0) {
                         if (context.logger)
                             context.logger->d("[runner %p] Using IPv4 port %hu from saved configuration", this, port);
-                        local4.setPort(port);
+                        local4.port(port);
                     }
                 }
                 if (inConfig >> port) {
-                    if (local6.getPort() == 0) {
+                    if (local6.port() == 0) {
                         if (context.logger)
                             context.logger->d("[runner %p] Using IPv6 port %hu from saved configuration", this, port);
-                        local6.setPort(port);
+                        local6.port(port);
                     }
                 }
             }
@@ -140,34 +131,24 @@ DhtRunner::run(const Config& config, Context&& context)
         identityAnnouncedCb_ = context.identityAnnouncedCb;
 #endif
 
+        if (not context.ioContext)
+            context.ioContext.reset(new asio::io_context);
+
+        ioContext_ = context.ioContext;
+        strand_ = std::make_shared<asio::io_context::strand>(asio::io_context::strand(*ioContext_));
+
         if (config.proxy_server.empty()) {
             if (not context.sock) {
-                context.sock.reset(new net::UdpSocket(local4, local6, context.logger));
+                //if (context.logger)
+                //    context.logger->d("[runner %p] Creating new socket with local addresses %s and %s", this, local4.toString().c_str(), local6.toString().c_str());
+                context.sock.reset(new net::UdpSocket(strand_, local4, local6/*, context.logger*/));
             }
-            context.sock->setOnReceive([&] (net::PacketList&& pkts) {
-                net::PacketList ret;
-                {
-                    std::lock_guard<std::mutex> lck(sock_mtx);
-                    rcv.splice(rcv.end(), std::move(pkts));
-                    size_t dropped = 0;
-                    while (rcv.size() > net::RX_QUEUE_MAX_SIZE) {
-                        rcv.pop_front();
-                        dropped++;
-                    }
-                    if (dropped and logger_) {
-                        logger_->w("[runner %p] dropped %zu packets: queue is full!", this, dropped);
-                    }
-                    ret = std::move(rcv_free);
-                }
-                cv.notify_all();
-                return ret;
-            });
             if (not state_path.empty()) {
                 std::ofstream outConfig(state_path);
-                outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
-                outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
+                outConfig << context.sock->getPort(AF_INET) << std::endl;
+                outConfig << context.sock->getPort(AF_INET6) << std::endl;
             }
-            auto dht = std::make_unique<Dht>(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger);
+            auto dht = std::make_unique<Dht>(strand_, std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger);
             dht_ = std::make_unique<SecureDht>(std::move(dht), config.dht_config, std::move(context.identityAnnouncedCb), context.logger);
         } else {
             enableProxy(true);
@@ -180,8 +161,20 @@ DhtRunner::run(const Config& config, Context&& context)
         throw;
     }
 
+    dht_->addOnStateChangeCallback([this](const DhtNodeStatus& status){
+        if (status.get() != NodeStatus::Connecting) {
+            auto pending = std::move(pending_ops);
+            while (not pending.empty()) {
+                pending.front()(*dht_);
+                pending.pop();
+            }
+        }
+    });
+
     if (context.statusChangedCallback) {
-        statusCb = std::move(context.statusChangedCallback);
+        if (logger_)
+            logger_->d("[dhtrunner] starting io_context");
+        dht_->addOnStateChangeCallback(std::move(context.statusChangedCallback));
     }
     if (context.certificateStore) {
         dht_->setLocalCertificateStore(std::move(context.certificateStore));
@@ -190,32 +183,18 @@ DhtRunner::run(const Config& config, Context&& context)
     if (not config.threaded)
         return;
     dht_thread = std::thread([this]() {
-        while (running != State::Idle) {
-            std::unique_lock<std::mutex> lk(dht_mtx);
-            time_point wakeup = loop_();
-
-            auto hasJobToDo = [this]() {
-                if (running == State::Idle)
-                    return true;
-                {
-                    std::lock_guard<std::mutex> lck(sock_mtx);
-                    if (not rcv.empty())
-                        return true;
-                }
-                {
-                    std::lock_guard<std::mutex> lck(storage_mtx);
-                    if (not pending_ops_prio.empty())
-                        return true;
-                    auto s = getStatus();
-                    if (not pending_ops.empty() and (s == NodeStatus::Connected or s == NodeStatus::Disconnected))
-                        return true;
-                }
-                return false;
-            };
-            if (wakeup == time_point::max())
-                cv.wait(lk, hasJobToDo);
-            else
-                cv.wait_until(lk, wakeup, hasJobToDo);
+        try {
+            if (logger_)
+                logger_->d("[dhtrunner] starting io_context");
+            // Ensures the context won't run out of work
+            auto work = asio::make_work_guard(*ioContext_);
+            ioContext_->run();
+            if (logger_)
+                logger_->d("[dhtrunner] io_context stopped");
+        }
+        catch(const std::exception& ex){
+            if (logger_)
+                logger_->e("[dhtrunner] run error: %s", ex.what());
         }
     });
 
@@ -234,7 +213,7 @@ DhtRunner::run(const Config& config, Context&& context)
         auto netId = config.dht_config.node_config.network;
         if (config.peer_discovery) {
             peerDiscovery_->startDiscovery<NodeInsertionPack>(PEER_DISCOVERY_DHT_SERVICE, [this, netId](NodeInsertionPack&& v, SockAddr&& addr){
-                addr.setPort(v.port);
+                addr.port(v.port);
                 if (v.nodeId != dht_->getNodeId() && netId == v.net){
                     bootstrap(v.nodeId, addr);
                 }
@@ -247,14 +226,16 @@ DhtRunner::run(const Config& config, Context&& context)
             adc.nodeId = dht_->getNodeId();
             if (auto socket = dht_->getSocket()) {
                 // IPv4
-                if (const auto& bound4 = socket->getBoundRef(AF_INET)) {
-                    adc.port = bound4.getPort();
+                const auto& bound4 = socket->getBound(AF_INET);
+                if (bound4 != asio::ip::udp::endpoint{}) {
+                    adc.port = bound4.port();
                     msgpack::pack(sbuf_node, adc);
                     peerDiscovery_->startPublish(AF_INET, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
                 }
                 // IPv6
-                if (const auto& bound6 = socket->getBoundRef(AF_INET6)) {
-                    adc.port = bound6.getPort();
+                const auto& bound6 = socket->getBound(AF_INET6);
+                if (bound6 != asio::ip::udp::endpoint{}) {
+                    adc.port = bound6.port();
                     sbuf_node.clear();
                     msgpack::pack(sbuf_node, adc);
                     peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
@@ -267,15 +248,16 @@ DhtRunner::run(const Config& config, Context&& context)
 
 void
 DhtRunner::shutdown(ShutdownCallback cb, bool stop) {
-    std::unique_lock<std::mutex> lck(storage_mtx);
+    //std::unique_lock<std::mutex> lck(storage_mtx);
     auto expected = State::Running;
     if (not running.compare_exchange_strong(expected, State::Stopping)) {
         if (expected == State::Stopping and ongoing_ops) {
             if (cb)
                 shutdownCallbacks_.emplace_back(std::move(cb));
+                //asio::post(*ioContext_, [cb] { cb(); });
+                // ioContext_->post([cb] { cb(); });
         }
         else if (cb) {
-            lck.unlock();
             cb();
         }
         return;
@@ -284,14 +266,28 @@ DhtRunner::shutdown(ShutdownCallback cb, bool stop) {
         logger_->d("[runner %p] state changed to Stopping, %zu ongoing ops", this, ongoing_ops.load());
     ongoing_ops++;
     shutdownCallbacks_.emplace_back(std::move(cb));
-    pending_ops.emplace([=](SecureDht&) mutable {
+    post([=]() mutable {
         auto onShutdown = [this]{ opEnded(); };
         if (dht_)
             dht_->shutdown(onShutdown, stop);
         else
             opEnded();
     });
-    cv.notify_all();
+    //cv.notify_all();
+}
+
+void
+DhtRunner::postOp(std::function<void(SecureDht&)>&& op, bool prio) {
+    ongoing_ops++;
+    /*if (prio)
+        ioContext_->post(asio::bind_executor(*strand_, std::move(op)));
+    else*/
+        ioContext_->post(asio::bind_executor(*strand_, [this, prio, op=std::move(op)]{
+            if (dht_ && (prio || dht_->getStatus() != NodeStatus::Connecting))
+                op(*dht_);
+            else
+                pending_ops.emplace(std::move(op));
+        }));
 }
 
 void
@@ -320,7 +316,6 @@ bool
 DhtRunner::checkShutdown() {
     decltype(shutdownCallbacks_) cbs;
     {
-        std::lock_guard<std::mutex> lck(storage_mtx);
         if (running != State::Stopping or ongoing_ops)
             return false;
         cbs = std::move(shutdownCallbacks_);
@@ -342,31 +337,29 @@ DhtRunner::join()
         if (peerDiscovery_)
             peerDiscovery_->stop();
 #endif
-        if (dht_)
+        /*if (dht_)
             if (auto sock = dht_->getSocket())
-                sock->stop();
+                sock->stop();*/
         if (logger_)
             logger_->d("[runner %p] state changed to Idle", this);
     }
 
-    if (dht_thread.joinable())
+    if (dht_thread.joinable()) {
+        ioContext_->stop();
         dht_thread.join();
+    }
 
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         if (ongoing_ops and logger_) {
             logger_->w("[runner %p] stopping with %zu remaining ops", this, ongoing_ops.load());
         }
-        pending_ops = decltype(pending_ops)();
-        pending_ops_prio = decltype(pending_ops_prio)();
         ongoing_ops = 0;
         shutdownCallbacks_.clear();
     }
     {
         std::lock_guard<std::mutex> lck(dht_mtx);
         resetDht();
-        status4 = NodeStatus::Disconnected;
-        status6 = NodeStatus::Disconnected;
     }
 }
 
@@ -384,7 +377,7 @@ DhtRunner::getBoundPort(sa_family_t af) const {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)
         if (auto sock = dht_->getSocket())
-            return sock->getPort(af);
+            return sock->getBound(af).port();
     return 0;
 }
 
@@ -512,8 +505,8 @@ DhtRunner::getNodeInfo() const {
         info.ipv4 = dht_->getNodesStats(AF_INET);
         info.ipv6 = dht_->getNodesStats(AF_INET6);
         if (auto sock = dht_->getSocket()) {
-            info.bound4 = sock->getBoundRef(AF_INET).getPort();
-            info.bound6 = sock->getBoundRef(AF_INET6).getPort();
+            info.bound4 = sock->getBound(AF_INET).port();
+            info.bound6 = sock->getBound(AF_INET6).port();
         }
     }
     info.ongoing_ops = ongoing_ops;
@@ -525,17 +518,17 @@ DhtRunner::getNodeInfo(std::function<void(std::shared_ptr<NodeInfo>)> cb)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
-    pending_ops_prio.emplace([cb = std::move(cb), this](SecureDht& dht){
+    post([cb = std::move(cb), this](){
         auto sinfo = std::make_shared<NodeInfo>();
         auto& info = *sinfo;
-        info.id = dht.getId();
-        info.node_id = dht.getNodeId();
-        info.ipv4 = dht.getNodesStats(AF_INET);
-        info.ipv6 = dht.getNodesStats(AF_INET6);
-        std::tie(info.storage_size, info.storage_values) = dht.getStoreSize();
-        if (auto sock = dht.getSocket()) {
-            info.bound4 = sock->getBoundRef(AF_INET).getPort();
-            info.bound6 = sock->getBoundRef(AF_INET6).getPort();
+        info.id = dht_->getId();
+        info.node_id = dht_->getNodeId();
+        info.ipv4 = dht_->getNodesStats(AF_INET);
+        info.ipv6 = dht_->getNodesStats(AF_INET6);
+        std::tie(info.storage_size, info.storage_values) = dht_->getStoreSize();
+        if (auto sock = dht_->getSocket()) {
+            info.bound4 = sock->getBound(AF_INET).port();
+            info.bound6 = sock->getBound(AF_INET6).port();
         }
         info.ongoing_ops = ongoing_ops;
         cb(std::move(sinfo));
@@ -594,7 +587,12 @@ DhtRunner::getPublicAddressStr(sa_family_t af) const
 {
     auto addrs = getPublicAddress(af);
     std::vector<std::string> ret(addrs.size());
-    std::transform(addrs.begin(), addrs.end(), ret.begin(), [](const SockAddr& a) { return a.toString(); });
+    std::transform(addrs.begin(), addrs.end(), ret.begin(), [](const SockAddr& a) {
+        return asio::ip::detail::endpoint(a.address(), a.port()).to_string();
+        /*std::ostringstream ss;
+        ss << a;
+        return ss.str();*/
+    });
     return ret;
 }
 
@@ -603,8 +601,8 @@ DhtRunner::getPublicAddress(std::function<void(std::vector<SockAddr>&&)> cb, sa_
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
-    pending_ops_prio.emplace([cb = std::move(cb), this, af](SecureDht& dht){
-        cb(dht.getPublicAddress(af));
+    post([cb = std::move(cb), this, af](){
+        cb(dht_->getPublicAddress(af));
         opEnded();
     });
     cv.notify_all();
@@ -622,7 +620,7 @@ DhtRunner::setLocalCertificateStore(CertificateStoreQuery&& query_method) {
     if (dht_)
         dht_->setLocalCertificateStore(std::forward<CertificateStoreQuery>(query_method));
 }
-
+/*
 time_point
 DhtRunner::loop_()
 {
@@ -698,22 +696,24 @@ DhtRunner::loop_()
     }
 
     return wakeup;
-}
+}*/
 
 void
 DhtRunner::get(InfoHash hash, GetCallback vcb, DoneCallback dcb, Value::Filter f, Where w)
 {
-    std::unique_lock<std::mutex> lck(storage_mtx);
     if (running != State::Running) {
-        lck.unlock();
         if (dcb) dcb(false, {});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([=](SecureDht& dht) mutable {
-        dht.get(hash, std::move(vcb), bindOpDoneCallback(std::move(dcb)), std::move(f), std::move(w));
+    postOp([
+        hash,
+        vcb = std::move(vcb),
+        dcb=bindOpDoneCallback(std::move(dcb)),
+        f = std::move(f),
+        w = std::move(w)
+    ](SecureDht& dht) mutable {
+        dht.get(hash, std::move(vcb), std::move(dcb), std::move(f), std::move(w));
     });
-    cv.notify_all();
 }
 
 void
@@ -729,11 +729,9 @@ DhtRunner::query(const InfoHash& hash, QueryCallback cb, DoneCallback done_cb, Q
         if (done_cb) done_cb(false, {});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([=](SecureDht& dht) mutable {
+    postOp([=](SecureDht& dht) mutable {
         dht.query(hash, std::move(cb), bindOpDoneCallback(std::move(done_cb)), std::move(q));
     });
-    cv.notify_all();
 }
 
 std::future<size_t>
@@ -746,8 +744,8 @@ DhtRunner::listen(InfoHash hash, ValueCallback vcb, Value::Filter f, Where w)
         ret_token->set_value(0);
         return ret_token->get_future();
     }
-    pending_ops.emplace([=](SecureDht& dht) mutable {
-        ret_token->set_value(dht.listen(hash, std::move(vcb), std::move(f), std::move(w)));
+    post([=]() mutable {
+        ret_token->set_value(dht_->listen(hash, std::move(vcb), std::move(f), std::move(w)));
     });
     cv.notify_all();
     return ret_token->get_future();
@@ -765,26 +763,21 @@ DhtRunner::cancelListen(InfoHash h, size_t token)
     std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    ongoing_ops++;
-    pending_ops.emplace([=](SecureDht& dht) {
+    postOp([=](SecureDht& dht) {
         dht.cancelListen(h, token);
         opEnded();
     });
-    cv.notify_all();
 }
 
 void
 DhtRunner::cancelListen(InfoHash h, std::shared_future<size_t> ftoken)
 {
-    std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    ongoing_ops++;
-    pending_ops.emplace([this, h, ftoken = std::move(ftoken)](SecureDht& dht) {
+    postOp([this, h, ftoken = std::move(ftoken)](SecureDht& dht) {
         dht.cancelListen(h, ftoken.get());
         opEnded();
     });
-    cv.notify_all();
 }
 
 void
@@ -796,14 +789,12 @@ DhtRunner::put(InfoHash hash, Value&& value, DoneCallback cb, time_point created
         if (cb) cb(false, {});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([=,
+    postOp([=,
         cb = std::move(cb),
         sv = std::make_shared<Value>(std::move(value))
     ] (SecureDht& dht) mutable {
         dht.put(hash, sv, bindOpDoneCallback(std::move(cb)), created, permanent);
     });
-    cv.notify_all();
 }
 
 void
@@ -815,11 +806,9 @@ DhtRunner::put(InfoHash hash, std::shared_ptr<Value> value, DoneCallback cb, tim
         if (cb) cb(false, {});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([=, value = std::move(value), cb = std::move(cb)](SecureDht& dht) mutable {
+    postOp([=, value = std::move(value), cb = std::move(cb)](SecureDht& dht) mutable {
         dht.put(hash, value, bindOpDoneCallback(std::move(cb)), created, permanent);
     });
-    cv.notify_all();
 }
 
 void
@@ -832,20 +821,18 @@ void
 DhtRunner::cancelPut(const InfoHash& h, Value::Id id)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.cancelPut(h, id);
+    post([=]() {
+        dht_->cancelPut(h, id);
     });
-    cv.notify_all();
 }
 
 void
 DhtRunner::cancelPut(const InfoHash& h, const std::shared_ptr<Value>& value)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops.emplace([=](SecureDht& dht) {
-        dht.cancelPut(h, value->id);
+    post([=]() {
+        dht_->cancelPut(h, value->id);
     });
-    cv.notify_all();
 }
 
 void
@@ -857,14 +844,12 @@ DhtRunner::putSigned(InfoHash hash, std::shared_ptr<Value> value, DoneCallback c
         if (cb) cb(false, {});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([=,
+    postOp([=,
         cb = std::move(cb),
         value = std::move(value)
     ](SecureDht& dht) mutable {
         dht.putSigned(hash, value, bindOpDoneCallback(std::move(cb)), permanent);
     });
-    cv.notify_all();
 }
 
 void
@@ -888,14 +873,12 @@ DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value
         if (cb) cb(false, {});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([=,
+    postOp([=,
         cb = std::move(cb),
         value = std::move(value)
     ] (SecureDht& dht) mutable {
         dht.putEncrypted(hash, to, value, bindOpDoneCallback(std::move(cb)), permanent);
     });
-    cv.notify_all();
 }
 
 void
@@ -920,7 +903,7 @@ DhtRunner::putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>&
         return;
     }
     ongoing_ops++;
-    pending_ops.emplace([=,
+    postOp([=,
         cb = std::move(cb),
         value = std::move(value)
     ] (SecureDht& dht) mutable {
@@ -939,8 +922,8 @@ void
 DhtRunner::bootstrap(const std::string& host, const std::string& service)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([host, service] (SecureDht& dht) mutable {
-        dht.addBootstrap(host, service);
+    post([this, host, service] () mutable {
+        dht_->addBootstrap(host, service);
     });
     cv.notify_all();
 }
@@ -949,8 +932,8 @@ void
 DhtRunner::bootstrap(const std::string& hostService)
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([host_service = splitPort(hostService)] (SecureDht& dht) mutable {
-        dht.addBootstrap(host_service.first, host_service.second);
+    post([this, host_service = splitPort(hostService)] () mutable {
+        dht_->addBootstrap(host_service.first, host_service.second);
     });
     cv.notify_all();
 }
@@ -959,8 +942,8 @@ void
 DhtRunner::clearBootstrap()
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([] (SecureDht& dht) mutable {
-        dht.clearBootstrap();
+    post([this] () mutable {
+        dht_->clearBootstrap();
     });
     cv.notify_all();
 }
@@ -974,15 +957,15 @@ DhtRunner::bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple cb)
     }
     std::lock_guard<std::mutex> lck(storage_mtx);
     ongoing_ops++;
-    pending_ops_prio.emplace([
+    post([this,
         cb = bindOpDoneCallback(std::move(cb)),
         nodes = std::move(nodes)
-    ] (SecureDht& dht) mutable {
+    ] () mutable {
         auto rem = cb ? std::make_shared<std::pair<size_t, bool>>(nodes.size(), false) : nullptr;
         for (auto& node : nodes) {
-            if (node.getPort() == 0)
-                node.setPort(net::DHT_DEFAULT_PORT);
-            dht.pingNode(std::move(node), [rem,cb](bool ok) {
+            if (node.port() == 0)
+                node.port(net::DHT_DEFAULT_PORT);
+            dht_->pingNode(std::move(node), [rem,cb](bool ok) {
                 auto& r = *rem;
                 r.first--;
                 r.second |= ok;
@@ -1005,8 +988,10 @@ DhtRunner::bootstrap(SockAddr addr, DoneCallbackSimple cb)
         return;
     }
     ongoing_ops++;
-    pending_ops_prio.emplace([addr = std::move(addr), cb = bindOpDoneCallback(std::move(cb))](SecureDht& dht) mutable {
-        dht.pingNode(std::move(addr), std::move(cb));
+    if (addr.address().is_unspecified())
+        addr.address(addr.address().is_v4() ? asio::ip::address(asio::ip::address_v4::loopback()) : asio::ip::address(asio::ip::address_v6::loopback()));
+    post([this, addr = std::move(addr), cb = bindOpDoneCallback(std::move(cb))]() mutable {
+        dht_->pingNode(std::move(addr), std::move(cb));
     });
     cv.notify_all();
 }
@@ -1017,8 +1002,8 @@ DhtRunner::bootstrap(const InfoHash& id, const SockAddr& address)
     std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    pending_ops_prio.emplace([id, address](SecureDht& dht) mutable {
-        dht.insertNode(id, address);
+    post([this, id, address]() mutable {
+        dht_->insertNode(id, address);
     });
     cv.notify_all();
 }
@@ -1029,9 +1014,9 @@ DhtRunner::bootstrap(std::vector<NodeExport> nodes)
     std::lock_guard<std::mutex> lck(storage_mtx);
     if (running != State::Running)
         return;
-    pending_ops_prio.emplace([nodes = std::move(nodes)](SecureDht& dht) {
+    post([this, nodes = std::move(nodes)]() {
         for (auto& node : nodes)
-            dht.insertNode(node);
+            dht_->insertNode(node);
     });
     cv.notify_all();
 }
@@ -1040,8 +1025,8 @@ void
 DhtRunner::connectivityChanged()
 {
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht& dht) {
-        dht.connectivityChanged();
+    post([=]() {
+        dht_->connectivityChanged();
 #ifdef OPENDHT_PEER_DISCOVERY
         if (peerDiscovery_)
             peerDiscovery_->connectivityChanged();
@@ -1058,14 +1043,12 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const Sp<crypto::Ce
         cb({});
         return;
     }
-    ongoing_ops++;
-    pending_ops.emplace([this, hash, cb = std::move(cb)] (SecureDht& dht) {
+    postOp([this, hash, cb = std::move(cb)] (SecureDht& dht) {
         dht.findCertificate(hash, [this, cb = std::move(cb)](const Sp<crypto::Certificate>& crt){
             cb(crt);
             opEnded();
         });
     });
-    cv.notify_all();
 }
 
 void
@@ -1104,13 +1087,7 @@ DhtRunner::enableProxy(bool proxify)
         auto dht_via_proxy = std::make_unique<DhtProxyClient>(
                 config_.server_ca,
                 config_.client_identity,
-                [this]{
-                    if (config_.threaded) {
-                        std::lock_guard<std::mutex> lck(storage_mtx);
-                        pending_ops_prio.emplace([=](SecureDht&) mutable {});
-                        cv.notify_all();
-                    }
-                },
+                strand_,
                 config_.proxy_server, config_.push_node_id, logger_);
         if (not config_.push_token.empty())
             dht_via_proxy->setPushNotificationToken(config_.push_token);
@@ -1182,7 +1159,7 @@ DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& da
 {
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht&) {
+    post([=]() {
         if (dht_)
             dht_->pushNotificationReceived(data);
     });

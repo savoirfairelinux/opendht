@@ -22,7 +22,6 @@
 #include "infohash.h"
 #include "crypto.h"
 #include "utils.h"
-#include "sockaddr.h"
 
 #include <msgpack.hpp>
 

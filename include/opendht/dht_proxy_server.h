@@ -25,7 +25,6 @@
 #include "infohash.h"
 #include "proxy.h"
 #include "scheduler.h"
-#include "sockaddr.h"
 #include "value.h"
 #include "http.h"
 
@@ -89,6 +88,7 @@ public:
         const ProxyServerConfig& config = {},
         const std::shared_ptr<dht::Logger>& logger = {});
 
+    void stop();
     virtual ~DhtProxyServer();
 
     DhtProxyServer(const DhtProxyServer& other) = delete;

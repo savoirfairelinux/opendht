@@ -19,7 +19,6 @@
  */
 
 #include "peer_discovery.h"
-#include "network_utils.h"
 #include "utils.h"
 
 #include <asio.hpp>
@@ -153,7 +152,7 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
                             return;
                     }
                     if (cb)
-                        cb(std::move(o.val), SockAddr{ receiveFrom_.data(), (socklen_t)receiveFrom_.size() });
+                        cb(std::move(o.val), receiveFrom_);
                 }
             } else {
                 throw msgpack::type_error{};

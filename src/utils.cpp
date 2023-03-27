@@ -21,7 +21,6 @@
 #endif
 
 #include "utils.h"
-#include "sockaddr.h"
 #include "default_types.h"
 
 /* An IPv4 equivalent to IN6_IS_ADDR_UNSPECIFIED */
@@ -40,8 +39,6 @@ const char* version() {
 }
 
 const HexMap hex_map = {};
-
-static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
 
 std::pair<std::string, std::string>
 splitPort(const std::string& s) {
@@ -63,6 +60,7 @@ splitPort(const std::string& s) {
     return {s.substr(0,found), s.substr(found+1)};
 }
 
+/*
 std::vector<SockAddr>
 SockAddr::resolve(const std::string& host, const std::string& service)
 {
@@ -102,6 +100,7 @@ SockAddr::setAddress(const char* address)
     if (inet_pton(family, address, addr) <= 0)
         throw std::runtime_error(std::string("Can't parse IP address: ") + strerror(errno));
 }
+*/
 
 std::string
 print_addr(const sockaddr* sa, socklen_t slen)
@@ -127,6 +126,7 @@ print_addr(const sockaddr_storage& ss, socklen_t sslen)
     return print_addr((const sockaddr*)&ss, sslen);
 }
 
+/*
 bool
 SockAddr::isUnspecified() const
 {
@@ -232,7 +232,7 @@ SockAddr::getMappedIPv6()
 
 bool operator==(const SockAddr& a, const SockAddr& b) {
     return a.equals(b);
-}
+}*/
 
 time_point from_time_t(std::time_t t) {
     auto dt = system_clock::from_time_t(t) - system_clock::now();

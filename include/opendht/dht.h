@@ -29,6 +29,8 @@
 #include "callbacks.h"
 #include "dht_interface.h"
 
+#include <asio/strand.hpp>
+
 #include <string>
 #include <array>
 #include <vector>
@@ -44,6 +46,7 @@ namespace dht {
 
 namespace net {
 struct Request;
+class UdpSocket;
 } /* namespace net */
 
 struct Storage;
@@ -65,10 +68,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {});
-
-    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l = {})
-        : Dht(std::move(sock), config, std::make_shared<Logger>(l)) {}
+    Dht(std::shared_ptr<net::strand> strand, std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {});
 
     virtual ~Dht();
 
@@ -89,8 +89,14 @@ public:
     NodeStatus getStatus() const override {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
     }
+    void addOnConnectedCallback(std::function<void()> cb) {
+        onConnectCallbacks_.emplace(std::move(cb));
+    }
+    void addOnStateChangeCallback(StatusCallback cb) {
+        onStateChangeCallbacks_.emplace_back(std::move(cb));
+    }
 
-    net::DatagramSocket* getSocket() const override { return network_engine.getSocket(); };
+    const net::DatagramSocket* getSocket() const override { return network_engine.getSocket(); };
 
     /**
      * Performs final operations before quitting.
@@ -133,10 +139,10 @@ public:
 
     void pingNode(SockAddr, DoneCallbackSimple&& cb={}) override;
 
-    time_point periodic(const uint8_t *buf, size_t buflen, SockAddr, const time_point& now) override;
+    /*time_point periodic(const uint8_t *buf, size_t buflen, SockAddr, const time_point& now) override;
     time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
         return periodic(buf, buflen, SockAddr(from, fromlen), now);
-    }
+    }*/
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -379,6 +385,7 @@ private:
 
     uint64_t secret {};
     uint64_t oldsecret {};
+    asio::steady_timer rotateRecretsJob;
 
     // registred types
     TypeStore types;
@@ -399,10 +406,10 @@ private:
 
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
     std::chrono::steady_clock::duration bootstrap_period {BOOTSTRAP_PERIOD};
-    Sp<Scheduler::Job> bootstrapJob {};
+    asio::steady_timer bootstrapJob;
 
     std::map<InfoHash, Storage> store;
-    std::map<SockAddr, StorageBucket, SockAddr::ipCmp> store_quota;
+    std::map<SockAddr, StorageBucket, ipCmp> store_quota;
     size_t total_values {0};
     size_t total_store_size {0};
     size_t max_store_keys {MAX_HASHES};
@@ -418,15 +425,18 @@ private:
 
 
     // timing
-    Scheduler scheduler;
-    Sp<Scheduler::Job> nextNodesConfirmation {};
-    Sp<Scheduler::Job> nextStorageMaintenance {};
+    asio::steady_timer nextNodesConfirmation;
+    asio::steady_timer nextStorageMaintenance;
+    asio::steady_timer expirationJob;
+    asio::steady_timer statusCheckJob;
 
     net::NetworkEngine network_engine;
     using ReportedAddr = std::pair<unsigned, SockAddr>;
     std::vector<ReportedAddr> reported_addr;
 
     std::string persistPath;
+    std::vector<StatusCallback> onStateChangeCallbacks_ {};
+    std::queue<std::function<void()>> onConnectCallbacks_ {};
 
     // are we a bootstrap node ?
     // note: Any running node can be used as a bootstrap node.
@@ -449,7 +459,7 @@ private:
 
     // Storage
     void storageAddListener(const InfoHash& id, const Sp<Node>& node, size_t tid, Query&& = {}, int version = 0);
-    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr& sa = {}, bool permanent = false);
+    bool storageStore(const InfoHash& id, const Sp<Value>& value, time_point created, const SockAddr* sa = nullptr, bool permanent = false);
     bool storageRefresh(const InfoHash& id, Value::Id vid);
     void expireStore();
     void expireStorage(InfoHash h);
@@ -493,7 +503,8 @@ private:
     void onNewNode(const Sp<Node>& node, int confirm);
     const Sp<Node> findNode(const InfoHash& id, sa_family_t af) const;
     bool trySearchInsert(const Sp<Node>& node);
-
+    void scheduleStatusCheck();
+    
     // Searches
     inline SearchMap& searches(sa_family_t af) { return dht(af).searches; }
     inline const SearchMap& searches(sa_family_t af) const { return dht(af).searches; }
@@ -503,6 +514,7 @@ private:
      * infohash (id), using the specified IP version (IPv4 or IPv6).
      */
     Sp<Search> search(const InfoHash& id, sa_family_t af, GetCallback = {}, QueryCallback = {}, DoneCallback = {}, Value::Filter = {}, const Sp<Query>& q = {});
+    void scheduleNodeConfirmation(const time_point& step);
 
     void announce(const InfoHash& id, sa_family_t af, Sp<Value> value, DoneCallback callback, time_point created=time_point::max(), bool permanent = false);
     size_t listenTo(const InfoHash& id, sa_family_t af, ValueCallback cb, Value::Filter f = {}, const Sp<Query>& q = {});
@@ -520,8 +532,12 @@ private:
     void confirmNodes();
     void expire();
 
+    void onStateChanged();
     void onConnected();
     void onDisconnected();
+
+    inline const time_point& time() const { return network_engine.time(); }
+    inline asio::io_context& context() const { return network_engine.context(); }
 
     /**
      * Generic function to execute when a 'get' request has completed.

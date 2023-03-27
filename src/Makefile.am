@@ -45,7 +45,6 @@ nobase_include_HEADERS = \
         ../include/opendht/scheduler.h \
         ../include/opendht/rate_limiter.h \
         ../include/opendht/utils.h \
-        ../include/opendht/sockaddr.h \
         ../include/opendht/infohash.h \
         ../include/opendht/node.h \
         ../include/opendht/value.h \

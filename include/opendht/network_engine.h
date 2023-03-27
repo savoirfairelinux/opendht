@@ -19,16 +19,19 @@
 
 #pragma once
 
+#include "network_utils.h"
 #include "node_cache.h"
 #include "value.h"
 #include "infohash.h"
 #include "node.h"
-#include "scheduler.h"
 #include "utils.h"
 #include "rng.h"
 #include "rate_limiter.h"
 #include "log_enable.h"
-#include "network_utils.h"
+#include "udp_socket.h"
+
+#include <asio/strand.hpp>
+#include <asio/ip/udp.hpp>
 
 #include <vector>
 #include <string>
@@ -43,10 +46,6 @@ namespace net {
 struct Request;
 struct Socket;
 struct TransId;
-
-#ifndef MSG_CONFIRM
-#define MSG_CONFIRM 0
-#endif
 
 struct NetworkConfig {
     NetId network {0};
@@ -217,10 +216,10 @@ public:
     NetworkEngine(
             InfoHash& myid,
             NetworkConfig config,
+            const Sp<strand>& strand,
             std::unique_ptr<DatagramSocket>&& sock,
             const Sp<Logger>& log,
             std::mt19937_64& rd,
-            Scheduler& scheduler,
             decltype(NetworkEngine::onError)&& onError,
             decltype(NetworkEngine::onNewNode)&& onNewNode,
             decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -233,7 +232,9 @@ public:
 
     ~NetworkEngine();
 
-    net::DatagramSocket* getSocket() const { return dht_socket.get(); };
+    asio::io_context& context() const { return strand_->context(); }
+
+    const net::DatagramSocket* getSocket() const { return dht_socket.get(); };
 
     void clear();
 
@@ -441,8 +442,8 @@ public:
      */
     void processMessage(const uint8_t *buf, size_t buflen, SockAddr addr);
 
-    Sp<Node> insertNode(const InfoHash& id, const SockAddr& addr) {
-        auto n = cache.getNode(id, addr, scheduler.time(), 0);
+    Sp<Node> insertNode(const InfoHash& id, const SockAddr& addr) {        
+        auto n = cache.getNode(id, addr, time(), 0);
         onNewNode(n, 0);
         return n;
     }
@@ -474,6 +475,12 @@ public:
     size_t getPartialCount() const {
         return partial_messages.size();
     }
+    /**
+     * Accessors for the common time reference used for synchronizing
+     * operations.
+     */
+    inline const time_point& time() const { return now; }
+    inline const time_point& syncTime() { return (now = clock::now()); }
 
 private:
 
@@ -499,7 +506,7 @@ private:
 
     static constexpr size_t MTU {1280};
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
-    static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
+    static constexpr size_t MAX_MESSAGE_VALUE_SIZE {16 * MTU};
 
     static const std::string my_v;
 
@@ -530,7 +537,7 @@ private:
 
 
     // basic wrapper for socket sendto function
-    int send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
+    asio::error_code send(const SockAddr& addr, const char *buf, size_t len, bool confirmed = false);
 
     void sendValueParts(Tid tid, const std::vector<Blob>& svals, const SockAddr& addr);
     std::vector<Blob> packValueHeader(msgpack::sbuffer&, std::vector<Sp<Value>>::const_iterator, std::vector<Sp<Value>>::const_iterator) const;
@@ -573,9 +580,10 @@ private:
     void deserializeNodes(ParsedMessage& msg, const SockAddr& from);
 
     /* DHT info */
+    Sp<strand> strand_;
     const InfoHash& myid;
     const NetworkConfig config {};
-    const std::unique_ptr<DatagramSocket> dht_socket;
+    std::unique_ptr<DatagramSocket> dht_socket;
     Sp<Logger> logger_;
     std::mt19937_64& rd;
 
@@ -583,7 +591,7 @@ private:
 
     // global limiting should be triggered by at least 8 different IPs
     using IpLimiter = RateLimiter;
-    using IpLimiterMap = std::map<SockAddr, IpLimiter, SockAddr::ipCmp>;
+    using IpLimiterMap = std::map<SockAddr, IpLimiter, ipCmp>;
     IpLimiterMap address_rate_limiter;
     RateLimiter rate_limiter;
     ssize_t limiter_maintenance {0};
@@ -594,10 +602,9 @@ private:
 
     MessageStats in_stats {}, out_stats {};
     std::set<SockAddr> blacklist {};
-
-    Scheduler& scheduler;
-
     bool logIncoming_ {false};
+
+    time_point now {clock::now()};
 };
 
 } /* namespace net  */

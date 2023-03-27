@@ -21,6 +21,7 @@
 
 #include "net.h"
 #include "value.h"
+#include <asio/steady_timer.hpp>
 
 namespace dht {
 struct Node;
@@ -140,6 +141,7 @@ private:
     duration attempt_duration {((duration)Node::MAX_RESPONSE_TIME)/2};
     time_point start {time_point::min()};      /* time when the request is created. */
     time_point last_try {time_point::min()};   /* time of the last attempt to process the request. */
+    std::unique_ptr<asio::steady_timer> expiration_timer;
 
     std::function<void(const Request&, ParsedMessage&&)> on_done {};
     std::function<bool(const Request&, DhtProtocolException&&)> on_error {};

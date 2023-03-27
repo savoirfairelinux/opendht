@@ -64,9 +64,9 @@ DhtRunnerTester::tearDown() {
 void
 DhtRunnerTester::testConstructors() {
     CPPUNIT_ASSERT(node1.getBoundPort());
-    CPPUNIT_ASSERT_EQUAL(node1.getBoundPort(), node1.getBound().getPort());
+    CPPUNIT_ASSERT_EQUAL(node1.getBoundPort(), node1.getBound().port());
     CPPUNIT_ASSERT(node2.getBoundPort());
-    CPPUNIT_ASSERT_EQUAL(node2.getBoundPort(), node2.getBound().getPort());
+    CPPUNIT_ASSERT_EQUAL(node2.getBoundPort(), node2.getBound().port());
 
     dht::DhtRunner::Config config {};
     dht::DhtRunner::Context context {};

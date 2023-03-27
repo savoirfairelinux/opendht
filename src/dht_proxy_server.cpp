@@ -279,7 +279,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
             ioContext_,
             std::forward<restinio::run_on_this_thread_settings_t<RestRouterTraitsTls>>(std::move(settings))
         );
-        // run http server
+        // run https server
         serverThread_ = std::thread([this]{
             httpsServer_->open_async([]{/*ok*/}, [](std::exception_ptr ex){
                 std::rethrow_exception(ex);
@@ -466,8 +466,17 @@ DhtProxyServer::io_context() const
     return *ioContext_;
 }
 
-DhtProxyServer::~DhtProxyServer()
+void
+DhtProxyServer::stop()
 {
+    if (logger_)
+        logger_->d("[proxy:server] closing http server");
+    ioContext_->stop();
+    if (serverThread_.joinable())
+        serverThread_.join();
+    if (logger_)
+        logger_->d("[proxy:server] http server closed");
+
     if (not persistPath_.empty()) {
         if (logger_)
             logger_->d("Saving proxy state to %.*s", (int)persistPath_.size(), persistPath_.c_str());
@@ -495,13 +504,13 @@ DhtProxyServer::~DhtProxyServer()
         pushListeners_.clear();
 #endif
     }
-    if (logger_)
-        logger_->d("[proxy:server] closing http server");
+}
+
+DhtProxyServer::~DhtProxyServer()
+{
     ioContext_->stop();
     if (serverThread_.joinable())
         serverThread_.join();
-    if (logger_)
-        logger_->d("[proxy:server] http server closed");
 }
 
 template< typename ServerSettings >

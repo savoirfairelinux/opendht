@@ -44,6 +44,18 @@ enum class NodeStatus {
     Connecting,   // 1+ nodes
     Connected     // 1+ good nodes
 };
+struct OPENDHT_PUBLIC DhtNodeStatus {
+    NodeStatus ipv4;
+    NodeStatus ipv6;
+    inline NodeStatus get() const {
+        if (ipv4 == NodeStatus::Connected or ipv6 == NodeStatus::Connected)
+            return NodeStatus::Connected;
+        if (ipv4 == NodeStatus::Connecting or ipv6 == NodeStatus::Connecting)
+            return NodeStatus::Connecting;
+        return NodeStatus::Disconnected;
+    }
+};
+using StatusCallback = std::function<void(DhtNodeStatus)>;
 
 inline constexpr const char*
 statusToStr(NodeStatus status) {
@@ -79,6 +91,7 @@ struct OPENDHT_PUBLIC NodeStats {
 struct OPENDHT_PUBLIC NodeInfo {
     InfoHash id;
     InfoHash node_id;
+    PkId node_long_id;
     NodeStats ipv4 {};
     NodeStats ipv6 {};
     size_t ongoing_ops {0};

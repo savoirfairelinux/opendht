@@ -204,12 +204,6 @@ public:
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override {
         return dht_->getPublicAddress(family);
     }
-    time_point periodic(const uint8_t *buf, size_t buflen, SockAddr sa, const time_point& now) override {
-        return dht_->periodic(buf, buflen, std::move(sa), now);
-    }
-    time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
-        return dht_->periodic(buf, buflen, from, fromlen, now);
-    }
     NodeStatus updateStatus(sa_family_t af) override  {
         return dht_->updateStatus(af);
     }
@@ -219,7 +213,13 @@ public:
     NodeStatus getStatus() const override {
         return dht_->getStatus();
     }
-    net::DatagramSocket* getSocket() const override {
+    void addOnConnectedCallback(std::function<void()> cb) override {
+        dht_->addOnConnectedCallback(std::move(cb));
+    }
+    void addOnStateChangeCallback(StatusCallback cb) override {
+        dht_->addOnStateChangeCallback(std::move(cb));
+    }
+    const net::DatagramSocket* getSocket() const override {
         return dht_->getSocket();
     };
     bool isRunning(sa_family_t af = 0) const override {

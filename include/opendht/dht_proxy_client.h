@@ -54,7 +54,7 @@ public:
 
     explicit DhtProxyClient(
         std::shared_ptr<crypto::Certificate> serverCA, crypto::Identity clientIdentity,
-        std::function<void()> loopSignal, const std::string& serverHost,
+        std::shared_ptr<asio::io_context::strand> strand, const std::string& serverHost,
         const std::string& pushClientId = "", std::shared_ptr<Logger> logger = {});
 
     void setHeaderFields(http::Request& request);
@@ -97,6 +97,13 @@ public:
     NodeStatus getStatus() const override {
         return std::max(getStatus(AF_INET), getStatus(AF_INET6));
     }
+    void addOnConnectedCallback(std::function<void()> cb) {
+        onConnectCallbacks_.emplace(std::move(cb));
+    }
+    void addOnStateChangeCallback(StatusCallback cb) {
+        onStateChangeCallbacks_.emplace_back(std::move(cb));
+    }
+    void onStateChanged();
 
     /**
      * Performs final operations before quitting.
@@ -213,11 +220,6 @@ public:
      */
     void pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
 
-    time_point periodic(const uint8_t*, size_t, SockAddr, const time_point& now) override;
-    time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
-        return periodic(buf, buflen, SockAddr(from, fromlen), now);
-    }
-
     /**
      * Similar to Dht::get, but sends a Query to filter data remotely.
      * @param key the key for which to query data for.
@@ -285,7 +287,6 @@ public:
     }
     void connectivityChanged() override {
         getProxyInfos();
-        loopSignal_();
     }
 
 private:
@@ -357,6 +358,8 @@ private:
     SockAddr publicAddressV4_;
     SockAddr publicAddressV6_;
     std::atomic_bool launchConnectedCbs_ {false};
+    std::vector<StatusCallback> onStateChangeCallbacks_ {};
+    std::queue<std::function<void()>> onConnectCallbacks_ {};
 
     InfoHash myid {};
 
@@ -367,7 +370,10 @@ private:
      * ASIO I/O Context for sockets in httpClient_
      * Note: Each context is used in one thread only
      */
-    asio::io_context httpContext_;
+    //asio::io_context httpContext_;
+    //std::shared_ptr<asio::io_context> httpContext_;
+    std::shared_ptr<asio::io_context::strand> strand_;
+    asio::io_context& context() const { return strand_->context(); }
     mutable std::mutex resolverLock_;
     std::shared_ptr<http::Resolver> resolver_;
 
@@ -386,12 +392,6 @@ private:
     mutable std::mutex searchLock_;
     size_t listenerToken_ {0};
     std::map<InfoHash, ProxySearch> searches_;
-
-    /**
-     * Callbacks should be executed in the main thread.
-     */
-    std::mutex lockCallbacks_;
-    std::vector<std::function<void()>> callbacks_;
 
     Sp<InfoState> infoState_;
 
@@ -437,8 +437,6 @@ private:
     {};
 #endif
 #endif
-
-    const std::function<void()> loopSignal_;
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     std::string fillBody(bool resubscribe);

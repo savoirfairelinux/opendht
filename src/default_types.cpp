@@ -54,14 +54,7 @@ DhtMessage::ServiceFilter(const std::string& s)
 
 std::ostream& operator<< (std::ostream& s, const IpServiceAnnouncement& v)
 {
-    if (v.addr) {
-        s << "Peer: ";
-        s << "port " << v.getPort();
-        char hbuf[NI_MAXHOST];
-        if (getnameinfo(v.addr.get(), v.addr.getLength(), hbuf, sizeof(hbuf), nullptr, 0, NI_NUMERICHOST) == 0) {
-            s << " addr " << std::string(hbuf, strlen(hbuf));
-        }
-    }
+    s << "Peer: " << v.addr;
     return s;
 }
 

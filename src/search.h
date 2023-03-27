@@ -23,6 +23,10 @@
 #include "listener.h"
 #include "value_cache.h"
 #include "op_cache.h"
+#include "node.h"
+#include "dht.h"
+
+#include <asio/steady_timer.hpp>
 
 namespace dht {
 
@@ -52,7 +56,7 @@ struct Dht::SearchNode {
 
     struct AnnounceStatus {
         Sp<net::Request> req {};
-        Sp<Scheduler::Job> refresh {};
+        std::unique_ptr<asio::steady_timer> refresh {};
         time_point refresh_time;
         AnnounceStatus(){};
         AnnounceStatus(Sp<net::Request> r, time_point t): req(std::move(r)), refresh_time(t)
@@ -72,8 +76,9 @@ struct Dht::SearchNode {
 
     struct CachedListenStatus {
         ValueCache cache;
-        Sp<Scheduler::Job> refresh {};
-        Sp<Scheduler::Job> cacheExpirationJob {};
+        std::unique_ptr<asio::steady_timer> refresh {};
+        std::unique_ptr<asio::steady_timer> cacheExpirationJob {};
+        std::function<void()> onCacheExpired {};
         Sp<net::Request> req {};
         Tid socketId {0};
         CachedListenStatus(ValueStateCallback&& cb, SyncCallback scb, Tid sid)
@@ -84,6 +89,14 @@ struct Dht::SearchNode {
             if (socketId and req and req->node) {
                 req->node->closeSocket(socketId);
             }
+        }
+
+        void scheduleCacheExpired(const time_point& t) {
+            cacheExpirationJob->expires_at(t);
+            cacheExpirationJob->async_wait([cb = onCacheExpired](const asio::error_code &ec){
+                if (ec != asio::error::operation_aborted)
+                    cb();
+            });
         }
     };
     using NodeListenerStatus = std::map<Sp<Query>, CachedListenStatus>;
@@ -101,7 +114,7 @@ struct Dht::SearchNode {
 
     Blob token {};                                 /* last token the node sent to us after a get request */
     time_point last_get_reply {time_point::min()}; /* last time received valid token */
-    Sp<Scheduler::Job> syncJob {};
+    std::unique_ptr<asio::steady_timer> syncJob {};
     bool candidate {false};                        /* A search node is candidate if the search is/was synced and this
                                                       node is a new candidate for inclusion. */
 
@@ -238,18 +251,17 @@ struct Dht::SearchNode {
         getStatus.clear();
     }
 
-    void onValues(const Sp<Query>& q, net::RequestAnswer&& answer, const TypeStore& types, Scheduler& scheduler)
+    void onValues(const Sp<Query>& q, net::RequestAnswer&& answer, const TypeStore& types, const time_point& now)
     {
         auto l = listenStatus.find(q);
         if (l != listenStatus.end()) {
-            auto next = l->second.cache.onValues(answer.values,
+            l->second.scheduleCacheExpired(l->second.cache.onValues(answer.values,
                                      answer.refreshed_values,
-                                     answer.expired_values, types, scheduler.time());
-            scheduler.edit(l->second.cacheExpirationJob, next);
+                                     answer.expired_values, types, now));
         }
     }
 
-    void onListenSynced(const Sp<Query>& q, bool synced = true, Sp<Scheduler::Job> refreshJob = {}) {
+    void onListenSynced(const Sp<Query>& q, bool synced = true, std::unique_ptr<asio::steady_timer> refreshJob = {}) {
         auto l = listenStatus.find(q);
         if (l != listenStatus.end()) {
             if (l->second.refresh)
@@ -259,11 +271,10 @@ struct Dht::SearchNode {
         }
     }
 
-    void expireValues(const Sp<Query>& q, Scheduler& scheduler) {
+    void expireValues(const Sp<Query>& q, const time_point& now) {
         auto l = listenStatus.find(q);
         if (l != listenStatus.end()) {
-            auto next = l->second.cache.expireValues(scheduler.time());
-            scheduler.edit(l->second.cacheExpirationJob, next);
+            l->second.scheduleCacheExpired(l->second.cache.expireValues(now));
         }
     }
 
@@ -409,7 +420,17 @@ struct Dht::Search {
     uint16_t tid;
     time_point refill_time {time_point::min()};
     time_point step_time {time_point::min()};           /* the time of the last search step */
-    Sp<Scheduler::Job> nextSearchStep {};
+    std::unique_ptr<asio::steady_timer> nextSearchStep {};
+    std::function<void()> onSearchStep {};
+    void scheduleStep(const time_point& now) {
+        if (nextSearchStep) {
+            nextSearchStep->expires_at(now);
+            nextSearchStep->async_wait([cb=onSearchStep](const asio::error_code &ec){
+                if (ec != asio::error::operation_aborted)
+                    cb();
+            });
+        }
+    }
 
     bool expired {false};              /* no node, or all nodes expired */
     bool done {false};                 /* search is over, cached for later */
@@ -432,7 +453,9 @@ struct Dht::Search {
 
     /* Cache */
     SearchCache cache;
-    Sp<Scheduler::Job> opExpirationJob;
+    //std::unique_ptr<asio::steady_timer> opExpirationJob;
+    std::unique_ptr<asio::steady_timer> opExpirationJob {};
+
 
     ~Search() {
         if (opExpirationJob)
@@ -537,46 +560,57 @@ struct Dht::Search {
     bool isAnnounced(Value::Id id) const;
     bool isListening(time_point now, duration exp) const;
 
-    void get(const Value::Filter& f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, Scheduler& scheduler) {
+    void get(const Value::Filter& f, const Sp<Query>& q, const QueryCallback& qcb, const GetCallback& gcb, const DoneCallback& dcb, const time_point& now) {
         if (gcb or qcb) {
             if (not cache.get(f, q, gcb, dcb)) {
-                const auto& now = scheduler.time();
                 callbacks.emplace(now, Get { now, f, q, qcb, gcb, dcb });
-                scheduler.edit(nextSearchStep, now);
+                scheduleStep(now);
             }
         }
     }
 
-    size_t listen(const ValueCallback& cb, Value::Filter&& f, const Sp<Query>& q, Scheduler& scheduler) {
+    size_t listen(const ValueCallback& cb, Value::Filter&& f, const Sp<Query>& q, const time_point& now) {
         //DHT_LOG.e(id, "[search %s IPv%c] listen", id.toString().c_str(), (af == AF_INET) ? '4' : '6');
         return cache.listen(cb, q, std::move(f), [&](const Sp<Query>& q, ValueCallback vcb, SyncCallback scb){
             done = false;
             auto token = ++listener_token;
             listeners.emplace(token, SearchListener{q, vcb, scb});
-            scheduler.edit(nextSearchStep, scheduler.time());
+            scheduleStep(now);
             return token;
         });
     }
 
-    void cancelListen(size_t token, Scheduler& scheduler) {
-        cache.cancelListen(token, scheduler.time());
-        if (not opExpirationJob)
-            opExpirationJob = scheduler.add(time_point::max(), [this,&scheduler]{
-                auto nextExpire = cache.expire(scheduler.time(), [&](size_t t){
-                    const auto& ll = listeners.find(t);
-                    if (ll != listeners.cend()) {
-                        auto query = ll->second.query;
-                        listeners.erase(ll);
-                        if (listeners.empty()) {
-                            for (auto& sn : nodes) sn->cancelListen();
-                        } else if (query) {
-                            for (auto& sn : nodes) sn->cancelListen(query);
-                        }
-                    }
-                });
-                scheduler.edit(opExpirationJob, nextExpire);
-            });
-        scheduler.edit(opExpirationJob, cache.getExpiration());
+    time_point expireListeners(const time_point& now) {
+        return cache.expire(now, [&](size_t t){
+            const auto& ll = listeners.find(t);
+            if (ll != listeners.cend()) {
+                auto query = ll->second.query;
+                listeners.erase(ll);
+                if (listeners.empty()) {
+                    for (auto& sn : nodes) sn->cancelListen();
+                } else if (query) {
+                    for (auto& sn : nodes) sn->cancelListen(query);
+                }
+            }
+        });
+    }
+
+    void scheduleListenerExpiration() {
+        opExpirationJob->async_wait([this](const asio::error_code &ec){
+            if (ec != asio::error::operation_aborted) {
+                opExpirationJob->expires_at(expireListeners(clock::now()));
+                scheduleListenerExpiration();
+            }
+        });
+    }
+
+    void cancelListen(size_t token, const time_point& now) {
+        if (cache.cancelListen(token, now)) {
+            if (opExpirationJob) {
+                opExpirationJob->expires_at(cache.getExpiration());
+                scheduleListenerExpiration();
+            }
+        }
     }
 
     std::vector<Sp<Value>> getPut() const {

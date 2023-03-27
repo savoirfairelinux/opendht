@@ -53,6 +53,8 @@ struct NetworkEngine::PartialMessage {
     time_point start;
     time_point last_part;
     std::unique_ptr<ParsedMessage> msg;
+    std::unique_ptr<asio::steady_timer> timeout;
+    std::unique_ptr<asio::steady_timer> final_timeout;
 };
 
 std::vector<Blob>
@@ -83,10 +85,10 @@ RequestAnswer::RequestAnswer(ParsedMessage&& msg)
 {}
 
 NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
+        const Sp<strand>& strand,
         std::unique_ptr<DatagramSocket>&& sock,
         const Sp<Logger>& log,
         std::mt19937_64& rand,
-        Scheduler& scheduler,
         decltype(NetworkEngine::onError)&& onError,
         decltype(NetworkEngine::onNewNode)&& onNewNode,
         decltype(NetworkEngine::onReportedAddr)&& onReportedAddr,
@@ -96,6 +98,7 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
         decltype(NetworkEngine::onListen)&& onListen,
         decltype(NetworkEngine::onAnnounce)&& onAnnounce,
         decltype(NetworkEngine::onRefresh)&& onRefresh) :
+    strand_(strand),
     onError(std::move(onError)),
     onNewNode(std::move(onNewNode)),
     onReportedAddr(std::move(onReportedAddr)),
@@ -107,9 +110,12 @@ NetworkEngine::NetworkEngine(InfoHash& myid, NetworkConfig c,
     onRefresh(std::move(onRefresh)),
     myid(myid), config(c), dht_socket(std::move(sock)), logger_(log), rd(rand),
     cache(rd),
-    rate_limiter(config.max_req_per_sec),
-    scheduler(scheduler)
-{}
+    rate_limiter(config.max_req_per_sec)
+{
+    dht_socket->setOnReceive([this](const ReceivedPacket& pkt) {
+        processMessage(pkt.data.data(), pkt.data.size(), pkt.from);
+    });
+}
 
 NetworkEngine::~NetworkEngine() {
     clear();
@@ -124,7 +130,7 @@ NetworkEngine::tellListener(const Sp<Node>& node, Tid socket_id, const InfoHash&
     auto nnodes = bufferNodes(node->getFamily(), hash, want, nodes, nodes6);
     try {
         if (version >= 1) {
-            sendUpdateValues(node, hash, std::move(values), scheduler.time(), ntoken, socket_id);
+            sendUpdateValues(node, hash, std::move(values), time(), ntoken, socket_id);
         } else {
             sendNodesValues(node->getAddr(), socket_id, nnodes.first, nnodes.second, std::move(values), query, ntoken);
         }
@@ -275,7 +281,7 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     if (not req.pending())
         return;
 
-    auto now = scheduler.time();
+    const auto& now = time();
     auto& node = *req.node;
     if (req.isExpired(now)) {
         // if (logger_)
@@ -289,18 +295,19 @@ NetworkEngine::requestStep(Sp<Request> sreq)
     }
 
     auto err = send(node.getAddr(), (char*)req.msg.data(), req.msg.size(), node.getReplyTime() < now - UDP_REPLY_TIME);
-    if (err == ENETUNREACH  ||
-        err == EHOSTUNREACH ||
-        err == EAFNOSUPPORT ||
-        err == EPIPE        ||
-        err == EPERM)
+    
+    if (err == asio::error::network_unreachable ||
+        err == asio::error::host_unreachable ||
+        err == asio::error::address_family_not_supported ||
+        err == asio::error::broken_pipe ||
+        err == asio::error::no_permission)
     {
         node.setExpired();
         if (not node.id)
             requests.erase(req.tid);
     } else {
         req.last_try = now;
-        if (err != EAGAIN) {
+        if (err != asio::error::try_again) {
             ++req.attempt_count;
             req.attempt_duration +=
                 req.attempt_duration + uniform_duration_distribution<>(0ms, ((duration)Node::MAX_RESPONSE_TIME)/4)(rd);
@@ -309,9 +316,15 @@ NetworkEngine::requestStep(Sp<Request> sreq)
             }
         }
         std::weak_ptr<Request> wreq = sreq;
-        scheduler.add(req.last_try + req.attempt_duration, [this,wreq] {
-            if (auto req = wreq.lock())
-                requestStep(req);
+        if (!req.expiration_timer)
+            req.expiration_timer = std::make_unique<asio::steady_timer>(context());
+        req.expiration_timer->expires_at(req.last_try + req.attempt_duration);
+        req.expiration_timer->async_wait([this,wreq](const asio::error_code& ec) {
+            if (ec != asio::error::operation_aborted) {
+                syncTime();
+                if (auto req = wreq.lock())
+                    requestStep(req);
+            }
         });
     }
 }
@@ -326,7 +339,7 @@ NetworkEngine::sendRequest(const Sp<Request>& request)
     auto& node = *request->node;
     if (not node.id)
         requests.emplace(request->tid, request);
-    request->start = scheduler.time();
+    request->start = time();
     node.requested(request);
     requestStep(request);
 }
@@ -336,7 +349,7 @@ NetworkEngine::sendRequest(const Sp<Request>& request)
 bool
 NetworkEngine::rateLimit(const SockAddr& addr)
 {
-    const auto& now = scheduler.time();
+    const auto& now = time();
 
     // occasional IP limiter maintenance (a few times every second at max rate)
     if (limiter_maintenance++ == config.max_peer_req_per_sec) {
@@ -360,24 +373,20 @@ NetworkEngine::rateLimit(const SockAddr& addr)
 bool
 NetworkEngine::isMartian(const SockAddr& addr)
 {
-    if (addr.getPort() == 0)
+    if (addr.port() == 0)
         return true;
-    switch(addr.getFamily()) {
+    switch(addr.protocol().family()) {
     case AF_INET: {
-        const auto& sin = addr.getIPv4();
-        const uint8_t* address = (const uint8_t*)&sin.sin_addr;
-        return (address[0] == 0) ||
-              ((address[0] & 0xE0) == 0xE0);
+        const auto& sin = addr.address().to_v4().to_bytes();
+        return (sin[0] == 0) ||
+              ((sin[0] & 0xE0) == 0xE0);
     }
     case AF_INET6: {
-        if (addr.getLength() < sizeof(sockaddr_in6))
-            return true;
-        const auto& sin6 = addr.getIPv6();
-        const uint8_t* address = (const uint8_t*)&sin6.sin6_addr;
-        return address[0] == 0xFF ||
-              (address[0] == 0xFE && (address[1] & 0xC0) == 0x80) ||
-               memcmp(address, InfoHash::zero().data(), 16) == 0 ||
-               memcmp(address, v4prefix,      12) == 0;
+        const auto& sin6 = addr.address().to_v6().to_bytes();
+        return sin6[0] == 0xFF ||
+              (sin6[0] == 0xFE && (sin6[1] & 0xC0) == 0x80) ||
+               memcmp(sin6.data(), InfoHash::zero().data(), 16) == 0 ||
+               memcmp(sin6.data(), v4prefix,      12) == 0;
     }
     default:
         return true;
@@ -402,16 +411,17 @@ NetworkEngine::isNodeBlacklisted(const SockAddr& addr) const
 void
 NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
 {
-    auto from = f.getMappedIPv4();
+    syncTime();
+    const auto& from = f;/*.getMappedIPv4();
     if (isMartian(from)) {
         if (logger_)
             logger_->w("Received packet from martian node %s", from.toString().c_str());
         return;
-    }
+    }*/
 
     if (isNodeBlacklisted(from)) {
-        if (logger_)
-            logger_->w("Received packet from blacklisted node %s", from.toString().c_str());
+        //if (logger_)
+        //    logger_->w("Received packet from blacklisted node %s", from.toString().c_str());
         return;
     }
 
@@ -433,7 +443,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
         return;
     }
 
-    const auto& now = scheduler.time();
+    const auto& now = time();
 
     // partial value data
     if (msg->type == MessageType::ValueData) {
@@ -445,7 +455,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
             rateLimit(from);
             return;
         }
-        if (!pmsg_it->second.from.equals(from)) {
+        if (pmsg_it->second.from != from) {
             if (logger_)
                 logger_->d("Received partial message data from unexpected IP address");
             rateLimit(from);
@@ -463,8 +473,13 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
                 } catch (...) {
                     return;
                 }
-            } else
-                scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, msg->tid));
+            } else {
+                pmsg_it->second.timeout->expires_at(now + RX_TIMEOUT);
+                pmsg_it->second.timeout->async_wait([this, t=msg->tid](const asio::error_code& ec) {
+                    if (ec != asio::error::operation_aborted)
+                        maintainRxBuffer(t);
+                });
+            }
         }
         return;
     }
@@ -499,8 +514,18 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
             pmsg.msg = std::move(msg);
             pmsg.start = now;
             pmsg.last_part = now;
-            scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
-            scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
+            //scheduler.add(now + RX_MAX_PACKET_TIME, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
+            //scheduler.add(now + RX_TIMEOUT, std::bind(&NetworkEngine::maintainRxBuffer, this, k));
+            pmsg.timeout = std::make_unique<asio::steady_timer>(context(), now + RX_TIMEOUT);
+            pmsg.final_timeout = std::make_unique<asio::steady_timer>(context(), now + RX_MAX_PACKET_TIME);
+            pmsg.timeout->async_wait([this,k](const asio::error_code& ec) {
+                if (ec != asio::error::operation_aborted)
+                    maintainRxBuffer(k);
+            });
+            pmsg.final_timeout->async_wait([this,k](const asio::error_code& ec) {
+                if (ec != asio::error::operation_aborted)
+                    maintainRxBuffer(k);
+            });
         } else if (logger_)
             logger_->e("Partial message with given TID %u already exists", k);
     }
@@ -509,7 +534,7 @@ NetworkEngine::processMessage(const uint8_t *buf, size_t buflen, SockAddr f)
 void
 NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& from)
 {
-    const auto& now = scheduler.time();
+    const auto& now = time();
     auto node = cache.getNode(msg->id, from, now, true, msg->is_client);
 
     if (msg->type == MessageType::ValueUpdate) {
@@ -566,10 +591,10 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 if (not req->setError(DhtProtocolException {msg->error_code}))
                     onError(req, DhtProtocolException {msg->error_code});
             } else {
-                if (logIncoming_)
+                /*if (logIncoming_)
                     if (logger_)
                         logger_->w(msg->id, "[node %s %s] received unknown error message %u",
-                        msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);
+                        msg->id.toString().c_str(), from.toString().c_str(), msg->error_code);*/
             }
             break;
         }
@@ -581,7 +606,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                  or r.getType() == MessageType::Refresh) {
                     r.node->authSuccess();
                 }
-                r.reply_time = scheduler.time();
+                r.reply_time = time();
 
                 deserializeNodes(*msg, from);
                 r.setDone(std::move(*msg));
@@ -613,7 +638,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 //     logger_->d(msg->target, node->id, "[node %s] got 'find' request for %s (%d)", node->toString().c_str(), msg->target.toString().c_str(), msg->want);
                 ++in_stats.find;
                 RequestAnswer answer = onFindNode(node, msg->target, msg->want);
-                auto nnodes = bufferNodes(from.getFamily(), msg->target, msg->want, answer.nodes4, answer.nodes6);
+                auto nnodes = bufferNodes(from.protocol().family(), msg->target, msg->want, answer.nodes4, answer.nodes6);
                 sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, {}, {}, answer.ntoken);
                 break;
             }
@@ -622,7 +647,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                 //     logger_->d(msg->info_hash, node->id, "[node %s] got 'get' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.get;
                 RequestAnswer answer = onGetValues(node, msg->info_hash, msg->want, msg->query);
-                auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
+                auto nnodes = bufferNodes(from.protocol().family(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
                 sendNodesValues(from, msg->tid, nnodes.first, nnodes.second, answer.values, msg->query, answer.ntoken);
                 break;
             }
@@ -652,7 +677,7 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     logger_->d(msg->info_hash, node->id, "[node %s] got 'listen' request for %s", node->toString().c_str(), msg->info_hash.toString().c_str());
                 ++in_stats.listen;
                 RequestAnswer answer = onListen(node, msg->info_hash, msg->token, msg->socket_id, std::move(msg->query), msg->version);
-                auto nnodes = bufferNodes(from.getFamily(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
+                auto nnodes = bufferNodes(from.protocol().family(), msg->info_hash, msg->want, answer.nodes4, answer.nodes6);
                 sendListenConfirmation(from, msg->tid);
                 break;
             }
@@ -682,19 +707,23 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
 void
 insertAddr(msgpack::packer<msgpack::sbuffer>& pk, const SockAddr& addr)
 {
-    size_t addr_len = std::min<size_t>(addr.getLength(),
-                     (addr.getFamily() == AF_INET) ? sizeof(in_addr) : sizeof(in6_addr));
-    void* addr_ptr = (addr.getFamily() == AF_INET) ? (void*)&addr.getIPv4().sin_addr
-                                                : (void*)&addr.getIPv6().sin6_addr;
     pk.pack("sa");
-    pk.pack_bin(addr_len);
-    pk.pack_bin_body((char*)addr_ptr, addr_len);
+    const auto& a = addr.address();
+    if (a.is_v4()) {
+        auto bytes = a.to_v4().to_bytes();
+        pk.pack_bin(bytes.size());
+        pk.pack_bin_body((char*)bytes.data(), bytes.size());
+    } else {
+        auto bytes = a.to_v6().to_bytes();
+        pk.pack_bin(bytes.size());
+        pk.pack_bin_body((char*)bytes.data(), bytes.size());
+    }
 }
 
-int
+asio::error_code
 NetworkEngine::send(const SockAddr& addr, const char *buf, size_t len, bool confirmed)
 {
-    return dht_socket ? dht_socket->sendTo(addr, (const uint8_t*)buf, len, confirmed) : ENOTCONN;
+    return dht_socket ? dht_socket->sendTo((const uint8_t*)buf, len, addr) : asio::error::not_connected;
 }
 
 Sp<Request>
@@ -854,18 +883,15 @@ NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const
 
 SockAddr deserializeIPv4(const uint8_t* ni) {
     SockAddr addr;
-    addr.setFamily(AF_INET);
-    auto& sin = addr.getIPv4();
-    std::memcpy(&sin.sin_addr, ni, 4);
-    std::memcpy(&sin.sin_port, ni + 4, 2);
+    addr.address(asio::ip::address_v4({ni[0], ni[1], ni[2], ni[3]}));
+    addr.port(ntohs(*reinterpret_cast<const uint16_t*>(ni + 4)));
     return addr;
 }
 SockAddr deserializeIPv6(const uint8_t* ni) {
     SockAddr addr;
-    addr.setFamily(AF_INET6);
-    auto& sin6 = addr.getIPv6();
-    std::memcpy(&sin6.sin6_addr, ni, 16);
-    std::memcpy(&sin6.sin6_port, ni + 16, 2);
+    addr.address(asio::ip::address_v6({ni[0], ni[1], ni[2], ni[3], ni[4], ni[5], ni[6], ni[7],
+                                       ni[8], ni[9], ni[10], ni[11], ni[12], ni[13], ni[14], ni[15]}));
+    addr.port(ntohs(*reinterpret_cast<const uint16_t*>(ni + 16)));
     return addr;
 }
 
@@ -875,21 +901,21 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
         throw DhtProtocolException {DhtProtocolException::WRONG_NODE_INFO_BUF_LEN};
     }
     // deserialize nodes
-    const auto& now = scheduler.time();
+    const auto& now = time();
     for (unsigned i = 0, n = msg.nodes4_raw.size() / NODE4_INFO_BUF_LEN; i < n; i++) {
         const uint8_t* ni = msg.nodes4_raw.data() + i * NODE4_INFO_BUF_LEN;
         const auto& ni_id = *reinterpret_cast<const InfoHash*>(ni);
         if (ni_id == myid)
             continue;
         SockAddr addr = deserializeIPv4(ni + ni_id.size());
-        if (addr.isLoopback() and from.getFamily() == AF_INET) {
-            auto port = addr.getPort();
+        if (addr.address().is_loopback() and from.protocol().family() == AF_INET) {
+            auto port = addr.port();
             addr = from;
-            addr.setPort(port);
+            addr.port(port);
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
-        msg.nodes4.emplace_back(cache.getNode(ni_id, addr, now, false));
+        msg.nodes4.emplace_back(cache.getNode(ni_id, std::move(addr), now, false));
         onNewNode(msg.nodes4.back(), 0);
     }
     for (unsigned i = 0, n = msg.nodes6_raw.size() / NODE6_INFO_BUF_LEN; i < n; i++) {
@@ -898,14 +924,14 @@ NetworkEngine::deserializeNodes(ParsedMessage& msg, const SockAddr& from) {
         if (ni_id == myid)
             continue;
         SockAddr addr = deserializeIPv6(ni + ni_id.size());
-        if (addr.isLoopback() and from.getFamily() == AF_INET6) {
-            auto port = addr.getPort();
+        if (addr.address().is_loopback() and from.protocol().family() == AF_INET6) {
+            auto port = addr.port();
             addr = from;
-            addr.setPort(port);
+            addr.port(port);
         }
         if (isMartian(addr) || isNodeBlacklisted(addr))
             continue;
-        msg.nodes6.emplace_back(cache.getNode(ni_id, addr, now, false));
+        msg.nodes6.emplace_back(cache.getNode(ni_id, std::move(addr), now, false));
         onNewNode(msg.nodes6.back(), 0);
     }
 }
@@ -1037,21 +1063,25 @@ NetworkEngine::bufferNodes(sa_family_t af, const InfoHash& id, std::vector<Sp<No
         bnodes.resize(NODE4_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            const auto& sin = n.getAddr().getIPv4();
+            const auto& sin = n.getAddr();
+            auto port = htons(sin.port());
+            auto addr = sin.address().to_v4().to_bytes();
             auto dest = bnodes.data() + NODE4_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
-            memcpy(dest + HASH_LEN, &sin.sin_addr, sizeof(in_addr));
-            memcpy(dest + HASH_LEN + sizeof(in_addr), &sin.sin_port, sizeof(in_port_t));
+            memcpy(dest + HASH_LEN, addr.data(), sizeof(in_addr));
+            memcpy(dest + HASH_LEN + sizeof(in_addr), &port, sizeof(in_port_t));
         }
     } else if (af == AF_INET6) {
         bnodes.resize(NODE6_INFO_BUF_LEN * nnode);
         for (size_t i=0; i<nnode; i++) {
             const Node& n = *nodes[i];
-            const auto& sin6 = n.getAddr().getIPv6();
+            const auto& sin6 = n.getAddr();
+            auto port = htons(sin6.port());
+            auto addr = sin6.address().to_v6().to_bytes();
             auto dest = bnodes.data() + NODE6_INFO_BUF_LEN * i;
             memcpy(dest, n.id.data(), HASH_LEN);
-            memcpy(dest + HASH_LEN, &sin6.sin6_addr, sizeof(in6_addr));
-            memcpy(dest + HASH_LEN + sizeof(in6_addr), &sin6.sin6_port, sizeof(in_port_t));
+            memcpy(dest + HASH_LEN, addr.data(), sizeof(in6_addr));
+            memcpy(dest + HASH_LEN + sizeof(in6_addr), &port, sizeof(in_port_t));
         }
     }
     return bnodes;
@@ -1158,7 +1188,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
-    bool add_created = created < scheduler.time();
+    bool add_created = created < time();
     pk.pack(KEY_A); pk.pack_map(add_created ? 5 : 4);
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
@@ -1244,13 +1274,13 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
     pk.pack_map(5+(config.network?1:0));
 
-    pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 7 : 6));
+    pk.pack(KEY_A); pk.pack_map((created < time() ? 7 : 6));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
       pk.pack(KEY_VERSION);    pk.pack(1);
       pk.pack(KEY_REQ_H);      pk.pack(infohash);
       pk.pack(KEY_REQ_SID);   pk.pack(sid);
       auto v = packValueHeader(buffer, begin, end);
-      if (created < scheduler.time()) {
+      if (created < time()) {
           pk.pack(KEY_REQ_CREATION);
           pk.pack(to_time_t(created));
       }
@@ -1385,11 +1415,11 @@ NetworkEngine::maintainRxBuffer(Tid tid)
 {
     auto msg = partial_messages.find(tid);
     if (msg != partial_messages.end()) {
-        const auto& now = scheduler.time();
+        const auto& now = time();
         if (msg->second.start + RX_MAX_PACKET_TIME < now
          || msg->second.last_part + RX_TIMEOUT < now) {
-            if (logger_)
-                logger_->w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
+            //if (logger_)
+            //    logger_->w("Dropping expired partial message from %s", msg->second.from.toString().c_str());
             partial_messages.erase(msg);
         }
     }

@@ -21,13 +21,14 @@
 #include "infohash.h"
 #include "log_enable.h"
 #include "node_export.h"
+#include "callbacks.h"
 
 #include <queue>
 
 namespace dht {
 
 namespace net {
-    class DatagramSocket;
+class DatagramSocket;
 }
 
 class OPENDHT_PUBLIC DhtInterface {
@@ -49,11 +50,10 @@ public:
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
 
-    void addOnConnectedCallback(std::function<void()> cb) {
-        onConnectCallbacks_.emplace(std::move(cb));
-    }
+    virtual void addOnConnectedCallback(std::function<void()> cb) = 0;
+    virtual void addOnStateChangeCallback(StatusCallback cb) = 0;
 
-    virtual net::DatagramSocket* getSocket() const { return {}; };
+    virtual const net::DatagramSocket* getSocket() const { return {}; };
 
     /**
      * Get the ID of the DHT node.
@@ -91,9 +91,6 @@ public:
     virtual void insertNode(const NodeExport& n) = 0;
 
     virtual void pingNode(SockAddr, DoneCallbackSimple&& cb={}) = 0;
-
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, SockAddr, const time_point& now) = 0;
-    virtual time_point periodic(const uint8_t *buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) = 0;
 
     /**
      * Get a value by searching on all available protocols (IPv4, IPv6),
@@ -277,7 +274,6 @@ public:
 
 protected:
     std::shared_ptr<Logger> logger_ {};
-    std::queue<std::function<void()>> onConnectCallbacks_ {};
 };
 
 } // namespace dht

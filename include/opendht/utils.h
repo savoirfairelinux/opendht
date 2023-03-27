@@ -21,6 +21,8 @@
 #include "def.h"
 
 #include <msgpack.hpp>
+#include <asio/ip/address.hpp>
+#include <asio/ip/udp.hpp>
 
 #include <chrono>
 #include <random>
@@ -61,6 +63,11 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
  */
 OPENDHT_PUBLIC std::pair<std::string, std::string>
 splitPort(const std::string& s);
+
+inline
+std::string print_addr(const asio::ip::udp::endpoint& endpoint) {
+    return asio::ip::detail::endpoint(endpoint.address(), endpoint.port()).to_string();
+}
 
 class OPENDHT_PUBLIC DhtException : public std::runtime_error {
 public:
@@ -181,5 +188,37 @@ inline msgpack::object* findMapValue(const msgpack::object& map, const char* key
 inline msgpack::object* findMapValue(const msgpack::object& map, std::string_view key) {
     return findMapValue(map, key.data(), key.size());
 }
+
+using SockAddr = asio::ip::udp::endpoint;
+
+/**
+ * A comparator to classify IP addresses, only considering the
+ * first 64 bits in IPv6.
+ */
+struct ipCmp {
+    bool operator()(const SockAddr& a, const SockAddr& b) const {
+        return a < b;
+        /*if (a.len != b.len)
+            return a.len < b.len;
+        socklen_t start, len;
+        switch(a.getFamily()) {
+            case AF_INET:
+                start = offsetof(sockaddr_in, sin_addr);
+                len = sizeof(in_addr);
+                break;
+            case AF_INET6:
+                start = offsetof(sockaddr_in6, sin6_addr);
+                // don't consider more than 64 bits (IPv6)
+                len = 8;
+                break;
+            default:
+                start = 0;
+                len = a.len;
+                break;
+        }
+        return std::memcmp((uint8_t*)a.get()+start,
+                            (uint8_t*)b.get()+start, len) < 0;*/
+    }
+};
 
 } // namespace dht

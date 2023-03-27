@@ -20,8 +20,8 @@
 #pragma once
 
 #include "def.h"
-#include "sockaddr.h"
 #include "infohash.h"
+#include "utils.h"
 #include "log_enable.h"
 
 #include <thread>
@@ -36,7 +36,7 @@ class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
     static constexpr in_port_t DEFAULT_PORT = 8888;
-    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
+    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, asio::ip::udp::endpoint)>;
 
     PeerDiscovery(in_port_t port = DEFAULT_PORT, std::shared_ptr<asio::io_context> ioContext = {}, std::shared_ptr<Logger> logger = {});
     ~PeerDiscovery();

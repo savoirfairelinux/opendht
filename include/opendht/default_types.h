@@ -19,7 +19,8 @@
 #pragma once
 
 #include "value.h"
-#include "sockaddr.h"
+
+#include <asio/ip/udp.hpp>
 
 namespace dht {
 enum class ImStatus : uint8_t {
@@ -215,9 +216,10 @@ private:
 public:
     static const ValueType TYPE;
 
-    IpServiceAnnouncement(sa_family_t family = AF_UNSPEC, in_port_t p = 0) {
-        addr.setFamily(family);
-        addr.setPort(p);
+    IpServiceAnnouncement(sa_family_t family = AF_UNSPEC, in_port_t p = 0) 
+        : addr() {
+        addr.address(family == AF_INET ? asio::ip::address(asio::ip::address_v4::any()) : asio::ip::address(asio::ip::address_v6::any()));
+        addr.port(p);
     }
 
     IpServiceAnnouncement(const SockAddr& sa) : addr(sa) {}
@@ -229,23 +231,25 @@ public:
     template <typename Packer>
     void msgpack_pack(Packer& pk) const
     {
-        pk.pack_bin(addr.getLength());
-        pk.pack_bin_body((const char*)addr.get(), addr.getLength());
+        pk.pack_bin(addr.size());
+        pk.pack_bin_body((const char*)addr.data(), addr.size());
     }
 
     virtual void msgpack_unpack(const msgpack::object& o)
     {
+        //{(sockaddr*)o.via.bin.ptr, (socklen_t)o.via.bin.size};
+        //auto p = 
         if (o.type == msgpack::type::BIN)
-            addr = {(sockaddr*)o.via.bin.ptr, (socklen_t)o.via.bin.size};
+            addr = *reinterpret_cast<const asio::ip::udp::endpoint*>((sockaddr*)o.via.bin.ptr);
         else
             throw msgpack::type_error();
     }
 
     in_port_t getPort() const {
-        return addr.getPort();
+        return addr.port();
     }
     void setPort(in_port_t p) {
-        addr.setPort(p);
+        addr.port(p);
     }
 
     const SockAddr& getPeerAddr() const {

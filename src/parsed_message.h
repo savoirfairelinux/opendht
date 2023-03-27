@@ -18,7 +18,6 @@
  #pragma once
 
 #include "infohash.h"
-#include "sockaddr.h"
 #include "net.h"
 
 #include <map>
@@ -313,15 +312,29 @@ ParsedMessage::msgpack_unpack(const msgpack::object& msg)
             throw msgpack::type_error();
         auto l = parsedReq.sa->via.bin.size;
         if (l == sizeof(in_addr)) {
-            addr.setFamily(AF_INET);
-            auto& a = addr.getIPv4();
-            a.sin_port = 0;
-            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*)&a.sin_addr);
+            addr = {asio::ip::address_v4({
+                (uint8_t)parsedReq.sa->via.bin.ptr[0], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[1], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[2], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[3]}), 0};
         } else if (l == sizeof(in6_addr)) {
-            addr.setFamily(AF_INET6);
-            auto& a = addr.getIPv6();
-            a.sin6_port = 0;
-            std::copy_n(parsedReq.sa->via.bin.ptr, l, (char*)&a.sin6_addr);
+            addr = {asio::ip::address_v6({
+                (uint8_t)parsedReq.sa->via.bin.ptr[0], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[1], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[2], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[3], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[4], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[5], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[6], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[7], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[8], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[9], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[10], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[11], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[12], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[13], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[14], 
+                (uint8_t)parsedReq.sa->via.bin.ptr[15]}), 0};
         }
     } else
         addr = {};

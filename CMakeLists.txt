@@ -84,9 +84,7 @@ if (NOT MSVC)
         )
     endif()
 
-    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
-    endif ()
+    find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
 
     if (OPENDHT_HTTP)
         find_package(Restinio REQUIRED)
@@ -210,12 +208,12 @@ list (APPEND opendht_SOURCES
     src/log.cpp
     src/network_utils.cpp
     src/thread_pool.cpp
+    src/udp_socket.cpp
 )
 
 list (APPEND opendht_HEADERS
     include/opendht/def.h
     include/opendht/utils.h
-    include/opendht/sockaddr.h
     include/opendht/rng.h
     include/opendht/crypto.h
     include/opendht/infohash.h
@@ -234,7 +232,7 @@ list (APPEND opendht_HEADERS
     include/opendht/log.h
     include/opendht/log_enable.h
     include/opendht/thread_pool.h
-    include/opendht/network_utils.h
+    include/opendht/udp_socket.h
     include/opendht.h
 )
 

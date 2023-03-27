@@ -24,7 +24,7 @@
 #include <opendht.h>
 #include <opendht/log.h>
 #include <opendht/crypto.h>
-#include <opendht/network_utils.h>
+//#include <opendht/network_utils.h>
 #ifdef OPENDHT_INDEXATION
 #include <opendht/indexation/pht.h>
 #endif
@@ -187,8 +187,8 @@ getDhtConfig(dht_params& params)
             context.logger = dht::log::getStdLogger();
     }
     if (context.logger) {
-        context.statusChangedCallback = [logger = *context.logger](dht::NodeStatus status4, dht::NodeStatus status6) {
-            logger.WARN("Connectivity changed: IPv4: %s, IPv6: %s", dht::statusToStr(status4), dht::statusToStr(status6));
+        context.statusChangedCallback = [logger = context.logger](dht::DhtNodeStatus status) {
+            logger->WARN("Connectivity changed: IPv4: %s, IPv6: %s", dht::statusToStr(status.ipv4), dht::statusToStr(status.ipv6));
         };
     }
     return {std::move(config), std::move(context)};

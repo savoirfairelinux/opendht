@@ -21,7 +21,6 @@
 
 #include "infohash.h" // includes socket structures
 #include "utils.h"
-#include "sockaddr.h"
 #include "node_export.h"
 
 #include <list>
@@ -50,16 +49,13 @@ struct Node {
 
     Node(const InfoHash& id, const SockAddr& addr, std::mt19937_64& rd, bool client=false);
     Node(const InfoHash& id, SockAddr&& addr, std::mt19937_64& rd, bool client=false);
-    Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, std::mt19937_64& rd)
-        : Node(id, SockAddr(sa, salen), rd) {}
+    //Node(const InfoHash& id, const sockaddr* sa, socklen_t salen, std::mt19937_64& rd)
+    //    : Node(id, SockAddr(sa, salen), rd) {}
 
     const InfoHash& getId() const {
         return id;
     }
     const SockAddr& getAddr() const { return addr; }
-    std::string getAddrStr() const {
-        return addr.toString();
-    }
     bool isClient() const { return is_client; }
     bool isIncoming() { return time > reply_time; }
 
@@ -96,7 +92,7 @@ struct Node {
         ne.addr = addr;
         return ne;
     }
-    sa_family_t getFamily() const { return addr.getFamily(); }
+    sa_family_t getFamily() const { return addr.protocol().family(); }
 
     void update(const SockAddr&);
 

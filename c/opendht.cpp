@@ -31,6 +31,7 @@ extern "C" {
 #endif
 
 #include <errno.h>
+#include <cstdlib>
 
 const char* dht_version()
 {
@@ -358,14 +359,53 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
     return 0;
 }
 
+asio::ip::udp::endpoint sockaddr_to_endpoint(struct sockaddr* addr, socklen_t addr_len) {
+    if (addr->sa_family == AF_INET) {
+        auto addr_in = reinterpret_cast<struct sockaddr_in*>(addr);
+        asio::ip::address_v4 address(ntohl(addr_in->sin_addr.s_addr));
+        unsigned short port = ntohs(addr_in->sin_port);
+        return asio::ip::udp::endpoint(address, port);
+    } else if (addr->sa_family == AF_INET6) {
+        auto addr_in6 = reinterpret_cast<struct sockaddr_in6*>(addr);
+        asio::ip::address_v6::bytes_type bytes;
+        std::memcpy(bytes.data(), &addr_in6->sin6_addr, 16);
+        asio::ip::address_v6 address(bytes, addr_in6->sin6_scope_id);
+        unsigned short port = ntohs(addr_in6->sin6_port);
+        return asio::ip::udp::endpoint(address, port);
+    } else {
+        throw std::runtime_error("Invalid sockaddr family");
+    }
+}
+
+struct sockaddr* endpoint_to_sockaddr(const asio::ip::udp::endpoint& endpoint, socklen_t* addr_len = nullptr) {
+    const struct sockaddr* addr_src = endpoint.data();
+    auto len = endpoint.size();
+    struct sockaddr* addr_copy = reinterpret_cast<struct sockaddr*>(std::malloc(len));
+    std::memcpy(addr_copy, addr_src, len);
+    if (addr_len)
+        *addr_len = len;
+    return addr_copy;
+}
+
+struct sockaddr** endpoints_to_sockaddrs(const std::vector<asio::ip::udp::endpoint>& endpoints) {
+    size_t num_endpoints = endpoints.size();
+    struct sockaddr** sockaddrs = reinterpret_cast<struct sockaddr**>(std::malloc((num_endpoints + 1) * sizeof(struct sockaddr*)));
+    for (size_t i = 0; i < num_endpoints; ++i) {
+        sockaddrs[i] = endpoint_to_sockaddr(endpoints[i]);
+    }
+    sockaddrs[num_endpoints] = nullptr; // Null-terminate the array
+    return sockaddrs;
+}
+
+
 void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len, dht_done_cb done_cb, void* cb_user_data) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     if (done_cb) {
-        runner->bootstrap(dht::SockAddr(addr, addr_len), [done_cb, cb_user_data](bool ok){
+        runner->bootstrap(sockaddr_to_endpoint(addr, addr_len), [done_cb, cb_user_data](bool ok){
             done_cb(ok, cb_user_data);
         });
     } else {
-        runner->bootstrap(dht::SockAddr(addr, addr_len));
+        runner->bootstrap(sockaddr_to_endpoint(addr, addr_len));
     }
 }
 
@@ -505,11 +545,7 @@ struct sockaddr** dht_runner_get_public_address(const dht_runner* r) {
     auto addrs = const_cast<dht::DhtRunner*>(runner)->getPublicAddress();
     if (addrs.empty())
         return nullptr;
-    auto ret = (struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
-    for (size_t i=0; i<addrs.size(); i++)
-        ret[i] = addrs[i].release();
-    ret[addrs.size()] = nullptr;
-    return ret;
+    return endpoints_to_sockaddrs(addrs);
 }
 
 #ifdef __cplusplus
