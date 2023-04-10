@@ -359,7 +359,7 @@ target_link_libraries(opendht
         ${FMT_LIBRARY}
 )
 if (NOT HAVE_MSGPACKCXX)
-    target_link_libraries(opendht PUBLIC MSGPACK_TARGET)
+    target_link_libraries(opendht PUBLIC ${MSGPACK_TARGET})
 endif()
 if (Jsoncpp_FOUND)
     target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
