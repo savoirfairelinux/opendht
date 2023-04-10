@@ -348,24 +348,9 @@ add_library (opendht
     ${obj_libs}
 )
 set_target_properties (opendht PROPERTIES OUTPUT_NAME "opendht")
-target_link_libraries(opendht
-    PRIVATE
-        PkgConfig::argon2
-        PkgConfig::Nettle
-        ${HTTP_PARSER_LIBRARY}
-    PUBLIC
-        ${CMAKE_THREAD_LIBS_INIT}
-        PkgConfig::GnuTLS
-        ${FMT_LIBRARY}
-)
+
 if (NOT HAVE_MSGPACKCXX)
     target_link_libraries(opendht PUBLIC ${MSGPACK_TARGET})
-endif()
-if (Jsoncpp_FOUND)
-    target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
-endif()
-if (OPENDHT_PROXY_OPENSSL)
-    target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
 endif()
 if (APPLE)
     target_link_libraries(opendht PRIVATE SYSTEM "-framework CoreFoundation" "-framework Security")
@@ -375,7 +360,24 @@ if (MSVC)
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
         set_target_properties (opendht PROPERTIES OUTPUT_NAME "libopendht")
     endif()
-endif ()
+else()
+    target_link_libraries(opendht
+        PRIVATE
+            PkgConfig::argon2
+            PkgConfig::Nettle
+            ${HTTP_PARSER_LIBRARY}
+        PUBLIC
+            ${CMAKE_THREAD_LIBS_INIT}
+            PkgConfig::GnuTLS
+            ${FMT_LIBRARY}
+    )
+    if (Jsoncpp_FOUND)
+        target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
+    endif()
+    if (OPENDHT_PROXY_OPENSSL)
+        target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
+    endif()
+endif()
 
 if (BUILD_SHARED_LIBS)
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
