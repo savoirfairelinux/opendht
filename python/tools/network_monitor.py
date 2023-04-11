@@ -24,7 +24,7 @@ from datetime import datetime
 import opendht as dht
 
 parser = argparse.ArgumentParser(description='Create a dht network of -n nodes')
-parser.add_argument('-b', '--bootstrap', help='bootstrap address', default='bootstrap.ring.cx')
+parser.add_argument('-b', '--bootstrap', help='bootstrap address', default='bootstrap.jami.net')
 parser.add_argument('-n', '--num-ops', help='number of concurrent operations on the DHT', type=int, default=8)
 parser.add_argument('-p', '--period', help='duration between each test (seconds)', type=int, default=60)
 parser.add_argument('-t', '--timeout', help='timeout for a test to complete (seconds)', type=float, default=15)

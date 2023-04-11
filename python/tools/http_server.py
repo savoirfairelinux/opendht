@@ -72,7 +72,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Launch an OpenDHT node with an HTTP control interface')
     parser.add_argument('-p', '--port', help='OpenDHT port to bind', type=int, default=4222)
     parser.add_argument('-hp', '--http-port', help='HTTP port to bind', type=int, default=8080)
-    parser.add_argument('-b', '--bootstrap', help='bootstrap address', default="bootstrap.ring.cx:4222")
+    parser.add_argument('-b', '--bootstrap', help='bootstrap address', default="bootstrap.jami.net:4222")
     args = parser.parse_args()
     endpoints.serverFromString(reactor, "tcp:"+str(args.http_port)).listen(server.Site(DhtServer(args.port, args.bootstrap)))
     reactor.run()
