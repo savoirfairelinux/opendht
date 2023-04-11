@@ -434,7 +434,7 @@ install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE o
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
 
 # Unit tests
-if (BUILD_TESTING)
+if (BUILD_TESTING AND NOT MSVC)
     pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
     # unit testing
     list (APPEND test_FILES
