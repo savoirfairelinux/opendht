@@ -38,7 +38,7 @@ endif ()
 install (TARGETS dhtnode dhtscanner dhtchat RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if (OPENDHT_SYSTEMD)
-    if (NOT DEFINED OPENDHT_SYSTEMD_UNIT_FILE_LOCATION)
+    if (NOT DEFINED OPENDHT_SYSTEMD_UNIT_FILE_LOCATION OR NOT OPENDHT_SYSTEMD_UNIT_FILE_LOCATION)
         execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} systemd --variable=systemdsystemunitdir
                         OUTPUT_VARIABLE SYSTEMD_UNIT_INSTALL_DIR)
         message("-- Using Systemd unit installation directory by pkg-config: " ${SYSTEMD_UNIT_INSTALL_DIR})
