@@ -229,6 +229,11 @@ public:
         return get(data.data(), data.size());
     }
 
+    template <size_t H>
+    static Hash get(const Hash<H>& o) {
+        return get(o.data(), o.size());
+    }
+
     /**
      * Computes the hash from a given data buffer of size data_len.
      */
