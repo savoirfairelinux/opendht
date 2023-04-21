@@ -46,23 +46,30 @@ if (OPENDHT_SYSTEMD)
         message("-- Using Systemd unit installation directory requested: " ${OPENDHT_SYSTEMD_UNIT_FILE_LOCATION})
         set(SYSTEMD_UNIT_INSTALL_DIR ${OPENDHT_SYSTEMD_UNIT_FILE_LOCATION})
     endif()
-    string(REGEX REPLACE "[ \t\n]+" "" SYSTEMD_UNIT_INSTALL_DIR "${SYSTEMD_UNIT_INSTALL_DIR}")
-    set (systemdunitdir "${SYSTEMD_UNIT_INSTALL_DIR}")
 
     configure_file (
         systemd/dhtnode.service.in
         systemd/dhtnode.service
         @ONLY
     )
-    install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtnode.service DESTINATION ${systemdunitdir})
-    install (FILES systemd/dhtnode.conf DESTINATION ${sysconfdir})
+    if (SYSTEMD_UNIT_INSTALL_DIR)
+        string(REGEX REPLACE "[ \t\n]+" "" SYSTEMD_UNIT_INSTALL_DIR "${SYSTEMD_UNIT_INSTALL_DIR}")
+        set (systemdunitdir "${SYSTEMD_UNIT_INSTALL_DIR}")
+        install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtnode.service DESTINATION ${systemdunitdir})
+        install (FILES systemd/dhtnode.conf DESTINATION ${sysconfdir})
+    else()
+        message(WARNING "Systemd unit installation directory not found. The systemd unit won't be installed.")
+    endif()
+
     if (OPENDHT_PYTHON)
         configure_file (
             systemd/dhtcluster.service.in
             systemd/dhtcluster.service
             @ONLY
         )
-        install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtcluster.service DESTINATION ${systemdunitdir})
-        install (FILES systemd/dhtcluster.conf DESTINATION ${sysconfdir})
+        if (SYSTEMD_UNIT_INSTALL_DIR)
+            install (FILES ${CMAKE_CURRENT_BINARY_DIR}/systemd/dhtcluster.service DESTINATION ${systemdunitdir})
+            install (FILES systemd/dhtcluster.conf DESTINATION ${sysconfdir})
+        endif()
     endif()
 endif ()
