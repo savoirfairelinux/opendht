@@ -378,7 +378,7 @@ const ValueType CERTIFICATE_TYPE = {
         try {
             crypto::Certificate crt(v->data);
             // TODO check certificate signature
-            return crt.getPublicKey().getId() == id;
+            return crt.getPublicKey().getId() == id || InfoHash::get(crt.getPublicKey().getLongId()) == id;
         } catch (const std::exception& e) {}
         return false;
     },
