@@ -1,0 +1,9 @@
+{
+    "cmake.configureSettings": {
+        "OPENDHT_SANITIZE": true,
+        "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
+        "OPENDHT_C": true,
+        "OPENDHT_DOCUMENTATION": false
+    }
+}
