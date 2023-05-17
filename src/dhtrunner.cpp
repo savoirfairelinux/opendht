@@ -455,12 +455,6 @@ DhtRunner::setLogger(const Sp<Logger>& logger) {
 }
 
 void
-DhtRunner::setLoggers(LogMethod error, LogMethod warn, LogMethod debug) {
-    Logger logger {std::move(error), std::move(warn), std::move(debug)};
-    setLogger(logger);
-}
-
-void
 DhtRunner::setLogFilter(const InfoHash& f) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     if (dht_)

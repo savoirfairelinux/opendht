@@ -232,18 +232,6 @@ public:
 
     virtual std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) = 0;
 
-    /**
-     * Enable or disable logging of DHT internal messages
-     */
-    virtual void setLoggers(LogMethod error = {}, LogMethod warn = {}, LogMethod debug = {}) {
-        if (logger_) {
-            logger_->DBG = std::move(debug);
-            logger_->WARN = std::move(warn);
-            logger_->ERR = std::move(error);
-        } else
-            logger_= std::make_shared<Logger>(std::move(error), std::move(warn), std::move(debug));
-    }
-
     virtual void setLogger(const Logger& l) {
         if (logger_)
             *logger_ = l;

@@ -349,7 +349,6 @@ public:
     void setLogger(const Logger& logger) {
         setLogger(std::make_shared<Logger>(logger));
     }
-    void setLoggers(LogMethod err = {}, LogMethod warn = {}, LogMethod debug = {});
 
     /**
      * Only print logs related to the given InfoHash (if given), or disable filter (if zeroes).
