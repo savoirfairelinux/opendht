@@ -88,8 +88,7 @@ if (NOT MSVC)
         find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
     endif ()
 
-    find_library(FMT_LIBRARY fmt)
-    add_library(fmt SHARED IMPORTED)
+    find_package(fmt)
 
     if (OPENDHT_HTTP)
         find_package(Restinio REQUIRED)
@@ -370,7 +369,7 @@ else()
         PUBLIC
             ${CMAKE_THREAD_LIBS_INIT}
             PkgConfig::GnuTLS
-            ${FMT_LIBRARY}
+            fmt::fmt
     )
     if (Jsoncpp_FOUND)
         target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)

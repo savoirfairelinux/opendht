@@ -56,7 +56,7 @@ struct Logger {
         filter_ = f;
         filterEnable_ = static_cast<bool>(filter_);
     }
-    inline void logfmt(LogLevel level, fmt::string_view format, fmt::format_args args) {
+    inline void logFmt(LogLevel level, fmt::string_view format, fmt::format_args args) const {
         if (logger and not filterEnable_)
             logger(level, format, args);
     }
@@ -78,10 +78,10 @@ struct Logger {
             loggerf(level, format, args);
 #endif
     }
-    template <typename... T>
-    inline void debug(fmt::format_string<T...> format, T&&... args) const {
+    template<typename S, typename... Args>
+    inline void debug(S&& format, Args&&... args) const {
 #if OPENDHT_LOG
-        logFmt(LogLevel::debug, format, fmt::make_format_args(args...));
+        logFmt(LogLevel::debug, std::forward<S>(format), fmt::make_format_args(args...));
 #endif
     }
     template <typename... T>
