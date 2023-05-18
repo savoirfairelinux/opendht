@@ -22,7 +22,7 @@
 #include "def.h"
 #include "sockaddr.h"
 #include "infohash.h"
-#include "log_enable.h"
+#include "logger.h"
 
 #include <thread>
 

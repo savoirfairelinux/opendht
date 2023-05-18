@@ -20,7 +20,7 @@
 #include "network_engine.h"
 #include "request.h"
 #include "default_types.h"
-#include "log_enable.h"
+#include "logger.h"
 #include "parsed_message.h"
 
 #include <msgpack.hpp>

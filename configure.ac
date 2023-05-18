@@ -34,12 +34,6 @@ AC_LANG(C++)
 AC_PROG_CXX
 AX_CXX_COMPILE_STDCXX(17,[noext],[mandatory])
 
-dnl Check for logs
-AC_ARG_ENABLE([logs], [AS_HELP_STRING([--disable-logs], [Disable DHT logs])])
-AS_IF([test "x$enable_logs" != "xno"], [], [
-	AC_DEFINE([OPENDHT_LOG], [false], [Define if DHT logs are disabled])
-])
-
 dnl Check for C binding
 AC_ARG_ENABLE([c], [AS_HELP_STRING([--disable-c], [Disable DHT C binding])])
 AM_CONDITIONAL(ENABLE_C, test x$enable_c != "xno")

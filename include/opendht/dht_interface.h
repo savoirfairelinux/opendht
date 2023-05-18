@@ -19,7 +19,7 @@
 #pragma once
 
 #include "infohash.h"
-#include "log_enable.h"
+#include "logger.h"
 #include "node_export.h"
 
 #include <queue>

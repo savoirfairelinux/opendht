@@ -23,7 +23,6 @@ set (VERSION "${opendht_VERSION}")
 # Options
 option (BUILD_SHARED_LIBS "Build shared library" ON)
 CMAKE_DEPENDENT_OPTION (OPENDHT_STATIC "Build static library" OFF BUILD_SHARED_LIBS ON)
-option (OPENDHT_LOG "Build with logs" ON)
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_SYSTEMD "Install systemd module" OFF)
@@ -155,11 +154,6 @@ endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 
 add_definitions(-DPACKAGE_VERSION="${opendht_VERSION}")
-if (OPENDHT_LOG)
-    add_definitions(-DOPENDHT_LOG=true)
-else ()
-    add_definitions(-DOPENDHT_LOG=false)
-endif()
 
 if (ASIO_INCLUDE_DIR)
     include_directories (SYSTEM "${ASIO_INCLUDE_DIR}")
@@ -232,7 +226,7 @@ list (APPEND opendht_HEADERS
     include/opendht/rate_limiter.h
     include/opendht/securedht.h
     include/opendht/log.h
-    include/opendht/log_enable.h
+    include/opendht/logger.h
     include/opendht/thread_pool.h
     include/opendht/network_utils.h
     include/opendht.h

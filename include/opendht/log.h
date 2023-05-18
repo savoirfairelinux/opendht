@@ -20,7 +20,7 @@
 #pragma once
 
 #include "def.h"
-#include "log_enable.h"
+#include "logger.h"
 
 #include <iostream>
 #include <memory>
