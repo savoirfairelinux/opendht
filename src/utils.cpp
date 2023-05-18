@@ -103,21 +103,26 @@ SockAddr::setAddress(const char* address)
         throw std::runtime_error(std::string("Can't parse IP address: ") + strerror(errno));
 }
 
-std::string
-print_addr(const sockaddr* sa, socklen_t slen)
+void print_addr(std::ostream& out, const sockaddr* sa, socklen_t slen)
 {
     char hbuf[NI_MAXHOST];
     char sbuf[NI_MAXSERV];
-    std::ostringstream out;
     if (sa and slen and !getnameinfo(sa, slen, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV)) {
         if (sa->sa_family == AF_INET6)
-            out << "[" << hbuf << "]";
+            out << '[' << hbuf << ']';
         else
             out << hbuf;
         if (std::strcmp(sbuf, "0"))
-            out << ":" << sbuf;
+            out << ':' << sbuf;
     } else
         out << "[invalid address]";
+}
+
+std::string
+print_addr(const sockaddr* sa, socklen_t slen)
+{
+    std::ostringstream out;
+    print_addr(out, sa, slen);
     return out.str();
 }
 
