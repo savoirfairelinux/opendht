@@ -20,6 +20,10 @@
 
 #include "def.h"
 
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <fmt/ostream.h>
+
 #ifndef _WIN32
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -48,6 +52,7 @@ typedef uint16_t in_port_t;
 
 namespace dht {
 
+OPENDHT_PUBLIC void print_addr(std::ostream& os, const sockaddr* sa, socklen_t slen);
 OPENDHT_PUBLIC std::string print_addr(const sockaddr* sa, socklen_t slen);
 OPENDHT_PUBLIC std::string print_addr(const sockaddr_storage& ss, socklen_t sslen);
 
@@ -289,6 +294,11 @@ public:
                                (uint8_t*)b.get()+start, len) < 0;
         }
     };
+    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const SockAddr& h) {
+        print_addr(s, h.get(), h.getLength());
+        return s;
+    }
+
 private:
     struct free_delete { void operator()(void* p) { ::free(p); } };
     std::unique_ptr<sockaddr, free_delete> addr {};
@@ -309,3 +319,7 @@ private:
 OPENDHT_PUBLIC bool operator==(const SockAddr& a, const SockAddr& b);
 
 }
+
+#if FMT_VERSION >= 90000
+template <> struct fmt::formatter<dht::SockAddr> : ostream_formatter {};
+#endif
