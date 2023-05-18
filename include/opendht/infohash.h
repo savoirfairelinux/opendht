@@ -22,6 +22,7 @@
 #include "rng.h"
 
 #include <msgpack.hpp>
+#include <fmt/core.h>
 
 #ifndef _WIN32
 #include <netinet/in.h>
@@ -394,3 +395,10 @@ Hash<N>::toString() const
 }
 
 }
+
+template <size_t N>
+struct fmt::formatter<dht::Hash<N>>: formatter<string_view> {
+  constexpr auto format(const dht::Hash<N>& c, format_context& ctx) const {
+    return formatter<string_view>::format(c.to_view(), ctx);
+  }
+};
