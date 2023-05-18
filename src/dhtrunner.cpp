@@ -93,7 +93,7 @@ DhtRunner::run(const Config& config, Context&& context)
     auto expected = State::Idle;
     if (not running.compare_exchange_strong(expected, State::Running)) {
         if (context.logger)
-            context.logger->w("[runner %p] Node is already running. Call join() first before calling run() again.", this);
+            context.logger->w("[runner %p] Node is already running. Call join() first before calling run() again.", fmt::ptr(this));
         return;
     }
 
@@ -102,7 +102,7 @@ DhtRunner::run(const Config& config, Context&& context)
         auto local6 = config.bind6;
         if (not local4 and not local6) {
             if (context.logger)
-                context.logger->w("[runner %p] No address to bind specified in the configuration, using default addresses", this);
+                context.logger->w("[runner %p] No address to bind specified in the configuration, using default addresses", fmt::ptr(this));
             local4.setFamily(AF_INET);
             local6.setFamily(AF_INET6);
         }
@@ -116,14 +116,14 @@ DhtRunner::run(const Config& config, Context&& context)
                 if (inConfig >> port) {
                     if (local4.getPort() == 0) {
                         if (context.logger)
-                            context.logger->d("[runner %p] Using IPv4 port %hu from saved configuration", this, port);
+                            context.logger->d("[runner %p] Using IPv4 port %hu from saved configuration", fmt::ptr(this), port);
                         local4.setPort(port);
                     }
                 }
                 if (inConfig >> port) {
                     if (local6.getPort() == 0) {
                         if (context.logger)
-                            context.logger->d("[runner %p] Using IPv6 port %hu from saved configuration", this, port);
+                            context.logger->d("[runner %p] Using IPv6 port %hu from saved configuration", fmt::ptr(this), port);
                         local6.setPort(port);
                     }
                 }
@@ -132,7 +132,7 @@ DhtRunner::run(const Config& config, Context&& context)
 
         if (context.logger) {
             logger_ = context.logger;
-            logger_->d("[runner %p] state changed to Running", this);
+            logger_->d("[runner %p] state changed to Running", fmt::ptr(this));
         }
 
 #ifdef OPENDHT_PROXY_CLIENT
@@ -155,7 +155,7 @@ DhtRunner::run(const Config& config, Context&& context)
                         dropped++;
                     }
                     if (dropped and logger_) {
-                        logger_->w("[runner %p] dropped %zu packets: queue is full!", this, dropped);
+                        logger_->w("[runner %p] dropped %zu packets: queue is full!", fmt::ptr(this), dropped);
                     }
                     ret = std::move(rcv_free);
                 }
@@ -281,7 +281,7 @@ DhtRunner::shutdown(ShutdownCallback cb, bool stop) {
         return;
     }
     if (logger_)
-        logger_->d("[runner %p] state changed to Stopping, %zu ongoing ops", this, ongoing_ops.load());
+        logger_->d("[runner %p] state changed to Stopping, %zu ongoing ops", fmt::ptr(this), ongoing_ops.load());
     ongoing_ops++;
     shutdownCallbacks_.emplace_back(std::move(cb));
     pending_ops.emplace([=](SecureDht&) mutable {
@@ -346,7 +346,7 @@ DhtRunner::join()
             if (auto sock = dht_->getSocket())
                 sock->stop();
         if (logger_)
-            logger_->d("[runner %p] state changed to Idle", this);
+            logger_->d("[runner %p] state changed to Idle", fmt::ptr(this));
     }
 
     if (dht_thread.joinable())
@@ -355,7 +355,7 @@ DhtRunner::join()
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         if (ongoing_ops and logger_) {
-            logger_->w("[runner %p] stopping with %zu remaining ops", this, ongoing_ops.load());
+            logger_->w("[runner %p] stopping with %zu remaining ops", fmt::ptr(this), ongoing_ops.load());
         }
         pending_ops = decltype(pending_ops)();
         pending_ops_prio = decltype(pending_ops_prio)();
@@ -680,7 +680,7 @@ DhtRunner::loop_()
     }
 
     if (dropped && logger_)
-        logger_->e("[runner %p] Dropped %zu packets with high delay.", this, dropped);
+        logger_->e("[runner %p] Dropped %zu packets with high delay.", fmt::ptr(this), dropped);
 
     NodeStatus nstatus4 = dht_->updateStatus(AF_INET);
     NodeStatus nstatus6 = dht_->updateStatus(AF_INET6);

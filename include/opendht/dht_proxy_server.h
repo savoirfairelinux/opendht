@@ -87,7 +87,7 @@ public:
      */
     DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
         const ProxyServerConfig& config = {},
-        const std::shared_ptr<dht::Logger>& logger = {});
+        const std::shared_ptr<log::Logger>& logger = {});
 
     virtual ~DhtProxyServer();
 
@@ -364,7 +364,7 @@ private:
     mutable std::mutex requestLock_;
     std::map<unsigned int /*id*/, std::shared_ptr<http::Request>> requests_;
 
-    std::shared_ptr<dht::Logger> logger_;
+    std::shared_ptr<log::Logger> logger_;
 
     std::shared_ptr<ServerStats> stats_;
     std::shared_ptr<NodeInfo> nodeInfo_ {};

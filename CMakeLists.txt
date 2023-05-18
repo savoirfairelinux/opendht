@@ -88,10 +88,11 @@ if (NOT MSVC)
         find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
     endif ()
 
+    find_library(FMT_LIBRARY fmt)
+    add_library(fmt SHARED IMPORTED)
+
     if (OPENDHT_HTTP)
         find_package(Restinio REQUIRED)
-        find_library(FMT_LIBRARY fmt)
-        add_library(fmt SHARED IMPORTED)
         find_library(HTTP_PARSER_LIBRARY http_parser)
         add_library(http_parser SHARED IMPORTED)
         set(http_parser_lib "-lhttp_parser")

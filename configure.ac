@@ -171,15 +171,16 @@ AS_IF([test "x$have_openssl" = "xyes"], [
     AC_MSG_NOTICE([Not using OpenSSL])
 ])
 
+PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0], [have_fmt=yes], [have_fmt=no])
+AS_IF([test "x$have_fmt" = "xyes"], [
+    AC_MSG_NOTICE([Using libfmt])
+], [
+    AC_MSG_NOTICE([Missing libfmt files])
+])
+
 AM_COND_IF([PROXY_CLIENT_OR_SERVER], [
     AC_CHECK_HEADERS([asio.hpp],, AC_MSG_ERROR([Missing Asio headers files]))
     CXXFLAGS="${CXXFLAGS} -DASIO_STANDALONE"
-    PKG_CHECK_MODULES([Fmt], [fmt >= 5.3.0], [have_fmt=yes], [have_fmt=no])
-    AS_IF([test "x$have_fmt" = "xyes"], [
-        AC_MSG_NOTICE([Using libfmt])
-    ], [
-        AC_MSG_NOTICE([Missing libfmt files])
-    ])
     # http_parser has no pkgconfig, instead we check with:
     AC_CHECK_LIB(http_parser, exit,, AC_MSG_ERROR([Missing HttpParser library files]))
     AC_CHECK_HEADERS([http_parser.h], [http_parser_headers=yes; break;])

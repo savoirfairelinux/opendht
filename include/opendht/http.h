@@ -53,7 +53,9 @@ class tls_socket_t;
 }
 
 namespace dht {
+namespace log {
 struct Logger;
+}
 
 namespace crypto {
 struct Certificate;
@@ -88,9 +90,9 @@ public:
 class OPENDHT_PUBLIC Connection : public std::enable_shared_from_this<Connection>
 {
 public:
-    Connection(asio::io_context& ctx, const bool ssl = true, std::shared_ptr<dht::Logger> l = {});
+    Connection(asio::io_context& ctx, const bool ssl = true, std::shared_ptr<log::Logger> l = {});
     Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certificate> server_ca,
-               const dht::crypto::Identity& identity, std::shared_ptr<dht::Logger> l = {});
+               const dht::crypto::Identity& identity, std::shared_ptr<log::Logger> l = {});
     ~Connection();
 
     inline unsigned int id() const { return  id_; };
@@ -148,7 +150,7 @@ private:
     asio::ip::address local_address_;
 
     std::unique_ptr<asio::steady_timer> timeout_timer_;
-    std::shared_ptr<dht::Logger> logger_;
+    std::shared_ptr<log::Logger> logger_;
     bool checkOcsp_ {false};
 };
 
@@ -172,15 +174,15 @@ public:
     using ResolverCb = std::function<void(const asio::error_code& ec,
                                           const std::vector<asio::ip::tcp::endpoint>& endpoints)>;
 
-    Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
+    Resolver(asio::io_context& ctx, const std::string& url, std::shared_ptr<log::Logger> logger = {});
     Resolver(asio::io_context& ctx, const std::string& host, const std::string& service,
-             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
+             const bool ssl = false, std::shared_ptr<log::Logger> logger = {});
 
     // use already resolved endpoints with classes using this resolver
     Resolver(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint> endpoints,
-             const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
+             const bool ssl = false, std::shared_ptr<log::Logger> logger = {});
     Resolver(asio::io_context& ctx, const std::string& url, std::vector<asio::ip::tcp::endpoint> endpoints,
-            std::shared_ptr<dht::Logger> logger = {});
+            std::shared_ptr<log::Logger> logger = {});
 
     ~Resolver();
 
@@ -190,7 +192,7 @@ public:
 
     void add_callback(ResolverCb cb, sa_family_t family = AF_UNSPEC);
 
-    std::shared_ptr<Logger> getLogger() const {
+    std::shared_ptr<log::Logger> getLogger() const {
         return logger_;
     }
 
@@ -208,7 +210,7 @@ private:
     bool completed_ {false};
     std::queue<ResolverCb> cbs_;
 
-    std::shared_ptr<dht::Logger> logger_;
+    std::shared_ptr<log::Logger> logger_;
 };
 
 class Request;
@@ -240,14 +242,14 @@ public:
 
     // resolves implicitly
     Request(asio::io_context& ctx, const std::string& url, const Json::Value& json, OnJsonCb jsoncb,
-            std::shared_ptr<dht::Logger> logger = {});
+            std::shared_ptr<log::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb,
-            std::shared_ptr<dht::Logger> logger = {});
+            std::shared_ptr<log::Logger> logger = {});
 
-    Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<dht::Logger> logger = {});
+    Request(asio::io_context& ctx, const std::string& url, std::shared_ptr<log::Logger> logger = {});
     Request(asio::io_context& ctx, const std::string& host, const std::string& service,
-            const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
-    Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone, std::shared_ptr<dht::Logger> logger = {});
+            const bool ssl = false, std::shared_ptr<log::Logger> logger = {});
+    Request(asio::io_context& ctx, const std::string& url, OnDoneCb onDone, std::shared_ptr<log::Logger> logger = {});
 
     // user defined resolver
     Request(asio::io_context& ctx, std::shared_ptr<Resolver> resolver, sa_family_t family = AF_UNSPEC);
@@ -255,7 +257,7 @@ public:
 
     // user defined resolved endpoints
     Request(asio::io_context& ctx, std::vector<asio::ip::tcp::endpoint>&& endpoints,
-            const bool ssl = false, std::shared_ptr<dht::Logger> logger = {});
+            const bool ssl = false, std::shared_ptr<log::Logger> logger = {});
 
     ~Request();
 
@@ -282,7 +284,7 @@ public:
 
     void set_certificate_authority(std::shared_ptr<dht::crypto::Certificate> certificate);
     void set_identity(const dht::crypto::Identity& identity);
-    void set_logger(std::shared_ptr<dht::Logger> logger);
+    void set_logger(std::shared_ptr<log::Logger> logger);
 
     /**
      * Define the HTTP header/body as per https://tools.ietf.org/html/rfc7230.
@@ -347,7 +349,7 @@ private:
 
     mutable std::mutex mutex_;
 
-    std::shared_ptr<dht::Logger> logger_;
+    std::shared_ptr<log::Logger> logger_;
 
     restinio::http_request_header_t header_;
     std::map<restinio::http_field_t, std::string> headers_;

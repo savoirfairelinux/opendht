@@ -11,6 +11,7 @@ msgpack = dependency('msgpack-cxx', required : false)
 argon2 = dependency('libargon2')
 openssl = dependency('openssl', required: get_option('proxy_client'))
 jsoncpp = dependency('jsoncpp', required: get_option('proxy_client'))
+fmt = dependency('fmt')
 
 dirs=[]
 if host_machine.system() == 'freebsd'
@@ -19,7 +20,7 @@ elif host_machine.system() == 'darwin'
     dirs+='/opt/homebrew/lib'
 endif
 http_parser = meson.get_compiler('c').find_library('http_parser', dirs: dirs, required: get_option('proxy_client'))
-deps = [gnutls, nettle, msgpack, argon2, openssl, jsoncpp, http_parser]
+deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, http_parser]
 
 add_project_arguments('-DMSGPACK_NO_BOOST', language : 'cpp')
 add_project_arguments(['-Wno-return-type','-Wno-deprecated','-Wnon-virtual-dtor','-pedantic-errors','-fvisibility=hidden'], language : 'cpp')

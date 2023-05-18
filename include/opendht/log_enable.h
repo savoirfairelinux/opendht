@@ -24,163 +24,130 @@
 
 #include "infohash.h"
 
+#include <functional>
+#include <string_view>
 #include <cstdarg>
 
 #ifndef OPENDHT_LOG
 #define OPENDHT_LOG true
 #endif
 
+#include <fmt/format.h>
+#include <fmt/printf.h>
+
 namespace dht {
+namespace log {
 
-// Logging related utility functions
-
-/**
- * Wrapper for logging methods
- */
-struct LogMethod {
-    LogMethod() = default;
-
-    LogMethod(LogMethod&& l) : func(std::move(l.func)) {}
-    LogMethod(const LogMethod& l) : func(l.func) {}
-
-    LogMethod& operator=(dht::LogMethod&& l) {
-        func = std::forward<LogMethod>(l.func);
-        return *this;
-    }
-    LogMethod& operator=(const dht::LogMethod& l) {
-        func = l.func;
-        return *this;
-    }
-
-    template<typename T>
-    explicit LogMethod(T&& t) : func(std::forward<T>(t)) {}
-
-    template<typename T>
-    LogMethod(const T& t) : func(t) {}
-
-    void operator()(char const* format, ...) const {
-        va_list args;
-        va_start(args, format);
-        func(format, args);
-        va_end(args);
-    }
-    inline void log(char const* format, va_list args) const {
-        func(format, args);
-    }
-    explicit operator bool() const {
-        return (bool)func;
-    }
-
-    void logPrintable(const uint8_t *buf, size_t buflen) const {
-        std::string buf_clean(buflen, '\0');
-        for (size_t i=0; i<buflen; i++)
-            buf_clean[i] = isprint(buf[i]) ? buf[i] : '.';
-        (*this)("%s", buf_clean.c_str());
-    }
-private:
-    std::function<void(char const*, va_list)> func;
+enum class LogLevel {
+    debug, warning, error
 };
 
+using LogMethodFmt = std::function<void(LogLevel, fmt::string_view, fmt::format_args)>;
+using LogMethodPrintf = std::function<void(LogLevel, fmt::string_view, fmt::printf_args)>;
+
 struct Logger {
-    LogMethod ERR = {};
-    LogMethod WARN = {};
-    LogMethod DBG = {};
+    LogMethodFmt logger = {};
+    LogMethodPrintf loggerf = {};
 
     Logger() = default;
-    Logger(LogMethod&& err, LogMethod&& warn, LogMethod&& dbg)
-        : ERR(std::move(err)), WARN(std::move(warn)), DBG(std::move(dbg)) {}
+    Logger(LogMethodFmt&& logger, LogMethodPrintf&& loggerf)
+        : logger(std::move(logger)), loggerf(std::move(loggerf)) {}
     void setFilter(const InfoHash& f) {
         filter_ = f;
         filterEnable_ = static_cast<bool>(filter_);
     }
-    inline void log0(const LogMethod& logger, char const* format, va_list args) const {
-#if OPENDHT_LOG
+    inline void logfmt(LogLevel level, fmt::string_view format, fmt::format_args args) {
         if (logger and not filterEnable_)
-            logger.log(format, args);
+            logger(level, format, args);
+    }
+    inline void log0(LogLevel level, fmt::string_view format, fmt::printf_args args) const {
+#if OPENDHT_LOG
+        if (loggerf and not filterEnable_)
+            loggerf(level, format, args);
 #endif
     }
-    inline void log1(const LogMethod& logger, const InfoHash& f, char const* format, va_list args) const {
+    inline void log1(LogLevel level, const InfoHash& f, fmt::string_view format, fmt::printf_args args) const {
 #if OPENDHT_LOG
-        if (logger and (not filterEnable_ or f == filter_))
-            logger.log(format, args);
+        if (loggerf and (not filterEnable_ or f == filter_))
+            loggerf(level, format, args);
 #endif
     }
-    inline void log2(const LogMethod& logger, const InfoHash& f1, const InfoHash& f2, char const* format, va_list args) const {
+    inline void log2(LogLevel level, const InfoHash& f1, const InfoHash& f2, fmt::string_view format, fmt::printf_args args) const {
 #if OPENDHT_LOG
-        if (logger and (not filterEnable_ or f1 == filter_ or f2 == filter_))
-            logger.log(format, args);
+        if (loggerf and (not filterEnable_ or f1 == filter_ or f2 == filter_))
+            loggerf(level, format, args);
 #endif
     }
-    inline void d(char const* format, ...) const {
+    template <typename... T>
+    inline void debug(fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log0(DBG, format, args);
-        va_end(args);
+        logFmt(LogLevel::debug, format, fmt::make_format_args(args...));
 #endif
     }
-    inline void d(const InfoHash& f, char const* format, ...) const {
+    template <typename... T>
+    inline void warn(fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log1(DBG, f, format, args);
-        va_end(args);
+        logFmt(LogLevel::warning, format, fmt::make_format_args(args...));
 #endif
     }
-    inline void d(const InfoHash& f1, const InfoHash& f2, char const* format, ...) const {
+    template <typename... T>
+    inline void error(fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log2(DBG, f1, f2, format, args);
-        va_end(args);
+        logFmt(LogLevel::error, format, fmt::make_format_args(args...));
 #endif
     }
-    inline void w(char const* format, ...) const {
+    template <typename... T>
+    inline void d(fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log0(WARN, format, args);
-        va_end(args);
+        log0(LogLevel::debug, format, fmt::make_printf_args(args...));
 #endif
     }
-    inline void w(const InfoHash& f, char const* format, ...) const {
+    template <typename... T>
+    inline void d(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log1(WARN, f, format, args);
-        va_end(args);
+        log1(LogLevel::debug, f, format, fmt::make_printf_args(args...));
 #endif
     }
-    inline void w(const InfoHash& f1, const InfoHash& f2, char const* format, ...) const {
+    template <typename... T>
+    inline void d(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log2(WARN, f1, f2, format, args);
-        va_end(args);
+        log2(LogLevel::debug, f1, f2, format, fmt::make_printf_args(args...));
 #endif
     }
-    inline void e(char const* format, ...) const {
+    template <typename... T>
+    inline void w(fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log0(ERR, format, args);
-        va_end(args);
+        log0(LogLevel::warning, format, fmt::make_printf_args(args...));
 #endif
     }
-    inline void e(const InfoHash& f, char const* format, ...) const {
+    template <typename... T>
+    inline void w(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log1(ERR, f, format, args);
-        va_end(args);
+        log1(LogLevel::warning, f, format, fmt::make_printf_args(args...));
 #endif
     }
-    inline void e(const InfoHash& f1, const InfoHash& f2, char const* format, ...) const {
+    template <typename... T>
+    inline void w(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const {
 #if OPENDHT_LOG
-        va_list args;
-        va_start(args, format);
-        log2(ERR, f1, f2, format, args);
-        va_end(args);
+        log2(LogLevel::warning, f1, f2, format, fmt::make_printf_args(args...));
+#endif
+    }
+    template <typename... T>
+    inline void e(fmt::format_string<T...> format, T&&... args) const {
+#if OPENDHT_LOG
+        log0(LogLevel::error, format, fmt::make_printf_args(args...));
+#endif
+    }
+    template <typename... T>
+    inline void e(const InfoHash& f, fmt::format_string<T...> format, T&&... args) const {
+#if OPENDHT_LOG
+        log1(LogLevel::error, f, format, fmt::make_printf_args(args...));
+#endif
+    }
+    template <typename... T>
+    inline void e(const InfoHash& f1, const InfoHash& f2, fmt::format_string<T...> format, T&&... args) const {
+#if OPENDHT_LOG
+        log2(LogLevel::error, f1, f2, format, fmt::make_printf_args(args...));
 #endif
     }
 private:
@@ -188,4 +155,6 @@ private:
     InfoHash filter_ {};
 };
 
+}
+using Logger = log::Logger;
 }
