@@ -25,7 +25,7 @@
 #include "value.h"
 #include "callbacks.h"
 #include "sockaddr.h"
-#include "log_enable.h"
+#include "logger.h"
 #include "network_utils.h"
 #include "node_export.h"
 

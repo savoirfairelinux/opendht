@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "log_enable.h"
+#include "logger.h"
 
 #include <memory>
 

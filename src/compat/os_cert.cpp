@@ -18,7 +18,7 @@
 
 #include "os_cert.h"
 
-#include "log_enable.h"
+#include "logger.h"
 
 #ifdef _WIN32
 #include <windows.h>

@@ -1840,7 +1840,7 @@ Dht::Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, cons
     expire();
 
     if (logger_)
-        logger_->d("DHT node initialised with ID %s", myid.toString().c_str());
+        logger_->debug("DHT node initialised with ID {:s}", myid);
 }
 
 bool
@@ -2232,7 +2232,7 @@ Dht::pingNode(SockAddr sa, DoneCallbackSimple&& cb)
 {
     scheduler.syncTime();
     if (logger_)
-        logger_->d("Sending ping to %s", sa.toString().c_str());
+        logger_->debug("Sending ping to {}", sa);
     auto& count = dht(sa.getFamily()).pending_pings;
     count++;
     network_engine.sendPing(std::move(sa), [&count,cb](const net::Request&, net::RequestAnswer&&) {

@@ -17,7 +17,7 @@
  */
 
 #include "http.h"
-#include "log_enable.h"
+#include "logger.h"
 #include "crypto.h"
 #include "base64.h"
 #include "compat/os_cert.h"
@@ -111,11 +111,11 @@ newTlsClientContext(const std::shared_ptr<dht::Logger>& logger)
 
     if (char* path = getenv("CA_ROOT_FILE")) {
         if (logger)
-            logger->d("Using CA file: %s", path);
+            logger->debug("Using CA file: {}", path);
         ctx->load_verify_file(path);
     } else if (char* path = getenv("CA_ROOT_PATH")) {
         if (logger)
-            logger->d("Using CA path: %s", path);
+            logger->debug("Using CA path: {}", path);
         ctx->add_verify_path(path);
     } else {
 #ifdef __ANDROID__
