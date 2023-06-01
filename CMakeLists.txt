@@ -140,6 +140,7 @@ if (NOT MSVC)
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wno-deprecated -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
     if (OPENDHT_SANITIZE)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fstack-protector-strong")
     endif ()
 else ()
     add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS
