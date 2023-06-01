@@ -67,9 +67,6 @@ public:
      */
     Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {});
 
-    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Logger& l = {})
-        : Dht(std::move(sock), config, std::make_shared<Logger>(l)) {}
-
     virtual ~Dht();
 
     /**

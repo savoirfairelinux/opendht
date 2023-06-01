@@ -41,9 +41,9 @@ struct Logger {
     LogMethodFmt logger = {};
     LogMethodPrintf loggerf = {};
 
-    Logger() = default;
-    Logger(LogMethodFmt&& logger, LogMethodPrintf&& loggerf)
-        : logger(std::move(logger)), loggerf(std::move(loggerf)) {
+    Logger() = delete;
+    Logger(LogMethodFmt&& l, LogMethodPrintf&& lf)
+        : logger(std::move(l)), loggerf(std::move(lf)) {
             if (!logger or !loggerf)
                 throw std::invalid_argument{"logger and loggerf must be set"};
         }
