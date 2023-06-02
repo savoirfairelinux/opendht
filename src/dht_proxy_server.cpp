@@ -1053,7 +1053,7 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 void
 DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& json, PushType type, bool highPriority, const std::string& topic)
 {
-    if (pushServer_.empty())
+    if (pushServer_.empty() && type != PushType::UnifiedPush)
         return;
 
     unsigned reqid = 0;
