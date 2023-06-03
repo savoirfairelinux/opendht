@@ -34,17 +34,15 @@ enum class LogLevel {
     debug, warning, error
 };
 
-using LogMethodFmt = std::function<void(LogLevel, fmt::string_view, fmt::format_args)>;
-using LogMethodPrintf = std::function<void(LogLevel, fmt::string_view, fmt::printf_args)>;
+using LogMethod = std::function<void(LogLevel, std::string&&)>;
 
 struct Logger {
-    LogMethodFmt logger = {};
-    LogMethodPrintf loggerf = {};
+    LogMethod logger = {};
 
     Logger() = delete;
-    Logger(LogMethodFmt&& l, LogMethodPrintf&& lf)
-        : logger(std::move(l)), loggerf(std::move(lf)) {
-            if (!logger or !loggerf)
+    Logger(LogMethod&& l)
+        : logger(std::move(l)) {
+            if (!logger)
                 throw std::invalid_argument{"logger and loggerf must be set"};
         }
     void setFilter(const InfoHash& f) {
@@ -53,27 +51,27 @@ struct Logger {
     }
     inline void log0(LogLevel level, fmt::string_view format, fmt::printf_args args) const {
         if (not filterEnable_)
-            loggerf(level, format, args);
+            logger(level, fmt::vsprintf(format, args));
     }
     inline void log1(LogLevel level, const InfoHash& f, fmt::string_view format, fmt::printf_args args) const {
         if (not filterEnable_ or f == filter_)
-            loggerf(level, format, args);
+            logger(level, fmt::vsprintf(format, args));
     }
     inline void log2(LogLevel level, const InfoHash& f1, const InfoHash& f2, fmt::string_view format, fmt::printf_args args) const {
         if (not filterEnable_ or f1 == filter_ or f2 == filter_)
-            loggerf(level, format, args);
+            logger(level, fmt::vsprintf(format, args));
     }
     template<typename S, typename... Args>
     inline void debug(S&& format, Args&&... args) const {
-        logger(LogLevel::debug, std::forward<S>(format), fmt::make_format_args(args...));
+        logger(LogLevel::debug, fmt::format(format, args...));
     }
     template<typename S, typename... Args>
     inline void warn(S&& format, Args&&... args) const {
-        logger(LogLevel::warning, std::forward<S>(format), fmt::make_format_args(args...));
+        logger(LogLevel::warning, fmt::format(format, args...));
     }
     template<typename S, typename... Args>
     inline void error(S&& format, Args&&... args) const {
-        logger(LogLevel::error, std::forward<S>(format), fmt::make_format_args(args...));
+        logger(LogLevel::error, fmt::format(format, args...));
     }
     template <typename... T>
     inline void d(fmt::format_string<T...> format, T&&... args) const {

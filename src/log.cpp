@@ -68,14 +68,13 @@ constexpr const Color::Modifier yellow(Color::FG_YELLOW);
  * Print va_list to std::ostream (used for logging).
  */
 void
-printfLog(std::ostream& s, fmt::string_view format, fmt::printf_args args) {
+printfLog(std::ostream& s, const std::string& message) {
     using namespace std::chrono;
     using log_precision = microseconds;
     auto num = duration_cast<log_precision>(steady_clock::now().time_since_epoch()).count();
     constexpr auto den = log_precision::period::den;
     fmt::print(s, "[{:06d}.{:06d}] ", num / den, num % den);
-    s << fmt::vsprintf(format, args);
-    s << std::endl;
+    s << message << std::endl;
 }
 void
 printLog(std::ostream& s, fmt::string_view format, fmt::format_args args) {
@@ -91,20 +90,12 @@ printLog(std::ostream& s, fmt::string_view format, fmt::format_args args) {
 std::shared_ptr<Logger>
 getStdLogger() {
     return std::make_shared<Logger>(
-        [](LogLevel level, fmt::string_view format, fmt::format_args args) {
+        [](LogLevel level, std::string&& message) {
             if (level == LogLevel::error)
                 std::cerr << red;
             else if (level == LogLevel::warning)
                 std::cerr << yellow;
-            printLog(std::cerr, format, args);
-            std::cerr << def;
-        },
-        [](LogLevel level, fmt::string_view format, fmt::printf_args args) {
-            if (level == LogLevel::error)
-                std::cerr << red;
-            else if (level == LogLevel::warning)
-                std::cerr << yellow;
-            printfLog(std::cerr, format, args);
+            printfLog(std::cerr, message);
             std::cerr << def;
         }
     );
@@ -115,11 +106,8 @@ getFileLogger(const std::string &path) {
     auto logfile = std::make_shared<std::ofstream>();
     logfile->open(path, std::ios::out);
     return std::make_shared<Logger>(
-        [logfile](LogLevel level, fmt::string_view format, fmt::format_args args) {
-            printLog(*logfile, format, args);
-        },
-        [logfile](LogLevel level, fmt::string_view format, fmt::printf_args args) {
-            printfLog(*logfile, format, args);
+        [logfile](LogLevel /*level*/, std::string&& message) {
+            printfLog(*logfile, message);
         }
     );
 }
@@ -156,12 +144,8 @@ getSyslogLogger(const char* name) {
         opened_logfile = logfile;
     }
     return std::make_shared<Logger>(
-        [logfile](LogLevel level, fmt::string_view format, fmt::format_args args) {
-            syslog(syslogLevel(level), "%s", fmt::vformat(format, args).c_str());
-        },
-        [logfile](LogLevel level, fmt::string_view format, fmt::printf_args args) {
-            auto fmt = fmt::vsprintf(format, args);
-            syslog(syslogLevel(level), "%s", fmt.data());
+        [logfile](LogLevel level, std::string&& message) {
+            syslog(syslogLevel(level), "%s", message.c_str());
         });
 #else
     return std::make_shared<Logger>();
