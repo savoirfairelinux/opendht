@@ -66,7 +66,9 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, 
     }
 }
 
-SecureDht::~SecureDht() = default;
+SecureDht::~SecureDht(){
+    dht_.reset();
+}
 
 ValueType
 SecureDht::secureType(ValueType&& type)
