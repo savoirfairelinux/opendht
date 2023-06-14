@@ -1,4 +1,4 @@
-FROM ghcr.io/savoirfairelinux/opendht/opendht-deps-alpine:latest AS build
+FROM opendht-alpine-deps:dev AS build
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
 
@@ -19,7 +19,7 @@ RUN cd opendht && mkdir build && cd build \
 				-DOPENDHT_SYSTEMD=On \
 	&& make -j8 && make install
 
-FROM alpine:3.17 AS install
+FROM alpine:3.18 AS install
 COPY --from=build /install /
 RUN apk add --no-cache \
         libstdc++ \
