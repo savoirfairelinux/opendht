@@ -1,4 +1,4 @@
-FROM opendht-alpine-deps:dev AS build
+FROM ghcr.io/savoirfairelinux/opendht/opendht-deps-alpine:latest AS build
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
 
