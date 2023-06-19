@@ -139,7 +139,7 @@ struct Node {
      */
     Tid getNewTid() {
         ++transaction_id;
-        return transaction_id ? ++transaction_id : transaction_id;
+        return transaction_id ? transaction_id : ++transaction_id;
     }
 
     std::string toString() const;
