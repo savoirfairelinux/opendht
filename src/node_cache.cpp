@@ -20,8 +20,8 @@
 
 namespace dht {
 
-constexpr size_t CLEANUP_MAX_NODES {1024};
-constexpr size_t CLEANUP_FREQ {1024};
+constexpr size_t CLEANUP_MAX_NODES {4 * 1024};
+constexpr size_t CLEANUP_FREQ {4 * 1024};
 
 NodeCache::~NodeCache()
 {
