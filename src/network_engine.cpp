@@ -41,7 +41,8 @@ constexpr std::chrono::seconds NetworkEngine::UDP_REPLY_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
-const std::string NetworkEngine::my_v {"RNG1"};
+/* OpenDHT User Agent (UA) */
+const std::string NetworkEngine::my_v {"o2"};
 
 static constexpr uint8_t v4prefix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0};
 
