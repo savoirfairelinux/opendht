@@ -36,7 +36,7 @@ enum class LogLevel {
 
 using LogMethod = std::function<void(LogLevel, std::string&&)>;
 
-struct Logger {
+struct OPENDHT_PUBLIC Logger {
     LogMethod logger = {};
 
     Logger() = delete;
