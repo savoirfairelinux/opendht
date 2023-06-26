@@ -112,6 +112,7 @@ getFileLogger(const std::string &path) {
     );
 }
 
+#ifndef _WIN32
 constexpr
 int syslogLevel(LogLevel level) {
     switch (level) {
@@ -124,6 +125,7 @@ int syslogLevel(LogLevel level) {
     }
     return LOG_ERR;
 }
+#endif
 
 std::shared_ptr<Logger>
 getSyslogLogger(const char* name) {
