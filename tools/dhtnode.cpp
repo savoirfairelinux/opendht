@@ -43,7 +43,7 @@ void print_version() {
 }
 
 void print_usage() {
-    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port] [--proxyserverssl local_port] [--bundleid bundleid] [--openpush endpoint]" << std::endl << std::endl;
+    std::cout << "Usage: dhtnode [-v [-l logfile]] [-i] [-d] [-n network_id] [-p local_port] [-b bootstrap_host[:port]] [--proxyserver local_port] [--proxyserverssl local_port] [--bundleid bundleid] [--pushserver endpoint]" << std::endl << std::endl;
     print_info();
 }
 
