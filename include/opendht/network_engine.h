@@ -501,8 +501,6 @@ private:
     static constexpr size_t MAX_PACKET_VALUE_SIZE {600};
     static constexpr size_t MAX_MESSAGE_VALUE_SIZE {56 * 1024};
 
-    static const std::string my_v;
-
     void process(std::unique_ptr<ParsedMessage>&&, const SockAddr& from);
 
     bool rateLimit(const SockAddr& addr);

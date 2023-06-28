@@ -42,7 +42,7 @@ constexpr std::chrono::seconds NetworkEngine::RX_MAX_PACKET_TIME;
 constexpr std::chrono::seconds NetworkEngine::RX_TIMEOUT;
 
 /* OpenDHT User Agent (UA) */
-const std::string NetworkEngine::my_v {"o2"};
+constexpr std::string_view OPENDHT_UA {"o2"};
 
 static constexpr uint8_t v4prefix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0};
 
@@ -160,7 +160,7 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const Inf
         }
 
     pk.pack(KEY_Y); pk.pack(version >= 1 ? KEY_Q : KEY_R);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -211,7 +211,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoH
         }
 
     pk.pack(KEY_Y); pk.pack(version >= 1 ? KEY_Q : KEY_R);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -711,7 +711,7 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     pk.pack(KEY_Q); pk.pack(QUERY_PING);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -748,7 +748,7 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
 
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -777,7 +777,7 @@ NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t wa
     pk.pack(KEY_Q); pk.pack(QUERY_FIND);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -830,7 +830,7 @@ NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const
     pk.pack(KEY_Q); pk.pack(QUERY_GET);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1013,7 +1013,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
 
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1104,7 +1104,7 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     pk.pack(KEY_Q); pk.pack(QUERY_LISTEN);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1137,7 +1137,7 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
 
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1173,7 +1173,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     pk.pack(KEY_Q);   pk.pack(QUERY_PUT);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
-    pk.pack(KEY_UA);  pk.pack(my_v);
+    pk.pack(KEY_UA);  pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1260,7 +1260,7 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     pk.pack(KEY_Q);   pk.pack(QUERY_UPDATE);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y);   pk.pack(KEY_Q);
-    pk.pack(KEY_UA);  pk.pack(my_v);
+    pk.pack(KEY_UA);  pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1299,7 +1299,7 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     pk.pack(KEY_Q); pk.pack(QUERY_REFRESH);
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_Q);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1343,7 +1343,7 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) 
 
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_R);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
@@ -1373,7 +1373,7 @@ NetworkEngine::sendError(const SockAddr& addr,
 
     pk.pack(KEY_TID); pk.pack(tid);
     pk.pack(KEY_Y); pk.pack(KEY_E);
-    pk.pack(KEY_UA); pk.pack(my_v);
+    pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
