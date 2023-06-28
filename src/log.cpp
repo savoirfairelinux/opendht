@@ -150,7 +150,7 @@ getSyslogLogger(const char* name) {
             syslog(syslogLevel(level), "%s", message.c_str());
         });
 #else
-    return std::make_shared<Logger>();
+    return getStdLogger();
 #endif
 }
 

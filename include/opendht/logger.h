@@ -37,8 +37,6 @@ enum class LogLevel {
 using LogMethod = std::function<void(LogLevel, std::string&&)>;
 
 struct OPENDHT_PUBLIC Logger {
-    LogMethod logger = {};
-
     Logger() = delete;
     Logger(LogMethod&& l)
         : logger(std::move(l)) {
@@ -110,6 +108,7 @@ struct OPENDHT_PUBLIC Logger {
         log2(LogLevel::error, f1, f2, format, fmt::make_printf_args(args...));
     }
 private:
+    LogMethod logger = {};
     bool filterEnable_ {false};
     InfoHash filter_ {};
 };
