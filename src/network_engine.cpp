@@ -24,6 +24,8 @@
 #include "parsed_message.h"
 
 #include <msgpack.hpp>
+#include <chrono>
+#include <string_view>
 
 namespace dht {
 namespace net {
