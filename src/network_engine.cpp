@@ -378,7 +378,6 @@ NetworkEngine::isMartian(const SockAddr& addr)
         const auto& sin6 = addr.getIPv6();
         const uint8_t* address = (const uint8_t*)&sin6.sin6_addr;
         return address[0] == 0xFF ||
-              (address[0] == 0xFE && (address[1] & 0xC0) == 0x80) ||
                memcmp(address, InfoHash::zero().data(), 16) == 0 ||
                memcmp(address, v4prefix,      12) == 0;
     }
