@@ -33,6 +33,10 @@
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 
+#include <cctype>
+#include <iomanip>
+#include <sstream>
+
 #define MAXAGE_SEC (14*24*60*60)
 #define JITTER_SEC (60)
 #define OCSP_MAX_RESPONSE_SIZE (20480)
@@ -1048,7 +1052,7 @@ Request::build()
     bool append_body = !body_.empty();
 
     // first header
-    request << header_.method().c_str() << " " << header_.request_target() << " " <<
+    request << header_.method().c_str() << " " << url_encode(header_.request_target()) << " " <<
                "HTTP/" << header_.http_major() << "." << header_.http_minor() << "\r\n";
 
     // other headers
@@ -1082,6 +1086,30 @@ Request::build()
     } else
         request << "\r\n";
     request_ = request.str();
+}
+
+// https://stackoverflow.com/a/17708801
+static std::string
+Request::url_encode(const std::string& value)
+{
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+
+    for (const char& c : value) {
+        // Keep alphanumeric and other accepted characters intact
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+            continue;
+        }
+
+        // Any other characters are percent-encoded
+        escaped << std::uppercase;
+        escaped << '%' << std::setw(2) << static_cast<int>(static_cast<unsigned char>(c));
+        escaped << std::nouppercase;
+    }
+
+    return escaped.str();
 }
 
 void
