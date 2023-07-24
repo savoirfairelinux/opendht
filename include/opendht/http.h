@@ -330,6 +330,8 @@ private:
 
     void build();
 
+    static std::string url_encode(const std::string& value);
+
     void init_default_headers();
     /**
      * Initialized and wraps the http_parser callbacks with our user defined callbacks.
