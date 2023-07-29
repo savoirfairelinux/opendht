@@ -1089,7 +1089,7 @@ Request::build()
 }
 
 // https://stackoverflow.com/a/17708801
-static std::string
+std::string
 Request::url_encode(const std::string& value)
 {
     std::ostringstream escaped;
