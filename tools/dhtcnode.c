@@ -228,7 +228,7 @@ int main(int argc, char **argv)
         memset(cmd, 0, sizeof cmd);
         memset(arg, 0, sizeof arg);
         memset(value, 0, sizeof value);
-        sscanf(line_read, "%64s %64s %256s", cmd, arg, value);
+        sscanf(line_read, "%63s %63s %255s", cmd, arg, value);
 
         if (!strcmp(cmd, "la")) {
             struct sockaddr** addrs = dht_runner_get_public_address(runner);
