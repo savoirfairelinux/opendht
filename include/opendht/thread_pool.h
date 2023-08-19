@@ -61,7 +61,7 @@ public:
         return get(std::move(cb));
     }
 
-    void stop();
+    void stop(bool wait = true);
     void join();
 
 private:

@@ -127,14 +127,13 @@ ThreadPool::threadEnded(std::thread& thread)
         cleanupThreads();
     });
     // A thread expired, maybe after handling a one-time burst of tasks.
-    // If we start new threads later, increase the expiration delay.
+    // If new threads start later, increase the expiration delay.
     if (threadExpirationDelay > std::chrono::hours(168)) {
         // If we reach 7 days, assume the thread pool is often used at max capacity
         minThreads_ = std::min(minThreads_+1, maxThreads_);
     } else {
         threadExpirationDelay *= threadDelayRatio_;
     }
-
     cv_.notify_one();
 }
 
@@ -156,9 +155,12 @@ ThreadPool::cleanupThreads()
 }
 
 void
-ThreadPool::stop()
+ThreadPool::stop(bool wait)
 {
-    std::lock_guard<std::mutex> l(lock_);
+    std::unique_lock<std::mutex> l(lock_);
+    if (wait) {
+        cv_.wait(l, [&](){ return tasks_.empty(); });
+    }
     running_ = false;
     tasks_ = {};
     cv_.notify_all();
