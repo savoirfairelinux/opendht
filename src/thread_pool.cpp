@@ -49,7 +49,7 @@ ThreadPool::ThreadPool(unsigned minThreads, unsigned maxThreads)
 {
     threads_.reserve(maxThreads_);
     if (minThreads_ != maxThreads_) {
-        threadDelayRatio_ = std::pow(2, 1.0 / (maxThreads_ - minThreads_));
+        threadDelayRatio_ = std::pow(3, 1.0 / (maxThreads_ - minThreads_));
     }
 }
 
@@ -122,36 +122,25 @@ void
 ThreadPool::threadEnded(std::thread& thread)
 {
     std::lock_guard<std::mutex> l(lock_);
-    endedThreads_.emplace_back(thread);
-    tasks_.emplace([this]{
-        cleanupThreads();
+    tasks_.emplace([this,t=std::reference_wrapper<std::thread>(thread)]{
+        std::lock_guard<std::mutex> l(lock_);
+        for (auto it = threads_.begin(); it != threads_.end(); ++it) {
+            if (&*(*it) == &t.get()) {
+                t.get().join();
+                threads_.erase(it);
+                break;
+            }
+        }
     });
     // A thread expired, maybe after handling a one-time burst of tasks.
     // If new threads start later, increase the expiration delay.
-    if (threadExpirationDelay > std::chrono::hours(168)) {
-        // If we reach 7 days, assume the thread pool is often used at max capacity
+    if (threadExpirationDelay > std::chrono::hours(24 * 7)) {
+        // If we reach 7 days, assume the thread is regularly used at full capacity
         minThreads_ = std::min(minThreads_+1, maxThreads_);
     } else {
         threadExpirationDelay *= threadDelayRatio_;
     }
     cv_.notify_one();
-}
-
-void
-ThreadPool::cleanupThreads()
-{
-    std::lock_guard<std::mutex> l(lock_);
-    if (not endedThreads_.empty()) {
-        for (auto& thread : endedThreads_)
-            thread.get().join();
-        endedThreads_.clear();
-        for (auto it = threads_.begin(); it != threads_.end();) {
-            if (not (*it)->joinable())
-                it = threads_.erase(it);
-            else
-                ++it;
-        }
-    }
 }
 
 void

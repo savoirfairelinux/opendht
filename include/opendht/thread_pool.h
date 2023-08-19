@@ -74,12 +74,10 @@ private:
 
     unsigned minThreads_;
     const unsigned maxThreads_;
-    std::chrono::steady_clock::duration threadExpirationDelay {std::chrono::minutes(1)};
+    std::chrono::steady_clock::duration threadExpirationDelay {std::chrono::minutes(5)};
     double threadDelayRatio_ {2};
 
-    std::vector<std::reference_wrapper<std::thread>> endedThreads_ {};
     void threadEnded(std::thread&);
-    void cleanupThreads();
 };
 
 class OPENDHT_PUBLIC Executor : public std::enable_shared_from_this<Executor> {
