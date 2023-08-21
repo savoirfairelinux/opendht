@@ -23,6 +23,7 @@
 #include <thread>
 #include <iostream>
 #include <ciso646> // fix windows compiler bug
+#include <cmath> // std::pow
 
 namespace dht {
 
