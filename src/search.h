@@ -485,6 +485,8 @@ struct Dht::Search {
      */
     bool isSynced(time_point now) const;
 
+    unsigned syncLevel(time_point now) const;
+
     /**
      * Get the time of the last "get" operation performed on this search,
      * or time_point::min() if no such operation have been performed.
@@ -893,6 +895,21 @@ Dht::Search::isSynced(time_point now) const
             break;
     }
     return i > 0;
+}
+
+unsigned
+Dht::Search::syncLevel(time_point now) const
+{
+    unsigned i = 0;
+    for (const auto& n : nodes) {
+        if (n->isBad())
+            continue;
+        if (not n->isSynced(now))
+            return i;
+        if (++i == TARGET_NODES)
+            break;
+    }
+    return i;
 }
 
 time_point

@@ -564,7 +564,7 @@ private:
      * @param sr  The search for which we want to announce a value.
      * @param announce  The 'announce' structure.
      */
-    void searchSendAnnounceValue(const Sp<Search>& sr);
+    void searchSendAnnounceValue(const Sp<Search>& sr, unsigned syncLevel = TARGET_NODES);
 
     /**
      * Main process of a Search's operations. This function will demand the
