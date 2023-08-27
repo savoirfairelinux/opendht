@@ -437,10 +437,9 @@ Dht::searchSendGetValues(Sp<Search> sr, SearchNode* pn, bool update)
     return nullptr;
 }
 
-void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
+void Dht::searchSendAnnounceValue(const Sp<Search>& sr, unsigned syncLevel) {
     if (sr->announce.empty())
         return;
-    unsigned i = 0;
     std::weak_ptr<Search> ws = sr;
 
     auto onDone = [this,ws](const net::Request& req, net::RequestAnswer&& answer)
@@ -552,6 +551,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
     static const auto PROBE_QUERY = std::make_shared<Query>(Select {}.field(Value::Field::Id).field(Value::Field::SeqNum));
 
     const auto& now = scheduler.time();
+    unsigned i = 0;
     for (auto& np : sr->nodes) {
         auto& n = *np;
         if (not n.isSynced(now))
@@ -592,7 +592,7 @@ void Dht::searchSendAnnounceValue(const Sp<Search>& sr) {
                     std::bind(&Dht::searchNodeGetExpired, this, _1, _2, ws, PROBE_QUERY));
             n.getStatus[PROBE_QUERY] = std::move(req);
         }
-        if (not n.candidate and ++i == TARGET_NODES)
+        if (not n.candidate and ++i == syncLevel)
             break;
     }
 }
@@ -675,6 +675,10 @@ Dht::searchStep(std::weak_ptr<Search> ws)
     if (not sr or sr->expired or sr->done) return;
 
     const auto& now = scheduler.time();
+    auto level = sr->syncLevel(now);
+    constexpr auto MARGIN = 1;
+    bool preSynced = level > MARGIN;
+    auto syncLevel = preSynced ? level - MARGIN : 0;
     /*if (auto req_count = sr->currentlySolicitedNodeCount())
         if (logger_)
             logger_->d(sr->id, "[search %s IPv%c] step (%d requests)",
@@ -735,6 +739,21 @@ Dht::searchStep(std::weak_ptr<Search> ws)
 
         if (sr->callbacks.empty() && sr->announce.empty() && sr->listeners.empty())
             sr->setDone();
+    } else if (preSynced) {
+        if (not sr->listeners.empty()) {
+            auto nl = std::min(syncLevel, LISTEN_NODES);
+            unsigned i = 0;
+            for (auto& n : sr->nodes) {
+                if (not n->isSynced(now))
+                    break;
+                searchSynchedNodeListen(sr, *n);
+                if (++i == nl)
+                    break;
+            }
+        }
+
+        // Announce requests
+        searchSendAnnounceValue(sr, syncLevel);
     }
 
     while (sr->currentlySolicitedNodeCount() < MAX_REQUESTED_SEARCH_NODES and searchSendGetValues(sr));
