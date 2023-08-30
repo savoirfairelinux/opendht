@@ -746,7 +746,10 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
                     addresses.emplace_back(publicAddressV4_);
                 if (publicAddressV6_)
                     addresses.emplace_back(publicAddressV6_);
-                publicAddressChangedCb_(std::move(addresses));
+                std::lock_guard<std::mutex> lock(lockCallbacks_);
+                callbacks_.emplace_back([cb=publicAddressChangedCb_, addresses = std::move(addresses)](){
+                    cb(std::move(addresses));
+                });
             }
 
             if (!ipChanged && stats4_.good_nodes + stats6_.good_nodes)
@@ -1203,7 +1206,7 @@ DhtProxyClient::restartListeners(const asio::error_code &ec)
 }
 
 void
-DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string>& notification)
+DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::string, std::string>& notification)
 {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     {
@@ -1302,13 +1305,11 @@ DhtProxyClient::pushNotificationReceived(const std::map<std::string, std::string
     }
     if (launchLoop)
         loopSignal_();
-#else
-    (void) notification;
 #endif
 }
 
 void
-DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& listener)
+DhtProxyClient::resubscribe([[maybe_unused]] const InfoHash& key, [[maybe_unused]] const size_t token, [[maybe_unused]] Listener& listener)
 {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     if (deviceKey_.empty())
@@ -1332,9 +1333,6 @@ DhtProxyClient::resubscribe(const InfoHash& key, const size_t token, Listener& l
                                                 std::placeholders::_1, key, token, opstate));
     auto vcb = listener.cb;
     sendListen(header, vcb, opstate, listener, ListenMethod::RESUBSCRIBE);
-#else
-    (void) key;
-    (void) listener;
 #endif
 }
 
