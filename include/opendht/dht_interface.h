@@ -33,8 +33,8 @@ namespace net {
 class OPENDHT_PUBLIC DhtInterface {
 public:
     DhtInterface() = default;
-    DhtInterface(const Logger& l) : logger_(std::make_shared<Logger>(l)) {};
-    DhtInterface(const std::shared_ptr<Logger>& l) : logger_(l) {};
+    DhtInterface(const Logger& l) : logger_(std::make_shared<Logger>(l)) {}
+    DhtInterface(const std::shared_ptr<Logger>& l) : logger_(l) {}
     virtual ~DhtInterface() = default;
 
     // [[deprecated]]
@@ -45,15 +45,16 @@ public:
     /**
      * Get the current status of the node for the given family.
      */
-    virtual NodeStatus updateStatus(sa_family_t af) { return getStatus(af); };
+    virtual NodeStatus updateStatus(sa_family_t af) { return getStatus(af); }
     virtual NodeStatus getStatus(sa_family_t af) const = 0;
     virtual NodeStatus getStatus() const = 0;
 
     void addOnConnectedCallback(std::function<void()> cb) {
         onConnectCallbacks_.emplace(std::move(cb));
     }
+    virtual void setOnPublicAddressChanged(PublicAddressChangedCb) {}
 
-    virtual net::DatagramSocket* getSocket() const { return {}; };
+    virtual net::DatagramSocket* getSocket() const { return {}; }
 
     /**
      * Get the ID of the DHT node.

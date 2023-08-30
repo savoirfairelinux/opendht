@@ -186,6 +186,9 @@ DhtRunner::run(const Config& config, Context&& context)
     if (context.certificateStore) {
         dht_->setLocalCertificateStore(std::move(context.certificateStore));
     }
+    if (context.publicAddressChangedCb) {
+        dht_->setOnPublicAddressChanged(std::move(context.publicAddressChangedCb));
+    }
 
     if (not config.threaded)
         return;
