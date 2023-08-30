@@ -330,7 +330,7 @@ private:
 
     void build();
 
-    static std::string url_encode(const std::string& value);
+    static std::string url_encode(std::string_view value);
 
     void init_default_headers();
     /**
