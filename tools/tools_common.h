@@ -32,6 +32,8 @@
 #include <opendht/dht_proxy_server.h>
 #endif
 
+#include <fmt/ranges.h>
+
 #ifndef _MSC_VER
 #include <getopt.h>
 #include <readline/readline.h>
@@ -189,6 +191,9 @@ getDhtConfig(dht_params& params)
     if (context.logger) {
         context.statusChangedCallback = [logger = context.logger](dht::NodeStatus status4, dht::NodeStatus status6) {
             logger->w("Connectivity changed: IPv4: %s, IPv6: %s", dht::statusToStr(status4), dht::statusToStr(status6));
+        };
+        context.publicAddressChangedCb = [logger = context.logger](std::vector<dht::SockAddr> addrs) {
+            logger->warn("Public address changed: {}", addrs);
         };
     }
     return {std::move(config), std::move(context)};
