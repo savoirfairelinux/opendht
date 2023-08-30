@@ -89,6 +89,9 @@ public:
      * Get the ID of the node.
      */
     inline const InfoHash& getNodeId() const override { return myid; }
+    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override {
+        publicAddressChangedCb_ = std::move(cb);
+    }
 
     /**
      * Get the current status of the node for the given family.
@@ -357,6 +360,7 @@ private:
     SockAddr publicAddressV4_;
     SockAddr publicAddressV6_;
     std::atomic_bool launchConnectedCbs_ {false};
+    PublicAddressChangedCb publicAddressChangedCb_ {};
 
     InfoHash myid {};
 

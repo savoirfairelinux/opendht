@@ -721,7 +721,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
         }
     } else {
         if (logger_)
-            logger_->d("[proxy:client] [info] got proxy reply for %s",
+            logger_->debug("[proxy:client] [info] got proxy reply for {}",
                        family == AF_INET ? "ipv4" : "ipv6");
         try {
             myid = InfoHash(proxyInfos["node_id"].asString());
@@ -729,6 +729,7 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
             stats6_ = NodeStats(proxyInfos["ipv6"]);
             auto publicIp = parsePublicAddress(proxyInfos["public_ip"]);
             ipChanged = pubAddress && pubAddress.toString() != publicIp.toString();
+            bool pub = ipChanged || !pubAddress;
             pubAddress = publicIp;
 
             if (proxyInfos.isMember("local_ip")) {
@@ -737,6 +738,15 @@ DhtProxyClient::onProxyInfos(const Json::Value& proxyInfos, const sa_family_t fa
                     localAddress.setAddress(localIp.c_str());
                     ipChanged = (bool)localAddress;
                 }
+            }
+
+            if (pub && publicAddressChangedCb_) {
+                std::vector<SockAddr> addresses;
+                if (publicAddressV4_)
+                    addresses.emplace_back(publicAddressV4_);
+                if (publicAddressV6_)
+                    addresses.emplace_back(publicAddressV6_);
+                publicAddressChangedCb_(std::move(addresses));
             }
 
             if (!ipChanged && stats4_.good_nodes + stats6_.good_nodes)
