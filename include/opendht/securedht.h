@@ -149,6 +149,9 @@ public:
     void setLocalCertificateStore(CertificateStoreQuery&& query_method) {
         localQueryMethod_ = std::move(query_method);
     }
+    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override {
+        dht_->setOnPublicAddressChanged(cb);
+    }
 
     /**
      * SecureDht to Dht proxy

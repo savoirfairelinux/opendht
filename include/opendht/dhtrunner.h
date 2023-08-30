@@ -78,6 +78,7 @@ public:
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
         IdentityAnnouncedCb identityAnnouncedCb {};
+        PublicAddressChangedCb publicAddressChangedCb {};
         Context() {}
     };
 

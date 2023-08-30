@@ -170,6 +170,7 @@ using ValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;
 using IdentityAnnouncedCb = std::function<void(bool)>;
+using PublicAddressChangedCb = std::function<void(std::vector<SockAddr>)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 
