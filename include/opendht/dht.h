@@ -73,6 +73,9 @@ public:
      * Get the ID of the node.
      */
     inline const InfoHash& getNodeId() const override { return myid; }
+    void setOnPublicAddressChanged(PublicAddressChangedCb cb) override {
+        publicAddressChangedCb_ = std::move(cb);
+    }
 
     NodeStatus updateStatus(sa_family_t af) override;
 
@@ -262,7 +265,6 @@ public:
      */
     void connectivityChanged(sa_family_t) override;
     void connectivityChanged() override {
-        reported_addr.clear();
         connectivityChanged(AF_INET);
         connectivityChanged(AF_INET6);
     }
@@ -381,11 +383,14 @@ private:
     TypeStore types;
 
     using SearchMap = std::map<InfoHash, Sp<Search>>;
+    using ReportedAddr = std::pair<unsigned, SockAddr>;
+
     struct Kad {
         RoutingTable buckets {};
         SearchMap searches {};
         unsigned pending_pings {0};
         NodeStatus status;
+        std::vector<ReportedAddr> reported_addr;
 
         NodeStatus getStatus(time_point now) const;
         NodeStats getNodesStats(time_point now, const InfoHash& myid) const;
@@ -393,6 +398,7 @@ private:
 
     Kad dht4 {};
     Kad dht6 {};
+    PublicAddressChangedCb publicAddressChangedCb_ {};
 
     std::vector<std::pair<std::string,std::string>> bootstrap_nodes {};
     std::chrono::steady_clock::duration bootstrap_period {BOOTSTRAP_PERIOD};
@@ -420,8 +426,6 @@ private:
     Sp<Scheduler::Job> nextStorageMaintenance {};
 
     net::NetworkEngine network_engine;
-    using ReportedAddr = std::pair<unsigned, SockAddr>;
-    std::vector<ReportedAddr> reported_addr;
 
     std::string persistPath;
 
