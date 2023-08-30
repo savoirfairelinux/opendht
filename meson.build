@@ -78,17 +78,17 @@ if get_option('tools').enabled()
     dhtnode = executable('dhtnode', 'tools/dhtnode.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack],
+        dependencies : [readline, msgpack, fmt],
         install : true)
     dhtchat = executable('dhtchat', 'tools/dhtchat.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack],
+        dependencies : [readline, msgpack, fmt],
         install : true)
     dhtscanner = executable('dhtscanner', 'tools/dhtscanner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack],
+        dependencies : [readline, msgpack, fmt],
         install : true)
     if http_parser.found()
         durl = executable('durl', 'tools/durl.cpp',
