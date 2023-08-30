@@ -281,7 +281,6 @@ std::pair<ssize_t, std::vector<Sp<Value>>>
 Storage::expire(const InfoHash& id, time_point now)
 {
     // expire listeners
-    ssize_t del_listen {0};
     for (auto nl_it = listeners.begin(); nl_it != listeners.end();) {
         auto& node_listeners = nl_it->second;
         for (auto l = node_listeners.cbegin(); l != node_listeners.cend();) {
@@ -293,7 +292,6 @@ Storage::expire(const InfoHash& id, time_point now)
         }
         if (node_listeners.empty()) {
             nl_it = listeners.erase(nl_it);
-            del_listen--;
         }
         else
             ++nl_it;
