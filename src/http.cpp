@@ -1052,7 +1052,7 @@ Request::build()
     bool append_body = !body_.empty();
 
     // first header
-    request << header_.method().c_str() << " " << url_encode(header_.request_target()) << " " <<
+    request << header_.method().c_str() << " " << header_.request_target() << " " <<
                "HTTP/" << header_.http_major() << "." << header_.http_minor() << "\r\n";
 
     // other headers
@@ -1090,7 +1090,7 @@ Request::build()
 
 // https://stackoverflow.com/a/17708801
 std::string
-Request::url_encode(const std::string& value)
+Request::url_encode(std::string_view value)
 {
     std::ostringstream escaped;
     escaped.fill('0');
@@ -1317,7 +1317,7 @@ Request::post()
     init_parser();
 
     if (logger_)
-        logger_->d("[http:request:%i] sending %zu bytes", id_, request_.size());
+        logger_->debug("[http:request:{}] sending {} bytes", id_, request_.size());
 
     // write the request to buffer
     std::ostream request_stream(&conn_->input());
