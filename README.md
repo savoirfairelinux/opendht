@@ -21,6 +21,11 @@ Values are distributed over the network, with redundancy.
 ## Documentation
 See the wiki: <https://github.com/savoirfairelinux/opendht/wiki>
 
+#### How to run a node
+
+You can help contributing to the public network by running a stable node with a public IP address.
+https://github.com/savoirfairelinux/opendht/wiki/Running-a-node-with-dhtnode
+
 #### How-to build and install
 
 Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-library>
@@ -91,10 +96,11 @@ for r in results:
 - msgpack-c 1.2+, used for data serialization.
 - GnuTLS 3.3+, used for cryptographic operations.
 - Nettle 2.4+, a GnuTLS dependency for crypto.
+- {fmt} 9.0+, for log formatting.
 - (optional) restinio used for the REST API.
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
 - Build tested with GCC 7+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
-- Build tested with Microsoft Visual Studio 2017, 2019, 2022
+- Build tested with Microsoft Visual Studio 2019, 2022
 
 ## Contact
 
