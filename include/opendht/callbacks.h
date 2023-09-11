@@ -176,12 +176,12 @@ using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
 using DoneCallbackSimple = std::function<void(bool success)>;
 
-typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data) noexcept;
-typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data) noexcept;
-typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data) noexcept;
-typedef void (*ShutdownCallbackRaw)(void *user_data) noexcept;
-typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data) noexcept;
-typedef bool (*FilterRaw)(const Value&, void *user_data) noexcept;
+typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data) noexcept(false);
+typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data) noexcept(false);
+typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data) noexcept(false);
+typedef void (*ShutdownCallbackRaw)(void *user_data) noexcept(false);
+typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data) noexcept(false);
+typedef bool (*FilterRaw)(const Value&, void *user_data) noexcept(false);
 
 
 OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
