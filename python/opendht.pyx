@@ -42,7 +42,7 @@ cimport opendht_cpp as cpp
 
 import threading
 
-cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* values, cpp.Prefix* p, void *user_data) with gil:
+cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* values, cpp.Prefix* p, void *user_data) noexcept with gil:
     cbs = <object>user_data
     if 'lookup' in cbs and cbs['lookup']:
         vals = []
@@ -52,13 +52,13 @@ cdef inline void lookup_callback(cpp.vector[cpp.shared_ptr[cpp.IndexValue]]* val
             vals.append(v)
         cbs['lookup'](vals, p.toString())
 
-cdef inline void shutdown_callback(void* user_data) with gil:
+cdef inline void shutdown_callback(void* user_data) noexcept with gil:
     cbs = <object>user_data
     if 'shutdown' in cbs and cbs['shutdown']:
         cbs['shutdown']()
     ref.Py_DECREF(cbs)
 
-cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with gil:
+cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) noexcept with gil:
     cbs = <object>user_data
     cb = cbs['get']
     f = cbs['filter'] if 'filter' in cbs else None
@@ -66,7 +66,7 @@ cdef inline bool get_callback(shared_ptr[cpp.Value] value, void *user_data) with
     pv._value = value
     return cb(pv) if not f or f(pv) else True
 
-cdef inline bool value_callback(shared_ptr[cpp.Value] value, bool expired, void *user_data) with gil:
+cdef inline bool value_callback(shared_ptr[cpp.Value] value, bool expired, void *user_data) noexcept with gil:
     cbs = <object>user_data
     cb = cbs['valcb']
     f = cbs['filter'] if 'filter' in cbs else None
@@ -74,7 +74,7 @@ cdef inline bool value_callback(shared_ptr[cpp.Value] value, bool expired, void 
     pv._value = value
     return cb(pv, expired) if not f or f(pv) else True
 
-cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) with gil:
+cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* nodes, void *user_data) noexcept with gil:
     node_ids = []
     for n in deref(nodes):
         h = NodeEntry()
@@ -86,7 +86,7 @@ cdef inline void done_callback(bool done, cpp.vector[shared_ptr[cpp.Node]]* node
         cbs['done'](done, node_ids)
     ref.Py_DECREF(cbs)
 
-cdef inline void done_callback_simple(bool done, void *user_data) with gil:
+cdef inline void done_callback_simple(bool done, void *user_data) noexcept with gil:
     cbs = <object>user_data
     if 'done' in cbs and cbs['done']:
         cbs['done'](done)
