@@ -173,17 +173,16 @@ using IdentityAnnouncedCb = std::function<void(bool)>;
 using PublicAddressChangedCb = std::function<void(std::vector<SockAddr>)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
-
-typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data);
-typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data);
-
 using DoneCallback = std::function<void(bool success, const std::vector<std::shared_ptr<Node>>& nodes)>;
-typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data);
-typedef void (*ShutdownCallbackRaw)(void *user_data);
-typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data);
-typedef bool (*FilterRaw)(const Value&, void *user_data);
-
 using DoneCallbackSimple = std::function<void(bool success)>;
+
+typedef bool (*GetCallbackRaw)(std::shared_ptr<Value>, void *user_data) noexcept;
+typedef bool (*ValueCallbackRaw)(std::shared_ptr<Value>, bool expired, void *user_data) noexcept;
+typedef void (*DoneCallbackRaw)(bool, std::vector<std::shared_ptr<Node>>*, void *user_data) noexcept;
+typedef void (*ShutdownCallbackRaw)(void *user_data) noexcept;
+typedef void (*DoneCallbackSimpleRaw)(bool, void *user_data) noexcept;
+typedef bool (*FilterRaw)(const Value&, void *user_data) noexcept;
+
 
 OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
 OPENDHT_PUBLIC GetCallback bindGetCb(GetCallbackSimple cb);
