@@ -1095,12 +1095,14 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
                 notification["expiration"] = exp;
                 if (!topic.empty())
                     notification["topic"] = topic;
-                if (highPriority) {
+                auto isResubscribe = !notification["data"]["timeout"].isNull();
+                if (highPriority || isResubscribe) {
                     Json::Value alert(Json::objectValue);
                     alert["title"]="hello";
                     notification["push_type"] = "alert";
                     notification["alert"] = alert;
                     notification["mutable_content"] = true;
+                    notification["priority"] = "high";
                 } else {
                     notification["push_type"] = "background";
                     notification["content_available"] = true;
