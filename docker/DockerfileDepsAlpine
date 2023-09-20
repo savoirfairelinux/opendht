@@ -13,9 +13,9 @@ RUN apk add --no-cache \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/bbaa034dbcc7555ce67df0f8a1475591a7441733.tar.gz \
-    && tar -xzf bbaa034dbcc7555ce67df0f8a1475591a7441733.tar.gz \
-    && cd restinio-bbaa034dbcc7555ce67df0f8a1475591a7441733/dev \
+    && wget https://github.com/aberaud/restinio/archive/6fd08b65f6f15899dd0de3c801f6a5462b811c64.tar.gz \
+    && tar -xzf 6fd08b65f6f15899dd0de3c801f6a5462b811c64.tar.gz \
+    && cd restinio-6fd08b65f6f15899dd0de3c801f6a5462b811c64/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
              -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
              -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
