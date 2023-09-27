@@ -1080,6 +1080,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             request->set_body(Json::writeString(jsonBuilder_, std::move(json)));
         } else {
             // NOTE: see https://github.com/appleboy/gorush
+            auto isResubscribe = json.isMember("timeout");
             Json::Value notification(Json::objectValue);
             Json::Value tokens(Json::arrayValue);
             tokens[0] = token;
@@ -1095,7 +1096,6 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
                 notification["expiration"] = exp;
                 if (!topic.empty())
                     notification["topic"] = topic;
-                auto isResubscribe = !notification["data"]["timeout"].isNull();
                 if (highPriority || isResubscribe) {
                     Json::Value alert(Json::objectValue);
                     alert["title"]="hello";
