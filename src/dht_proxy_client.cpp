@@ -491,7 +491,7 @@ void
 DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb, time_point /*created*/, bool permanent)
 {
     if (logger_)
-        logger_->d("[proxy:client] [put] [search %s] executing for %s", key.to_c_str(), val->toString().c_str());
+        logger_->debug("[proxy:client] [put] [search {}] executing for {}", key, val->toString());
 
     try {
         auto request = buildRequest("/key/" + key.toString());
@@ -539,12 +539,12 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
                         }
                     } else {
                         if (logger_)
-                            logger_->e("[proxy:client] [status] failed to parse value from  server", response.status_code);
+                            logger_->error("[proxy:client] [put] failed to parse value from server: {}", err);
                     }
                 }
             } else {
                 if (logger_)
-                    logger_->e("[proxy:client] [status] failed with code=%i", response.status_code);
+                    logger_->error("[proxy:client] [put] failed with code={:d}", response.status_code);
                 if (not response.aborted and response.status_code == 0)
                     opFailed();
             }
@@ -563,7 +563,8 @@ DhtProxyClient::doPut(const InfoHash& key, Sp<Value> val, DoneCallbackSimple cb,
     }
     catch (const std::exception &e){
         if (logger_)
-            logger_->e("[proxy:client] [put %s] error: %s", key.to_c_str(), e.what());
+            logger_->error("[proxy:client] [put {}] error: {}", key, e.what());
+        opFailed();
     }
 }
 
@@ -1154,7 +1155,7 @@ DhtProxyClient::restartListeners(const asio::error_code &ec)
 
     std::lock_guard<std::mutex> lock(searchLock_);
     for (auto& search : searches_) {
-        auto key = search.first;
+        const auto& key = search.first;
         for (auto& put : search.second.puts) {
             doPut(key, put.second.value, [ok = put.second.ok](bool result){
                 *ok = result;
@@ -1165,6 +1166,10 @@ DhtProxyClient::restartListeners(const asio::error_code &ec)
             put.second.refreshPutTimer->expires_at(std::chrono::steady_clock::now() + proxy::OP_TIMEOUT - proxy::OP_MARGIN);
             put.second.refreshPutTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this,
                                                    std::placeholders::_1, key, put.first));
+        }
+        // Restart failed pending puts
+        for (auto& pput : search.second.pendingPuts) {
+            doPut(key, pput, {}, time_point::max(), true);
         }
     }
     if (not deviceKey_.empty()) {
