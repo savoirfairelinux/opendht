@@ -26,7 +26,7 @@ from libc.string cimport const_char, const_uchar
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
 
-cdef extern from "<iostream>" namespace "std::chrono" nogil:
+cdef extern from "<chrono>" namespace "std::chrono" nogil:
     cdef cppclass duration[ulong]:
         duration() except +
 
@@ -58,6 +58,13 @@ cdef extern from "<future>" namespace "std" nogil:
         future() except +
         bool valid() const
         shared_future[T] share()
+
+cdef extern from "opendht/utils.h" namespace "dht":
+    cdef cppclass time_point:
+        @staticmethod
+        time_point min() const
+        @staticmethod
+        time_point max() const
 
 cdef extern from "opendht/infohash.h" namespace "dht":
     cdef cppclass InfoHash:
@@ -254,7 +261,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         string getRoutingTablesLog(sa_family_t af) const
         string getSearchesLog(sa_family_t af) const
         void get(InfoHash key, GetCallback get_cb, DoneCallback done_cb, nullptr_t f, Where w)
-        void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb)
+        void put(InfoHash key, shared_ptr[Value] val, DoneCallback done_cb, time_point created, bool permanent)
         ListenToken listen(InfoHash key, ValueCallback get_cb)
         void cancelListen(InfoHash key, SharedListenToken token)
         vector[unsigned] getNodeMessageStats(bool i)

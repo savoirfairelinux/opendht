@@ -587,7 +587,7 @@ cdef class DhtRunner(_WithID):
                 while pending > 0:
                     lock.wait()
             return res
-    def put(self, InfoHash key, Value val, done_cb=None):
+    def put(self, InfoHash key, Value val, done_cb=None, permanent=False):
         """Publish a new value on the DHT at key.
 
         key     -- the DHT key where to put the value
@@ -597,7 +597,7 @@ cdef class DhtRunner(_WithID):
         if done_cb:
             cb_obj = {'done':done_cb}
             ref.Py_INCREF(cb_obj)
-            self.thisptr.get().put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj))
+            self.thisptr.get().put(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), cpp.time_point.max(), permanent)
         else:
             lock = threading.Condition()
             pending = 0
