@@ -21,6 +21,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
 from libcpp.map cimport map
+from libcpp.memory cimport shared_ptr, make_shared
 from libc.string cimport const_char, const_uchar
 
 ctypedef uint16_t in_port_t
@@ -33,16 +34,6 @@ cdef extern from "<chrono>" namespace "std::chrono" nogil:
     cdef cppclass seconds:
         duration seconds(uint64_t) except +
         duration seconds()
-
-cdef extern from "<memory>" namespace "std" nogil:
-    cdef cppclass shared_ptr[T]:
-        shared_ptr() except +
-        shared_ptr(T*) except +
-        T* get()
-        T operator*()
-        bool operator bool() const
-        void reset(T*)
-    shared_ptr[T] make_shared[T](...) except +
 
 cdef extern from "<functional>" namespace "std" nogil:
     cdef cppclass hash[T]:
