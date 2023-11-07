@@ -466,7 +466,7 @@ cdef class DhtConfig(object):
     cdef cpp.DhtRunnerConfig _config
     def __init__(self):
         self._config = cpp.DhtRunnerConfig()
-        self._config.threaded = True;
+        self._config.threaded = True
     def setIdentity(self, Identity id):
         self._config.dht_config.id = id._id
     def setBootstrapMode(self, bool bootstrap):
@@ -480,6 +480,19 @@ cdef class DhtConfig(object):
     def setRateLimit(self, ssize_t max_req_per_sec, ssize_t max_peer_req_per_sec):
         self._config.dht_config.node_config.max_req_per_sec = max_req_per_sec
         self._config.dht_config.node_config.max_peer_req_per_sec = max_peer_req_per_sec
+    def setProxyInfo(self, str proxy_server, str push_node_id="", str push_token="", str push_topic="", str push_platform="", Certificate server_ca = Certificate()):
+        self._config.proxy_server = proxy_server.encode()
+        self._config.push_node_id = push_node_id.encode()
+        self._config.push_token = push_token.encode()
+        self._config.push_topic = push_topic.encode()
+        self._config.push_platform = push_platform.encode()
+        self._config.server_ca = server_ca._cert
+    def setPeerDiscovery(self, bool peer_discovery, bool peer_publish):
+        self._config.peer_discovery = peer_discovery
+        self._config.peer_publish = peer_publish
+    def setBound(self, SockAddr bind4, SockAddr bind6):
+        self._config.bind4 = bind4._addr
+        self._config.bind6 = bind6._addr
 
 cdef class DhtRunner(_WithID):
     cdef cpp.shared_ptr[cpp.DhtRunner] thisptr

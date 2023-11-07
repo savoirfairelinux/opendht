@@ -239,6 +239,18 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         cppclass Config:
             SecureDhtConfig dht_config
             bool threaded
+            string proxy_server
+            string push_node_id
+            string push_token
+            string push_topic
+            string push_platform
+            bool peer_discovery
+            bool peer_publish
+            shared_ptr[Certificate] server_ca
+            Identity client_identity
+            SockAddr bind4
+            SockAddr bind6
+
         InfoHash getId() const
         InfoHash getNodeId() const
         void bootstrap(const_char*, const_char*)
