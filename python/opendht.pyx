@@ -158,6 +158,15 @@ cdef class SockAddr(object):
         return self.toString().decode()
     def __repr__(self):
         return "<%s '%s'>" % (self.__class__.__name__, str(self))
+    @staticmethod
+    def resolve(str host, str service=None):
+        vals = []
+        result = cpp.SockAddr.resolve(host.encode(), service.encode() if service else b'')
+        for val in result:
+            a = SockAddr()
+            a._addr = val
+            vals.append(a)
+        return vals
 
 cdef class Node(_WithID):
     cdef shared_ptr[cpp.Node] _node

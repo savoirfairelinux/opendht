@@ -86,6 +86,8 @@ cdef extern from "opendht/sockaddr.h" namespace "dht":
         bool isLoopback() const
         bool isPrivate() const
         bool isUnspecified() const
+        @staticmethod
+        vector[SockAddr] resolve(string host, string service) except +
 
 ctypedef vector[uint8_t] Blob
 
