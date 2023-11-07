@@ -636,6 +636,10 @@ cdef class DhtRunner(_WithID):
                 while pending > 0:
                     lock.wait()
             return ok
+
+    def cancelPut(self, InfoHash key, Value val):
+        self.thisptr.get().cancelPut(key._infohash, val._value)
+
     def listen(self, InfoHash key, value_cb):
         t = ListenToken()
         t._h = key._infohash
