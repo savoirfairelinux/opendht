@@ -609,6 +609,7 @@ cdef class DhtRunner(_WithID):
                 while pending > 0:
                     lock.wait()
             return res
+
     def put(self, InfoHash key, Value val, done_cb=None, permanent=False):
         """Publish a new value on the DHT at key.
 
@@ -633,6 +634,72 @@ cdef class DhtRunner(_WithID):
             with lock:
                 pending += 1
                 self.put(key, val, done_cb=tmp_done)
+                while pending > 0:
+                    lock.wait()
+            return ok
+
+    def putSigned(self, InfoHash key, Value val, done_cb=None, permanent=False):
+        if done_cb:
+            cb_obj = {'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.get().putSigned(key._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
+        else:
+            lock = threading.Condition()
+            pending = 0
+            ok = False
+            def tmp_done(ok_ret, nodes):
+                nonlocal pending, ok, lock
+                with lock:
+                    ok = ok_ret
+                    pending -= 1
+                    lock.notify()
+            with lock:
+                pending += 1
+                self.putSigned(key, val, done_cb=tmp_done)
+                while pending > 0:
+                    lock.wait()
+            return ok
+
+    def putEncrypted(self, InfoHash key, InfoHash to, Value val, done_cb=None, bool permanent=False):
+        if done_cb:
+            cb_obj = {'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.get().putEncrypted(key._infohash, to._infohash, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
+        else:
+            lock = threading.Condition()
+            pending = 0
+            ok = False
+            def tmp_done(ok_ret, nodes):
+                nonlocal pending, ok, lock
+                with lock:
+                    ok = ok_ret
+                    pending -= 1
+                    lock.notify()
+            with lock:
+                pending += 1
+                self.putEncrypted(key, to, val, done_cb=tmp_done, permanent=permanent)
+                while pending > 0:
+                    lock.wait()
+            return ok
+
+    def putEncrypted(self, InfoHash key, PublicKey to, Value val, done_cb=None, bool permanent=False):
+        if done_cb:
+            cb_obj = {'done':done_cb}
+            ref.Py_INCREF(cb_obj)
+            self.thisptr.get().putEncrypted(key._infohash, to._key, val._value, cpp.bindDoneCb(done_callback, <void*>cb_obj), permanent)
+        else:
+            lock = threading.Condition()
+            pending = 0
+            ok = False
+            def tmp_done(ok_ret, nodes):
+                nonlocal pending, ok, lock
+                with lock:
+                    ok = ok_ret
+                    pending -= 1
+                    lock.notify()
+            with lock:
+                pending += 1
+                self.putEncrypted(key, to, val, done_cb=tmp_done, permanent=permanent)
                 while pending > 0:
                     lock.wait()
             return ok
