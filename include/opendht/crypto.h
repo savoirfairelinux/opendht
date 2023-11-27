@@ -793,7 +793,7 @@ OPENDHT_PUBLIC void hash(const uint8_t* data, size_t data_length, uint8_t* hash,
  * that can be transmitted in clear, and will be generated if
  * not provided (32 bytes).
  */
-OPENDHT_PUBLIC Blob stretchKey(const std::string& password, Blob& salt, size_t key_length = 512/8);
+OPENDHT_PUBLIC Blob stretchKey(std::string_view password, Blob& salt, size_t key_length = 512/8);
 
 /**
  * AES-GCM encryption. Key must be 128, 192 or 256 bits long (16, 24 or 32 bytes).
@@ -802,15 +802,37 @@ OPENDHT_PUBLIC Blob aesEncrypt(const uint8_t* data, size_t data_length, const Bl
 OPENDHT_PUBLIC inline Blob aesEncrypt(const Blob& data, const Blob& key) {
     return aesEncrypt(data.data(), data.size(), key);
 }
-OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, const std::string& password);
+OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, std::string_view password);
 
 /**
  * AES-GCM decryption.
  */
 OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key);
 OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, const Blob& key) { return aesDecrypt(data.data(), data.size(), key); }
-OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, const std::string& password);
-OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, const std::string& password) { return aesDecrypt(data.data(), data.size(), password); }
+OPENDHT_PUBLIC inline Blob aesDecrypt(std::string_view data, const Blob& key) { return aesDecrypt((uint8_t*)data.data(), data.size(), key); }
+
+OPENDHT_PUBLIC Blob aesDecrypt(const uint8_t* data, size_t data_length, std::string_view password);
+OPENDHT_PUBLIC inline Blob aesDecrypt(const Blob& data, std::string_view password) { return aesDecrypt(data.data(), data.size(), password); }
+OPENDHT_PUBLIC inline Blob aesDecrypt(std::string_view data, std::string_view password) { return aesDecrypt((uint8_t*)data.data(), data.size(), password); }
+
+/**
+ * Get raw AES key from password and salt stored with the encrypted data.
+ */
+OPENDHT_PUBLIC Blob aesGetKey(const uint8_t* data, size_t data_length, std::string_view password);
+OPENDHT_PUBLIC Blob inline aesGetKey(const Blob& data, std::string_view password) {
+    return aesGetKey(data.data(), data.size(), password);
+}
+/** Get the salt part of data password-encrypted with `aesEncrypt(data, password)` */
+OPENDHT_PUBLIC Blob aesGetSalt(const uint8_t* data, size_t data_length);
+OPENDHT_PUBLIC Blob inline aesGetSalt(const Blob& data) {
+    return aesGetSalt(data.data(), data.size());
+}
+/** Get the salt part of data password-encrypted with `aesEncrypt(data, password)` */
+OPENDHT_PUBLIC std::string_view aesGetEncrypted(const uint8_t* data, size_t data_length);
+OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data) {
+    return aesGetEncrypted(data.data(), data.size());
+}
+
 
 }
 }
