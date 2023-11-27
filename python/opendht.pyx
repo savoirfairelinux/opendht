@@ -462,6 +462,26 @@ cdef class Identity(object):
             k._key = self._id.first
             return k
 
+def aesEncrypt(bytes data, str password) -> bytes :
+    cdef size_t d_len = len(data)
+    cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>data
+    cdef cpp.Blob indat
+    indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
+    cdef cpp.Blob encrypted = cpp.aesEncrypt(indat, password.encode())
+    cdef char* encrypted_c_str = <char *>encrypted.data()
+    cdef Py_ssize_t length = encrypted.size()
+    return encrypted_c_str[:length]
+
+def aesDecrypt(bytes data, str password) -> bytes :
+    cdef size_t d_len = len(data)
+    cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>data
+    cdef cpp.Blob indat
+    indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
+    cdef cpp.Blob decrypted = cpp.aesDecrypt(indat, password.encode())
+    cdef char* decrypted_c_str = <char *>decrypted.data()
+    cdef Py_ssize_t length = decrypted.size()
+    return decrypted_c_str[:length]
+
 cdef class DhtConfig(object):
     cdef cpp.DhtRunnerConfig _config
     def __init__(self):

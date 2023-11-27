@@ -94,6 +94,8 @@ ctypedef vector[uint8_t] Blob
 cdef extern from "opendht/crypto.h" namespace "dht::crypto":
     ctypedef pair[shared_ptr[PrivateKey], shared_ptr[Certificate]] Identity
     cdef Identity generateIdentity(string name, Identity ca, unsigned bits)
+    cdef Blob aesEncrypt(Blob data, string password) except +
+    cdef Blob aesDecrypt(Blob encrypted, string password) except +
 
     cdef cppclass PrivateKey:
         PrivateKey()
