@@ -173,6 +173,54 @@ void CryptoTester::testOcsp() {
     CPPUNIT_ASSERT(ocspRequest.second == req.getNonce());
 }
 
+void CryptoTester::testAesEncryption() {
+    auto password = "this is a password 123414!@#%@#$?" + std::to_string(rand());
+
+    std::vector<uint8_t> data1 {5, 10};
+    std::vector<uint8_t> data2(128 * 1024 + 13, 10);
+
+    auto encrypted1 = dht::crypto::aesEncrypt(data1, password);
+    auto encrypted2 = dht::crypto::aesEncrypt(data2, password);
+
+    auto decrypted1 = dht::crypto::aesDecrypt(encrypted1, password);
+    auto decrypted2 = dht::crypto::aesDecrypt(encrypted2, password);
+
+    CPPUNIT_ASSERT(data1 != encrypted1);
+    CPPUNIT_ASSERT(data2 != encrypted2);
+    CPPUNIT_ASSERT(data1 == decrypted1);
+    CPPUNIT_ASSERT(data2 == decrypted2);
+
+    auto key1 = dht::crypto::aesGetKey(encrypted1, password);
+    auto key2 = dht::crypto::aesGetKey(encrypted2, password);
+    auto encrypted1_data = dht::crypto::aesGetEncrypted(encrypted1);
+    auto encrypted2_data = dht::crypto::aesGetEncrypted(encrypted2);
+
+    CPPUNIT_ASSERT(key1 != key2);
+
+    decrypted1 = dht::crypto::aesDecrypt(encrypted1_data, key1);
+    decrypted2 = dht::crypto::aesDecrypt(encrypted2_data, key2);
+
+    CPPUNIT_ASSERT(data1 == decrypted1);
+    CPPUNIT_ASSERT(data2 == decrypted2);
+
+    auto salt1 = dht::crypto::aesGetSalt(encrypted1);
+    auto salt2 = dht::crypto::aesGetSalt(encrypted2);
+
+    CPPUNIT_ASSERT(salt1 != salt2);
+
+    auto key12 = dht::crypto::stretchKey(password, salt1, 256/8);
+    auto key22 = dht::crypto::stretchKey(password, salt2, 256/8);
+
+    CPPUNIT_ASSERT(key1 == key12);
+    CPPUNIT_ASSERT(key2 == key22);
+
+    decrypted1 = dht::crypto::aesDecrypt(encrypted1_data, key12);
+    decrypted2 = dht::crypto::aesDecrypt(encrypted2_data, key22);
+
+    CPPUNIT_ASSERT(data1 == decrypted1);
+    CPPUNIT_ASSERT(data2 == decrypted2);
+}
+
 void
 CryptoTester::tearDown() {
 
