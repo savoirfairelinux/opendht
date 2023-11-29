@@ -827,7 +827,7 @@ OPENDHT_PUBLIC Blob aesGetSalt(const uint8_t* data, size_t data_length);
 OPENDHT_PUBLIC Blob inline aesGetSalt(const Blob& data) {
     return aesGetSalt(data.data(), data.size());
 }
-/** Get the salt part of data password-encrypted with `aesEncrypt(data, password)` */
+/** Get the encrypted data part of data password-encrypted with `aesEncrypt(data, password)` */
 OPENDHT_PUBLIC std::string_view aesGetEncrypted(const uint8_t* data, size_t data_length);
 OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data) {
     return aesGetEncrypted(data.data(), data.size());
