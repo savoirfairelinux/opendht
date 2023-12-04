@@ -208,6 +208,12 @@ void CryptoTester::testAesEncryption() {
 
     CPPUNIT_ASSERT(salt1 != salt2);
 
+    auto encrypted11 = dht::crypto::aesBuildEncrypted(encrypted1_data, salt1);
+    auto encrypted22 = dht::crypto::aesBuildEncrypted(encrypted2_data, salt2);
+
+    CPPUNIT_ASSERT(encrypted11 == encrypted1);
+    CPPUNIT_ASSERT(encrypted22 == encrypted2);
+
     auto key12 = dht::crypto::stretchKey(password, salt1, 256/8);
     auto key22 = dht::crypto::stretchKey(password, salt2, 256/8);
 
@@ -216,6 +222,18 @@ void CryptoTester::testAesEncryption() {
 
     decrypted1 = dht::crypto::aesDecrypt(encrypted1_data, key12);
     decrypted2 = dht::crypto::aesDecrypt(encrypted2_data, key22);
+
+    CPPUNIT_ASSERT(data1 == decrypted1);
+    CPPUNIT_ASSERT(data2 == decrypted2);
+
+    auto encrypted12_data = dht::crypto::aesEncrypt(data1, key12);
+    auto encrypted22_data = dht::crypto::aesEncrypt(data2, key22);
+
+    encrypted11 = dht::crypto::aesBuildEncrypted(encrypted12_data, salt1);
+    encrypted22 = dht::crypto::aesBuildEncrypted(encrypted22_data, salt2);
+
+    decrypted1 = dht::crypto::aesDecrypt(encrypted11, password);
+    decrypted2 = dht::crypto::aesDecrypt(encrypted22, password);
 
     CPPUNIT_ASSERT(data1 == decrypted1);
     CPPUNIT_ASSERT(data2 == decrypted2);
