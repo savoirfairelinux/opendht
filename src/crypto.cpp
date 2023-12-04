@@ -107,9 +107,7 @@ Blob aesEncrypt(const Blob& data, std::string_view password)
 {
     Blob salt;
     Blob key = stretchKey(password, salt, 256 / 8);
-    Blob encrypted = aesEncrypt(data, key);
-    encrypted.insert(encrypted.begin(), salt.begin(), salt.end());
-    return encrypted;
+    return aesBuildEncrypted(aesEncrypt(data, key), salt);
 }
 
 Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
@@ -172,6 +170,15 @@ std::string_view aesGetEncrypted(const uint8_t* data, size_t data_length)
     if (data_length <= PASSWORD_SALT_LENGTH)
         throw DecryptError("Wrong data size");
     return std::string_view((const char*)(data+PASSWORD_SALT_LENGTH), data_length - PASSWORD_SALT_LENGTH);
+}
+
+Blob aesBuildEncrypted(const uint8_t* data, size_t data_length, const Blob& salt)
+{
+    Blob ret;
+    ret.reserve(data_length + salt.size());
+    ret.insert(ret.end(), salt.begin(), salt.end());
+    ret.insert(ret.end(), data, data + data_length);
+    return ret;
 }
 
 Blob aesGetKey(const uint8_t* data, size_t data_length, std::string_view password)

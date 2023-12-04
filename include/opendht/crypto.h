@@ -802,6 +802,12 @@ OPENDHT_PUBLIC Blob aesEncrypt(const uint8_t* data, size_t data_length, const Bl
 OPENDHT_PUBLIC inline Blob aesEncrypt(const Blob& data, const Blob& key) {
     return aesEncrypt(data.data(), data.size(), key);
 }
+/**
+ * AES-GCM encryption with argon2 key derivation.
+ * This function uses `stretchKey` to generate an AES key from the password and a random salt.
+ * The result is a bundle including the salt that can be decrypted with `aesDecrypt(data, password)`.
+ * If needed, the salt or encrypted data can be individually extracted from the bundle with `aesGetSalt` and `aesGetEncrypted`.
+ */
 OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, std::string_view password);
 
 /**
@@ -833,6 +839,18 @@ OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data) {
     return aesGetEncrypted(data.data(), data.size());
 }
 
+/** Build an encrypted bundle that can be decrypted with aesDecrypt(data, password).
+ *  @param encryptedData: result of `aesEncrypt(data, key)` or `aesGetEncrypted`
+ *  @param salt: should match the encryption key and password so that `stretchKey(password, salk) == key`.
+ *  Can be obtained from an existing bundle with `aesGetSalt`.
+ **/
+OPENDHT_PUBLIC Blob aesBuildEncrypted(const uint8_t* encryptedData, size_t data_length, const Blob& salt);
+OPENDHT_PUBLIC Blob inline aesBuildEncrypted(const Blob& encryptedData, const Blob& salt) {
+    return aesBuildEncrypted(encryptedData.data(), encryptedData.size(), salt);
+}
+OPENDHT_PUBLIC Blob inline aesBuildEncrypted(std::string_view encryptedData, const Blob& salt) {
+    return aesBuildEncrypted((const uint8_t*)encryptedData.data(), encryptedData.size(), salt);
+}
 
 }
 }
