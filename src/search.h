@@ -854,12 +854,17 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
             expired = false;
         }
 
-        while (nodes.size() - bad >  SEARCH_NODES) {
+        while (nodes.size() - bad > SEARCH_NODES) {
+            bool removingNode = nodes.back()->node == snode;
             if (not expired and nodes.back()->isBad())
                 bad--;
             nodes.pop_back();
+            if (removingNode)
+                return false;
         }
     }
+    if (n == nodes.end() or not *n)
+        return false;
     if (not token.empty()) {
         (*n)->candidate = false;
         (*n)->last_get_reply = now;
