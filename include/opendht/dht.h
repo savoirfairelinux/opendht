@@ -65,7 +65,7 @@ public:
      * Initialise the Dht with two open sockets (for IPv4 and IP6)
      * and an ID for the node.
      */
-    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {});
+    Dht(std::unique_ptr<net::DatagramSocket>&& sock, const Config& config, const Sp<Logger>& l = {}, std::unique_ptr<std::mt19937_64>&& rd = {});
 
     virtual ~Dht();
 
@@ -372,7 +372,7 @@ private:
     Dht(const Dht&) = delete;
     Dht& operator=(const Dht&) = delete;
 
-    std::mt19937_64 rd {crypto::getSeededRandomEngine<std::mt19937_64>()};
+    std::mt19937_64 rd;
 
     InfoHash myid {};
 
