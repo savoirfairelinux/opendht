@@ -167,7 +167,7 @@ DhtRunner::run(const Config& config, Context&& context)
                 outConfig << context.sock->getBoundRef(AF_INET).getPort() << std::endl;
                 outConfig << context.sock->getBoundRef(AF_INET6).getPort() << std::endl;
             }
-            auto dht = std::make_unique<Dht>(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger);
+            auto dht = std::make_unique<Dht>(std::move(context.sock), SecureDht::getConfig(config.dht_config), context.logger, std::move(context.rng));
             dht_ = std::make_unique<SecureDht>(std::move(dht), config.dht_config, std::move(context.identityAnnouncedCb), context.logger);
         } else {
             enableProxy(true);

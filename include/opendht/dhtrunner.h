@@ -79,6 +79,7 @@ public:
         CertificateStoreQuery certificateStore {};
         IdentityAnnouncedCb identityAnnouncedCb {};
         PublicAddressChangedCb publicAddressChangedCb {};
+        std::unique_ptr<std::mt19937_64> rng {};
         Context() {}
     };
 
