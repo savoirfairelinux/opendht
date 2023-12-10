@@ -316,7 +316,7 @@ void Pht::updateCanary(Prefix p) {
     dht_->put(p.hash(), std::move(canary_value),
         [=](bool){
             static std::bernoulli_distribution d(0.5);
-            crypto::random_device rd;
+            std::random_device rd;
             if (p.size_ and d(rd))
                 updateCanary(p.getPrefix(-1));
         }
