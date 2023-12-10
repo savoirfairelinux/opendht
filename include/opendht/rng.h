@@ -110,21 +110,47 @@ using random_device = std::random_device;
 using random_device = std::random_device;
 #endif
 
-template<class T = std::mt19937, std::size_t N = T::state_size>
-auto getSeededRandomEngine () -> typename std::enable_if<!!N, T>::type {
-    typename T::result_type random_data[N];
-    for (unsigned i=0; i<256; i++) {
+/** 
+ * Generate a seeded random engine.
+ */
+template<class T = std::mt19937, std::size_t N = T::state_size+1>
+auto getSeededRandomEngine() -> typename std::enable_if<!!N, T>::type {
+    std::array<typename T::result_type, N> random_data;
+    constexpr auto gen = [](random_device& source) -> typename T::result_type {
+        for (unsigned j=0; j<64; j++) {
+            try {
+                return source();
+            } catch (...) {
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+            }
+        }
+        throw std::runtime_error("Can't generate random number");
+    };
+    for (unsigned i=0; i<8; i++) {
         try {
             random_device source;
-            std::generate(std::begin(random_data), std::end(random_data), std::ref(source));
-            std::seed_seq seeds(std::begin(random_data), std::end(random_data));
-            T seededEngine (seeds);
-            return seededEngine;
+            for (auto& r : random_data)
+                r = gen(source);
+            std::seed_seq seed(
+                (std::seed_seq::result_type*)random_data.data(),
+                (std::seed_seq::result_type*)(random_data.data() + random_data.size()));
+            return T(seed);
         } catch (...) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
     }
-    throw std::runtime_error("Can't seed random engine");
+    throw std::runtime_error("Can't seed random seed");
+}
+
+/**
+ * Generate a random engine from another source.
+ */
+template<class T = std::mt19937, std::size_t N = T::state_size+1>
+auto getDerivedRandomEngine(T& source) -> typename std::enable_if<!!N, T>::type {
+    std::array<typename T::result_type, N> random_data;
+    std::generate(random_data.begin(), random_data.end(), std::ref(source));
+    std::seed_seq seed(random_data.begin(), random_data.end());
+    return T(seed);
 }
 
 }} // dht::crypto
