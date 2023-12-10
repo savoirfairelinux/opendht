@@ -98,7 +98,7 @@ std::string
 getRandomSessionId(size_t length = 8) {
     static constexpr const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~";
     std::string str(length, 0);
-    crypto::random_device rdev;
+    std::random_device rdev;
     std::uniform_int_distribution<> dist(0, (sizeof(chars)/sizeof(char)) - 2);
     std::generate_n( str.begin(), length, [&]{ return chars[dist(rdev)]; } );
     return str;

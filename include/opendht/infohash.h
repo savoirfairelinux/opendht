@@ -323,7 +323,7 @@ Hash<N>
 Hash<N>::getRandom()
 {
     Hash h;
-    crypto::random_device rdev;
+    std::random_device rdev;
     std::uniform_int_distribution<uint32_t> rand_int;
     auto a = reinterpret_cast<uint32_t*>(h.data());
     auto b = reinterpret_cast<uint32_t*>(h.data() + h.size());

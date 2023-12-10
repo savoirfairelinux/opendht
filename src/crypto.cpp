@@ -92,7 +92,7 @@ Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
 
     Blob ret(data_length + GCM_IV_SIZE + GCM_DIGEST_SIZE);
     {
-        crypto::random_device rdev;
+        std::random_device rdev;
         std::generate_n(ret.begin(), GCM_IV_SIZE, std::bind(rand_byte, std::ref(rdev)));
     }
     struct gcm_aes_ctx aes;
@@ -191,7 +191,7 @@ Blob stretchKey(std::string_view password, Blob& salt, size_t key_length)
 {
     if (salt.empty()) {
         salt.resize(PASSWORD_SALT_LENGTH);
-        crypto::random_device rdev;
+        std::random_device rdev;
         std::generate_n(salt.begin(), salt.size(), std::bind(rand_byte, std::ref(rdev)));
     }
     Blob res;
@@ -539,7 +539,7 @@ PublicKey::encrypt(const uint8_t* data, size_t data_len) const
         throw CryptoException("Key is not long enough for AES128");
     Blob key(aes_key_sz);
     {
-        crypto::random_device rdev;
+        std::random_device rdev;
         std::generate_n(key.begin(), key.size(), std::bind(rand_byte, std::ref(rdev)));
     }
     auto data_encrypted = aesEncrypt(data, data_len, key);
@@ -1193,7 +1193,7 @@ setValidityPeriod(gnutls_x509_crt_t cert, int64_t validity)
 void
 setRandomSerial(gnutls_x509_crt_t cert)
 {
-    random_device rdev;
+    std::random_device rdev;
     std::uniform_int_distribution<int64_t> dist{1};
     int64_t cert_serial = dist(rdev);
     gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
@@ -1666,7 +1666,7 @@ RevocationList::sign(const PrivateKey& key, const Certificate& ca, duration vali
     if (number == 0) {
         // initialize to a random number
         number_sz = sizeof(number);
-        random_device rdev;
+        std::random_device rdev;
         std::generate_n((uint8_t*)&number, sizeof(number), std::bind(rand_byte, std::ref(rdev)));
     } else
         number = endian(endian(number) + 1);

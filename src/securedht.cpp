@@ -337,7 +337,7 @@ SecureDht::putSigned(const InfoHash& hash, Sp<Value> val, DoneCallback callback,
         return;
     }
     if (val->id == Value::INVALID_ID) {
-        crypto::random_device rdev;
+        std::random_device rdev;
         std::uniform_int_distribution<Value::Id> rand_id;
         val->id = rand_id(rdev);
     }

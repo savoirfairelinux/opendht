@@ -30,7 +30,7 @@ extern "C" {
 
 using namespace dht;
 
-static std::mt19937_64 rd {dht::crypto::random_device{}()};
+static std::mt19937_64 rd {dht::crypto::getSeededRandomEngine<std::mt19937_64>()};
 static std::uniform_int_distribution<dht::Value::Id> rand_id;
 
 const std::string printTime(const std::time_t& now) {
