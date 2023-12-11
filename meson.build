@@ -1,5 +1,5 @@
 project('opendht', 'c', 'cpp',
-    version: '3.1.4',
+    version: '3.1.6',
     default_options: [
         'cpp_std=c++17',
         'warning_level=3'
