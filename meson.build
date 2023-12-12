@@ -74,26 +74,45 @@ opendht = shared_library('opendht',
     install : true)
 
 readline = meson.get_compiler('c').find_library('readline', required: get_option('tools'))
+
+if get_option('c').enabled()
+    opendht_c = shared_library('opendht-c',
+        ['c/opendht.cpp',  'c/opendht_c.h'],
+        include_directories : opendht_interface_inc,
+        link_with : opendht,
+        dependencies : [msgpack, fmt],
+        cpp_args : ['-DOPENDHT_C_BUILD', '-Dopendht_c_EXPORTS'],
+        install : true)
+
+    if get_option('tools').enabled()
+        dhtcnode = executable('dhtcnode', 'tools/dhtcnode.c',
+            include_directories : ['c', opendht_interface_inc],
+            link_with : opendht_c,
+            dependencies : [readline],
+            install : true)
+    endif
+endif
+
 if get_option('tools').enabled()
     dhtnode = executable('dhtnode', 'tools/dhtnode.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack, fmt],
+        dependencies : [readline, msgpack, fmt, openssl],
         install : true)
     dhtchat = executable('dhtchat', 'tools/dhtchat.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack, fmt],
+        dependencies : [readline, msgpack, fmt, openssl],
         install : true)
     dhtscanner = executable('dhtscanner', 'tools/dhtscanner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack, fmt],
+        dependencies : [readline, msgpack, fmt, openssl],
         install : true)
     if http_parser.found()
         durl = executable('durl', 'tools/durl.cpp',
-        include_directories : opendht_interface_inc,
-        link_with : opendht,
-        dependencies : [msgpack, openssl])
+            include_directories : opendht_interface_inc,
+            link_with : opendht,
+            dependencies : [msgpack, openssl])
     endif
 endif
