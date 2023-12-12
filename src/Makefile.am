@@ -29,10 +29,6 @@ libopendht_la_SOURCES  = \
         network_utils.cpp \
         thread_pool.cpp
 
-if WIN32
-libopendht_la_SOURCES += rng.cpp
-endif
-
 nobase_include_HEADERS = \
         ../include/opendht.h \
         ../include/opendht/def.h \
