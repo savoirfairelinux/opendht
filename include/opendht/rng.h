@@ -66,7 +66,9 @@ template<class T = std::mt19937, std::size_t N = T::state_size+1>
 auto getDerivedRandomEngine(T& source) -> typename std::enable_if<!!N, T>::type {
     std::array<typename T::result_type, N> random_data;
     std::generate(random_data.begin(), random_data.end(), std::ref(source));
-    std::seed_seq seed(random_data.begin(), random_data.end());
+    std::seed_seq seed(
+        (std::seed_seq::result_type*)random_data.data(),
+        (std::seed_seq::result_type*)(random_data.data() + random_data.size()));
     return T(seed);
 }
 
