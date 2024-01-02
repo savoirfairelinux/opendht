@@ -103,11 +103,11 @@ Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
     return ret;
 }
 
-Blob aesEncrypt(const Blob& data, std::string_view password)
+Blob aesEncrypt(const Blob& data, std::string_view password, const Blob& salt)
 {
-    Blob salt;
-    Blob key = stretchKey(password, salt, 256 / 8);
-    return aesBuildEncrypted(aesEncrypt(data, key), salt);
+    Blob salt_actual = salt;
+    Blob key = stretchKey(password, salt_actual, 256 / 8);
+    return aesBuildEncrypted(aesEncrypt(data, key), salt_actual);
 }
 
 Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)

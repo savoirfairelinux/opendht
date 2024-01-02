@@ -807,8 +807,11 @@ OPENDHT_PUBLIC inline Blob aesEncrypt(const Blob& data, const Blob& key) {
  * This function uses `stretchKey` to generate an AES key from the password and a random salt.
  * The result is a bundle including the salt that can be decrypted with `aesDecrypt(data, password)`.
  * If needed, the salt or encrypted data can be individually extracted from the bundle with `aesGetSalt` and `aesGetEncrypted`.
+ * @param data: data to encrypt
+ * @param password: password to encrypt the data with
+ * @param salt: optional salt to use for key derivation. If not provided, a random salt will be generated.
  */
-OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, std::string_view password);
+OPENDHT_PUBLIC Blob aesEncrypt(const Blob& data, std::string_view password, const Blob& salt = {});
 
 /**
  * AES-GCM decryption.
