@@ -1061,7 +1061,7 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
         std::shared_ptr<http::Request> request;
         http::Url tokenUrl(token);
         if (type == PushType::UnifiedPush)
-            request = std::make_shared<http::Request>(io_context(), tokenUrl.protocol + "://" + tokenUrl.host, logger_);
+            request = std::make_shared<http::Request>(io_context(), tokenUrl.protocol + "://" + tokenUrl.host + (tokenUrl.service.empty() ? "" : (":" + tokenUrl.service)), logger_);
         else
             request = std::make_shared<http::Request>(io_context(), pushHostPort_.first, pushHostPort_.second, pushHostPort_.first.find("https://") == 0, logger_);;
         reqid = request->id();
