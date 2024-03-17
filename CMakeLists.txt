@@ -1,10 +1,4 @@
-cmake_minimum_required (VERSION 3.10..3.20)
-if(POLICY CMP0073)
-  cmake_policy(SET CMP0073 NEW)
-endif()
-if(POLICY CMP0074)
-  cmake_policy(SET CMP0074 NEW)
-endif()
+cmake_minimum_required (VERSION 3.16..3.28)
 project (opendht)
 
 include(CMakePackageConfigHelpers)
