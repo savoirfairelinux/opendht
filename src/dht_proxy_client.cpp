@@ -26,7 +26,6 @@
 #include <http_parser.h>
 #include <deque>
 
-
 namespace dht {
 
 struct DhtProxyClient::InfoState {

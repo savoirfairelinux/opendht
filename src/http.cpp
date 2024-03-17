@@ -225,20 +225,25 @@ Connection::is_ssl() const
     return ssl_ctx_ ? true : false;
 }
 
-static time_t
-parse_ocsp_time(ASN1_GENERALIZEDTIME* gt)
-{
-    struct tm tm;
-    time_t rv = -1;
+std::string asn1ToString(ASN1_GENERALIZEDTIME* time) {
+    if (!time) {
+        return "(null)";
+    }
+    BIO* memBio = BIO_new(BIO_s_mem());
+    if (!memBio) {
+        throw std::runtime_error("Failed to create BIO");
+    }
 
-    if (gt == nullptr)
-        return -1;
-    // RFC 6960 specifies that all times in OCSP must be GENERALIZEDTIME
-    if (ASN1_time_parse((const char*)gt->data, gt->length, &tm, V_ASN1_GENERALIZEDTIME) == -1)
-        return -1;
-    if ((rv = timegm(&tm)) == -1)
-        return -1;
-    return rv;
+    if (ASN1_GENERALIZEDTIME_print(memBio, time) <= 0) {
+        BIO_free(memBio);
+        throw std::runtime_error("Failed to print ASN1_GENERALIZEDTIME");
+    }
+
+    char* bioData;
+    long bioLength = BIO_get_mem_data(memBio, &bioData);
+    std::string result(bioData, bioLength);
+    BIO_free(memBio);
+    return result;
 }
 
 static inline X509*
@@ -342,36 +347,32 @@ ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& lo
 bool
 ocspValidateResponse(const OscpRequestInfo& info, STACK_OF(X509)* fullchain, const std::string& response, X509_STORE *store, const std::shared_ptr<Logger>& logger)
 {
-    ASN1_GENERALIZEDTIME *revtime = nullptr, *thisupd = nullptr, *nextupd = nullptr;
-    const uint8_t* p = (const uint8_t*)response.data();
-    int status, cert_status=0, crl_reason=0;
-    time_t now, rev_t = -1, this_t, next_t;
-
     X509* cert = cert_from_chain(fullchain);
     if (cert == nullptr) {
         if (logger)
-            logger->e("No certificate found");
+            logger->error("ocsp: no certificate found");
         return false;
     }
     X509* issuer = issuer_from_chain(fullchain);
     if (issuer == nullptr) {
         if (logger)
-            logger->e("Unable to find issuer for cert");
+            logger->error("ocsp: unable to find issuer for cert");
         return false;
     }
 
     OCSP_CERTID *cidr;
     if ((cidr = OCSP_cert_to_id(nullptr, cert, issuer)) == nullptr) {
         if (logger)
-            logger->e("Unable to get issuer cert/CID");
+            logger->error("ocsp: unable to get issuer cert/CID");
         return false;
     }
     std::unique_ptr<OCSP_CERTID, decltype(&OCSP_CERTID_free)> cid(cidr, &OCSP_CERTID_free);
 
+    const uint8_t* resp_data = (const uint8_t*)response.data();
     OCSP_RESPONSE *r;
-    if ((r = d2i_OCSP_RESPONSE(nullptr, &p, response.size())) == nullptr) {
+    if ((r = d2i_OCSP_RESPONSE(nullptr, &resp_data, response.size())) == nullptr) {
         if (logger)
-            logger->e("OCSP response unserializable");
+            logger->error("OCSP response unserializable");
         return false;
     }
     std::unique_ptr<OCSP_RESPONSE, decltype(&OCSP_RESPONSE_free)> resp(r, &OCSP_RESPONSE_free);
@@ -379,99 +380,59 @@ ocspValidateResponse(const OscpRequestInfo& info, STACK_OF(X509)* fullchain, con
     OCSP_BASICRESP *brespr;
     if ((brespr = OCSP_response_get1_basic(resp.get())) == nullptr) {
         if (logger)
-            logger->e("Failed to load OCSP response");
+            logger->error("Failed to load OCSP response");
         return false;
     }
     std::unique_ptr<OCSP_BASICRESP, decltype(&OCSP_BASICRESP_free)> bresp(brespr, &OCSP_BASICRESP_free);
 
     if (OCSP_basic_verify(bresp.get(), fullchain, store, OCSP_TRUSTOTHER) != 1) {
         if (logger)
-            logger->w("OCSP verify failed");
+            logger->warn("OCSP verify failed");
         return false;
     }
-    printf("OCSP response signature validated\n");
 
-    status = OCSP_response_status(resp.get());
+    int status = OCSP_response_status(resp.get());
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
         if (logger)
-            logger->w("OCSP Failure: code %d (%s)", status, OCSP_response_status_str(status));
+            logger->warn("OCSP Failure: code {:d} ({:s})", status, OCSP_response_status_str(status));
         return false;
     }
 
     // Check the nonce if we sent one
     if (OCSP_check_nonce(info.req.get(), bresp.get()) <= 0) {
         if (logger)
-            logger->w("No OCSP nonce, or mismatch");
+            logger->warn("No OCSP nonce, or mismatch");
         return false;
     }
 
+    ASN1_GENERALIZEDTIME *revtime = nullptr, *thisupd = nullptr, *nextupd = nullptr;
+    int cert_status=0, crl_reason=0;
     if (OCSP_resp_find_status(bresp.get(), cid.get(), &cert_status, &crl_reason,
         &revtime, &thisupd, &nextupd) != 1) {
         if (logger)
-            logger->w("OCSP verify failed: no result for cert");
+            logger->warn("OCSP verify failed: no result for cert");
         return false;
     }
 
-    if (revtime && (rev_t = parse_ocsp_time(revtime)) == -1) {
-        if (logger)
-            logger->w("Unable to parse revocation time in OCSP reply");
-        return false;
-    }
     // Belt and suspenders, Treat it as revoked if there is either
     // a revocation time, or status revoked.
-    if (rev_t != -1 || cert_status == V_OCSP_CERTSTATUS_REVOKED) {
-        if (logger)
-            logger->w("Invalid OCSP reply: certificate is revoked");
-        if (rev_t != -1) {
-            if (logger)
-                logger->w("Certificate revoked at: %s", ctime(&rev_t));
+    if (revtime || cert_status == V_OCSP_CERTSTATUS_REVOKED) {
+        if (logger) {
+            logger->warn("OCSP verify failed: certificate revoked since {}", asn1ToString(revtime));
         }
         return false;
     }
-    if ((this_t = parse_ocsp_time(thisupd)) == -1) {
-        if (logger)
-            logger->w("unable to parse this update time in OCSP reply");
-        return false;
-    }
-    if ((next_t = parse_ocsp_time(nextupd)) == -1) {
-        if (logger)
-            logger->w("unable to parse next update time in OCSP reply");
-        return false;
-    }
 
-    // Don't allow this update to precede next update
-    if (this_t >= next_t) {
+    if (OCSP_check_validity(thisupd, nextupd, 1, -1) == 0) {
         if (logger)
-            logger->w("Invalid OCSP reply: this update >= next update");
-        return false;
-    }
-
-    now = time(nullptr);
-    // Check that this update is not more than JITTER seconds in the future.
-    if (this_t > now + JITTER_SEC) {
-        if (logger)
-            logger->e("Invalid OCSP reply: this update is in the future (%s)", ctime(&this_t));
-        return false;
-    }
-
-    // Check that this update is not more than MAXSEC in the past.
-    if (this_t < now - MAXAGE_SEC) {
-        if (logger)
-            logger->e("Invalid OCSP reply: this update is too old (%s)", ctime(&this_t));
-        return false;
-    }
-
-    // Check that next update is still valid
-    if (next_t < now - JITTER_SEC) {
-        if (logger)
-            logger->w("Invalid OCSP reply: reply has expired (%s)", ctime(&next_t));
+            logger->warn("OCSP reply is expired or not yet valid");
         return false;
     }
 
     if (logger) {
-        logger->d("OCSP response validated");
-        logger->d("	   This Update: %s", ctime(&this_t));
-        logger->d("	   Next Update: %s", ctime(&next_t));
+        logger->debug("OCSP response validated");
+        logger->debug("	   This Update: {}", asn1ToString(thisupd));
+        logger->debug("	   Next Update: {}", asn1ToString(nextupd));
     }
     return true;
 }
