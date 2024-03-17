@@ -48,7 +48,7 @@ jobs:
       run: |
         mkdir build && cd build
         cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Debug \
-                 -DOPENDHT_C=Off -DOPENDHT_TESTS=On -DOPENDHT_PEER_DISCOVERY=Off -DOPENDHT_PYTHON=Off \
+                 -DOPENDHT_C=Off -DBUILD_TESTING=On -DOPENDHT_PEER_DISCOVERY=Off -DOPENDHT_PYTHON=Off \
                  -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=Off -DOPENDHT_PROXY_CLIENT=Off
     - name: Build
       run: cd build && make
@@ -84,7 +84,7 @@ jobs:
         export CPPFLAGS="-I/usr/local/opt/openssl@3/include"
         export PKG_CONFIG_PATH="/usr/local/opt/openssl@3/lib/pkgconfig"
         cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Debug \
-                 -DOPENDHT_C=On -DOPENDHT_TESTS=On -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off \
+                 -DOPENDHT_C=On -DBUILD_TESTING=On -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off \
                  -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On -DOPENDHT_PUSH_NOTIFICATIONS=On
 
     - name: Build
