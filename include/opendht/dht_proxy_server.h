@@ -46,16 +46,16 @@ enum class PushType {
 }
 MSGPACK_ADD_ENUM(dht::PushType)
 
-namespace http {
-class Request;
-struct ListenerSession;
-}
-
 namespace Json {
 class Value;
 }
 
 namespace dht {
+
+namespace http {
+class Request;
+struct ListenerSession;
+}
 
 class DhtRunner;
 
