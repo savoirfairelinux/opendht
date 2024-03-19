@@ -276,6 +276,12 @@ private:
                            restinio::router::route_params_t params);
 
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
+    struct PushSessionContext {
+        std::mutex lock;
+        std::string sessionId;
+        PushSessionContext(const std::string& id) : sessionId(id) {}
+    };
+
     PushType getTypeFromString(const std::string& type);
     std::string getDefaultTopic(PushType type);
 
@@ -331,6 +337,24 @@ private:
     void handleCancelPushListen(const asio::error_code &ec, const std::string pushToken,
                                 const InfoHash key, const std::string clientId);
 
+    /**
+     * Handles a push listen request.
+     *
+     * @param infoHash The information hash associated with the push listen request.
+     * @param pushToken The push token associated with the push listen request.
+     * @param type The type of the push listen request.
+     * @param clientId The client ID associated with the push listen request.
+     * @param sessionCtx The shared pointer to the push session context associated with the push listen request.
+     * @param topic The topic associated with the push listen request.
+     * @param values The vector of shared pointers to values associated with the push listen request.
+     * @param expired A boolean indicating whether the push listen request has expired.
+     * @return true.
+     */
+    bool handlePushListen(const InfoHash infoHash, const std::string pushToken,
+                          PushType type, const std::string clientId,
+                          const std::shared_ptr<DhtProxyServer::PushSessionContext> sessionCtx, const std::string topic,
+                          const std::vector<std::shared_ptr<Value>>& values, bool expired);
+
 #endif //OPENDHT_PUSH_NOTIFICATIONS
 
     void handlePrintStats(const asio::error_code &ec);
@@ -376,12 +400,6 @@ private:
     std::map<restinio::connection_id_t, http::ListenerSession> listeners_;
     // Connection Listener observing conn state changes.
     std::shared_ptr<ConnectionListener> connListener_;
-
-    struct PushSessionContext {
-        std::mutex lock;
-        std::string sessionId;
-        PushSessionContext(const std::string& id) : sessionId(id) {}
-    };
     struct PermanentPut {
         time_point expiration;
         std::string pushToken;
