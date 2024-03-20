@@ -144,12 +144,12 @@ Connection::Connection(asio::io_context& ctx, const bool ssl, std::shared_ptr<dh
         ssl_ctx_ = newTlsClientContext(l);
         ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
         if (logger_)
-            logger_->d("[connection:%i] start https session with system CA", id_);
+            logger_->debug("[connection:{:d}] start https session with system CA", id_);
     }
     else {
         socket_ = std::make_unique<socket_t>(ctx);
         if (logger_)
-            logger_->d("[connection:%i] start http session", id_);
+            logger_->debug("[connection:{:d}] start http session", id_);
     }
 }
 
@@ -166,11 +166,11 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         if (ec)
             throw std::runtime_error("Error adding certificate authority: " + ec.message());
         else if (logger_)
-            logger_->d("[connection:%i] start https with custom CA %s", id_, server_ca->getUID().c_str());
+            logger_->debug("[connection:{:d}] start https with custom CA {:s}", id_, server_ca->getUID());
     } else {
         ssl_ctx_ = newTlsClientContext(l);
         if (logger_)
-            logger_->d("[connection:%i] start https session with system CA", id_);
+            logger_->debug("[connection:{:d}] start https session with system CA", id_);
     }
     if (identity.first){
         auto key = identity.first->serialize();
@@ -185,7 +185,7 @@ Connection::Connection(asio::io_context& ctx, std::shared_ptr<dht::crypto::Certi
         if (ec)
             throw std::runtime_error("Error adding client certificate: " + ec.message());
         else if (logger_)
-            logger_->d("[connection:%i] client certificate %s", id_, identity.second->getUID().c_str());
+            logger_->debug("[connection:{:d}] client certificate {:s}", id_, identity.second->getUID());
     }
     ssl_socket_ = std::make_unique<ssl_socket_t>(ctx_, ssl_ctx_);
 }
@@ -208,7 +208,7 @@ Connection::close()
             socket_->close(ec);
     }
     if (ec and logger_)
-        logger_->e("[connection:%i] error closing: %s", id_, ec.message().c_str());
+        logger_->error("[connection:{:d}] error closing: {:s}", id_, ec.message());
 }
 
 bool
@@ -281,26 +281,26 @@ ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& lo
 
     if (sk_X509_num(fullchain) <= 1) {
         if (logger)
-            logger->e("Cert does not contain a cert chain");
+            logger->error("Cert does not contain a cert chain");
         return {};
     }
     X509* cert = cert_from_chain(fullchain);
     if (cert == nullptr) {
         if (logger)
-            logger->e("No certificate found");
+            logger->error("No certificate found");
         return {};
     }
     X509* issuer = issuer_from_chain(fullchain);
     if (issuer == nullptr) {
         if (logger)
-            logger->e("Unable to find issuer for cert");
+            logger->error("Unable to find issuer for cert");
         return {};
     }
 
     auto urls = X509_get1_ocsp(cert);
     if (urls == nullptr || sk_OPENSSL_STRING_num(urls) <= 0) {
         if (logger)
-            logger->e("Certificate contains no OCSP url");
+            logger->error("Certificate contains no OCSP url");
         return {};
     }
     auto url = sk_OPENSSL_STRING_value(urls, 0);
@@ -315,12 +315,12 @@ ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& lo
     OCSP_CERTID* id = OCSP_cert_to_id(EVP_sha1(), cert, issuer);
     if (id == nullptr) {
         if (logger)
-            logger->e("Unable to get certificate id from cert");
+            logger->error("Unable to get certificate id from cert");
         return {};
     }
     if (OCSP_request_add0_id(request->req.get(), id) == nullptr) {
         if (logger)
-            logger->e("Unable to add certificate id to request");
+            logger->error("Unable to add certificate id to request");
         return {};
     }
 
@@ -331,12 +331,12 @@ ocspRequestFromCert(STACK_OF(X509)* fullchain, const std::shared_ptr<Logger>& lo
     uint8_t* data {nullptr};
     if ((size = i2d_OCSP_REQUEST(request->req.get(), &data)) <= 0) {
         if (logger)
-            logger->e("Unable to encode ocsp request");
+            logger->error("Unable to encode ocsp request");
         return {};
     }
     if (data == nullptr) {
         if (logger)
-            logger->e("Unable to allocte memory");
+            logger->error("Unable to allocte memory");
         return {};
     }
     request->data = std::string((char*)data, (char*)data+size);
@@ -453,7 +453,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     if (logger) {
                         char subject_name[1024];
                         X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 1024);
-                        logger->d("[connection:%i] verify %s compliance to RFC 2818:\n%s", id, hostname.c_str(), subject_name);
+                        logger->debug("[connection:{:d}] verify {:s} compliance to RFC 2818:\n{:s}", id, hostname, subject_name);
                     }
 
                     // starts from CA and goes down the presented chain
@@ -461,14 +461,14 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     bool verified = verifier(preverified, ctx);
                     auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
-                        logger->e("[http::connection:%i] ssl verification error=%i %d", id, verify_ec, verified);
+                        logger->error("[http::connection:{:d}] ssl verification error={:d} %d", id, verify_ec, verified);
                     if (verified and checkOcsp) {
                         std::unique_ptr<stack_st_X509, void(*)(stack_st_X509*)> chain(
                             X509_STORE_CTX_get1_chain(ctx.native_handle()),
                             [](stack_st_X509* c){ sk_X509_pop_free(c, X509_free); });
                         if (auto ocspInfo = ocspRequestFromCert(chain.get(), logger)) {
                             if (logger)
-                                logger->w("[http::connection:%i] TLS OCSP server: %s, request size: %zu", id, ocspInfo->url.c_str(), ocspInfo->data.size());
+                                logger->warn("[http::connection:{:d}] TLS OCSP server: {:s}, request size: {:d}", id, ocspInfo->url, ocspInfo->data.size());
                             bool ocspVerified = false;
                             asio::io_context io_ctx;
                             auto ocspReq = std::make_shared<Request>(io_ctx, ocspInfo->url, [&](const Response& ocspResp){
@@ -476,7 +476,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                                     ocspVerified = ocspValidateResponse(*ocspInfo, chain.get(), ocspResp.body, X509_STORE_CTX_get0_store(ctx.native_handle()), logger);
                                 } else {
                                     if (logger)
-                                        logger->w("[http::connection:%i] TLS OCSP check error", id);
+                                        logger->warn("[http::connection:{:d}] TLS OCSP check error", id);
                                 }
                             }, logger);
                             ocspReq->set_method(restinio::http_method_post());
@@ -607,11 +607,11 @@ Connection::async_handshake(HandlerCb cb)
                 if (this_.logger_) {
                     if (verify_ec == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT /*18*/
                         || verify_ec == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN /*19*/)
-                        this_.logger_->d("[connection:%i] self-signed certificate in handshake: %i", this_.id_, verify_ec);
+                        this_.logger_->debug("[connection:{:d}] self-signed certificate in handshake: {:d}", this_.id_, verify_ec);
                     else if (verify_ec != X509_V_OK)
-                        this_.logger_->e("[connection:%i] verify handshake error: %i", this_.id_, verify_ec);
+                        this_.logger_->error("[connection:{:d}] verify handshake error: {:d}", this_.id_, verify_ec);
                     else
-                        this_.logger_->w("[connection:%i] verify handshake success", this_.id_);
+                        this_.logger_->warn("[connection:{:d}] verify handshake success", this_.id_);
                 }
             }
             if (cb)
@@ -710,7 +710,7 @@ Connection::timeout(const std::chrono::seconds& timeout, HandlerCb cb)
             return;
         else if (ec){
             if (logger)
-                logger->e("[connection:%i] timeout error: %s", id, ec.message().c_str());
+                logger->error("[connection:{:d}] timeout error: {:s}", id, ec.message());
         }
         if (cb)
             cb(ec);
@@ -807,9 +807,8 @@ Resolver::resolve(const std::string& host, const std::string& service)
         if (ec == asio::error::operation_aborted or *destroyed)
             return;
         if (logger_) {
-            if (ec)
-                logger_->e("[http:client] [resolver] error for %s:%s: %s",
-                           host.c_str(), service.c_str(), ec.message().c_str());
+            logger_->error("[http:client] [resolver] result for {:s}:{:s}: {:s}",
+                        host, service, ec.message());
         }
         decltype(cbs_) cbs;
         {
@@ -851,7 +850,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, const Json::Valu
             Json::CharReaderBuilder rbuilder;
             auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
-                logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
+                logger_->error("[http:request:{:d}] can't parse response to json: {:s}", id_, err);
         }
         if (jsoncb)
             jsoncb(std::move(json), response);
@@ -873,7 +872,7 @@ Request::Request(asio::io_context& ctx, const std::string& url, OnJsonCb jsoncb,
             Json::CharReaderBuilder rbuilder;
             auto reader = std::unique_ptr<Json::CharReader>(rbuilder.newCharReader());
             if (!reader->parse(response.body.data(), response.body.data() + response.body.size(), &json, &err) and logger_)
-                logger_->e("[http:request:%i] can't parse response to json", id_, err.c_str());
+                logger_->error("[http:request:{:d}] can't parse response to json: {:s}", id_, err);
         }
         if (jsoncb)
             jsoncb(std::move(json), response);
@@ -1039,7 +1038,7 @@ Request::build()
         break;
     case restinio::http_connection_header_t::upgrade:
         if (logger_)
-            logger_->e("Unsupported connection type 'upgrade', fallback to 'close'");
+            logger_->error("Unsupported connection type 'upgrade', fallback to 'close'");
     // fallthrough
     case restinio::http_connection_header_t::close:
         conn_str = "close"; // default
@@ -1170,7 +1169,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
 {
     if (endpoints.empty()){
         if (logger_)
-            logger_->e("[http:request:%i] connect: no endpoints provided", id_);
+            logger_->error("[http:request:{:d}] connect: no endpoints provided", id_);
         if (cb)
             cb(asio::error::connection_aborted);
         return;
@@ -1179,7 +1178,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         std::string eps = "";
         for (const auto& endpoint : endpoints)
             eps.append(endpoint.address().to_string() + ":" + std::to_string(endpoint.port()) + " ");
-        logger_->d("[http:request:%i] connect begin: %s", id_, eps.c_str());
+        logger_->debug("[http:request:{:d}] connect begin: {:s}", id_, eps);
     }
     bool isHttps = get_url().protocol == "https";
     if (isHttps) {
@@ -1210,7 +1209,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         }
         else if (ec) {
             if (this_.logger_)
-                this_.logger_->e("[http:request:%i] connect failed with all endpoints: %s", this_.id_, ec.message().c_str());
+                this_.logger_->error("[http:request:{:d}] connect failed with all endpoints: {:s}", this_.id_, ec.message());
         } else {
             const auto& url = this_.get_url();
             auto port = endpoint.port();
@@ -1226,9 +1225,9 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
                         if (ec == asio::error::operation_aborted)
                             return;
                         if (ec and logger)
-                            logger->e("[http:request:%i] handshake error: %s", id, ec.message().c_str());
+                            logger->error("[http:request:{:d}] handshake error: {:s}", id, ec.message());
                         //else if (logger)
-                        //    logger->d("[http:request:%i] handshake success", id);
+                        //    logger->d("[http:request:{:d}] handshake success", id);
                         if (cb)
                             cb(ec);
                     });
@@ -1256,7 +1255,7 @@ Request::send()
             std::lock_guard<std::mutex> lock(this_.mutex_);
             if (ec){
                 if (this_.logger_)
-                    this_.logger_->e("[http:request:%i] resolve error: %s", this_.id_, ec.message().c_str());
+                    this_.logger_->error("[http:request:{:d}] resolve error: {:s}", this_.id_, ec.message());
                 this_.terminate(asio::error::connection_aborted);
             }
             else if (!this_.conn_ or !this_.conn_->is_open()) {
@@ -1314,9 +1313,9 @@ Request::terminate(const asio::error_code& ec)
 
     if (logger_) {
         if (ec and ec != asio::error::eof and !response_.aborted)
-            logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
+            logger_->error("[http:request:{:d}] end with error: {:s}", id_, ec.message());
         else
-            logger_->d("[http:request:%i] done with status code %u", id_, response_.status_code);
+            logger_->debug("[http:request:{:d}] done with status code {:d}", id_, response_.status_code);
     }
 
     if (!parser_ or !http_should_keep_alive(parser_.get()))
