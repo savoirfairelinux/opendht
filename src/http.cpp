@@ -941,6 +941,8 @@ Request::init_default_headers()
 void
 Request::cancel()
 {
+    if (auto r = resolver_)
+        r->cancel();
     if (auto c = conn_)
         c->close();
 }
