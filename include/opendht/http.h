@@ -196,6 +196,8 @@ public:
         return logger_;
     }
 
+    void cancel();
+
 private:
     void resolve(const std::string& host, const std::string& service);
 

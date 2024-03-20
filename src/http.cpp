@@ -760,6 +760,12 @@ Resolver::~Resolver()
     *destroyed_ = true;
 }
 
+void
+Resolver::cancel()
+{
+    resolver_.cancel();
+}
+
 inline
 std::vector<asio::ip::tcp::endpoint>
 filter(const std::vector<asio::ip::tcp::endpoint>& epts, sa_family_t family)
