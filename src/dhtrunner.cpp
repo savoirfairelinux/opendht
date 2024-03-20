@@ -210,7 +210,7 @@ DhtRunner::run(const Config& config, Context&& context)
                     if (not pending_ops_prio.empty())
                         return true;
                     auto s = getStatus();
-                    if (not pending_ops.empty() and (s == NodeStatus::Connected or s == NodeStatus::Disconnected))
+                    if (not pending_ops.empty() and (s == NodeStatus::Connected or s == NodeStatus::Disconnected or running == State::Stopping))
                         return true;
                 }
                 return false;
@@ -630,7 +630,7 @@ DhtRunner::loop_()
     {
         std::lock_guard<std::mutex> lck(storage_mtx);
         auto s = getStatus();
-        ops = (pending_ops_prio.empty() && (s == NodeStatus::Connected or s == NodeStatus::Disconnected)) ?
+        ops = (pending_ops_prio.empty() && (s == NodeStatus::Connected or s == NodeStatus::Disconnected or running == State::Stopping)) ?
                std::move(pending_ops) : std::move(pending_ops_prio);
     }
     while (not ops.empty()) {
