@@ -190,10 +190,12 @@ void
 DhtProxyClient::stop()
 {
     if (not isDestroying_.exchange(true)) {
+        std::shared_ptr<Resolver> resolver;
         {
             std::lock_guard<std::mutex> l(resolverLock_);
-            resolver_.reset();
+            resolver = std::move(resolver_);
         }
+        resolver_->cancel();
         cancelAllListeners();
         if (infoState_)
             infoState_->cancel = true;
