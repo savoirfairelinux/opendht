@@ -449,7 +449,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             value->user_type = "text/plain";
             node->putEncrypted(id, InfoHash(tostr), std::move(value), [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << std::endl;
+                std::cout << "Put encrypted: " << (ok ? "success" : "failure") << " (took " << print_duration(end-start) << ')' << std::endl;
             });
         }
         else if (op == "a") {
