@@ -43,8 +43,6 @@ static std::uniform_int_distribution<int> rand_byte{ 0, std::numeric_limits<uint
 static std::uniform_int_distribution<uint8_t> rand_byte;
 #endif
 
-#define DHT_AES_LEGACY_DECRYPT 1
-
 namespace dht {
 namespace crypto {
 
@@ -130,21 +128,7 @@ Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
     gcm_aes_digest(&aes, GCM_DIGEST_SIZE, digest.data());
 
     if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE)) {
-#if DHT_AES_LEGACY_DECRYPT
-        //gcm_aes_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
-        Blob ret_tmp(data_sz);
-        struct gcm_aes_ctx aes_d;
-        gcm_aes_set_key(&aes_d, key.size(), key.data());
-        gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data);
-        gcm_aes_update(&aes_d, ret.size(), ret.data());
-        gcm_aes_encrypt(&aes_d, ret.size(), ret_tmp.data(), ret.data());
-        gcm_aes_digest(&aes_d, GCM_DIGEST_SIZE, digest.data());
-
-        if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE))
-            throw DecryptError("Can't decrypt data");
-#else
         throw DecryptError("Can't decrypt data");
-#endif
     }
 
     return ret;
