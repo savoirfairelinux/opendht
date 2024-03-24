@@ -307,7 +307,7 @@ PrivateKey::sign(const uint8_t* data, size_t data_length) const
         throw CryptoException("Can't sign data: no private key set !");
     if (std::numeric_limits<unsigned>::max() < data_length)
         throw CryptoException("Can't sign data: too large !");
-    gnutls_datum_t sig;
+    gnutls_datum_t sig {nullptr, 0};
     const gnutls_datum_t dat {(unsigned char*)data, (unsigned)data_length};
     if (gnutls_privkey_sign_data(key, GNUTLS_DIG_SHA512, 0, &dat, &sig) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't sign data !");
@@ -320,7 +320,7 @@ Blob
 PrivateKey::decryptBloc(const uint8_t* src, size_t src_size) const
 {
     const gnutls_datum_t dat {(uint8_t*)src, (unsigned)src_size};
-    gnutls_datum_t out;
+    gnutls_datum_t out {nullptr, 0};
     int err = gnutls_privkey_decrypt_data(key, 0, &dat, &out);
     if (err != GNUTLS_E_SUCCESS)
         throw DecryptError(std::string("Can't decrypt data: ") + gnutls_strerror(err));
@@ -498,7 +498,7 @@ void
 PublicKey::encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t dst_size) const
 {
     const gnutls_datum_t key_dat {(uint8_t*)src, (unsigned)src_size};
-    gnutls_datum_t encrypted;
+    gnutls_datum_t encrypted {nullptr, 0};
     auto err = gnutls_pubkey_encrypt_data(pk, 0, &key_dat, &encrypted);
     if (err != GNUTLS_E_SUCCESS)
         throw CryptoException(std::string("Can't encrypt data: ") + gnutls_strerror(err));
@@ -1001,7 +1001,7 @@ Certificate::toString(bool chain) const
 std::string
 Certificate::print() const
 {
-    gnutls_datum_t out;
+    gnutls_datum_t out {nullptr, 0};
     gnutls_x509_crt_print(cert, GNUTLS_CRT_PRINT_FULL, &out);
     std::string ret(out.data, out.data+out.size);
     gnutls_free(out.data);
@@ -1077,7 +1077,7 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     err = gnutls_ocsp_req_set_nonce(req.get(), 0, &nonce);
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
-    gnutls_datum_t rdata;
+    gnutls_datum_t rdata {nullptr, 0};
     err = gnutls_ocsp_req_export(req.get(), &rdata);
     if (err != 0)
         throw CryptoException(gnutls_strerror(err));
@@ -1170,7 +1170,7 @@ loadIdentity(const std::string &path,const std::string &privkey_password)
     gnutls_x509_crt_t gnuCert;
     if (gnutls_x509_crt_init(&gnuCert) != GNUTLS_E_SUCCESS)
         throw std::runtime_error("Failed to initialize gnutls certificate struct");
-    gnutls_datum_t crtContent;
+    gnutls_datum_t crtContent {nullptr, 0};
     // Read the certificate file
     gnutls_load_file((path + ".crt").c_str(), &crtContent);
     gnutls_x509_crt_import(gnuCert, &crtContent, GNUTLS_X509_FMT_PEM);
@@ -1340,7 +1340,7 @@ std::string
 OcspRequest::toString(const bool compact) const
 {
     int ret;
-    gnutls_datum_t dat;
+    gnutls_datum_t dat {nullptr, 0};
     ret = gnutls_ocsp_req_print(request, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &dat);
 
     std::string str;
@@ -1355,7 +1355,7 @@ OcspRequest::toString(const bool compact) const
 Blob
 OcspRequest::pack() const
 {
-    gnutls_datum_t dat;
+    gnutls_datum_t dat {nullptr, 0};
     int err = gnutls_ocsp_req_export(request, &dat);
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
@@ -1367,7 +1367,7 @@ OcspRequest::pack() const
 Blob
 OcspRequest::getNonce() const
 {
-    gnutls_datum_t dat;
+    gnutls_datum_t dat {nullptr, 0};
     unsigned critical;
     int err = gnutls_ocsp_req_get_nonce(request, &critical, &dat);
     if (err < 0)
@@ -1400,7 +1400,7 @@ OcspResponse::~OcspResponse()
 Blob
 OcspResponse::pack() const
 {
-    gnutls_datum_t dat;
+    gnutls_datum_t dat {nullptr, 0};
     int err = gnutls_ocsp_resp_export(response, &dat);
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
@@ -1414,7 +1414,7 @@ OcspResponse::toString(const bool compact) const
 {
     int ret;
     std::string str;
-    gnutls_datum_t dat;
+    gnutls_datum_t dat {nullptr, 0};
     ret = gnutls_ocsp_resp_print(response, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &dat);
     if (ret == 0)
         str = std::string((const char*)dat.data, (size_t)dat.size);
@@ -1449,7 +1449,7 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
 
     if (not nonce.empty()) {
         // Ensure no replay attack has been done
-        gnutls_datum_t rnonce;
+        gnutls_datum_t rnonce {nullptr, 0};
         ret = gnutls_ocsp_resp_get_nonce(response, NULL, &rnonce);
         if (ret < 0)
             throw CryptoException(gnutls_strerror(ret));
@@ -1707,7 +1707,7 @@ RevocationList::getNumber() const
 std::string
 RevocationList::toString() const
 {
-    gnutls_datum_t out;
+    gnutls_datum_t out {nullptr, 0};
     gnutls_x509_crl_print(crl, GNUTLS_CRT_PRINT_FULL, &out);
     std::string ret(out.data, out.data+out.size);
     gnutls_free(out.data);
