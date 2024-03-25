@@ -58,6 +58,19 @@ constexpr const std::chrono::minutes PRINT_STATS_PERIOD {2};
 using ResponseByParts = restinio::chunked_output_t;
 using ResponseByPartsBuilder = restinio::response_builder_t<ResponseByParts>;
 
+namespace http {
+/**
+ * Session value associated with a connection_id_t key.
+ */
+struct ListenerSession
+{
+    ListenerSession() = default;
+    dht::InfoHash hash;
+    std::future<size_t> token;
+    std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
+};
+}
+
 class opendht_logger_t
 {
 public:
@@ -116,7 +129,7 @@ private:
 void
 DhtProxyServer::ConnectionListener::state_changed(const restinio::connection_state::notice_t& notice) noexcept
 {
-    if (restinio::holds_alternative<restinio::connection_state::closed_t>(notice.cause())) {
+    if (std::holds_alternative<restinio::connection_state::closed_t>(notice.cause())) {
         onClosed_(notice.connection_id());
     }
 }

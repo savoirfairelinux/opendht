@@ -1,4 +1,4 @@
-FROM alpine:3.18
+FROM alpine:3.19
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
 
@@ -8,16 +8,20 @@ RUN apk add --no-cache \
         ncurses-dev readline-dev nettle-dev \
         cppunit-dev gnutls-dev jsoncpp-dev \
         argon2-dev openssl-dev fmt-dev \
-        http-parser-dev asio-dev msgpack-cxx-dev \
+        llhttp-dev asio-dev msgpack-cxx-dev \
     && rm -rf /var/cache/apk/*
+
+RUN mkdir /usr/include/nonstd \
+    && wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
+            -O /usr/include/nonstd/expected.hpp
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/6fd08b65f6f15899dd0de3c801f6a5462b811c64.tar.gz \
-    && tar -xzf 6fd08b65f6f15899dd0de3c801f6a5462b811c64.tar.gz \
-    && cd restinio-6fd08b65f6f15899dd0de3c801f6a5462b811c64/dev \
-    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
-             -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
-             -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
-    && make -j8 && make install \
-    && cd ../../.. && rm -rf restinio
+    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.2/restinio-0.7.2.tar.bz2 \
+    && ls -l && tar -xjf restinio-0.7.2.tar.bz2 \
+    && cd restinio-0.7.2/dev \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+             -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+             -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \
+    && make -j2 && make install \
+    && cd ../../ && rm -rf restinio*
