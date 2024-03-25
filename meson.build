@@ -1,4 +1,4 @@
-project('opendht', 'c', 'cpp',
+project('opendht', 'c', 'cpp', 'cython',
     version: '3.1.8',
     default_options: [
         'cpp_std=c++17',
@@ -96,6 +96,20 @@ if get_option('c').enabled()
             dependencies : [readline],
             install : true)
     endif
+endif
+
+if get_option('python').require(get_option('indexation').enabled(), error_message: 'python requires indexation').allowed()
+    py = import('python').find_installation()
+    dep_py = py.dependency()
+    py.extension_module(
+        'opendht',
+        'python/opendht.pyx',
+        include_directories : opendht_interface_inc,
+        override_options : ['cython_language=cpp'],
+        link_with : [opendht],
+        dependencies : [msgpack, fmt, dep_py],
+        install : true
+    )
 endif
 
 if get_option('tools').enabled()
