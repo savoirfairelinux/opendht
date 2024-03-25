@@ -1,5 +1,6 @@
 option('proxy_client', type : 'feature', value : 'disabled')
 option('proxy_server', type : 'feature', value : 'disabled')
+option('push_notifications', type : 'feature', value : 'disabled')
 option('peer_discovery', type : 'feature', value : 'enabled')
 option('tools', type : 'feature', value : 'enabled')
 option('c', type : 'feature', value : 'enabled')

@@ -67,6 +67,9 @@ if get_option('proxy_server').enabled()
     opendht_src += 'src/dht_proxy_server.cpp'
     add_project_arguments('-DOPENDHT_PROXY_SERVER', language : 'cpp')
 endif
+if get_option('push_notifications').enabled()
+    add_project_arguments('-DOPENDHT_PUSH_NOTIFICATIONS', language : 'cpp')
+endif
 if get_option('peer_discovery').enabled()
     opendht_src += 'src/peer_discovery.cpp'
     add_project_arguments('-DOPENDHT_PEER_DISCOVERY', language : 'cpp')
