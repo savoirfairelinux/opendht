@@ -44,6 +44,11 @@ opendht_src = [
     'src/op_cache.cpp',
     'src/network_utils.cpp'
 ]
+
+if get_option('indexation').enabled()
+    opendht_src += 'src/indexation/pht.cpp'
+    add_project_arguments('-DOPENDHT_INDEXATION', language : 'cpp')
+endif
 if jsoncpp.found()
     opendht_src += ['src/base64.cpp']
     add_project_arguments('-DOPENDHT_JSONCPP', language : 'cpp')
