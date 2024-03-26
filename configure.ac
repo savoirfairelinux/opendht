@@ -21,10 +21,10 @@ AS_IF([test "x$enable_debug" = "xyes"],
       [CXXFLAGS="${CXXFLAGS} -g -Og -Wno-return-type -Wall -Wextra -Wnon-virtual-dtor -Wno-deprecated -pedantic-errors"],
       [CXXFLAGS="${CXXFLAGS} -O3 -Wno-deprecated -pedantic-errors -fvisibility=hidden"])
 
-CPPFLAGS+=" -DOPENDHT_BUILD"
+CPPFLAGS="${CPPFLAGS} -DOPENDHT_BUILD"
 AM_CONDITIONAL([OPENDHT_SHARED], [test "x$enable_shared" != xno])
 AM_COND_IF(OPENDHT_SHARED, [
-  CPPFLAGS+=" -Dopendht_EXPORTS"
+  CPPFLAGS="${CPPFLAGS} -Dopendht_EXPORTS"
 ])
 
 AM_PROG_AR
@@ -147,7 +147,7 @@ AS_IF([test "x$with_jsoncpp" != "xno"],
       [have_jsoncpp=no])
 AS_IF([test "x$have_jsoncpp" = "xyes"], [
     AC_MSG_NOTICE([Using JsonCpp])
-    CPPFLAGS+=" -DOPENDHT_JSONCPP"
+    CPPFLAGS="${CPPFLAGS} -DOPENDHT_JSONCPP"
     AC_SUBST(jsoncpp_lib, [", jsoncpp"])
 ], [
     AC_MSG_NOTICE([Not using JsonCpp])
@@ -194,8 +194,8 @@ AM_COND_IF([ENABLE_TOOLS], [
 
 AM_COND_IF(ENABLE_PROXY_SERVER, AC_DEFINE([OPENDHT_PROXY_SERVER], [], [Building with proxy server]))
 AM_COND_IF(ENABLE_PROXY_CLIENT, AC_DEFINE([OPENDHT_PROXY_CLIENT], [], [Building with proxy client]))
-AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS+=" -DOPENDHT_PUSH_NOTIFICATIONS"], [])
-AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS+=" -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
+AM_COND_IF(ENABLE_PUSH_NOTIFICATIONS, [CPPFLAGS="${CPPFLAGS} -DOPENDHT_PUSH_NOTIFICATIONS"], [])
+AM_COND_IF(ENABLE_PROXY_SERVER_IDENTITY, [CPPFLAGS="${CPPFLAGS} -DOPENDHT_PROXY_SERVER_IDENTITY"], [])
 
 dnl Configure setup.py if we build the python module
 AC_SUBST(CURRENT_SOURCE_DIR, ".")
