@@ -89,7 +89,7 @@ if get_option('c').enabled()
         ['c/opendht.cpp',  'c/opendht_c.h'],
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [msgpack, fmt],
+        dependencies : [msgpack, jsoncpp, fmt],
         cpp_args : ['-DOPENDHT_C_BUILD', '-Dopendht_c_EXPORTS'],
         install : true)
 
@@ -111,7 +111,7 @@ if get_option('python').require(get_option('indexation').enabled(), error_messag
         include_directories : opendht_interface_inc,
         override_options : ['cython_language=cpp'],
         link_with : [opendht],
-        dependencies : [msgpack, fmt, dep_py],
+        dependencies : [msgpack, jsoncpp, fmt, dep_py],
         install : true
     )
 endif
@@ -120,17 +120,17 @@ if get_option('tools').enabled()
     dhtnode = executable('dhtnode', 'tools/dhtnode.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack, fmt, openssl],
+        dependencies : [readline, jsoncpp, msgpack, fmt, openssl],
         install : true)
     dhtchat = executable('dhtchat', 'tools/dhtchat.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack, fmt, openssl],
+        dependencies : [readline, jsoncpp, msgpack, fmt, openssl],
         install : true)
     dhtscanner = executable('dhtscanner', 'tools/dhtscanner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [readline, msgpack, fmt, openssl],
+        dependencies : [readline, jsoncpp, msgpack, fmt, openssl],
         install : true)
     if http_parser.found()
         durl = executable('durl', 'tools/durl.cpp',
@@ -148,34 +148,43 @@ if get_option('tests').enabled()
         'tests/infohashtester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, fmt])
+        dependencies : [cppunit, jsoncpp, fmt, openssl])
     test('infohash', test_infohash)
 
     test_value = executable('value',
         'tests/valuetester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, fmt])
+        dependencies : [cppunit, jsoncpp, fmt, openssl])
     test('value', test_value)
 
     test_crypto = executable('crypto',
         'tests/cryptotester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, fmt])
+        dependencies : [cppunit, jsoncpp, fmt, openssl])
     test('crypto', test_crypto)
 
     test_dhtrunner = executable('dhtrunner',
         'tests/dhtrunnertester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, fmt])
+        dependencies : [cppunit, jsoncpp, fmt, openssl])
     test('dhtrunner', test_dhtrunner)
 
     test_threadpool = executable('threadpool',
         'tests/threadpooltester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, fmt])
+        dependencies : [cppunit, jsoncpp, fmt, openssl])
     test('threadpool', test_threadpool)
+
+    if get_option('proxy_server').enabled()
+        test_proxy = executable('dhtproxy',
+            'tests/dhtproxytester.cpp', 'tests/tests_runner.cpp',
+            include_directories : opendht_interface_inc,
+            link_with : opendht,
+            dependencies : [cppunit, jsoncpp, fmt, openssl])
+        test('dhtproxy', test_proxy)
+    endif
 endif
