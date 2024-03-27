@@ -139,3 +139,43 @@ if get_option('tools').enabled()
             dependencies : [msgpack, openssl])
     endif
 endif
+
+# Unit tests
+if get_option('tests').enabled()
+    cppunit = dependency('cppunit')
+
+    test_infohash = executable('infohash',
+        'tests/infohashtester.cpp', 'tests/tests_runner.cpp',
+        include_directories : opendht_interface_inc,
+        link_with : opendht,
+        dependencies : [cppunit, fmt])
+    test('infohash', test_infohash)
+
+    test_value = executable('value',
+        'tests/valuetester.cpp', 'tests/tests_runner.cpp',
+        include_directories : opendht_interface_inc,
+        link_with : opendht,
+        dependencies : [cppunit, fmt])
+    test('value', test_value)
+
+    test_crypto = executable('crypto',
+        'tests/cryptotester.cpp', 'tests/tests_runner.cpp',
+        include_directories : opendht_interface_inc,
+        link_with : opendht,
+        dependencies : [cppunit, fmt])
+    test('crypto', test_crypto)
+
+    test_dhtrunner = executable('dhtrunner',
+        'tests/dhtrunnertester.cpp', 'tests/tests_runner.cpp',
+        include_directories : opendht_interface_inc,
+        link_with : opendht,
+        dependencies : [cppunit, fmt])
+    test('dhtrunner', test_dhtrunner)
+
+    test_threadpool = executable('threadpool',
+        'tests/threadpooltester.cpp', 'tests/tests_runner.cpp',
+        include_directories : opendht_interface_inc,
+        link_with : opendht,
+        dependencies : [cppunit, fmt])
+    test('threadpool', test_threadpool)
+endif
