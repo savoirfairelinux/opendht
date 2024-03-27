@@ -42,7 +42,8 @@ opendht_src = [
     'src/dhtrunner.cpp',
     'src/log.cpp',
     'src/op_cache.cpp',
-    'src/network_utils.cpp'
+    'src/network_utils.cpp',
+    'src/thread_pool.cpp',
 ]
 
 if get_option('indexation').enabled()
