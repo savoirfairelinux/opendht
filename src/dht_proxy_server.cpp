@@ -404,10 +404,12 @@ DhtProxyServer::loadState(Is& is, size_t size) {
                         for (auto& listener : listeners.second) {
                             // start listening
                             listener.internalToken = dht_->listen(listeners.first,
-                                                                  std::bind(&DhtProxyServer::handlePushListen, this,
-                                                                            listeners.first, pushListener.first, listener.type,
-                                                                            listener.clientId, listener.sessionCtx, listener.topic,
-                                                                            std::placeholders::_1, std::placeholders::_2));
+                                [this, infoHash=listeners.first, pushToken=pushListener.first, type=listener.type,
+                                 clientId=listener.clientId, sessionCtx = listener.sessionCtx, topic=listener.topic]
+                                (const std::vector<Sp<Value>>& values, bool expired) {
+                                    return this->handlePushListen(infoHash, pushToken, type, clientId, sessionCtx, topic, values, expired);
+                                }
+                            );
                             // expire notify
                             listener.expireNotifyTimer = std::make_unique<asio::steady_timer>(io_context(), listener.expiration - proxy::OP_MARGIN);
                             auto jsonProvider = [infoHash = listeners.first.toString(), clientId = listener.clientId, sessionCtx = listener.sessionCtx](){
@@ -901,10 +903,12 @@ DhtProxyServer::subscribe(restinio::request_handle_t request,
             // Add listen on dht
             if (logger_)
                 logger_->d("[proxy:server] [subscribe %s] new", infoHash.toString().c_str());
-            listener.internalToken = dht_->listen(infoHash, std::bind(&DhtProxyServer::handlePushListen, this,
-                                                                      infoHash, pushToken, type, clientId,
-                                                                      listener.sessionCtx, topic,
-                                                                      std::placeholders::_1, std::placeholders::_2));
+            listener.internalToken = dht_->listen(infoHash,
+                [this, infoHash, pushToken, type, clientId, sessionCtx = listener.sessionCtx, topic]
+                (const std::vector<Sp<Value>>& values, bool expired) {
+                    return this->handlePushListen(infoHash, pushToken, type, clientId, sessionCtx, topic, values, expired);
+                }
+            );
             // Send response header
             auto response = initHttpResponse(request->create_response());
             response.set_body("{}\n");
@@ -1010,8 +1014,8 @@ DhtProxyServer::handleCancelPushListen(const asio::error_code &ec, const std::st
 }
 
 bool
-DhtProxyServer::handlePushListen(const InfoHash infoHash, const std::string pushToken, PushType type, const std::string clientId,
-                                 const std::shared_ptr<DhtProxyServer::PushSessionContext> sessionCtx, const std::string topic,
+DhtProxyServer::handlePushListen(const InfoHash& infoHash, const std::string& pushToken, PushType type, const std::string& clientId,
+                                 const std::shared_ptr<DhtProxyServer::PushSessionContext>& sessionCtx, const std::string& topic,
                                  const std::vector<std::shared_ptr<Value>>& values, bool expired)
 {
     Json::Value json;
