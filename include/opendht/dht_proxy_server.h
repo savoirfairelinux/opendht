@@ -275,13 +275,13 @@ private:
     RequestStatus options(restinio::request_handle_t request,
                            restinio::router::route_params_t params);
 
-#ifdef OPENDHT_PUSH_NOTIFICATIONS
     struct PushSessionContext {
         std::mutex lock;
         std::string sessionId;
         PushSessionContext(const std::string& id) : sessionId(id) {}
     };
 
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
     PushType getTypeFromString(const std::string& type);
     std::string getDefaultTopic(PushType type);
 
@@ -350,9 +350,9 @@ private:
      * @param expired A boolean indicating whether the push listen request has expired.
      * @return true.
      */
-    bool handlePushListen(const InfoHash infoHash, const std::string pushToken,
-                          PushType type, const std::string clientId,
-                          const std::shared_ptr<DhtProxyServer::PushSessionContext> sessionCtx, const std::string topic,
+    bool handlePushListen(const InfoHash& infoHash, const std::string& pushToken,
+                          PushType type, const std::string& clientId,
+                          const std::shared_ptr<DhtProxyServer::PushSessionContext>& sessionCtx, const std::string& topic,
                           const std::vector<std::shared_ptr<Value>>& values, bool expired);
 
 #endif //OPENDHT_PUSH_NOTIFICATIONS
