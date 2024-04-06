@@ -75,7 +75,7 @@ if get_option('peer_discovery').enabled()
     opendht_src += 'src/peer_discovery.cpp'
     add_project_arguments('-DOPENDHT_PEER_DISCOVERY', language : 'cpp')
 endif
-opendht = shared_library('opendht',
+opendht = library('opendht',
     opendht_src,
     include_directories : opendht_inc,
     dependencies : deps,
@@ -85,7 +85,7 @@ opendht = shared_library('opendht',
 readline = meson.get_compiler('c').find_library('readline', required: get_option('tools'))
 
 if get_option('c').enabled()
-    opendht_c = shared_library('opendht-c',
+    opendht_c = library('opendht-c',
         ['c/opendht.cpp',  'c/opendht_c.h'],
         include_directories : opendht_interface_inc,
         link_with : opendht,
