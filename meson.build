@@ -186,5 +186,13 @@ if get_option('tests').enabled()
             link_with : opendht,
             dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
         test('dhtproxy', test_proxy)
+
+        if get_option('long_tests').enabled()
+            test_proxystress = executable('dhtproxystress',
+                'tests/dhtproxy_stress_tester.cpp', 'tests/tests_runner.cpp',
+                include_directories : opendht_interface_inc,
+                link_with : opendht,
+                dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
+        endif
     endif
 endif

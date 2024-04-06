@@ -43,7 +43,7 @@ DhtProxyTester::setUp() {
     nodeProxy->run(0, clientConfig);
     nodeProxy->bootstrap(nodePeer.getBound());
 
-    auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
+    //auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
 
     dht::ProxyServerConfig serverConfig;
     //serverConfig.identity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
