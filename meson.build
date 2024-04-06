@@ -148,35 +148,35 @@ if get_option('tests').enabled()
         'tests/infohashtester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, jsoncpp, fmt, openssl])
+        dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
     test('infohash', test_infohash)
 
     test_value = executable('value',
         'tests/valuetester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, jsoncpp, fmt, openssl])
+        dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
     test('value', test_value)
 
     test_crypto = executable('crypto',
         'tests/cryptotester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, jsoncpp, fmt, openssl])
+        dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
     test('crypto', test_crypto)
 
     test_dhtrunner = executable('dhtrunner',
         'tests/dhtrunnertester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, jsoncpp, fmt, openssl])
+        dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
     test('dhtrunner', test_dhtrunner)
 
     test_threadpool = executable('threadpool',
         'tests/threadpooltester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
-        dependencies : [cppunit, jsoncpp, fmt, openssl])
+        dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
     test('threadpool', test_threadpool)
 
     if get_option('proxy_server').enabled()
@@ -184,7 +184,7 @@ if get_option('tests').enabled()
             'tests/dhtproxytester.cpp', 'tests/tests_runner.cpp',
             include_directories : opendht_interface_inc,
             link_with : opendht,
-            dependencies : [cppunit, jsoncpp, fmt, openssl])
+            dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
         test('dhtproxy', test_proxy)
     endif
 endif
