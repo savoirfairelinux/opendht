@@ -97,8 +97,7 @@ public:
     }) {}
 
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired) {
-        cache.onValue(vals, expired);
-        return not listeners.empty();
+        return cache.onValue(vals, expired);
     }
     void onNodeChanged(ListenSyncStatus status) {
         cache.onNodeChanged(status);
