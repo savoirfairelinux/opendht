@@ -1010,7 +1010,10 @@ DhtProxyClient::handleExpireListener(const asio::error_code &ec, const InfoHash&
             }
         } else {
             // stop the request
-            listener.request.reset();
+            if (listener.request) {
+                listener.request->cancel();
+                listener.request.reset();
+            }
         }
         search->second.listeners.erase(it);
         if (logger_)
