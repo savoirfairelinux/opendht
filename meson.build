@@ -170,55 +170,65 @@ endif
 if get_option('tests').enabled()
     cppunit = dependency('cppunit')
 
-    test_infohash = executable('infohash',
+    test_infohash = executable('test_infohash',
         'tests/infohashtester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
         dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
-    test('infohash', test_infohash)
+    test('Infohash', test_infohash)
 
-    test_value = executable('value',
+    test_value = executable('test_value',
         'tests/valuetester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
         dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
-    test('value', test_value)
+    test('Value', test_value)
 
-    test_crypto = executable('crypto',
+    test_crypto = executable('test_crypto',
         'tests/cryptotester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
         dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
-    test('crypto', test_crypto)
+    test('Crypto', test_crypto)
 
-    test_dhtrunner = executable('dhtrunner',
+    test_dhtrunner = executable('test_dhtrunner',
         'tests/dhtrunnertester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
         dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
-    test('dhtrunner', test_dhtrunner)
+    test('DhtRunner', test_dhtrunner)
 
-    test_threadpool = executable('threadpool',
+    test_threadpool = executable('test_threadpool',
         'tests/threadpooltester.cpp', 'tests/tests_runner.cpp',
         include_directories : opendht_interface_inc,
         link_with : opendht,
         dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
-    test('threadpool', test_threadpool)
+    test('ThreadPool', test_threadpool)
+
+    if get_option('proxy_client').enabled() or get_option('proxy_server').enabled()
+        test_http = executable('test_http',
+            'tests/httptester.cpp', 'tests/tests_runner.cpp',
+            include_directories : opendht_interface_inc,
+            link_with : opendht,
+            dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
+        test('Http', test_http)
+    endif
 
     if get_option('proxy_server').enabled()
-        test_proxy = executable('dhtproxy',
+        test_proxy = executable('test_dhtproxy',
             'tests/dhtproxytester.cpp', 'tests/tests_runner.cpp',
             include_directories : opendht_interface_inc,
             link_with : opendht,
             dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
-        test('dhtproxy', test_proxy)
+        test('DhtProxy', test_proxy)
 
         if get_option('long_tests').enabled()
-            test_proxystress = executable('dhtproxystress',
+            test_proxystress = executable('test_dhtproxystress',
                 'tests/dhtproxy_stress_tester.cpp', 'tests/tests_runner.cpp',
                 include_directories : opendht_interface_inc,
                 link_with : opendht,
                 dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
+            test('DhtProxy Stress', test_proxystress)
         endif
     endif
 endif

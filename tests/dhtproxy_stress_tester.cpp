@@ -46,9 +46,9 @@ DhtProxyStressTester::setUp() {
     nodeProxy->bootstrap(nodePeer.getBound());
 
     dht::ProxyServerConfig serverConfig;
-    serverConfig.port = 8080;
+    serverConfig.port = 8084;
     serverProxy = std::make_unique<dht::DhtProxyServer>(nodeProxy, serverConfig, logger);
-    clientConfig.proxy_server = "http://127.0.0.1:8080";
+    clientConfig.proxy_server = "http://127.0.0.1:8084";
 }
 
 void
