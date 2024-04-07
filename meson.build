@@ -12,15 +12,9 @@ argon2 = dependency('libargon2')
 openssl = dependency('openssl', required: get_option('proxy_client'))
 jsoncpp = dependency('jsoncpp', required: get_option('proxy_client'))
 fmt = dependency('fmt')
+llhttp = dependency('llhttp', 'libllhttp', required: get_option('proxy_client'))
 
-dirs=[]
-if host_machine.system() == 'freebsd'
-    dirs+='/usr/local/lib'
-elif host_machine.system() == 'darwin'
-    dirs+='/opt/homebrew/lib'
-endif
-http_parser = meson.get_compiler('c').find_library('http_parser', dirs: dirs, required: get_option('proxy_client'))
-deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, http_parser]
+deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, llhttp]
 
 add_project_arguments('-DMSGPACK_NO_BOOST', language : 'cpp')
 add_project_arguments(['-Wno-return-type','-Wno-deprecated','-Wnon-virtual-dtor','-pedantic-errors','-fvisibility=hidden'], language : 'cpp')
@@ -57,12 +51,12 @@ if jsoncpp.found()
     add_project_arguments('-DOPENDHT_JSONCPP', language : 'cpp')
     conf_data.set('jsoncpp_lib', ', jsoncpp')
 endif
-if http_parser.found()
+if llhttp.found()
     opendht_src += ['src/http.cpp', 'src/compat/os_cert.cpp']
     if host_machine.system() == 'darwin'
         deps+=dependency('appleframeworks', modules : ['CoreFoundation', 'Security'])
     endif
-    conf_data.set('http_lib', '-lhttp_parser')
+    conf_data.set('http_lib', '-lllhttp')
 endif
 if openssl.found()
     conf_data.set('openssl_lib', ', openssl')
@@ -158,7 +152,7 @@ if get_option('tools').enabled()
         link_with : opendht,
         dependencies : [readline, jsoncpp, msgpack, fmt, openssl],
         install : true)
-    if http_parser.found()
+    if llhttp.found()
         durl = executable('durl', 'tools/durl.cpp',
             include_directories : opendht_interface_inc,
             link_with : opendht,

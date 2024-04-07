@@ -29,21 +29,18 @@
 #   define snprintf snprintf
 #endif
 
+#include <asio/ip/tcp.hpp>
+#include <asio/streambuf.hpp>
 #include <asio/ssl/context.hpp>
-#include <restinio/http_headers.hpp>
 #include <restinio/message_builders.hpp>
 
 #include <memory>
 #include <queue>
 #include <mutex>
+#include <future>
 
 namespace Json {
 class Value;
-}
-
-extern "C" {
-struct http_parser;
-struct http_parser_settings;
 }
 
 namespace restinio {
@@ -154,17 +151,6 @@ private:
     std::unique_ptr<asio::steady_timer> timeout_timer_;
     std::shared_ptr<log::Logger> logger_;
     bool checkOcsp_ {false};
-};
-
-/**
- * Session value associated with a connection_id_t key.
- */
-struct ListenerSession
-{
-    ListenerSession() = default;
-    dht::InfoHash hash;
-    std::future<size_t> token;
-    std::shared_ptr<restinio::response_builder_t<restinio::chunked_output_t>> response;
 };
 
 /* @class Resolver
@@ -338,7 +324,7 @@ private:
 
     void init_default_headers();
     /**
-     * Initialized and wraps the http_parser callbacks with our user defined callbacks.
+     * Initialized and wraps the llhttp callbacks with our user defined callbacks.
      */
     void init_parser();
 
@@ -380,8 +366,8 @@ private:
     Response response_ {};
     std::string request_;
     std::atomic<bool> finishing_ {false};
-    std::unique_ptr<http_parser> parser_;
-    std::unique_ptr<http_parser_settings> parser_s_;
+    std::unique_ptr<llhttp_t> parser_;
+    std::unique_ptr<llhttp_settings_t> parser_s_;
 
     // Next request in case of redirect following
     std::shared_ptr<Request> next_;

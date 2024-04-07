@@ -24,7 +24,7 @@
 
 #include <asio.hpp>
 #include <restinio/impl/tls_socket.hpp>
-#include <http_parser.h>
+#include <llhttp.h>
 #include <json/json.h>
 
 #include <openssl/ocsp.h>
@@ -1137,13 +1137,11 @@ Request::init_parser()
     response_.request = shared_from_this();
 
     if (!parser_)
-        parser_ = std::make_unique<http_parser>();
-    http_parser_init(parser_.get(), HTTP_RESPONSE);
-    parser_->data = static_cast<void*>(this);
+        parser_ = std::make_unique<llhttp_t>();
 
     if (!parser_s_)
-        parser_s_ = std::make_unique<http_parser_settings>();
-    http_parser_settings_init(parser_s_.get());
+        parser_s_ = std::make_unique<llhttp_settings_t>();
+    llhttp_settings_init(parser_s_.get());
 
     cbs_.on_status = [this, statusCb = std::move(cbs_.on_status)](unsigned int status_code){
         response_.status_code = status_code;
@@ -1158,31 +1156,33 @@ Request::init_parser()
         response_.headers[*header_field] = std::string(at, length);
     };
 
-    // http_parser raw c callback (note: no context can be passed into them)
-    parser_s_->on_status = [](http_parser* parser, const char* /*at*/, size_t /*length*/) -> int {
+    // llhttp raw c callback (note: no context can be passed into them)
+    parser_s_->on_status = [](llhttp_t* parser, const char* /*at*/, size_t /*length*/) -> int {
         static_cast<Request*>(parser->data)->cbs_.on_status(parser->status_code);
         return 0;
     };
-    parser_s_->on_header_field = [](http_parser* parser, const char* at, size_t length) -> int {
+    parser_s_->on_header_field = [](llhttp_t* parser, const char* at, size_t length) -> int {
         static_cast<Request*>(parser->data)->cbs_.on_header_field(at, length);
         return 0;
     };
-    parser_s_->on_header_value = [](http_parser* parser, const char* at, size_t length) -> int {
+    parser_s_->on_header_value = [](llhttp_t* parser, const char* at, size_t length) -> int {
         static_cast<Request*>(parser->data)->cbs_.on_header_value(at, length);
         return 0;
     };
-    parser_s_->on_body = [](http_parser* parser, const char* at, size_t length) -> int {
+    parser_s_->on_body = [](llhttp_t* parser, const char* at, size_t length) -> int {
         static_cast<Request*>(parser->data)->onBody(at, length);
         return 0;
     };
-    parser_s_->on_headers_complete = [](http_parser* parser) -> int {
+    parser_s_->on_headers_complete = [](llhttp_t* parser) -> int {
         static_cast<Request*>(parser->data)->onHeadersComplete();
         return 0;
     };
-    parser_s_->on_message_complete = [](http_parser* parser) -> int {
+    parser_s_->on_message_complete = [](llhttp_t* parser) -> int {
         static_cast<Request*>(parser->data)->onComplete();
         return 0;
     };
+    llhttp_init(parser_.get(), HTTP_RESPONSE, parser_s_.get());
+    parser_->data = static_cast<void*>(this);
 }
 
 void
@@ -1339,7 +1339,7 @@ Request::terminate(const asio::error_code& ec)
             logger_->debug("[http:request:{:d}] done with status code {:d}", id_, response_.status_code);
     }
 
-    if (!parser_ or !http_should_keep_alive(parser_.get()))
+    if (!parser_ or !llhttp_should_keep_alive(parser_.get()))
         if (auto c = conn_)
             c->close();
     notify_state_change(State::DONE);
@@ -1378,17 +1378,15 @@ Request::handle_response(const asio::error_code& ec, size_t /* n_bytes */)
         return;
     }
     auto request = (ec == asio::error::eof) ? std::string{} : conn_->read_bytes();
-    size_t ret = http_parser_execute(parser_.get(), parser_s_.get(), request.c_str(), request.size());
-    if (ret != request.size()) {
+    enum llhttp_errno ret = llhttp_execute(parser_.get(), request.c_str(), request.size());
+    if (ret != HPE_OK && ret != HPE_PAUSED) {
         if (logger_)
-            logger_->e("Error parsing HTTP: %zu %s %s", ret,
-                http_errno_name(HTTP_PARSER_ERRNO(parser_)),
-                http_errno_description(HTTP_PARSER_ERRNO(parser_)));
+            logger_->e("Error parsing HTTP: %zu %s %d", (int)ret, llhttp_errno_name(ret), llhttp_get_error_reason(parser_.get()));
         terminate(asio::error::basic_errors::broken_pipe);
         return;
     }
 
-    if (state_ != State::DONE and parser_ and not http_body_is_final(parser_.get())) {
+    if (state_ != State::DONE and parser_ and not llhttp_message_needs_eof(parser_.get())) {
         auto toRead = parser_->content_length ? std::min<uint64_t>(parser_->content_length, 64 * 1024) : 64 * 1024;
         std::weak_ptr<Request> wthis = shared_from_this();
         conn_->async_read_some(toRead, [wthis](const asio::error_code& ec, size_t bytes){
