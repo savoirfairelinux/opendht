@@ -46,6 +46,8 @@ opendht_src = [
     'src/thread_pool.cpp',
 ]
 
+conf_data = configuration_data()
+
 if get_option('indexation').enabled()
     opendht_src += 'src/indexation/pht.cpp'
     add_project_arguments('-DOPENDHT_INDEXATION', language : 'cpp')
@@ -53,12 +55,17 @@ endif
 if jsoncpp.found()
     opendht_src += ['src/base64.cpp']
     add_project_arguments('-DOPENDHT_JSONCPP', language : 'cpp')
+    conf_data.set('jsoncpp_lib', ', jsoncpp')
 endif
 if http_parser.found()
     opendht_src += ['src/http.cpp', 'src/compat/os_cert.cpp']
     if host_machine.system() == 'darwin'
         deps+=dependency('appleframeworks', modules : ['CoreFoundation', 'Security'])
     endif
+    conf_data.set('http_lib', '-lhttp_parser')
+endif
+if openssl.found()
+    conf_data.set('openssl_lib', ', openssl')
 endif
 if get_option('proxy_client').enabled()
     opendht_src += ['src/dht_proxy_client.cpp']
@@ -82,6 +89,19 @@ opendht = library('opendht',
     cpp_args : ['-DOPENHT_BUILD', '-Dopendht_EXPORTS'],
     install : true)
 
+conf_data.set('VERSION', meson.project_version())
+conf_data.set('prefix', get_option('prefix'))
+conf_data.set('exec_prefix', get_option('prefix'))
+conf_data.set('libdir', join_paths(get_option('prefix'), get_option('libdir')))
+conf_data.set('includedir', join_paths(get_option('prefix'), get_option('includedir')))
+conf_data.set('argon2_lib', ', libargon2')
+
+configure_file(input : 'opendht.pc.in',
+               output : 'opendht.pc',
+               configuration : conf_data,
+               install: true,
+               install_dir: join_paths(get_option('prefix'), get_option('libdir'), 'pkgconfig'))
+
 readline = meson.get_compiler('c').find_library('readline', required: get_option('tools'))
 
 if get_option('c').enabled()
@@ -92,6 +112,12 @@ if get_option('c').enabled()
         dependencies : [msgpack, jsoncpp, fmt],
         cpp_args : ['-DOPENDHT_C_BUILD', '-Dopendht_c_EXPORTS'],
         install : true)
+    
+    configure_file(input : 'opendht-c.pc.in',
+                   output : 'opendht-c.pc',
+                   configuration : conf_data,
+                   install: true,
+                   install_dir: join_paths(get_option('prefix'), get_option('libdir'), 'pkgconfig'))
 
     if get_option('tools').enabled()
         dhtcnode = executable('dhtcnode', 'tools/dhtcnode.c',
