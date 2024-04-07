@@ -13,7 +13,7 @@ RUN apt-get update \
        nettle-dev libgnutls28-dev libuv1-dev libmsgpack-dev libjsoncpp-dev python3-dev \
        python3-setuptools libcppunit-dev python3-pip python3-build python3-virtualenv \
        autotools-dev autoconf libssl-dev libargon2-dev \
-       libfmt-dev libhttp-parser-dev libasio-dev \
+       libfmt-dev libasio-dev \
     && apt-get remove -y gcc g++ && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
@@ -22,13 +22,17 @@ RUN pip3 install meson Cython
 ENV CC cc
 ENV CXX c++
 
+RUN mkdir /usr/include/nonstd \
+    && wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
+            -O /usr/include/nonstd/expected.hpp
+
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/aberaud/restinio/archive/6fd08b65f6f15899dd0de3c801f6a5462b811c64.tar.gz \
-    && ls -l && tar -xzf 6fd08b65f6f15899dd0de3c801f6a5462b811c64.tar.gz \
-    && cd restinio-6fd08b65f6f15899dd0de3c801f6a5462b811c64/dev \
-    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=OFF -DRESTINIO_SAMPLE=OFF \
-             -DRESTINIO_INSTALL_SAMPLES=OFF -DRESTINIO_BENCH=OFF -DRESTINIO_INSTALL_BENCHES=OFF \
-             -DRESTINIO_FIND_DEPS=ON -DRESTINIO_ALLOW_SOBJECTIZER=Off -DRESTINIO_USE_BOOST_ASIO=none . \
-    && make -j8 && make install \
+    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.2/restinio-0.7.2.tar.bz2 \
+    && ls -l && tar -xjf restinio-0.7.2.tar.bz2 \
+    && cd restinio-0.7.2/dev \
+    && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+             -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+             -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \
+    && make -j2 && make install \
     && cd ../../ && rm -rf restinio*

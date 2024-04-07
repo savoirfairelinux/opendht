@@ -23,7 +23,7 @@
 #include "op_cache.h"
 #include "utils.h"
 
-#include <http_parser.h>
+#include <llhttp.h>
 #include <deque>
 
 namespace dht {

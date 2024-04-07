@@ -1,4 +1,7 @@
 cmake_minimum_required (VERSION 3.16..3.28)
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
 project (opendht)
 
 include(CMakePackageConfigHelpers)
@@ -7,6 +10,7 @@ include(CheckIncludeFileCXX)
 include(FindPkgConfig)
 include(cmake/CheckAtomic.cmake)
 include(CTest)
+include(FetchContent)
 
 set (opendht_VERSION_MAJOR 3)
 set (opendht_VERSION_MINOR 1.11)
@@ -87,9 +91,35 @@ if (NOT MSVC)
 
     if (OPENDHT_HTTP)
         find_package(Restinio REQUIRED)
-        find_library(HTTP_PARSER_LIBRARY http_parser)
-        add_library(http_parser SHARED IMPORTED)
-        set(http_parser_lib "-lhttp_parser")
+
+        # llhttp
+        find_path(LLHTTP_INCLUDE_DIR llhttp.h)
+        find_library(LLHTTP_LIBRARY libllhttp.a)
+        if (LLHTTP_INCLUDE_DIR AND LLHTTP_LIBRARY)
+            message(STATUS "Found llhttp ${LLHTTP_INCLUDE_DIR} ${LLHTTP_LIBRARY}")
+            add_library(llhttp_static STATIC IMPORTED)
+            set_target_properties(llhttp_static PROPERTIES
+                IMPORTED_LOCATION ${LLHTTP_LIBRARY}
+                INTERFACE_INCLUDE_DIRECTORIES ${LLHTTP_INCLUDE_DIR}
+            )
+            set(llhttp_target llhttp_static)
+        else()
+            FetchContent_Declare(llhttp-local URL "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.0.tar.gz")
+            if (BUILD_SHARED_LIBS)
+                set(BUILD_SHARED_LIBS ON CACHE INTERNAL "")
+            else()
+                set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
+                set(BUILD_STATIC_LIBS ON CACHE INTERNAL "")
+            endif()
+            FetchContent_MakeAvailable(llhttp-local)
+            if (BUILD_SHARED_LIBS)
+                set(llhttp_target llhttp_shared)
+            else()
+                set(llhttp_target llhttp_static)
+            endif()
+        endif()
+        set(http_lib "-lllhttp")
+        
         if (NOT Jsoncpp_FOUND)
             message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
         endif()
@@ -204,6 +234,7 @@ list (APPEND opendht_SOURCES
 )
 
 list (APPEND opendht_HEADERS
+    include/opendht.h
     include/opendht/def.h
     include/opendht/utils.h
     include/opendht/sockaddr.h
@@ -356,12 +387,14 @@ else()
         PRIVATE
             PkgConfig::argon2
             PkgConfig::Nettle
-            ${HTTP_PARSER_LIBRARY}
         PUBLIC
             ${CMAKE_THREAD_LIBS_INIT}
             PkgConfig::GnuTLS
             fmt::fmt
     )
+    if (OPENDHT_HTTP)
+        target_link_libraries(opendht PUBLIC ${llhttp_target})
+    endif()
     if (Jsoncpp_FOUND)
         target_link_libraries(opendht PUBLIC PkgConfig::Jsoncpp)
     endif()
