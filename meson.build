@@ -214,6 +214,15 @@ if get_option('tests').enabled()
         test('Http', test_http)
     endif
 
+    if get_option('peer_discovery').enabled()
+        test_peerdiscovery = executable('test_peerdiscovery',
+            'tests/peerdiscoverytester.cpp', 'tests/tests_runner.cpp',
+            include_directories : opendht_interface_inc,
+            link_with : opendht,
+            dependencies : [cppunit, jsoncpp, fmt, openssl, msgpack])
+        test('PeerDiscovery', test_peerdiscovery)
+    endif
+
     if get_option('proxy_server').enabled()
         test_proxy = executable('test_dhtproxy',
             'tests/dhtproxytester.cpp', 'tests/tests_runner.cpp',
