@@ -45,16 +45,18 @@ DhtProxyTester::setUp() {
 
     //auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
 
+    uint16_t port = 1024 + (std::rand() % (65535 - 1024));
+
     dht::ProxyServerConfig serverConfig;
     //serverConfig.identity = dht::crypto::generateIdentity("DHT Node", serverCAIdentity);
-    serverConfig.port = 8080;
+    serverConfig.port = port;
     // serverConfig.pushServer = "127.0.0.1:8090";
     serverProxy = std::make_unique<dht::DhtProxyServer>(nodeProxy, serverConfig);
 
     /*clientConfig.server_ca = serverCAIdentity.second;
     clientConfig.client_identity = dht::crypto::generateIdentity("DhtProxyTester");
     clientConfig.push_node_id = "dhtnode";*/
-    clientConfig.proxy_server = "http://127.0.0.1:8080";//"https://127.0.0.1:8080";
+    clientConfig.proxy_server = "http://127.0.0.1:" + std::to_string(port);//"https://127.0.0.1:8080";
 }
 
 void
