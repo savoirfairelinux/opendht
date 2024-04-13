@@ -546,8 +546,8 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
             uint32_t cnt = 1;
 
             if(save_power){
-                start = 90;
-                interval = 90;
+                start = 120;
+                interval = 30;
             }
 #ifdef _WIN32
             std::string val = "1";
