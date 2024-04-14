@@ -544,6 +544,7 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
             uint32_t start = 30;
             uint32_t interval = 30;
             uint32_t cnt = 1;
+            this->keepalive_ = start;
 #ifdef _WIN32
             std::string val = "1";
             setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, val.c_str(), sizeof(val));
@@ -691,6 +692,29 @@ Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
     };
     if (ssl_socket_)  ssl_socket_->async_read_some(buf, onEnd);
     else              socket_->async_read_some(buf, onEnd);
+}
+
+void
+Connection::set_keepalive(int start)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!ssl_socket_ && !socket_) return;
+
+    auto& base = ssl_socket_? ssl_socket_->lowest_layer() : *socket_;
+    auto socket = base.native_handle();
+
+#ifdef _WIN32
+#ifdef TCP_KEEPIDLE
+    std::string start_str = std::to_string(start);
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPIDLE,
+        start_str.c_str(), sizeof(start_str));
+#endif
+#elif defined(__APPLE__)
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPALIVE, &start, sizeof(uint32_t));
+#else
+    // Linux based systems
+    setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &start, sizeof(uint32_t));
+#endif
 }
 
 const asio::ip::address&
