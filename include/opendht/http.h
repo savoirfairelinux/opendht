@@ -108,7 +108,7 @@ public:
     std::string read_bytes(size_t bytes = 0);
     std::string read_until(const char delim);
 
-    void async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb, bool save_power = false);
+    void async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb);
     void async_handshake(HandlerCb cb);
     void async_write(BytesHandlerCb cb);
     void async_read_until(const char* delim, BytesHandlerCb cb);

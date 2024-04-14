@@ -523,7 +523,7 @@ Connection::read_until(const char delim)
 }
 
 void
-Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb, bool save_power)
+Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!ssl_socket_ && !socket_) {
@@ -534,7 +534,7 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
-    ConnectHandlerCb wcb = [this, &base, cb=std::move(cb), save_power](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
+    ConnectHandlerCb wcb = [this, &base, cb=std::move(cb)](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
         if (!ec) {
             auto socket = base.native_handle();
             local_address_ = base.local_endpoint().address();
@@ -544,10 +544,6 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
             uint32_t start = 30;
             uint32_t interval = 30;
             uint32_t cnt = 1;
-
-            if(save_power){
-                start = 120;
-            }
 #ifdef _WIN32
             std::string val = "1";
             setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, val.c_str(), sizeof(val));
@@ -1168,12 +1164,6 @@ Request::init_parser()
     };
 }
 
-bool is_listen(const std::string& path)
-{
-    std::string suffix="/listen";
-    return path.size() >= suffix.size() && path.compare(path.size()-suffix.size(), suffix.size(), suffix) == 0;
-}
-
 void
 Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
 {
@@ -1249,7 +1239,7 @@ Request::connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, HandlerCb cb)
         }
         if (cb)
             cb(ec);
-    }, is_listen(header_.request_target()));
+    });
 }
 
 void
