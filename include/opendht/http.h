@@ -116,6 +116,9 @@ public:
     void async_read(size_t bytes, BytesHandlerCb cb);
     void async_read_some(size_t bytes, BytesHandlerCb cb);
 
+    void set_keepalive(int start);
+    inline int keepalive() const { return keepalive_; };
+
     const asio::ip::address& local_address() const;
 
     void timeout(const std::chrono::seconds& timeout, HandlerCb cb = {});
@@ -152,6 +155,8 @@ private:
     std::unique_ptr<asio::steady_timer> timeout_timer_;
     std::shared_ptr<log::Logger> logger_;
     bool checkOcsp_ {false};
+
+    int keepalive_;
 };
 
 /**
