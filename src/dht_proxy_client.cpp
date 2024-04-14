@@ -1108,6 +1108,12 @@ DhtProxyClient::sendListen(const restinio::http_request_header_t& header,
             std::lock_guard<std::mutex> l(requestLock_);
             requests_[reqid] = request;
         }
+        request->add_on_status_callback([request] (unsigned status_code) {
+            if(status_code == 200) {
+                // increase TCP_KEEPIDLE to save power
+                request->get_connection()->set_keepalive(120);
+            }
+        });
         request->send();
     }
     catch (const std::exception &e){
