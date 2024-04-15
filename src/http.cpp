@@ -695,7 +695,7 @@ Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
 }
 
 void
-Connection::set_keepalive(int start)
+Connection::set_keepalive(uint32_t seconds)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!ssl_socket_ && !socket_) return;
@@ -705,16 +705,17 @@ Connection::set_keepalive(int start)
 
 #ifdef _WIN32
 #ifdef TCP_KEEPIDLE
-    std::string start_str = std::to_string(start);
+    std::string seconds_str = std::to_string(seconds);
     setsockopt(socket, IPPROTO_TCP, TCP_KEEPIDLE,
-        start_str.c_str(), sizeof(start_str));
+        seconds_str.c_str(), sizeof(seconds_str));
 #endif
 #elif defined(__APPLE__)
-    setsockopt(socket, IPPROTO_TCP, TCP_KEEPALIVE, &start, sizeof(uint32_t));
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPALIVE, &seconds, sizeof(uint32_t));
 #else
     // Linux based systems
-    setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &start, sizeof(uint32_t));
+    setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &seconds, sizeof(uint32_t));
 #endif
+    keepalive_ = seconds;
 }
 
 const asio::ip::address&
