@@ -116,8 +116,8 @@ public:
     void async_read(size_t bytes, BytesHandlerCb cb);
     void async_read_some(size_t bytes, BytesHandlerCb cb);
 
-    void set_keepalive(int start);
-    inline int keepalive() const { return keepalive_; };
+    void set_keepalive(uint32_t seconds);
+    inline uint32_t keepalive() const { return keepalive_; };
 
     const asio::ip::address& local_address() const;
 
@@ -156,7 +156,7 @@ private:
     std::shared_ptr<log::Logger> logger_;
     bool checkOcsp_ {false};
 
-    int keepalive_;
+    uint32_t keepalive_;
 };
 
 /**
