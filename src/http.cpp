@@ -536,49 +536,11 @@ Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, Conn
 #pragma GCC diagnostic ignored "-Wunused-variable"
     ConnectHandlerCb wcb = [this, &base, cb=std::move(cb)](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
         if (!ec) {
-            auto socket = base.native_handle();
             local_address_ = base.local_endpoint().address();
             // Once connected, set a keep alive on the TCP socket with 30 seconds delay
             // This will generate broken pipes as soon as possible.
             // Note this needs to be done once connected to have a valid native_handle()
-            uint32_t start = 30;
-            uint32_t interval = 30;
-            uint32_t cnt = 1;
-            this->keepalive_ = start;
-#ifdef _WIN32
-            std::string val = "1";
-            setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, val.c_str(), sizeof(val));
-
-            // TCP_KEEPIDLE and TCP_KEEPINTVL are available since Win 10 version 1709
-            // TCP_KEEPCNT since Win 10 version 1703
-#ifdef TCP_KEEPIDLE
-            std::string start_str = std::to_string(start);
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPIDLE,
-                    start_str.c_str(), sizeof(start_str));
-#endif
-#ifdef TCP_KEEPINTVL
-            std::string interval_str = std::to_string(interval);
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPINTVL,
-                    interval_str.c_str(), sizeof(interval_str));
-#endif
-#ifdef TCP_KEEPCNT
-            std::string cnt_str = std::to_string(cnt);
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPCNT,
-                    cnt_str.c_str(), sizeof(cnt_str));
-#endif
-#else
-            uint32_t val = 1;
-            setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(uint32_t));
-#ifdef __APPLE__
-            // Apple devices only have one parameter
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPALIVE, &start, sizeof(uint32_t));
-#else
-            // Linux based systems
-            setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &start, sizeof(uint32_t));
-            setsockopt(socket, SOL_TCP, TCP_KEEPINTVL, &interval, sizeof(uint32_t));
-            setsockopt(socket, SOL_TCP, TCP_KEEPCNT, &cnt, sizeof(uint32_t));
-#endif
-#endif
+            this->set_keepalive(30);
         }
         if (cb)
             cb(ec, endpoint);
@@ -703,19 +665,53 @@ Connection::set_keepalive(uint32_t seconds)
     auto& base = ssl_socket_? ssl_socket_->lowest_layer() : *socket_;
     auto socket = base.native_handle();
 
+    uint32_t interval = 1;
+    uint32_t cnt = 10;
 #ifdef _WIN32
-#ifdef TCP_KEEPIDLE
+    // TCP_KEEPIDLE and TCP_KEEPINTVL are available since Win 10 version 1709
+    // TCP_KEEPCNT since Win 10 version 1703
+#if defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && defined(TCP_KEEPCNT)
+    std::string val = "1";
+    setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, val.c_str(), sizeof(val));
     std::string seconds_str = std::to_string(seconds);
     setsockopt(socket, IPPROTO_TCP, TCP_KEEPIDLE,
         seconds_str.c_str(), sizeof(seconds_str));
+    std::string interval_str = std::to_string(interval);
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPINTVL,
+        interval_str.c_str(), sizeof(interval_str));
+    std::string cnt_str = std::to_string(cnt);
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPCNT,
+        cnt_str.c_str(), sizeof(cnt_str));
+#else
+    struct {
+        uint32_t onoff;
+        uint32_t keepalivetime;
+        uint32_t keepaliveinterval;
+    } keepalive;
+    keepalive.onoff = 1;
+    keepalive.keepalivetime = seconds * 1000;
+    keepalive.keepaliveinterval = interval * 1000;
+    int32_t out = 0;
+    WSAIoctl(socket, SIO_KEEPALIVE_VALS, keepalive, sizeof(tcp_keepalive),
+        nullptr, 0, &out, nullptr, nullptr);
 #endif
-#elif defined(__APPLE__)
+#else
+    uint32_t val = 1;
+    setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(uint32_t));
+#ifdef __APPLE__
+    // Old Apple devices only have one parameter
     setsockopt(socket, IPPROTO_TCP, TCP_KEEPALIVE, &seconds, sizeof(uint32_t));
+#if defined(TCP_KEEPINTVL) && defined(TCP_KEEPCNT)
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(uint32_t));
+    setsockopt(socket, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(uint32_t));
+#endif
 #else
     // Linux based systems
     setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &seconds, sizeof(uint32_t));
+    setsockopt(socket, SOL_TCP, TCP_KEEPINTVL, &interval, sizeof(uint32_t));
+    setsockopt(socket, SOL_TCP, TCP_KEEPCNT, &cnt, sizeof(uint32_t));
 #endif
-    keepalive_ = seconds;
+#endif
 }
 
 const asio::ip::address&

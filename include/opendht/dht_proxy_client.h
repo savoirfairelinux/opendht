@@ -291,6 +291,11 @@ public:
         loopSignal_();
     }
 
+    void listenKeepIdle(uint32_t seconds) {
+        listenKeepIdle_ = seconds;
+    }
+    inline uint32_t listenKeepIdle() { return listenKeepIdle_; }
+
 private:
     /**
      * Start the connection with a server.
@@ -390,6 +395,11 @@ private:
     mutable std::mutex searchLock_;
     size_t listenerToken_ {0};
     std::map<InfoHash, ProxySearch> searches_;
+
+    /**
+     * Keepalive idle time for listen
+     */
+    uint32_t listenKeepIdle_ {120};
 
     /**
      * Callbacks should be executed in the main thread.
