@@ -85,7 +85,7 @@ ThreadPool::run(std::function<void()>&& cb)
                         auto waitCond = [&](){ return not running_ or not tasks_.empty(); };
                         if (permanent_thread)
                             cv_.wait(l, waitCond);
-                        else 
+                        else
                             cv_.wait_for(l, e, waitCond);
                         readyThreads_--;
                         if (not running_ or tasks_.empty())
@@ -162,6 +162,16 @@ ThreadPool::join()
     stop();
     for (auto& t : threads_)
         t->join();
+    threads_.clear();
+    tasks_ = {};
+}
+
+void
+ThreadPool::detach()
+{
+    stop(false);
+    for (auto& t : threads_)
+        t->detach();
     threads_.clear();
     tasks_ = {};
 }

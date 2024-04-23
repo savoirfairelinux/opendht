@@ -63,6 +63,7 @@ public:
 
     void stop(bool wait = true);
     void join();
+    void detach();
 
 private:
     std::mutex lock_ {};
