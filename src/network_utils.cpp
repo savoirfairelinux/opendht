@@ -25,10 +25,15 @@
 #include <cstring>
 #define close(x) closesocket(x)
 #define write(s, b, f) send(s, b, (int)strlen(b), 0)
+#define _poll(fds, nfds, timeout) WSAPoll(fds, nfds, timeout)
 #else
-#include <sys/select.h>
 #include <fcntl.h>
+#include <poll.h>
+#define _poll(fds, nfds, timeout) poll(fds, nfds, timeout)
 #endif
+
+// number of file descriptors to poll in openSockets()
+#define NUM_FDS 3
 
 #include <iostream>
 
@@ -235,23 +240,23 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
 
     running = true;
     rcv_thread = std::thread([this, stop_readfd, ls4=s4, ls6=s6]() mutable {
-        int selectFd = std::max({ls4, ls6, stop_readfd}) + 1;
+        struct pollfd fds[NUM_FDS];
+        for (int i = 0; i < NUM_FDS; i++)
+            fds[i].events = POLLIN;
+        constexpr size_t stop_readfd_index = 0, ls4_index = 1, ls6_index = 2;
         try {
             while (running) {
-                fd_set readfds;
+                // ls4 and ls6 can be negative, but this doesn't require any special handling
+                // because poll() will simply ignore them (and set revents to 0) in that case
+                fds[stop_readfd_index].fd = stop_readfd;
+                fds[ls4_index].fd = ls4;
+                fds[ls6_index].fd = ls6;
 
-                FD_ZERO(&readfds);
-                FD_SET(stop_readfd, &readfds);
-                if(ls4 >= 0)
-                    FD_SET(ls4, &readfds);
-                if(ls6 >= 0)
-                    FD_SET(ls6, &readfds);
-
-                int rc = select(selectFd, &readfds, nullptr, nullptr, nullptr);
+                int rc = _poll(fds, NUM_FDS, -1);
                 if (rc < 0) {
                     if (errno != EINTR) {
                         if (logger)
-                            logger->e("Select error: %s", strerror(errno));
+                            logger->e("Poll error: %s", strerror(errno));
                         std::this_thread::sleep_for(std::chrono::seconds(1));
                     }
                 }
@@ -264,16 +269,16 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                     sockaddr_storage from;
                     socklen_t from_len = sizeof(from);
 
-                    if (FD_ISSET(stop_readfd, &readfds)) {
+                    if (fds[stop_readfd_index].revents & POLLIN) {
                         if (recv(stop_readfd, (char*)buf.data(), buf.size(), 0) < 0) {
                             if (logger)
                                 logger->e("Got stop packet error: %s", strerror(errno));
                             break;
                         }
                     }
-                    else if (ls4 >= 0 && FD_ISSET(ls4, &readfds))
+                    else if (fds[ls4_index].revents & POLLIN)
                         rc = recvfrom(ls4, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
-                    else if (ls6 >= 0 && FD_ISSET(ls6, &readfds))
+                    else if (fds[ls6_index].revents & POLLIN)
                         rc = recvfrom(ls6, (char*)buf.data(), buf.size(), 0, (sockaddr*)&from, &from_len);
                     else
                         continue;
@@ -316,7 +321,6 @@ UdpSocket::openSockets(const SockAddr& bind4, const SockAddr& bind6)
                                     break;
                                 s4 = ls4;
                                 s6 = ls6;
-                                selectFd = std::max({ls4, ls6, stop_readfd}) + 1;
                             } else {
                                 break;
                             }
