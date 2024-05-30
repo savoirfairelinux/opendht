@@ -1812,6 +1812,7 @@ fromDhtConfig(const Config& config)
     netConf.max_peer_req_per_sec = config.max_peer_req_per_sec
         ? config.max_peer_req_per_sec
         : netConf.max_req_per_sec/8;
+    netConf.is_client = config.client_mode;
     return netConf;
 }
 

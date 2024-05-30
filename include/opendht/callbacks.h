@@ -143,6 +143,9 @@ struct OPENDHT_PUBLIC Config {
      *   - Larger listen refresh time
      */
     bool public_stable {false};
+
+    /* Client mode, node will not be used by other nodes to store data. */
+    bool client_mode {false};
 };
 
 /**

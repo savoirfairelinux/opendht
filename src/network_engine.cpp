@@ -143,7 +143,7 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const Inf
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
 
-    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network?1:0));
+    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
         pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty()?1:0) + (not token.empty()?1:0));
@@ -165,6 +165,9 @@ NetworkEngine::tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const Inf
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     if (version >= 1) {
@@ -194,7 +197,7 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoH
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
 
-    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network?1:0));
+    pk.pack_map(4 + (version >= 1 ? 1 : 0) + (config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(version >= 1 ? KEY_A : KEY_U);
         pk.pack_map(1 + (version >= 1 ? 1 : 0) + (not values.empty()?1:0) + (not token.empty()?1:0));
@@ -216,6 +219,9 @@ NetworkEngine::tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoH
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     if (version >= 1) {
@@ -704,7 +710,7 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     Tid tid (node->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_A); pk.pack_map(1);
      pk.pack(KEY_REQ_ID); pk.pack(myid);
@@ -715,6 +721,9 @@ NetworkEngine::sendPing(const Sp<Node>& node, RequestCb&& on_done, RequestExpire
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     auto req = std::make_shared<Request>(MessageType::Ping, tid, node,
@@ -741,7 +750,7 @@ void
 NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(config.network?1:0));
+    pk.pack_map(4+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_R); pk.pack_map(2);
       pk.pack(KEY_REQ_ID); pk.pack(myid);
@@ -753,6 +762,9 @@ NetworkEngine::sendPong(const SockAddr& addr, Tid tid) {
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
+    }
 
     send(addr, buffer.data(), buffer.size());
 }
@@ -763,7 +775,7 @@ NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t wa
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_A); pk.pack_map(2 + (want>0?1:0));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
@@ -781,6 +793,9 @@ NetworkEngine::sendFindNode(const Sp<Node>& n, const InfoHash& target, want_t wa
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     auto req = std::make_shared<Request>(MessageType::FindNode, tid, n,
@@ -808,7 +823,7 @@ NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     unsigned sendQuery = (not query.where.empty() or not query.select.empty()) ? 1 : 0;
     unsigned sendWant = (want > 0) ? 1 : 0;
@@ -835,7 +850,10 @@ NetworkEngine::sendGetValues(const Sp<Node>& n, const InfoHash& info_hash, const
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
     }
-
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
+    }
+    
     auto req = std::make_shared<Request>(MessageType::GetValues, tid, n,
         Blob(buffer.data(), buffer.data() + buffer.size()),
         [=](const Request& req_status, ParsedMessage&& msg) { /* on done */
@@ -952,9 +970,12 @@ NetworkEngine::sendValueParts(Tid tid, const std::vector<Blob>& svals, const Soc
             end = std::min(start + MTU, v.size());
             buffer.clear();
             msgpack::packer<msgpack::sbuffer> pk(&buffer);
-            pk.pack_map(3+(config.network?1:0));
+            pk.pack_map(3+(config.network?1:0)+(config.is_client?1:0));
             if (config.network) {
                 pk.pack(KEY_NETID); pk.pack(config.network);
+            }
+            if (config.is_client) {
+                pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
             }
             pk.pack(KEY_Y); pk.pack(KEY_V);
             pk.pack(KEY_TID); pk.pack(tid);
@@ -976,7 +997,7 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(config.network?1:0));
+    pk.pack_map(4+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_R);
     pk.pack_map(2 + (not st.empty()?1:0) + (nodes.size()>0?1:0) + (nodes6.size()>0?1:0) + (not token.empty()?1:0));
@@ -1017,6 +1038,9 @@ NetworkEngine::sendNodesValues(const SockAddr& addr, Tid tid, const Blob& nodes,
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     // send response
@@ -1089,7 +1113,7 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     auto has_query = not query.where.empty() or not query.select.empty();
     pk.pack(KEY_A); pk.pack_map(5 + has_query);
@@ -1108,6 +1132,9 @@ NetworkEngine::sendListen(const Sp<Node>& n,
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     auto req = std::make_shared<Request>(MessageType::Listen, tid, n,
@@ -1130,7 +1157,7 @@ void
 NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(config.network?1:0));
+    pk.pack_map(4+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_R); pk.pack_map(2);
       pk.pack(KEY_REQ_ID); pk.pack(myid);
@@ -1141,6 +1168,9 @@ NetworkEngine::sendListenConfirmation(const SockAddr& addr, Tid tid) {
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     send(addr, buffer.data(), buffer.size());
@@ -1158,7 +1188,7 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     bool add_created = created < scheduler.time();
     pk.pack(KEY_A); pk.pack_map(add_created ? 5 : 4);
@@ -1177,6 +1207,9 @@ NetworkEngine::sendAnnounceValue(const Sp<Node>& n,
     pk.pack(KEY_UA);  pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     auto req = std::make_shared<Request>(MessageType::AnnounceValue, tid, n,
@@ -1244,7 +1277,7 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
 
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_A); pk.pack_map((created < scheduler.time() ? 7 : 6));
       pk.pack(KEY_REQ_ID);     pk.pack(myid);
@@ -1264,6 +1297,9 @@ NetworkEngine::sendUpdateValues(const Sp<Node>& n,
     pk.pack(KEY_UA);  pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     auto req = std::make_shared<Request>(MessageType::UpdateValue, tid, n,
@@ -1289,7 +1325,7 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     Tid tid (n->getNewTid());
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(5+(config.network?1:0));
+    pk.pack_map(5+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_A); pk.pack_map(4);
       pk.pack(KEY_REQ_ID);       pk.pack(myid);
@@ -1303,6 +1339,9 @@ NetworkEngine::sendRefreshValue(const Sp<Node>& n,
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     auto req = std::make_shared<Request>(MessageType::Refresh, tid, n,
@@ -1335,7 +1374,7 @@ void
 NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4+(config.network?1:0));
+    pk.pack_map(4+(config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_R); pk.pack_map(3);
       pk.pack(KEY_REQ_ID);  pk.pack(myid);
@@ -1347,6 +1386,9 @@ NetworkEngine::sendValueAnnounced(const SockAddr& addr, Tid tid, Value::Id vid) 
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     send(addr, buffer.data(), buffer.size());
@@ -1361,7 +1403,7 @@ NetworkEngine::sendError(const SockAddr& addr,
 {
     msgpack::sbuffer buffer;
     msgpack::packer<msgpack::sbuffer> pk(&buffer);
-    pk.pack_map(4 + (include_id?1:0) + (config.network?1:0));
+    pk.pack_map(4 + (include_id?1:0) + (config.network?1:0)+(config.is_client?1:0));
 
     pk.pack(KEY_E); pk.pack_array(2);
       pk.pack(code);
@@ -1377,6 +1419,9 @@ NetworkEngine::sendError(const SockAddr& addr,
     pk.pack(KEY_UA); pk.pack(OPENDHT_UA);
     if (config.network) {
         pk.pack(KEY_NETID); pk.pack(config.network);
+    }
+    if (config.is_client) {
+        pk.pack(KEY_ISCLIENT); pk.pack(config.is_client);
     }
 
     send(addr, buffer.data(), buffer.size());
