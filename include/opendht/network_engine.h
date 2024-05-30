@@ -52,6 +52,7 @@ struct NetworkConfig {
     NetId network {0};
     ssize_t max_req_per_sec {0};
     ssize_t max_peer_req_per_sec {0};
+    bool is_client {false};
 };
 
 class DhtProtocolException : public DhtException {
