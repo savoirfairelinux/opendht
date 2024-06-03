@@ -98,6 +98,7 @@ for r in results:
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - {fmt} 9.0+, for log formatting.
 - (optional) restinio used for the REST API.
+- (optional) llhttp used for the REST API.
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
 - Build tested with GCC 7+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
 - Build tested with Microsoft Visual Studio 2019, 2022
