@@ -56,6 +56,7 @@ impl DhtRunnerConfig {
                 privatekey: ptr::null_mut(),
                 certificate: ptr::null_mut(),
             },
+            log: true,
         });
         unsafe {
             dht_runner_config_default(&mut *config);
@@ -64,23 +65,23 @@ impl DhtRunnerConfig {
     }
 
     pub fn set_proxy_server(&mut self, proxy_server: &str) {
-        self.proxy_server = CString::new(proxy_server).unwrap().as_ptr();
+        self.proxy_server = CString::new(proxy_server).unwrap().into_raw();
     }
 
     pub fn set_push_node_id(&mut self, push_node_id: &str) {
-        self.push_node_id = CString::new(push_node_id).unwrap().as_ptr();
+        self.push_node_id = CString::new(push_node_id).unwrap().into_raw();
     }
 
     pub fn set_push_token(&mut self, push_token: &str) {
-        self.push_token = CString::new(push_token).unwrap().as_ptr();
+        self.push_token = CString::new(push_token).unwrap().into_raw();
     }
 
     pub fn set_push_topic(&mut self, push_topic: &str) {
-        self.push_topic = CString::new(push_topic).unwrap().as_ptr();
+        self.push_topic = CString::new(push_topic).unwrap().into_raw();
     }
 
     pub fn set_push_platform(&mut self, push_platform: &str) {
-        self.push_platform = CString::new(push_platform).unwrap().as_ptr();
+        self.push_platform = CString::new(push_platform).unwrap().into_raw();
     }
 
     pub fn set_identity(&mut self, certificate: Box<DhtCertificate>, privatekey: Box<PrivateKey>) {
@@ -93,7 +94,7 @@ impl DhtRunnerConfig {
 impl DhtNodeConfig
 {
     pub fn set_persist_path(&mut self, persist_path: &str) {
-        self.persist_path = CString::new(persist_path).unwrap().as_ptr();
+        self.persist_path = CString::new(persist_path).unwrap().into_raw();
     }
 }
 
@@ -197,8 +198,8 @@ impl DhtRunner {
     pub fn bootstrap(&mut self, host: &str, service: u16) {
         unsafe {
             dht_runner_bootstrap(&mut *self,
-                CString::new(host).unwrap().as_ptr(),
-                CString::new(service.to_string()).unwrap().as_ptr())
+                CString::new(host).unwrap().into_raw(),
+                CString::new(service.to_string()).unwrap().into_raw())
         }
     }
 

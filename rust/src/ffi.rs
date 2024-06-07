@@ -124,8 +124,8 @@ pub struct DhtRunnerConfig
     pub peer_publish: bool,
     pub server_ca: *mut DhtCertificate,
     pub client_identity: DhtIdentity,
+    pub log: bool,
 }
-
 
 #[link(name = "opendht-c")]
 extern {
