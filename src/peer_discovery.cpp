@@ -22,6 +22,10 @@
 #include "network_utils.h"
 #include "utils.h"
 
+#ifdef __ANDROID__
+#include "getif_workaround_android.h"
+#endif
+
 #include <asio.hpp>
 
 using namespace std::literals;
@@ -91,6 +95,19 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in
         sockFd_.set_option(asio::ip::udp::socket::reuse_address(true));
         sockFd_.bind({domain, port});
     } catch (const std::exception& e) {
+#ifdef __ANDROID__
+        if(domain.family() == AF_INET && e.what() == "No such device"){
+            try{
+                auto my_interface = workaround::get_interface();
+                sockFd_.set_option(asio::ip::multicast::outbound_interface(my_interface));
+                sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address().to_v4(), my_interface));
+                sockFd_.bind({domain, port});
+            }catch(const std::exception& e){
+                if (logger_)
+                    logger_->e("android discovery workaround: %s",e.what());
+            }
+        }
+#endif
         if (logger_)
             logger_->e("Can't start peer discovery for %s: %s",
                     domain.family() == AF_INET ? "IPv4" : "IPv6", e.what());
