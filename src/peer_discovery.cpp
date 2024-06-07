@@ -96,8 +96,9 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in
         sockFd_.bind({domain, port});
     } catch (const std::exception& e) {
 #ifdef __ANDROID__
-        if(domain.family() == AF_INET && e.what() == "No such device"){
+        if(domain.family() == AF_INET && strcmp(e.what(), "set_option: No such device") == 0){
             try{
+		sockFd_.set_option(asio::ip::udp::socket::reuse_address(true));
                 auto my_interface = workaround::get_interface();
                 sockFd_.set_option(asio::ip::multicast::outbound_interface(my_interface));
                 sockFd_.set_option(asio::ip::multicast::join_group(sockAddrSend_.address().to_v4(), my_interface));
