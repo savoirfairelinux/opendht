@@ -1155,9 +1155,16 @@ loadIdentity(const std::string &path,const std::string &privkey_password)
     if (gnutls_x509_crt_init(&gnuCert) != GNUTLS_E_SUCCESS)
         throw std::runtime_error("Failed to initialize gnutls certificate struct");
     gnutls_datum_t crtContent {nullptr, 0};
+
     // Read the certificate file
-    gnutls_load_file((path + ".crt").c_str(), &crtContent);
-    gnutls_x509_crt_import(gnuCert, &crtContent, GNUTLS_X509_FMT_PEM);
+    int err = gnutls_load_file((path + ".crt").c_str(), &crtContent);
+    if (err != GNUTLS_E_SUCCESS)
+        throw CryptoException(gnutls_strerror(err));
+
+    err = gnutls_x509_crt_import(gnuCert, &crtContent, GNUTLS_X509_FMT_PEM);
+    if (err != GNUTLS_E_SUCCESS)
+        throw CryptoException(gnutls_strerror(err));
+
     auto cert = std::make_shared<Certificate>(gnuCert);
     return {std::move(key), std::move(cert)};
 }
@@ -1192,10 +1199,10 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     Certificate ret {cert};
 
     setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
-    if (int err = gnutls_x509_crt_set_key(cert, key.x509_key)) {
+    if (int err = gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
         throw CryptoException(std::string("Error when setting certificate key ") + gnutls_strerror(err));
     }
-    if (int err = gnutls_x509_crt_set_version(cert, 3)) {
+    if (int err = gnutls_x509_crt_set_version(cert, 3) != GNUTLS_E_SUCCESS) {
         throw CryptoException(std::string("Error when setting certificate version ") + gnutls_strerror(err));
     }
 
@@ -1204,31 +1211,47 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     auto pk_id = pk.getId();
     const std::string uid_str = pk_id.toString();
 
-    gnutls_x509_crt_set_subject_key_id(cert, &pk_id, sizeof(pk_id));
-    gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_X520_COMMON_NAME, 0, name.data(), name.length());
-    gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, uid_str.data(), uid_str.length());
+    int err = gnutls_x509_crt_set_subject_key_id(cert, &pk_id, sizeof(pk_id));
+    if(err != GNUTLS_E_SUCCESS) {
+        throw CryptoException(std::string("Error when setting subject key id ") + gnutls_strerror(err));
+    }
+
+    err = gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_X520_COMMON_NAME, 0, name.data(), name.length());
+    if(err != GNUTLS_E_SUCCESS) {
+        throw CryptoException(std::string("Error when setting subject key id ") + gnutls_strerror(err));
+    }
+    err = gnutls_x509_crt_set_dn_by_oid(cert, GNUTLS_OID_LDAP_UID, 0, uid_str.data(), uid_str.length());
+    if(err != GNUTLS_E_SUCCESS) {
+        throw CryptoException(std::string("Error when setting dn by oid ") + gnutls_strerror(err));
+    }
 
     setRandomSerial(cert);
 
     unsigned key_usage = 0;
     if (is_ca) {
-        gnutls_x509_crt_set_ca_status(cert, 1);
+        err = gnutls_x509_crt_set_ca_status(cert, 1);
+        if(err != GNUTLS_E_SUCCESS) {
+            throw CryptoException(std::string("Error when setting ca status ") + gnutls_strerror(err));
+        }
         key_usage |= GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN;
     } else {
         key_usage |= GNUTLS_KEY_DIGITAL_SIGNATURE | GNUTLS_KEY_DATA_ENCIPHERMENT;
     }
-    gnutls_x509_crt_set_key_usage(cert, key_usage);
+    err = gnutls_x509_crt_set_key_usage(cert, key_usage);
+    if(err != GNUTLS_E_SUCCESS) {
+        throw CryptoException(std::string("Error when setting ca status ") + gnutls_strerror(err));
+    }
 
     if (ca.first && ca.second) {
         if (not ca.second->isCA()) {
             throw CryptoException("Signing certificate must be CA");
         }
-        if (int err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0)) {
+        if (err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0)) {
             throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
         ret.issuer = ca.second;
     } else {
-        if (int err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
+        if (err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
             throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
     }
