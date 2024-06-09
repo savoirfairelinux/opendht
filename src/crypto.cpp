@@ -1199,10 +1199,10 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     Certificate ret {cert};
 
     setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
-    if (int err = gnutls_x509_crt_set_key(cert, key.x509_key)) {
+    if (int err = gnutls_x509_crt_set_key(cert, key.x509_key) != GNUTLS_E_SUCCESS) {
         throw CryptoException(std::string("Error when setting certificate key ") + gnutls_strerror(err));
     }
-    if (int err = gnutls_x509_crt_set_version(cert, 3)) {
+    if (int err = gnutls_x509_crt_set_version(cert, 3) != GNUTLS_E_SUCCESS) {
         throw CryptoException(std::string("Error when setting certificate version ") + gnutls_strerror(err));
     }
 
