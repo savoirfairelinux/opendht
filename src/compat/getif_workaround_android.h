@@ -22,7 +22,7 @@ get_interface(){
         if (if1->ifa_addr->sa_family != AF_INET)
             continue;
         if((if1->ifa_flags & IFF_MULTICAST) == IFF_MULTICAST){
-            char* sa_data = if1->ifa_addr->sa_data;
+            auto sa_data = reinterpret_cast<uint8_t*>(if1->ifa_addr->sa_data);
             uint32_t value = sa_data[2] << 24
                 | sa_data[3] << 16
                 | sa_data[4] << 8
