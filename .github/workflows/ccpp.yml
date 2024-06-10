@@ -7,7 +7,7 @@ jobs:
     name: Ubuntu/GCC Autotools build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Dependencies
       run: |
         sudo apt update && \
@@ -50,7 +50,7 @@ jobs:
     name: Ubuntu/GCC Meson build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Dependencies
       run: |
         sudo apt update && \
@@ -68,7 +68,7 @@ jobs:
     name: Ubuntu/GCC minimal build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Dependencies
       run: |
         sudo apt update && \
@@ -89,7 +89,7 @@ jobs:
     name: macOS/Clang build
     runs-on: macos-12
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Dependencies
       run: |
         brew install msgpack-cxx asio gnutls nettle readline fmt jsoncpp argon2 openssl cppunit
