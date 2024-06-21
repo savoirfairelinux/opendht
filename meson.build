@@ -13,10 +13,14 @@ openssl = dependency('openssl', required: get_option('proxy_client'))
 jsoncpp = dependency('jsoncpp', required: get_option('proxy_client'))
 fmt = dependency('fmt')
 llhttp = dependency('llhttp', 'libllhttp', required: get_option('proxy_client'))
+io_uring = dependency('liburing', required: false)
 
-deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, llhttp]
+deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, llhttp, io_uring]
 
-add_project_arguments('-DMSGPACK_NO_BOOST', language : 'cpp')
+add_project_arguments('-DMSGPACK_NO_BOOST', '-DASIO_STANDALONE', language : 'cpp')
+if io_uring.found()
+    add_project_arguments('-DASIO_HAS_IO_URING', '-DASIO_DISABLE_EPOLL', language : 'cpp')
+endif
 add_project_arguments(['-Wno-return-type','-Wno-deprecated','-Wnon-virtual-dtor','-pedantic-errors','-fvisibility=hidden'], language : 'cpp')
 
 opendht_inc = include_directories('include/opendht')
