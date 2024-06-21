@@ -321,6 +321,8 @@ PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
         reDiscover();
         publish(sockAddrSend_);
     });
+    if (logger_)
+        logger_->d("PeerDiscovery: connectivity changed");
 }
 
 PeerDiscovery::PeerDiscovery(in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
