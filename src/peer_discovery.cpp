@@ -317,8 +317,10 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
 void
 PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
 {
-    reDiscover();
-    publish(sockAddrSend_);
+    ioContext_->post([this] () {
+        reDiscover();
+        publish(sockAddrSend_);
+    });
 }
 
 PeerDiscovery::PeerDiscovery(in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
