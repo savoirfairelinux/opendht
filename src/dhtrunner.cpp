@@ -180,9 +180,8 @@ DhtRunner::run(const Config& config, Context&& context)
         throw;
     }
 
-    if (context.statusChangedCallback) {
-        statusCb = std::move(context.statusChangedCallback);
-    }
+    statusCbs.clear();
+    statusCbs.emplace_back(std::move(context.statusChangedCallback));
     if (context.certificateStore) {
         dht_->setLocalCertificateStore(std::move(context.certificateStore));
     }
@@ -263,6 +262,13 @@ DhtRunner::run(const Config& config, Context&& context)
                     peerDiscovery_->startPublish(AF_INET6, PEER_DISCOVERY_DHT_SERVICE, sbuf_node);
                 }
             }
+        }
+        if (config.peer_discovery && config.peer_publish) {
+            statusCbs.emplace_back([this](NodeStatus status4, NodeStatus status6) {
+                if (status4 == NodeStatus::Disconnected && status6 == NodeStatus::Disconnected) {
+                    peerDiscovery_->connectivityChanged();
+                }
+            });
         }
 #endif
     }
@@ -690,8 +696,13 @@ DhtRunner::loop_()
     if (nstatus4 != status4 || nstatus6 != status6) {
         status4 = nstatus4;
         status6 = nstatus6;
-        if (statusCb)
-            statusCb(status4, status6);
+        if (!statusCbs.empty())
+        {
+            for (auto& cb : statusCbs){
+                if (cb)
+                    cb(status4, status6);
+            }
+        }
     }
 
     return wakeup;
@@ -1039,10 +1050,6 @@ DhtRunner::connectivityChanged()
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) {
         dht.connectivityChanged();
-#ifdef OPENDHT_PEER_DISCOVERY
-        if (peerDiscovery_)
-            peerDiscovery_->connectivityChanged();
-#endif
     });
     cv.notify_all();
 }

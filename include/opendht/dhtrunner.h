@@ -409,7 +409,7 @@ public:
     void run(const Config& config, Context&& context);
 
     void setOnStatusChanged(StatusCallback&& cb) {
-        statusCb = std::move(cb);
+        statusCbs.emplace_back(std::move(cb));
     }
 
     /**
@@ -519,7 +519,8 @@ private:
 
     NodeStatus status4 {NodeStatus::Disconnected},
                status6 {NodeStatus::Disconnected};
-    StatusCallback statusCb {nullptr};
+
+    std::list<StatusCallback> statusCbs {};
 
     /** PeerDiscovery Parameters */
     std::shared_ptr<PeerDiscovery> peerDiscovery_;
