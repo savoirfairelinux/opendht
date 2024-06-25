@@ -181,7 +181,8 @@ DhtRunner::run(const Config& config, Context&& context)
     }
 
     statusCbs.clear();
-    statusCbs.emplace_back(std::move(context.statusChangedCallback));
+    if (context.statusChangedCallback)
+        statusCbs.emplace_back(std::move(context.statusChangedCallback));
     if (context.certificateStore) {
         dht_->setLocalCertificateStore(std::move(context.certificateStore));
     }
@@ -263,7 +264,7 @@ DhtRunner::run(const Config& config, Context&& context)
                 }
             }
         }
-        if (config.peer_discovery && config.peer_publish) {
+        if (peerDiscovery_) {
             statusCbs.emplace_back([this](NodeStatus status4, NodeStatus status6) {
                 if (status4 == NodeStatus::Disconnected && status6 == NodeStatus::Disconnected) {
                     peerDiscovery_->connectivityChanged();
@@ -696,12 +697,8 @@ DhtRunner::loop_()
     if (nstatus4 != status4 || nstatus6 != status6) {
         status4 = nstatus4;
         status6 = nstatus6;
-        if (!statusCbs.empty())
-        {
-            for (auto& cb : statusCbs){
-                if (cb)
-                    cb(status4, status6);
-            }
+        for (auto& cb : statusCbs){
+            cb(status4, status6);
         }
     }
 
@@ -1050,6 +1047,10 @@ DhtRunner::connectivityChanged()
     std::lock_guard<std::mutex> lck(storage_mtx);
     pending_ops_prio.emplace([=](SecureDht& dht) {
         dht.connectivityChanged();
+#ifdef OPENDHT_PEER_DISCOVERY
+        if (peerDiscovery_)
+            peerDiscovery_->connectivityChanged();
+#endif
     });
     cv.notify_all();
 }
