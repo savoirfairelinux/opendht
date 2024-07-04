@@ -289,7 +289,7 @@ DhtRunnerTester::testIdOps() {
         valueCountEdit++;
         cv.notify_all();
     });
-    node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired){
+    node2.listen(key2, [&](const std::vector<std::shared_ptr<dht::Value>>& values, bool /*expired*/){
         for (const auto& v : values) {
             if (v->seq == 0)
                 CPPUNIT_ASSERT_EQUAL("v1"s, dht::unpackMsg<std::string>(v->data));
