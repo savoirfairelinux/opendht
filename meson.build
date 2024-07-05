@@ -20,6 +20,7 @@ deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, llhttp, io_uring
 add_project_arguments('-DMSGPACK_NO_BOOST', '-DASIO_STANDALONE', language : 'cpp')
 if io_uring.found()
     add_project_arguments('-DASIO_HAS_IO_URING', '-DASIO_DISABLE_EPOLL', language : 'cpp')
+    conf_data.set('iouring_lib', ', liburing')
 endif
 add_project_arguments(['-Wno-return-type','-Wno-deprecated','-Wnon-virtual-dtor','-pedantic-errors','-fvisibility=hidden'], language : 'cpp')
 
