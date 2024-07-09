@@ -52,6 +52,7 @@ public:
 
     void connectivityChanged();
 
+    void stopConnectivityChanged();
 private:
     Sp<Logger> logger_;
     //dmtx_ for callbackmap_ and drunning_ (write)
@@ -59,6 +60,14 @@ private:
     //mtx_ for messages_ and lrunning (listen)
     std::mutex mtx_;
     std::shared_ptr<asio::io_context> ioContext_;
+
+    static constexpr dht::duration PeerDiscovery_PERIOD_MAX{
+        std::chrono::minutes(1)};
+    static constexpr std::chrono::seconds PeerDiscovery_PERIOD{10};
+    asio::steady_timer peerDiscoveryTimer;
+    std::chrono::steady_clock::duration peerDiscovery_period{
+        PeerDiscovery_PERIOD};
+
     asio::ip::udp::socket sockFd_;
     asio::ip::udp::endpoint sockAddrSend_;
 
@@ -86,6 +95,7 @@ private:
 PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
     : logger_(logger)
     , ioContext_(ioContext)
+    , peerDiscoveryTimer(*ioContext_)
     , sockFd_(*ioContext_, domain)
     , sockAddrSend_(asio::ip::address::from_string(domain.family() == AF_INET ? MULTICAST_ADDRESS_IPV4
                                                                               : MULTICAST_ADDRESS_IPV6), port)
@@ -323,6 +333,24 @@ PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
     });
     if (logger_)
         logger_->d("PeerDiscovery: connectivity changed");
+        
+    if (peerDiscovery_period == PeerDiscovery_PERIOD_MAX ){
+        peerDiscovery_period = PeerDiscovery_PERIOD;
+    }
+    else{
+        peerDiscoveryTimer.expires_after(peerDiscovery_period);
+        peerDiscoveryTimer.async_wait([this](const asio::error_code& ec) {
+            if (ec == asio::error::operation_aborted)
+                return;
+            connectivityChanged();
+        });
+        peerDiscovery_period = std::min(peerDiscovery_period * 2, PeerDiscovery_PERIOD_MAX);
+    }
+}
+
+void PeerDiscovery::DomainPeerDiscovery::stopConnectivityChanged() {
+    peerDiscoveryTimer.cancel();
+    peerDiscovery_period = PeerDiscovery_PERIOD;
 }
 
 PeerDiscovery::PeerDiscovery(in_port_t port, Sp<asio::io_context> ioContext, Sp<Logger> logger)
@@ -433,6 +461,13 @@ PeerDiscovery::connectivityChanged()
         peerDiscovery4_->connectivityChanged();
     if (peerDiscovery6_)
         peerDiscovery6_->connectivityChanged();
+}
+
+void PeerDiscovery::stopConnectivityChanged() {
+   if (peerDiscovery4_)
+       peerDiscovery4_->stopConnectivityChanged();
+    if (peerDiscovery6_)
+        peerDiscovery6_->stopConnectivityChanged();
 }
 
 } /* namespace dht */
