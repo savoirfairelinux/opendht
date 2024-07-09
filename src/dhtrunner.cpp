@@ -269,6 +269,10 @@ DhtRunner::run(const Config& config, Context&& context)
                 if (status4 == NodeStatus::Disconnected && status6 == NodeStatus::Disconnected) {
                     peerDiscovery_->connectivityChanged();
                 }
+                else if (status4 != NodeStatus::Connected || status6 != NodeStatus::Connected) {
+                    peerDiscovery_->stopConnectivityChanged();
+                }
+
             });
         }
 #endif

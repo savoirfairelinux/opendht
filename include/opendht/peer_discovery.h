@@ -23,7 +23,9 @@
 #include "sockaddr.h"
 #include "infohash.h"
 #include "logger.h"
+#include "utils.h"
 
+#include <asio/steady_timer.hpp>
 #include <thread>
 
 namespace asio {
@@ -36,31 +38,34 @@ class OPENDHT_PUBLIC PeerDiscovery
 {
 public:
     static constexpr in_port_t DEFAULT_PORT = 8888;
-    using ServiceDiscoveredCallback = std::function<void(msgpack::object&&, SockAddr&&)>;
+    using ServiceDiscoveredCallback = std::function<void(msgpack::object &&, SockAddr &&)>;
 
-    PeerDiscovery(in_port_t port = DEFAULT_PORT, std::shared_ptr<asio::io_context> ioContext = {}, std::shared_ptr<Logger> logger = {});
+    PeerDiscovery(in_port_t port = DEFAULT_PORT,
+                std::shared_ptr<asio::io_context> ioContext = {},
+                std::shared_ptr<Logger> logger = {});
     ~PeerDiscovery();
 
     /**
-     * startDiscovery - Keep Listening data from the sender until node is joinned or stop is called
-    */
+     * startDiscovery - Keep Listening data from the sender until node is joinned
+     * or stop is called
+     */
     void startDiscovery(const std::string &type, ServiceDiscoveredCallback callback);
 
-    template<typename T>
-    void startDiscovery(const std::string &type, std::function<void(T&&, SockAddr&&)> cb) {
-        startDiscovery(type, [cb](msgpack::object&& ob, SockAddr&& addr) {
+    template <typename T>
+    void startDiscovery(const std::string &type, std::function<void(T &&, SockAddr &&)> cb) {
+        startDiscovery(type, [cb](msgpack::object &&ob, SockAddr &&addr) {
             cb(ob.as<T>(), std::move(addr));
         });
     }
 
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called
-    */
+     */
     void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
     void startPublish(sa_family_t domain, const std::string &type, const msgpack::sbuffer &pack_buf);
 
-    template<typename T>
-    void startPublish(const std::string &type, const T& object) {
+    template <typename T>
+    void startPublish(const std::string &type, const T &object) {
         msgpack::sbuffer buf;
         msgpack::pack(buf, object);
         startPublish(type, buf);
@@ -68,21 +73,23 @@ public:
 
     /**
      * Thread Stopper
-    */
+     */
     void stop();
 
     /**
      * Remove possible callBack to discovery
-    */
+     */
     bool stopDiscovery(const std::string &type);
 
     /**
      * Remove different serivce message to send
-    */
+     */
     bool stopPublish(const std::string &type);
     bool stopPublish(sa_family_t domain, const std::string &type);
 
     void connectivityChanged();
+
+    void stopConnectivityChanged();
 
 private:
     class DomainPeerDiscovery;
@@ -92,4 +99,4 @@ private:
     std::thread ioRunnner_;
 };
 
-}
+} // namespace dht
