@@ -239,6 +239,27 @@ void CryptoTester::testAesEncryption() {
     CPPUNIT_ASSERT(data2 == decrypted2);
 }
 
+void CryptoTester::testAesEncryptionWithMultipleKeySizes() {
+    auto data = std::vector<uint8_t>(rand(), rand());
+
+    // Valid key sizes
+    for (auto key_length : {16, 24, 32}) {
+        auto key = std::vector<uint8_t>(key_length, rand());
+
+        auto encrypted_data = dht::crypto::aesEncrypt(data, key);
+        auto decrypted_data = dht::crypto::aesDecrypt(encrypted_data, key);
+
+        CPPUNIT_ASSERT(data == decrypted_data);
+    }
+
+    // Invalid key sizes
+    for (auto key_length : {12, 28, 36}) {
+        auto key = std::vector<uint8_t>(key_length, rand());
+
+        CPPUNIT_ASSERT_THROW(dht::crypto::aesEncrypt(data, key), dht::crypto::DecryptError);
+    }
+}
+
 void
 CryptoTester::tearDown() {
 
