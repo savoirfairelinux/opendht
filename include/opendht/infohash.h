@@ -63,7 +63,7 @@ namespace crypto {
  * Hashes identify nodes and values in the Dht.
  */
 template <size_t N>
-class OPENDHT_PUBLIC Hash {
+class Hash {
 public:
     using T = std::array<uint8_t, N>;
     typedef typename T::iterator iterator;
@@ -251,10 +251,10 @@ public:
     static Hash getRandom(Rd&);
 
     template <size_t M>
-    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Hash<M>& h);
+    friend std::ostream& operator<< (std::ostream& s, const Hash<M>& h);
 
     template <size_t M>
-    OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, Hash<M>& h);
+    friend std::istream& operator>> (std::istream& s, Hash<M>& h);
 
     /** Returns view to thread-allocated memory, only valid until the next call to this function. */
     std::string_view to_view() const { return std::string_view(to_c_str(), N*2); }
