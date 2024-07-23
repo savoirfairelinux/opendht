@@ -257,7 +257,7 @@ PrivateKey::PrivateKey(const uint8_t* src, size_t src_size, const char* password
         throw CryptoException("Can't initialize private key !");
 
     const gnutls_datum_t dt {(uint8_t*)src, static_cast<unsigned>(src_size)};
-    int flags = password_ptr ? GNUTLS_PKCS_PLAIN
+    int flags = (password_ptr == NULL || strlen(password_ptr)==0) ? GNUTLS_PKCS_PLAIN
                 : ( GNUTLS_PKCS_PBES2_AES_128 | GNUTLS_PKCS_PBES2_AES_192  | GNUTLS_PKCS_PBES2_AES_256
                   | GNUTLS_PKCS_PKCS12_3DES   | GNUTLS_PKCS_PKCS12_ARCFOUR | GNUTLS_PKCS_PKCS12_RC2_40);
 
