@@ -861,6 +861,9 @@ Dht::Search::insertNode(const Sp<Node>& snode, time_point now, const Blob& token
             nodes.pop_back();
             if (removingNode)
                 return false;
+	    // For some reason if removindNode was false, iterator could be
+	    // invalid.
+	    n = nodes.end();
         }
     }
     if (n == nodes.end() or not *n)
