@@ -461,7 +461,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     bool verified = verifier(preverified, ctx);
                     auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
-                        logger->error("[http::connection:{:d}] ssl verification error={:d} %d", id, verify_ec, verified);
+                        logger->error("[http::connection:{:d}] ssl verification error={:d} {}", id, verify_ec, verified);
                     if (verified and checkOcsp) {
                         std::unique_ptr<stack_st_X509, void(*)(stack_st_X509*)> chain(
                             X509_STORE_CTX_get1_chain(ctx.native_handle()),
