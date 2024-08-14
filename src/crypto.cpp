@@ -1164,11 +1164,17 @@ saveIdentity(const Identity& id, const std::string& path, const std::string& pri
         auto ca_key_data = id.first->serialize(privkey_password);
         std::ofstream key_file(path + ".pem");
         key_file.write((char*)ca_key_data.data(), ca_key_data.size());
+        // Throw error if the file is not written
+        if (!key_file)
+            throw CryptoException("Could not write private key file");
     }
     {
         auto ca_key_data = id.second->getPacked();
         std::ofstream crt_file(path + ".crt");
         crt_file.write((char*)ca_key_data.data(), ca_key_data.size());
+        // Throw error if the file is not written
+        if (!crt_file)
+            throw CryptoException("Could not write certificate file");
     }
 }
 
