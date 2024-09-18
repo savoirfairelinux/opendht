@@ -1107,10 +1107,14 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             notification["tokens"] = std::move(tokens);
             notification["platform"] = type == PushType::Android ? 2 : 1;
             notification["data"] = std::move(json);
-            notification["priority"] = highPriority ? "high" : "normal";
-            if (type == PushType::Android)
-                notification["time_to_live"] = 3600 * 24; // 24 hours
-            else {
+            auto priority = highPriority ? "high" : "normal";
+            if (type == PushType::Android) {
+                Json::Value androidConfig(Json::objectValue);
+                androidConfig["priority"] = priority;
+                androidConfig["ttl"] = "86400s"; // time to live = 24 hours
+                notification["android"] = std::move(androidConfig);
+            } else {
+                notification["priority"] = priority;
                 const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
                 uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
                 notification["expiration"] = exp;
