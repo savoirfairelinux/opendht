@@ -526,8 +526,15 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
             throw DhtProtocolException {DhtProtocolException::UNKNOWN_TID, "Can't find socket", msg->id};
         node->received(now, {});
         onNewNode(node, 2);
-        deserializeNodes(*msg, from);
-        rsocket->on_receive(node, std::move(*msg));
+        try {
+            deserializeNodes(*msg, from);
+            rsocket->on_receive(node, std::move(*msg));
+        } catch (DhtProtocolException &ex) {
+            if (logIncoming_)
+                if (logger_)
+                    logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
+            return;
+        }
     }
     else if (msg->type == MessageType::Error or msg->type == MessageType::Reply) {
         auto rsocket = node->getSocket(msg->tid);
@@ -590,13 +597,26 @@ NetworkEngine::process(std::unique_ptr<ParsedMessage>&& msg, const SockAddr& fro
                     r.node->authSuccess();
                 }
                 r.reply_time = scheduler.time();
-
-                deserializeNodes(*msg, from);
-                r.setDone(std::move(*msg));
+                try {
+                    deserializeNodes(*msg, from);
+                    r.setDone(std::move(*msg));
+                } catch (DhtProtocolException &ex) {
+                    if (logIncoming_)
+                        if (logger_)
+                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
+                    return;
+                }
                 break;
             } else { /* request socket data */
-                deserializeNodes(*msg, from);
-                rsocket->on_receive(node, std::move(*msg));
+                try {
+                    deserializeNodes(*msg, from);
+                    rsocket->on_receive(node, std::move(*msg));
+                } catch (DhtProtocolException &ex) {
+                    if (logIncoming_)
+                        if (logger_)
+                            logger_->ERR("Exception in deserializeNodes: %s, code: %u", ex.getMsg().c_str(), ex.getCode());
+                    return;
+                }
             }
             break;
         default:
