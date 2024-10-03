@@ -223,6 +223,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
     :   ioContext_(std::make_shared<asio::io_context>()),
         dht_(dht), persistPath_(config.persistStatePath), logger_(logger),
         printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
+        serverStartTime_(clock::now()),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
         pushServer_(config.pushServer),
         bundleId_(config.bundleId)
@@ -542,7 +543,15 @@ DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
     stats.requestRate = count / dt.count();
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     stats.pushListenersCount = pushListeners_.size();
+    {
+        std::lock_guard lk(pushStatsMutex_);
+        stats.androidPush = androidPush_;
+        stats.iosPush = iosPush_;
+        stats.unifiedPush = unifiedPush_;
+    }
 #endif
+    stats.serverStartTime = serverStartTime_;
+    stats.lastUpdated = now;
     stats.totalPermanentPuts = 0;
     std::for_each(puts_.begin(), puts_.end(), [&stats](const auto& put) {
         stats.totalPermanentPuts += put.second.puts.size();
@@ -1155,6 +1164,21 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             requests_[reqid] = request;
         }
         request->send();
+        // For monitoring purposes
+        std::lock_guard lk(pushStatsMutex_);
+        switch (type) {
+        case PushType::Android:
+            androidPush_.increment(highPriority);
+            break;
+        case PushType::iOS:
+            iosPush_.increment(highPriority);
+            break;
+        case PushType::UnifiedPush:
+            unifiedPush_.increment(highPriority);
+            break;
+        default:
+            break;
+        }
     }
     catch (const std::exception &e){
         if (logger_)
