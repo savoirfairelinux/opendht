@@ -98,6 +98,29 @@ public:
 
     asio::io_context& io_context() const;
 
+    struct PushStats {
+        uint64_t highPriorityCount {0};
+        uint64_t normalPriorityCount {0};
+
+        void increment(bool highPriority) {
+            if (highPriority)
+                highPriorityCount++;
+            else
+                normalPriorityCount++;
+        }
+
+        Json::Value toJson() const {
+            Json::Value val;
+            val["highPriorityCount"] = static_cast<Json::UInt64>(highPriorityCount);
+            val["normalPriorityCount"] = static_cast<Json::UInt64>(normalPriorityCount);
+            return val;
+        }
+
+        std::string toString() const {
+            return fmt::format("{} high priority, {} normal priority", highPriorityCount, normalPriorityCount);
+        }
+    };
+
     struct ServerStats {
         /** Current number of listen operations */
         size_t listenCount {0};
@@ -107,6 +130,17 @@ public:
         size_t totalPermanentPuts {0};
         /** Current number of push tokens with at least one listen operation */
         size_t pushListenersCount {0};
+
+        /** Time at which the server was started */
+        time_point serverStartTime;
+        /** Last time at which the stats were updated */
+        time_point lastUpdated;
+        /** Total number of push notification requests that the server attempted to
+          * send since being started, broken down by type and priority level */
+        PushStats androidPush;
+        PushStats iosPush;
+        PushStats unifiedPush;
+
         /** Average requests per second */
         double requestRate {0};
         /** Node Info **/
@@ -115,6 +149,10 @@ public:
         std::string toString() const {
             std::ostringstream ss;
             ss << "Listens: " << listenCount << " Puts: " << putCount << " PushListeners: " << pushListenersCount << std::endl;
+            ss << "Push requests in the last " << print_duration(lastUpdated - serverStartTime) << ": "
+                                               << "[Android: " << androidPush.toString() << "], "
+                                               << "[iOS: " << iosPush.toString() << "], "
+                                               << "[Unified: " << unifiedPush.toString() << "]" << std::endl;
             ss << "Requests: " << requestRate << " per second." << std::endl;
             if (nodeInfo) {
                 auto& ipv4 = nodeInfo->ipv4;
@@ -136,6 +174,11 @@ public:
             result["putCount"] = static_cast<Json::UInt64>(putCount);
             result["totalPermanentPuts"] = static_cast<Json::UInt64>(totalPermanentPuts);
             result["pushListenersCount"] = static_cast<Json::UInt64>(pushListenersCount);
+            result["serverStartTime"] = static_cast<Json::LargestInt>(to_time_t(serverStartTime));
+            result["lastUpdated"] = static_cast<Json::LargestInt>(to_time_t(lastUpdated));
+            result["androidPush"] = androidPush.toJson();
+            result["iosPush"] = iosPush.toJson();
+            result["unifiedPush"] = unifiedPush.toJson();
             result["requestRate"] = requestRate;
             if (nodeInfo)
                 result["nodeInfo"] = nodeInfo->toJson();
@@ -393,6 +436,11 @@ private:
     std::shared_ptr<ServerStats> stats_;
     std::shared_ptr<NodeInfo> nodeInfo_ {};
     std::unique_ptr<asio::steady_timer> printStatsTimer_;
+    const time_point serverStartTime_;
+    mutable std::mutex pushStatsMutex_;
+    PushStats androidPush_;
+    PushStats iosPush_;
+    PushStats unifiedPush_;
 
     // Thread-safe access to listeners map.
     std::mutex lockListener_;
