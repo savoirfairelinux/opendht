@@ -107,6 +107,16 @@ public:
         size_t totalPermanentPuts {0};
         /** Current number of push tokens with at least one listen operation */
         size_t pushListenersCount {0};
+        /** Time at which the server was started */
+        time_point serverStartTime;
+        /** Last time at which the stats were updated */
+        time_point lastUpdated;
+        /** Total number of high priority push notification requests
+          * that the server attempted to send since being started */
+        uint64_t highPriorityPushRequestsCount {0};
+        /** Total number of normal priority push notification requests
+          * that the server attempted to send since being started */
+        uint64_t normalPriorityPushRequestsCount {0};
         /** Average requests per second */
         double requestRate {0};
         /** Node Info **/
@@ -115,6 +125,9 @@ public:
         std::string toString() const {
             std::ostringstream ss;
             ss << "Listens: " << listenCount << " Puts: " << putCount << " PushListeners: " << pushListenersCount << std::endl;
+            ss << "Push requests in the last " << print_duration(lastUpdated - serverStartTime) << ": "
+                                               << highPriorityPushRequestsCount << " high priority, "
+                                               << normalPriorityPushRequestsCount << " normal priority" << std::endl;
             ss << "Requests: " << requestRate << " per second." << std::endl;
             if (nodeInfo) {
                 auto& ipv4 = nodeInfo->ipv4;
@@ -136,6 +149,10 @@ public:
             result["putCount"] = static_cast<Json::UInt64>(putCount);
             result["totalPermanentPuts"] = static_cast<Json::UInt64>(totalPermanentPuts);
             result["pushListenersCount"] = static_cast<Json::UInt64>(pushListenersCount);
+            result["serverStartTime"] = static_cast<Json::LargestInt>(to_time_t(serverStartTime));
+            result["lastUpdated"] = static_cast<Json::LargestInt>(to_time_t(lastUpdated));
+            result["highPriorityPushRequestsCount"] = static_cast<Json::UInt64>(highPriorityPushRequestsCount);
+            result["normalPriorityPushRequestsCount"] = static_cast<Json::UInt64>(normalPriorityPushRequestsCount);
             result["requestRate"] = requestRate;
             if (nodeInfo)
                 result["nodeInfo"] = nodeInfo->toJson();
@@ -393,6 +410,9 @@ private:
     std::shared_ptr<ServerStats> stats_;
     std::shared_ptr<NodeInfo> nodeInfo_ {};
     std::unique_ptr<asio::steady_timer> printStatsTimer_;
+    const time_point serverStartTime_;
+    uint64_t highPriorityPushRequestsCount_ {0};
+    uint64_t normalPriorityPushRequestsCount_ {0};
 
     // Thread-safe access to listeners map.
     std::mutex lockListener_;
