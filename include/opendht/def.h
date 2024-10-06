@@ -16,14 +16,14 @@
 // OPENDHT_LOCAL is used for non-api symbols.
 
 #ifdef opendht_EXPORTS // defined if OpenDHT is compiled as a shared library
-  #ifdef OPENDHT_BUILD // defined if we are building the OpenDHT shared library (instead of using it)
-    #define OPENDHT_PUBLIC OPENDHT_EXPORT
+  #define OPENDHT_PUBLIC OPENDHT_EXPORT
+  #define OPENDHT_LOCAL OPENDHT_HIDDEN
+#else // opendht_EXPORTS is not defined: this means OpenDHT is imported or static.
+  #ifdef OPENDHT_STATIC
+    #define OPENDHT_PUBLIC
   #else
     #define OPENDHT_PUBLIC OPENDHT_IMPORT
-  #endif // OPENDHT_BUILD
-  #define OPENDHT_LOCAL OPENDHT_HIDDEN
-#else // opendht_EXPORTS is not defined: this means OpenDHT is a static lib.
-  #define OPENDHT_PUBLIC
+  #endif
   #define OPENDHT_LOCAL
 #endif // opendht_EXPORTS
 
