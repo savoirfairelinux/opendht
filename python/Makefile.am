@@ -8,7 +8,7 @@ noinst_HEADERS = \
 PYTHON_INSTALL_RECORD = $(builddir)/install_record.txt
 
 pybuild.stamp:
-	LDFLAGS="-L$(top_srcdir)/src/.libs" $(PYTHON) setup.py build_ext --inplace
+	CFLAGS="$(MsgPack_CFLAGS)" LDFLAGS="-L$(top_srcdir)/src/.libs $(MsgPack_LIBS)" $(PYTHON) setup.py build_ext --inplace
 	echo stamp > pybuild.stamp
 
 CLEANFILES = pybuild.stamp
