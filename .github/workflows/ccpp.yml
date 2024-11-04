@@ -87,7 +87,7 @@ jobs:
 
   build-macos:
     name: macOS/Clang build
-    runs-on: macos-12
+    runs-on: macOS-15
     steps:
     - uses: actions/checkout@v4
     - name: Dependencies
@@ -96,7 +96,7 @@ jobs:
 
     - name: expected-lite
       run: |
-        sudo mkdir /usr/local/include/nonstd && \
+        sudo mkdir -p /usr/local/include/nonstd && \
         sudo wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
           -O /usr/local/include/nonstd/expected.hpp
 
