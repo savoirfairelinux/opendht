@@ -64,6 +64,7 @@ public:
         std::string push_token {};
         std::string push_topic {};
         std::string push_platform {};
+        std::string proxy_user_agent {};
         bool peer_discovery {false};
         bool peer_publish {false};
         std::shared_ptr<dht::crypto::Certificate> server_ca;

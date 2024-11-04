@@ -108,11 +108,13 @@ DhtProxyClient::DhtProxyClient() {}
 DhtProxyClient::DhtProxyClient(
         std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
         std::function<void()> signal, const std::string& serverHost,
-        const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
+        const std::string& pushClientId, const std::string& userAgent, std::shared_ptr<dht::Logger> logger)
     : DhtInterface(logger)
     , proxyUrl_(serverHost)
     , clientIdentity_(clientIdentity), serverCertificate_(serverCA)
-    , pushClientId_(pushClientId), pushSessionId_(getRandomSessionId())
+    , pushClientId_(pushClientId)
+    , pushSessionId_(getRandomSessionId())
+    , userAgent_(userAgent)
     , loopSignal_(signal)
     , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
 {
@@ -484,7 +486,7 @@ DhtProxyClient::buildRequest(const std::string& target)
         request->set_certificate_authority(serverCertificate_);
     if (clientIdentity_.first and clientIdentity_.second)
         request->set_identity(clientIdentity_);
-    request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
+    request->set_header_field(restinio::http_field_t::user_agent, userAgent_);
     return request;
 }
 

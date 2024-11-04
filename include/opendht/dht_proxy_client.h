@@ -53,9 +53,14 @@ public:
     DhtProxyClient();
 
     explicit DhtProxyClient(
-        std::shared_ptr<crypto::Certificate> serverCA, crypto::Identity clientIdentity,
-        std::function<void()> loopSignal, const std::string& serverHost,
-        const std::string& pushClientId = "", std::shared_ptr<Logger> logger = {});
+        std::shared_ptr<crypto::Certificate> serverCA,
+        crypto::Identity clientIdentity,
+        std::function<void()> loopSignal,
+        const std::string& serverHost,
+        const std::string& pushClientId = "",
+        const std::string& userAgent = "",
+        std::shared_ptr<Logger> logger = {}
+    );
 
     void setHeaderFields(http::Request& request);
 
@@ -354,6 +359,7 @@ private:
     //std::pair<std::string, std::string> serverHostService_;
     std::string pushClientId_;
     std::string pushSessionId_;
+    std::string userAgent_ {"OpenDHT"};
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};

@@ -49,6 +49,7 @@ impl DhtRunnerConfig {
             push_token: ptr::null(),
             push_topic: ptr::null(),
             push_platform: ptr::null(),
+            proxy_user_agent: ptr::null(),
             peer_discovery: false,
             peer_publish: false,
             server_ca: ptr::null_mut(),
@@ -82,6 +83,10 @@ impl DhtRunnerConfig {
 
     pub fn set_push_platform(&mut self, push_platform: &str) {
         self.push_platform = CString::new(push_platform).unwrap().into_raw();
+    }
+
+    pub fn set_proxy_user_agent(&mut self, proxy_user_agent: &str) {
+        self.proxy_user_agent = CString::new(proxy_user_agent).unwrap().into_raw();
     }
 
     pub fn set_identity(&mut self, certificate: Box<DhtCertificate>, privatekey: Box<PrivateKey>) {

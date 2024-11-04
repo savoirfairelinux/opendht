@@ -148,6 +148,7 @@ struct OPENDHT_PUBLIC dht_runner_config {
     const char* push_token;
     const char* push_topic;
     const char* push_platform;
+    const char* proxy_user_agent;
     bool peer_discovery;
     bool peer_publish;
     dht_certificate* server_ca;

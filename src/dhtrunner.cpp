@@ -1120,7 +1120,7 @@ DhtRunner::enableProxy(bool proxify)
                         cv.notify_all();
                     }
                 },
-                config_.proxy_server, config_.push_node_id, logger_);
+                config_.proxy_server, config_.push_node_id, config_.proxy_user_agent, logger_);
         if (not config_.push_token.empty())
             dht_via_proxy->setPushNotificationToken(config_.push_token);
         if (not config_.push_topic.empty())
