@@ -1282,12 +1282,14 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
         if (not ca.second->isCA()) {
             throw CryptoException("Signing certificate must be CA");
         }
-        if (err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0)) {
+        err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0);
+        if (err) {
             throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
         ret.issuer = ca.second;
     } else {
-        if (err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
+        err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0);
+        if (err) {
             throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
     }
