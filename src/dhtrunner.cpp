@@ -1120,13 +1120,13 @@ DhtRunner::enableProxy(bool proxify)
                         cv.notify_all();
                     }
                 },
-                config_.proxy_server, config_.push_node_id, config_.proxy_user_agent, logger_);
-        if (not config_.push_token.empty())
-            dht_via_proxy->setPushNotificationToken(config_.push_token);
-        if (not config_.push_topic.empty())
-            dht_via_proxy->setPushNotificationTopic(config_.push_topic);
-        if (not config_.push_platform.empty())
-            dht_via_proxy->setPushNotificationPlatform(config_.push_platform);
+                config_.proxy_server,
+                config_.proxy_user_agent,
+                config_.push_node_id,
+                config_.push_token,
+                config_.push_topic,
+                config_.push_platform,
+                logger_);
         dht_ = std::make_unique<SecureDht>(std::move(dht_via_proxy), config_.dht_config, identityAnnouncedCb_, logger_);
         // and use it
         use_proxy = proxify;
