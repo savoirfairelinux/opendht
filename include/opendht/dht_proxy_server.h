@@ -98,6 +98,9 @@ public:
 
     asio::io_context& io_context() const;
 
+    using clock = std::chrono::steady_clock;
+    using time_point = clock::time_point;
+
     struct PushStats {
         uint64_t highPriorityCount {0};
         uint64_t normalPriorityCount {0};
@@ -408,9 +411,6 @@ private:
 
     template <typename Is>
     void loadState(Is& is, size_t size);
-
-    using clock = std::chrono::steady_clock;
-    using time_point = clock::time_point;
 
     std::shared_ptr<asio::io_context> ioContext_;
     std::shared_ptr<DhtRunner> dht_;
