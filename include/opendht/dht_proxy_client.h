@@ -57,8 +57,11 @@ public:
         crypto::Identity clientIdentity,
         std::function<void()> loopSignal,
         const std::string& serverHost,
-        const std::string& pushClientId = "",
         const std::string& userAgent = "",
+        const std::string& pushClientId = "",
+        const std::string& pushToken = "",
+        const std::string& pushTopic = "",
+        const std::string& pushPlatform = "",
         std::shared_ptr<Logger> logger = {}
     );
 
@@ -356,10 +359,9 @@ private:
     std::string proxyUrl_;
     dht::crypto::Identity clientIdentity_;
     std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
-    //std::pair<std::string, std::string> serverHostService_;
+    std::string userAgent_ {"OpenDHT"};
     std::string pushClientId_;
     std::string pushSessionId_;
-    std::string userAgent_ {"OpenDHT"};
 
     mutable std::mutex lockCurrentProxyInfos_;
     NodeStatus statusIpv4_ {NodeStatus::Disconnected};

@@ -106,15 +106,26 @@ getRandomSessionId(size_t length = 8) {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(
-        std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
-        std::function<void()> signal, const std::string& serverHost,
-        const std::string& pushClientId, const std::string& userAgent, std::shared_ptr<dht::Logger> logger)
+        std::shared_ptr<dht::crypto::Certificate> serverCA,
+        dht::crypto::Identity clientIdentity,
+        std::function<void()> signal,
+        const std::string& serverHost,
+        const std::string& userAgent,
+        const std::string& pushClientId,
+        const std::string& pushToken,
+        const std::string& pushTopic,
+        const std::string& pushPlatform,
+        std::shared_ptr<dht::Logger> logger
+)
     : DhtInterface(logger)
     , proxyUrl_(serverHost)
     , clientIdentity_(clientIdentity), serverCertificate_(serverCA)
+    , userAgent_(userAgent)
     , pushClientId_(pushClientId)
     , pushSessionId_(getRandomSessionId())
-    , userAgent_(userAgent)
+    , deviceKey_(pushToken)
+    , notificationTopic_(pushTopic)
+    , platform_(pushPlatform)
     , loopSignal_(signal)
     , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
 {
