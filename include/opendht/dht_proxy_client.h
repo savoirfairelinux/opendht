@@ -67,13 +67,7 @@ public:
 
     void setHeaderFields(http::Request& request);
 
-    virtual void setPushNotificationToken(const std::string& token) override {
-#ifdef OPENDHT_PUSH_NOTIFICATIONS
-        deviceKey_ = token;
-#else
-        (void) token;
-#endif
-    }
+    virtual void setPushNotificationToken(const std::string& token) override;
 
     virtual void setPushNotificationTopic(const std::string& topic) override {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS

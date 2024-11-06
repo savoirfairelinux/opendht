@@ -1394,4 +1394,24 @@ DhtProxyClient::fillBody(bool resubscribe)
 }
 #endif // OPENDHT_PUSH_NOTIFICATIONS
 
+void
+DhtProxyClient::setPushNotificationToken([[maybe_unused]] const std::string& token) {
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
+    if (deviceKey_ != token) {
+        deviceKey_ = token;
+        if (statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected) {
+            if (logger_)
+                logger_->d("[proxy:client] [push] token changed, resubscribing");
+            for (auto& search : searches_) {
+                for (auto& listener : search.second.listeners) {
+                    resubscribe(search.first, listener.first, listener.second);
+                }
+            }
+        }
+    }
+#endif
+}
+
+
 } // namespace dht
