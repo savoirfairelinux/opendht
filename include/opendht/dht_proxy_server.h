@@ -150,22 +150,22 @@ public:
         std::shared_ptr<NodeInfo> nodeInfo {};
 
         std::string toString() const {
-            std::ostringstream ss;
-            ss << "Listens: " << listenCount << " Puts: " << putCount << " PushListeners: " << pushListenersCount << std::endl;
-            ss << "Push requests in the last " << print_duration(lastUpdated - serverStartTime) << ": "
-                                               << "[Android: " << androidPush.toString() << "], "
-                                               << "[iOS: " << iosPush.toString() << "], "
-                                               << "[Unified: " << unifiedPush.toString() << "]" << std::endl;
-            ss << "Requests: " << requestRate << " per second." << std::endl;
+            auto ret = fmt::format("Listens: {}, Puts: {}, PushListeners: {}\n"
+                        "Push requests in the last {}: [Android: {}], [iOS: {}], [Unified: {}]\n"
+                        "Requests: {} per second.",
+                        listenCount, putCount, pushListenersCount,
+                        print_duration(lastUpdated - serverStartTime),
+                        androidPush.toString(), iosPush.toString(), unifiedPush.toString(),
+                        requestRate);
             if (nodeInfo) {
                 auto& ipv4 = nodeInfo->ipv4;
                 if (ipv4.table_depth > 1)
-                    ss << "IPv4 Network estimation: " << ipv4.getNetworkSizeEstimation() << std::endl;;
+                    ret += fmt::format("IPv4 Network estimation: {}\n", ipv4.getNetworkSizeEstimation());
                 auto& ipv6 = nodeInfo->ipv6;
                 if (ipv6.table_depth > 1)
-                    ss << "IPv6 Network estimation: " << ipv6.getNetworkSizeEstimation() << std::endl;;
+                    ret += fmt::format("IPv6 Network estimation: {}\n", ipv6.getNetworkSizeEstimation());
             }
-            return ss.str();
+            return ret;
         }
 
         /**

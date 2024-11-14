@@ -813,8 +813,8 @@ SockAddr
 DhtProxyClient::parsePublicAddress(const Json::Value& val)
 {
     auto public_ip = val.asString();
-    auto hostAndService = splitPort(public_ip);
-    auto sa = SockAddr::resolve(hostAndService.first);
+    auto [host, service] = splitPort(public_ip);
+    auto sa = SockAddr::resolve(host);
     if (sa.empty()) return {};
     return sa.front().getMappedIPv4();
 }

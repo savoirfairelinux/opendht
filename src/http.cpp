@@ -54,7 +54,7 @@ constexpr const char HTTPS_PROTOCOL[] = "https://";
 constexpr const char ORIGIN_PROTOCOL[] = "//";
 constexpr unsigned MAX_REDIRECTS {5};
 
-Url::Url(const std::string& url): url(url)
+Url::Url(std::string_view url): url(url)
 {
     size_t addr_begin = 0;
     // protocol
@@ -69,10 +69,9 @@ Url::Url(const std::string& url): url(url)
     size_t addr_size = url.substr(addr_begin).find("/");
     if (addr_size == std::string::npos)
         addr_size = url.size() - addr_begin;
-    auto host_service = splitPort(url.substr(addr_begin, addr_size));
-    host = host_service.first;
-    if (!host_service.second.empty())
-        service = host_service.second;
+    auto [h, s] = splitPort(url.substr(addr_begin, addr_size));
+    host = std::move(h);
+    service = std::move(s);
     // target, query and fragment
     size_t query_begin = url.find("?");
     auto addr_end = addr_begin + addr_size;
