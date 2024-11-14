@@ -265,7 +265,7 @@ int main(int argc, char **argv)
             dht_value_unref(val);
         }
         else {
-            printf("Unkown command: %s\n", cmd);
+            printf("Unknown command: %s\n", cmd);
         }
     }
 
