@@ -631,6 +631,8 @@ DhtProxyServer::createRestRouter()
     router->http_get("/key/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
     router->http_post("/key/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+    router->add_handler(restinio::http_method_options(),
+                        "/key/:hash/listen", std::bind(&DhtProxyServer::options, this, _1, _2));
     // key.listen
     router->http_get("/key/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
