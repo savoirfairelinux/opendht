@@ -61,6 +61,10 @@ class DhtRunnerTester : public CppUnit::TestFixture {
      */
     void testPutDuplicate();
     /**
+     * Test get and multiple put with changing value
+     */
+    void testPutOverride();
+    /**
      * Test listen method
      */
     void testListen();

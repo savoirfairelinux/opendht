@@ -93,7 +93,7 @@ Dht::shutdown(ShutdownCallback cb, bool stop)
                     r.second.done_cb(false, {});
                 sr.second->callbacks.clear();
                 for (const auto& a : sr.second->announce) {
-                    if (a.callback) a.callback(false, {});
+                    for (auto& cb : a.callbacks) cb(false, {});
                 }
                 sr.second->announce.clear();
                 sr.second->listeners.clear();
