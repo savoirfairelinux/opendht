@@ -116,6 +116,34 @@ DhtRunnerTester::testPutDuplicate() {
 
 
 void
+DhtRunnerTester::testPutOverride() {
+    auto key = dht::InfoHash::get("123");
+    auto val = std::make_shared<dht::Value>("meh");
+    val->id = 42;
+    auto val2 = std::make_shared<dht::Value>("hey");
+    val2->id = 42;
+    CPPUNIT_ASSERT_EQUAL(val->id, val2->id);
+    auto val_data = val2->data;
+    std::promise<bool> p1;
+    std::promise<bool> p2;
+    node2.put(key, val, [&](bool ok){
+        p1.set_value(ok);
+    });
+    node2.put(key, val2, [&](bool ok){
+        p2.set_value(ok);
+    });
+    auto p1ret = p1.get_future().get();
+    auto p2ret = p2.get_future().get();
+    CPPUNIT_ASSERT(!p1ret);
+    CPPUNIT_ASSERT(p2ret);
+    auto vals = node1.get(key).get();
+    CPPUNIT_ASSERT(not vals.empty());
+    CPPUNIT_ASSERT(vals.size() == 1);
+    CPPUNIT_ASSERT(vals.front()->data == val_data);
+}
+
+
+void
 DhtRunnerTester::testListen() {
     std::mutex mutex;
     std::condition_variable cv;
