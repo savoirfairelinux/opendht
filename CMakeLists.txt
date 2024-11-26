@@ -122,7 +122,7 @@ if (NOT MSVC)
             endif()
         endif()
         set(http_lib "-lllhttp")
-        
+
         if (NOT Jsoncpp_FOUND)
             message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
         endif()
@@ -156,7 +156,7 @@ else ()
             ${WIN32_DEP_DIR}/openssl/include
             ${WIN32_DEP_DIR}/restinio/dev
             ${WIN32_DEP_DIR}/fmt/include
-            ${WIN32_DEP_DIR}/http_parser
+            ${WIN32_DEP_DIR}/llhttp/include
         )
     endif ()
 endif ()
@@ -343,12 +343,12 @@ if (MSVC)
             )
             if (OPENDHT_HTTP)
                 add_obj_lib (win32_fmt ${WIN32_DEP_DIR}/fmt/msvc/Release/fmt.lib)
-                add_obj_lib (win32_http_parser ${WIN32_DEP_DIR}/http_parser/x64/Release/http-parser.lib)
+                add_obj_lib (win32_llhttp ${WIN32_DEP_DIR}/llhttp/build/Release/llhttp.lib)
                 add_obj_lib (win32_ssl ${WIN32_DEP_DIR}/openssl/libssl_static.lib)
                 add_obj_lib (win32_crypto ${WIN32_DEP_DIR}/openssl/libcrypto_static.lib)
                 list (APPEND obj_libs
                     $<TARGET_OBJECTS:win32_fmt>
-                    $<TARGET_OBJECTS:win32_http_parser>
+                    $<TARGET_OBJECTS:win32_llhttp>
                     $<TARGET_OBJECTS:win32_ssl>
                     $<TARGET_OBJECTS:win32_crypto>
                 )
@@ -361,7 +361,7 @@ if (MSVC)
             )
             list (APPEND win32_Libs
                 ${PROJECT_SOURCE_DIR}/../fmt/msvc/Release/fmt.lib
-                ${PROJECT_SOURCE_DIR}/../http_parser/x64/Release/http-parser.lib
+                ${PROJECT_SOURCE_DIR}/../llhttp/build/Release/llhttp.lib
                 ${PROJECT_SOURCE_DIR}/../openssl/libssl.lib
                 ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
             )
