@@ -97,7 +97,7 @@ if (NOT MSVC)
 
         # llhttp
         find_path(LLHTTP_INCLUDE_DIR llhttp.h)
-        find_library(LLHTTP_LIBRARY NAMES llhttp libllhttp)
+        find_library(LLHTTP_LIBRARY libllhttp)
         if (LLHTTP_INCLUDE_DIR AND LLHTTP_LIBRARY)
             message(STATUS "Found llhttp ${LLHTTP_INCLUDE_DIR} ${LLHTTP_LIBRARY}")
             add_library(llhttp_static STATIC IMPORTED)
