@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -21,7 +21,6 @@
 
 #include "opendht/thread_pool.h"
 #include <atomic>
-#include <thread>
 
 namespace test {
 CPPUNIT_TEST_SUITE_REGISTRATION(ThreadPoolTester);
@@ -48,7 +47,7 @@ ThreadPoolTester::testThreadPool() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     pool.join();
-    CPPUNIT_ASSERT_EQUAL(N, count.load());
+    CPPUNIT_ASSERT(count.load() == N);
 }
 
 void
@@ -60,7 +59,7 @@ ThreadPoolTester::testExecutor()
     auto executor8 = std::make_shared<dht::Executor>(pool, 8);
 
     constexpr unsigned N = 64 * 1024;
-    unsigned count1 {0};
+    std::atomic_uint count1 {0};
     std::atomic_uint count4 {0};
     std::atomic_uint count8 {0};
     for (unsigned i=0; i<N; i++) {
@@ -70,7 +69,7 @@ ThreadPoolTester::testExecutor()
     }
 
     auto start = clock::now();
-    while ((count1 != N ||
+    while ((count1.load() != N ||
             count4.load() != N ||
             count8.load() != N) && clock::now() - start < std::chrono::seconds(20))
     {
@@ -79,26 +78,9 @@ ThreadPoolTester::testExecutor()
     executor1.reset();
     executor4.reset();
     executor8.reset();
-    CPPUNIT_ASSERT_EQUAL(N, count1);
+    CPPUNIT_ASSERT_EQUAL(N, count1.load());
     CPPUNIT_ASSERT_EQUAL(N, count4.load());
     CPPUNIT_ASSERT_EQUAL(N, count8.load());
-}
-
-void
-ThreadPoolTester::testContext()
-{
-    std::atomic_uint count {0};
-    constexpr unsigned N = 64 * 1024;
-
-    {
-        dht::ExecutionContext ctx(dht::ThreadPool::computation());
-        for (unsigned i=0; i<N; i++) {
-            ctx.run([&] { count++; });
-        }
-    }
-
-    CPPUNIT_ASSERT_EQUAL(N, count.load());
-
 }
 
 void

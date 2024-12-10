@@ -4,10 +4,6 @@ SUBDIRS =
 
 SUBDIRS += src
 
-if ENABLE_C
-SUBDIRS += c
-endif
-
 if ENABLE_TOOLS
 SUBDIRS += tools
 endif

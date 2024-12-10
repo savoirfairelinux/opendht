@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -137,7 +137,10 @@ Node::openSocket(SocketCb&& cb)
     if (++transaction_id == 0)
         transaction_id = 1;
 
-    sockets_[transaction_id] = std::make_shared<Socket>(std::move(cb));
+    auto sock = std::make_shared<Socket>(std::move(cb));
+    auto s = sockets_.emplace(transaction_id, std::move(sock));
+    if (not s.second)
+        s.first->second = std::move(sock);
     return transaction_id;
 }
 

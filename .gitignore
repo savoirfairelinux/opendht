@@ -19,9 +19,6 @@
 *.exe
 *.out
 *.app
-**/dhtnode
-**/dhtchat
-**/dhtscanner
 
 # Autotools
 /ac
@@ -76,5 +73,3 @@ doc/Doxyfile
 
 # build dir
 build
-build_dev
-.DS_Store

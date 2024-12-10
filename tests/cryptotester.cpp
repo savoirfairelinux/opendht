@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -33,7 +33,7 @@ CryptoTester::setUp() {
 void
 CryptoTester::testSignatureEncryption() {
     auto key = dht::crypto::PrivateKey::generate();
-    const auto& public_key = key.getPublicKey();
+    auto public_key = key.getPublicKey();
 
     std::vector<uint8_t> data1 {5, 10};
     std::vector<uint8_t> data2(64 * 1024, 10);
@@ -44,10 +44,6 @@ CryptoTester::testSignatureEncryption() {
     // check signature
     CPPUNIT_ASSERT(public_key.checkSignature(data1, signature1));
     CPPUNIT_ASSERT(public_key.checkSignature(data2, signature2));
-    signature1[7]++;
-    signature2[8]--;
-    CPPUNIT_ASSERT(!public_key.checkSignature(data1, signature1));
-    CPPUNIT_ASSERT(!public_key.checkSignature(data2, signature2));
 
     // encrypt data
     {
@@ -163,14 +159,6 @@ void CryptoTester::testCertificateSerialNumber()
     static constexpr std::array<uint8_t, 8> SERIAL {{0x4b,0xdd,0x2e,0x00,0xaa,0x7e,0xbb,0xfb}};
     auto serial = dht::crypto::Certificate(cert_pem).getSerialNumber();
     CPPUNIT_ASSERT(std::equal(SERIAL.begin(), SERIAL.end(), serial.begin(), serial.end()));
-}
-
-void CryptoTester::testOcsp() {
-    auto ca = dht::crypto::generateIdentity("Test CA");
-    auto device = dht::crypto::generateIdentity("Test Device", ca);
-    auto ocspRequest = device.second->generateOcspRequest(ca.second->cert);
-    auto req = dht::crypto::OcspRequest((const uint8_t*)ocspRequest.first.data(), ocspRequest.first.size());
-    CPPUNIT_ASSERT(ocspRequest.second == req.getNonce());
 }
 
 void

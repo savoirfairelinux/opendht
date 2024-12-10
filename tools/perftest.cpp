@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -102,7 +102,7 @@ benchPingPong(unsigned netSize, unsigned n_parallel) {
 
     auto start = clock::now();
 
-    for (unsigned i=0; i<n_parallel; i++)
+    for (unsigned i=0; i<n_parallel; i++) 
         ping(pong_node, locs[i].first);
 
     {

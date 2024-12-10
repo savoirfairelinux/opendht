@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *
@@ -36,7 +36,6 @@ class DhtProxyTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testResubscribeGetValues);
     CPPUNIT_TEST(testPutGet40KChars);
     CPPUNIT_TEST(testFuzzy);
-    CPPUNIT_TEST(testShutdownStop);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -68,8 +67,6 @@ class DhtProxyTester : public CppUnit::TestFixture {
    void testPutGet40KChars();
 
    void testFuzzy();
-
-   void testShutdownStop();
 
  private:
     dht::DhtRunner::Config clientConfig {};

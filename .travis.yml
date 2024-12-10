@@ -1,0 +1,67 @@
+dist: xenial
+sudo: required
+
+services:
+  - docker
+
+language: cpp
+
+env:
+  matrix:
+    - OPENDHT_TEST_JOB="opendht.classic"
+    - OPENDHT_TEST_JOB="opendht.llvm"
+    - OPENDHT_TEST_JOB="opendht.proxyserver"
+    - OPENDHT_TEST_JOB="opendht.proxyclient"
+    - OPENDHT_TEST_JOB="opendht.push"
+
+before_install:
+  - |
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.classic"* ]]; then
+      docker pull aberaud/opendht-deps-bionic;
+    fi
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclient"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserver"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
+      docker pull aberaud/opendht-deps;
+    fi
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.llvm"* ]]; then
+      docker pull aberaud/opendht-deps-llvm
+    fi
+
+script:
+  - |
+    # classic build
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.classic"* ]]; then
+      docker build -t opendht -f docker/DockerfileTravis .;
+    fi
+
+  - |
+    # proxy builds
+    if [[ "$OPENDHT_TEST_JOB" != *"opendht.llvm"* ]] && [[ "$OPENDHT_TEST_JOB" != *"opendht.classic"* ]]; then
+      docker build -t opendht-proxy -f docker/DockerfileTravisProxy .;
+      options='-DOPENDHT_SANITIZE=On ';
+      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyserver"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
+        options+='-DOPENDHT_PROXY_SERVER=ON ';
+      else
+        options+='-DOPENDHT_PROXY_SERVER=OFF ';
+      fi
+      if [[ "$OPENDHT_TEST_JOB" == *"opendht.proxyclient"* ]] || [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
+        options+='-DOPENDHT_PROXY_CLIENT=ON ';
+      else
+        options+='-DOPENDHT_PROXY_CLIENT=OFF ';
+      fi
+      if [[ "$OPENDHT_TEST_JOB" == *"opendht.push"* ]]; then
+        options+='-DOPENDHT_PUSH_NOTIFICATIONS=ON ';
+      else
+        options+='-DOPENDHT_PUSH_NOTIFICATIONS=OFF ';
+      fi
+      docker run opendht-proxy /bin/sh -c "cd /root/opendht && mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=/usr -DOPENDHT_PYTHON=ON -DOPENDHT_LTO=ON -DOPENDHT_TESTS=ON $options .. && make -j8 && ./opendht_unit_tests && make install";
+    fi
+
+  - |
+    # llvm build
+    if [[ "$OPENDHT_TEST_JOB" == *"opendht.llvm"* ]]; then
+      docker build -f docker/DockerfileTravisLlvm .
+    fi
+
+notifications:
+  email:
+      - adrien.beraud@savoirfairelinux.com

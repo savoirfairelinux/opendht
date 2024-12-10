@@ -1,25 +1,5 @@
-/*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
- *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 3 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program. If not, see <https://www.gnu.org/licenses/>.
- */
-
 #include "opendht_c.h"
-
-#include <opendht.h>
-#include <opendht/log.h>
+#include "opendht.h"
 
 using ValueSp = std::shared_ptr<dht::Value>;
 using PrivkeySp = std::shared_ptr<dht::crypto::PrivateKey>;
@@ -29,13 +9,6 @@ using CertSp = std::shared_ptr<dht::crypto::Certificate>;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <errno.h>
-
-const char* dht_version()
-{
-    return dht::version();
-}
 
 // dht::InfoHash
 
@@ -76,11 +49,7 @@ bool dht_infohash_is_zero(const dht_infohash* h) {
 }
 
 void dht_infohash_from_hex(dht_infohash* h, const char* dat) {
-    *h = dht_infohash_to_c(dht::InfoHash(std::string_view(dat, HASH_LEN*2)));
-}
-
-void dht_infohash_from_hex_null(dht_infohash* h, const char* dat) {
-    *h = dht_infohash_to_c(dht::InfoHash(std::string_view(dat)));
+    *h = dht_infohash_to_c(dht::InfoHash(std::string(dat, HASH_LEN*2)));
 }
 
 const char* dht_pkid_print(const dht_pkid* h) {
@@ -128,18 +97,8 @@ const char* dht_value_get_user_type(const dht_value* data) {
     return vsp->user_type.c_str();
 }
 
-void dht_value_set_user_type(dht_value* data, const char* user_type) {
-    (*reinterpret_cast<ValueSp*>(data))->user_type = user_type;
-}
-
 dht_value* dht_value_new(const uint8_t* data, size_t size) {
     return reinterpret_cast<dht_value*>(new ValueSp(std::make_shared<dht::Value>(data, size)));
-}
-
-dht_value* dht_value_new_from_string(const char* str) {
-    ValueSp value = std::make_shared<dht::Value>((const uint8_t*)str, strlen(str));
-    value->user_type = "text/plain";
-    return reinterpret_cast<dht_value*>(new ValueSp(std::move(value)));
 }
 
 dht_value* dht_value_ref(const dht_value* v) {
@@ -185,13 +144,9 @@ bool dht_publickey_check_signature(const dht_publickey* pk, const char* data, si
 
 dht_blob* dht_publickey_encrypt(const dht_publickey* pk, const char* data, size_t data_size) {
     const auto& pkey = *reinterpret_cast<const PubkeySp*>(pk);
-    try {
-        auto rdata = std::make_unique<dht::Blob>();
-        *rdata = pkey->encrypt((const uint8_t*)data, data_size);
-        return (dht_blob*)rdata.release();
-    } catch (...) {
-        return nullptr;
-    }
+    auto rdata = new dht::Blob;
+    *rdata = pkey->encrypt((const uint8_t*)data, data_size);
+    return (dht_blob*)rdata;
 }
 
 // dht::crypto::PrivateKey
@@ -218,18 +173,7 @@ int dht_privatekey_export(const dht_privatekey* k, char* out, size_t* out_size, 
 
 dht_publickey* dht_privatekey_get_publickey(const dht_privatekey* k) {
     const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
-    return reinterpret_cast<dht_publickey*>(new PubkeySp(key->getSharedPublicKey()));
-}
-
-dht_blob* dht_privatekey_decrypt(const dht_privatekey* k, const char* data, size_t data_size) {
-    const auto& key = *reinterpret_cast<const PrivkeySp*>(k);
-    try {
-        auto rdata = std::make_unique<dht::Blob>();
-        *rdata = key->decrypt((const uint8_t*)data, data_size);
-        return (dht_blob*)rdata.release();
-    } catch (...) {
-        return nullptr;
-    }
+    return reinterpret_cast<dht_publickey*>(new PubkeySp(std::make_shared<dht::crypto::PublicKey>(key->getPublicKey())));
 }
 
 void dht_privatekey_delete(dht_privatekey* pk) {
@@ -303,7 +247,7 @@ void dht_runner_config_default(dht_runner_config* config) {
 }
 
 // dht::DhtRunner
-dht_runner* dht_runner_new(void) {
+dht_runner* dht_runner_new() {
     return reinterpret_cast<dht_runner*>(new dht::DhtRunner);
 }
 
@@ -311,60 +255,39 @@ void dht_runner_delete(dht_runner* runner) {
     delete reinterpret_cast<dht::DhtRunner*>(runner);
 }
 
-int dht_runner_run(dht_runner* r, in_port_t port) {
+void dht_runner_run(dht_runner* r, in_port_t port) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
-    try {
-        runner->run(port, {}, true);
-    } catch(...) {
-        return ENOTCONN;
-    }
-    return 0;
+    runner->run(port, {}, true);
 }
 
-int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config* conf) {
+void dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config* conf) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
-    try {
-        dht::DhtRunner::Config config;
-        config.dht_config.node_config.is_bootstrap = conf->dht_config.node_config.is_bootstrap;
-        config.dht_config.node_config.maintain_storage = conf->dht_config.node_config.maintain_storage;
-        config.dht_config.node_config.node_id = *reinterpret_cast<const dht::InfoHash*>(&conf->dht_config.node_config.node_id);
-        config.dht_config.node_config.network = conf->dht_config.node_config.network;
-        config.dht_config.node_config.persist_path = conf->dht_config.node_config.persist_path
-            ? std::string(conf->dht_config.node_config.persist_path) : std::string{};
+    dht::DhtRunner::Config config;
+    config.dht_config.node_config.is_bootstrap = conf->dht_config.node_config.is_bootstrap;
+    config.dht_config.node_config.maintain_storage = conf->dht_config.node_config.maintain_storage;
+    config.dht_config.node_config.node_id = *reinterpret_cast<const dht::InfoHash*>(&conf->dht_config.node_config.node_id);
+    config.dht_config.node_config.network = conf->dht_config.node_config.network;
+    config.dht_config.node_config.persist_path = conf->dht_config.node_config.persist_path
+        ? std::string(conf->dht_config.node_config.persist_path) : std::string{};
 
-        if (conf->dht_config.id.privatekey)
-            config.dht_config.id.first = *reinterpret_cast<const PrivkeySp*>(conf->dht_config.id.privatekey);
+    if (conf->dht_config.id.privatekey)
+        config.dht_config.id.first = *reinterpret_cast<const PrivkeySp*>(conf->dht_config.id.privatekey);
 
-        if (conf->dht_config.id.certificate)
-            config.dht_config.id.second = *reinterpret_cast<const CertSp*>(conf->dht_config.id.certificate);
+    if (conf->dht_config.id.certificate)
+        config.dht_config.id.second = *reinterpret_cast<const CertSp*>(conf->dht_config.id.certificate);
 
-        config.threaded = conf->threaded;
-        config.proxy_server = conf->proxy_server ? std::string(conf->proxy_server) : std::string{};
-        config.push_node_id = conf->push_node_id ? std::string(conf->push_node_id) : std::string{};
-        config.push_token = conf->push_token ? std::string(conf->push_token) : std::string{};
-        config.peer_discovery = conf->peer_discovery;
-        config.peer_publish = conf->peer_publish;
-
-        dht::DhtRunner::Context context;
-        if (conf->log) {
-            context.logger = dht::log::getStdLogger();
-        }
-        runner->run(port, config, std::move(context));
-    } catch(...) {
-        return ENOTCONN;
-    }
-    return 0;
+    config.threaded = conf->threaded;
+    config.proxy_server = conf->proxy_server ? std::string(conf->proxy_server) : std::string{};
+    config.push_node_id = conf->push_node_id ? std::string(conf->push_node_id) : std::string{};
+    config.push_token = conf->push_token ? std::string(conf->push_token) : std::string{};
+    config.peer_discovery = conf->peer_discovery;
+    config.peer_publish = conf->peer_publish;
+    runner->run(port, config);
 }
 
-void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len, dht_done_cb done_cb, void* cb_user_data) {
+void dht_runner_ping(dht_runner* r, struct sockaddr* addr, socklen_t addr_len) {
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
-    if (done_cb) {
-        runner->bootstrap(dht::SockAddr(addr, addr_len), [done_cb, cb_user_data](bool ok){
-            done_cb(ok, cb_user_data);
-        });
-    } else {
-        runner->bootstrap(dht::SockAddr(addr, addr_len));
-    }
+    runner->bootstrap(dht::SockAddr(addr, addr_len));
 }
 
 void dht_runner_bootstrap(dht_runner* r, const char* host, const char* service) {
@@ -403,11 +326,8 @@ dht_op_token* dht_runner_listen(dht_runner* r, const dht_infohash* h, dht_value_
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     auto hash = reinterpret_cast<const dht::InfoHash*>(h);
     auto fret = new std::future<size_t>;
-    *fret = runner->listen(*hash, [
-        cb,
-        cb_user_data,
-        guard = done_cb ? std::make_shared<ScopeGuardCb>(done_cb, cb_user_data) : std::shared_ptr<ScopeGuardCb>{}
-    ](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
+    auto guard = done_cb ? std::make_shared<ScopeGuardCb>(done_cb, cb_user_data) : std::shared_ptr<ScopeGuardCb>{};
+    *fret = runner->listen(*hash, [cb,cb_user_data, guard](const std::vector<std::shared_ptr<dht::Value>>& values, bool expired) {
         for (const auto& value : values) {
             if (not cb(reinterpret_cast<const dht_value*>(&value), expired, cb_user_data))
                 return false;
@@ -473,17 +393,6 @@ void dht_runner_shutdown(dht_runner* r, dht_shutdown_cb done_cb, void* cb_user_d
     });
 }
 
-bool dht_runner_is_running(const dht_runner* r) {
-    if (not r) return false;
-    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
-    return runner->isRunning();
-}
-
-in_port_t dht_runner_get_bound_port(const dht_runner* r, sa_family_t af) {
-    auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
-    return runner->getBoundPort(af);
-}
-
 dht_infohash dht_runner_get_node_id(const dht_runner* r) {
     auto runner = reinterpret_cast<const dht::DhtRunner*>(r);
     dht_infohash ret;
@@ -505,9 +414,9 @@ struct sockaddr** dht_runner_get_public_address(const dht_runner* r) {
         return nullptr;
     auto ret = (struct sockaddr**)malloc(sizeof(struct sockaddr*) * (addrs.size() + 1));
     for (size_t i=0; i<addrs.size(); i++) {
-        if (const auto& addr = addrs[i]) {
-            ret[i] = (struct sockaddr*)malloc(addr.getLength());
-            memcpy((struct sockaddr*)ret[i], addr.get(), addr.getLength());
+        if (auto len = addrs[i].getLength()) {
+            ret[i] = (struct sockaddr*)malloc(len);
+            memcpy((struct sockaddr*)ret[i], addrs[i].get(), len);
         } else {
             ret[i] = nullptr;
         }

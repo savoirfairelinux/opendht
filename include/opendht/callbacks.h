@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -82,8 +82,6 @@ struct OPENDHT_PUBLIC NodeInfo {
     NodeStats ipv4 {};
     NodeStats ipv6 {};
     size_t ongoing_ops {0};
-    size_t storage_values {0};
-    size_t storage_size {0};
     in_port_t bound4 {0};
     in_port_t bound6 {0};
 
@@ -134,10 +132,7 @@ struct OPENDHT_PUBLIC Config {
     /* If non-0, overrides the default maximum store size. -1 means no limit.  */
     ssize_t max_store_size {0};
 
-    /* If non-0, overrides the default maximum store key count. -1 means no limit.  */
-    ssize_t max_store_keys {0};
-
-    /**
+    /** 
      * Use appropriate bahavior for a public IP, stable node:
      *   - No connectivity change triggered when a search fails
      *   - Larger listen refresh time
@@ -153,7 +148,7 @@ struct OPENDHT_PUBLIC SecureDhtConfig
     Config node_config {};
     crypto::Identity id {};
 
-    /**
+    /** 
      * Cache all encountered public keys and certificates,
      * for use by the certificate store, putEncrypted and putSigned
      */
@@ -169,7 +164,6 @@ using GetCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>
 using ValueCallback = std::function<bool(const std::vector<std::shared_ptr<Value>>& values, bool expired)>;
 using GetCallbackSimple = std::function<bool(std::shared_ptr<Value> value)>;
 using ShutdownCallback = std::function<void()>;
-using IdentityAnnouncedCb = std::function<void(bool)>;
 
 using CertificateStoreQuery = std::function<std::vector<std::shared_ptr<crypto::Certificate>>(const InfoHash& pk_id)>;
 
@@ -184,13 +178,13 @@ typedef bool (*FilterRaw)(const Value&, void *user_data);
 
 using DoneCallbackSimple = std::function<void(bool success)>;
 
-OPENDHT_PUBLIC GetCallbackSimple bindGetCb(GetCallbackRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC GetCallback bindGetCb(GetCallbackSimple cb);
-OPENDHT_PUBLIC ValueCallback bindValueCb(ValueCallbackRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(ShutdownCallbackRaw shutdown_cb_raw, void* user_data);
+OPENDHT_PUBLIC GetCallbackSimple bindGetCb(const GetCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC GetCallback bindGetCb(const GetCallbackSimple& cb);
+OPENDHT_PUBLIC ValueCallback bindValueCb(const ValueCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC ShutdownCallback bindShutdownCb(const ShutdownCallbackRaw& shutdown_cb_raw, void* user_data);
 OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackSimple donecb);
-OPENDHT_PUBLIC DoneCallback bindDoneCb(DoneCallbackRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(DoneCallbackSimpleRaw raw_cb, void* user_data);
-OPENDHT_PUBLIC Value::Filter bindFilterRaw(FilterRaw raw_filter, void* user_data);
+OPENDHT_PUBLIC DoneCallback bindDoneCb(const DoneCallbackRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC DoneCallbackSimple bindDoneCbSimple(const DoneCallbackSimpleRaw& raw_cb, void* user_data);
+OPENDHT_PUBLIC Value::Filter bindFilterRaw(const FilterRaw& raw_filter, void* user_data);
 
 }

@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2022 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author(s): Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
 #
@@ -25,14 +25,6 @@ from libc.string cimport const_char, const_uchar
 
 ctypedef uint16_t in_port_t
 ctypedef unsigned short int sa_family_t;
-
-cdef extern from "<iostream>" namespace "std::chrono" nogil:
-    cdef cppclass duration[ulong]:
-        duration() except +
-
-    cdef cppclass seconds:
-        duration seconds(uint64_t) except +
-        duration seconds()
 
 cdef extern from "<memory>" namespace "std" nogil:
     cdef cppclass shared_ptr[T]:
@@ -97,7 +89,7 @@ cdef extern from "opendht/crypto.h" namespace "dht::crypto":
 
     cdef cppclass PrivateKey:
         PrivateKey()
-        shared_ptr[PublicKey] getSharedPublicKey() const
+        PublicKey getPublicKey() const
         Blob decrypt(Blob data) const
         @staticmethod
         PrivateKey generate()
@@ -139,6 +131,7 @@ cdef extern from "opendht/value.h" namespace "dht::Value":
 cdef extern from "opendht/value.h" namespace "dht::Value::Field":
     cdef Field None
     cdef Field Id
+    cdef Field ValueType
     cdef Field OwnerPk
     cdef Field SeqNum
     cdef Field UserType
@@ -148,7 +141,7 @@ cdef extern from "opendht/value.h" namespace "dht":
     cdef cppclass Value:
         Value() except +
         Value(vector[uint8_t]) except +
-        Value(const uint16_t t, const uint8_t* dat_ptr, size_t dat_len) except +
+        Value(const uint8_t* dat_ptr, size_t dat_len) except +
         string toString() const
         size_t size() const
         uint64_t id
@@ -156,12 +149,6 @@ cdef extern from "opendht/value.h" namespace "dht":
         InfoHash recipient
         vector[uint8_t] data
         string user_type
-
-    cdef cppclass ValueType:
-        ValueType(uint16_t id, string name, seconds expiration) except +
-        uint16_t id
-        string name
-        seconds expiration
 
     cdef cppclass Query:
         Query() except +
@@ -247,7 +234,6 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
         void run(const_char*, const_char*, const_char*, Config config)
         void join()
         void shutdown(ShutdownCallback)
-        void registerType(ValueType& value);
         bool isRunning()
         SockAddr getBound(sa_family_t af) const
         string getStorageLog() const

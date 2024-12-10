@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -36,8 +36,8 @@ extern "C" {
 
 namespace dht {
 
-SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, IdentityAnnouncedCb iacb, const std::shared_ptr<Logger>& l)
-: DhtInterface(l), dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
+SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf)
+: dht_(std::move(dht)), key_(conf.id.first), certificate_(conf.id.second), enableCache_(conf.cert_cache_all)
 {
     if (!dht_) return;
     for (const auto& type : DEFAULT_TYPES)
@@ -52,17 +52,16 @@ SecureDht::SecureDht(std::unique_ptr<DhtInterface> dht, SecureDht::Config conf, 
         auto certId = certificate_->getId();
         if (key_ and certId != key_->getPublicKey().getId())
             throw DhtException("SecureDht: provided certificate doesn't match private key.");
-        dht_->addOnConnectedCallback([this, certId, cb=std::move(iacb)]{
-            dht_->put(certId, Value {
-                CERTIFICATE_TYPE,
-                *certificate_,
-                1
-            }, [this, certId, cb=std::move(cb)](bool ok) {
-                if (cb) cb(ok);
+
+        dht_->put(certId, Value {
+            CERTIFICATE_TYPE,
+            *certificate_,
+            1
+        }, [this, certId](bool ok) {
+            if (ok)
                 if (logger_)
-                    logger_->d(certId, "SecureDht: certificate announcement %s", ok ? "succeeded" : "failed");
-            }, {}, true);
-        });
+                    logger_->d(certId, "SecureDht: public key announced successfully");
+        }, {}, true);
     }
 }
 
@@ -118,7 +117,7 @@ SecureDht::secureType(ValueType&& type)
     return type;
 }
 
-Sp<crypto::Certificate>
+const Sp<crypto::Certificate>
 SecureDht::getCertificate(const InfoHash& node) const
 {
     if (node == getId())
@@ -130,7 +129,7 @@ SecureDht::getCertificate(const InfoHash& node) const
         return it->second;
 }
 
-Sp<crypto::PublicKey>
+const Sp<const crypto::PublicKey>
 SecureDht::getPublicKey(const InfoHash& node) const
 {
     if (node == getId())
@@ -142,7 +141,7 @@ SecureDht::getPublicKey(const InfoHash& node) const
         return it->second;
 }
 
-Sp<crypto::Certificate>
+const Sp<crypto::Certificate>
 SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
 {
     Sp<crypto::Certificate> crt;
@@ -200,6 +199,8 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
 
     auto found = std::make_shared<bool>(false);
     dht_->get(node, [cb,node,found,this](const std::vector<Sp<Value>>& vals) {
+        if (*found)
+            return false;
         for (const auto& v : vals) {
             if (auto cert = registerCertificate(node, v->data)) {
                 *found = true;
@@ -210,7 +211,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
                 return false;
             }
         }
-        return !*found;
+        return true;
     }, [cb,found](bool) {
         if (!*found and cb)
             cb(nullptr);
@@ -218,7 +219,7 @@ SecureDht::findCertificate(const InfoHash& node, const std::function<void(const 
 }
 
 void
-SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb)
+SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp<const crypto::PublicKey>)>& cb)
 {
     auto pk = getPublicKey(node);
     if (pk && *pk) {
@@ -228,7 +229,7 @@ SecureDht::findPublicKey(const InfoHash& node, const std::function<void(const Sp
             cb(pk);
         return;
     }
-    findCertificate(node, [=](const Sp<crypto::Certificate>& crt) {
+    findCertificate(node, [=](const Sp<crypto::Certificate> crt) {
         if (crt && *crt) {
             auto pk = std::make_shared<crypto::PublicKey>(crt->getPublicKey());
             if (*pk) {
@@ -403,7 +404,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
             callback(false, {});
         return;
     }
-    findPublicKey(to, [this, hash, val = std::move(val), callback = std::move(callback), permanent](const Sp<crypto::PublicKey>& pk) {
+    findPublicKey(to, [=](const Sp<const crypto::PublicKey>& pk) {
         if(!pk || !*pk) {
             if (callback)
                 callback(false, {});
@@ -420,26 +421,6 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
                 callback(false, {});
         }
     });
-}
-
-void
-SecureDht::putEncrypted(const InfoHash& hash, const crypto::PublicKey& pk, Sp<Value> val, DoneCallback callback, bool permanent)
-{
-    if (not key_)  {
-        if (callback)
-            callback(false, {});
-        return;
-    }
-    if (logger_)
-        logger_->w("Encrypting data for PK: %s", pk.getLongId().to_c_str());
-    try {
-        dht_->put(hash, encrypt(*val, pk), callback, time_point::max(), permanent);
-    } catch (const std::exception& e) {
-        if (logger_)
-            logger_->e("Error putting encrypted data: %s", e.what());
-        if (callback)
-            callback(false, {});
-    }
 }
 
 void

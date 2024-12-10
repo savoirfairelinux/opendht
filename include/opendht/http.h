@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -375,3 +375,15 @@ private:
 } // namespace http
 } // namespace dht
 
+#ifdef OPENDHT_PROXY_HTTP_PARSER_FORK
+namespace restinio
+{
+/* Custom HTTP-methods for RESTinio > 0.5.0.
+ * https://github.com/Stiffstream/restinio/issues/26
+ */
+constexpr const restinio::http_method_id_t method_listen {HTTP_LISTEN, "LISTEN"};
+constexpr const restinio::http_method_id_t method_stats {HTTP_STATS, "STATS"};
+constexpr const restinio::http_method_id_t method_sign {HTTP_SIGN, "SIGN"};
+constexpr const restinio::http_method_id_t method_encrypt {HTTP_ENCRYPT, "ENCRYPT"};
+} // namespace restinio
+#endif

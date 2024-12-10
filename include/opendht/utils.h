@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -178,8 +178,8 @@ msgpack::object* findMapValue(const msgpack::object& map, const char* key, size_
 inline msgpack::object* findMapValue(const msgpack::object& map, const char* key) {
     return findMapValue(map, key, strlen(key));
 }
-inline msgpack::object* findMapValue(const msgpack::object& map, std::string_view key) {
-    return findMapValue(map, key.data(), key.size());
+inline msgpack::object* findMapValue(const msgpack::object& map, const std::string& key) {
+    return findMapValue(map, key.c_str(), key.size());
 }
 
 } // namespace dht

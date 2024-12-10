@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -42,7 +42,7 @@ namespace dht {
 namespace net {
 
 static const constexpr in_port_t DHT_DEFAULT_PORT = 4222;
-static const constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 64;
+static const constexpr size_t RX_QUEUE_MAX_SIZE = 1024 * 16;
 static const constexpr std::chrono::milliseconds RX_QUEUE_MAX_DELAY(650);
 
 int bindSocket(const SockAddr& addr, SockAddr& bound);

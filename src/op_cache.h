@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -28,13 +28,13 @@ struct OpCacheValueStorage
     Sp<Value> data {};
     unsigned refCount {1};
     system_clock::time_point updated {system_clock::time_point::min()};
-    explicit OpCacheValueStorage(Sp<Value> val) : data(std::move(val)) {}
+    OpCacheValueStorage(Sp<Value> val) : data(val) {}
 };
 
 class OpValueCache {
 public:
     OpValueCache(ValueCallback&& cb) noexcept : callback(std::forward<ValueCallback>(cb)) {}
-    explicit OpValueCache(OpValueCache&& o) noexcept : values(std::move(o.values)), callback(std::move(o.callback)) {
+    OpValueCache(OpValueCache&& o) noexcept : values(std::move(o.values)), callback(std::move(o.callback)) {
         o.callback = {};
     }
 
@@ -51,8 +51,8 @@ public:
     }
 
     bool onValue(const std::vector<Sp<Value>>& vals, bool expired, const system_clock::time_point& t = system_clock::time_point::min()) {
-        return expired
-            ? onValuesExpired(vals, t)
+        return expired 
+            ? onValuesExpired(vals, t) 
             : onValuesAdded(vals, t);
     }
 
@@ -74,7 +74,6 @@ public:
     std::vector<Sp<Value>> get(const Value::Filter& filter) const;
     Sp<Value> get(Value::Id id) const;
     std::vector<Sp<Value>> getValues() const;
-    size_t size() const { return values.size(); }
 
 private:
     OpValueCache(const OpValueCache&) = delete;
@@ -146,11 +145,7 @@ public:
     }
     time_point getExpiration() const;
 
-    size_t size() const {
-        return cache.size();
-    }
-
-    size_t searchToken {0};
+    size_t searchToken;
 private:
     constexpr static const std::chrono::seconds EXPIRATION {60};
     OpCache(const OpCache&) = delete;
@@ -180,13 +175,6 @@ public:
     bool get(const Value::Filter& f, const Sp<Query>& q, const GetCallback& gcb, const DoneCallback& dcb) const;
     std::vector<Sp<Value>> get(const Value::Filter& filter) const;
     Sp<Value> get(Value::Id id) const;
-
-    std::pair<size_t, size_t> size() const {
-        size_t tot = 0;
-        for (const auto& c : ops)
-            tot += c.second->size();
-        return {ops.size(), tot};
-    }
 
 private:
     SearchCache(const SearchCache&) = delete;

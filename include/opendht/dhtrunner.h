@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -65,7 +65,6 @@ public:
         bool peer_publish {false};
         std::shared_ptr<dht::crypto::Certificate> server_ca;
         dht::crypto::Identity client_identity;
-        SockAddr bind4 {}, bind6 {};
     };
 
     struct Context {
@@ -74,7 +73,6 @@ public:
         std::shared_ptr<PeerDiscovery> peerDiscovery {};
         StatusCallback statusChangedCallback {};
         CertificateStoreQuery certificateStore {};
-        IdentityAnnouncedCb identityAnnouncedCb {};
         Context() {}
     };
 
@@ -99,7 +97,7 @@ public:
     template <class T>
     void get(InfoHash hash, std::function<bool(std::vector<T>&&)> cb, DoneCallbackSimple dcb={})
     {
-        get(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
+        get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
         dcb,
@@ -108,7 +106,7 @@ public:
     template <class T>
     void get(InfoHash hash, std::function<bool(T&&)> cb, DoneCallbackSimple dcb={})
     {
-        get(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
+        get(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
@@ -157,7 +155,7 @@ public:
     std::future<size_t> listen(InfoHash key, ValueCallback vcb, Value::Filter f = {}, Where w = {});
 
     std::future<size_t> listen(InfoHash key, GetCallback cb, Value::Filter f={}, Where w={}) {
-        return listen(key, [cb=std::move(cb)](const std::vector<Sp<Value>>& vals, bool expired){
+        return listen(key, [cb](const std::vector<Sp<Value>>& vals, bool expired){
             if (not expired)
                 return cb(vals);
             return true;
@@ -171,7 +169,7 @@ public:
     template <class T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&)> cb)
     {
-        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             return cb(unpackVector<T>(vals));
         },
         getFilterSet<T>());
@@ -179,7 +177,7 @@ public:
     template <class T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(std::vector<T>&&, bool)> cb)
     {
-        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
             return cb(unpackVector<T>(vals), expired);
         },
         getFilterSet<T>());
@@ -188,7 +186,7 @@ public:
     template <typename T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(T&&)> cb, Value::Filter f = {}, Where w = {})
     {
-        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals) {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v)))
@@ -204,7 +202,7 @@ public:
     template <typename T>
     std::future<size_t> listen(InfoHash hash, std::function<bool(T&&, bool)> cb, Value::Filter f = {}, Where w = {})
     {
-        return listen(hash, [cb=std::move(cb)](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
+        return listen(hash, [=](const std::vector<std::shared_ptr<Value>>& vals, bool expired) {
             for (const auto& v : vals) {
                 try {
                     if (not cb(Value::unpack<T>(*v), expired))
@@ -257,29 +255,18 @@ public:
     }
     void putEncrypted(const std::string& key, InfoHash to, Value&& value, DoneCallback cb={}, bool permanent = false);
 
-    void putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
-    void putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
-        putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
-    }
-
-    void putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, Value&& value, DoneCallback cb={}, bool permanent = false);
-    void putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
-        putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb), permanent);
-    }
-
+    /**
+     * Insert known nodes to the routing table, without necessarly ping them.
+     * Usefull to restart a node and get things running fast without putting load on the network.
+     */
+    void bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple&& cb={});
+    void bootstrap(const SockAddr& addr, DoneCallbackSimple&& cb={});
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
      * Usefull to restart a node and get things running fast without putting load on the network.
      */
-    void bootstrap(std::vector<SockAddr> nodes, DoneCallbackSimple cb={});
-    void bootstrap(SockAddr addr, DoneCallbackSimple cb={});
-
-    /**
-     * Insert known nodes to the routing table, without necessarly ping them.
-     * Usefull to restart a node and get things running fast without putting load on the network.
-     */
-    void bootstrap(std::vector<NodeExport> nodes);
+    void bootstrap(const std::vector<NodeExport>& nodes);
 
     /**
      * Add host:service to bootstrap nodes, and ping this node.
@@ -314,7 +301,6 @@ public:
      * Get the public key fingerprint if an identity is used with this node, 0 otherwise.
      */
     InfoHash getId() const;
-    std::shared_ptr<crypto::PublicKey> getPublicKey() const;
 
     /**
      * Get the ID of the DHT node.
@@ -335,7 +321,6 @@ public:
 
     std::pair<size_t, size_t> getStoreSize() const;
 
-    void getStorageLimit() const;
     void setStorageLimit(size_t limit = DEFAULT_STORAGE_LIMIT);
 
     std::vector<NodeExport> exportNodes() const;
@@ -374,7 +359,6 @@ public:
     std::string getSearchLog(const InfoHash&, sa_family_t af = AF_UNSPEC) const;
     std::vector<SockAddr> getPublicAddress(sa_family_t af = AF_UNSPEC);
     std::vector<std::string> getPublicAddressStr(sa_family_t af = AF_UNSPEC);
-    void getPublicAddress(std::function<void(std::vector<SockAddr>&&)>, sa_family_t af = AF_UNSPEC);
 
     // securedht methods
 
@@ -395,12 +379,22 @@ public:
         config.threaded = threaded;
         run(port, config);
     }
-    void run(in_port_t port, Config& config, Context&& context = {});
+    void run(in_port_t port, const Config& config, Context&& context = {});
+
+    /**
+     * @param local4: Local IPv4 address and port to bind. Can be null.
+     * @param local6: Local IPv6 address and port to bind. Can be null.
+     *         You should allways bind to a global IPv6 address.
+     * @param identity: RSA key pair to use for cryptographic operations.
+     * @param threaded: If false, loop() must be called periodically. Otherwise a thread is launched.
+     * @param cb: Optional callback to receive general state information.
+     */
+    void run(SockAddr& local4, SockAddr& local6, const Config& config, Context&& context = {});
 
     /**
      * Same as @run(sockaddr_in, sockaddr_in6, Identity, bool, StatusCallback), but with string IP addresses and service (port).
      */
-    void run(const char* ip4, const char* ip6, const char* service, Config& config, Context&& context = {});
+    void run(const char* ip4, const char* ip6, const char* service, const Config& config, Context&& context = {});
 
     void run(const Config& config, Context&& context);
 
@@ -421,7 +415,7 @@ public:
     /**
      * Gracefuly disconnect from network.
      */
-    void shutdown(ShutdownCallback cb = {}, bool stop = false);
+    void shutdown(ShutdownCallback cb = {});
 
     /**
      * Quit and wait for all threads to terminate.
@@ -457,6 +451,8 @@ public:
     void forwardAllMessages(bool forward);
 
 private:
+    static constexpr std::chrono::seconds BOOTSTRAP_PERIOD {10};
+
     enum class State {
         Idle,
         Running,
@@ -485,7 +481,6 @@ private:
 
     /** Current configuration */
     Config config_;
-    IdentityAnnouncedCb identityAnnouncedCb_;
 
     /**
      * reset dht clients

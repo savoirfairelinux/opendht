@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -54,7 +54,7 @@ static std::uniform_int_distribution<uint8_t> rand_byte;
 #define GNUTLS_PKCS_PBES2_AES_256 GNUTLS_PKCS_USE_PBES2_AES_256
 #endif
 
-#define DHT_AES_LEGACY_ENCRYPT 0
+#define DHT_AES_LEGACY_ENCRYPT 1
 #define DHT_AES_LEGACY_DECRYPT 1
 
 namespace dht {
@@ -69,7 +69,7 @@ constexpr gnutls_digest_algorithm_t gnutlsHashAlgo(size_t min_res) {
                                GNUTLS_DIG_SHA1));
 }
 
-constexpr size_t gnutlsHashSize(gnutls_digest_algorithm_t algo) {
+constexpr size_t gnutlsHashSize(int algo) {
     return (algo == GNUTLS_DIG_SHA512) ? 512/8 : (
            (algo == GNUTLS_DIG_SHA256) ? 256/8 : (
            (algo == GNUTLS_DIG_SHA1)   ? 160/8 : 0 ));
@@ -128,37 +128,37 @@ Blob aesEncrypt(const Blob& data, const std::string& password)
     return encrypted;
 }
 
-Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
+Blob aesDecrypt(const Blob& data, const Blob& key)
 {
     if (not aesKeySizeGood(key.size()))
         throw DecryptError("Wrong key size");
 
-    if (data_length <= GCM_IV_SIZE + GCM_DIGEST_SIZE)
+    if (data.size() <= GCM_IV_SIZE + GCM_DIGEST_SIZE)
         throw DecryptError("Wrong data size");
 
     std::array<uint8_t, GCM_DIGEST_SIZE> digest;
 
     struct gcm_aes_ctx aes;
     gcm_aes_set_key(&aes, key.size(), key.data());
-    gcm_aes_set_iv(&aes, GCM_IV_SIZE, data);
+    gcm_aes_set_iv(&aes, GCM_IV_SIZE, data.data());
 
-    size_t data_sz = data_length - GCM_IV_SIZE - GCM_DIGEST_SIZE;
+    size_t data_sz = data.size() - GCM_IV_SIZE - GCM_DIGEST_SIZE;
     Blob ret(data_sz);
-    gcm_aes_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
+    gcm_aes_decrypt(&aes, data_sz, ret.data(), data.data() + GCM_IV_SIZE);
     gcm_aes_digest(&aes, GCM_DIGEST_SIZE, digest.data());
 
-    if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE)) {
+    if (not std::equal(digest.begin(), digest.end(), data.end() - GCM_DIGEST_SIZE)) {
 #if DHT_AES_LEGACY_DECRYPT
-        //gcm_aes_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
+        //gcm_aes_decrypt(&aes, data_sz, ret.data(), data.data() + GCM_IV_SIZE);
         Blob ret_tmp(data_sz);
         struct gcm_aes_ctx aes_d;
         gcm_aes_set_key(&aes_d, key.size(), key.data());
-        gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data);
+        gcm_aes_set_iv(&aes_d, GCM_IV_SIZE, data.data());
         gcm_aes_update(&aes_d, ret.size(), ret.data());
         gcm_aes_encrypt(&aes_d, ret.size(), ret_tmp.data(), ret.data());
         gcm_aes_digest(&aes_d, GCM_DIGEST_SIZE, digest.data());
 
-        if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE))
+        if (not std::equal(digest.begin(), digest.end(), data.end() - GCM_DIGEST_SIZE))
             throw DecryptError("Can't decrypt data");
 #else
         throw DecryptError("Can't decrypt data");
@@ -168,13 +168,14 @@ Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
     return ret;
 }
 
-Blob aesDecrypt(const uint8_t* data, size_t data_len, const std::string& password)
+Blob aesDecrypt(const Blob& data, const std::string& password)
 {
-    if (data_len <= PASSWORD_SALT_LENGTH)
+    if (data.size() <= PASSWORD_SALT_LENGTH)
         throw DecryptError("Wrong data size");
-    Blob salt {data, data+PASSWORD_SALT_LENGTH};
+    Blob salt {data.begin(), data.begin()+PASSWORD_SALT_LENGTH};
     Blob key = stretchKey(password, salt, 256/8);
-    return aesDecrypt(data+PASSWORD_SALT_LENGTH, data_len - PASSWORD_SALT_LENGTH, key);
+    Blob encrypted {data.begin()+PASSWORD_SALT_LENGTH, data.end()};
+    return aesDecrypt(encrypted, key);
 }
 
 Blob stretchKey(const std::string& password, Blob& salt, size_t key_length)
@@ -291,14 +292,14 @@ PrivateKey::operator=(PrivateKey&& o) noexcept
 }
 
 Blob
-PrivateKey::sign(const uint8_t* data, size_t data_length) const
+PrivateKey::sign(const Blob& data) const
 {
     if (!key)
         throw CryptoException("Can't sign data: no private key set !");
-    if (std::numeric_limits<unsigned>::max() < data_length)
+    if (std::numeric_limits<unsigned>::max() < data.size())
         throw CryptoException("Can't sign data: too large !");
     gnutls_datum_t sig;
-    const gnutls_datum_t dat {(unsigned char*)data, (unsigned)data_length};
+    const gnutls_datum_t dat {(unsigned char*)data.data(), (unsigned)data.size()};
     if (gnutls_privkey_sign_data(key, GNUTLS_DIG_SHA512, 0, &dat, &sig) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't sign data !");
     Blob ret(sig.data, sig.data+sig.size);
@@ -320,7 +321,7 @@ PrivateKey::decryptBloc(const uint8_t* src, size_t src_size) const
 }
 
 Blob
-PrivateKey::decrypt(const uint8_t* cypher, size_t cypher_len) const
+PrivateKey::decrypt(const Blob& cipher) const
 {
     if (!key)
         throw CryptoException("Can't decrypt data without private key !");
@@ -333,12 +334,12 @@ PrivateKey::decrypt(const uint8_t* cypher, size_t cypher_len) const
         throw CryptoException("Must be an RSA key");
 
     unsigned cypher_block_sz = key_len / 8;
-    if (cypher_len < cypher_block_sz)
+    if (cipher.size() < cypher_block_sz)
         throw DecryptError("Unexpected cipher length");
-    else if (cypher_len == cypher_block_sz)
-        return decryptBloc(cypher, cypher_block_sz);
+    else if (cipher.size() == cypher_block_sz)
+        return decryptBloc(cipher.data(), cypher_block_sz);
 
-    return aesDecrypt(cypher + cypher_block_sz, cypher_len - cypher_block_sz, decryptBloc(cypher, cypher_block_sz));
+    return aesDecrypt(Blob {cipher.begin() + cypher_block_sz, cipher.end()}, decryptBloc(cipher.data(), cypher_block_sz));
 }
 
 Blob
@@ -368,22 +369,13 @@ PrivateKey::serialize(uint8_t* out, size_t* out_len, const std::string& password
         : gnutls_x509_privkey_export_pkcs8(x509_key, GNUTLS_X509_FMT_PEM, password.c_str(), GNUTLS_PKCS_PBES2_AES_256, out, out_len);
 }
 
-const PublicKey&
+PublicKey
 PrivateKey::getPublicKey() const
 {
-    return *getSharedPublicKey();
-}
-
-const std::shared_ptr<PublicKey>&
-PrivateKey::getSharedPublicKey() const
-{
-    if (publicKey_)
-        return publicKey_;
-    auto pk = std::make_shared<PublicKey>();
-    if (auto err = gnutls_pubkey_import_privkey(pk->pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
+    PublicKey pk;
+    if (auto err = gnutls_pubkey_import_privkey(pk.pk, key, GNUTLS_KEY_KEY_CERT_SIGN | GNUTLS_KEY_CRL_SIGN, 0))
         throw CryptoException(std::string("Can't retreive public key: ") + gnutls_strerror(err));
-    publicKey_ = pk;
-    return publicKey_;
+    return pk;
 }
 
 PublicKey::PublicKey()
@@ -549,7 +541,12 @@ PublicKey::getId() const
         return {};
     InfoHash id;
     size_t sz = id.size();
-    if (auto err = gnutls_pubkey_get_key_id(pk, 0, id.data(), &sz))
+#if GNUTLS_VERSION_NUMBER < 0x030401
+    const int flags = 0;
+#else
+    const int flags = (id.size() == 32) ? GNUTLS_KEYID_USE_SHA256 : 0;
+#endif
+    if (auto err = gnutls_pubkey_get_key_id(pk, flags, id.data(), &sz))
         throw CryptoException(std::string("Can't get public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get public key ID: wrong output length.");
@@ -714,13 +711,13 @@ CertificateRequest::sign(const PrivateKey& key, const std::string& password)
 }
 
 bool
-CertificateRequest::verify() const
+CertificateRequest::verify() const 
 {
     return gnutls_x509_crq_verify(request, 0) >= 0;
 }
 
-Blob
-CertificateRequest::pack() const
+Blob 
+CertificateRequest::pack() const 
 {
     gnutls_datum_t dat {nullptr, 0};
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
@@ -731,7 +728,7 @@ CertificateRequest::pack() const
 }
 
 std::string
-CertificateRequest::toString() const
+CertificateRequest::toString() const 
 {
     gnutls_datum_t dat {nullptr, 0};
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
@@ -853,15 +850,12 @@ Certificate::getId() const
 {
     if (not cert)
         return {};
-    if (cachedId_)
-        return cachedId_;
     InfoHash id;
     size_t sz = id.size();
     if (auto err = gnutls_x509_crt_get_key_id(cert, 0, id.data(), &sz))
         throw CryptoException(std::string("Can't get certificate public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get certificate public key ID: wrong output length.");
-    cachedId_ = id;
     return id;
 }
 
@@ -870,8 +864,6 @@ Certificate::getLongId() const
 {
     if (not cert)
         return {};
-    if (cachedLongId_)
-        return cachedLongId_;
 #if GNUTLS_VERSION_NUMBER < 0x030401
     throw CryptoException("Can't get certificate 256 bits public key ID: GnuTLS 3.4.1 or higher required.");
 #else
@@ -881,7 +873,6 @@ Certificate::getLongId() const
         throw CryptoException(std::string("Can't get certificate 256 bits public key ID: ") + gnutls_strerror(err));
     if (sz != id.size())
         throw CryptoException("Can't get certificate 256 bits public key ID: wrong output length.");
-    cachedLongId_ = id;
     return id;
 #endif
 }
@@ -1057,8 +1048,6 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     Blob noncebuf(32);
     gnutls_datum_t nonce = { noncebuf.data(), (unsigned)noncebuf.size() };
     err = gnutls_rnd(GNUTLS_RND_NONCE, nonce.data, nonce.size);
-    if (err < 0)
-        throw CryptoException(gnutls_strerror(err));
     err = gnutls_ocsp_req_set_nonce(req.get(), 0, &nonce);
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
@@ -1159,20 +1148,20 @@ void
 setRandomSerial(gnutls_x509_crt_t cert)
 {
     random_device rdev;
-    std::uniform_int_distribution<int64_t> dist{1};
-    int64_t cert_serial = dist(rdev);
+    std::uniform_int_distribution<uint64_t> dist{};
+    uint64_t cert_serial = dist(rdev);
     gnutls_x509_crt_set_serial(cert, &cert_serial, sizeof(cert_serial));
 }
 
 Certificate
-Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca, int64_t validity)
+Certificate::generate(const PrivateKey& key, const std::string& name, const Identity& ca, bool is_ca)
 {
     gnutls_x509_crt_t cert;
     if (not key.x509_key or gnutls_x509_crt_init(&cert) != GNUTLS_E_SUCCESS)
         return {};
     Certificate ret {cert};
 
-    setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
+    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
     if (int err = gnutls_x509_crt_set_key(cert, key.x509_key)) {
         throw CryptoException(std::string("Error when setting certificate key ") + gnutls_strerror(err));
     }
@@ -1181,7 +1170,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
     }
 
     // TODO: compute the subject key using the recommended RFC method
-    const auto& pk = key.getPublicKey();
+    auto pk = key.getPublicKey();
     auto pk_id = pk.getId();
     const std::string uid_str = pk_id.toString();
 
@@ -1218,7 +1207,7 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
 }
 
 Certificate
-Certificate::generate(const CertificateRequest& request, const Identity& ca, int64_t validity)
+Certificate::generate(const CertificateRequest& request, const Identity& ca)
 {
     gnutls_x509_crt_t cert;
     if (auto err = gnutls_x509_crt_init(&cert))
@@ -1231,7 +1220,7 @@ Certificate::generate(const CertificateRequest& request, const Identity& ca, int
         throw CryptoException(std::string("Can't set certificate version: ") + gnutls_strerror(err));
     }
 
-    setValidityPeriod(cert, validity <= 0 ? 10 * 365 * 24 * 60 * 60 : validity);
+    setValidityPeriod(cert, 10 * 365 * 24 * 60 * 60);
     setRandomSerial(cert);
 
     if (auto err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
@@ -1242,32 +1231,6 @@ Certificate::generate(const CertificateRequest& request, const Identity& ca, int
     return ret.getPacked();
 }
 
-void
-Certificate::setValidity(const Identity& ca, int64_t validity)
-{
-    setValidityPeriod(cert, validity);
-    setRandomSerial(cert);
-    if (ca.first && ca.second) {
-        if (not ca.second->isCA()) {
-            throw CryptoException("Signing certificate must be CA");
-        }
-        if (int err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, ca.second->getPreferredDigest(), 0)) {
-            throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
-        }
-    }
-}
-
-void
-Certificate::setValidity(const PrivateKey& key, int64_t validity)
-{
-    setValidityPeriod(cert, validity);
-    setRandomSerial(cert);
-    const auto& pk = key.getPublicKey();
-    if (int err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
-        throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
-    }
-}
-
 std::vector<std::shared_ptr<RevocationList>>
 Certificate::getRevocationLists() const
 {
@@ -1275,70 +1238,6 @@ Certificate::getRevocationLists() const
     ret.reserve(revocation_lists.size());
     for (const auto& crl : revocation_lists)
         ret.emplace_back(crl);
-    return ret;
-}
-
-// OcspRequest
-
-OcspRequest::OcspRequest(const uint8_t* dat_ptr, size_t dat_size)
-{
-    int ret = gnutls_ocsp_req_init(&request);
-    if (ret < 0)
-        throw CryptoException(gnutls_strerror(ret));
-    gnutls_datum_t dat = {(unsigned char*)dat_ptr,(unsigned int)dat_size};
-    ret = gnutls_ocsp_req_import(request, &dat);
-    if (ret < 0){
-        gnutls_ocsp_req_deinit(request);
-        throw CryptoException(gnutls_strerror(ret));
-    }
-}
-
-OcspRequest::~OcspRequest()
-{
-    if (request) {
-        gnutls_ocsp_req_deinit(request);
-        request = nullptr;
-    }
-}
-
-std::string
-OcspRequest::toString(const bool compact) const
-{
-    int ret;
-    gnutls_datum_t dat;
-    ret = gnutls_ocsp_req_print(request, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &dat);
-
-    std::string str;
-    if (ret == 0) {
-        str = std::string((const char*)dat.data, (size_t)dat.size);
-        gnutls_free(dat.data);
-    } else
-        throw CryptoException(gnutls_strerror(ret));
-    return str;
-}
-
-Blob
-OcspRequest::pack() const
-{
-    gnutls_datum_t dat;
-    int err = gnutls_ocsp_req_export(request, &dat);
-    if (err < 0)
-        throw CryptoException(gnutls_strerror(err));
-    Blob ret {dat.data, dat.data + dat.size};
-    gnutls_free(dat.data);
-    return ret;
-}
-
-Blob
-OcspRequest::getNonce() const
-{
-    gnutls_datum_t dat;
-    unsigned critical;
-    int err = gnutls_ocsp_req_get_nonce(request, &critical, &dat);
-    if (err < 0)
-        throw CryptoException(gnutls_strerror(err));
-    Blob ret {dat.data, dat.data + dat.size};
-    gnutls_free(dat.data);
     return ret;
 }
 
@@ -1366,12 +1265,10 @@ Blob
 OcspResponse::pack() const
 {
     gnutls_datum_t dat;
-    int err = gnutls_ocsp_resp_export(response, &dat);
-    if (err < 0)
-        throw CryptoException(gnutls_strerror(err));
-    Blob ret {dat.data, dat.data + dat.size};
-    gnutls_free(dat.data);
-    return ret;
+    int ret = gnutls_ocsp_resp_export(response, &dat);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    return {dat.data, dat.data + dat.size};
 }
 
 std::string
@@ -1401,7 +1298,7 @@ OcspResponse::getCertificateStatus() const
     return (gnutls_ocsp_cert_status_t) status;
 }
 
-gnutls_ocsp_cert_status_t
+gnutls_ocsp_verify_reason_t
 OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
 {
     // Check OCSP response
@@ -1412,44 +1309,14 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     if (status != GNUTLS_OCSP_RESP_SUCCESSFUL)
         throw CryptoException("OCSP request unsuccessful: " + std::to_string(ret));
 
-    if (not nonce.empty()) {
-        // Ensure no replay attack has been done
-        gnutls_datum_t rnonce;
-        ret = gnutls_ocsp_resp_get_nonce(response, NULL, &rnonce);
-        if (ret < 0)
-            throw CryptoException(gnutls_strerror(ret));
-        if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
-            gnutls_free(rnonce.data);
-            throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
-        }
-        gnutls_free(rnonce.data);
-    }
+    // Check whether the OCSP response is about the provided certificate.
+    if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
+        throw CryptoException(gnutls_strerror(ret));
 
     // Verify signature of the Basic OCSP response against the public key in the issuer certificate.
     unsigned int verify = 0;
     ret = gnutls_ocsp_resp_verify_direct(response, crt.issuer->cert, &verify, 0);
     if (ret < 0)
-        throw CryptoException(gnutls_strerror(ret));
-    if (verify) {
-        if (verify & GNUTLS_OCSP_VERIFY_SIGNER_NOT_FOUND)
-            throw CryptoException("Signer cert not found");
-        if (verify & GNUTLS_OCSP_VERIFY_SIGNER_KEYUSAGE_ERROR)
-            throw CryptoException("Signer cert keyusage error");
-        if (verify & GNUTLS_OCSP_VERIFY_UNTRUSTED_SIGNER)
-            throw CryptoException("Signer cert is not trusted");
-        if (verify & GNUTLS_OCSP_VERIFY_INSECURE_ALGORITHM)
-            throw CryptoException("Insecure algorithm");
-        if (verify & GNUTLS_OCSP_VERIFY_SIGNATURE_FAILURE)
-            throw CryptoException("Signature failure");
-        if (verify & GNUTLS_OCSP_VERIFY_CERT_NOT_ACTIVATED)
-            throw CryptoException("Signer cert not yet activated");
-        if (verify & GNUTLS_OCSP_VERIFY_CERT_EXPIRED)
-            throw CryptoException("Signer cert expired");
-        throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
-    }
-
-    // Check whether the OCSP response is about the provided certificate.
-    if ((ret = gnutls_ocsp_resp_check_crt(response, 0, crt.cert)) < 0)
         throw CryptoException(gnutls_strerror(ret));
 
     // Check certificate revocation status
@@ -1457,7 +1324,24 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
-    return (gnutls_ocsp_cert_status_t)status_ocsp;
+    gnutls_ocsp_cert_status_t certStatus = (gnutls_ocsp_cert_status_t)ret;
+    if (certStatus == GNUTLS_OCSP_CERT_REVOKED)
+        throw CryptoException("Certificate was revoked");
+    else if (certStatus != GNUTLS_OCSP_CERT_GOOD)
+        throw CryptoException("Certificate is unknown");
+
+    // Ensure no replay attack has been done
+    gnutls_datum_t rnonce;
+    ret = gnutls_ocsp_resp_get_nonce(response, NULL, &rnonce);
+    if (ret < 0)
+        throw CryptoException(gnutls_strerror(ret));
+    if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
+        gnutls_free(rnonce.data);
+        throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
+    }
+    gnutls_free(rnonce.data);
+
+    return (gnutls_ocsp_verify_reason_t) verify;
 }
 
 // RevocationList
@@ -1475,7 +1359,7 @@ RevocationList::RevocationList(const Blob& b)
     } catch (const std::exception& e) {
         gnutls_x509_crl_deinit(crl);
         crl = nullptr;
-        throw;
+        throw e;
     }
 }
 

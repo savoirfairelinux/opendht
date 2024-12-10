@@ -1,11 +1,11 @@
 # distutils: language = c++
-# distutils: extra_compile_args = -std=c++17
+# distutils: extra_compile_args = -std=c++14
 # distutils: include_dirs = ../../include
 # distutils: library_dirs = ../../src
 # distutils: libraries = opendht gnutls
 # cython: language_level=3
 #
-# Copyright (c) 2015-2022 Savoir-faire Linux Inc.
+# Copyright (c) 2015-2019 Savoir-faire Linux Inc.
 # Author(s): Guillaume Roguez <guillaume.roguez@savoirfairelinux.com>
 #            Adrien Béraud <adrien.beraud@savoirfairelinux.com>
 #            Simon Désaulniers <sim.desaulniers@gmail.com>
@@ -36,7 +36,6 @@ from libcpp.memory cimport shared_ptr
 from cython.parallel import parallel, prange
 from cython.operator cimport dereference as deref, preincrement as inc, predecrement as dec
 from cpython cimport ref
-from datetime import timedelta
 
 cimport opendht_cpp as cpp
 
@@ -236,9 +235,8 @@ cdef class Where(object):
 
 cdef class Value(object):
     cdef shared_ptr[cpp.Value] _value
-    def __init__(self, bytes val=b'', cpp.uint16_t id=0):
-        self._value.reset(new cpp.Value(id, val, len(val)))
-
+    def __init__(self, bytes val=b''):
+        self._value.reset(new cpp.Value(val, len(val)))
     def __str__(self):
         return self._value.get().toString().decode()
     property owner:
@@ -271,14 +269,6 @@ cdef class Value(object):
     property size:
         def __get__(self):
             return self._value.get().size()
-
-cdef class ValueType(object):
-    cdef cpp.ValueType * _value
-    def __init__(self, cpp.uint16_t id, str name, expiration: timedelta):
-        if not isinstance(expiration, timedelta):
-            raise TypeError("expiration argument must be of type timedelta")
-        cdef cpp.seconds duration = cpp.seconds(int(expiration.total_seconds()))
-        self._value =  new cpp.ValueType(id, name.encode(), duration)
 
 cdef class NodeSetIter(object):
     cdef map[cpp.InfoHash, shared_ptr[cpp.Node]]* _nodes
@@ -329,11 +319,11 @@ cdef class PrivateKey(_WithID):
     cdef shared_ptr[cpp.PrivateKey] _key
     def getId(self):
         h = InfoHash()
-        h._infohash = self._key.get().getSharedPublicKey().get().getId()
+        h._infohash = self._key.get().getPublicKey().getId()
         return h
     def getPublicKey(self):
         pk = PublicKey()
-        pk._key = self._key.get().getSharedPublicKey()
+        pk._key = self._key.get().getPublicKey()
         return pk
     def decrypt(self, bytes dat):
         cdef size_t d_len = len(dat)
@@ -358,17 +348,17 @@ cdef class PrivateKey(_WithID):
         return k
 
 cdef class PublicKey(_WithID):
-    cdef cpp.shared_ptr[cpp.PublicKey] _key
+    cdef cpp.PublicKey _key
     def getId(self):
         h = InfoHash()
-        h._infohash = self._key.get().getId()
+        h._infohash = self._key.getId()
         return h
     def encrypt(self, bytes dat):
         cdef size_t d_len = len(dat)
         cdef cpp.uint8_t* d_ptr = <cpp.uint8_t*>dat
         cdef cpp.Blob indat
         indat.assign(d_ptr, <cpp.uint8_t*>(d_ptr + d_len))
-        cdef cpp.Blob encrypted = self._key.get().encrypt(indat)
+        cdef cpp.Blob encrypted = self._key.encrypt(indat)
         cdef char* encrypted_c_str = <char *>encrypted.data()
         cdef Py_ssize_t length = encrypted.size()
         return encrypted_c_str[:length]
@@ -440,7 +430,7 @@ cdef class Identity(object):
     property publickey:
         def __get__(self):
             k = PublicKey()
-            k._key = self._id.first.get().getSharedPublicKey()
+            k._key = self._id.first.get().getPublicKey()
             return k
     property certificate:
         def __get__(self):
@@ -523,8 +513,6 @@ cdef class DhtRunner(_WithID):
         cb_obj = {'shutdown':shutdown_cb}
         ref.Py_INCREF(cb_obj)
         self.thisptr.get().shutdown(cpp.bindShutdownCb(shutdown_callback, <void*>cb_obj))
-    def registerType(self, ValueType type):
-        self.thisptr.get().registerType(deref(type._value))
     def enableLogging(self):
         cpp.enableLogging(self.thisptr.get()[0])
     def disableLogging(self):

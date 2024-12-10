@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -214,6 +214,7 @@ public:
     using RequestErrorCb = std::function<bool(const Request&, DhtProtocolException&&)>;
     using RequestExpiredCb = std::function<void(const Request&, bool)>;
 
+    NetworkEngine(const Sp<Logger>& log, std::mt19937_64& rd, Scheduler& scheduler, std::unique_ptr<DatagramSocket>&& sock);
     NetworkEngine(
             InfoHash& myid,
             NetworkConfig config,
@@ -252,12 +253,12 @@ public:
      * @param values      The values to send.
      * @param version     If version = 1, a request will be used to answer to the listener
      */
-    void tellListener(const Sp<Node>& n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
+    void tellListener(Sp<Node> n, Tid socket_id, const InfoHash& hash, want_t want, const Blob& ntoken,
             std::vector<Sp<Node>>&& nodes, std::vector<Sp<Node>>&& nodes6,
             std::vector<Sp<Value>>&& values, const Query& q, int version);
 
-    void tellListenerRefreshed(const Sp<Node>& n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
-    void tellListenerExpired(const Sp<Node>& n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
+    void tellListenerRefreshed(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
+    void tellListenerExpired(Sp<Node> n, Tid socket_id, const InfoHash& hash, const Blob& ntoken, const std::vector<Value::Id>& values, int version);
 
     bool isRunning(sa_family_t af) const;
     inline want_t want () const { return dht_socket->hasIPv4() and dht_socket->hasIPv6() ? (WANT4 | WANT6) : -1; }
@@ -278,7 +279,7 @@ public:
      * @return the request with information concerning its success.
      */
     Sp<Request>
-    sendPing(const Sp<Node>& n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
+    sendPing(Sp<Node> n, RequestCb&& on_done, RequestExpiredCb&& on_expired);
 
     /**
      * Send a "ping" request to a given node.
@@ -292,7 +293,7 @@ public:
      */
     Sp<Request>
     sendPing(SockAddr&& sa, RequestCb&& on_done, RequestExpiredCb&& on_expired) {
-        return sendPing(std::make_shared<Node>(InfoHash::zero(), std::move(sa), rd),
+        return sendPing(std::make_shared<Node>(zeroes, std::move(sa), rd),
                 std::forward<RequestCb>(on_done),
                 std::forward<RequestExpiredCb>(on_expired));
     }
@@ -309,7 +310,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendFindNode(const Sp<Node>& n,
+    Sp<Request> sendFindNode(Sp<Node> n,
                              const InfoHash& hash,
                              want_t want = -1,
                              RequestCb&& on_done = {},
@@ -328,7 +329,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendGetValues(const Sp<Node>& n,
+    Sp<Request> sendGetValues(Sp<Node> n,
                               const InfoHash& hash,
                               const Query& query,
                               want_t want,
@@ -357,7 +358,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendListen(const Sp<Node>& n,
+    Sp<Request> sendListen(Sp<Node> n,
                            const InfoHash& hash,
                            const Query& query,
                            const Blob& token,
@@ -377,7 +378,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendAnnounceValue(const Sp<Node>& n,
+    Sp<Request> sendAnnounceValue(Sp<Node> n,
                                   const InfoHash& hash,
                                   const Sp<Value>& v,
                                   time_point created,
@@ -397,7 +398,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendRefreshValue(const Sp<Node>& n,
+    Sp<Request> sendRefreshValue(Sp<Node> n,
                                  const InfoHash& hash,
                                  const Value::Id& vid,
                                  const Blob& token,
@@ -416,7 +417,7 @@ public:
      *
      * @return the request with information concerning its success.
      */
-    Sp<Request> sendUpdateValues(const Sp<Node>& n,
+    Sp<Request> sendUpdateValues(Sp<Node> n,
                                  const InfoHash& infohash,
                                  const std::vector<Sp<Value>>& values,
                                  time_point created,

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2020 Savoir-faire Linux Inc.
  *  Author: Andreas Traczyk <andreas.traczyk@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -189,15 +189,19 @@ void
 PEMCache::fillX509Store(SSL_CTX* ctx)
 {
     if (logger)
-        logger->d("adding %d decoded certs to X509 store", pems_.size());
-    if (X509_STORE* store = SSL_CTX_get_cert_store(ctx)) {
-        for (const auto& pem : pems_) {
-            if (X509_STORE_add_cert(store, pem.get()) != 1)
-                if (logger)
-                    logger->w("couldn't add local certificate");
-        }
-    } else if (logger)
-        logger->e("couldn't get the context cert store");
+        logger->w("adding %d decoded certs to X509 store", pems_.size());
+    X509_STORE* store = SSL_CTX_get_cert_store(ctx);
+    if (store == nullptr) {
+        if (logger)
+            logger->e("couldn't get the context cert store");
+        return;
+    }
+    for (const auto& pem : pems_) {
+        if (X509_STORE_add_cert(store, pem.get()) == 1)
+            continue;
+        if (logger)
+            logger->d("couldn't add local certificate");
+    }
 }
 
 } /*namespace http*/

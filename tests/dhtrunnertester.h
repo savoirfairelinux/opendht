@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
@@ -33,7 +33,6 @@ class DhtRunnerTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testGetPut);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testListenLotOfBytes);
-    CPPUNIT_TEST(testIdOps);
     CPPUNIT_TEST_SUITE_END();
 
     dht::DhtRunner node1 {};
@@ -60,18 +59,9 @@ class DhtRunnerTester : public CppUnit::TestFixture {
      */
     void testListen();
     /**
-     * Test methods requiring a node identity
-     */
-    void testIdOps();
-    /**
      * Test listen method with lot of datas
      */
     void testListenLotOfBytes();
-    /**
-     * Test multithread
-     */
-    void testMultithread();
-
 };
 
 }  // namespace test

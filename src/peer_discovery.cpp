@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Mingrui Zhang <mingrui.zhang@savoirfairelinux.com>
  *              Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *              Adrien Béraud <adrien.beraud@savoirfairelinux.com>
@@ -23,8 +23,6 @@
 #include "utils.h"
 
 #include <asio.hpp>
-
-using namespace std::literals;
 
 namespace dht {
 
@@ -63,7 +61,7 @@ private:
 
     msgpack::sbuffer sbuf_;
     std::map<std::string, msgpack::sbuffer> messages_;
-    std::map<std::string, ServiceDiscoveredCallback, std::less<>> callbackmap_;
+    std::map<std::string, ServiceDiscoveredCallback> callbackmap_;
     bool lrunning_ {false};
     bool drunning_ {false};
 
@@ -135,18 +133,19 @@ PeerDiscovery::DomainPeerDiscovery::loopListener()
             msgpack::object obj = rcv.get();
 
             if (obj.type == msgpack::type::STR) {
-                if (lrunning_ and obj.as<std::string_view>() == "q"sv)
+                if (lrunning_ and obj.as<std::string>() == "q")
                     publish(receiveFrom_);
             } else if (obj.type == msgpack::type::MAP) {
                 for (unsigned i = 0; i < obj.via.map.size; i++) {
                     auto& o = obj.via.map.ptr[i];
                     if (o.key.type != msgpack::type::STR)
                         continue;
+                    auto key = o.key.as<std::string>();
                     ServiceDiscoveredCallback cb;
                     {
                         std::lock_guard<std::mutex> lck(dmtx_);
                         if (drunning_) {
-                            auto callback = callbackmap_.find(o.key.as<std::string_view>());
+                            auto callback = callbackmap_.find(key);
                             if (callback != callbackmap_.end())
                                 cb = callback->second;
                         } else

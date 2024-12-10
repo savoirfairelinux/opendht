@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -71,7 +71,7 @@ DhtProxyTester::tearDown() {
         cv.notify_all();
     });
     std::unique_lock<std::mutex> lk(cv_m);
-    CPPUNIT_ASSERT(cv.wait_for(lk, 15s, [&]{ return done; }));
+    CPPUNIT_ASSERT(cv.wait_for(lk, 5s, [&]{ return done; }));
     serverProxy.reset();
     nodeProxy.reset();
 }
@@ -287,49 +287,6 @@ DhtProxyTester::testFuzzy()
     // Assert
     for (const auto &value: values)
         CPPUNIT_ASSERT(value->data == mtu);
-}
-
-void
-DhtProxyTester::testShutdownStop()
-{
-    constexpr size_t N = 40000;
-    constexpr unsigned C = 100;
-
-    // Arrange
-    auto key = dht::InfoHash::get("testShutdownStop");
-    std::vector<std::shared_ptr<dht::Value>> values;
-    std::vector<uint8_t> mtu;
-    mtu.reserve(N);
-    for (size_t i = 0; i < N; i++)
-        mtu.emplace_back((i % 2) ? 'T' : 'M');
-
-    std::atomic_uint callback_count {0};
-
-    // Act
-    for (size_t i = 0; i < C; i++) {
-        auto nodeTest = std::make_shared<dht::DhtRunner>();
-        nodeTest->run(0, clientConfig);
-        nodeTest->put(key, dht::Value(mtu), [&](bool ok) {
-            callback_count++;
-        });
-        nodeTest->get(key, [&](const std::vector<std::shared_ptr<dht::Value>>& vals){
-            values.insert(values.end(), vals.begin(), vals.end());
-            return true;
-        },[&](bool ok){
-            callback_count++;
-        });
-        bool done = false;
-        std::condition_variable cv;
-        std::mutex cv_m;
-        nodeTest->shutdown([&]{
-            std::lock_guard<std::mutex> lk(cv_m);
-            done = true;
-            cv.notify_all();
-        }, true);
-        std::unique_lock<std::mutex> lk(cv_m);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 10s, [&]{ return done; }));
-    }
-    CPPUNIT_ASSERT_EQUAL(2*C, callback_count.load());
 }
 
 }  // namespace test

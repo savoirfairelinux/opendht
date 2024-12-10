@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *          Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
@@ -32,7 +32,6 @@ class CryptoTester : public CppUnit::TestFixture {
     CPPUNIT_TEST(testCertificateRevocation);
     CPPUNIT_TEST(testCertificateRequest);
     CPPUNIT_TEST(testCertificateSerialNumber);
-    CPPUNIT_TEST(testOcsp);
     CPPUNIT_TEST_SUITE_END();
 
  public:
@@ -60,10 +59,6 @@ class CryptoTester : public CppUnit::TestFixture {
      * Test certificate serial number extraction
      */
     void testCertificateSerialNumber();
-    /**
-     * Test OCSP
-     */
-    void testOcsp();
 };
 
 }  // namespace test

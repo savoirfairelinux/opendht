@@ -1,16 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
-if(POLICY CMP0065)
-  cmake_policy(SET CMP0065 NEW)
-endif()
-if(POLICY CMP0069)
-  cmake_policy(SET CMP0069 NEW)
-endif()
-if(POLICY CMP0073)
-  cmake_policy(SET CMP0073 NEW)
-endif()
-if(POLICY CMP0074)
-  cmake_policy(SET CMP0074 NEW)
-endif()
+cmake_minimum_required (VERSION 3.1)
 project (opendht)
 
 include(CMakePackageConfigHelpers)
@@ -19,7 +7,7 @@ include(FindPkgConfig)
 include(cmake/CheckAtomic.cmake)
 
 set (opendht_VERSION_MAJOR 2)
-set (opendht_VERSION_MINOR 4.3)
+set (opendht_VERSION_MINOR 1.9)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -32,12 +20,15 @@ option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_SYSTEMD "Install systemd module" OFF)
 option (OPENDHT_SYSTEMD_UNIT_FILE_LOCATION "Where to install systemd unit file")
+option (OPENDHT_ARGON2 "Use included argon2 sources" OFF)
+option (OPENDHT_LTO "Build with LTO" OFF)
 option (OPENDHT_SANITIZE "Build with address sanitizer and stack protector" OFF)
 option (OPENDHT_PROXY_SERVER "Enable DHT proxy server, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PUSH_NOTIFICATIONS "Enable push notifications support" OFF)
 option (OPENDHT_PROXY_SERVER_IDENTITY "Allow clients to use the node identity" OFF)
 option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp" OFF)
 option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
+option (OPENDHT_PROXY_HTTP_PARSER_FORK "Build DHT proxy with custom http_parser to support old API" OFF)
 CMAKE_DEPENDENT_OPTION(OPENDHT_HTTP "Build embedded http(s) client" OFF "NOT OPENDHT_PROXY_SERVER;NOT OPENDHT_PROXY_CLIENT" ON)
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
@@ -49,22 +40,28 @@ find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
 
 # Dependencies
-if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB)
-    link_libraries (atomic)
-endif ()
-
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 if (NOT MSVC)
     set (THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package (Threads)
     find_package (PkgConfig REQUIRED)
     find_package (GnuTLS 3.3 REQUIRED)
-    pkg_search_module (Nettle REQUIRED nettle)
-    find_package (msgpack REQUIRED)
+    pkg_search_module (Nettle nettle)
+    find_package (Msgpack 1.2 REQUIRED)
     if (OPENDHT_TOOLS)
         find_package (Readline 6 REQUIRED)
     endif ()
-    pkg_search_module(argon2 REQUIRED libargon2)
+    if (NOT OPENDHT_ARGON2)
+        pkg_search_module(argon2 libargon2)
+        if (argon2_FOUND)
+            message("-- Found Argon2: " ${argon2_LIBRARY_DIRS} " (found version \"" ${argon2_VERSION} "\")")
+            link_directories (${argon2_LIBRARY_DIRS})
+        else ()
+            message("Argon2 not found, using included version.")
+            set(OPENDHT_ARGON2 ON)
+        endif()
+    endif ()
+
     pkg_search_module(Jsoncpp jsoncpp)
     if (Jsoncpp_FOUND)
         add_definitions(-DOPENDHT_JSONCPP)
@@ -74,11 +71,8 @@ if (NOT MSVC)
         )
     endif()
 
-    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
-    endif ()
-
     if (OPENDHT_HTTP)
+        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
         find_package(Restinio REQUIRED)
         find_library(FMT_LIBRARY fmt)
         add_library(fmt SHARED IMPORTED)
@@ -97,6 +91,9 @@ if (NOT MSVC)
             else ()
                 message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
             endif()
+        endif()
+        if (OPENDHT_PROXY_HTTP_PARSER_FORK)
+            add_definitions(-DOPENDHT_PROXY_HTTP_PARSER_FORK)
         endif()
     else ()
         set(OPENDHT_PROXY_OPENSSL OFF)
@@ -128,7 +125,7 @@ if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
 endif()
 
 # Build flags
-set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 
 if (NOT MSVC)
@@ -146,7 +143,7 @@ else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DISABLE_MSC_WARNINGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 endif ()
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -157,6 +154,15 @@ if (OPENDHT_LOG)
 else ()
     add_definitions(-DOPENDHT_LOG=false)
 endif()
+if (OPENDHT_LTO AND NOT MSVC)
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto")
+    if (CMAKE_COMPILER_IS_GNUCC)
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fuse-linker-plugin")
+        set (CMAKE_AR        "gcc-ar")
+        set (CMAKE_NM        "gcc-nm")
+        set (CMAKE_RANLIB    "gcc-ranlib")
+    endif ()
+endif ()
 
 if (MSGPACK_INCLUDE_DIRS)
     include_directories (SYSTEM "${MSGPACK_INCLUDE_DIRS}")
@@ -178,7 +184,6 @@ if (Jsoncpp_INCLUDE_DIRS)
 endif ()
 link_directories (${Nettle_LIBRARY_DIRS})
 link_directories (${Jsoncpp_LIBRARY_DIRS})
-link_directories (${argon2_LIBRARY_DIRS})
 include_directories (
     ./
     include/
@@ -306,6 +311,23 @@ if (OPENDHT_HTTP)
   )
 endif ()
 
+if(OPENDHT_ARGON2)
+    # make sure argon2 submodule is up to date and initialized
+    message("Initializing Argon2 submodule")
+    execute_process(COMMAND git submodule update --init)
+
+    # add local argon2 files to build
+    list (APPEND opendht_SOURCES
+        argon2/src/argon2.c
+        argon2/src/core.c
+        argon2/src/blake2/blake2b.c
+        argon2/src/thread.c
+        argon2/src/ref.c
+        argon2/src/encoding.c
+    )
+    include_directories(argon2/include/)
+endif()
+
 if (MSVC)
     list (APPEND opendht_HEADERS src/compat/msvc/unistd.h)
 endif ()
@@ -318,7 +340,11 @@ if (OPENDHT_STATIC)
             ${opendht_HEADERS}
         )
         set_target_properties (opendht-static PROPERTIES OUTPUT_NAME "opendht")
-        target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+        if (OPENDHT_ARGON2)
+            target_include_directories(opendht-static SYSTEM PRIVATE argon2)
+        else ()
+            target_include_directories(opendht-static SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+        endif ()
         target_link_libraries(opendht-static
             PRIVATE  ${argon2_LIBRARIES}
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${GNUTLS_LIBRARIES} ${Nettle_STATIC_LIBRARIES}
@@ -383,43 +409,40 @@ if (OPENDHT_SHARED)
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
-    target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+    if (OPENDHT_ARGON2)
+        target_include_directories(opendht SYSTEM PRIVATE argon2)
+    else ()
+        target_link_libraries(opendht PRIVATE ${argon2_LIBRARIES})
+        target_include_directories(opendht SYSTEM PRIVATE ${argon2_INCLUDE_DIRS})
+    endif ()
     if (APPLE)
         target_link_libraries(opendht
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
             PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                     ${Jsoncpp_LIBRARIES}
-                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES}
+                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY}
             SYSTEM "-framework CoreFoundation" "-framework Security")
     else ()
         target_link_libraries(opendht
             PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${OPENSSL_LIBRARIES}
             PRIVATE ${GNUTLS_LIBRARIES} ${Nettle_LIBRARIES}
                     ${Jsoncpp_LIBRARIES}
-                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY} ${argon2_LIBRARIES})
+                    ${FMT_LIBRARY} ${HTTP_PARSER_LIBRARY})
     endif ()
 
     install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 endif ()
 
 if (OPENDHT_C)
+    add_library (opendht-c SHARED
+        c/opendht.cpp
+        c/opendht_c.h
+    )
+    target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
     if (OPENDHT_SHARED)
-        add_library (opendht-c SHARED
-            c/opendht.cpp
-            c/opendht_c.h
-        )
-        target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
-        target_link_libraries(opendht-c PRIVATE opendht)
-        install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
-    endif ()
-
-    if (OPENDHT_STATIC)
-        add_library (opendht-c-static STATIC
-            c/opendht.cpp
-            c/opendht_c.h
-        )
-        target_link_libraries(opendht-c-static PRIVATE opendht-static)
-        install (TARGETS opendht-c-static DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c-static)
+        target_link_libraries(opendht-c opendht)
+    else ()
+        target_link_libraries(opendht-c opendht-static)
     endif ()
 
     # PkgConfig module
@@ -428,8 +451,8 @@ if (OPENDHT_C)
         opendht-c.pc
         @ONLY
     )
+    install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
     install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht-c.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-    install (FILES c/opendht_c.h DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opendht)
 endif ()
 
 if (OPENDHT_TOOLS)

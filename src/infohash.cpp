@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -22,8 +22,6 @@
 #include <sstream>
 #include <cstdio>
 
-using namespace std::literals;
-
 namespace dht {
 
 const HexMap hex_map = {};
@@ -35,9 +33,9 @@ NodeExport::msgpack_unpack(msgpack::object o)
         throw msgpack::type_error();
     if (o.via.map.size < 2)
         throw msgpack::type_error();
-    if (o.via.map.ptr[0].key.as<std::string_view>() != "id"sv)
+    if (o.via.map.ptr[0].key.as<std::string>() != "id")
         throw msgpack::type_error();
-    if (o.via.map.ptr[1].key.as<std::string_view>() != "addr"sv)
+    if (o.via.map.ptr[1].key.as<std::string>() != "addr")
         throw msgpack::type_error();
     const auto& addr = o.via.map.ptr[1].val;
     if (addr.type != msgpack::type::BIN)

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -66,10 +66,8 @@ private:
 
 public:
     virtual void unpackValue(const Value& v) override {
-        if (v.owner) {
-            owner = v.owner;
+        if (v.owner)
             from = v.owner->getId();
-        }
         BaseClass::unpackValue(v);
     }
 
@@ -77,7 +75,6 @@ public:
         return [](const Value& v){ return v.isSigned(); };
     }
 
-    Sp<crypto::PublicKey> owner;
     dht::InfoHash from;
 };
 
@@ -147,18 +144,17 @@ public:
     static const ValueType TYPE;
 
     TrustRequest() {}
-    TrustRequest(std::string s, std::string ci = {}) : service(s), conversationId(ci) {}
-    TrustRequest(std::string s, std::string ci, const Blob& d) : service(s), conversationId(ci), payload(d) {}
+    TrustRequest(std::string s) : service(s) {}
+    TrustRequest(std::string s, const Blob& d) : service(s), payload(d) {}
 
     static Value::Filter getFilter() {
         return EncryptedValue::getFilter();
     }
 
     std::string service;
-    std::string conversationId;
     Blob payload;
     bool confirm {false};
-    MSGPACK_DEFINE_MAP(service, conversationId, payload, confirm)
+    MSGPACK_DEFINE_MAP(service, payload, confirm)
 };
 
 class OPENDHT_PUBLIC IceCandidates : public EncryptedValue<IceCandidates>

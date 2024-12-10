@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author: Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -561,63 +561,12 @@ void
 Connection::async_connect(std::vector<asio::ip::tcp::endpoint>&& endpoints, ConnectHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!ssl_socket_ && !socket_) {
-        cb(asio::error::operation_aborted, {});
-        return;
-    }
-    auto& base = ssl_socket_? ssl_socket_->lowest_layer() : *socket_;
-
-    ConnectHandlerCb wcb = [&base, cb=std::move(cb)](const asio::error_code& ec, const asio::ip::tcp::endpoint& endpoint) {
-        if (!ec) {
-            auto socket = base.native_handle();
-            // Once connected, set a keep alive on the TCP socket with 30 seconds delay
-            // This will generate broken pipes as soon as possible.
-            // Note this needs to be done once connected to have a valid native_handle()
-            uint32_t start = 30;
-            uint32_t interval = 30;
-            uint32_t cnt = 1;
-#ifdef _WIN32
-            std::string val = "1";
-            setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, val.c_str(), sizeof(val));
-
-            // TCP_KEEPIDLE and TCP_KEEPINTVL are available since Win 10 version 1709
-            // TCP_KEEPCNT since Win 10 version 1703
-#ifdef TCP_KEEPIDLE
-            std::string start_str = std::to_string(start);
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPIDLE,
-                    start_str.c_str(), sizeof(start_str));
-#endif
-#ifdef TCP_KEEPINTVL
-            std::string interval_str = std::to_string(interval);
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPINTVL,
-                    interval_str.c_str(), sizeof(interval_str));
-#endif
-#ifdef TCP_KEEPCNT
-            std::string cnt_str = std::to_string(cnt);
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPCNT,
-                    cnt_str.c_str(), sizeof(cnt_str));
-#endif
-#else
-            uint32_t val = 1;
-            setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(uint32_t));
-#ifdef __APPLE__
-            // Apple devices only have one parameter
-            setsockopt(socket, IPPROTO_TCP, TCP_KEEPALIVE, &start, sizeof(uint32_t));
-#else
-            // Linux based systems
-            setsockopt(socket, SOL_TCP, TCP_KEEPIDLE, &start, sizeof(uint32_t));
-            setsockopt(socket, SOL_TCP, TCP_KEEPINTVL, &interval, sizeof(uint32_t));
-            setsockopt(socket, SOL_TCP, TCP_KEEPCNT, &cnt, sizeof(uint32_t));
-#endif
-#endif
-        }
-        if (cb)
-            cb(ec, endpoint);
-    };
     if (ssl_socket_)
-        asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), wrapCallabck(std::move(wcb)));
-    else
-        asio::async_connect(*socket_, std::move(endpoints), wrapCallabck(std::move(wcb)));
+        asio::async_connect(ssl_socket_->lowest_layer(), std::move(endpoints), wrapCallabck(std::move(cb)));
+    else if (socket_)
+        asio::async_connect(*socket_, std::move(endpoints), wrapCallabck(std::move(cb)));
+    else if (cb)
+        cb(asio::error::operation_aborted, {});
 }
 
 void
@@ -1305,11 +1254,9 @@ Request::terminate(const asio::error_code& ec)
         return;
 
     response_.aborted = ec == asio::error::operation_aborted;
-    if (ec == asio::error::basic_errors::broken_pipe)
-        response_.status_code = 0U; // Avoid to give a successful answer (happen with a broken pipe, takes the last status)
 
     if (logger_) {
-        if (ec and ec != asio::error::eof and !response_.aborted)
+        if (ec and ec != asio::error::eof and ec != asio::error::operation_aborted)
             logger_->e("[http:request:%i] end with error: %s", id_, ec.message().c_str());
         else
             logger_->d("[http:request:%i] done with status code %u", id_, response_.status_code);
@@ -1468,7 +1415,7 @@ Request::await()
     std::unique_lock<std::mutex> lock(mtx);
     std::condition_variable cv;
     bool ok {false};
-    add_on_done_callback([&](const Response&){
+    add_on_done_callback([&](const Response& resp){
         std::lock_guard<std::mutex> lk(mtx);
         ok = true;
         cv.notify_all();

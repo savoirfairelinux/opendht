@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
@@ -146,7 +146,6 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
             node->getNodeInfo([&](const std::shared_ptr<dht::NodeInfo>& nodeInfo) {
                 print_node_info(*nodeInfo);
                 std::cout << nodeInfo->ongoing_ops << " ongoing operations" << std::endl;
-                std::cout << "Storage has " << nodeInfo->storage_values <<  " values, using " << (nodeInfo->storage_size/1024) << " KB" << std::endl;
                 std::cout << "IPv4 stats:" << std::endl;
                 std::cout << nodeInfo->ipv4.toString() << std::endl;
                 std::cout << "IPv6 stats:" << std::endl;
@@ -157,7 +156,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                     if (auto stats = proxy.second->stats())
                         std::cout << "  " << stats->toString() << std::endl;
                     else
-                        std::cout << "  (stats not available yet)" << std::endl;
+                        std::cout << "  (stats not available yet)" << std::endl;                
                 }
 #endif
             });
@@ -328,17 +327,15 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         if (op == "g") {
             std::string rem;
             std::getline(iss, rem);
-            auto total = std::make_shared<size_t>();
-            node->get(id, [start, total](const std::vector<std::shared_ptr<Value>>& values) {
+            node->get(id, [start](const std::vector<std::shared_ptr<Value>>& values) {
                 auto now = std::chrono::high_resolution_clock::now();
-                (*total) += values.size();
-                std::cout << "Get: found " << values.size() << " value(s) after " << print_duration(now-start) << " (total " << *total << ')' << std::endl;
+                std::cout << "Get: found " << values.size() << " value(s) after " << print_duration(now-start) << std::endl;
                 for (const auto& value : values)
                     std::cout << "\t" << *value << std::endl;
                 return true;
-            }, [start, total](bool ok) {
+            }, [start](bool ok) {
                 auto end = std::chrono::high_resolution_clock::now();
-                std::cout << "Get: " << (ok ? "completed" : "failure") << ", took " << print_duration(end-start) << " (total " << *total << ')' << std::endl;
+                std::cout << "Get: " << (ok ? "completed" : "failure") << ", took " << print_duration(end-start) << std::endl;
             }, {}, dht::Where {rem});
         }
         else if (op == "q") {
@@ -359,13 +356,8 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
         else if (op == "l") {
             std::string rem;
             std::getline(iss, rem);
-            auto total = std::make_shared<size_t>();
-            auto token = node->listen(id, [total](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
-                if (expired)
-                    (*total) -= values.size();
-                else
-                    (*total) += values.size();
-                std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << " (total " << *total << ')' << std::endl;
+            auto token = node->listen(id, [](const std::vector<std::shared_ptr<Value>>& values, bool expired) {
+                std::cout << "Listen: found " << values.size() << " values" << (expired ? " expired" : "") << std::endl;
                 for (const auto& value : values)
                     std::cout << "\t" << *value << std::endl;
                 return true;
@@ -475,7 +467,7 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
                                   << "   hash: " << p.hash() << std::endl;
                         std::cout << "   entries:" << std::endl;
                         for (const auto& v : vals)
-                             std::cout << "      " << v->first.toString() << "[vid: " << std::hex << v->second << std::dec << "]" << std::endl;
+                             std::cout << "      " << v->first.toString() << "[vid: " << v->second << "]" << std::endl;
                     },
                     [start](bool ok) {
                         auto end = std::chrono::high_resolution_clock::now();

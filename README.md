@@ -4,7 +4,7 @@
     <a id="user-content-opendht-" class="anchor" href="/savoirfairelinux/opendht/blob/master/README.md#opendht-" aria-hidden="true"></a>OpenDHT
 </h1>
 
-A lightweight C++17 Distributed Hash Table implementation.
+A lightweight C++14 Distributed Hash Table implementation.
 
 OpenDHT provides an easy to use distributed in-memory data store.
 Every node in the network can read and write values to the store.
@@ -14,7 +14,7 @@ Values are distributed over the network, with redundancy.
  * High resilience to network disruption
  * Public key cryptography layer providing optional data signature and encryption (using GnuTLS)
  * IPv4 and IPv6 support
- * Clean and powerful **C++17** map API
+ * Clean and powerful **C++14** map API
  * Bindings for **C, Rust & Python 3**
  * REST API with optional HTTP client+server with push notification support
 
@@ -27,7 +27,7 @@ Build instructions: <https://github.com/savoirfairelinux/opendht/wiki/Build-the-
 
 #### How-to build a simple client app
 ```bash
-g++ main.cpp -std=c++17 -lopendht
+g++ main.cpp -std=c++14 -lopendht
 ```
 
 ## Examples
@@ -98,15 +98,15 @@ for r in results:
 - Nettle 2.4+, a GnuTLS dependency for crypto.
 - (optional) restinio used for the REST API.
 - (optional) jsoncpp 1.7.4-3+, used for the REST API.
-- Build tested with GCC 7+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
-- Build tested with Microsoft Visual Studio 2017, 2019, 2022
+- Build tested with GCC 5.2+ (GNU/Linux, Windows with MinGW), Clang/LLVM (GNU/Linux, Android, macOS, iOS).
+- Build tested with Microsoft Visual Studio 2015, 2017, 2019
 
 ## Contact
 
-IRC: join us on Libera.chat at [`#opendht`](https://web.libera.chat/#opendht).
+IRC: join us on Freenode at [`#opendht`](https://webchat.freenode.net/?channels=%23opendht).
 
 ## License
-Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+Copyright (C) 2014-2020 Savoir-faire Linux Inc.
 
 OpenDHT is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version.
 

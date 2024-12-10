@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2022 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2020 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -163,7 +163,7 @@ Value::msgpack_unpack_body(const msgpack::object& o)
                 throw msgpack::type_error();
             crypto::PublicKey new_owner;
             new_owner.msgpack_unpack(*rowner);
-            owner = std::make_shared<crypto::PublicKey>(std::move(new_owner));
+            owner = std::make_shared<const crypto::PublicKey>(std::move(new_owner));
             if (auto rrecipient = findMapValue(*rbody, VALUE_KEY_TO)) {
                 recipient = rrecipient->as<InfoHash>();
             }
@@ -193,7 +193,7 @@ Value::Value(const Json::Value& json)
     if (jowner.isString()) {
         auto ownerStr = jowner.asString();
         auto ownerBlob = std::vector<unsigned char>(ownerStr.begin(), ownerStr.end());
-        owner = std::make_shared<crypto::PublicKey>(ownerBlob);
+        owner = std::make_shared<const crypto::PublicKey>(ownerBlob);
     }
     const auto& jto = json[VALUE_KEY_TO];
     if (jto.isString())
@@ -406,8 +406,8 @@ void trim_str(std::string& str) {
     str = str.substr(first, last - first + 1);
 }
 
-Select::Select(std::string_view q_str) {
-    std::istringstream q_iss {std::string(q_str)};
+Select::Select(const std::string& q_str) {
+    std::istringstream q_iss {q_str};
     std::string token {};
     q_iss >> token;
 
@@ -431,8 +431,8 @@ Select::Select(std::string_view q_str) {
     }
 }
 
-Where::Where(std::string_view q_str) {
-    std::istringstream q_iss {std::string(q_str)};
+Where::Where(const std::string& q_str) {
+    std::istringstream q_iss {q_str};
     std::string token {};
     q_iss >> token;
     if (token == "WHERE" or token == "where") {
@@ -482,13 +482,13 @@ Query::msgpack_unpack(const msgpack::object& o)
 	if (o.type != msgpack::type::MAP)
 		throw msgpack::type_error();
 
-	auto rfilters = findMapValue(o, "w"sv); /* unpacking filters */
+	auto rfilters = findMapValue(o, "w"); /* unpacking filters */
 	if (rfilters)
         where.msgpack_unpack(*rfilters);
 	else
 		throw msgpack::type_error();
 
-	auto rfield_selector = findMapValue(o, "s"sv); /* unpacking field selectors */
+	auto rfield_selector = findMapValue(o, "s"); /* unpacking field selectors */
 	if (rfield_selector)
         select.msgpack_unpack(*rfield_selector);
 	else
@@ -496,10 +496,10 @@ Query::msgpack_unpack(const msgpack::object& o)
 }
 
 template <typename T>
-bool subset(const std::vector<T>& fds, const std::vector<T>& qfds)
+bool subset(std::vector<T> fds, std::vector<T> qfds)
 {
-    for (const auto& fd : fds) {
-        if (std::find_if(qfds.begin(), qfds.end(), [&fd](const T& _vfd) { return fd == _vfd; }) == qfds.end())
+    for (auto& fd : fds) {
+        if (std::find_if(qfds.begin(), qfds.end(), [&fd](T& _vfd) { return fd == _vfd; }) == qfds.end())
             return false;
     }
     return true;
