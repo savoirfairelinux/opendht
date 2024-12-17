@@ -89,6 +89,9 @@ struct Node {
     bool isRemovable(const time_point& now) const {
         return isExpired() and isOld(now);
     }
+    bool isUpgradeable(const time_point& now) const {
+        return time + NODE_UPDATE_TIME < now;
+    }
 
     NodeExport exportNode() const {
         NodeExport ne;
@@ -150,6 +153,9 @@ struct Node {
 
     /* The time after which we consider a node to be expirable. */
     static constexpr const std::chrono::minutes NODE_EXPIRE_TIME {10};
+
+    /* The time after which we consider a node to be upgradeable. */
+    static constexpr const std::chrono::minutes NODE_UPDATE_TIME {1};
 
     /* Time for a request to timeout */
     static constexpr const std::chrono::seconds MAX_RESPONSE_TIME {1};
