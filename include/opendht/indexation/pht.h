@@ -409,7 +409,7 @@ private:
 
         /**
          * This mutlimap contains all prefix insert in the tree in time order
-         * We could then delete the last one if there is too many nodes
+         * We could then delete the last one if there are too many nodes
          * The tree will self destroy is branch ( thanks to share_ptr )
          */
         std::multimap<time_point, std::shared_ptr<Node>> leaves_;
