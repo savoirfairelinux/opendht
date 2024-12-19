@@ -13,7 +13,7 @@ jobs:
         sudo apt update && \
         sudo apt install libncurses5-dev libreadline-dev nettle-dev libasio-dev \
         libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev \
-        autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-0-dev
+        autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev
     - name: Cython
       run: sudo pip3 install Cython
     - name: llhttp
@@ -56,7 +56,7 @@ jobs:
         sudo apt update && \
         sudo apt install ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev \
         libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip \
-        libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-0-dev
+        libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev
     - name: Python dependencies
       run: sudo pip3 install meson Cython
     - name: Configure
@@ -73,7 +73,7 @@ jobs:
       run: |
         sudo apt update && \
         sudo apt install libncurses5-dev libreadline-dev nettle-dev libfmt-dev \
-        libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-0-dev
+        libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-dev
     - name: Configure
       run: |
         mkdir build && cd build
