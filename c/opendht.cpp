@@ -349,6 +349,7 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
         config.peer_discovery   = conf->peer_discovery;
         config.peer_publish     = conf->peer_publish;
         config.server_ca        = *reinterpret_cast<const CertSp*>(conf->server_ca);
+        config.client_identity  = dht_identity_from_c(&conf->client_identity);
 
         dht::DhtRunner::Context context;
         if (conf->log) {
