@@ -325,12 +325,13 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
     auto runner = reinterpret_cast<dht::DhtRunner*>(r);
     try {
         dht::DhtRunner::Config config;
-        config.dht_config.node_config.is_bootstrap = conf->dht_config.node_config.is_bootstrap;
+        config.dht_config.node_config.is_bootstrap     = conf->dht_config.node_config.is_bootstrap;
         config.dht_config.node_config.maintain_storage = conf->dht_config.node_config.maintain_storage;
-        config.dht_config.node_config.node_id = *reinterpret_cast<const dht::InfoHash*>(&conf->dht_config.node_config.node_id);
-        config.dht_config.node_config.network = conf->dht_config.node_config.network;
-        config.dht_config.node_config.persist_path = conf->dht_config.node_config.persist_path
-            ? std::string(conf->dht_config.node_config.persist_path) : std::string{};
+        config.dht_config.node_config.node_id          = *reinterpret_cast<const dht::InfoHash*>(&conf->dht_config.node_config.node_id);
+        config.dht_config.node_config.network          = conf->dht_config.node_config.network;
+        config.dht_config.node_config.persist_path     = conf->dht_config.node_config.persist_path
+                                                             ? std::string(conf->dht_config.node_config.persist_path)
+                                                             : std::string{};
 
         if (conf->dht_config.id.privatekey)
             config.dht_config.id.first = *reinterpret_cast<const PrivkeySp*>(conf->dht_config.id.privatekey);
@@ -338,15 +339,16 @@ int dht_runner_run_config(dht_runner* r, in_port_t port, const dht_runner_config
         if (conf->dht_config.id.certificate)
             config.dht_config.id.second = *reinterpret_cast<const CertSp*>(conf->dht_config.id.certificate);
 
-        config.threaded = conf->threaded;
-        config.proxy_server = conf->proxy_server ? std::string(conf->proxy_server) : std::string{};
-        config.push_node_id = conf->push_node_id ? std::string(conf->push_node_id) : std::string{};
-        config.push_token = conf->push_token ? std::string(conf->push_token) : std::string{};
-        config.push_topic = conf->push_topic ? std::string(conf->push_topic) : std::string{};
-        config.push_platform = conf->push_platform ? std::string(conf->push_platform) : std::string{};
+        config.threaded         = conf->threaded;
+        config.proxy_server     = conf->proxy_server ? std::string(conf->proxy_server) : std::string{};
+        config.push_node_id     = conf->push_node_id ? std::string(conf->push_node_id) : std::string{};
+        config.push_token       = conf->push_token ? std::string(conf->push_token) : std::string{};
+        config.push_topic       = conf->push_topic ? std::string(conf->push_topic) : std::string{};
+        config.push_platform    = conf->push_platform ? std::string(conf->push_platform) : std::string{};
         config.proxy_user_agent = conf->proxy_user_agent ? std::string(conf->proxy_user_agent) : std::string{};
-        config.peer_discovery = conf->peer_discovery;
-        config.peer_publish = conf->peer_publish;
+        config.peer_discovery   = conf->peer_discovery;
+        config.peer_publish     = conf->peer_publish;
+        config.server_ca        = *reinterpret_cast<const CertSp*>(conf->server_ca);
 
         dht::DhtRunner::Context context;
         if (conf->log) {
