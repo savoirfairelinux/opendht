@@ -132,8 +132,12 @@ void dht_value_set_user_type(dht_value* data, const char* user_type) {
     (*reinterpret_cast<ValueSp*>(data))->user_type = user_type;
 }
 
+dht_value* dht_value_with_id_new(const uint8_t* data, size_t size, uint64_t value_id) {
+    return reinterpret_cast<dht_value*>(new ValueSp(std::make_shared<dht::Value>(dht::ValueType::USER_DATA.id, data, size, value_id)));
+}
+
 dht_value* dht_value_new(const uint8_t* data, size_t size) {
-    return reinterpret_cast<dht_value*>(new ValueSp(std::make_shared<dht::Value>(data, size)));
+    return dht_value_with_id_new(data, size, 0);
 }
 
 dht_value* dht_value_new_from_string(const char* str) {
