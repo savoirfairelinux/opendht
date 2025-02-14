@@ -1,5 +1,13 @@
 name: C/C++ CI
 
+env:
+  LLHTTP_VERSION: "v9.2.0"
+  RESTINIO_VERSION: "0.7.3"
+  EXPECTED_LITE_URL: "https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp"
+  UBUNTU_FULL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev"
+  UBUNTU_MESON_DEPS: "ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
+  UBUNTU_MINIMAL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libfmt-dev libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-dev"
+
 on: [push, pull_request]
 
 jobs:
@@ -7,122 +15,142 @@ jobs:
     name: Ubuntu/GCC Autotools build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Dependencies
-      run: |
-        sudo apt update && \
-        sudo apt install libncurses5-dev libreadline-dev nettle-dev libasio-dev \
-        libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev \
-        autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev
-    - name: Cython
-      run: sudo pip3 install Cython
-    - name: llhttp
-      run: |
-        mkdir llhttp
-        wget https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.0.tar.gz -O llhttp.tar.gz
-        tar -xzf llhttp.tar.gz -C llhttp --strip-components=1
-        cd llhttp && cmake -DCMAKE_INSTALL_PREFIX=/usr . && make -j2 && sudo make install
-        cd ../ && rm -rf llhttp*
-    - name: expected-lite
-      run: |
-        sudo mkdir /usr/local/include/nonstd && \
-        sudo wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
-          -O /usr/local/include/nonstd/expected.hpp
-    - name: restinio
-      run: |
-        mkdir restinio && cd restinio
-        wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2
-        ls -l && tar -xjf restinio-0.7.3.tar.bz2
-        cd restinio-0.7.3/dev
-        cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
-                -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          echo "Installing Ubuntu full dependencies:"
+          sudo apt update
+          sudo apt install -y $UBUNTU_FULL_DEPS
+
+      - name: Install Cython
+        run: sudo pip3 install Cython
+
+      - name: Build llhttp dependency
+        run: |
+          mkdir llhttp
+          wget "https://github.com/nodejs/llhttp/archive/refs/tags/release/${LLHTTP_VERSION}.tar.gz" -O llhttp.tar.gz
+          tar -xzf llhttp.tar.gz -C llhttp --strip-components=1
+          cd llhttp && cmake -DCMAKE_INSTALL_PREFIX=/usr . && make -j2 && sudo make install
+          cd ../ && rm -rf llhttp*
+
+      - name: Install expected-lite header
+        run: |
+          sudo mkdir -p /usr/local/include/nonstd
+          sudo wget "${EXPECTED_LITE_URL}" -O /usr/local/include/nonstd/expected.hpp
+
+      - name: Build restinio dependency
+        run: |
+          mkdir restinio && cd restinio
+          wget "https://github.com/Stiffstream/restinio/releases/download/v.${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2"
+          tar -xjf restinio-${RESTINIO_VERSION}.tar.bz2
+          cd restinio-${RESTINIO_VERSION}/dev
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+                -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+                -DRESTINIO_WITH_SOBJECTIZER=Off \
+                -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
                 -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
-        sudo make install
-        cd ../../ && rm -rf restinio*
-    - name: Configure
-      run: |
-        ./autogen.sh
-        ./configure --enable-proxy-client
-    - name: Build
-      run: make
+          sudo make install
+          cd ../../ && rm -rf restinio*
+
+      - name: Configure project
+        run: |
+          ./autogen.sh
+          ./configure --enable-proxy-client
+
+      - name: Build
+        run: make
 
   build-ubuntu-meson:
     name: Ubuntu/GCC Meson build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Dependencies
-      run: |
-        sudo apt update && \
-        sudo apt install ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev \
-        libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip \
-        libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev
-    - name: Python dependencies
-      run: sudo pip3 install meson Cython
-    - name: Configure
-      run: meson setup build .
-    - name: Build
-      run: cd build && ninja
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          echo "Installing Ubuntu meson dependencies:"
+          sudo apt update
+          sudo apt install -y $UBUNTU_MESON_DEPS
+
+      - name: Install Python dependencies
+        run: sudo pip3 install meson Cython
+
+      - name: Configure with Meson
+        run: meson setup build .
+
+      - name: Build with Ninja
+        run: cd build && ninja
 
   build-ubuntu-minimal:
     name: Ubuntu/GCC minimal build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - name: Dependencies
-      run: |
-        sudo apt update && \
-        sudo apt install libncurses5-dev libreadline-dev nettle-dev libfmt-dev \
-        libgnutls28-dev libcppunit-dev libmsgpack-dev libargon2-dev
-    - name: Configure
-      run: |
-        mkdir build && cd build
-        cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Debug \
-                 -DOPENDHT_C=Off -DBUILD_TESTING=On -DOPENDHT_PEER_DISCOVERY=Off -DOPENDHT_PYTHON=Off \
-                 -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=Off -DOPENDHT_PROXY_CLIENT=Off
-    - name: Build
-      run: cd build && make
-    - name: Unit tests
-      run: cd build && ./opendht_unit_tests
+      - uses: actions/checkout@v4
+
+      - name: Install Minimal Dependencies
+        run: |
+          echo "Installing Ubuntu minimal dependencies:"
+          sudo apt update
+          sudo apt install -y $UBUNTU_MINIMAL_DEPS
+
+      - name: Configure project with CMake
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+                   -DCMAKE_BUILD_TYPE=Debug \
+                   -DOPENDHT_C=Off -DBUILD_TESTING=On \
+                   -DOPENDHT_PEER_DISCOVERY=Off -DOPENDHT_PYTHON=Off \
+                   -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=Off -DOPENDHT_PROXY_CLIENT=Off
+
+      - name: Build
+        run: cd build && make
+
+      - name: Run Unit tests
+        run: cd build && ./opendht_unit_tests
 
   build-macos:
     name: macOS/Clang build
-    runs-on: macOS-15
+    runs-on: macos-15
     steps:
-    - uses: actions/checkout@v4
-    - name: Dependencies
-      run: |
-        brew install msgpack-cxx asio gnutls nettle readline fmt jsoncpp argon2 openssl cppunit
+      - uses: actions/checkout@v4
 
-    - name: expected-lite
-      run: |
-        sudo mkdir -p /usr/local/include/nonstd && \
-        sudo wget https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp \
-          -O /usr/local/include/nonstd/expected.hpp
+      - name: Install Homebrew Dependencies
+        run: brew install msgpack-cxx asio gnutls nettle readline fmt jsoncpp argon2 openssl cppunit
 
-    - name: restinio
-      run: |
-        mkdir restinio && cd restinio
-        wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2
-        ls -l && tar -xjf restinio-0.7.3.tar.bz2
-        cd restinio-0.7.3/dev
-        cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
-                -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+      - name: Install expected-lite header
+        run: |
+          sudo mkdir -p /usr/local/include/nonstd
+          sudo wget "${EXPECTED_LITE_URL}" -O /usr/local/include/nonstd/expected.hpp
+
+      - name: Build restinio dependency
+        run: |
+          mkdir restinio && cd restinio
+          wget "https://github.com/Stiffstream/restinio/releases/download/v.${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2"
+          tar -xjf restinio-${RESTINIO_VERSION}.tar.bz2
+          cd restinio-${RESTINIO_VERSION}/dev
+          cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
+                -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+                -DRESTINIO_WITH_SOBJECTIZER=Off \
+                -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
                 -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
-        make -j2 && sudo make install
-        cd ../../ && rm -rf restinio*
+          make -j2 && sudo make install
+          cd ../../ && rm -rf restinio*
 
-    - name: Configure
-      run: |
-        mkdir build && cd build
-        export PATH="/opt/homebrew/opt/openssl@3/bin:$PATH"
-        export LDFLAGS="-L/usr/local/opt/openssl@3/lib"
-        export CPPFLAGS="-I/usr/local/opt/openssl@3/include"
-        export PKG_CONFIG_PATH="/usr/local/opt/openssl@3/lib/pkgconfig"
-        cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Debug \
-                 -DOPENDHT_C=On -DBUILD_TESTING=On -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off \
-                 -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On -DOPENDHT_PROXY_CLIENT=On -DOPENDHT_PUSH_NOTIFICATIONS=On
+      - name: Configure project with CMake
+        run: |
+          mkdir build && cd build
+          # Set Homebrew OpenSSL paths
+          export PATH="/opt/homebrew/opt/openssl@3/bin:$PATH"
+          export LDFLAGS="-L/usr/local/opt/openssl@3/lib"
+          export CPPFLAGS="-I/usr/local/opt/openssl@3/include"
+          export PKG_CONFIG_PATH="/usr/local/opt/openssl@3/lib/pkgconfig"
+          cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local \
+                   -DCMAKE_BUILD_TYPE=Debug \
+                   -DOPENDHT_C=On -DBUILD_TESTING=On \
+                   -DOPENDHT_PEER_DISCOVERY=On -DOPENDHT_PYTHON=Off \
+                   -DOPENDHT_TOOLS=On -DOPENDHT_PROXY_SERVER=On \
+                   -DOPENDHT_PROXY_CLIENT=On -DOPENDHT_PUSH_NOTIFICATIONS=On
 
-    - name: Build
-      run: cd build && make
-
+      - name: Build
+        run: cd build && make
