@@ -1186,18 +1186,25 @@ DhtRunner::setPushNotificationPlatform(const std::string& platform) {
 #endif
 }
 
-void
-DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& data)
+std::future<PushNotificationResult>
+DhtRunner::pushNotificationReceived([[maybe_unused]] const std::map<std::string, std::string>& data)
 {
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
+    auto ret_token = std::make_shared<std::promise<PushNotificationResult>>();
+    auto future = ret_token->get_future();
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht&) {
+    pending_ops_prio.emplace([ret_token, this, data](SecureDht&) {
         if (dht_)
-            dht_->pushNotificationReceived(data);
+            ret_token->set_value(dht_->pushNotificationReceived(data));
+        else
+            ret_token->set_value(PushNotificationResult::IgnoredStopped);
     });
     cv.notify_all();
+    return future;
 #else
-    (void) data;
+    std::promise<PushNotificationResult> p {};
+    p.set_value(PushNotificationResult::IgnoredDisabled);
+    return p.get_future();
 #endif
 }
 
