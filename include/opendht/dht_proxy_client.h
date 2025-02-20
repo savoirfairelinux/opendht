@@ -216,7 +216,7 @@ public:
      * Call linked callback with a push notification
      * @param notification to process
      */
-    void pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
+    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
 
     time_point periodic(const uint8_t*, size_t, SockAddr, const time_point& now) override;
     time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {

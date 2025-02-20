@@ -262,7 +262,7 @@ public:
      * Call linked callback with a push notification
      * @param notification to process
      */
-    virtual void pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
+    virtual PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& data) = 0;
 
 protected:
     std::shared_ptr<Logger> logger_ {};

@@ -315,7 +315,9 @@ public:
 
     std::vector<SockAddr> getPublicAddress(sa_family_t family = 0) override;
 
-    void pushNotificationReceived(const std::map<std::string, std::string>&) override {}
+    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>&) override {
+        return PushNotificationResult::IgnoredDisabled;
+    }
     void resubscribe(unsigned) {}
 
 private:
