@@ -380,10 +380,11 @@ Hash<N>::to_c_str() const
 {
     alignas(std::max_align_t) thread_local std::array<char, N*2+1> buf;
     for (size_t i=0; i<N; i++) {
-        auto b = buf.data()+i*2;
+        auto b = buf.data() + i*2;
         const auto& m = hex_map[data_[i]];
         *((uint16_t*)b) = *((uint16_t*)&m);
     }
+    buf[N*2] = '\0';
     return buf.data();
 }
 
