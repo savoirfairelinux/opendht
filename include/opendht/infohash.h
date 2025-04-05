@@ -110,7 +110,7 @@ public:
     bool operator!=(const Hash& h) const { return !(*this == h); }
 
     bool operator<(const Hash& o) const {
-        for(unsigned i = 0; i < N; i++) {
+        for (unsigned i = 0; i < N; i++) {
             if(data_[i] != o.data_[i])
                 return data_[i] < o.data_[i];
         }
@@ -119,7 +119,7 @@ public:
 
     Hash operator^(const Hash& o) const {
         Hash result;
-        for(auto i = 0u; i < N; i++) {
+        for (auto i = 0u; i < N; i++) {
             result[i] = data_[i] ^ o.data_[i];
         }
         return result;
@@ -356,7 +356,7 @@ private:
     static constexpr const char* hex_digits = "0123456789abcdef";
 };
 
-OPENDHT_PUBLIC extern const HexMap hex_map;
+OPENDHT_PUBLIC constexpr HexMap hex_map = {};
 
 inline std::string
 toHex(const uint8_t* data, size_t size) {
