@@ -818,10 +818,21 @@ Resolver::add_callback(ResolverCb cb, sa_family_t family)
 }
 
 void
-Resolver::resolve(const std::string& host, const std::string& service)
+Resolver::resolve(const std::string& host, const std::string& serviceName)
 {
-    asio::ip::tcp::resolver::query query_(host, service);
-    resolver_.async_resolve(query_, [this, host, service, destroyed = destroyed_]
+    auto service = serviceName;
+    // The async_resolve function used below typically relies on the contents of the
+    // /etc/services (Linux/POSIX) or c:\windows\system32\drivers\etc\services (Windows)
+    // file in order to resolve a descriptive service name into a port number. A
+    // resolution attempt that would otherwise succeed can therefore fail if the file
+    // is inaccessible or corrupted (which is rare but can happen in practice). We
+    // hardcode the port numbers for http and https to prevent this failure mode.
+    if (service == "http") {
+        service = "80";
+    } else if (service == "https") {
+        service = "443";
+    }
+    resolver_.async_resolve(host, service, [this, host, service, destroyed = destroyed_]
         (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
     {
         if (ec == asio::error::operation_aborted or *destroyed)
