@@ -34,14 +34,29 @@
 
 #include <fmt/ranges.h>
 
-#ifndef _MSC_VER
-#include <getopt.h>
-#include <readline/readline.h>
-#include <readline/history.h>
-#else
-#define SIGHUP 0
-#include "wingetopt.h"
-#include <io.h>
+#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && !defined(__NT__)
+    #pragma message "Building on UNIX-like platform, linking system getopt"
+    #include <getopt.h>
+    #include <readline/readline.h>
+    #include <readline/history.h>
+#endif
+#ifdef _MSC_VER
+    #pragma message("Building on WIN32 platform using MSVC, linking wingetopt")
+    #define SIGHUP 0
+    #include "wingetopt.h"
+    #include <io.h>
+#endif
+#if defined(__MINGW32__) || defined (__MINGW64__)
+    #pragma message "Building on MinGW, linking system-wide getopt"
+    #define SIGHUP 0
+    #include <io.h>
+    #include <getopt.h>
+    #include <readline/readline.h>
+    #include <readline/history.h>
+#endif
+
+#if defined(_MSC_VER) || defined(__MINGW32__) || defined (__MINGW64__)
+    #define DISABLE_SIGNALS
 #endif
 
 #include <sys/types.h>
@@ -440,7 +455,7 @@ void signal_handler(int sig)
 
 void setupSignals()
 {
-#ifndef _MSC_VER
+#ifndef DISABLE_SIGNALS
     signal(SIGCHLD,SIG_IGN); /* ignore child */
     signal(SIGTSTP,SIG_IGN); /* ignore tty signals */
     signal(SIGTTOU,SIG_IGN);
@@ -453,7 +468,7 @@ void setupSignals()
 
 void daemonize()
 {
-#ifndef _MSC_VER
+#ifndef DISABLE_SIGNALS
     pid_t pid = fork();
     if (pid < 0) exit(EXIT_FAILURE);
     if (pid > 0) exit(EXIT_SUCCESS);

@@ -31,6 +31,8 @@ extern "C" {
 #include <argon2.h>
 }
 
+
+
 #include <random>
 #include <sstream>
 #include <fstream>
@@ -296,7 +298,10 @@ PrivateKey::sign(const uint8_t* data, size_t data_length) const
     if (gnutls_privkey_sign_data(key, GNUTLS_DIG_SHA512, 0, &dat, &sig) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't sign data !");
     Blob ret(sig.data, sig.data+sig.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(sig.data);
+#endif
     return ret;
 }
 
@@ -309,7 +314,10 @@ PrivateKey::decryptBloc(const uint8_t* src, size_t src_size) const
     if (err != GNUTLS_E_SUCCESS)
         throw DecryptError(std::string("Can't decrypt data: ") + gnutls_strerror(err));
     Blob ret {out.data, out.data+out.size};
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(out.data);
+#endif
     return ret;
 }
 
@@ -489,7 +497,10 @@ PublicKey::encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t
     if (encrypted.size != dst_size)
         throw CryptoException("Unexpected cypherblock size");
     std::copy_n(encrypted.data, encrypted.size, dst);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(encrypted.data);
+#endif
 }
 
 Blob
@@ -721,7 +732,10 @@ CertificateRequest::pack() const
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
         throw CryptoException(std::string("Can't export certificate request: ") + gnutls_strerror(err));
     Blob ret(dat.data, dat.data + dat.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(dat.data);
+#endif
     return ret;
 }
 
@@ -732,7 +746,10 @@ CertificateRequest::toString() const
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
         throw CryptoException(std::string("Can't export certificate request: ") + gnutls_strerror(err));
     std::string ret(dat.data, dat.data + dat.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(dat.data);
+#endif
     return ret;
 }
 
@@ -776,7 +793,11 @@ Certificate::unpack(const uint8_t* dat, size_t dat_size)
         gnutls_x509_crt_deinit(cert);
         cert = nullptr;
     }
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+	gnutls_x509_crt_t* cert_list = new gnutls_x509_crt_t[128];
+#else
     gnutls_x509_crt_t* cert_list;
+#endif
     unsigned cert_num;
     const gnutls_datum_t crt_dt {(uint8_t*)dat, (unsigned)dat_size};
     int err = gnutls_x509_crt_list_import2(&cert_list, &cert_num, &crt_dt, GNUTLS_X509_FMT_PEM, GNUTLS_X509_CRT_LIST_FAIL_IF_UNSORTED);
@@ -794,7 +815,11 @@ Certificate::unpack(const uint8_t* dat, size_t dat_size)
         crt->issuer = std::make_shared<Certificate>(cert_list[i++]);
         crt = crt->issuer.get();
     }
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+	delete[] cert_list;
+#else 
     gnutls_free(cert_list);
+#endif
 }
 
 void
@@ -988,7 +1013,10 @@ Certificate::print() const
     gnutls_datum_t out {nullptr, 0};
     gnutls_x509_crt_print(cert, GNUTLS_CRT_PRINT_FULL, &out);
     std::string ret(out.data, out.data+out.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(out.data);
+#endif
     return ret;
 }
 
@@ -1066,7 +1094,10 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     if (err != 0)
         throw CryptoException(gnutls_strerror(err));
     std::string ret((char*)rdata.data, (char*)rdata.data + rdata.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(rdata.data);
+#endif
     return std::make_pair<std::string, Blob>(std::move(ret), std::move(noncebuf));
 }
 
@@ -1353,7 +1384,10 @@ OcspRequest::toString(const bool compact) const
     std::string str;
     if (ret == 0) {
         str = std::string((const char*)dat.data, (size_t)dat.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
         gnutls_free(dat.data);
+#endif
     } else
         throw CryptoException(gnutls_strerror(ret));
     return str;
@@ -1367,7 +1401,10 @@ OcspRequest::pack() const
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     Blob ret {dat.data, dat.data + dat.size};
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(dat.data);
+#endif
     return ret;
 }
 
@@ -1380,7 +1417,10 @@ OcspRequest::getNonce() const
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     Blob ret {dat.data, dat.data + dat.size};
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(dat.data);
+#endif
     return ret;
 }
 
@@ -1412,7 +1452,10 @@ OcspResponse::pack() const
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     Blob ret {dat.data, dat.data + dat.size};
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(dat.data);
+#endif
     return ret;
 }
 
@@ -1425,7 +1468,10 @@ OcspResponse::toString(const bool compact) const
     ret = gnutls_ocsp_resp_print(response, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &dat);
     if (ret == 0)
         str = std::string((const char*)dat.data, (size_t)dat.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(dat.data);
+#endif
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
     return str;
@@ -1437,7 +1483,22 @@ OcspResponse::getCertificateStatus() const
 {
     int ret;
     unsigned int status;
+    // MSVC/vcpkg GnuTLS cast workaround
+#if _WIN32 && (GNUTLS_VERSION_NUMBER >= 0x030807)
+    ret = gnutls_ocsp_resp_get_single(response, 
+                                      0, 
+                                      NULL, 
+                                      NULL, 
+                                      NULL, 
+                                      NULL, 
+                                      reinterpret_cast<gnutls_ocsp_cert_status_t*>(& status), 
+                                      NULL, 
+                                      NULL, 
+                                      NULL, 
+                                      NULL);
+#else
     ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status, NULL, NULL, NULL, NULL);
+#endif
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
     return (gnutls_ocsp_cert_status_t) status;
@@ -1461,10 +1522,16 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
         if (ret < 0)
             throw CryptoException(gnutls_strerror(ret));
         if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
             gnutls_free(rnonce.data);
+#endif
             throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
         }
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
         gnutls_free(rnonce.data);
+#endif
     }
 
     // Verify signature of the Basic OCSP response against the public key in the issuer certificate.
@@ -1495,8 +1562,23 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
         throw CryptoException(gnutls_strerror(ret));
 
     // Check certificate revocation status
-    unsigned status_ocsp;
+    unsigned int status_ocsp;
+    // MSVC/vcpkg GnuTLS cast workaround
+#if _WIN32 && (GNUTLS_VERSION_NUMBER >= 0x030807)
+    ret = gnutls_ocsp_resp_get_single(response, 
+                                      0, 
+                                      NULL, 
+                                      NULL, 
+                                      NULL, 
+                                      NULL, 
+                                      reinterpret_cast<gnutls_ocsp_cert_status_t*>(& status_ocsp), 
+                                      NULL, 
+                                      NULL, 
+                                      NULL, 
+                                      NULL);
+#else
     ret = gnutls_ocsp_resp_get_single(response, 0, NULL, NULL, NULL, NULL, &status_ocsp, NULL, NULL, NULL, NULL);
+#endif
     if (ret < 0)
         throw CryptoException(gnutls_strerror(ret));
     return (gnutls_ocsp_cert_status_t)status_ocsp;
@@ -1537,7 +1619,10 @@ RevocationList::pack(Blob& b) const
         throw CryptoException(std::string("Can't export CRL: ") + gnutls_strerror(err));
     }
     b.insert(b.end(), gdat.data, gdat.data + gdat.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(gdat.data);
+#endif
 }
 
 void
@@ -1717,7 +1802,10 @@ RevocationList::toString() const
     gnutls_datum_t out {nullptr, 0};
     gnutls_x509_crl_print(crl, GNUTLS_CRT_PRINT_FULL, &out);
     std::string ret(out.data, out.data+out.size);
+#if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
+#else
     gnutls_free(out.data);
+#endif
     return ret;
 }
 

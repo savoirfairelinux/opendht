@@ -345,13 +345,7 @@ Hash<N>::getRandom(Rd& rdev)
 }
 
 struct alignas(std::max_align_t) HexMap : public std::array<std::array<char, 2>, 256> {
-    HexMap() {
-        for (size_t i=0; i<size(); i++) {
-            auto& e = (*this)[i];
-            e[0] = hex_digits[(i >> 4) & 0x0F];
-            e[1] = hex_digits[i & 0x0F];
-        }
-    }
+    HexMap();
 private:
     static constexpr const char* hex_digits = "0123456789abcdef";
 };

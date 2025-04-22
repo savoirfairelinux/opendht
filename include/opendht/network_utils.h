@@ -24,12 +24,19 @@
 #include "logger.h"
 
 #ifdef _WIN32
-#include <ws2tcpip.h>
-#include <winsock2.h>
+    #include <io.h>
+    #include <string>
+    #include <cstring>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #define _poll(fds, nfds, timeout) WSAPoll(fds, nfds, timeout)
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#define _poll(fds, nfds, timeout) poll(fds, nfds, timeout)
 #endif
 
 #include <functional>
@@ -59,69 +66,70 @@ struct ReceivedPacket {
 };
 using PacketList = std::list<ReceivedPacket>;
 
-class OPENDHT_PUBLIC DatagramSocket {
-public:
-    /** A function that takes a list of new received packets and
-     *  optionally returns consumed packets for recycling.
-     **/
-    using OnReceive = std::function<PacketList(PacketList&& packets)>;
-    virtual ~DatagramSocket() {};
+    class OPENDHT_PUBLIC DatagramSocket {
+    public:
+        /** A function that takes a list of new received packets and
+         *  optionally returns consumed packets for recycling.
+         **/
+        using OnReceive = std::function<PacketList(PacketList&& packets)>;
+        virtual ~DatagramSocket() {};
 
-    virtual int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) = 0;
+        virtual int sendTo(const SockAddr& dest, const uint8_t* data, size_t size, bool replied) = 0;
 
-    inline void setOnReceive(OnReceive&& cb) {
-        std::lock_guard<std::mutex> lk(lock);
-        rx_callback = std::move(cb);
-    }
-
-    virtual bool hasIPv4() const = 0;
-    virtual bool hasIPv6() const = 0;
-
-    SockAddr getBound(sa_family_t family = AF_UNSPEC) const {
-        std::lock_guard<std::mutex> lk(lock);
-        return getBoundRef(family);
-    }
-    in_port_t getPort(sa_family_t family = AF_UNSPEC) const {
-        std::lock_guard<std::mutex> lk(lock);
-        return getBoundRef(family).getPort();
-    }
-
-    virtual const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const = 0;
-
-    /** Virtual resolver mothod allows to implement custom resolver */
-    virtual std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {}) {
-        return SockAddr::resolve(host, service);
-    }
-
-    virtual void stop() = 0;
-protected:
-
-    PacketList getNewPacket() {
-        PacketList pkts;
-        if (toRecycle_.empty()) {
-            pkts.emplace_back();
-        } else {
-            auto begIt = toRecycle_.begin();
-            auto begItNext = std::next(begIt);
-            pkts.splice(pkts.end(), toRecycle_, begIt, begItNext);
+        inline void setOnReceive(OnReceive&& cb) {
+            std::lock_guard<std::mutex> lk(lock);
+            rx_callback = std::move(cb);
         }
-        return pkts;
-    }
 
-    inline void onReceived(PacketList&& packets) {
-        std::lock_guard<std::mutex> lk(lock);
-        if (rx_callback) {
-            auto r = rx_callback(std::move(packets));
-            if (not r.empty() and toRecycle_.size() < RX_QUEUE_MAX_SIZE)
-                toRecycle_.splice(toRecycle_.end(), std::move(r));
+        virtual bool hasIPv4() const = 0;
+        virtual bool hasIPv6() const = 0;
+
+        SockAddr getBound(sa_family_t family = AF_UNSPEC) const {
+            std::lock_guard<std::mutex> lk(lock);
+            return getBoundRef(family);
         }
-    }
-protected:
-    mutable std::mutex lock;
-private:
-    OnReceive rx_callback;
-    PacketList toRecycle_;
-};
+        in_port_t getPort(sa_family_t family = AF_UNSPEC) const {
+            std::lock_guard<std::mutex> lk(lock);
+            return getBoundRef(family).getPort();
+        }
+
+        virtual const SockAddr& getBoundRef(sa_family_t family = AF_UNSPEC) const = 0;
+
+        /** Virtual resolver mothod allows to implement custom resolver */
+        virtual std::vector<SockAddr> resolve(const std::string& host, const std::string& service = {}) {
+            return SockAddr::resolve(host, service);
+        }
+
+        virtual void stop() = 0;
+    protected:
+
+        PacketList getNewPacket() {
+            PacketList pkts;
+            if (toRecycle_.empty()) {
+                pkts.emplace_back();
+            }
+            else {
+                auto begIt = toRecycle_.begin();
+                auto begItNext = std::next(begIt);
+                pkts.splice(pkts.end(), toRecycle_, begIt, begItNext);
+            }
+            return pkts;
+        }
+
+        inline void onReceived(PacketList&& packets) {
+            std::lock_guard<std::mutex> lk(lock);
+            if (rx_callback) {
+                auto r = rx_callback(std::move(packets));
+                if (not r.empty() and toRecycle_.size() < RX_QUEUE_MAX_SIZE)
+                    toRecycle_.splice(toRecycle_.end(), std::move(r));
+            }
+        }
+    protected:
+        mutable std::mutex lock;
+    private:
+        OnReceive rx_callback;
+        PacketList toRecycle_;
+    };
 
 class OPENDHT_PUBLIC UdpSocket : public DatagramSocket {
 public:
