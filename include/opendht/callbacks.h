@@ -163,6 +163,20 @@ struct OPENDHT_PUBLIC SecureDhtConfig
     bool cert_cache_all {false};
 };
 
+enum class OPENDHT_PUBLIC PushNotificationResult: uint8_t {
+    /* success codes */
+    PutRefresh,
+    ListenRefresh,
+    Values,
+    ValuesExpired,
+    /* ignored/error codes */
+    IgnoredWrongSession = 0x80,
+    IgnoredNoOp,
+    IgnoredStopped,
+    IgnoredDisabled,
+    Error
+};
+
 static constexpr size_t DEFAULT_STORAGE_LIMIT {1024 * 1024 * 64};
 
 using ValuesExport = std::pair<InfoHash, Blob>;

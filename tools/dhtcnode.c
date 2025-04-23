@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <inttypes.h>
 
 #include <getopt.h>
 #include <readline/readline.h>
@@ -37,6 +38,10 @@ struct listen_context {
     dht_runner* runner;
     dht_op_token* token;
     size_t count;
+};
+struct put_context {
+    dht_runner* runner;
+    dht_value* value;
 };
 
 bool dht_value_callback(const dht_value* value, bool expired, void* user_data)
@@ -67,8 +72,10 @@ void dht_get_done_callback(bool ok, void* user_data)
 
 void dht_put_done_callback(bool ok, void* user_data)
 {
-    dht_runner* runner = (dht_runner*)user_data;
-    printf("Put completed: %s\n", ok ? "success !" : "failure :-(");
+    struct put_context* ctx = (struct put_context*)user_data;
+    printf("Put completed (id: %" PRIx64 "): %s\n", dht_value_get_id(ctx->value), ok ? "success !" : "failure :-(");
+    dht_value_unref(ctx->value);
+    free(ctx);
 }
 
 void dht_shutdown_callback(void* user_data)
@@ -261,11 +268,13 @@ int main(int argc, char **argv)
         else if (!strcmp(cmd, "p")) {
             key = parse_key(arg);
             dht_value* val = dht_value_new_from_string(value);
-            dht_runner_put(runner, &key, val, dht_put_done_callback, runner, true);
-            dht_value_unref(val);
+            struct put_context* ctx = malloc(sizeof(struct put_context));
+            ctx->runner = runner;
+            ctx->value = val;
+            dht_runner_put(runner, &key, val, dht_put_done_callback, ctx, true);
         }
         else {
-            printf("Unkown command: %s\n", cmd);
+            printf("Unknown command: %s\n", cmd);
         }
     }
 

@@ -271,6 +271,7 @@ Value::encrypt(const crypto::PrivateKey& from, const crypto::PublicKey& to)
     setRecipient(to.getId());
     sign(from);
     Value nv {id};
+    nv.priority = priority;
     nv.setCypher(to.encrypt(getToEncrypt()));
     return nv;
 }

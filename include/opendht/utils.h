@@ -21,6 +21,7 @@
 #include "def.h"
 
 #include <msgpack.hpp>
+#include <fmt/format.h>
 
 #include <chrono>
 #include <random>
@@ -65,7 +66,7 @@ void erase_if(std::map<Key, Item>& map, const Condition& condition)
  * Split "[host]:port" or "host:port" to pair<"host", "port">.
  */
 OPENDHT_PUBLIC std::pair<std::string, std::string>
-splitPort(const std::string& s);
+splitPort(std::string_view s);
 
 class OPENDHT_PUBLIC DhtException : public std::runtime_error {
 public:
@@ -89,37 +90,23 @@ using duration = clock::duration;
 time_point from_time_t(std::time_t t);
 std::time_t to_time_t(time_point t);
 
-inline std::string
-to_str(double d) {
-    char buf[16];
-    auto ret = snprintf(buf, sizeof(buf), "%.3g", d);
-    return (ret < 0) ? std::to_string(d) : std::string(buf, ret);
-}
-
-/**
- * Converts std::chrono::duration to floating-point seconds.
- */
-template <class DT>
-static double
-print_dt(DT d) {
-    return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
-}
-
 template <class DT>
 static std::string
 print_duration(DT d) {
     if (d < std::chrono::seconds(0)) {
         return "-" + print_duration(-d);
     } else if (d < std::chrono::milliseconds(1)) {
-        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count()) +  " us";
+        return fmt::format("{:.3g} us", std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(d).count());
     } else if (d < std::chrono::seconds(1)) {
-        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count()) +  " ms";
+        return fmt::format("{:.3g} ms", std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d).count());
     } else if (d < std::chrono::minutes(1)) {
-        return to_str(std::chrono::duration_cast<std::chrono::duration<double>>(d).count()) +  " s";
+        return fmt::format("{:.3g} s", std::chrono::duration_cast<std::chrono::duration<double>>(d).count());
     } else if (d < std::chrono::hours(1)) {
-        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60>>>(d).count()) +  " min";
+        return fmt::format("{:.3g} min", std::chrono::duration_cast<std::chrono::duration<double, std::ratio<60>>>(d).count());
+    } else if (d < std::chrono::hours(72)) {
+        return fmt::format("{:.3g} h", std::chrono::duration_cast<std::chrono::duration<double, std::ratio<3600>>>(d).count());
     } else {
-        return to_str(std::chrono::duration_cast<std::chrono::duration<double, std::ratio<3600>>>(d).count()) +  " h";
+        return fmt::format("{:.3g} days", std::chrono::duration_cast<std::chrono::duration<double, std::ratio<86400>>>(d).count());
     }
 }
 

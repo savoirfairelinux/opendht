@@ -26,9 +26,9 @@ RUN mkdir /usr/include/nonstd \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.2/restinio-0.7.2.tar.bz2 \
-    && ls -l && tar -xjf restinio-0.7.2.tar.bz2 \
-    && cd restinio-0.7.2/dev \
+    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2 \
+    && ls -l && tar -xjf restinio-0.7.3.tar.bz2 \
+    && cd restinio-0.7.3/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
              -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
              -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \

@@ -500,12 +500,13 @@ cdef class DhtConfig(object):
     def setRateLimit(self, ssize_t max_req_per_sec, ssize_t max_peer_req_per_sec):
         self._config.dht_config.node_config.max_req_per_sec = max_req_per_sec
         self._config.dht_config.node_config.max_peer_req_per_sec = max_peer_req_per_sec
-    def setProxyInfo(self, str proxy_server, str push_node_id="", str push_token="", str push_topic="", str push_platform="", Certificate server_ca = Certificate()):
+    def setProxyInfo(self, str proxy_server, str push_node_id="", str push_token="", str push_topic="", str push_platform="", str user_agent="", Certificate server_ca = Certificate()):
         self._config.proxy_server = proxy_server.encode()
         self._config.push_node_id = push_node_id.encode()
         self._config.push_token = push_token.encode()
         self._config.push_topic = push_topic.encode()
         self._config.push_platform = push_platform.encode()
+        self._config.proxy_user_agent = user_agent.encode()
         self._config.server_ca = server_ca._cert
     def setPeerDiscovery(self, bool peer_discovery, bool peer_publish):
         self._config.peer_discovery = peer_discovery

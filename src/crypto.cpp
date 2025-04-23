@@ -95,11 +95,27 @@ Blob aesEncrypt(const uint8_t* data, size_t data_length, const Blob& key)
         std::random_device rdev;
         std::generate_n(ret.begin(), GCM_IV_SIZE, std::bind(rand_byte, std::ref(rdev)));
     }
-    struct gcm_aes_ctx aes;
-    gcm_aes_set_key(&aes, key.size(), key.data());
-    gcm_aes_set_iv(&aes, GCM_IV_SIZE, ret.data());
-    gcm_aes_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
-    gcm_aes_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+
+    if (key.size() == AES_LENGTHS[0]) {
+        struct gcm_aes128_ctx aes;
+        gcm_aes128_set_key(&aes, key.data());
+        gcm_aes128_set_iv(&aes, GCM_IV_SIZE, ret.data());
+        gcm_aes128_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
+        gcm_aes128_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+    } else if (key.size() == AES_LENGTHS[1]) {
+        struct gcm_aes192_ctx aes;
+        gcm_aes192_set_key(&aes, key.data());
+        gcm_aes192_set_iv(&aes, GCM_IV_SIZE, ret.data());
+        gcm_aes192_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
+        gcm_aes192_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+    } else if (key.size() == AES_LENGTHS[2]) {
+        struct gcm_aes256_ctx aes;
+        gcm_aes256_set_key(&aes, key.data());
+        gcm_aes256_set_iv(&aes, GCM_IV_SIZE, ret.data());
+        gcm_aes256_encrypt(&aes, data_length, ret.data() + GCM_IV_SIZE, data);
+        gcm_aes256_digest(&aes, GCM_DIGEST_SIZE, ret.data() + GCM_IV_SIZE + data_length);
+    }
+
     return ret;
 }
 
@@ -120,14 +136,28 @@ Blob aesDecrypt(const uint8_t* data, size_t data_length, const Blob& key)
 
     std::array<uint8_t, GCM_DIGEST_SIZE> digest;
 
-    struct gcm_aes_ctx aes;
-    gcm_aes_set_key(&aes, key.size(), key.data());
-    gcm_aes_set_iv(&aes, GCM_IV_SIZE, data);
-
     size_t data_sz = data_length - GCM_IV_SIZE - GCM_DIGEST_SIZE;
     Blob ret(data_sz);
-    gcm_aes_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
-    gcm_aes_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+
+    if (key.size() == AES_LENGTHS[0]) {
+        struct gcm_aes128_ctx aes;
+        gcm_aes128_set_key(&aes, key.data());
+        gcm_aes128_set_iv(&aes, GCM_IV_SIZE, data);
+        gcm_aes128_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
+        gcm_aes128_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+    } else if (key.size() == AES_LENGTHS[1]) {
+        struct gcm_aes192_ctx aes;
+        gcm_aes192_set_key(&aes, key.data());
+        gcm_aes192_set_iv(&aes, GCM_IV_SIZE, data);
+        gcm_aes192_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
+        gcm_aes192_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+    } else if (key.size() == AES_LENGTHS[2]) {
+        struct gcm_aes256_ctx aes;
+        gcm_aes256_set_key(&aes, key.data());
+        gcm_aes256_set_iv(&aes, GCM_IV_SIZE, data);
+        gcm_aes256_decrypt(&aes, data_sz, ret.data(), data + GCM_IV_SIZE);
+        gcm_aes256_digest(&aes, GCM_DIGEST_SIZE, digest.data());
+    }
 
     if (not std::equal(digest.begin(), digest.end(), data + data_length - GCM_DIGEST_SIZE)) {
         throw DecryptError("Can't decrypt data");
@@ -229,7 +259,7 @@ PrivateKey::PrivateKey(const uint8_t* src, size_t src_size, const char* password
         throw CryptoException("Can't initialize private key !");
 
     const gnutls_datum_t dt {(uint8_t*)src, static_cast<unsigned>(src_size)};
-    int flags = password_ptr ? GNUTLS_PKCS_PLAIN
+    int flags = (password_ptr == NULL || strlen(password_ptr)==0) ? GNUTLS_PKCS_PLAIN
                 : ( GNUTLS_PKCS_PBES2_AES_128 | GNUTLS_PKCS_PBES2_AES_192  | GNUTLS_PKCS_PBES2_AES_256
                   | GNUTLS_PKCS_PKCS12_3DES   | GNUTLS_PKCS_PKCS12_ARCFOUR | GNUTLS_PKCS_PKCS12_RC2_40);
 
@@ -1165,11 +1195,17 @@ saveIdentity(const Identity& id, const std::string& path, const std::string& pri
         auto ca_key_data = id.first->serialize(privkey_password);
         std::ofstream key_file(path + ".pem");
         key_file.write((char*)ca_key_data.data(), ca_key_data.size());
+        // Throw error if the file is not written
+        if (!key_file)
+            throw CryptoException("Could not write private key file");
     }
     {
         auto ca_key_data = id.second->getPacked();
         std::ofstream crt_file(path + ".crt");
         crt_file.write((char*)ca_key_data.data(), ca_key_data.size());
+        // Throw error if the file is not written
+        if (!crt_file)
+            throw CryptoException("Could not write certificate file");
     }
 }
 
@@ -1277,12 +1313,14 @@ Certificate::generate(const PrivateKey& key, const std::string& name, const Iden
         if (not ca.second->isCA()) {
             throw CryptoException("Signing certificate must be CA");
         }
-        if (err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0)) {
+        err = gnutls_x509_crt_privkey_sign(cert, ca.second->cert, ca.first->key, pk.getPreferredDigest(), 0);
+        if (err) {
             throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
         ret.issuer = ca.second;
     } else {
-        if (err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0)) {
+        err = gnutls_x509_crt_privkey_sign(cert, cert, key.key, pk.getPreferredDigest(), 0);
+        if (err) {
             throw CryptoException(std::string("Error when signing certificate ") + gnutls_strerror(err));
         }
     }

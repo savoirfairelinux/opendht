@@ -51,23 +51,23 @@ const HexMap hex_map = {};
 static constexpr std::array<uint8_t, 12> MAPPED_IPV4_PREFIX {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}};
 
 std::pair<std::string, std::string>
-splitPort(const std::string& s) {
+splitPort(std::string_view s) {
     if (s.empty())
         return {};
     if (s[0] == '[') {
         std::size_t closure = s.find_first_of(']');
         std::size_t found = s.find_last_of(':');
-        if (closure == std::string::npos)
-            return {s, ""};
-        if (found == std::string::npos or found < closure)
-            return {s.substr(1,closure-1), ""};
-        return {s.substr(1,closure-1), s.substr(found+1)};
+        if (closure == std::string_view::npos)
+            return {std::string(s), ""};
+        if (found == std::string_view::npos or found < closure)
+            return {std::string(s.substr(1,closure-1)), ""};
+        return {std::string(s.substr(1,closure-1)), std::string(s.substr(found+1))};
     }
     std::size_t found = s.find_last_of(':');
     std::size_t first = s.find_first_of(':');
-    if (found == std::string::npos or found != first)
-        return {s, ""};
-    return {s.substr(0,found), s.substr(found+1)};
+    if (found == std::string_view::npos or found != first)
+        return {std::string(s), ""};
+    return {std::string(s.substr(0,found)), std::string(s.substr(found+1))};
 }
 
 std::vector<SockAddr>

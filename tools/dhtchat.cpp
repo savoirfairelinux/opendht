@@ -107,8 +107,8 @@ main(int argc, char **argv)
                     token = dht.listen<dht::ImMessage>(room, [&](dht::ImMessage&& msg) {
                         if (msg.from != myid)
                             std::cout << msg.from.toString() << " at " << printTime(msg.date)
-                                      << " (took " << print_dt(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
-                                      << "s) " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.id << " - " << msg.msg << std::endl;
+                                      << " (took " << print_duration(std::chrono::system_clock::now() - std::chrono::system_clock::from_time_t(msg.date))
+                                      << ") " << (msg.to == myid ? "ENCRYPTED ":"") << ": " << msg.id << " - " << msg.msg << std::endl;
                         return true;
                     });
                     connected = true;

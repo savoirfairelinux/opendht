@@ -72,7 +72,7 @@ class OPENDHT_PUBLIC Url
 {
 public:
     Url() = default;
-    Url(const std::string& url);
+    Url(std::string_view url);
     std::string url;
     std::string protocol {"http"};
     std::string host;

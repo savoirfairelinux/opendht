@@ -106,13 +106,26 @@ getRandomSessionId(size_t length = 8) {
 DhtProxyClient::DhtProxyClient() {}
 
 DhtProxyClient::DhtProxyClient(
-        std::shared_ptr<dht::crypto::Certificate> serverCA, dht::crypto::Identity clientIdentity,
-        std::function<void()> signal, const std::string& serverHost,
-        const std::string& pushClientId, std::shared_ptr<dht::Logger> logger)
+        std::shared_ptr<dht::crypto::Certificate> serverCA,
+        dht::crypto::Identity clientIdentity,
+        std::function<void()> signal,
+        const std::string& serverHost,
+        const std::string& userAgent,
+        const std::string& pushClientId,
+        const std::string& pushToken,
+        const std::string& pushTopic,
+        const std::string& pushPlatform,
+        std::shared_ptr<dht::Logger> logger
+)
     : DhtInterface(logger)
     , proxyUrl_(serverHost)
     , clientIdentity_(clientIdentity), serverCertificate_(serverCA)
-    , pushClientId_(pushClientId), pushSessionId_(getRandomSessionId())
+    , userAgent_(userAgent)
+    , pushClientId_(pushClientId)
+    , pushSessionId_(getRandomSessionId())
+    , deviceKey_(pushToken)
+    , notificationTopic_(pushTopic)
+    , platform_(pushPlatform)
     , loopSignal_(signal)
     , jsonReader_(Json::CharReaderBuilder{}.newCharReader())
 {
@@ -484,7 +497,7 @@ DhtProxyClient::buildRequest(const std::string& target)
         request->set_certificate_authority(serverCertificate_);
     if (clientIdentity_.first and clientIdentity_.second)
         request->set_identity(clientIdentity_);
-    request->set_header_field(restinio::http_field_t::user_agent, "RESTinio client");
+    request->set_header_field(restinio::http_field_t::user_agent, userAgent_);
     return request;
 }
 
@@ -800,8 +813,8 @@ SockAddr
 DhtProxyClient::parsePublicAddress(const Json::Value& val)
 {
     auto public_ip = val.asString();
-    auto hostAndService = splitPort(public_ip);
-    auto sa = SockAddr::resolve(hostAndService.first);
+    auto [host, service] = splitPort(public_ip);
+    auto sa = SockAddr::resolve(host);
     if (sa.empty()) return {};
     return sa.front().getMappedIPv4();
 }
@@ -1220,9 +1233,10 @@ DhtProxyClient::restartListeners(const asio::error_code &ec)
     }
 }
 
-void
+PushNotificationResult
 DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::string, std::string>& notification)
 {
+    auto ret = PushNotificationResult::IgnoredNoOp;
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     {
         // If a push notification is received, the proxy is up and running
@@ -1239,7 +1253,7 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
         if (sessionId != notification.end() and sessionId->second != pushSessionId_) {
             if (logger_)
                 logger_->d("[proxy:client] [push] ignoring push for other session");
-            return;
+            return PushNotificationResult::IgnoredWrongSession;
         }
         std::lock_guard<std::mutex> lock(searchLock_);
         auto timeout = notification.find("timeout");
@@ -1256,10 +1270,12 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                 else
                     put.refreshPutTimer->expires_at(std::chrono::steady_clock::now());
                 put.refreshPutTimer->async_wait(std::bind(&DhtProxyClient::handleRefreshPut, this, std::placeholders::_1, key, vid));
+                ret = PushNotificationResult::PutRefresh;
             } else {
                 // Refresh listen
                 for (auto& list : search.listeners)
                     resubscribe(key, list.first, list.second);
+                ret = search.listeners.empty() ? PushNotificationResult::IgnoredNoOp : PushNotificationResult::ListenRefresh;
             }
         } else {
             auto key = InfoHash(notification.at("key"));
@@ -1268,12 +1284,12 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                 sendTime = system_clock::time_point(std::chrono::milliseconds(std::stoull(notification.at("t"))));
             } catch (...) {}
             auto& search = searches_.at(key);
+            auto expired = notification.find("exp");
             for (auto& list : search.listeners) {
                 if (list.second.opstate->stop)
                     continue;
                 if (logger_)
                     logger_->d("[proxy:client] [push] [search %s] received", key.to_c_str());
-                auto expired = notification.find("exp");
                 auto token = list.first;
                 auto opstate = list.second.opstate;
                 if (expired == notification.end()) {
@@ -1286,6 +1302,7 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                         // present in the new list
                         cb(oldValues, true, sendTime);
                     });
+                    ret = PushNotificationResult::Values;
                 } else {
                     std::stringstream ss(expired->second);
                     std::vector<Value::Id> ids;
@@ -1311,16 +1328,21 @@ DhtProxyClient::pushNotificationReceived([[maybe_unused]] const std::map<std::st
                         });
                     }
                     launchLoop = true;
+                    ret = PushNotificationResult::ValuesExpired;
                 }
             }
         }
+    } catch (const std::out_of_range& e) {
+        ret = PushNotificationResult::IgnoredNoOp;
     } catch (const std::exception& e) {
         if (logger_)
             logger_->e("[proxy:client] [push] receive error: %s", e.what());
+        ret = PushNotificationResult::Error;
     }
     if (launchLoop)
         loopSignal_();
 #endif
+    return ret;
 }
 
 void
@@ -1380,5 +1402,25 @@ DhtProxyClient::fillBody(bool resubscribe)
     return content;
 }
 #endif // OPENDHT_PUSH_NOTIFICATIONS
+
+void
+DhtProxyClient::setPushNotificationToken([[maybe_unused]] const std::string& token) {
+#ifdef OPENDHT_PUSH_NOTIFICATIONS
+    std::unique_lock<std::mutex> l(lockCurrentProxyInfos_);
+    if (deviceKey_ != token) {
+        deviceKey_ = token;
+        if (statusIpv4_ == NodeStatus::Connected || statusIpv6_ == NodeStatus::Connected) {
+            if (logger_)
+                logger_->d("[proxy:client] [push] token changed, resubscribing");
+            for (auto& search : searches_) {
+                for (auto& listener : search.second.listeners) {
+                    resubscribe(search.first, listener.first, listener.second);
+                }
+            }
+        }
+    }
+#endif
+}
+
 
 } // namespace dht

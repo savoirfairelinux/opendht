@@ -104,6 +104,7 @@ struct OPENDHT_C_PUBLIC dht_value;
 typedef struct dht_value dht_value;
 typedef uint64_t dht_value_id;
 OPENDHT_C_PUBLIC dht_value* dht_value_new(const uint8_t* data, size_t size);
+OPENDHT_C_PUBLIC dht_value* dht_value_with_id_new(const uint8_t* data, size_t size, uint64_t value_id);
 OPENDHT_C_PUBLIC dht_value* dht_value_new_from_string(const char* str);
 OPENDHT_C_PUBLIC dht_value* dht_value_ref(const dht_value*);
 OPENDHT_C_PUBLIC void dht_value_unref(dht_value*);
@@ -148,6 +149,7 @@ struct OPENDHT_PUBLIC dht_runner_config {
     const char* push_token;
     const char* push_topic;
     const char* push_platform;
+    const char* proxy_user_agent;
     bool peer_discovery;
     bool peer_publish;
     dht_certificate* server_ca;

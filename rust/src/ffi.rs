@@ -120,6 +120,7 @@ pub struct DhtRunnerConfig
     pub push_token: *const c_char,
     pub push_topic: *const c_char,
     pub push_platform: *const c_char,
+    pub proxy_user_agent: *const c_char,
     pub peer_discovery: bool,
     pub peer_publish: bool,
     pub server_ca: *mut DhtCertificate,

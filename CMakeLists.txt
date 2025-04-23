@@ -16,7 +16,7 @@ include(CTest)
 include(FetchContent)
 
 set (opendht_VERSION_MAJOR 3)
-set (opendht_VERSION_MINOR 2.0)
+set (opendht_VERSION_MINOR 3.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
@@ -35,6 +35,7 @@ option (OPENDHT_PROXY_CLIENT "Enable DHT proxy client, use Restinio and jsoncpp"
 option (OPENDHT_PROXY_OPENSSL "Build DHT proxy with OpenSSL" ON)
 CMAKE_DEPENDENT_OPTION(OPENDHT_HTTP "Build embedded http(s) client" OFF "NOT OPENDHT_PROXY_SERVER;NOT OPENDHT_PROXY_CLIENT" ON)
 option (OPENDHT_PEER_DISCOVERY "Enable multicast peer discovery" ON)
+option (OPENDHT_IO_URING "Use io_uring if available on the system (Linux only)" OFF)
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS_NETWORK "Enable unit tests that require network access" ON)
 option (OPENDHT_C "Build C bindings" OFF)
@@ -134,7 +135,8 @@ if (NOT MSVC)
             OVERRIDE_FIND_PACKAGE
         )
         FetchContent_Declare(asio
-            URL "https://netcologne.dl.sourceforge.net/project/asio/asio/1.30.2%20%28Stable%29/asio-1.30.2.zip?viasf=1"
+            GIT_REPOSITORY "https://github.com/chriskohlhoff/asio.git"
+            GIT_TAG        "asio-1-34-2"
         )
         # Populate
         FetchContent_MakeAvailable(
@@ -230,9 +232,8 @@ if (NOT MSVC)
         )
         
         if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-            find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${asio_SOURCE_DIR}/include)
+            find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${asio_SOURCE_DIR}/asio/include)
             message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
-            # include_directories(${ASIO_INCLUDE_DIR})
             include_directories(${ASIO_INCLUDE_DIR})
             add_definitions(-DASIO_STANDALONE) 
         else()
@@ -243,10 +244,10 @@ if (NOT MSVC)
         
         if (OPENDHT_HTTP)
             find_package(Restinio REQUIRED)
-        
+
             # llhttp
             find_path(LLHTTP_INCLUDE_DIR llhttp.h)
-            find_library(LLHTTP_LIBRARY libllhttp)
+            find_library(LLHTTP_LIBRARY NAMES llhttp libllhttp)
             if (LLHTTP_INCLUDE_DIR AND LLHTTP_LIBRARY)
                 message(STATUS "Found llhttp ${LLHTTP_INCLUDE_DIR} ${LLHTTP_LIBRARY}")
                 add_library(llhttp_static STATIC IMPORTED)
@@ -256,7 +257,7 @@ if (NOT MSVC)
                 )
                 set(llhttp_target llhttp_static)
             else()
-                FetchContent_Declare(llhttp-local URL "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.0.tar.gz")
+                FetchContent_Declare(llhttp-local URL "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.1.tar.gz")
                 if (BUILD_SHARED_LIBS)
                     set(BUILD_SHARED_LIBS ON CACHE INTERNAL "")
                 else()
@@ -271,7 +272,7 @@ if (NOT MSVC)
                 endif()
             endif()
             set(http_lib "-lllhttp")
-            
+
             if (NOT Jsoncpp_FOUND)
                 message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
             endif()
@@ -476,13 +477,13 @@ endif ()
 
 if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
     add_definitions(-DASIO_STANDALONE)
-    if (UNIX AND NOT APPLE)
+    if (OPENDHT_IO_URING AND UNIX AND NOT APPLE)
         pkg_search_module(liburing IMPORTED_TARGET liburing)
     endif ()
 endif()
 
 if (NOT MSVC)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-return-type -Wno-deprecated -Wno-deprecated-declarations -Wno-unknown-pragmas -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes -Wno-return-type -Wno-deprecated -Wno-deprecated-declarations -Wno-unknown-pragmas -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
     if (OPENDHT_SANITIZE)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fstack-protector-strong")
@@ -528,10 +529,10 @@ set (top_srcdir "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Sources
 list (APPEND opendht_SOURCES
+    src/infohash.cpp
     src/utils.cpp
     src/crypto.cpp
     src/default_types.cpp
-    src/infohash.cpp
     src/node.cpp
     src/value.cpp
     src/dht.cpp
@@ -558,11 +559,11 @@ list (APPEND opendht_SOURCES
 list (APPEND opendht_HEADERS
     include/opendht.h
     include/opendht/def.h
+    include/opendht/rng.h
+    include/opendht/infohash.h
     include/opendht/utils.h
     include/opendht/sockaddr.h
-    include/opendht/rng.h
     include/opendht/crypto.h
-    include/opendht/infohash.h
     include/opendht/default_types.h
     include/opendht/node.h
     include/opendht/value.h
@@ -644,7 +645,6 @@ endif ()
 
 
 # Targets
-
 if(BUILD_SHARED_LIBS)
     message(STATUS "Building SHARED opendht library")
     add_library(opendht SHARED ${opendht_SOURCES} ${opendht_HEADERS})
@@ -715,7 +715,7 @@ else()
     if (OPENDHT_PROXY_OPENSSL)
         target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
     endif()
-    if (liburing_FOUND)
+    if (OPENDHT_IO_URING AND liburing_FOUND)
         set(iouring_lib ", liburing")
         target_link_libraries(opendht PUBLIC PkgConfig::liburing)
         target_compile_definitions(opendht PUBLIC ASIO_HAS_IO_URING ASIO_DISABLE_EPOLL)

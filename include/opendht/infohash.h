@@ -110,7 +110,7 @@ public:
     bool operator!=(const Hash& h) const { return !(*this == h); }
 
     bool operator<(const Hash& o) const {
-        for(unsigned i = 0; i < N; i++) {
+        for (unsigned i = 0; i < N; i++) {
             if(data_[i] != o.data_[i])
                 return data_[i] < o.data_[i];
         }
@@ -119,7 +119,7 @@ public:
 
     Hash operator^(const Hash& o) const {
         Hash result;
-        for(auto i = 0u; i < N; i++) {
+        for (auto i = 0u; i < N; i++) {
             result[i] = data_[i] ^ o.data_[i];
         }
         return result;
@@ -374,10 +374,11 @@ Hash<N>::to_c_str() const
 {
     alignas(std::max_align_t) thread_local std::array<char, N*2+1> buf;
     for (size_t i=0; i<N; i++) {
-        auto b = buf.data()+i*2;
+        auto b = buf.data() + i*2;
         const auto& m = hex_map[data_[i]];
         *((uint16_t*)b) = *((uint16_t*)&m);
     }
+    buf[N*2] = '\0';
     return buf.data();
 }
 

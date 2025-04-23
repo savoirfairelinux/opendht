@@ -24,7 +24,7 @@ namespace proxy {
 
 constexpr const std::chrono::hours OP_TIMEOUT {24}; // one day
 constexpr const std::chrono::hours OP_MARGIN {2}; // two hours
-constexpr const char* const HTTP_PROTO {"http://"};
+
 using ListenToken = uint64_t;
 
 }
