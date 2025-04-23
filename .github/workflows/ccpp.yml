@@ -42,7 +42,7 @@ jobs:
       - name: Build restinio dependency
         run: |
           mkdir restinio && cd restinio
-          wget "https://github.com/Stiffstream/restinio/releases/download/v.${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2"
+          wget "https://github.com/Stiffstream/restinio/releases/download/v${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2"
           tar -xjf restinio-${RESTINIO_VERSION}.tar.bz2
           cd restinio-${RESTINIO_VERSION}/dev
           cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
@@ -126,7 +126,7 @@ jobs:
       - name: Build restinio dependency
         run: |
           mkdir restinio && cd restinio
-          wget "https://github.com/Stiffstream/restinio/releases/download/v.${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2"
+          wget "https://github.com/Stiffstream/restinio/releases/download/v${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2"
           tar -xjf restinio-${RESTINIO_VERSION}.tar.bz2
           cd restinio-${RESTINIO_VERSION}/dev
           cmake -DCMAKE_INSTALL_PREFIX=/usr/local \
