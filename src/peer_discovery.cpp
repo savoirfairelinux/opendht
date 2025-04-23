@@ -97,7 +97,7 @@ PeerDiscovery::DomainPeerDiscovery::DomainPeerDiscovery(asio::ip::udp domain, in
     , ioContext_(ioContext)
     , peerDiscoveryTimer(*ioContext_)
     , sockFd_(*ioContext_, domain)
-    , sockAddrSend_(asio::ip::address::from_string(domain.family() == AF_INET ? MULTICAST_ADDRESS_IPV4
+    , sockAddrSend_(asio::ip::make_address(domain.family() == AF_INET ? MULTICAST_ADDRESS_IPV4
                                                                               : MULTICAST_ADDRESS_IPV6), port)
 {
     try {
@@ -139,7 +139,7 @@ PeerDiscovery::DomainPeerDiscovery::startDiscovery(const std::string &type, Serv
     callbackmap_[type] = callback;
     if (not drunning_) {
         drunning_ = true;
-        ioContext_->post([this] () {
+        asio::post(*ioContext_, [this] () {
                     loopListener();
                     query(sockAddrSend_);
                 });
@@ -245,7 +245,7 @@ PeerDiscovery::DomainPeerDiscovery::startPublish(const std::string &type, const 
     messages_[type] = std::move(pack_buf_c);
     reloadMessages();
     lrunning_ = true;
-    ioContext_->post([this] () { publish(sockAddrSend_); });
+    asio::post(*ioContext_, [this] () { publish(sockAddrSend_); });
 }
 
 bool
@@ -327,7 +327,7 @@ PeerDiscovery::DomainPeerDiscovery::reDiscover()
 void
 PeerDiscovery::DomainPeerDiscovery::connectivityChanged()
 {
-    ioContext_->post([this] () {
+    asio::post(*ioContext_, [this] () {
         reDiscover();
         publish(sockAddrSend_);
     });

@@ -456,7 +456,7 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     }
 
                     // starts from CA and goes down the presented chain
-                    auto verifier = asio::ssl::rfc2818_verification(hostname);
+                    auto verifier = asio::ssl::host_name_verification(hostname);
                     bool verified = verifier(preverified, ctx);
                     auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
@@ -591,12 +591,12 @@ Connection::async_write(BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_write(*ssl_socket_, write_buf_, wrapCallback(std::move(cb)));
     else if (socket_) asio::async_write(*socket_, write_buf_, wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -604,12 +604,12 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
     else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -617,12 +617,12 @@ Connection::async_read_until(char delim, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
     else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -630,12 +630,12 @@ Connection::async_read(size_t bytes, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallback(std::move(cb)));
     else if (socket_) asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -643,7 +643,7 @@ Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     auto buf = read_buf_.prepare(bytes);
