@@ -2,7 +2,7 @@ name: C/C++ CI
 
 env:
   LLHTTP_VERSION: "v9.2.1"
-  RESTINIO_VERSION: "0.7.3"
+  RESTINIO_VERSION: "0.7.6"
   EXPECTED_LITE_URL: "https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp"
   UBUNTU_FULL_DEPS: "libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-pip python3-dev python3-setuptools libcppunit-dev libjsoncpp-dev autotools-dev autoconf libfmt-dev libmsgpack-dev libargon2-dev"
   UBUNTU_MESON_DEPS: "ninja-build libncurses5-dev libreadline-dev nettle-dev libasio-dev libgnutls28-dev libuv1-dev python3-dev python3-setuptools python3-pip libcppunit-dev libjsoncpp-dev libfmt-dev libmsgpack-dev libargon2-dev"
