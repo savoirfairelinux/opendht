@@ -328,6 +328,15 @@ PrivateKey::sign(const uint8_t* data, size_t data_length) const
     if (gnutls_privkey_sign_data(key, GNUTLS_DIG_SHA512, 0, &dat, &sig) != GNUTLS_E_SUCCESS)
         throw CryptoException("Can't sign data !");
     Blob ret(sig.data, sig.data+sig.size);
+/*
+    CAUTION!
+    This is a temporary workaround to avoid a gnutls problem with calling free()
+    function on the memory allocated from DLL. Avoid using it in the production!
+
+    To use in the production, please perform static build instead!
+
+    twdragon, PR #750
+*/
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(sig.data);
@@ -344,6 +353,15 @@ PrivateKey::decryptBloc(const uint8_t* src, size_t src_size) const
     if (err != GNUTLS_E_SUCCESS)
         throw DecryptError(std::string("Can't decrypt data: ") + gnutls_strerror(err));
     Blob ret {out.data, out.data+out.size};
+/*
+    CAUTION!
+    This is a temporary workaround to avoid a gnutls problem with calling free()
+    function on the memory allocated from DLL. Avoid using it in the production!
+
+    To use in the production, please perform static build instead!
+
+    twdragon, PR #750
+*/
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(out.data);
@@ -527,6 +545,15 @@ PublicKey::encryptBloc(const uint8_t* src, size_t src_size, uint8_t* dst, size_t
     if (encrypted.size != dst_size)
         throw CryptoException("Unexpected cypherblock size");
     std::copy_n(encrypted.data, encrypted.size, dst);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(encrypted.data);
@@ -762,6 +789,15 @@ CertificateRequest::pack() const
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
         throw CryptoException(std::string("Can't export certificate request: ") + gnutls_strerror(err));
     Blob ret(dat.data, dat.data + dat.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(dat.data);
@@ -776,6 +812,15 @@ CertificateRequest::toString() const
     if (auto err = gnutls_x509_crq_export2(request, GNUTLS_X509_FMT_PEM, &dat))
         throw CryptoException(std::string("Can't export certificate request: ") + gnutls_strerror(err));
     std::string ret(dat.data, dat.data + dat.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(dat.data);
@@ -823,6 +868,15 @@ Certificate::unpack(const uint8_t* dat, size_t dat_size)
         gnutls_x509_crt_deinit(cert);
         cert = nullptr;
     }
+/* 
+    CAUTION!
+	This is a temporary workaround to avoid a gnutls problem with calling free()
+	function on the memory allocated from DLL. Avoid using it in the production!
+
+	To use in the production, please perform static build instead!
+
+    twdragon, PR #750
+*/
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 	gnutls_x509_crt_t* cert_list = new gnutls_x509_crt_t[128];
 #else
@@ -845,6 +899,15 @@ Certificate::unpack(const uint8_t* dat, size_t dat_size)
         crt->issuer = std::make_shared<Certificate>(cert_list[i++]);
         crt = crt->issuer.get();
     }
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 	delete[] cert_list;
 #else 
@@ -1043,6 +1106,15 @@ Certificate::print() const
     gnutls_datum_t out {nullptr, 0};
     gnutls_x509_crt_print(cert, GNUTLS_CRT_PRINT_FULL, &out);
     std::string ret(out.data, out.data+out.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(out.data);
@@ -1124,6 +1196,15 @@ Certificate::generateOcspRequest(gnutls_x509_crt_t& issuer)
     if (err != 0)
         throw CryptoException(gnutls_strerror(err));
     std::string ret((char*)rdata.data, (char*)rdata.data + rdata.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(rdata.data);
@@ -1422,6 +1503,15 @@ OcspRequest::toString(const bool compact) const
     std::string str;
     if (ret == 0) {
         str = std::string((const char*)dat.data, (size_t)dat.size);
+        /*
+            CAUTION!
+            This is a temporary workaround to avoid a gnutls problem with calling free()
+            function on the memory allocated from DLL. Avoid using it in the production!
+
+            To use in the production, please perform static build instead!
+
+            twdragon, PR #750
+        */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
         gnutls_free(dat.data);
@@ -1439,6 +1529,15 @@ OcspRequest::pack() const
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     Blob ret {dat.data, dat.data + dat.size};
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(dat.data);
@@ -1455,6 +1554,15 @@ OcspRequest::getNonce() const
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     Blob ret {dat.data, dat.data + dat.size};
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(dat.data);
@@ -1490,6 +1598,15 @@ OcspResponse::pack() const
     if (err < 0)
         throw CryptoException(gnutls_strerror(err));
     Blob ret {dat.data, dat.data + dat.size};
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(dat.data);
@@ -1506,6 +1623,15 @@ OcspResponse::toString(const bool compact) const
     ret = gnutls_ocsp_resp_print(response, compact ? GNUTLS_OCSP_PRINT_COMPACT : GNUTLS_OCSP_PRINT_FULL, &dat);
     if (ret == 0)
         str = std::string((const char*)dat.data, (size_t)dat.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(dat.data);
@@ -1560,12 +1686,30 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
         if (ret < 0)
             throw CryptoException(gnutls_strerror(ret));
         if (rnonce.size != nonce.size() || memcmp(nonce.data(), rnonce.data, nonce.size()) != 0){
+            /*
+                CAUTION!
+                This is a temporary workaround to avoid a gnutls problem with calling free()
+                function on the memory allocated from DLL. Avoid using it in the production!
+
+                To use in the production, please perform static build instead!
+
+                twdragon, PR #750
+            */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
             gnutls_free(rnonce.data);
 #endif
             throw CryptoException(gnutls_strerror(GNUTLS_E_OCSP_RESPONSE_ERROR));
         }
+        /*
+            CAUTION!
+            This is a temporary workaround to avoid a gnutls problem with calling free()
+            function on the memory allocated from DLL. Avoid using it in the production!
+
+            To use in the production, please perform static build instead!
+
+            twdragon, PR #750
+        */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
         gnutls_free(rnonce.data);
@@ -1657,6 +1801,15 @@ RevocationList::pack(Blob& b) const
         throw CryptoException(std::string("Can't export CRL: ") + gnutls_strerror(err));
     }
     b.insert(b.end(), gdat.data, gdat.data + gdat.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(gdat.data);
@@ -1840,6 +1993,15 @@ RevocationList::toString() const
     gnutls_datum_t out {nullptr, 0};
     gnutls_x509_crl_print(crl, GNUTLS_CRT_PRINT_FULL, &out);
     std::string ret(out.data, out.data+out.size);
+    /*
+        CAUTION!
+        This is a temporary workaround to avoid a gnutls problem with calling free()
+        function on the memory allocated from DLL. Avoid using it in the production!
+
+        To use in the production, please perform static build instead!
+
+        twdragon, PR #750
+    */
 #if defined(_MSC_VER) && defined(opendht_EXPORTS) && defined(OPENDHT_BUILD)
 #else
     gnutls_free(out.data);

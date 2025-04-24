@@ -88,7 +88,6 @@ if (NOT MSVC)
     if (WIN32 AND MINGW) # MSYS2
         set (THREADS_PREFER_PTHREAD_FLAG TRUE)
         find_package (Threads)
-        set(VCPKG_OVERLAY_TRIPLETS "x64-windows-release;x64-windows")
         set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
         if(DEFINED $ENV{BOOST_ROOT})
             set(BOOST_ROOT "$ENV{BOOST_ROOT}")
@@ -386,7 +385,7 @@ else () # MSVC
     else ()
         message(STATUS "Building static library")
         set(VCPKG_TARGET_TRIPLET "x64-windows-static")
-        set(VCPKG_OVERLAY_TRIPLETS "x64-windows-static-release;x64-windows-static-rel;x62-windows-static")
+        set(VCPKG_OVERLAY_TRIPLETS "x64-windows-static-release;x64-windows-static-rel;x64-windows-static")
     endif ()
 
     include_directories(src/compat/msvc)
@@ -424,11 +423,16 @@ else () # MSVC
         GIT_TAG        "11.1.2"
         OVERRIDE_FIND_PACKAGE
     )
+    FetchContent_Declare(asio
+        GIT_REPOSITORY "https://github.com/chriskohlhoff/asio.git"
+        GIT_TAG        "asio-1-34-2"
+    )
     # Populate
     FetchContent_MakeAvailable(
         cJSON
         jsoncpp
         fmt
+        asio
     )
     message(STATUS "Linking populated libraries")
     
@@ -442,17 +446,20 @@ else () # MSVC
     find_package(fmt CONFIG REQUIRED)
     include_directories(${FMT_INCLUDEDIR} ${fmt_SOURCE_DIR}/include)
 
+    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${asio_SOURCE_DIR}/asio/include)
+        message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
+        include_directories(${ASIO_INCLUDE_DIR})
+        add_definitions(-DASIO_STANDALONE) 
+    else()
+        message(STATUS "ASIO not required")
+    endif ()
+
     list (APPEND opendht_SOURCES
         src/base64.h
         src/base64.cpp
     )
     add_definitions(-DOPENDHT_JSONCPP)
-    
-    if(OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        find_package(asio CONFIG REQUIRED)
-        get_target_property(ASIO_INCLUDEDIR asio INTERFACE_INCLUDE_DIRECTORIES)
-        include_directories(${ASIO_INCLUDEDIR})
-    endif()
 
     if (OPENDHT_HTTP)
         find_package(restinio CONFIG REQUIRED)
@@ -665,7 +672,7 @@ if (MSVC)
     message(STATUS "Used GnuTLS library: ${GNUTLS_LIBRARIES}")
     message(STATUS "Used NETTLE library: ${NETTLE_LIBRARY}")
     if(BUILD_SHARED_LIBS)
-        target_link_libraries(opendht PRIVATE asio::asio ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC cjson jsoncpp_lib ${GNUTLS_LIBRARIES} fmt::fmt wsock32 ws2_32)
+        target_link_libraries(opendht PRIVATE ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC cjson jsoncpp_lib ${GNUTLS_LIBRARIES} fmt::fmt wsock32 ws2_32)
         add_dependencies(opendht cjson jsoncpp_lib fmt)
     else()
         find_library(TASN1_LIBRARY NAMES tasn1 libtasn1 tasn1d REQUIRED) # Workaround for vcpkg directory misplacement
