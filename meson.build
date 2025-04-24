@@ -28,6 +28,7 @@ add_project_arguments(['-Wno-return-type','-Wno-deprecated','-Wnon-virtual-dtor'
 opendht_inc = include_directories('include/opendht')
 opendht_interface_inc = include_directories('include', is_system: true)
 opendht_src = [
+    'src/infohash.cpp'
     'src/utils.cpp',
     'src/crypto.cpp',
     'src/default_types.cpp',
