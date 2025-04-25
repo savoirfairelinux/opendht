@@ -223,8 +223,10 @@ else ()
     add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS
                     -D_CRT_SECURE_NO_WARNINGS
                     -DWIN32_LEAN_AND_MEAN
-                    -DSTATIC_GETOPT
-                    -DGNUTLS_INTERNAL_BUILD)
+                    -DSTATIC_GETOPT)
+    if (NOT BUILD_SHARED_LIBS)
+        add_definitions(-DGNUTLS_INTERNAL_BUILD)
+    endif()
     set(DISABLE_MSC_WARNINGS "/wd4101 /wd4244 /wd4267 /wd4273 /wd4804 /wd4834 /wd4996")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DISABLE_MSC_WARNINGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP /bigobj")
@@ -383,7 +385,7 @@ target_include_directories(opendht
 set_target_properties(opendht PROPERTIES OUTPUT_NAME "opendht")
 
 if (MSVC)
-    target_link_libraries(opendht PUBLIC PkgConfig::GnuTLS JsonCpp::JsonCpp fmt::fmt-header-only PRIVATE PkgConfig::nettle unofficial::argon2::libargon2)
+    target_link_libraries(opendht PUBLIC PkgConfig::GnuTLS JsonCpp::JsonCpp fmt::fmt-header-only PRIVATE PkgConfig::nettle unofficial::argon2::libargon2 ws2_32)
     if (OPENDHT_HTTP)
         target_link_libraries(opendht PUBLIC llhttp::llhttp_static)
         if (OPENDHT_PROXY_OPENSSL)
