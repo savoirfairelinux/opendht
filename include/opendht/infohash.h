@@ -356,7 +356,7 @@ private:
     static constexpr const char* hex_digits = "0123456789abcdef";
 };
 
-OPENDHT_PUBLIC constexpr HexMap hex_map = {};
+constexpr HexMap hex_map = {};
 
 inline std::string
 toHex(const uint8_t* data, size_t size) {

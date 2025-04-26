@@ -432,7 +432,7 @@ if (BUILD_SHARED_LIBS)
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
     target_compile_definitions(opendht PRIVATE opendht_EXPORTS)
 else ()
-    target_compile_definitions(opendht PRIVATE OPENDHT_STATIC) # to build library with default class attributes
+    target_compile_definitions(opendht PUBLIC OPENDHT_STATIC) # to build library with default class attributes
 endif ()
 install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 
