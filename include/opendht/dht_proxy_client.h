@@ -53,19 +53,21 @@ public:
     DhtProxyClient();
 
     explicit DhtProxyClient(
-        std::shared_ptr<crypto::Certificate> serverCA, crypto::Identity clientIdentity,
-        std::function<void()> loopSignal, const std::string& serverHost,
-        const std::string& pushClientId = "", std::shared_ptr<Logger> logger = {});
+        std::shared_ptr<crypto::Certificate> serverCA,
+        crypto::Identity clientIdentity,
+        std::function<void()> loopSignal,
+        const std::string& serverHost,
+        const std::string& userAgent = "",
+        const std::string& pushClientId = "",
+        const std::string& pushToken = "",
+        const std::string& pushTopic = "",
+        const std::string& pushPlatform = "",
+        std::shared_ptr<Logger> logger = {}
+    );
 
     void setHeaderFields(http::Request& request);
 
-    virtual void setPushNotificationToken(const std::string& token) override {
-#ifdef OPENDHT_PUSH_NOTIFICATIONS
-        deviceKey_ = token;
-#else
-        (void) token;
-#endif
-    }
+    virtual void setPushNotificationToken(const std::string& token) override;
 
     virtual void setPushNotificationTopic(const std::string& topic) override {
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -214,7 +216,7 @@ public:
      * Call linked callback with a push notification
      * @param notification to process
      */
-    void pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
+    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& notification) override;
 
     time_point periodic(const uint8_t*, size_t, SockAddr, const time_point& now) override;
     time_point periodic(const uint8_t* buf, size_t buflen, const sockaddr* from, socklen_t fromlen, const time_point& now) override {
@@ -351,7 +353,7 @@ private:
     std::string proxyUrl_;
     dht::crypto::Identity clientIdentity_;
     std::shared_ptr<dht::crypto::Certificate> serverCertificate_;
-    //std::pair<std::string, std::string> serverHostService_;
+    std::string userAgent_ {"OpenDHT"};
     std::string pushClientId_;
     std::string pushSessionId_;
 

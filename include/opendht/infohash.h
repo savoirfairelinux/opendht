@@ -110,7 +110,7 @@ public:
     bool operator!=(const Hash& h) const { return !(*this == h); }
 
     bool operator<(const Hash& o) const {
-        for(unsigned i = 0; i < N; i++) {
+        for (unsigned i = 0; i < N; i++) {
             if(data_[i] != o.data_[i])
                 return data_[i] < o.data_[i];
         }
@@ -119,7 +119,7 @@ public:
 
     Hash operator^(const Hash& o) const {
         Hash result;
-        for(auto i = 0u; i < N; i++) {
+        for (auto i = 0u; i < N; i++) {
             result[i] = data_[i] ^ o.data_[i];
         }
         return result;
@@ -345,8 +345,8 @@ Hash<N>::getRandom(Rd& rdev)
 }
 
 struct alignas(std::max_align_t) HexMap : public std::array<std::array<char, 2>, 256> {
-    HexMap() {
-        for (size_t i=0; i<size(); i++) {
+    constexpr HexMap() : std::array<std::array<char, 2>, 256>() {
+        for (size_t i = 0; i < size(); i++) {
             auto& e = (*this)[i];
             e[0] = hex_digits[(i >> 4) & 0x0F];
             e[1] = hex_digits[i & 0x0F];
@@ -356,7 +356,7 @@ private:
     static constexpr const char* hex_digits = "0123456789abcdef";
 };
 
-OPENDHT_PUBLIC extern const HexMap hex_map;
+OPENDHT_PUBLIC constexpr HexMap hex_map = {};
 
 inline std::string
 toHex(const uint8_t* data, size_t size) {
@@ -380,10 +380,11 @@ Hash<N>::to_c_str() const
 {
     alignas(std::max_align_t) thread_local std::array<char, N*2+1> buf;
     for (size_t i=0; i<N; i++) {
-        auto b = buf.data()+i*2;
+        auto b = buf.data() + i*2;
         const auto& m = hex_map[data_[i]];
         *((uint16_t*)b) = *((uint16_t*)&m);
     }
+    buf[N*2] = '\0';
     return buf.data();
 }
 

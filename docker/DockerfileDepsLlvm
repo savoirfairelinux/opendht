@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 LABEL maintainer="Adrien Béraud <adrien.beraud@savoirfairelinux.com>"
 LABEL org.opencontainers.image.source https://github.com/savoirfairelinux/opendht
 
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     && echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 
 RUN apt-get update \
-    && apt-get install -y llvm llvm-dev lldb clang gdb make cmake pkg-config \
+    && apt-get install -y llvm llvm-dev lldb clang gdb make cmake meson pkg-config \
        libtool git wget libncurses5-dev libreadline-dev \
        nettle-dev libgnutls28-dev libuv1-dev libmsgpack-dev libjsoncpp-dev python3-dev \
        python3-setuptools libcppunit-dev python3-pip python3-build python3-virtualenv \
@@ -17,7 +17,7 @@ RUN apt-get update \
     && apt-get remove -y gcc g++ && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-RUN pip3 install meson Cython
+RUN pip3 install Cython --break-system-packages
 
 ENV CC cc
 ENV CXX c++
@@ -28,9 +28,9 @@ RUN mkdir /usr/include/nonstd \
 
 RUN echo "*** Downloading RESTinio ***" \
     && mkdir restinio && cd restinio \
-    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.2/restinio-0.7.2.tar.bz2 \
-    && ls -l && tar -xjf restinio-0.7.2.tar.bz2 \
-    && cd restinio-0.7.2/dev \
+    && wget https://github.com/Stiffstream/restinio/releases/download/v.0.7.3/restinio-0.7.3.tar.bz2 \
+    && ls -l && tar -xjf restinio-0.7.3.tar.bz2 \
+    && cd restinio-0.7.3/dev \
     && cmake -DCMAKE_INSTALL_PREFIX=/usr -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
              -DRESTINIO_WITH_SOBJECTIZER=Off -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
              -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system . \

@@ -223,6 +223,7 @@ DhtProxyServer::DhtProxyServer(const std::shared_ptr<DhtRunner>& dht,
     :   ioContext_(std::make_shared<asio::io_context>()),
         dht_(dht), persistPath_(config.persistStatePath), logger_(logger),
         printStatsTimer_(std::make_unique<asio::steady_timer>(*ioContext_, 3s)),
+        serverStartTime_(clock::now()),
         connListener_(std::make_shared<ConnectionListener>(std::bind(&DhtProxyServer::onConnectionClosed, this, std::placeholders::_1))),
         pushServer_(config.pushServer),
         bundleId_(config.bundleId)
@@ -542,7 +543,15 @@ DhtProxyServer::updateStats(std::shared_ptr<NodeInfo> info) const
     stats.requestRate = count / dt.count();
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
     stats.pushListenersCount = pushListeners_.size();
+    {
+        std::lock_guard lk(pushStatsMutex_);
+        stats.androidPush = androidPush_;
+        stats.iosPush = iosPush_;
+        stats.unifiedPush = unifiedPush_;
+    }
 #endif
+    stats.serverStartTime = serverStartTime_;
+    stats.lastUpdated = now;
     stats.totalPermanentPuts = 0;
     std::for_each(puts_.begin(), puts_.end(), [&stats](const auto& put) {
         stats.totalPermanentPuts += put.second.puts.size();
@@ -622,6 +631,8 @@ DhtProxyServer::createRestRouter()
     router->http_get("/key/:hash", std::bind(&DhtProxyServer::get, this, _1, _2));
     // key.post
     router->http_post("/key/:hash", std::bind(&DhtProxyServer::put, this, _1, _2));
+    router->add_handler(restinio::http_method_options(),
+                        "/key/:hash/listen", std::bind(&DhtProxyServer::options, this, _1, _2));
     // key.listen
     router->http_get("/key/:hash/listen", std::bind(&DhtProxyServer::listen, this, _1, _2));
 #ifdef OPENDHT_PUSH_NOTIFICATIONS
@@ -1107,10 +1118,14 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             notification["tokens"] = std::move(tokens);
             notification["platform"] = type == PushType::Android ? 2 : 1;
             notification["data"] = std::move(json);
-            notification["priority"] = highPriority ? "high" : "normal";
-            if (type == PushType::Android)
-                notification["time_to_live"] = 3600 * 24; // 24 hours
-            else {
+            auto priority = highPriority ? "high" : "normal";
+            if (type == PushType::Android) {
+                Json::Value androidConfig(Json::objectValue);
+                androidConfig["priority"] = priority;
+                androidConfig["ttl"] = "86400s"; // time to live = 24 hours
+                notification["android"] = std::move(androidConfig);
+            } else {
+                notification["priority"] = priority;
                 const auto expiration = std::chrono::system_clock::now() + std::chrono::hours(24);
                 uint32_t exp = std::chrono::duration_cast<std::chrono::seconds>(expiration.time_since_epoch()).count();
                 notification["expiration"] = exp;
@@ -1151,6 +1166,21 @@ DhtProxyServer::sendPushNotification(const std::string& token, Json::Value&& jso
             requests_[reqid] = request;
         }
         request->send();
+        // For monitoring purposes
+        std::lock_guard lk(pushStatsMutex_);
+        switch (type) {
+        case PushType::Android:
+            androidPush_.increment(highPriority);
+            break;
+        case PushType::iOS:
+            iosPush_.increment(highPriority);
+            break;
+        case PushType::UnifiedPush:
+            unifiedPush_.increment(highPriority);
+            break;
+        default:
+            break;
+        }
     }
     catch (const std::exception &e){
         if (logger_)

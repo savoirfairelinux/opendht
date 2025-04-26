@@ -1,5 +1,5 @@
 project('opendht', 'c', 'cpp', 'cython',
-    version: '3.2.0',
+    version: '3.3.0',
     default_options: [
         'cpp_std=c++17',
         'warning_level=3'
@@ -16,6 +16,7 @@ llhttp = dependency('llhttp', 'libllhttp', required: get_option('proxy_client'))
 io_uring = dependency('liburing', required: false)
 
 deps = [fmt, gnutls, nettle, msgpack, argon2, openssl, jsoncpp, llhttp, io_uring]
+conf_data = configuration_data()
 
 add_project_arguments('-DMSGPACK_NO_BOOST', '-DASIO_STANDALONE', language : 'cpp')
 if io_uring.found()
@@ -44,8 +45,6 @@ opendht_src = [
     'src/network_utils.cpp',
     'src/thread_pool.cpp',
 ]
-
-conf_data = configuration_data()
 
 if get_option('indexation').enabled()
     opendht_src += 'src/indexation/pht.cpp'

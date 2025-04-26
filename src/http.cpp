@@ -54,7 +54,7 @@ constexpr const char HTTPS_PROTOCOL[] = "https://";
 constexpr const char ORIGIN_PROTOCOL[] = "//";
 constexpr unsigned MAX_REDIRECTS {5};
 
-Url::Url(const std::string& url): url(url)
+Url::Url(std::string_view url): url(url)
 {
     size_t addr_begin = 0;
     // protocol
@@ -69,10 +69,9 @@ Url::Url(const std::string& url): url(url)
     size_t addr_size = url.substr(addr_begin).find("/");
     if (addr_size == std::string::npos)
         addr_size = url.size() - addr_begin;
-    auto host_service = splitPort(url.substr(addr_begin, addr_size));
-    host = host_service.first;
-    if (!host_service.second.empty())
-        service = host_service.second;
+    auto [h, s] = splitPort(url.substr(addr_begin, addr_size));
+    host = std::move(h);
+    service = std::move(s);
     // target, query and fragment
     size_t query_begin = url.find("?");
     auto addr_end = addr_begin + addr_size;
@@ -457,11 +456,11 @@ Connection::set_ssl_verification(const std::string& hostname, const asio::ssl::v
                     }
 
                     // starts from CA and goes down the presented chain
-                    auto verifier = asio::ssl::rfc2818_verification(hostname);
+                    auto verifier = asio::ssl::host_name_verification(hostname);
                     bool verified = verifier(preverified, ctx);
                     auto verify_ec = X509_STORE_CTX_get_error(ctx.native_handle());
                     if (verify_ec != 0 /*X509_V_OK*/ and logger)
-                        logger->error("[http::connection:{:d}] ssl verification error={:d} %d", id, verify_ec, verified);
+                        logger->error("[http::connection:{:d}] ssl verification error={:d} {}", id, verify_ec, verified);
                     if (verified and checkOcsp) {
                         std::unique_ptr<stack_st_X509, void(*)(stack_st_X509*)> chain(
                             X509_STORE_CTX_get1_chain(ctx.native_handle()),
@@ -592,12 +591,12 @@ Connection::async_write(BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_write(*ssl_socket_, write_buf_, wrapCallback(std::move(cb)));
     else if (socket_) asio::async_write(*socket_, write_buf_, wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -605,12 +604,12 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
     else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -618,12 +617,12 @@ Connection::async_read_until(char delim, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
     else if (socket_) asio::async_read_until(*socket_, read_buf_, delim, wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -631,12 +630,12 @@ Connection::async_read(size_t bytes, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read(*ssl_socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallback(std::move(cb)));
     else if (socket_) asio::async_read(*socket_, read_buf_, asio::transfer_exactly(bytes), wrapCallback(std::move(cb)));
-    else if (cb)      ctx_.post([cb](){ cb(asio::error::operation_aborted, 0); });
+    else if (cb)      asio::post(ctx_, [cb](){ cb(asio::error::operation_aborted, 0); });
 }
 
 void
@@ -644,7 +643,7 @@ Connection::async_read_some(size_t bytes, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        if (cb) ctx_.post([cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     auto buf = read_buf_.prepare(bytes);
@@ -819,10 +818,21 @@ Resolver::add_callback(ResolverCb cb, sa_family_t family)
 }
 
 void
-Resolver::resolve(const std::string& host, const std::string& service)
+Resolver::resolve(const std::string& host, const std::string& serviceName)
 {
-    asio::ip::tcp::resolver::query query_(host, service);
-    resolver_.async_resolve(query_, [this, host, service, destroyed = destroyed_]
+    auto service = serviceName;
+    // The async_resolve function used below typically relies on the contents of the
+    // /etc/services (Linux/POSIX) or c:\windows\system32\drivers\etc\services (Windows)
+    // file in order to resolve a descriptive service name into a port number. A
+    // resolution attempt that would otherwise succeed can therefore fail if the file
+    // is inaccessible or corrupted (which is rare but can happen in practice). We
+    // hardcode the port numbers for http and https to prevent this failure mode.
+    if (service == "http") {
+        service = "80";
+    } else if (service == "https") {
+        service = "443";
+    }
+    resolver_.async_resolve(host, service, [this, host, service, destroyed = destroyed_]
         (const asio::error_code& ec, asio::ip::tcp::resolver::results_type endpoints)
     {
         if (ec == asio::error::operation_aborted or *destroyed)

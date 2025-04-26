@@ -328,8 +328,8 @@ public:
      * Call linked callback with push_notification
      * @param notification to process
      */
-    void pushNotificationReceived(const std::map<std::string, std::string>& notification) override {
-        dht_->pushNotificationReceived(notification);
+    PushNotificationResult pushNotificationReceived(const std::map<std::string, std::string>& notification) override {
+        return dht_->pushNotificationReceived(notification);
     }
 
     void setLogger(const Logger& logger) override {

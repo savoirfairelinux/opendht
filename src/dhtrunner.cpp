@@ -269,6 +269,10 @@ DhtRunner::run(const Config& config, Context&& context)
                 if (status4 == NodeStatus::Disconnected && status6 == NodeStatus::Disconnected) {
                     peerDiscovery_->connectivityChanged();
                 }
+                else if (status4 != NodeStatus::Connected || status6 != NodeStatus::Connected) {
+                    peerDiscovery_->stopConnectivityChanged();
+                }
+
             });
         }
 #endif
@@ -1116,13 +1120,13 @@ DhtRunner::enableProxy(bool proxify)
                         cv.notify_all();
                     }
                 },
-                config_.proxy_server, config_.push_node_id, logger_);
-        if (not config_.push_token.empty())
-            dht_via_proxy->setPushNotificationToken(config_.push_token);
-        if (not config_.push_topic.empty())
-            dht_via_proxy->setPushNotificationTopic(config_.push_topic);
-        if (not config_.push_platform.empty())
-            dht_via_proxy->setPushNotificationPlatform(config_.push_platform);
+                config_.proxy_server,
+                config_.proxy_user_agent,
+                config_.push_node_id,
+                config_.push_token,
+                config_.push_topic,
+                config_.push_platform,
+                logger_);
         dht_ = std::make_unique<SecureDht>(std::move(dht_via_proxy), config_.dht_config, identityAnnouncedCb_, logger_);
         // and use it
         use_proxy = proxify;
@@ -1182,18 +1186,25 @@ DhtRunner::setPushNotificationPlatform(const std::string& platform) {
 #endif
 }
 
-void
-DhtRunner::pushNotificationReceived(const std::map<std::string, std::string>& data)
+std::future<PushNotificationResult>
+DhtRunner::pushNotificationReceived([[maybe_unused]] const std::map<std::string, std::string>& data)
 {
 #if defined(OPENDHT_PROXY_CLIENT) && defined(OPENDHT_PUSH_NOTIFICATIONS)
+    auto ret_token = std::make_shared<std::promise<PushNotificationResult>>();
+    auto future = ret_token->get_future();
     std::lock_guard<std::mutex> lck(storage_mtx);
-    pending_ops_prio.emplace([=](SecureDht&) {
+    pending_ops_prio.emplace([ret_token, this, data](SecureDht&) {
         if (dht_)
-            dht_->pushNotificationReceived(data);
+            ret_token->set_value(dht_->pushNotificationReceived(data));
+        else
+            ret_token->set_value(PushNotificationResult::IgnoredStopped);
     });
     cv.notify_all();
+    return future;
 #else
-    (void) data;
+    std::promise<PushNotificationResult> p {};
+    p.set_value(PushNotificationResult::IgnoredDisabled);
+    return p.get_future();
 #endif
 }
 

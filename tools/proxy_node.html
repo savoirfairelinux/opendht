@@ -1,190 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-		<title>OpenDHT tester</title>
-		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.css" />
-		<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
-		<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
-		<script type="text/javascript">"use strict";
-let onGet;
-let onPut;
-let setServer;
-const valueGetElement = function(o) {
-    const d = window.atob(o.data);
-    return d;
-};
-$(function() {
-    let request = undefined;
-    let server;
-    const getTools = $("#getTools");
-    const getBtn = $("#getBtn");
-    const getDropdown = $("#getDropdown");
-    const listenBtn = $("#listenBtn").click(function(){onGet('LISTEN');});
-    const setGetRequest = function() {
-        getBtn.button('loading');
-        getStopBtn.appendTo(getTools);
-        getDropdown.hide();
-    }
-    const clearGetRequest = function() {
-        if (request === undefined)
-            return;
-        request.abort();
-        request = undefined;
-        getStopBtn.detach();
-        getDropdown.show();
-        getBtn.button('reset');
-    }
-    const getStopBtn = $("#getStopBtn").detach().click(clearGetRequest);
-    const putBtn = $("#putBtn");
-    const result = $("#dhtResult");
-    const group = $('<ul class="list-group"/>').appendTo(result);
-    onGet = function (method) {
-        if (request !== undefined)
-            return false;
-        const input = $("#getKey").val();
-        group.empty();
-        let lastAppended = 0;
-        let start = new Date().getTime();
-        request = new XMLHttpRequest();
-        request.onreadystatechange = function(event) {
-            if (this.readyState >= XMLHttpRequest.LOADING) {
-                if (this.readyState == XMLHttpRequest.DONE) {
-                    clearGetRequest();
-                }
-                if (this.status === 200) {
-                    const elements = this.responseText.split("\n");
-                    const elementsLength = elements.length;
-                    const now = new Date().getTime();
-                    for (let i = lastAppended; i < elementsLength; i++) {
-                        const element = elements[i];
-                        if (!element || element.length == 0)
-                            return;
-                        const o = JSON.parse(element);
-                        if (o.expired) {
-                            $('#value'+o.id).slideUp(100, (e) => $(e.target).remove());
-                        } else {
-                            const d = window.atob(o.data);
-                            const delay = Math.max(0, start-now);
-                            $('<li class="list-group-item" id="value'+o.id+'"/>').append(valueGetElement(o)).appendTo(group).hide().delay(delay).slideDown(100);
-                            lastAppended = i+1;
-                            start = Math.max(start, now)+25;
-                        }
-                    }
-                } else if (this.status !== 0) {
-                    group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content: " + this.statusText));
-                }
-            }
-        };
-        request.onerror = function(event) {
-            clearGetRequest();
-            group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text("Error loading content."));
-        };
-        request.open(method, server + input, true);
-        request.send(null);
-        setGetRequest();
-        return false;
-    };
-
-    onPut = function( ) {
-        const key = $("#getKey").val();
-        const value = $("#putValue").val();
-        $.ajax({
-            url: server + key,
-            type: 'POST',
-            data: JSON.stringify({
-                data:window.btoa(value)
-            }),
-            contentType: 'application/json; charset=utf-8',
-            dataType: 'json',
-            success: function( result ) {
-                putBtn.button('reset');
-                //$('<li class="list-group-item list-group-item-success"/>').append(valueGetElement(result)).appendTo(group.empty());
-            },
-            error: function(result) {
-                putBtn.button('reset');
-                group.empty().append($('<li class="list-group-item list-group-item-danger"/>').text(result.statusText));
-            }
-        });
-        putBtn.button('loading');
-        return false;
-    };
-
-    const serverValue = $("#serverValue");
-    const serverStatus = $("#serverStatus");
-    const serverBtn = $("#serverBtn");
-    setServer = function(event) {
-        server = serverValue.val() + '/';
-        serverStatus.empty();
-        serverBtn.button('loading');
-        $.getJSON(server, function(data){
-            $('<span><b>Node</b> '+data.node_id+'</span>').appendTo(serverStatus).hide().fadeIn();
-        }).fail(function(error) {
-            var message = " Cant' access node."
-            if (serverValue.val().indexOf("https") != -1){
-                message += "</br></br>Self-signed certificate must be allowed in browser."
-            }
-            serverStatus.html("<div class='alert alert-danger' style='margin-bottom: 0px;'>" +
-                              "<span class='glyphicon glyphicon-remove' aria-hidden='true'></span>" +
-                              message + "</div>");
-        }).always(function(error) {
-            serverBtn.button('reset');
-        });
-        return false;
-    };
-    setServer();
-});
-	</script>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OpenDHT web node</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.3/css/bootstrap.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 </head>
+
 <body>
-    <div class="container" style="max-width: 730px;">
-        <header class="page-header">
+    <div class="container" style="max-width: 880px;">
+        <header class="m-3 p-3">
             <div class="row">
-                <div class="col-sm-5">
-                    <h1>OpenDHT tester</h1>
+                <div class="col-sm-5 d-flex align-items-center">
+                    <h2>OpenDHT web node</h2>
                 </div>
                 <div class="col-sm-7">
-                    <div class="well well-sm" style="margin-top:10px; margin-bottom:0px;">
-                        <form id="serverForm" class="form-inline" onsubmit="return setServer();" style="margin-bottom:4px;">
+                    <div class="card card-body bg-light" style="margin-top:10px; margin-bottom:0px;">
+                        <form id="serverForm" class="form-inline" onsubmit="return setServer();"
+                            style="margin-bottom:4px;">
                             <div class="input-group">
-                                <input type="text" class="form-control" id="serverValue" placeholder="Proxy server" value="http://127.0.0.1:8080"/>
-                                <span class="input-group-btn">
-                                    <button id="serverBtn" type="submit" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i>"><span class="glyphicon glyphicon-refresh" aria-hidden="true"></span></button>
-                                </span>
+                                <input type="text" class="form-control" id="serverValue" placeholder="Proxy server" value="http://127.0.0.1:8080" />
+                                <button id="serverBtn" type="submit" class="btn btn-outline-secondary">
+                                    <div class='spinner-border spinner-border-sm' role='status'
+                                        style="display: none;">
+                                        <span class='visually-hidden'>Loading...</span>
+                                    </div>
+                                    <span class="btn-icon"><i class="bi bi-arrow-clockwise"></i></span>
+                                </button>
                             </div>
                         </form>
-                        <div id="serverStatus"><i class='fa fa-circle-o-notch fa-spin'></i></div>
+                        <div id="serverStatus">
+                            <div class='spinner-border spinner-border-sm' role='status'><span
+                                    class='visually-hidden'>Loading...</span></div>
+                        </div>
                     </div>
                 </div>
             </div>
         </header>
-        <div class="panel panel-default" id="dhtResult">
-                <div class="panel-heading">
-                    <div class="row">
-                    <div class="col-xs-6">
-                        <form class="form-inline" onsubmit="return onGet('GET');">
-                            <div class="input-group">
+        <div class="list-group" id="dhtResult">
+            <div class="list-group-item list-group-item-light">
+                <div class="row">
+                    <div class="col-sm-6">
+                        <form class="form-inline" onsubmit="return onGet('');">
+                            <div class="input-group" id="getTools">
                                 <input type="text" class="form-control" id="getKey" placeholder="Key" aria-label="Key" />
-                                <span class="input-group-btn" id="getTools">
-                                    <button id="getBtn" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i>" type="submit">Get</button>
-                                    <button id="getDropdown"type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"> <span class="caret"></span> <span class="sr-only">Toggle Dropdown</span> </button>
-                                    <ul class="dropdown-menu">
-                                        <li><a id="listenBtn" href="#">Listen</a></li>
-                                    </ul>
-                                    <button id="getStopBtn" class="btn btn-default" type="submit"><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></button>
-                                </span>
+                                <button id="getBtn" class="btn btn-outline-secondary" type="submit">
+                                    <div class='spinner-border spinner-border-sm' role='status' style="display: none;">
+                                        <span class='visually-hidden'>Loading...</span>
+                                    </div>
+                                    <span class="btn-text">Get</span>
+                                </button>
+                                <button id="menuBtn" type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <span class="visually-hidden">Toggle Dropdown</span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" id="listenBtn" href="#">Listen</a></li>
+                                </ul>
+                                <button id="getStopBtn" class="btn btn-outline-secondary">Stop</button>
                             </div>
                         </form>
                     </div>
-                    <div class="col-xs-6">
+                    <div class="col-sm-6">
                         <form class="form-inline" onsubmit="return onPut();">
                             <div class="input-group">
-                                <input type="text" class="form-control input-group-input" id="putValue" placeholder="Value" />
-                                <span class="input-group-btn">
-                                    <button id="putBtn" type="submit" class="btn btn-default" data-loading-text="<i class='fa fa-circle-o-notch fa-spin'></i> Loading">Put</button>
-                                </span>
+                                <input type="text" class="form-control input-group-input" id="putValue"
+                                    placeholder="Value" />
+                                <button id="putBtn" type="submit" class="btn btn-outline-secondary">
+                                    <div class='spinner-border spinner-border-sm' role='status' style="display: none;">
+                                        <span class='visually-hidden'>Loading...</span>
+                                    </div>
+                                    <span class="btn-text">Put</span>
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -192,5 +80,185 @@ $(function() {
             </div>
         </div>
     </div>
+
+    <script type="text/javascript">"use strict";
+        const valueGetElement = (o) => window.atob(o.data);
+        const getTools = document.getElementById("getTools");
+        const getBtn = document.getElementById("getBtn");
+        const menuBtn = document.getElementById("menuBtn");
+        const getStopBtn = document.getElementById("getStopBtn");
+        const listenBtn = document.getElementById("listenBtn");
+        const putBtn = document.getElementById("putBtn");
+        const group = document.getElementById("dhtResult");
+        const serverValue = document.getElementById("serverValue");
+        const serverStatus = document.getElementById("serverStatus");
+        const serverBtn = document.getElementById("serverBtn");
+
+        var request = undefined;
+        const setGetRequest = () => {
+            getBtn.disabled = true;
+            getBtn.querySelector('.spinner-border').style.display = 'inline-block';
+            getBtn.querySelector('.btn-text').style.display = 'none';
+            menuBtn.style.display = 'none';
+            getTools.appendChild(getStopBtn);
+        };
+        const clearGetRequest = () => {
+            if (request === undefined)
+                return;
+            request.abort();
+            request = undefined;
+            if (getStopBtn.parentNode) {
+                getStopBtn.parentNode.removeChild(getStopBtn);
+            }
+            menuBtn.style.display = '';
+            getBtn.disabled = false;
+            getBtn.querySelector('.spinner-border').style.display = 'none';
+            getBtn.querySelector('.btn-text').style.display = 'inline';
+        };
+
+        const clearResults = () => {
+            while (group.children.length > 1) {
+                group.removeChild(group.lastChild);
+            }
+        };
+
+        var server;
+        const setServer = (event) => {
+            server = serverValue.value + '/';
+            serverStatus.innerHTML = '';
+            serverBtn.disabled = true;
+            serverBtn.querySelector('.spinner-border').style.display = 'inline-block';
+            serverBtn.querySelector('.btn-icon').style.display = 'none';
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', server, true);
+            xhr.onreadystatechange = () => {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    serverBtn.disabled = false;
+                    serverBtn.querySelector('.spinner-border').style.display = 'none';
+                    serverBtn.querySelector('.btn-icon').style.display = 'inline';
+                    if (xhr.status === 200) {
+                        const data = JSON.parse(xhr.responseText);
+                        const span = document.createElement('span');
+                        span.innerHTML = '<b>Node</b> ' + data.node_id;
+                        serverStatus.appendChild(span);
+                    } else {
+                        const message = " Can't access node.";
+                        if (serverValue.value.indexOf("https") != -1) {
+                            message += "</br></br>Self-signed certificate must be allowed in browser.";
+                        }
+                        serverStatus.innerHTML = "<div class='alert alert-danger' style='margin-bottom: 0px;'>" +
+                            "<span class='glyphicon glyphicon-remove' aria-hidden='true'></span>" +
+                            message + "</div>";
+                    }
+                }
+            };
+            xhr.send();
+            return false;
+        };
+        setServer();
+
+        const onGet = (path) => {
+            if (request !== undefined)
+                return false;
+            const input = document.getElementById("getKey").value;
+            clearResults()
+            let lastAppended = 0;
+            let start = new Date().getTime();
+            request = new XMLHttpRequest();
+            request.onreadystatechange = (event) => {
+                if (request.readyState >= 2) { // LOADING
+                    if (request.status === 200) {
+                        const elements = request.responseText.split("\n");
+                        const elementsLength = elements.length;
+                        const now = new Date().getTime();
+                        for (let i = lastAppended; i < elementsLength; i++) {
+                            const element = elements[i];
+                            if (!element || element.length == 0)
+                                break;
+                            const o = JSON.parse(element);
+                            if (o.expired) {
+                                const expiredElement = document.getElementById('value' + o.id);
+                                if (expiredElement) {
+                                    expiredElement.style.display = 'none';
+                                    if (expiredElement.parentNode) {
+                                        expiredElement.parentNode.removeChild(expiredElement);
+                                    }
+                                }
+                            } else {
+                                const d = window.atob(o.data);
+                                const delay = Math.max(0, start - now);
+                                const li = document.createElement('li');
+                                li.className = 'list-group-item';
+                                li.id = 'value' + o.id;
+                                li.innerHTML = valueGetElement(o);
+                                li.style.opacity = 0;
+                                li.style.transition = 'opacity 0.1s ease-in';
+                                group.appendChild(li);
+                                setTimeout(() => {
+                                    li.style.opacity = 1;
+                                }, delay);
+                                lastAppended = i + 1;
+                                start = Math.max(start, now) + 25;
+                            }
+                        }
+                    } else if (request.status !== 0) {
+                        clearResults()
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item list-group-item-danger';
+                        li.textContent = "Error loading content: " + request.statusText;
+                        group.appendChild(li);
+                    }
+                }
+                if (request.readyState == 4) { // DONE
+                    clearGetRequest();
+                }
+            };
+            request.onerror = (event) => {
+                clearGetRequest();
+                clearResults()
+                const li = document.createElement('li');
+                li.className = 'list-group-item list-group-item-danger';
+                li.textContent = "Error loading content.";
+                group.appendChild(li);
+            };
+            request.open('GET', server + 'key/' + input + path, true);
+            request.send(null);
+            setGetRequest();
+            return false;
+        };
+        const onPut = () => {
+            const key = document.getElementById("getKey").value;
+            const value = document.getElementById("putValue").value;
+            putBtn.disabled = true;
+            putBtn.querySelector('.spinner-border').style.display = 'inline-block';
+            putBtn.querySelector('.btn-text').style.display = 'none';
+            fetch(server + key, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                body: JSON.stringify({ data: window.btoa(value) })
+            })
+            .then(response => {
+                if (!response.ok)
+                    throw new Error(response.statusText);
+            })
+            .catch(error => {
+                group.innerHTML = '';
+                const li = document.createElement('li');
+                li.className = 'list-group-item list-group-item-danger';
+                li.textContent = error.message;
+                group.appendChild(li);
+            })
+            .finally(() => {
+                putBtn.disabled = false;
+                putBtn.querySelector('.spinner-border').style.display = 'none';
+                putBtn.querySelector('.btn-text').style.display = 'inline';
+            });
+            return false;
+        };
+
+        listenBtn.addEventListener('click', () => { onGet('/listen'); });
+        getStopBtn.parentNode.removeChild(getStopBtn);
+        getStopBtn.addEventListener('click', clearGetRequest);
+    </script>
 </body>
 </html>

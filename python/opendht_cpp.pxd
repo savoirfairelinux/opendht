@@ -246,6 +246,7 @@ cdef extern from "opendht/dhtrunner.h" namespace "dht":
             string push_token
             string push_topic
             string push_platform
+            string proxy_user_agent
             bool peer_discovery
             bool peer_publish
             shared_ptr[Certificate] server_ca

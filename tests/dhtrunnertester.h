@@ -31,6 +31,8 @@ class DhtRunnerTester : public CppUnit::TestFixture {
     CPPUNIT_TEST_SUITE(DhtRunnerTester);
     CPPUNIT_TEST(testConstructors);
     CPPUNIT_TEST(testGetPut);
+    CPPUNIT_TEST(testPutDuplicate);
+    CPPUNIT_TEST(testPutOverride);
     CPPUNIT_TEST(testListen);
     CPPUNIT_TEST(testListenLotOfBytes);
     CPPUNIT_TEST(testIdOps);
@@ -55,6 +57,14 @@ class DhtRunnerTester : public CppUnit::TestFixture {
      * Test get and put methods
      */
     void testGetPut();
+    /**
+     * Test get and multiple put
+     */
+    void testPutDuplicate();
+    /**
+     * Test get and multiple put with changing value
+     */
+    void testPutOverride();
     /**
      * Test listen method
      */
