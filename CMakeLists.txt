@@ -499,8 +499,7 @@ else ()
     add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS
                     -D_CRT_SECURE_NO_WARNINGS
                     -DWIN32_LEAN_AND_MEAN
-                    -DSTATIC_GETOPT
-                    -DGNUTLS_INTERNAL_BUILD)
+                    -DSTATIC_GETOPT)
     set(DISABLE_MSC_WARNINGS "/wd4101 /wd4244 /wd4267 /wd4273 /wd4804 /wd4834 /wd4996")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DISABLE_MSC_WARNINGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP /bigobj")
