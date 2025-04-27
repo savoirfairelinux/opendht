@@ -18,6 +18,15 @@
 
 #pragma once
 
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#include <winsock2.h>
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#endif
+
 namespace dht {
 namespace net {
 

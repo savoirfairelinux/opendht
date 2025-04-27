@@ -52,6 +52,10 @@ Makefile.in
 # VSCode
 .vscode/*
 
+# Visual Studio
+.vs/
+CMakeSettings.json
+
 # Eclipse CDT
 .cproject
 .project
@@ -75,6 +79,9 @@ doc/Doxyfile
 *.swo
 
 # build dir
-build
-build_dev
-.DS_Store
+build/
+build_dev/
+.DS_Store/
+build-*/
+install/
+
