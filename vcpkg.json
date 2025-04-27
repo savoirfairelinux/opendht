@@ -1,0 +1,25 @@
+{
+    "dependencies": [
+        {
+            "name": "shiftmedia-libgnutls",
+            "platform": "windows"
+        },
+        {
+            "name": "libgnutls",
+            "platform": "osx|linux"
+        },
+        {
+            "name": "cppunit",
+            "platform": "osx|linux"
+        },
+        "pkgconf",
+        "fmt",
+        "openssl",
+        "msgpack",
+        "nettle",
+        "argon2",
+        "jsoncpp",
+        "llhttp",
+        "asio"
+    ]
+}
