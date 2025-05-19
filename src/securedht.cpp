@@ -516,6 +516,33 @@ SecureDht::putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val,
 }
 
 void
+SecureDht::putEncrypted(const InfoHash& hash, const PkId& to, Sp<Value> val, DoneCallback callback, bool permanent)
+{
+    if (not key_)  {
+        if (callback)
+            callback(false, {});
+        return;
+    }
+    findPublicKey(to, [this, hash, val = std::move(val), callback = std::move(callback), permanent](const Sp<crypto::PublicKey>& pk) {
+        if(!pk || !*pk) {
+            if (callback)
+                callback(false, {});
+            return;
+        }
+        if (logger_)
+            logger_->warn("Encrypting data for PK: {}", pk->getLongId());
+        try {
+            dht_->put(hash, encrypt(*val, *pk), callback, time_point::max(), permanent);
+        } catch (const std::exception& e) {
+            if (logger_)
+                logger_->e("Error putting encrypted data: %s", e.what());
+            if (callback)
+                callback(false, {});
+        }
+    });
+}
+
+void
 SecureDht::putEncrypted(const InfoHash& hash, const crypto::PublicKey& pk, Sp<Value> val, DoneCallback callback, bool permanent)
 {
     if (not key_)  {
@@ -524,7 +551,7 @@ SecureDht::putEncrypted(const InfoHash& hash, const crypto::PublicKey& pk, Sp<Va
         return;
     }
     if (logger_)
-        logger_->w("Encrypting data for PK: %s", pk.getLongId().to_c_str());
+        logger_->warn("Encrypting data for PK: {}", pk.getLongId());
     try {
         dht_->put(hash, encrypt(*val, pk), callback, time_point::max(), permanent);
     } catch (const std::exception& e) {
