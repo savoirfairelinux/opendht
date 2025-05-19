@@ -135,11 +135,16 @@ public:
     void findCertificate(const InfoHash& node, const std::function<void(const Sp<crypto::Certificate>)>& cb);
     void findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
-    Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
+    void findCertificate(const PkId& id, const std::function<void(const Sp<crypto::Certificate>)>& cb);
+    void findPublicKey(const PkId& id, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
+
     void registerCertificate(const Sp<crypto::Certificate>& cert);
 
     Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
     Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
+
+    Sp<crypto::Certificate> getCertificate(const PkId& node) const;
+    Sp<crypto::PublicKey> getPublicKey(const PkId& node) const;
 
     /**
      * Allows to set a custom callback called by the library to find a locally-stored certificate.
@@ -360,6 +365,9 @@ private:
     ValueCallback getCallbackFilter(const ValueCallback&, Value::Filter&&);
     GetCallback getCallbackFilter(const GetCallback&, Value::Filter&&);
 
+    Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
+    Sp<crypto::Certificate> registerCertificate(const PkId& node, const Blob& cert);
+
     Sp<crypto::PrivateKey> key_ {};
     Sp<crypto::Certificate> certificate_ {};
 
@@ -369,6 +377,8 @@ private:
     // our certificate cache
     std::map<InfoHash, Sp<crypto::Certificate>> nodesCertificates_ {};
     std::map<InfoHash, Sp<crypto::PublicKey>> nodesPubKeys_ {};
+    std::map<PkId, Sp<crypto::Certificate>> nodesCertificatesLong_ {};
+    std::map<PkId, Sp<crypto::PublicKey>> nodesPubKeysLong_ {};
 
     std::atomic_bool forward_all_ {false};
     bool enableCache_ {false};
