@@ -619,7 +619,7 @@ DhtRunner::getPublicAddress(std::function<void(std::vector<SockAddr>&&)> cb, sa_
 }
 
 void
-DhtRunner::registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
+DhtRunner::registerCertificate(const std::shared_ptr<crypto::Certificate>& cert) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     dht_->registerCertificate(cert);
 }

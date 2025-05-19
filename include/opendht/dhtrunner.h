@@ -384,7 +384,7 @@ public:
     // securedht methods
 
     void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
-    void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
+    void registerCertificate(const std::shared_ptr<crypto::Certificate>& cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
     /**

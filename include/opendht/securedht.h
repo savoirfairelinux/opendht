@@ -136,7 +136,7 @@ public:
     void findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
     Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
-    void registerCertificate(Sp<crypto::Certificate>& cert);
+    void registerCertificate(const Sp<crypto::Certificate>& cert);
 
     Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
     Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
