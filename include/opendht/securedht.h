@@ -115,13 +115,19 @@ public:
      * The operation will be immediate if the recipient' public key is known (otherwise it will be retrived first).
      */
     void putEncrypted(const InfoHash& hash, const InfoHash& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
+
+    [[deprecated("Use the shared_ptr version instead")]]
     void putEncrypted(const InfoHash& hash, const InfoHash& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
     void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
+
+    [[deprecated("Use the shared_ptr version instead")]]
     void putEncrypted(const InfoHash& hash, const crypto::PublicKey& to, Value&& v, DoneCallback callback, bool permanent = false) {
         putEncrypted(hash, to, std::make_shared<Value>(std::move(v)), callback, permanent);
     }
+
+    void putEncrypted(const InfoHash& hash, const PkId& to, Sp<Value> val, DoneCallback callback, bool permanent = false);
 
     /**
      * Take ownership of the value and sign it using our private key.
