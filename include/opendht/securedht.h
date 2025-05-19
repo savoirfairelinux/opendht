@@ -387,7 +387,7 @@ const ValueType CERTIFICATE_TYPE = {
     },
     [](InfoHash, const Sp<Value>& o, Sp<Value>& n, const InfoHash&, const SockAddr&) {
         try {
-            return crypto::Certificate(o->data).getPublicKey().getId() == crypto::Certificate(n->data).getPublicKey().getId();
+            return crypto::Certificate(o->data).getPublicKey().getLongId() == crypto::Certificate(n->data).getPublicKey().getLongId();
         } catch (const std::exception& e) {}
         return false;
     }
