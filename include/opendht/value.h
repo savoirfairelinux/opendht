@@ -137,8 +137,6 @@ private:
     std::map<ValueType::Id, ValueType> types {};
 };
 
-struct CryptoValueCache;
-
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.
  *
