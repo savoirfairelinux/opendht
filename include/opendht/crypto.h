@@ -512,11 +512,17 @@ struct OPENDHT_PUBLIC Certificate {
 
     Blob getSerialNumber() const;
 
+    /** Read certificate full DN as described in RFC4514 */ 
+    std::string getDN() const;
+
     /** Read certificate Common Name (CN) */
     std::string getName() const;
 
     /** Read certificate User ID (UID) */
     std::string getUID() const;
+
+    /** Read certificate issuer DN as described in RFC4514 */
+    std::string getIssuerDN() const;
 
     /** Read certificate issuer Common Name (CN) */
     std::string getIssuerName() const;
