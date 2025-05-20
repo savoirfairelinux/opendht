@@ -358,7 +358,8 @@ DhtRunnerTester::testIdOps() {
 
     {
         std::unique_lock<std::mutex> lk(mutex);
-        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 7 && valueCountEdit == 2; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCount == 7; }));
+        CPPUNIT_ASSERT(cv.wait_for(lk, 20s, [&]{ return valueCountEdit == 2; }));
     }
 
     // editValue->data = dht::packMsg("v2");
