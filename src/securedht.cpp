@@ -158,7 +158,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
 }
 
 void
-SecureDht::registerCertificate(Sp<crypto::Certificate>& cert)
+SecureDht::registerCertificate(const Sp<crypto::Certificate>& cert)
 {
     if (cert)
         nodesCertificates_[cert->getId()] = cert;
