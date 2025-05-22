@@ -604,7 +604,7 @@ Connection::async_read_until(const char* delim, BytesHandlerCb cb)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_open()) {
-        asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
+        if (cb) asio::post(ctx_, [cb](){ cb(asio::error::broken_pipe, 0); });
         return;
     }
     if (ssl_socket_)  asio::async_read_until(*ssl_socket_, read_buf_, delim, wrapCallback(std::move(cb)));
