@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -754,7 +754,7 @@ OPENDHT_PUBLIC Blob aesGetSalt(const uint8_t* data, size_t data_length);
 OPENDHT_PUBLIC Blob inline aesGetSalt(const Blob& data) {
     return aesGetSalt(data.data(), data.size());
 }
-/** Get the encrypted data part of data password-encrypted with `aesEncrypt(data, password)` */
+/** Get the encrypted data (ciphertext) part of data password-encrypted with `aesEncrypt(data, password)` */
 OPENDHT_PUBLIC std::string_view aesGetEncrypted(const uint8_t* data, size_t data_length);
 OPENDHT_PUBLIC std::string_view inline aesGetEncrypted(const Blob& data) {
     return aesGetEncrypted(data.data(), data.size());

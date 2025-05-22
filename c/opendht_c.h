@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -91,7 +91,7 @@ OPENDHT_C_PUBLIC dht_pkid dht_certificate_get_long_id(const dht_certificate*);
 OPENDHT_C_PUBLIC dht_publickey* dht_certificate_get_publickey(const dht_certificate*);
 OPENDHT_C_PUBLIC void dht_certificate_delete(dht_certificate*);
 
-struct OPENDHT_PUBLIC dht_identity {
+struct OPENDHT_C_PUBLIC dht_identity {
     dht_privatekey* privatekey;
     dht_certificate* certificate;
 };
