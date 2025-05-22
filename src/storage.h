@@ -224,7 +224,7 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
             //DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             // clear quota for previous value
             if (it->store_bucket)
-                it->store_bucket->erase(id, *value, it->expiration);
+                it->store_bucket->erase(id, *it->data, it->expiration);
             it->expiration = expiration;
             // update quota for new value
             it->store_bucket = sb;
