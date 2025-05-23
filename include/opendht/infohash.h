@@ -63,7 +63,7 @@ namespace crypto {
  * Hashes identify nodes and values in the Dht.
  */
 template <size_t N>
-class OPENDHT_PUBLIC Hash {
+class Hash {
 public:
     using T = std::array<uint8_t, N>;
     typedef typename T::iterator iterator;
@@ -251,10 +251,10 @@ public:
     static Hash getRandom(Rd&);
 
     template <size_t M>
-    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const Hash<M>& h);
+    friend std::ostream& operator<< (std::ostream& s, const Hash<M>& h);
 
     template <size_t M>
-    OPENDHT_PUBLIC friend std::istream& operator>> (std::istream& s, Hash<M>& h);
+    friend std::istream& operator>> (std::istream& s, Hash<M>& h);
 
     /** Returns view to thread-allocated memory, only valid until the next call to this function. */
     std::string_view to_view() const { return std::string_view(to_c_str(), N*2); }
@@ -345,18 +345,12 @@ Hash<N>::getRandom(Rd& rdev)
 }
 
 struct alignas(std::max_align_t) HexMap : public std::array<std::array<char, 2>, 256> {
-    constexpr HexMap() : std::array<std::array<char, 2>, 256>() {
-        for (size_t i = 0; i < size(); i++) {
-            auto& e = (*this)[i];
-            e[0] = hex_digits[(i >> 4) & 0x0F];
-            e[1] = hex_digits[i & 0x0F];
-        }
-    }
+    HexMap();
 private:
     static constexpr const char* hex_digits = "0123456789abcdef";
 };
 
-OPENDHT_PUBLIC constexpr HexMap hex_map = {};
+OPENDHT_PUBLIC extern const HexMap hex_map;
 
 inline std::string
 toHex(const uint8_t* data, size_t size) {
