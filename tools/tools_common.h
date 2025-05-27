@@ -42,20 +42,18 @@
 #endif
 #ifdef _MSC_VER
     #pragma message("Building on WIN32 platform using MSVC, linking wingetopt")
-    #define SIGHUP 0
     #include "wingetopt.h"
-    #include <io.h>
 #endif
 #if defined(__MINGW32__) || defined (__MINGW64__)
     #pragma message "Building on MinGW, linking system-wide getopt"
-    #define SIGHUP 0
-    #include <io.h>
     #include <getopt.h>
     #include <readline/readline.h>
     #include <readline/history.h>
 #endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__) || defined (__MINGW64__)
+    #define SIGHUP 0
+    #include <io.h>
     #define DISABLE_SIGNALS
 #endif
 
