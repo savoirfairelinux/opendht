@@ -25,9 +25,11 @@
 
 namespace test {
 
+using namespace std::literals;
+
 constexpr unsigned MULTICAST_PORT = 2222;
-const std::string DHT_NODE_NAME {"dht"};
-const std::string JAMI_NODE_NAME {"jami"};
+constexpr auto DHT_NODE_NAME {"dht"sv};
+constexpr auto JAMI_NODE_NAME {"jami"sv};
 
 struct DhtNode {
     dht::InfoHash nodeid;

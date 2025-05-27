@@ -36,7 +36,9 @@
 
 namespace dht {
 
-static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
+using namespace std::literals;
+
+constexpr auto PEER_DISCOVERY_DHT_SERVICE = "dht"sv;
 
 struct NodeInsertionPack {
     dht::InfoHash nodeId;
