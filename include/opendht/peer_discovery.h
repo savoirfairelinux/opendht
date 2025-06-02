@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author(s) : Mingrui Zhang <mingrui.zhang@savoirfairelinux.com>
  *              Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -49,10 +49,10 @@ public:
      * startDiscovery - Keep Listening data from the sender until node is joinned
      * or stop is called
      */
-    void startDiscovery(const std::string &type, ServiceDiscoveredCallback callback);
+    void startDiscovery(std::string_view type, ServiceDiscoveredCallback callback);
 
     template <typename T>
-    void startDiscovery(const std::string &type, std::function<void(T &&, SockAddr &&)> cb) {
+    void startDiscovery(std::string_view type, std::function<void(T &&, SockAddr &&)> cb) {
         startDiscovery(type, [cb](msgpack::object &&ob, SockAddr &&addr) {
             cb(ob.as<T>(), std::move(addr));
         });
@@ -61,11 +61,11 @@ public:
     /**
      * startPublish - Keeping sending data until node is joinned or stop is called
      */
-    void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
-    void startPublish(sa_family_t domain, const std::string &type, const msgpack::sbuffer &pack_buf);
+    void startPublish(std::string_view type, const msgpack::sbuffer &pack_buf);
+    void startPublish(sa_family_t domain, std::string_view type, const msgpack::sbuffer &pack_buf);
 
     template <typename T>
-    void startPublish(const std::string &type, const T &object) {
+    void startPublish(std::string_view type, const T &object) {
         msgpack::sbuffer buf;
         msgpack::pack(buf, object);
         startPublish(type, buf);
@@ -79,13 +79,13 @@ public:
     /**
      * Remove possible callBack to discovery
      */
-    bool stopDiscovery(const std::string &type);
+    bool stopDiscovery(std::string_view type);
 
     /**
      * Remove different serivce message to send
      */
-    bool stopPublish(const std::string &type);
-    bool stopPublish(sa_family_t domain, const std::string &type);
+    bool stopPublish(std::string_view type);
+    bool stopPublish(sa_family_t domain, std::string_view type);
 
     void connectivityChanged();
 

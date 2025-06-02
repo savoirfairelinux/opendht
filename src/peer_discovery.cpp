@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author(s) : Mingrui Zhang <mingrui.zhang@savoirfairelinux.com>
  *              Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *              Adrien Béraud <adrien.beraud@savoirfairelinux.com>
@@ -42,13 +42,13 @@ public:
     DomainPeerDiscovery(asio::ip::udp domain, in_port_t port, Sp<asio::io_context> ioContext = {}, Sp<Logger> logger = {});
     ~DomainPeerDiscovery();
 
-    void startDiscovery(const std::string &type, ServiceDiscoveredCallback callback);
-    void startPublish(const std::string &type, const msgpack::sbuffer &pack_buf);
+    void startDiscovery(std::string_view type, ServiceDiscoveredCallback callback);
+    void startPublish(std::string_view type, const msgpack::sbuffer &pack_buf);
 
     void stop();
 
-    bool stopDiscovery(const std::string &type);
-    bool stopPublish(const std::string &type);
+    bool stopDiscovery(std::string_view type);
+    bool stopPublish(std::string_view type);
 
     void connectivityChanged();
 
@@ -75,7 +75,7 @@ private:
     asio::ip::udp::endpoint receiveFrom_;
 
     msgpack::sbuffer sbuf_;
-    std::map<std::string, msgpack::sbuffer> messages_;
+    std::map<std::string, msgpack::sbuffer, std::less<>> messages_;
     std::map<std::string, ServiceDiscoveredCallback, std::less<>> callbackmap_;
     bool lrunning_ {false};
     bool drunning_ {false};
@@ -133,10 +133,10 @@ PeerDiscovery::DomainPeerDiscovery::~DomainPeerDiscovery()
 }
 
 void
-PeerDiscovery::DomainPeerDiscovery::startDiscovery(const std::string &type, ServiceDiscoveredCallback callback)
+PeerDiscovery::DomainPeerDiscovery::startDiscovery(std::string_view type, ServiceDiscoveredCallback callback)
 {
     std::lock_guard<std::mutex> lck(dmtx_);
-    callbackmap_[type] = callback;
+    callbackmap_[std::string(type)] = callback;
     if (not drunning_) {
         drunning_ = true;
         asio::post(*ioContext_, [this] () {
@@ -236,23 +236,25 @@ PeerDiscovery::DomainPeerDiscovery::publish(const asio::ip::udp::endpoint& peer)
 
 
 void
-PeerDiscovery::DomainPeerDiscovery::startPublish(const std::string &type, const msgpack::sbuffer &pack_buf)
+PeerDiscovery::DomainPeerDiscovery::startPublish(std::string_view type, const msgpack::sbuffer &pack_buf)
 {
     msgpack::sbuffer pack_buf_c(pack_buf.size());
     pack_buf_c.write(pack_buf.data(), pack_buf.size());
 
     std::lock_guard<std::mutex> lck(mtx_);
-    messages_[type] = std::move(pack_buf_c);
+    messages_[std::string(type)] = std::move(pack_buf_c);
     reloadMessages();
     lrunning_ = true;
     asio::post(*ioContext_, [this] () { publish(sockAddrSend_); });
 }
 
 bool
-PeerDiscovery::DomainPeerDiscovery::stopDiscovery(const std::string& type)
+PeerDiscovery::DomainPeerDiscovery::stopDiscovery(std::string_view type)
 {
     std::lock_guard<std::mutex> lck(dmtx_);
-    if (callbackmap_.erase(type) > 0) {
+    auto it = callbackmap_.find(type);
+    if (it != callbackmap_.end()) {
+        callbackmap_.erase(it);
         if (callbackmap_.empty())
             stopDiscovery();
         return true;
@@ -261,10 +263,12 @@ PeerDiscovery::DomainPeerDiscovery::stopDiscovery(const std::string& type)
 }
 
 bool
-PeerDiscovery::DomainPeerDiscovery::stopPublish(const std::string& type)
+PeerDiscovery::DomainPeerDiscovery::stopPublish(std::string_view type)
 {
     std::lock_guard<std::mutex> lck(mtx_);
-    if (messages_.erase(type) > 0) {
+    auto it = messages_.find(type);
+    if (it != messages_.end()) {
+        messages_.erase(it);
         if (messages_.empty())
             stopPublish();
         else
@@ -397,21 +401,21 @@ PeerDiscovery::~PeerDiscovery() {
 }
 
 void
-PeerDiscovery::startDiscovery(const std::string& type, ServiceDiscoveredCallback callback)
+PeerDiscovery::startDiscovery(std::string_view type, ServiceDiscoveredCallback callback)
 {
     if (peerDiscovery4_) peerDiscovery4_->startDiscovery(type, callback);
     if (peerDiscovery6_) peerDiscovery6_->startDiscovery(type, callback);
 }
 
 void
-PeerDiscovery::startPublish(const std::string& type, const msgpack::sbuffer& pack_buf)
+PeerDiscovery::startPublish(std::string_view type, const msgpack::sbuffer& pack_buf)
 {
     if (peerDiscovery4_) peerDiscovery4_->startPublish(type, pack_buf);
     if (peerDiscovery6_) peerDiscovery6_->startPublish(type, pack_buf);
 }
 
 void
-PeerDiscovery::startPublish(sa_family_t domain, const std::string& type, const msgpack::sbuffer& pack_buf)
+PeerDiscovery::startPublish(sa_family_t domain, std::string_view type, const msgpack::sbuffer& pack_buf)
 {
     if (domain == AF_INET) {
         if (peerDiscovery4_) peerDiscovery4_->startPublish(type, pack_buf);
@@ -428,7 +432,7 @@ PeerDiscovery::stop()
 }
 
 bool
-PeerDiscovery::stopDiscovery(const std::string &type)
+PeerDiscovery::stopDiscovery(std::string_view type)
 {
     bool stopped4 = peerDiscovery4_ and peerDiscovery4_->stopDiscovery(type);
     bool stopped6 = peerDiscovery6_ and peerDiscovery6_->stopDiscovery(type);
@@ -436,7 +440,7 @@ PeerDiscovery::stopDiscovery(const std::string &type)
 }
 
 bool
-PeerDiscovery::stopPublish(const std::string &type)
+PeerDiscovery::stopPublish(std::string_view type)
 {
     bool stopped4 = peerDiscovery4_ and peerDiscovery4_->stopPublish(type);
     bool stopped6 = peerDiscovery6_ and peerDiscovery6_->stopPublish(type);
@@ -444,7 +448,7 @@ PeerDiscovery::stopPublish(const std::string &type)
 }
 
 bool
-PeerDiscovery::stopPublish(sa_family_t domain, const std::string& type)
+PeerDiscovery::stopPublish(sa_family_t domain, std::string_view type)
 {
     if (domain == AF_INET) {
         return peerDiscovery4_ and peerDiscovery4_->stopPublish(type);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -224,7 +224,7 @@ Storage::store(const InfoHash& id, const Sp<Value>& value, time_point created, t
             //DHT_LOG.DEBUG("Updating %s -> %s", id.toString().c_str(), value->toString().c_str());
             // clear quota for previous value
             if (it->store_bucket)
-                it->store_bucket->erase(id, *value, it->expiration);
+                it->store_bucket->erase(id, *it->data, it->expiration);
             it->expiration = expiration;
             // update quota for new value
             it->store_bucket = sb;

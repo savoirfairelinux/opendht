@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author(s) : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *              Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *
@@ -136,8 +136,6 @@ public:
 private:
     std::map<ValueType::Id, ValueType> types {};
 };
-
-struct CryptoValueCache;
 
 /**
  * A "value" is data potentially stored on the Dht, with some metadata.

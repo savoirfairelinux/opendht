@@ -79,9 +79,8 @@ doc/Doxyfile
 *.swo
 
 # build dir
-build/
-build_dev/
-.DS_Store/
+build
+build_dev
+.DS_Store
 build-*/
 install/
-

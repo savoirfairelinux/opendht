@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -36,7 +36,9 @@
 
 namespace dht {
 
-static const std::string PEER_DISCOVERY_DHT_SERVICE = "dht";
+using namespace std::literals;
+
+constexpr auto PEER_DISCOVERY_DHT_SERVICE = "dht"sv;
 
 struct NodeInsertionPack {
     dht::InfoHash nodeId;
@@ -619,7 +621,7 @@ DhtRunner::getPublicAddress(std::function<void(std::vector<SockAddr>&&)> cb, sa_
 }
 
 void
-DhtRunner::registerCertificate(std::shared_ptr<crypto::Certificate> cert) {
+DhtRunner::registerCertificate(const std::shared_ptr<crypto::Certificate>& cert) {
     std::lock_guard<std::mutex> lck(dht_mtx);
     dht_->registerCertificate(cert);
 }

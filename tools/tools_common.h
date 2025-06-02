@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *
  *  Author: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *  Author: Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -40,22 +40,26 @@
     #include <readline/readline.h>
     #include <readline/history.h>
 #endif
+#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && !defined(__NT__)
+    #pragma message "Building on UNIX-like platform, linking system getopt"
+    #include <getopt.h>
+    #include <readline/readline.h>
+    #include <readline/history.h>
+#endif
 #ifdef _MSC_VER
     #pragma message("Building on WIN32 platform using MSVC, linking wingetopt")
-    #define SIGHUP 0
     #include "wingetopt.h"
-    #include <io.h>
 #endif
 #if defined(__MINGW32__) || defined (__MINGW64__)
     #pragma message "Building on MinGW, linking system-wide getopt"
-    #define SIGHUP 0
-    #include <io.h>
     #include <getopt.h>
     #include <readline/readline.h>
     #include <readline/history.h>
 #endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__) || defined (__MINGW64__)
+    #define SIGHUP 0
+    #include <io.h>
     #define DISABLE_SIGNALS
 #endif
 

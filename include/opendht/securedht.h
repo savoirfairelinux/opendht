@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -136,7 +136,7 @@ public:
     void findPublicKey(const InfoHash& node, const std::function<void(const Sp<crypto::PublicKey>)>& cb);
 
     Sp<crypto::Certificate> registerCertificate(const InfoHash& node, const Blob& cert);
-    void registerCertificate(Sp<crypto::Certificate>& cert);
+    void registerCertificate(const Sp<crypto::Certificate>& cert);
 
     Sp<crypto::Certificate> getCertificate(const InfoHash& node) const;
     Sp<crypto::PublicKey> getPublicKey(const InfoHash& node) const;
@@ -387,7 +387,7 @@ const ValueType CERTIFICATE_TYPE = {
     },
     [](InfoHash, const Sp<Value>& o, Sp<Value>& n, const InfoHash&, const SockAddr&) {
         try {
-            return crypto::Certificate(o->data).getPublicKey().getId() == crypto::Certificate(n->data).getPublicKey().getId();
+            return crypto::Certificate(o->data).getPublicKey().getLongId() == crypto::Certificate(n->data).getPublicKey().getLongId();
         } catch (const std::exception& e) {}
         return false;
     }

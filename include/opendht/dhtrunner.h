@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -384,7 +384,7 @@ public:
     // securedht methods
 
     void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
-    void registerCertificate(std::shared_ptr<crypto::Certificate> cert);
+    void registerCertificate(const std::shared_ptr<crypto::Certificate>& cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 
     /**

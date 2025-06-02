@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Authors: Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Simon Désaulniers <simon.desaulniers@savoirfairelinux.com>
  *           Sébastien Blin <sebastien.blin@savoirfairelinux.com>
@@ -158,7 +158,7 @@ SecureDht::registerCertificate(const InfoHash& node, const Blob& data)
 }
 
 void
-SecureDht::registerCertificate(Sp<crypto::Certificate>& cert)
+SecureDht::registerCertificate(const Sp<crypto::Certificate>& cert)
 {
     if (cert)
         nodesCertificates_[cert->getId()] = cert;

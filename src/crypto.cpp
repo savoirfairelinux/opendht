@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2014-2023 Savoir-faire Linux Inc.
+ *  Copyright (C) 2014-2025 Savoir-faire Linux Inc.
  *  Author : Adrien Béraud <adrien.beraud@savoirfairelinux.com>
  *           Vsevolod Ivanov <vsevolod.ivanov@savoirfairelinux.com>
  *
@@ -648,7 +648,7 @@ GnuTLSFromType(NameType type)
 }
 
 static std::string
-getDN(gnutls_x509_crq_t request, const char* oid)
+readDN(gnutls_x509_crq_t request, const char* oid)
 {
     std::string dn;
     dn.resize(512);
@@ -706,13 +706,13 @@ CertificateRequest::setName(const std::string& name)
 std::string
 CertificateRequest::getName() const
 {
-    return getDN(request, GNUTLS_OID_X520_COMMON_NAME);
+    return readDN(request, GNUTLS_OID_X520_COMMON_NAME);
 }
 
 std::string
 CertificateRequest::getUID() const
 {
-    return getDN(request, GNUTLS_OID_LDAP_UID);
+    return readDN(request, GNUTLS_OID_LDAP_UID);
 }
 
 void
@@ -771,7 +771,21 @@ CertificateRequest::toString() const
 // Certificate
 
 static std::string
-getDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
+readDN(gnutls_x509_crt_t cert, bool issuer = false)
+{
+    gnutls_datum_t dn;
+    int err = issuer
+            ? gnutls_x509_crt_get_issuer_dn3(cert, &dn, 0)
+            : gnutls_x509_crt_get_dn3(       cert, &dn, 0);
+    if (err != GNUTLS_E_SUCCESS)
+        return {};
+    std::string ret((const char*)dn.data, dn.size);
+    gnutls_free(dn.data);
+    return ret;
+}
+
+static std::string
+readDN(gnutls_x509_crt_t cert, const char* oid, bool issuer = false)
 {
     std::string dn;
     dn.resize(512);
@@ -930,27 +944,39 @@ Certificate::getSerialNumber() const
 }
 
 std::string
+Certificate::getDN() const
+{
+    return readDN(cert);
+}
+
+std::string
 Certificate::getName() const
 {
-    return getDN(cert, GNUTLS_OID_X520_COMMON_NAME);
+    return readDN(cert, GNUTLS_OID_X520_COMMON_NAME);
 }
 
 std::string
 Certificate::getUID() const
 {
-    return getDN(cert, GNUTLS_OID_LDAP_UID);
+    return readDN(cert, GNUTLS_OID_LDAP_UID);
+}
+
+std::string
+Certificate::getIssuerDN() const
+{
+    return readDN(cert, true);
 }
 
 std::string
 Certificate::getIssuerName() const
 {
-    return getDN(cert, GNUTLS_OID_X520_COMMON_NAME, true);
+    return readDN(cert, GNUTLS_OID_X520_COMMON_NAME, true);
 }
 
 std::string
 Certificate::getIssuerUID() const
 {
-    return getDN(cert, GNUTLS_OID_LDAP_UID, true);
+    return readDN(cert, GNUTLS_OID_LDAP_UID, true);
 }
 
 std::vector<std::pair<NameType, std::string>>

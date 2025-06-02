@@ -27,7 +27,7 @@ libopendht_la_SOURCES  = \
         default_types.cpp \
         log.cpp \
         network_utils.cpp \
-		infohash.cpp \
+        infohash.cpp \
         thread_pool.cpp
 
 nobase_include_HEADERS = \
