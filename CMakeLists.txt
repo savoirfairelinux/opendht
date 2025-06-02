@@ -5,6 +5,10 @@ endif()
 if(NOT CMAKE_VERSION VERSION_LESS 3.30 AND NOT POLICY CMP0167)
   cmake_policy(SET CMP0167 OLD)
 endif()
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 4)
+	set(CMAKE_POLICY_VERSION_MINIMUM "3.5")
+endif() # CMake 4.0 and later: version handler workaround
+
 project (opendht)
 
 include(CMakePackageConfigHelpers)
