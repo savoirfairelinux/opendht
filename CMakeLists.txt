@@ -14,7 +14,9 @@ project (opendht)
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
 include(CheckIncludeFileCXX)
-include(FindPkgConfig)
+if(NOT WIN32)
+    include(FindPkgConfig)
+endif()
 include(cmake/CheckAtomic.cmake)
 include(CTest)
 include(FetchContent)
@@ -395,13 +397,6 @@ else () # MSVC
     include_directories(src/compat/msvc)
     include_directories(src/compat/win32)
     set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
-
-    if(DEFINED $ENV{BOOST_ROOT})
-        set(BOOST_ROOT "$ENV{BOOST_ROOT}")
-    endif()
-    find_package(Boost REQUIRED)
-    include_directories(${Boost_INCLUDE_DIRS})
-    link_directories(${Boost_LIBRARY_DIRS})
     
     find_package(unofficial-argon2 CONFIG REQUIRED)
     include_directories(${ARGON2_INCLUDEDIR})
@@ -411,47 +406,20 @@ else () # MSVC
     include_directories(${GNUTLS_INCLUDE_DIR})
 
     find_library(NETTLE_LIBRARY NAMES nettle libnettle HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib" REQUIRED)
-
-    set(FETCHCONTENT_QUIET FALSE)
-    FetchContent_Declare(cJSON
-        GIT_REPOSITORY "https://github.com/DaveGamble/cJSON.git"
-        OVERRIDE_FIND_PACKAGE
-    )
-    FetchContent_Declare(jsoncpp
-        GIT_REPOSITORY "https://github.com/open-source-parsers/jsoncpp.git"
-        GIT_TAG        "1.9.5"
-        OVERRIDE_FIND_PACKAGE
-    )
-    FetchContent_Declare(fmt
-        GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-        GIT_TAG        "11.1.2"
-        OVERRIDE_FIND_PACKAGE
-    )
-    FetchContent_Declare(asio
-        GIT_REPOSITORY "https://github.com/chriskohlhoff/asio.git"
-        GIT_TAG        "asio-1-34-2"
-    )
-    # Populate
-    FetchContent_MakeAvailable(
-        cJSON
-        jsoncpp
-        fmt
-        asio
-    )
-    message(STATUS "Linking populated libraries")
     
     find_package(msgpack-cxx CONFIG REQUIRED)
     get_target_property(MSGPACK_INCLUDEDIR msgpack-cxx INTERFACE_INCLUDE_DIRECTORIES)
     include_directories(${MSGPACK_INCLUDEDIR})
     
-    find_package(jsoncpp CONFIG REQUIRED)
-    include_directories(${JSONCPP_INCLUDE_DIRS} ${jsoncpp_SOURCE_DIR}/include)
+    find_package(jsoncpp REQUIRED)
+    include_directories(${JSONCPP_INCLUDE_DIRS})
     
     find_package(fmt CONFIG REQUIRED)
-    include_directories(${FMT_INCLUDEDIR} ${fmt_SOURCE_DIR}/include)
+    include_directories(${FMT_INCLUDEDIR})
 
     if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${asio_SOURCE_DIR}/asio/include)
+        find_package(asio CONFIG REQUIRED)
+        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${ASIO_INCLUDE_DIRS}/asio/include)
         message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
         include_directories(${ASIO_INCLUDE_DIR})
         add_definitions(-DASIO_STANDALONE) 
@@ -526,9 +494,7 @@ include_directories (
 )
 
 # Install dirs
-if (NOT WIN32)
-    include (GNUInstallDirs)
-endif ()
+include (GNUInstallDirs)
 set (prefix ${CMAKE_INSTALL_PREFIX})
 set (exec_prefix "${prefix}")
 set (libdir "${CMAKE_INSTALL_FULL_LIBDIR}")
@@ -675,12 +641,10 @@ if (MSVC)
     message(STATUS "Used GnuTLS library: ${GNUTLS_LIBRARIES}")
     message(STATUS "Used NETTLE library: ${NETTLE_LIBRARY}")
     if(BUILD_SHARED_LIBS)
-        target_link_libraries(opendht PRIVATE ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC cjson jsoncpp_lib ${GNUTLS_LIBRARIES} fmt::fmt wsock32 ws2_32)
-        add_dependencies(opendht cjson jsoncpp_lib fmt)
+        target_link_libraries(opendht PRIVATE ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC jsoncpp_lib ${GNUTLS_LIBRARIES} fmt::fmt wsock32 ws2_32)
     else()
         find_library(TASN1_LIBRARY NAMES tasn1 libtasn1 tasn1d REQUIRED) # Workaround for vcpkg directory misplacement
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} ${GNUTLS_LIBRARIES} ${NETTLE_LIBRARY} ${TASN1_LIBRARY} unofficial::argon2::libargon2 jsoncpp_static fmt::fmt-header-only wsock32 ws2_32)
-        add_dependencies(opendht cjson jsoncpp_static fmt)
         set_target_properties(opendht PROPERTIES OUTPUT_NAME "libopendht")
     endif()
     if (OPENDHT_HTTP)
