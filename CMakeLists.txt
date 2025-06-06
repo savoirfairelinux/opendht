@@ -759,24 +759,8 @@ endif()
 
 # Unit tests
 if (BUILD_TESTING AND NOT WIN32)
-    if (WIN32 AND MINGW)
-        FetchContent_Declare(cppunit 
-            GIT_REPOSITORY "https://github.com/Ultimaker/CppUnit.git"
-            OVERRIDE_FIND_PACKAGE
-        )
-        FetchContent_MakeAvailable(cppunit)
-        file(RENAME "${cppunit_BINARY_DIR}/cppunit/config-auto.h" "${cppunit_SOURCE_DIR}/include/cppunit/config-auto.h")
-        # include/cppunit/plugin/TestPlugIn.h
-        file(READ "${cppunit_SOURCE_DIR}/include/cppunit/plugin/TestPlugIn.h" TESTPLUGIN_FIX_CONTENT)
-        string(REPLACE "#define NOMINMAX" "// removed #define NOMINMAX on Windows" TESTPLUGIN_FIX_CONTENT "${TESTPLUGIN_FIX_CONTENT}" )
-        file(WRITE "${cppunit_SOURCE_DIR}/include/cppunit/plugin/TestPlugIn.h" "${TESTPLUGIN_FIX_CONTENT}")
-        # src\cppunit\Win32DynamicLibraryManager.cpp
-        file(READ "${cppunit_SOURCE_DIR}/src/cppunit/Win32DynamicLibraryManager.cpp" TESTPLUGIN_FIX_CONTENT)
-        string(REPLACE "#define NOMINMAX" "// removed #define NOMINMAX on Windows" TESTPLUGIN_FIX_CONTENT "${TESTPLUGIN_FIX_CONTENT}" )
-        file(WRITE "${cppunit_SOURCE_DIR}/src/cppunit/Win32DynamicLibraryManager.cpp" "${TESTPLUGIN_FIX_CONTENT}")
-    else ()
-        pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
-    endif ()
+    # TODO: WIN32 platform testing mode
+    pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
     # unit testing
     list (APPEND test_FILES
         tests/infohashtester.h
