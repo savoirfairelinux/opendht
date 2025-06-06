@@ -40,12 +40,6 @@
     #include <readline/readline.h>
     #include <readline/history.h>
 #endif
-#if !defined(WIN32) && !defined(_WIN32) && !defined(__WIN32__) && !defined(__NT__)
-    #pragma message "Building on UNIX-like platform, linking system getopt"
-    #include <getopt.h>
-    #include <readline/readline.h>
-    #include <readline/history.h>
-#endif
 #ifdef _MSC_VER
     #pragma message("Building on WIN32 platform using MSVC, linking wingetopt")
     #include "wingetopt.h"
