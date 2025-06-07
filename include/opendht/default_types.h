@@ -127,6 +127,10 @@ public:
         SignedValue::unpackValue(v);
     }
 
+    static Value::Filter getFilter() {
+        return SignedValue::getFilter();
+    }
+
     dht::InfoHash to;
     dht::Value::Id id {0};
     std::string msg;
