@@ -7,7 +7,8 @@
         "binaryDir": "${sourceDir}/build",
         "cacheVariables": {
           "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-          "OPENDHT_PROXY_CLIENT": true
+          "OPENDHT_PROXY_CLIENT": true,
+          "OPENDHT_C": true
         }
       },
       {
