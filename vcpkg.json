@@ -14,7 +14,7 @@
     "asio",
     "argon2"
   ],
-  "default-features": ["proxy"],
+  "default-features": ["proxy", "tools"],
   "features": {
     "proxy": {
       "description": "DHT Proxy",
@@ -22,6 +22,12 @@
         "llhttp",
         "restinio",
         "openssl"
+      ]
+    },
+    "tools": {
+      "description": "Tools",
+      "dependencies": [
+        "readline"
       ]
     }
   }
