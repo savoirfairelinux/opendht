@@ -79,6 +79,7 @@ if (NOT MSVC)
     endif()
     if (OPENDHT_TOOLS)
         find_package (Readline 6 REQUIRED)
+        set(readline_LIBRARIES ${READLINE_LIBRARIES})
     endif ()
     pkg_search_module(argon2 REQUIRED IMPORTED_TARGET libargon2)
     set(argon2_lib ", libargon2")
@@ -155,25 +156,95 @@ if (NOT MSVC)
         set(OPENDHT_PROXY_OPENSSL OFF)
     endif ()
 else ()
-    set (WIN32_DEP_DIR ${PROJECT_SOURCE_DIR}/../)
-    include_directories(${WIN32_DEP_DIR}/../msvc/include) # SMP gnutls
-    include_directories(${WIN32_DEP_DIR}/argon2/include)
-    include_directories(${WIN32_DEP_DIR}/jsoncpp/include)
-    list (APPEND opendht_SOURCES
-        src/base64.h
-        src/base64.cpp
-    )
-    add_definitions(-DOPENDHT_JSONCPP)
-    include_directories(${WIN32_DEP_DIR}/msgpack-c/include)
-    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        include_directories(
-            ${WIN32_DEP_DIR}/asio/asio/include
-            ${WIN32_DEP_DIR}/openssl/include
-            ${WIN32_DEP_DIR}/restinio/dev
-            ${WIN32_DEP_DIR}/fmt/include
-            ${WIN32_DEP_DIR}/llhttp/include
+    # MSVC build - check if using vcpkg first
+    if (DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+        # Using vcpkg - use find_package for dependencies
+        find_package(msgpack-cxx CONFIG REQUIRED)
+        find_package(fmt CONFIG REQUIRED)
+        #find_package(nettle CONFIG REQUIRED)
+        find_package(jsoncpp CONFIG REQUIRED)
+        #find_package(argon2 CONFIG REQUIRED)
+        
+        # Find GnuTLS and Nettle libraries (vcpkg doesn't provide CMake targets for these)
+        find_library(GNUTLS_LIBRARY NAMES gnutls REQUIRED)
+        find_library(NETTLE_LIBRARY NAMES nettle REQUIRED)
+        find_library(HOGWEED_LIBRARY NAMES hogweed REQUIRED)
+        find_library(ARGON2_LIBRARY NAMES argon2 REQUIRED)
+        find_path(GNUTLS_INCLUDE_DIR gnutls/gnutls.h REQUIRED)
+        find_path(NETTLE_INCLUDE_DIR nettle/aes.h REQUIRED)
+        find_path(ARGON2_INCLUDE_DIR argon2.h REQUIRED)
+        
+        # Create imported targets for these libraries
+        add_library(gnutls_lib STATIC IMPORTED)
+        set_target_properties(gnutls_lib PROPERTIES
+            IMPORTED_LOCATION ${GNUTLS_LIBRARY}
+            INTERFACE_INCLUDE_DIRECTORIES ${GNUTLS_INCLUDE_DIR}
         )
-    endif ()
+        
+        add_library(nettle_lib STATIC IMPORTED)
+        set_target_properties(nettle_lib PROPERTIES
+            IMPORTED_LOCATION ${NETTLE_LIBRARY}
+            INTERFACE_INCLUDE_DIRECTORIES ${NETTLE_INCLUDE_DIR}
+        )
+        
+        add_library(hogweed_lib STATIC IMPORTED)
+        set_target_properties(hogweed_lib PROPERTIES
+            IMPORTED_LOCATION ${HOGWEED_LIBRARY}
+            INTERFACE_INCLUDE_DIRECTORIES ${NETTLE_INCLUDE_DIR}
+        )
+        
+        add_library(argon2_lib STATIC IMPORTED)
+        set_target_properties(argon2_lib PROPERTIES
+            IMPORTED_LOCATION ${ARGON2_LIBRARY}
+            INTERFACE_INCLUDE_DIRECTORIES ${ARGON2_INCLUDE_DIR}
+        )
+        
+        add_definitions(-DOPENDHT_JSONCPP)
+        list (APPEND opendht_SOURCES
+            src/base64.h
+            src/base64.cpp
+        )
+        
+        if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+            find_package(asio CONFIG REQUIRED)
+            find_package(llhttp CONFIG REQUIRED)
+            find_package(restinio CONFIG REQUIRED)
+            if (OPENDHT_PROXY_OPENSSL)
+                find_package(OpenSSL REQUIRED)
+            endif ()
+        endif ()
+
+        if (OPENDHT_TOOLS)
+            find_package(unofficial-readline-win32 CONFIG)
+            if (unofficial-readline-win32_FOUND)
+                set(readline_LIBRARIES unofficial::readline-win32::readline) 
+            else()
+                set (readline_LIBRARIES "readline")
+                message(WARNING "unofficial-readline-win32 not found, trying to use system readline")
+            endif()
+        endif ()
+    else()
+        # Traditional MSVC dependency path
+        set (WIN32_DEP_DIR ${PROJECT_SOURCE_DIR}/../)
+        include_directories(${WIN32_DEP_DIR}/../msvc/include) # SMP gnutls
+        include_directories(${WIN32_DEP_DIR}/argon2/include)
+        include_directories(${WIN32_DEP_DIR}/jsoncpp/include)
+        list (APPEND opendht_SOURCES
+            src/base64.h
+            src/base64.cpp
+        )
+        add_definitions(-DOPENDHT_JSONCPP)
+        include_directories(${WIN32_DEP_DIR}/msgpack-c/include)
+        if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+            include_directories(
+                ${WIN32_DEP_DIR}/asio/asio/include
+                ${WIN32_DEP_DIR}/openssl/include
+                ${WIN32_DEP_DIR}/restinio/dev
+                ${WIN32_DEP_DIR}/fmt/include
+                ${WIN32_DEP_DIR}/llhttp/include
+            )
+        endif ()
+    endif()
 endif ()
 
 if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
@@ -399,6 +470,29 @@ if (APPLE)
     target_link_libraries(opendht PRIVATE "-framework CoreFoundation" "-framework Security")
 endif()
 if (MSVC)
+    if (DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+        # Using vcpkg - link with vcpkg targets
+        target_link_libraries(opendht
+            PUBLIC
+                msgpack-cxx
+                fmt::fmt
+                JsonCpp::JsonCpp
+                gnutls_lib
+                nettle_lib
+                hogweed_lib
+            PRIVATE
+                argon2_lib
+        )
+        #if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+        #    target_link_libraries(opendht PUBLIC asio::asio OpenSSL::SSL OpenSSL::Crypto)
+        #endif()
+        if (OPENDHT_HTTP)
+            target_link_libraries(opendht PUBLIC llhttp::llhttp_static restinio::restinio)
+            if (OPENDHT_PROXY_OPENSSL)
+                target_link_libraries(opendht PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+            endif()
+        endif()
+    endif()
     if (OPENDHT_STATIC)
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
         set_target_properties (opendht PROPERTIES OUTPUT_NAME "libopendht")
