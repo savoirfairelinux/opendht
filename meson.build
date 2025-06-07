@@ -85,7 +85,7 @@ opendht = library('opendht',
     opendht_src,
     include_directories : opendht_inc,
     dependencies : deps,
-    cpp_args : ['-DOPENHT_BUILD', '-Dopendht_EXPORTS'],
+    cpp_args : ['-DOPENDHT_BUILD', '-Dopendht_EXPORTS'],
     install : true)
 
 conf_data.set('VERSION', meson.project_version())
