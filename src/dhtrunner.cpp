@@ -891,6 +891,25 @@ DhtRunner::putSigned(const std::string& key, Value&& value, DoneCallbackSimple c
 }
 
 void
+DhtRunner::putEncrypted(InfoHash hash, const PkId& to, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
+{
+    std::unique_lock<std::mutex> lck(storage_mtx);
+    if (running != State::Running) {
+        lck.unlock();
+        if (cb) cb(false, {});
+        return;
+    }
+    ongoing_ops++;
+    pending_ops.emplace([=,
+        cb = std::move(cb),
+        value = std::move(value)
+    ] (SecureDht& dht) mutable {
+        dht.putEncrypted(hash, to, value, bindOpDoneCallback(std::move(cb)), permanent);
+    });
+    cv.notify_all();
+}
+
+void
 DhtRunner::putEncrypted(InfoHash hash, InfoHash to, std::shared_ptr<Value> value, DoneCallback cb, bool permanent)
 {
     std::unique_lock<std::mutex> lck(storage_mtx);
@@ -1067,6 +1086,23 @@ DhtRunner::findCertificate(InfoHash hash, std::function<void(const Sp<crypto::Ce
     if (running != State::Running) {
         lck.unlock();
         cb({});
+        return;
+    }
+    ongoing_ops++;
+    pending_ops.emplace([this, hash, cb = std::move(cb)] (SecureDht& dht) {
+        dht.findCertificate(hash, [this, cb = std::move(cb)](const Sp<crypto::Certificate>& crt){
+            cb(crt);
+            opEnded();
+        });
+    });
+    cv.notify_all();
+}
+
+void DhtRunner::findCertificate(PkId hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)> cb)
+{
+    std::unique_lock<std::mutex> lck(storage_mtx);
+    if (running != State::Running) {
+        lck.unlock();
         return;
     }
     ongoing_ops++;
