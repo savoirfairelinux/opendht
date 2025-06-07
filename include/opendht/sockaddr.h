@@ -294,7 +294,7 @@ public:
                                (uint8_t*)b.get()+start, len) < 0;
         }
     };
-    OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const SockAddr& h) {
+    friend std::ostream& operator<< (std::ostream& s, const SockAddr& h) {
         print_addr(s, h.get(), h.getLength());
         return s;
     }

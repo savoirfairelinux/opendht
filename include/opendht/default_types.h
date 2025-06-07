@@ -59,7 +59,7 @@ public:
 };
 
 template <typename T>
-class OPENDHT_PUBLIC SignedValue : public Value::Serializable<T>
+class SignedValue : public Value::Serializable<T>
 {
 private:
     using BaseClass = Value::Serializable<T>;
@@ -82,7 +82,7 @@ public:
 };
 
 template <typename T>
-class OPENDHT_PUBLIC EncryptedValue : public SignedValue<T>
+class EncryptedValue : public SignedValue<T>
 {
 public:
     using BaseClass = SignedValue<T>;

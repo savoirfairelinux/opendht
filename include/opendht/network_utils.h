@@ -24,12 +24,19 @@
 #include "logger.h"
 
 #ifdef _WIN32
-#include <ws2tcpip.h>
-#include <winsock2.h>
+    #include <io.h>
+    #include <string>
+    #include <cstring>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #define _poll(fds, nfds, timeout) WSAPoll(fds, nfds, timeout)
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#define _poll(fds, nfds, timeout) poll(fds, nfds, timeout)
 #endif
 
 #include <functional>
@@ -100,7 +107,8 @@ protected:
         PacketList pkts;
         if (toRecycle_.empty()) {
             pkts.emplace_back();
-        } else {
+        }
+        else {
             auto begIt = toRecycle_.begin();
             auto begItNext = std::next(begIt);
             pkts.splice(pkts.end(), toRecycle_, begIt, begItNext);

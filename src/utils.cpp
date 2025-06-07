@@ -20,6 +20,13 @@
 #include "config.h"
 #endif
 
+#if defined(_WIN32) && (_WIN32_WINNT < 0x0502) && (NTDDI_VERSION >= NTDDI_VISTA) 
+#define _WIN32_WINNT _WIN32_WINNT_WIN10
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <io.h>
+#endif // inet_pton() workaround for MSVC in Windows 10/11
+
 #include "utils.h"
 #include "sockaddr.h"
 #include "default_types.h"

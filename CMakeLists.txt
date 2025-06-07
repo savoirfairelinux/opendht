@@ -2,12 +2,21 @@ cmake_minimum_required (VERSION 3.16..3.31)
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
+if(NOT CMAKE_VERSION VERSION_LESS 3.30 AND NOT POLICY CMP0167)
+  cmake_policy(SET CMP0167 OLD)
+endif()
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 4)
+	set(CMAKE_POLICY_VERSION_MINIMUM "3.5")
+endif() # CMake 4.0 and later: version handler workaround
+
 project (opendht)
 
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
 include(CheckIncludeFileCXX)
-include(FindPkgConfig)
+if(NOT WIN32)
+    include(FindPkgConfig)
+endif()
 include(cmake/CheckAtomic.cmake)
 include(CTest)
 include(FetchContent)
@@ -20,7 +29,6 @@ set (VERSION "${opendht_VERSION}")
 
 # Options
 option (BUILD_SHARED_LIBS "Build shared library" ON)
-CMAKE_DEPENDENT_OPTION (OPENDHT_STATIC "Build static library" OFF BUILD_SHARED_LIBS ON)
 option (OPENDHT_PYTHON "Build Python bindings" OFF)
 option (OPENDHT_TOOLS "Build DHT tools" ON)
 option (OPENDHT_SYSTEMD "Install systemd module" OFF)
@@ -39,8 +47,9 @@ option (OPENDHT_TESTS_NETWORK "Enable unit tests that require network access" ON
 option (OPENDHT_C "Build C bindings" OFF)
 
 find_package(Doxygen)
-option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
-
+if (DOXYGEN_FOUND)
+    option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
+endif ()
 # Build flags
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
@@ -60,56 +69,196 @@ if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB
     link_libraries (atomic)
 endif ()
 
+if(WIN32) # https://stackoverflow.com/a/40217291/9560245
+    macro(get_WIN32_WINNT version)
+        if(CMAKE_SYSTEM_VERSION)
+            set(ver ${CMAKE_SYSTEM_VERSION})
+            string(REGEX MATCH "^([0-9]+).([0-9])" ver ${ver})
+            string(REGEX MATCH "^([0-9]+)" verMajor ${ver})
+            # Check for Windows 10, b/c we'll need to convert to hex 'A'.
+            if("${verMajor}" MATCHES "10")
+                set(verMajor "A")
+                string(REGEX REPLACE "^([0-9]+)" ${verMajor} ver ${ver})
+            endif()
+            # Remove all remaining '.' characters.
+            string(REPLACE "." "" ver ${ver})
+            # Prepend each digit with a zero.
+            string(REGEX REPLACE "([0-9A-Z])" "0\\1" ver ${ver})
+            set(${version} "0x${ver}")
+        endif()
+    endmacro()
+
+    get_WIN32_WINNT(WINNT_VERSION)
+    message(STATUS "Windows NT version detection: ${WINNT_VERSION}")
+    if(NOT MSVC)
+        add_definitions(-D_WIN32_WINNT=${WINNT_VERSION})
+    endif()
+
+    set(CMAKE_DEBUG_POSTFIX "")
+endif()
+
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 if (NOT MSVC)
-    set (THREADS_PREFER_PTHREAD_FLAG TRUE)
-    find_package (Threads)
-    find_package (PkgConfig REQUIRED)
-    pkg_search_module (GnuTLS REQUIRED IMPORTED_TARGET gnutls)
-    pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
-    check_include_file_cxx(msgpack.hpp HAVE_MSGPACKCXX)
-    if (NOT HAVE_MSGPACKCXX)
-        find_package(msgpack QUIET CONFIG NAMES msgpack msgpackc-cxx)
-        if (NOT msgpack_FOUND)
-            find_package(msgpack REQUIRED CONFIG NAMES msgpack-cxx)
-            set(MSGPACK_TARGET "msgpack-cxx")
-        else()
-            set(MSGPACK_TARGET "msgpackc-cxx")
+    if (WIN32 AND MINGW) # MSYS2
+        set (THREADS_PREFER_PTHREAD_FLAG TRUE)
+        find_package (Threads)
+        set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
+        if(DEFINED $ENV{BOOST_ROOT})
+            set(BOOST_ROOT "$ENV{BOOST_ROOT}")
         endif()
-    endif()
-    if (OPENDHT_TOOLS)
-        find_package (Readline 6 REQUIRED)
-    endif ()
-    pkg_search_module(argon2 REQUIRED IMPORTED_TARGET libargon2)
-    set(argon2_lib ", libargon2")
-    pkg_search_module(Jsoncpp IMPORTED_TARGET jsoncpp)
-    if (Jsoncpp_FOUND)
+        if(DEFINED BOOST_ROOT)
+            set(Boost_DIR "${BOOST_ROOT}")
+        endif()
+        find_package(Boost REQUIRED)
+        include_directories(${Boost_INCLUDE_DIRS})
+        link_directories(${Boost_LIBRARY_DIRS})
+        
+        find_path(ARGON2_INCLUDEDIR argon2.h REQUIRED)
+        include_directories(${ARGON2_INCLUDEDIR})
+        
+        set(FETCHCONTENT_QUIET FALSE)
+        if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+            FetchContent_Declare(gnutls
+                URL "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.4-w64.zip"
+            )
+            set (GNUTLS_X64 1)
+        elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+            FetchContent_Declare(gnutls
+                URL "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.9-w32.zip"
+            )
+            unset (GNUTLS_X64)
+        endif()
+        FetchContent_Declare(cJSON
+            GIT_REPOSITORY "https://github.com/DaveGamble/cJSON.git"
+            OVERRIDE_FIND_PACKAGE
+        ) # Dependency for msgpack
+        FetchContent_Declare(msgpack-c
+            GIT_REPOSITORY "https://github.com/msgpack/msgpack-c.git"
+            GIT_TAG        "cpp-6.1.1"
+            FIND_PACKAGE_ARGS NAMES msgpack-c
+        )
+        FetchContent_Declare(jsoncpp
+            GIT_REPOSITORY "https://github.com/open-source-parsers/jsoncpp.git"
+            GIT_TAG        "1.9.5"
+            OVERRIDE_FIND_PACKAGE
+        )
+        FetchContent_Declare(fmt
+            GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
+            GIT_TAG        "11.1.2"
+            OVERRIDE_FIND_PACKAGE
+        )
+        FetchContent_Declare(asio
+            GIT_REPOSITORY "https://github.com/chriskohlhoff/asio.git"
+            GIT_TAG        "asio-1-34-2"
+        )
+        # Populate
+        FetchContent_MakeAvailable(
+            gnutls
+            cJSON
+            jsoncpp
+            msgpack-c
+            fmt
+            asio
+        )
+        message(STATUS "Linking populated libraries")
+        
+        if (NOT EXISTS "${gnutls_SOURCE_DIR}/bin" OR NOT EXISTS "${gnutls_SOURCE_DIR}/lib")
+            if (DEFINED GNUTLS_X64)
+                file(RENAME "${gnutls_SOURCE_DIR}/win64-build" "${gnutls_SOURCE_DIR}")
+            else ()
+                file(RENAME "${gnutls_SOURCE_DIR}/win32-build" "${gnutls_SOURCE_DIR}")
+            endif ()
+        endif ()
+        if (NOT EXISTS "${gnutls_SOURCE_DIR}/include/gnutls")
+            file(MAKE_DIRECTORY "${gnutls_SOURCE_DIR}/include")
+            file(RENAME "${gnutls_SOURCE_DIR}/lib/includes" "${gnutls_SOURCE_DIR}/include/gnutls")
+        endif ()
+        set(GNUTLS_INCLUDE_DIR "${gnutls_SOURCE_DIR}/include")
+        if (BUILD_SHARED_LIBS)
+            set(GNUTLS_LIBRARY ${gnutls_SOURCE_DIR}/bin/libgnutls-30.dll)
+            link_directories(${gnutls_SOURCE_DIR}/bin)
+        else ()
+            set(GNUTLS_LIBRARY ${gnutls_SOURCE_DIR}/lib/libgnutls.dll.a)
+            link_directories(${gnutls_SOURCE_DIR}/lib)
+        endif ()
+        file(COPY
+            "${gnutls_SOURCE_DIR}/bin/libgnutls-30.dll"
+            "${gnutls_SOURCE_DIR}/bin/libidn2-0.dll"
+            "${gnutls_SOURCE_DIR}/bin/libnettle-8.dll"
+            "${gnutls_SOURCE_DIR}/bin/libssp-0.dll"
+        DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/bin")
+        
+        find_package(GnuTLS REQUIRED)
+        include_directories(${GNUTLS_INCLUDE_DIR})
+        
+        # C99 required for cJSON to handle 'long long' declarations on x64 systems
+        target_compile_options(cjson PRIVATE --std=c99 -Wno-float-conversion) 
+        target_compile_options(cJSON_test PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_examples PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_number PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(unity PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_hex4 PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_string PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_array PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_object PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_value PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(parse_with_opts PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(print_string PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(print_number PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(print_array PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(print_object PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(print_value PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(compare_tests PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(cjson_add PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(misc_tests PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(minify_tests PRIVATE --std=c99 -Wno-float-conversion)
+        target_compile_options(readme_examples PRIVATE --std=c99 -Wno-float-conversion)
+        link_directories(${CMAKE_CURRENT_BINARY_DIR}/bin ${CMAKE_CURRENT_BINARY_DIR}/lib)
+        
+        find_package(msgpack-c CONFIG REQUIRED)
+        include_directories(${MSGPACK_INCLUDEDIR} ${msgpack-c_SOURCE_DIR}/include)
+        
+        set(argon2_lib ", libargon2")
+        
+        find_package(jsoncpp CONFIG REQUIRED)
+        if (BUILD_SHARED_LIBS)
+            get_target_property(JSONCPP_INCLUDE_DIRS jsoncpp_lib INTERFACE_INCLUDE_DIRECTORIES)
+            target_compile_options(jsoncpp_lib PRIVATE -Wno-unknown-pragmas)
+        else ()
+            get_target_property(JSONCPP_INCLUDE_DIRS jsoncpp_static INTERFACE_INCLUDE_DIRECTORIES)
+        endif ()
+        target_compile_options(jsoncpp_static PRIVATE -Wno-unknown-pragmas)
+        target_compile_options(jsoncpp_test PRIVATE -Wno-unknown-pragmas)
+        include_directories(${JSONCPP_INCLUDE_DIRS})
+        
+        find_package(fmt CONFIG REQUIRED)
+        include_directories(${FMT_INCLUDEDIR} ${fmt_SOURCE_DIR}/include)
+        
+        if (OPENDHT_TOOLS)
+            find_package (Readline 6 REQUIRED)
+        endif ()
         add_definitions(-DOPENDHT_JSONCPP)
         set(jsoncpp_lib ", jsoncpp")
         list (APPEND opendht_SOURCES
-          src/base64.h
-          src/base64.cpp
+            src/base64.h
+            src/base64.cpp
         )
-    endif()
-
-    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
-        message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
-    else()
-        message(STATUS "ASIO not required")
-    endif ()
-
-    find_package(fmt)
-
-    if (OPENDHT_HTTP)
-        find_package(Restinio REQUIRED)
-
-        # llhttp
-        pkg_search_module(LLHTTP IMPORTED_TARGET llhttp libllhttp)
-        if (LLHTTP_FOUND)
-            message(STATUS "Found llhttp ${LLHTTP_INCLUDE_DIRS}")
-            set(llhttp_target PkgConfig::LLHTTP)
+        
+        if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+            find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${asio_SOURCE_DIR}/asio/include)
+            message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
+            include_directories(${ASIO_INCLUDE_DIR})
+            add_definitions(-DASIO_STANDALONE) 
         else()
+            message(STATUS "ASIO not required")
+        endif ()
+        
+        find_package(fmt)
+        
+        if (OPENDHT_HTTP)
+            find_package(Restinio REQUIRED)
+
+            # llhttp
             find_path(LLHTTP_INCLUDE_DIR llhttp.h)
             find_library(LLHTTP_LIBRARY NAMES llhttp libllhttp)
             if (LLHTTP_INCLUDE_DIR AND LLHTTP_LIBRARY)
@@ -135,45 +284,182 @@ if (NOT MSVC)
                     set(llhttp_target llhttp_static)
                 endif()
             endif()
-        endif()
-        set(http_lib "-lllhttp")
+            set(http_lib "-lllhttp")
 
-        if (NOT Jsoncpp_FOUND)
-            message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
-        endif()
-        if (OPENDHT_PROXY_OPENSSL)
-            # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
-            pkg_search_module(OPENSSL REQUIRED IMPORTED_TARGET openssl)
-            if (OPENSSL_FOUND)
-                message(STATUS "Found OpenSSL ${OPENSSL_VERSION} ${OPENSSL_INCLUDE_DIRS}")
-                set(openssl_lib ", openssl")
-            else ()
-                message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+            if (NOT Jsoncpp_FOUND)
+                message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
+            endif()
+            if (OPENDHT_PROXY_OPENSSL)
+                # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
+                pkg_search_module(OPENSSL REQUIRED IMPORTED_TARGET openssl)
+                if (OPENSSL_FOUND)
+                    message(STATUS "Found OpenSSL ${OPENSSL_VERSION} ${OPENSSL_INCLUDE_DIRS}")
+                    set(openssl_lib ", openssl")
+                else ()
+                    message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+                endif()
+            endif()
+        else ()
+            set(OPENDHT_PROXY_OPENSSL OFF)
+        endif ()
+    else () # UNIX
+        set (THREADS_PREFER_PTHREAD_FLAG TRUE)
+        find_package (Threads)
+        find_package (PkgConfig REQUIRED)
+        pkg_search_module (GnuTLS REQUIRED IMPORTED_TARGET gnutls)
+        pkg_search_module (Nettle REQUIRED IMPORTED_TARGET nettle)
+        check_include_file_cxx(msgpack.hpp HAVE_MSGPACKCXX)
+        if (NOT HAVE_MSGPACKCXX)
+            find_package(msgpack QUIET CONFIG NAMES msgpack msgpackc-cxx)
+            if (NOT msgpack_FOUND)
+                find_package(msgpack REQUIRED CONFIG NAMES msgpack-cxx)
+                set(MSGPACK_TARGET "msgpack-cxx")
+            else()
+                set(MSGPACK_TARGET "msgpackc-cxx")
             endif()
         endif()
-    else ()
-        set(OPENDHT_PROXY_OPENSSL OFF)
+        if (OPENDHT_TOOLS)
+            find_package (Readline 6 REQUIRED)
+        endif ()
+        pkg_search_module(argon2 REQUIRED IMPORTED_TARGET libargon2)
+        set(argon2_lib ", libargon2")
+        pkg_search_module(Jsoncpp IMPORTED_TARGET jsoncpp)
+        if (Jsoncpp_FOUND)
+            add_definitions(-DOPENDHT_JSONCPP)
+            set(jsoncpp_lib ", jsoncpp")
+            list (APPEND opendht_SOURCES
+              src/base64.h
+              src/base64.cpp
+            )
+        endif()
+
+        if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+            find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED)
+            message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
+        else()
+            message(STATUS "ASIO not required")
+        endif ()
+
+        find_package(fmt)
+
+        if (OPENDHT_HTTP)
+            find_package(Restinio REQUIRED)
+
+            # llhttp
+            find_path(LLHTTP_INCLUDE_DIR llhttp.h)
+            find_library(LLHTTP_LIBRARY libllhttp)
+            if (LLHTTP_INCLUDE_DIR AND LLHTTP_LIBRARY)
+                message(STATUS "Found llhttp ${LLHTTP_INCLUDE_DIR} ${LLHTTP_LIBRARY}")
+                add_library(llhttp_static STATIC IMPORTED)
+                set_target_properties(llhttp_static PROPERTIES
+                    IMPORTED_LOCATION ${LLHTTP_LIBRARY}
+                    INTERFACE_INCLUDE_DIRECTORIES ${LLHTTP_INCLUDE_DIR}
+                )
+                set(llhttp_target llhttp_static)
+            else()
+                FetchContent_Declare(llhttp-local URL "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.0.tar.gz")
+                if (BUILD_SHARED_LIBS)
+                    set(BUILD_SHARED_LIBS ON CACHE INTERNAL "")
+                else()
+                    set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
+                    set(BUILD_STATIC_LIBS ON CACHE INTERNAL "")
+                endif()
+                FetchContent_MakeAvailable(llhttp-local)
+                if (BUILD_SHARED_LIBS)
+                    set(llhttp_target llhttp_shared)
+                else()
+                    set(llhttp_target llhttp_static)
+                endif()
+            endif()
+            set(http_lib "-lllhttp")
+            
+            if (NOT Jsoncpp_FOUND)
+                message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
+            endif()
+            if (OPENDHT_PROXY_OPENSSL)
+                # https://cmake.org/cmake/help/latest/module/FindOpenSSL.html
+                pkg_search_module(OPENSSL REQUIRED IMPORTED_TARGET openssl)
+                if (OPENSSL_FOUND)
+                    message(STATUS "Found OpenSSL ${OPENSSL_VERSION} ${OPENSSL_INCLUDE_DIRS}")
+                    set(openssl_lib ", openssl")
+                else ()
+                    message(SEND_ERROR "OpenSSL is required for DHT proxy as specified")
+                endif()
+            endif()
+        else ()
+            set(OPENDHT_PROXY_OPENSSL OFF)
+        endif ()
     endif ()
-else ()
-    set (WIN32_DEP_DIR ${PROJECT_SOURCE_DIR}/../)
-    include_directories(${WIN32_DEP_DIR}/../msvc/include) # SMP gnutls
-    include_directories(${WIN32_DEP_DIR}/argon2/include)
-    include_directories(${WIN32_DEP_DIR}/jsoncpp/include)
+else () # MSVC
+    set(CMAKE_CXX_FLAGS "/utf-8 /EHsc") # Unicode workaround
+    if (BUILD_SHARED_LIBS)
+        message(STATUS "Building shared library")
+        set(VCPKG_TARGET_TRIPLET "x64-windows")
+        set(VCPKG_OVERLAY_TRIPLETS "x64-windows-release;x64-windows")
+    else ()
+        message(STATUS "Building static library")
+        set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+        set(VCPKG_OVERLAY_TRIPLETS "x64-windows-static-release;x64-windows-static-rel;x64-windows-static")
+    endif ()
+
+    include_directories(src/compat/msvc)
+    include_directories(src/compat/win32)
+    set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
+    
+    find_package(unofficial-argon2 CONFIG REQUIRED)
+    include_directories(${ARGON2_INCLUDEDIR})
+    set(argon2_lib ", libargon2")
+
+    find_package(GnuTLS REQUIRED)
+    include_directories(${GNUTLS_INCLUDE_DIR})
+
+    find_library(NETTLE_LIBRARY NAMES nettle libnettle HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib" REQUIRED)
+    
+    find_package(msgpack-cxx CONFIG REQUIRED)
+    get_target_property(MSGPACK_INCLUDEDIR msgpack-cxx INTERFACE_INCLUDE_DIRECTORIES)
+    include_directories(${MSGPACK_INCLUDEDIR})
+    
+    find_package(jsoncpp REQUIRED)
+    include_directories(${JSONCPP_INCLUDE_DIRS})
+    
+    find_package(fmt CONFIG REQUIRED)
+    include_directories(${FMT_INCLUDEDIR})
+
+    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
+        find_package(asio CONFIG REQUIRED)
+        find_path(ASIO_INCLUDE_DIR asio.hpp REQUIRED HINTS ${ASIO_INCLUDE_DIRS}/asio/include)
+        message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
+        include_directories(${ASIO_INCLUDE_DIR})
+        add_definitions(-DASIO_STANDALONE) 
+    else()
+        message(STATUS "ASIO not required")
+    endif ()
+
     list (APPEND opendht_SOURCES
         src/base64.h
         src/base64.cpp
     )
     add_definitions(-DOPENDHT_JSONCPP)
-    include_directories(${WIN32_DEP_DIR}/msgpack-c/include)
-    if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
-        include_directories(
-            ${WIN32_DEP_DIR}/asio/asio/include
-            ${WIN32_DEP_DIR}/openssl/include
-            ${WIN32_DEP_DIR}/restinio/dev
-            ${WIN32_DEP_DIR}/fmt/include
-            ${WIN32_DEP_DIR}/llhttp/include
-        )
-    endif ()
+
+    if (OPENDHT_HTTP)
+        find_package(restinio CONFIG REQUIRED)
+        get_target_property(RESTINIO_INCLUDEDIR restinio::restinio INTERFACE_INCLUDE_DIRECTORIES)
+        include_directories(${RESTINIO_INCLUDEDIR})
+
+        find_package(llhttp CONFIG REQUIRED)
+        get_target_property(LLHTTP_INCLUDEDIR llhttp::llhttp_static INTERFACE_INCLUDE_DIRECTORIES)
+        include_directories(${LLHTTP_INCLUDEDIR})
+        set(http_lib "-lllhttp")
+
+        if (OPENDHT_PROXY_OPENSSL)
+            find_package(OpenSSL REQUIRED)
+            get_target_property(OPENSSL_INCLUDEDIR OpenSSL::SSL INTERFACE_INCLUDE_DIRECTORIES)
+            include_directories(${OPENSSL_INCLUDEDIR})
+            set(openssl_lib ", openssl")
+        endif()
+    else()
+        set(OPENDHT_PROXY_OPENSSL OFF)
+    endif()
 endif ()
 
 if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
@@ -184,7 +470,7 @@ if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
 endif()
 
 if (NOT MSVC)
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-attributes -Wno-return-type -Wno-deprecated -Wno-deprecated-declarations -Wno-unknown-pragmas -Wall -Wextra -Wnon-virtual-dtor -pedantic-errors -fvisibility=hidden")
     if (OPENDHT_SANITIZE)
         set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fstack-protector-strong")
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -fstack-protector-strong")
@@ -196,7 +482,7 @@ else ()
                     -DSTATIC_GETOPT)
     set(DISABLE_MSC_WARNINGS "/wd4101 /wd4244 /wd4267 /wd4273 /wd4804 /wd4834 /wd4996")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${DISABLE_MSC_WARNINGS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP /bigobj")
 endif ()
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMSGPACK_NO_BOOST -DMSGPACK_DISABLE_LEGACY_NIL -DMSGPACK_DISABLE_LEGACY_CONVERT")
 
@@ -218,7 +504,7 @@ include_directories (
 # Install dirs
 include (GNUInstallDirs)
 set (prefix ${CMAKE_INSTALL_PREFIX})
-set (exec_prefix "\${prefix}")
+set (exec_prefix "${prefix}")
 set (libdir "${CMAKE_INSTALL_FULL_LIBDIR}")
 set (includedir "${CMAKE_INSTALL_FULL_INCLUDEDIR}")
 set (bindir "${CMAKE_INSTALL_FULL_BINDIR}")
@@ -257,11 +543,11 @@ list (APPEND opendht_SOURCES
 list (APPEND opendht_HEADERS
     include/opendht.h
     include/opendht/def.h
+    include/opendht/rng.h
+    include/opendht/infohash.h
     include/opendht/utils.h
     include/opendht/sockaddr.h
-    include/opendht/rng.h
     include/opendht/crypto.h
-    include/opendht/infohash.h
     include/opendht/default_types.h
     include/opendht/node.h
     include/opendht/value.h
@@ -340,79 +626,68 @@ if (MSVC)
     list (APPEND opendht_HEADERS src/compat/msvc/unistd.h)
 endif ()
 
+
+
 # Targets
-if (MSVC)
-    if (OPENDHT_STATIC)
-        if (OPENDHT_TOOLS)
-            function (add_obj_lib name libfile)
-                add_library(${name} OBJECT IMPORTED)
-                set_property(TARGET ${name} PROPERTY IMPORTED_OBJECTS ${libfile})
-            endfunction ()
-            add_obj_lib (win32_json ${WIN32_DEP_DIR}/../msvc/lib/x64/lib_json.lib)
-            add_obj_lib (win32_gnutls ${WIN32_DEP_DIR}/../msvc/lib/x64/libgnutls.lib)
-            add_obj_lib (win32_argon2 ${WIN32_DEP_DIR}/argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib)
-            list (APPEND obj_libs
-                $<TARGET_OBJECTS:win32_json>
-                $<TARGET_OBJECTS:win32_gnutls>
-                $<TARGET_OBJECTS:win32_argon2>
-            )
-            if (OPENDHT_HTTP)
-                add_obj_lib (win32_fmt ${WIN32_DEP_DIR}/fmt/msvc/Release/fmt.lib)
-                add_obj_lib (win32_llhttp ${WIN32_DEP_DIR}/llhttp/build/Release/llhttp.lib)
-                add_obj_lib (win32_ssl ${WIN32_DEP_DIR}/openssl/libssl_static.lib)
-                add_obj_lib (win32_crypto ${WIN32_DEP_DIR}/openssl/libcrypto_static.lib)
-                list (APPEND obj_libs
-                    $<TARGET_OBJECTS:win32_fmt>
-                    $<TARGET_OBJECTS:win32_llhttp>
-                    $<TARGET_OBJECTS:win32_ssl>
-                    $<TARGET_OBJECTS:win32_crypto>
-                )
-            endif ()
-        else ()
-            list (APPEND win32_Libs
-                ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/libgnutls.lib
-                ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/lib_json.lib
-                ${PROJECT_SOURCE_DIR}/../argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib
-            )
-            list (APPEND win32_Libs
-                ${PROJECT_SOURCE_DIR}/../fmt/msvc/Release/fmt.lib
-                ${PROJECT_SOURCE_DIR}/../llhttp/build/Release/llhttp.lib
-                ${PROJECT_SOURCE_DIR}/../openssl/libssl.lib
-                ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
-            )
-        endif ()
-        set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4006")
-    endif()
-endif ()
+if(BUILD_SHARED_LIBS)
+    message(STATUS "Building SHARED opendht library")
+    add_library(opendht SHARED ${opendht_SOURCES} ${opendht_HEADERS})
+else()
+    message(STATUS "Building STATIC opendht library")
+    add_library(opendht STATIC ${opendht_SOURCES} ${opendht_HEADERS})
+endif()
 
-add_library (opendht
-    ${opendht_SOURCES}
-    ${opendht_HEADERS}
-    ${obj_libs}
+target_include_directories(opendht
+                           PUBLIC
+                           "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+                           "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
 )
-set_target_properties (opendht PROPERTIES OUTPUT_NAME "opendht")
 
-if (NOT HAVE_MSGPACKCXX)
-    target_link_libraries(opendht PUBLIC ${MSGPACK_TARGET})
-endif()
-if (APPLE)
-    target_link_libraries(opendht PRIVATE "-framework CoreFoundation" "-framework Security")
-endif()
+set_target_properties(opendht PROPERTIES OUTPUT_NAME "opendht")
+
 if (MSVC)
-    if (OPENDHT_STATIC)
-        target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
-        set_target_properties (opendht PROPERTIES OUTPUT_NAME "libopendht")
+    message(STATUS "Used GnuTLS library: ${GNUTLS_LIBRARIES}")
+    message(STATUS "Used NETTLE library: ${NETTLE_LIBRARY}")
+    if(BUILD_SHARED_LIBS)
+        target_link_libraries(opendht PRIVATE ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC jsoncpp_lib ${GNUTLS_LIBRARIES} fmt::fmt wsock32 ws2_32)
+    else()
+        find_library(TASN1_LIBRARY NAMES tasn1 libtasn1 tasn1d REQUIRED) # Workaround for vcpkg directory misplacement
+        target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} ${GNUTLS_LIBRARIES} ${NETTLE_LIBRARY} ${TASN1_LIBRARY} unofficial::argon2::libargon2 jsoncpp_static fmt::fmt-header-only wsock32 ws2_32)
+        set_target_properties(opendht PROPERTIES OUTPUT_NAME "libopendht")
+    endif()
+    if (OPENDHT_HTTP)
+        target_link_libraries(opendht PUBLIC llhttp::llhttp_static)
+        if (OPENDHT_PROXY_OPENSSL)
+            target_link_libraries(opendht PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+        endif()
     endif()
 else()
-    target_link_libraries(opendht
-        PRIVATE
+    if (APPLE)
+        target_link_libraries(opendht PRIVATE "-framework CoreFoundation" "-framework Security")
+    endif ()
+    if (NOT HAVE_MSGPACKCXX)
+        target_link_libraries(opendht PUBLIC ${MSGPACK_TARGET})
+    endif()
+    if (WIN32 AND MINGW) # MSYS2
+        if (BUILD_SHARED_LIBS)
+            target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC cjson ${CMAKE_THREAD_LIBS_INIT} fmt::fmt ${GNUTLS_LIBRARIES} jsoncpp wsock32 ws2_32)
+            add_dependencies(opendht cjson jsoncpp_lib fmt msgpack-cxx)
+        else ()
+            target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} jsoncpp fmt::fmt-header-only ${GNUTLS_LIBRARIES} wsock32 ws2_32)
+            add_dependencies(opendht cjson jsoncpp_static fmt msgpack-cxx)
+        endif ()
+    else ()
+        target_link_libraries(opendht
+            PRIVATE
             PkgConfig::argon2
             PkgConfig::Nettle
-        PUBLIC
+            PUBLIC
             ${CMAKE_THREAD_LIBS_INIT}
             PkgConfig::GnuTLS
             fmt::fmt
-    )
+            ${READLINE_LIBRARIES}
+        )
+    endif()
     if (OPENDHT_HTTP)
         target_link_libraries(opendht PUBLIC ${llhttp_target})
     endif()
@@ -432,8 +707,10 @@ endif()
 if (BUILD_SHARED_LIBS)
     set_target_properties (opendht PROPERTIES IMPORT_SUFFIX "_import.lib")
     set_target_properties (opendht PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
-    target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
+    target_compile_definitions(opendht PRIVATE OPENDHT_BUILD) 
     target_compile_definitions(opendht PUBLIC opendht_EXPORTS)
+else ()
+    target_compile_definitions(opendht PRIVATE OPENDHT_STATIC) # to build library with default class attributes
 endif ()
 install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
 
@@ -471,6 +748,7 @@ write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersi
   VERSION ${opendht_VERSION}
   COMPATIBILITY AnyNewerVersion
 )
+
 # PkgConfig module
 configure_file (
     opendht.pc.in
@@ -483,9 +761,13 @@ install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtConfig.cmake)
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
+if(MSVC AND BUILD_SHARED_LIBS)
+    install(FILES $<TARGET_PDB_FILE:opendht> CONFIGURATIONS "RelWithDebInfo" "Debug" DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 
 # Unit tests
-if (BUILD_TESTING AND NOT MSVC)
+if (BUILD_TESTING AND NOT WIN32)
+    # TODO: WIN32 platform testing mode
     pkg_search_module(Cppunit REQUIRED IMPORTED_TARGET cppunit)
     # unit testing
     list (APPEND test_FILES
@@ -520,10 +802,17 @@ if (BUILD_TESTING AND NOT MSVC)
         tests/tests_runner.cpp
         ${test_FILES}
     )
-    target_link_libraries(opendht_unit_tests PRIVATE
-       opendht
-       ${CMAKE_THREAD_LIBS_INIT}
-       PkgConfig::Cppunit
-    )
+    if (WIN32 AND MINGW)
+        find_package(cppunit CONFIG REQUIRED)
+        add_dependencies(opendht_unit_tests opendht cppunit)
+        target_link_libraries(opendht_unit_tests PRIVATE opendht ${CMAKE_THREAD_LIBS_INIT} cppunit)
+    else ()
+        target_link_libraries(opendht_unit_tests PRIVATE
+            opendht
+            ${CMAKE_THREAD_LIBS_INIT}
+            PkgConfig::Cppunit
+        )
+    endif ()
+    
     add_test(TEST opendht_unit_tests)
 endif()
