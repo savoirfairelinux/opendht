@@ -23,8 +23,18 @@ extern "C" {
 #endif
 
 #include <opendht/def.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    typedef unsigned short in_port_t;
+    typedef int socklen_t;
+    typedef unsigned short sa_family_t;
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
