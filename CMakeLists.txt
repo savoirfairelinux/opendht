@@ -45,6 +45,14 @@ option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentati
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
 
+if (OPENDHT_C)
+    set (CMAKE_C_STANDARD 11)
+    set (CMAKE_C_STANDARD_REQUIRED ON)
+    if (MSVC)
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /experimental:c11atomics")
+    endif()
+endif()
+
 # Dependencies
 if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB
         # For ARM EABI (armel), little-endian MIPS (mipsel), etc.
