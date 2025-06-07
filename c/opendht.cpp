@@ -302,7 +302,7 @@ OPENDHT_C_PUBLIC void dht_identity_delete(dht_identity* id) {
 
 // config
 void dht_runner_config_default(dht_runner_config* config) {
-    bzero(config, sizeof(dht_runner_config));
+    memset(config, 0, sizeof(dht_runner_config));
     config->threaded = true;
 }
 
