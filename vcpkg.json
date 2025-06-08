@@ -29,6 +29,12 @@
       "dependencies": [
         "readline"
       ]
+    },
+    "test": {
+      "description": "Unit tests",
+      "dependencies": [
+        "cppunit"
+      ]
     }
   }
 }
