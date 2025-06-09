@@ -268,11 +268,17 @@ public:
         putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
     }
 
+    [[deprecated("Use the shared_ptr version instead")]]
     void putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, Value&& value, DoneCallback cb={}, bool permanent = false);
+    [[deprecated("Use the shared_ptr version instead")]]
     void putEncrypted(InfoHash hash, const std::shared_ptr<crypto::PublicKey>& to, Value&& value, DoneCallbackSimple cb, bool permanent = false) {
         putEncrypted(hash, to, std::forward<Value>(value), bindDoneCb(cb), permanent);
     }
 
+    void putEncrypted(InfoHash hash, const PkId& to, std::shared_ptr<Value> value, DoneCallback cb={}, bool permanent = false);
+    void putEncrypted(InfoHash hash, const PkId& to, std::shared_ptr<Value> value, DoneCallbackSimple cb, bool permanent = false) {
+        putEncrypted(hash, to, value, bindDoneCb(cb), permanent);
+    }
 
     /**
      * Insert known nodes to the routing table, without necessarly ping them.
@@ -384,6 +390,8 @@ public:
     // securedht methods
 
     void findCertificate(InfoHash hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
+    void findCertificate(PkId hash, std::function<void(const std::shared_ptr<crypto::Certificate>&)>);
+
     void registerCertificate(const std::shared_ptr<crypto::Certificate>& cert);
     void setLocalCertificateStore(CertificateStoreQuery&& query_method);
 

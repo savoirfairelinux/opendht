@@ -23,11 +23,20 @@ extern "C" {
 #endif
 
 #include <opendht/def.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+typedef uint16_t sa_family_t;
+typedef uint16_t in_port_t;
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
 
 // Non-owning data view
 struct OPENDHT_C_PUBLIC dht_data_view {
