@@ -60,6 +60,15 @@ if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB
     link_libraries (atomic)
 endif ()
 
+if (WIN32)
+    if(CMAKE_SYSTEM_VERSION AND CMAKE_SYSTEM_VERSION VERSION_LESS_EQUAL "6.3")
+        set(WINVER 0x0603) # Minimum supported is Windows 8.1
+    else()
+        set(WINVER 0x0A00) # Windows 10/11 by default
+    endif()
+    add_definitions(-DWINVER=${WINVER} -D_WIN32_WINNT=${WINVER})
+endif()
+
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 if (NOT MSVC)
     set (THREADS_PREFER_PTHREAD_FLAG TRUE)
