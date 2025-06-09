@@ -2,9 +2,14 @@
     "version": 2,
     "configurePresets": [
       {
+        "name": "default",
+        "hidden": true,
+        "binaryDir": "${sourceDir}/build"
+      },
+      {
         "name": "vcpkg",
         "generator": "Visual Studio 17 2022",
-        "binaryDir": "${sourceDir}/build",
+        "inherits": "default",
         "cacheVariables": {
           "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
           "OPENDHT_PROXY_CLIENT": true,
@@ -12,9 +17,21 @@
         }
       },
       {
-        "name": "unix",
+        "name": "ninja",
         "generator": "Ninja",
-        "binaryDir": "${sourceDir}/build"
+        "inherits": "default",
+        "cacheVariables": {
+          "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        }
+      },
+      {
+        "name": "unix-make",
+        "description": "Unix Makefiles",
+        "generator": "Unix Makefiles",
+        "inherits": "default",
+        "cacheVariables": {
+          "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        }
       }
     ]
   }
