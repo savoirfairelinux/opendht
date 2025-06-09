@@ -10,11 +10,6 @@
           "OPENDHT_PROXY_CLIENT": true,
           "OPENDHT_C": true
         }
-      },
-      {
-        "name": "unix",
-        "generator": "Ninja",
-        "binaryDir": "${sourceDir}/build"
       }
     ]
   }
