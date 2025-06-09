@@ -84,3 +84,4 @@ build_dev
 .DS_Store
 build-*/
 install/
+vcpkg_installed/

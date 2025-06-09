@@ -103,132 +103,33 @@ if (NOT MSVC)
         set (THREADS_PREFER_PTHREAD_FLAG TRUE)
         find_package (Threads)
         set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO RELEASE)
-        if(DEFINED $ENV{BOOST_ROOT})
-            set(BOOST_ROOT "$ENV{BOOST_ROOT}")
-        endif()
-        if(DEFINED BOOST_ROOT)
-            set(Boost_DIR "${BOOST_ROOT}")
-        endif()
-        find_package(Boost REQUIRED)
-        include_directories(${Boost_INCLUDE_DIRS})
-        link_directories(${Boost_LIBRARY_DIRS})
-        
-        find_path(ARGON2_INCLUDEDIR argon2.h REQUIRED)
-        include_directories(${ARGON2_INCLUDEDIR})
-        
+
+        # Workaround for msgpack-cxx
         set(FETCHCONTENT_QUIET FALSE)
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-            FetchContent_Declare(gnutls
-                URL "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.4-w64.zip"
-            )
-            set (GNUTLS_X64 1)
-        elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-            FetchContent_Declare(gnutls
-                URL "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.9-w32.zip"
-            )
-            unset (GNUTLS_X64)
-        endif()
-        FetchContent_Declare(cJSON
-            GIT_REPOSITORY "https://github.com/DaveGamble/cJSON.git"
-            OVERRIDE_FIND_PACKAGE
-        ) # Dependency for msgpack
         FetchContent_Declare(msgpack-c
             GIT_REPOSITORY "https://github.com/msgpack/msgpack-c.git"
             GIT_TAG        "cpp-6.1.1"
             FIND_PACKAGE_ARGS NAMES msgpack-c
         )
-        FetchContent_Declare(jsoncpp
-            GIT_REPOSITORY "https://github.com/open-source-parsers/jsoncpp.git"
-            GIT_TAG        "1.9.5"
-            OVERRIDE_FIND_PACKAGE
-        )
-        FetchContent_Declare(fmt
-            GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-            GIT_TAG        "11.1.2"
-            OVERRIDE_FIND_PACKAGE
-        )
-        FetchContent_Declare(asio
-            GIT_REPOSITORY "https://github.com/chriskohlhoff/asio.git"
-            GIT_TAG        "asio-1-34-2"
-        )
-        # Populate
-        FetchContent_MakeAvailable(
-            gnutls
-            cJSON
-            jsoncpp
-            msgpack-c
-            fmt
-            asio
-        )
-        message(STATUS "Linking populated libraries")
-        
-        if (NOT EXISTS "${gnutls_SOURCE_DIR}/bin" OR NOT EXISTS "${gnutls_SOURCE_DIR}/lib")
-            if (DEFINED GNUTLS_X64)
-                file(RENAME "${gnutls_SOURCE_DIR}/win64-build" "${gnutls_SOURCE_DIR}")
-            else ()
-                file(RENAME "${gnutls_SOURCE_DIR}/win32-build" "${gnutls_SOURCE_DIR}")
-            endif ()
-        endif ()
-        if (NOT EXISTS "${gnutls_SOURCE_DIR}/include/gnutls")
-            file(MAKE_DIRECTORY "${gnutls_SOURCE_DIR}/include")
-            file(RENAME "${gnutls_SOURCE_DIR}/lib/includes" "${gnutls_SOURCE_DIR}/include/gnutls")
-        endif ()
-        set(GNUTLS_INCLUDE_DIR "${gnutls_SOURCE_DIR}/include")
-        if (BUILD_SHARED_LIBS)
-            set(GNUTLS_LIBRARY ${gnutls_SOURCE_DIR}/bin/libgnutls-30.dll)
-            link_directories(${gnutls_SOURCE_DIR}/bin)
-        else ()
-            set(GNUTLS_LIBRARY ${gnutls_SOURCE_DIR}/lib/libgnutls.dll.a)
-            link_directories(${gnutls_SOURCE_DIR}/lib)
-        endif ()
-        file(COPY
-            "${gnutls_SOURCE_DIR}/bin/libgnutls-30.dll"
-            "${gnutls_SOURCE_DIR}/bin/libidn2-0.dll"
-            "${gnutls_SOURCE_DIR}/bin/libnettle-8.dll"
-            "${gnutls_SOURCE_DIR}/bin/libssp-0.dll"
-        DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/bin")
-        
-        find_package(GnuTLS REQUIRED)
-        include_directories(${GNUTLS_INCLUDE_DIR})
-        
-        # C99 required for cJSON to handle 'long long' declarations on x64 systems
-        target_compile_options(cjson PRIVATE --std=c99 -Wno-float-conversion) 
-        target_compile_options(cJSON_test PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_examples PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_number PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(unity PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_hex4 PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_string PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_array PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_object PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_value PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(parse_with_opts PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(print_string PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(print_number PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(print_array PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(print_object PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(print_value PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(compare_tests PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(cjson_add PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(misc_tests PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(minify_tests PRIVATE --std=c99 -Wno-float-conversion)
-        target_compile_options(readme_examples PRIVATE --std=c99 -Wno-float-conversion)
-        link_directories(${CMAKE_CURRENT_BINARY_DIR}/bin ${CMAKE_CURRENT_BINARY_DIR}/lib)
+        FetchContent_MakeAvailable(msgpack-c)
         
         find_package(msgpack-c CONFIG REQUIRED)
         include_directories(${MSGPACK_INCLUDEDIR} ${msgpack-c_SOURCE_DIR}/include)
+        
+        find_path(ARGON2_INCLUDE_DIR argon2.h REQUIRED)
+        include_directories(${ARGON2_INCLUDE_DIR})
+        
+        find_package(GnuTLS REQUIRED)
+        include_directories(${GNUTLS_INCLUDE_DIR})
         
         set(argon2_lib ", libargon2")
         
         find_package(jsoncpp CONFIG REQUIRED)
         if (BUILD_SHARED_LIBS)
             get_target_property(JSONCPP_INCLUDE_DIRS jsoncpp_lib INTERFACE_INCLUDE_DIRECTORIES)
-            target_compile_options(jsoncpp_lib PRIVATE -Wno-unknown-pragmas)
         else ()
             get_target_property(JSONCPP_INCLUDE_DIRS jsoncpp_static INTERFACE_INCLUDE_DIRECTORIES)
         endif ()
-        target_compile_options(jsoncpp_static PRIVATE -Wno-unknown-pragmas)
-        target_compile_options(jsoncpp_test PRIVATE -Wno-unknown-pragmas)
         include_directories(${JSONCPP_INCLUDE_DIRS})
         
         find_package(fmt CONFIG REQUIRED)
@@ -671,10 +572,8 @@ else()
     if (WIN32 AND MINGW) # MSYS2
         if (BUILD_SHARED_LIBS)
             target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC cjson ${CMAKE_THREAD_LIBS_INIT} fmt::fmt ${GNUTLS_LIBRARIES} jsoncpp wsock32 ws2_32)
-            add_dependencies(opendht cjson jsoncpp_lib fmt msgpack-cxx)
         else ()
             target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} jsoncpp fmt::fmt-header-only ${GNUTLS_LIBRARIES} wsock32 ws2_32)
-            add_dependencies(opendht cjson jsoncpp_static fmt msgpack-cxx)
         endif ()
     else ()
         target_link_libraries(opendht
