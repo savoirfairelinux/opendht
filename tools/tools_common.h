@@ -437,6 +437,7 @@ private:
 
 ServiceRunner runner;
 
+#ifndef DISABLE_SIGNALS
 void signal_handler(int sig)
 {
     switch(sig) {
@@ -450,6 +451,7 @@ void signal_handler(int sig)
         break;
     }
 }
+#endif
 
 void setupSignals()
 {
