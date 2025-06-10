@@ -25,10 +25,19 @@
 #include <stdatomic.h>
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#include "wingetopt.h"
+#else
 #include <getopt.h>
+#endif
 #include <readline/readline.h>
 #include <readline/history.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#endif
 
 struct op_context {
     dht_runner* runner;
