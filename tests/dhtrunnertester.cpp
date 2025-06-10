@@ -40,7 +40,11 @@ DhtRunnerTester::setUp() {
 
     node1.run(0, config);
     node2.run(0, config);
-    node2.bootstrap(node1.getBound());
+    auto bound = node1.getBound();
+    if (bound.isUnspecified()) {
+        bound.setLoopback();
+    }
+    node2.bootstrap(bound);
 }
 
 void
