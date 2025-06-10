@@ -5,9 +5,9 @@
             "name": "dhtnode",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build_dev/tools/dhtnode",
+            "program": "${workspaceFolder}/build/tools/dhtnode",
             "args": ["-v", "-p", "4222"],
-            "cwd": "${workspaceFolder}/build_dev",
+            "cwd": "${workspaceFolder}/build",
             "environment": [],
             "setupCommands": [
                 {
@@ -30,8 +30,8 @@
             "name": "tests",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build_dev/opendht_unit_tests",
-            "cwd": "${workspaceFolder}/build_dev",
+            "program": "${workspaceFolder}/build/opendht_unit_tests",
+            "cwd": "${workspaceFolder}/build",
             "environment": [],
             "setupCommands": [
                 {
