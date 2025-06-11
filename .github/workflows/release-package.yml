@@ -252,21 +252,85 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  build-python-wheel:
-    name: Release and build Python Wheel package
+  build-windows-msi:
+    name: Build Windows MSI Installer
+    runs-on: windows-latest
+    env:
+      VCPKG_VERSION: "2025.04.09"
+      VCPKG_DISABLE_METRICS: "1"
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_ROOT: "C:\\vcpkg"
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC developer environment
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure CMake for MSI
+        shell: pwsh
+        run: |
+          mkdir build -ErrorAction SilentlyContinue
+          cmake -B build `
+            -S . `
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DOPENDHT_C=On `
+            -DOPENDHT_TOOLS=On `
+            -DOPENDHT_PYTHON=Off `
+            -DOPENDHT_PEER_DISCOVERY=On `
+            -DOPENDHT_PROXY_SERVER=On `
+            -DOPENDHT_PROXY_CLIENT=On `
+            -DOPENDHT_HTTP=On `
+            -DBUILD_TESTING=Off `
+            -A x64
+
+      - name: Build with MSVC
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel $([System.Environment]::ProcessorCount)
+
+      - name: Package MSI with CPack
+        shell: pwsh
+        id: cpack_msi
+        run: |
+          cd build
+          cpack -C Release -G WIX
+          $msiFile = Get-ChildItem -Path . -Recurse -Filter *.msi | Select-Object -First 1
+          if ($msiFile) {
+            $msiOutputPath = "opendht-installer.msi" # Standardized artifact name
+            Copy-Item $msiFile.FullName -Destination $msiOutputPath
+            echo "msi_path=$msiOutputPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host "MSI created at build/$msiOutputPath"
+          } else {
+            Write-Error "MSI file not found after cpack execution!"
+            exit 1
+          }
+
+      - name: Upload MSI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opendht-windows-msi
+          path: build/${{ steps.cpack_msi.outputs.msi_path }} # Path to the MSI in the build directory
+          retention-days: 7
+
+  build-python-wheels:
+    name: Build Python Wheels
     runs-on: ubuntu-latest
     container: ghcr.io/savoirfairelinux/opendht/opendht-deps:latest
-
     permissions:
-      contents: write
-
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: cmake
+      - name: cmake (for Python wheel)
         run: |
-          mkdir build && cd build && \
+          mkdir build_python && cd build_python && \
           cmake .. -DCMAKE_INSTALL_PREFIX=/usr \
                    -DCMAKE_BUILD_TYPE=Release \
                    -DOPENDHT_STATIC=Off \
@@ -277,17 +341,43 @@ jobs:
                    -DOPENDHT_PROXY_SERVER=On \
                    -DOPENDHT_PROXY_CLIENT=On
 
-      - name: build
-        run: cd build && make dist
+      - name: build (for Python wheel)
+        run: cd build_python && make dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: opendht-wheels-linux
-          path: build/python/dist/*.whl
+          path: build_python/python/dist/*.whl
+          retention-days: 7
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-windows-msi, build-python-wheels]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Windows MSI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: opendht-windows-msi
+          path: downloaded_artifacts/windows_msi
+
+      - name: Download Linux Wheels artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: opendht-wheels-linux
+          path: downloaded_artifacts/linux_wheels
 
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: build/python/dist/*.whl
+          files: |
+            downloaded_artifacts/linux_wheels/*.whl
+            downloaded_artifacts/windows_msi/*.msi
