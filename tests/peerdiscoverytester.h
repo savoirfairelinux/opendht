@@ -26,7 +26,7 @@
 
 namespace test {
 
-class OPENDHT_PUBLIC PeerDiscoveryTester : public CppUnit::TestFixture {
+class PeerDiscoveryTester : public CppUnit::TestFixture {
 
     CPPUNIT_TEST_SUITE(PeerDiscoveryTester);
     CPPUNIT_TEST(testMulticastToTwoNodes);

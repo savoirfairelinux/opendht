@@ -655,7 +655,7 @@ struct OPENDHT_PUBLIC TrustList
         bool hasError() const { return ret < 0; }
         bool isValid() const { return !hasError() and !(result & GNUTLS_CERT_INVALID); }
         explicit operator bool() const { return isValid(); }
-        std::string toString() const;
+        OPENDHT_PUBLIC std::string toString() const;
         OPENDHT_PUBLIC friend std::ostream& operator<< (std::ostream& s, const VerifyResult& h);
     };
 
