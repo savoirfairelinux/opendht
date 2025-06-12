@@ -577,7 +577,7 @@ else()
     endif()
     if (WIN32 AND MINGW) # MSYS2
         if (BUILD_SHARED_LIBS)
-            target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC cjson ${CMAKE_THREAD_LIBS_INIT} fmt::fmt ${GNUTLS_LIBRARIES} jsoncpp wsock32 ws2_32)
+            target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC ${CMAKE_THREAD_LIBS_INIT} fmt::fmt ${GNUTLS_LIBRARIES} jsoncpp wsock32 ws2_32)
         else ()
             target_link_libraries(opendht PRIVATE argon2 nettle msgpack-cxx PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} jsoncpp fmt::fmt-header-only ${GNUTLS_LIBRARIES} wsock32 ws2_32)
         endif ()
