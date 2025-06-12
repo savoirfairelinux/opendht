@@ -559,7 +559,7 @@ if (OPENDHT_C)
         @ONLY
     )
     install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht-c.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
-    install (FILES c/opendht_c.h DESTINATION ${CMAKE_INSTALL_PREFIX}/include/opendht)
+    install (FILES c/opendht_c.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/opendht)
 endif ()
 
 if (OPENDHT_TOOLS)
@@ -584,7 +584,7 @@ configure_file (
 )
 
 # Install targets
-install (DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
+install (DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendht.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 install (EXPORT opendht DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht FILE opendhtConfig.cmake)
 install (FILES ${CMAKE_CURRENT_BINARY_DIR}/opendhtConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/opendht)
