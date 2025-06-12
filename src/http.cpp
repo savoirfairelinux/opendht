@@ -838,7 +838,7 @@ Resolver::resolve(const std::string& host, const std::string& serviceName)
         if (ec == asio::error::operation_aborted or *destroyed)
             return;
         if (logger_) {
-            logger_->error("[http:client] [resolver] result for {:s}:{:s}: {:s}",
+            logger_->debug("[http:client] [resolver] result for {:s}:{:s}: {:s}",
                         host, service, ec.message());
         }
         decltype(cbs_) cbs;
