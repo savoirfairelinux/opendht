@@ -31,6 +31,8 @@ extern "C" {
 #include <argon2.h>
 }
 
+
+
 #include <random>
 #include <sstream>
 #include <fstream>
@@ -1502,7 +1504,7 @@ OcspResponse::getCertificateStatus() const
     int ret;
     unsigned int status;
     // MSVC/vcpkg GnuTLS cast workaround
-#if _WIN32 && (GNUTLS_VERSION_NUMBER >= 0x030807)
+#if _WIN32 && (GNUTLS_VERSION_NUMBER == 0x030807)
     ret = gnutls_ocsp_resp_get_single(response, 
                                       0, 
                                       NULL, 
@@ -1576,7 +1578,7 @@ OcspResponse::verifyDirect(const Certificate& crt, const Blob& nonce)
     // Check certificate revocation status
     unsigned int status_ocsp;
     // MSVC/vcpkg GnuTLS cast workaround
-#if _WIN32 && (GNUTLS_VERSION_NUMBER >= 0x030807)
+#if _WIN32 && (GNUTLS_VERSION_NUMBER == 0x030807)
     ret = gnutls_ocsp_resp_get_single(response, 
                                       0, 
                                       NULL, 
