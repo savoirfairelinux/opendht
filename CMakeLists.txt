@@ -1,4 +1,7 @@
 cmake_minimum_required (VERSION 3.16..3.31)
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif()
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
@@ -554,7 +557,10 @@ if (MSVC)
     else()
         find_library(TASN1_LIBRARY NAMES tasn1 libtasn1 tasn1d REQUIRED) # Workaround for vcpkg directory misplacement
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} ${GNUTLS_LIBRARIES} ${NETTLE_LIBRARY} ${TASN1_LIBRARY} unofficial::argon2::libargon2 jsoncpp_static fmt::fmt-header-only wsock32 ws2_32)
-        set_target_properties(opendht PROPERTIES OUTPUT_NAME "libopendht")
+        set_target_properties(opendht PROPERTIES 
+			OUTPUT_NAME "libopendht"
+			MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+		)
     endif()
     if (OPENDHT_HTTP)
         target_link_libraries(opendht PUBLIC llhttp::llhttp_static)
