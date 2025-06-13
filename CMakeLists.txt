@@ -1,4 +1,7 @@
 cmake_minimum_required (VERSION 3.16..3.31)
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif() # MSVC build workaround for STATIC mode
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
@@ -506,7 +509,10 @@ if (MSVC)
     endif()
     if (OPENDHT_STATIC)
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
-        set_target_properties (opendht PROPERTIES OUTPUT_NAME "libopendht")
+        set_target_properties(opendht PROPERTIES 
+			OUTPUT_NAME "libopendht"
+			MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+		)
     endif()
 else()
     target_link_libraries(opendht
