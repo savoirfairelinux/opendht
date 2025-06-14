@@ -1,25 +1,30 @@
-cmake_minimum_required (VERSION 3.16..3.31)
+cmake_minimum_required (VERSION 3.21..3.31)
 if(POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif() # MSVC build workaround for STATIC mode
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
-project (opendht)
-
-include(CMakePackageConfigHelpers)
-include(CMakeDependentOption)
-include(CheckIncludeFileCXX)
-include(FindPkgConfig)
-include(cmake/CheckAtomic.cmake)
-include(CTest)
-include(FetchContent)
 
 set (opendht_VERSION_MAJOR 3)
 set (opendht_VERSION_MINOR 4.0)
 set (opendht_VERSION ${opendht_VERSION_MAJOR}.${opendht_VERSION_MINOR})
 set (PACKAGE_VERSION ${opendht_VERSION})
 set (VERSION "${opendht_VERSION}")
+project (opendht
+    VERSION ${opendht_VERSION}
+    DESCRIPTION "OpenDHT: A lightweight C++17 Distributed Hash Table library."
+    HOMEPAGE_URL "https://opendht.net/"
+)
+
+
+include(CMakePackageConfigHelpers)
+include(CMakeDependentOption)
+include(CheckIncludeFileCXX)
+include(FindPkgConfig)
+include(cmake/CheckAtomic.cmake)
+include(FetchContent)
+include(CTest)
 
 # Options
 option (BUILD_SHARED_LIBS "Build shared library" ON)
@@ -40,6 +45,7 @@ option (OPENDHT_IO_URING "Use io_uring if available on the system (Linux only)" 
 option (OPENDHT_INDEX "Build DHT indexation feature" OFF)
 option (OPENDHT_TESTS_NETWORK "Enable unit tests that require network access" ON)
 option (OPENDHT_C "Build C bindings" OFF)
+option (OPENDHT_CPACK "Add CPack support" OFF)
 
 find_package(Doxygen)
 option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
@@ -53,6 +59,7 @@ if (OPENDHT_C)
     set (CMAKE_C_STANDARD_REQUIRED ON)
     if (MSVC)
         set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /experimental:c11atomics")
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /experimental:c11atomics")
     endif()
 endif()
 
@@ -179,6 +186,7 @@ else ()
         find_library(GNUTLS_LIBRARY NAMES gnutls REQUIRED)
         find_library(NETTLE_LIBRARY NAMES nettle REQUIRED)
         find_library(HOGWEED_LIBRARY NAMES hogweed REQUIRED)
+        find_library(TASN_LIBRARY NAMES tasn1 REQUIRED)
         find_library(ARGON2_LIBRARY NAMES argon2 REQUIRED)
         find_path(GNUTLS_INCLUDE_DIR gnutls/gnutls.h REQUIRED)
         find_path(NETTLE_INCLUDE_DIR nettle/aes.h REQUIRED)
@@ -200,7 +208,11 @@ else ()
         add_library(hogweed_lib STATIC IMPORTED)
         set_target_properties(hogweed_lib PROPERTIES
             IMPORTED_LOCATION ${HOGWEED_LIBRARY}
-            INTERFACE_INCLUDE_DIRECTORIES ${NETTLE_INCLUDE_DIR}
+        )
+
+        add_library(tasn1_lib STATIC IMPORTED)
+        set_target_properties(tasn1_lib PROPERTIES
+            IMPORTED_LOCATION ${TASN_LIBRARY}
         )
         
         add_library(argon2_lib STATIC IMPORTED)
@@ -421,49 +433,49 @@ if (MSVC)
 endif ()
 
 # Targets
-if (MSVC)
-    if (OPENDHT_STATIC)
-        if (OPENDHT_TOOLS)
-            function (add_obj_lib name libfile)
-                add_library(${name} OBJECT IMPORTED)
-                set_property(TARGET ${name} PROPERTY IMPORTED_OBJECTS ${libfile})
-            endfunction ()
-            add_obj_lib (win32_json ${WIN32_DEP_DIR}/../msvc/lib/x64/lib_json.lib)
-            add_obj_lib (win32_gnutls ${WIN32_DEP_DIR}/../msvc/lib/x64/libgnutls.lib)
-            add_obj_lib (win32_argon2 ${WIN32_DEP_DIR}/argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib)
-            list (APPEND obj_libs
-                $<TARGET_OBJECTS:win32_json>
-                $<TARGET_OBJECTS:win32_gnutls>
-                $<TARGET_OBJECTS:win32_argon2>
-            )
-            if (OPENDHT_HTTP)
-                add_obj_lib (win32_fmt ${WIN32_DEP_DIR}/fmt/msvc/Release/fmt.lib)
-                add_obj_lib (win32_llhttp ${WIN32_DEP_DIR}/llhttp/build/Release/llhttp.lib)
-                add_obj_lib (win32_ssl ${WIN32_DEP_DIR}/openssl/libssl_static.lib)
-                add_obj_lib (win32_crypto ${WIN32_DEP_DIR}/openssl/libcrypto_static.lib)
-                list (APPEND obj_libs
-                    $<TARGET_OBJECTS:win32_fmt>
-                    $<TARGET_OBJECTS:win32_llhttp>
-                    $<TARGET_OBJECTS:win32_ssl>
-                    $<TARGET_OBJECTS:win32_crypto>
-                )
-            endif ()
-        else ()
-            list (APPEND win32_Libs
-                ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/libgnutls.lib
-                ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/lib_json.lib
-                ${PROJECT_SOURCE_DIR}/../argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib
-            )
-            list (APPEND win32_Libs
-                ${PROJECT_SOURCE_DIR}/../fmt/msvc/Release/fmt.lib
-                ${PROJECT_SOURCE_DIR}/../llhttp/build/Release/llhttp.lib
-                ${PROJECT_SOURCE_DIR}/../openssl/libssl.lib
-                ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
-            )
-        endif ()
-        set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4006")
-    endif()
-endif ()
+# if (MSVC)
+#     if (OPENDHT_STATIC)
+#         if (OPENDHT_TOOLS)
+#             function (add_obj_lib name libfile)
+#                 add_library(${name} OBJECT IMPORTED)
+#                 set_property(TARGET ${name} PROPERTY IMPORTED_OBJECTS ${libfile})
+#             endfunction ()
+#             add_obj_lib (win32_json ${WIN32_DEP_DIR}/../msvc/lib/x64/lib_json.lib)
+#             add_obj_lib (win32_gnutls ${WIN32_DEP_DIR}/../msvc/lib/x64/libgnutls.lib)
+#             add_obj_lib (win32_argon2 ${WIN32_DEP_DIR}/argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib)
+#             list (APPEND obj_libs
+#                 $<TARGET_OBJECTS:win32_json>
+#                 $<TARGET_OBJECTS:win32_gnutls>
+#                 $<TARGET_OBJECTS:win32_argon2>
+#             )
+#             if (OPENDHT_HTTP)
+#                 add_obj_lib (win32_fmt ${WIN32_DEP_DIR}/fmt/msvc/Release/fmt.lib)
+#                 add_obj_lib (win32_llhttp ${WIN32_DEP_DIR}/llhttp/build/Release/llhttp.lib)
+#                 add_obj_lib (win32_ssl ${WIN32_DEP_DIR}/openssl/libssl_static.lib)
+#                 add_obj_lib (win32_crypto ${WIN32_DEP_DIR}/openssl/libcrypto_static.lib)
+#                 list (APPEND obj_libs
+#                     $<TARGET_OBJECTS:win32_fmt>
+#                     $<TARGET_OBJECTS:win32_llhttp>
+#                     $<TARGET_OBJECTS:win32_ssl>
+#                     $<TARGET_OBJECTS:win32_crypto>
+#                 )
+#             endif ()
+#         else ()
+#             list (APPEND win32_Libs
+#                 ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/libgnutls.lib
+#                 ${PROJECT_SOURCE_DIR}/../../msvc/lib/x64/lib_json.lib
+#                 ${PROJECT_SOURCE_DIR}/../argon2/vs2015/Argon2Ref/vs2015/build/Argon2Ref.lib
+#             )
+#             list (APPEND win32_Libs
+#                 ${PROJECT_SOURCE_DIR}/../fmt/msvc/Release/fmt.lib
+#                 ${PROJECT_SOURCE_DIR}/../llhttp/build/Release/llhttp.lib
+#                 ${PROJECT_SOURCE_DIR}/../openssl/libssl.lib
+#                 ${PROJECT_SOURCE_DIR}/../openssl/libcrypto.lib
+#             )
+#         endif ()
+#         set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4006")
+#     endif()
+# endif ()
 
 add_library (opendht
     ${opendht_SOURCES}
@@ -497,6 +509,7 @@ if (MSVC)
                 argon2_lib
                 nettle_lib
                 hogweed_lib
+                tasn1_lib
         )
         if (OPENDHT_HTTP)
             target_link_libraries(opendht
@@ -546,7 +559,45 @@ if (BUILD_SHARED_LIBS)
     target_compile_definitions(opendht PRIVATE OPENDHT_BUILD)
     target_compile_definitions(opendht PUBLIC opendht_EXPORTS)
 endif ()
-install (TARGETS opendht DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht)
+
+
+install (TARGETS opendht
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME_DEPENDENCY_SET opendht_rdeps
+    EXPORT opendht
+)
+if (WIN32 AND DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+    install(RUNTIME_DEPENDENCY_SET opendht_rdeps
+        PRE_EXCLUDE_REGEXES
+            "api-ms-win-.*\\.dll"
+            "ext-ms-.*\\.dll"
+            "d3d.*\\.dll"
+            "dxgi.*\\.dll"
+            "uxtheme\\.dll"
+            "dwmapi\\.dll"
+            "crypt32\\.dll"
+            "bcrypt\\.dll"
+            "ncrypt\\.dll"
+            "sechost\\.dll"
+            "user32\\.dll"
+            "kernel32\\.dll"
+            "gdi32\\.dll"
+            "shell32\\.dll"
+            "advapi32\\.dll"
+            "ole32\\.dll"
+            "oleaut32\\.dll"
+            "shlwapi\\.dll"
+            "comdlg32\\.dll"
+            "winspool\\.drv"
+            "mpr\\.dll"
+            "version\\.dll"
+            "ws2_32\\.dll" 
+            "vcruntime.*\\.dll"
+            "msvcp.*\\.dll"
+            "wpax.*\\.dll"
+            "azure.*\\.dll"
+    )
+endif()
 
 if (OPENDHT_C)
     add_library (opendht-c
@@ -643,4 +694,32 @@ if (BUILD_TESTING)
         ${cppunit_LIBRARIES}
     )
     add_test(TEST opendht_unit_tests)
+endif()
+
+if (OPENDHT_CPACK)
+    set(CPACK_PACKAGE_NAME "OpenDHT")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_VENDOR "Savoir-faire Linux, Inc.")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenDHT: A lightweight C++17 Distributed Hash Table library.")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://opendht.net/")
+    set(CPACK_PACKAGE_CONTACT "support@savoirfairelinux.com") # Or a relevant contact/mailing list
+    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/COPYING.txt")
+    set(CPACK_PACKAGE_INSTALL_DIRECTORY "OpenDHT")
+
+    if(WIN32)
+        # WiX specific settings
+        set(CPACK_GENERATOR "WIX") # Can be overridden by -G on the command line
+        set(CPACK_WIX_VERSION 4)
+        set(CPACK_WIX_PRODUCT_GUID "5e2faa2b-a4f4-4431-ba15-ed94e732a949")
+        set(CPACK_WIX_UPGRADE_GUID "cbff4222-9b41-48a2-94ea-6f8a228c5936")
+        set(CPACK_WIX_PRODUCT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/opendht_logo_512.ico")
+        set(CPACK_WIX_UI_BANNER "${CMAKE_CURRENT_SOURCE_DIR}/resources/opendht_install_banner.bmp")
+        set(CPACK_WIX_UI_DIALOG "${CMAKE_CURRENT_SOURCE_DIR}/resources/opendht_install_bg.bmp")
+        set(CPACK_WIX_PROGRAM_MENU_FOLDER "${PROJECT_NAME}")
+        set(CPACK_WIX_INSTALL_SCOPE "perMachine")
+    endif()
+
+    set(CPACK_PACKAGE_EXECUTABLES "dhtnode;DHT Node")
+    set(CPACK_CREATE_DESKTOP_LINKS "dhtnode")
+    include(CPack)
 endif()
