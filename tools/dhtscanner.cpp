@@ -101,8 +101,9 @@ main(int argc, char **argv)
 
     DhtRunner dht;
     try {
-        auto dhtConf = getDhtConfig(params);
-        dht.run(params.port, dhtConf.first, std::move(dhtConf.second));
+        auto [config, context] = getDhtConfig(params);
+        config.dht_config.node_config.client_mode = true;
+        dht.run(params.port, config, std::move(context));
 
         if (not params.bootstrap.empty())
             dht.bootstrap(params.bootstrap);
