@@ -231,11 +231,11 @@ jobs:
             -DOPENDHT_HTTP=ON
           cmake --build . --parallel 4
 
-      #- name: Test MinGW Build
-      #  shell: msys2 {0}
-      #  run: |
-      #    cd build_mingw
-      #    ctest --output-on-failure --parallel 4
+      - name: Test MinGW Build
+        shell: msys2 {0}
+        run: |
+          cd build_mingw
+          ctest --output-on-failure --parallel 4
 
       - name: Upload MinGW artifacts
         if: matrix.build_type == 'Release'
