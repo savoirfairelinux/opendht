@@ -113,6 +113,7 @@ jobs:
           Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\${{ matrix.arch }}-windows\bin\*.dll" -Destination "build" -Force
 
       - name: Test
+        if: matrix.build_type == 'Release'
         run: |
           cd build
           ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
