@@ -33,10 +33,12 @@
       "inherits": "msvc",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "BUILD_SHARED_LIBS": "Off",
+        "BUILD_SHARED_LIBS": "On",
+        "CMAKE_BUILD_TYPE": "Debug",
         "BUILD_TESTING": true,
         "VCPKG_MANIFEST_FEATURES": "test",
         "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
         "OPENDHT_C": true
       }
     },
@@ -47,11 +49,11 @@
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_BUILD_TYPE": "Release",
         "BUILD_SHARED_LIBS": "On",
-        "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
         "BUILD_TESTING": false,
         "OPENDHT_CPACK": true,
         "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
         "OPENDHT_C": true
       }
     },
@@ -64,10 +66,10 @@
         "BUILD_SHARED_LIBS": "Off",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
         "VCPKG_LIBRARY_LINKAGE ": "static",
-        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
         "BUILD_TESTING": false,
         "OPENDHT_CPACK": true,
         "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
         "OPENDHT_C": true
       }
     }
