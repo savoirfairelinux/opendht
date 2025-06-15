@@ -37,7 +37,10 @@ HttpTester::setUp() {
 
     auto nodeProxy = std::make_shared<dht::DhtRunner>();
     nodeProxy->run(0, /*identity*/{}, /*threaded*/true);
-    nodeProxy->bootstrap(nodePeer->getBound());
+    auto bound = nodePeer->getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    nodeProxy->bootstrap(bound);
 
     dht::ProxyServerConfig config;
     config.port = 8080;
@@ -228,7 +231,7 @@ HttpTester::test_send_json() {
 
     // Act
     auto request = std::make_shared<dht::http::Request>(serverProxy->io_context(),
-        "http://127.0.0.1:8080/key",
+        "http://127.0.0.1:8080/key/key",
         json,
         [&](Json::Value value, const dht::http::Response& response) {
             std::lock_guard<std::mutex> lk(cv_m);

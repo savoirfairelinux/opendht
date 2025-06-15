@@ -41,9 +41,8 @@ DhtRunnerTester::setUp() {
     node1.run(0, config);
     node2.run(0, config);
     auto bound = node1.getBound();
-    if (bound.isUnspecified()) {
+    if (bound.isUnspecified())
         bound.setLoopback();
-    }
     node2.bootstrap(bound);
 }
 
@@ -283,7 +282,10 @@ DhtRunnerTester::testIdOps() {
 
     node2.join();
     node2.run(42232, config2, std::move(context2));
-    node2.bootstrap(node1.getBound());
+    auto bound = node1.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    node2.bootstrap(bound);
 
     {
         std::unique_lock<std::mutex> lk(mutex);
@@ -313,7 +315,10 @@ DhtRunnerTester::testIdOps() {
     config2.dht_config.id = dht::crypto::generateIdentity();
     node1.join();
     node1.run(42222, config2, std::move(context1));
-    node1.bootstrap(node2.getBound());
+    bound = node2.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    node1.bootstrap(bound);
 
     auto key = dht::InfoHash::get("key");
     node1.putEncrypted(key, node2.getId(), dht::Value("yo"), [&](bool ok){
@@ -410,7 +415,10 @@ DhtRunnerTester::testListenLotOfBytes() {
     config.dht_config.node_config.max_peer_req_per_sec = -1;
     config.dht_config.node_config.max_req_per_sec = -1;
     node3.run(42242, config);
-    node3.bootstrap(node1.getBound());
+    auto bound = node1.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    node3.bootstrap(bound);
 
     auto ftokenfoo = node3.listen(foo, [&](const std::shared_ptr<dht::Value>&) {
         valueCount++;

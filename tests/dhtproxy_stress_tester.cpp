@@ -43,7 +43,10 @@ DhtProxyStressTester::setUp() {
 
     nodeProxy = std::make_shared<dht::DhtRunner>();
     nodeProxy->run(0, clientConfig, std::move(ctx));
-    nodeProxy->bootstrap(nodePeer.getBound());
+    auto bound = nodePeer.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    nodeProxy->bootstrap(bound);
 
     dht::ProxyServerConfig serverConfig;
     serverConfig.port = 8084;
@@ -130,6 +133,9 @@ DhtProxyStressTester::testRepeatValues() {
         dht::DhtRunner::Context ctx;
         ctx.logger = logger;
         tmpNode->run(0, clientConfig, std::move(ctx));
+        auto bound = nodePeer.getBound();
+        if (bound.isUnspecified())
+            bound.setLoopback();
         tmpNode->bootstrap(nodePeer.getBound());
         // 1 minute
         std::this_thread::sleep_until(now + DELAY);
