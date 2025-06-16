@@ -26,7 +26,15 @@
     {
       "name": "msvc",
       "generator": "Visual Studio 17 2022",
-      "inherits": "default"
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-vs",
+      "cacheVariables": {
+        "BUILD_TESTING": true,
+        "VCPKG_MANIFEST_FEATURES": "test",
+        "OPENDHT_PROXY_CLIENT": false,
+        "OPENDHT_PROXY_SERVER": false,
+        "OPENDHT_C": true
+      }
     },
     {
       "name": "vcpkg_manifest",
@@ -35,42 +43,118 @@
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "BUILD_SHARED_LIBS": "On",
         "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_MANIFEST_MODE": true
+      }
+    },
+    {
+      "name": "vcpkg_local",
+      "inherits": "msvc",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "BUILD_SHARED_LIBS": "On",
+        "CMAKE_BUILD_TYPE": "Debug",
         "BUILD_TESTING": true,
-        "VCPKG_MANIFEST_FEATURES": "test",
-        "OPENDHT_PROXY_CLIENT": true,
-        "OPENDHT_PROXY_SERVER": true,
-        "OPENDHT_C": true
+        "VCPKG_MANIFEST_MODE": false
       }
     },
     {
       "name": "vcpkg_release",
-      "inherits": "msvc",
+      "inherits": "vcpkg_manifest",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_SHARED_LIBS": "On",
         "VCPKG_TARGET_TRIPLET": "x64-windows-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-release;x64-windows-rel;x64-windows",
         "BUILD_TESTING": false,
-        "OPENDHT_CPACK": true,
+        "OPENDHT_CPACK": true
+      }
+    },
+    {
+      "name": "vcpkg_release_full",
+      "inherits": "vcpkg_manifest",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-release;x64-windows-rel;x64-windows",
+        "BUILD_TESTING": false,
         "OPENDHT_PROXY_CLIENT": true,
         "OPENDHT_PROXY_SERVER": true,
-        "OPENDHT_C": true
+        "OPENDHT_CPACK": true
       }
     },
     {
       "name": "vcpkg_release_static",
-      "inherits": "msvc",
+      "inherits": "vcpkg_manifest",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_BUILD_TYPE": "Release",
         "BUILD_SHARED_LIBS": "Off",
         "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
-        "VCPKG_LIBRARY_LINKAGE ": "static",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
         "BUILD_TESTING": false,
-        "OPENDHT_CPACK": true,
+        "OPENDHT_CPACK": true
+      }
+    },
+    {
+      "name": "vcpkg_release_static_full",
+      "inherits": "vcpkg_manifest",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": "Off",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
+        "BUILD_TESTING": false,
         "OPENDHT_PROXY_CLIENT": true,
         "OPENDHT_PROXY_SERVER": true,
-        "OPENDHT_C": true
+        "OPENDHT_CPACK": true
+      }
+    },
+    {
+      "name": "vcpkg_release_local",
+      "inherits": "vcpkg_local",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-release;x64-windows-rel;x64-windows",
+        "BUILD_TESTING": false,
+        "OPENDHT_CPACK": true
+      }
+    },
+    {
+      "name": "vcpkg_release_local_full",
+      "inherits": "vcpkg_local",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-release;x64-windows-rel;x64-windows",
+        "BUILD_TESTING": false,
+        "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
+        "OPENDHT_CPACK": true
+      }
+    },
+    {
+      "name": "vcpkg_release_static_local",
+      "inherits": "vcpkg_local",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": "Off",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
+        "BUILD_TESTING": false,
+        "OPENDHT_CPACK": true
+      }
+    },
+    {
+      "name": "vcpkg_release_static_local_full",
+      "inherits": "vcpkg_local",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_SHARED_LIBS": "Off",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-release",
+        "VCPKG_OVERLAY_TRIPLETS": "x64-windows-static-release;x64-windows-static-rel;x64-windows-static",
+        "BUILD_TESTING": false,
+        "OPENDHT_PROXY_CLIENT": true,
+        "OPENDHT_PROXY_SERVER": true,
+        "OPENDHT_CPACK": true
       }
     }
   ]
