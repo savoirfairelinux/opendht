@@ -53,6 +53,9 @@ option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentati
 # Build flags
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
+if(MSVC AND NOT BUILD_SHARED_LIBS AND NOT CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 if (OPENDHT_C)
     set (CMAKE_C_STANDARD 11)
@@ -63,7 +66,6 @@ if (OPENDHT_C)
     endif()
 endif()
 
-# Dependencies
 if (NOT HAVE_CXX_ATOMICS_WITHOUT_LIB
         # For ARM EABI (armel), little-endian MIPS (mipsel), etc.
         OR NOT HAVE_CXX_ATOMICS64_WITHOUT_LIB)
@@ -79,6 +81,7 @@ if (WIN32)
     add_definitions(-DWINVER=${WINVER} -D_WIN32_WINNT=${WINVER})
 endif()
 
+# Dependencies
 list (APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 if (NOT MSVC)
     set (THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -522,10 +525,6 @@ if (MSVC)
     endif()
     if (OPENDHT_STATIC)
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES})
-        set_target_properties(opendht PROPERTIES 
-			OUTPUT_NAME "libopendht"
-			MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
-		)
     endif()
 else()
     target_link_libraries(opendht
@@ -607,9 +606,6 @@ if (OPENDHT_C)
     target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
     target_link_libraries(opendht-c PRIVATE opendht)
     set_target_properties (opendht-c PROPERTIES SOVERSION ${opendht_VERSION_MAJOR} VERSION ${opendht_VERSION})
-    if(NOT BUILD_SHARED_LIBS)
-        set_target_properties(opendht-c PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    endif()
     install (TARGETS opendht-c DESTINATION ${CMAKE_INSTALL_LIBDIR} EXPORT opendht-c)
 
     # PkgConfig module
