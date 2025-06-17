@@ -135,7 +135,7 @@ typedef struct dht_op_token dht_op_token;
 OPENDHT_C_PUBLIC void dht_op_token_delete(dht_op_token* token);
 
 // config
-struct OPENDHT_PUBLIC dht_node_config {
+struct OPENDHT_C_PUBLIC dht_node_config {
     dht_infohash node_id;
     uint32_t network;
     bool is_bootstrap;
@@ -144,13 +144,13 @@ struct OPENDHT_PUBLIC dht_node_config {
 };
 typedef struct dht_node_config dht_node_config;
 
-struct OPENDHT_PUBLIC dht_secure_config {
+struct OPENDHT_C_PUBLIC dht_secure_config {
     dht_node_config node_config;
     dht_identity id;
 };
 typedef struct dht_secure_config dht_secure_config;
 
-struct OPENDHT_PUBLIC dht_runner_config {
+struct OPENDHT_C_PUBLIC dht_runner_config {
     dht_secure_config dht_config;
     bool threaded;
     const char* proxy_server;
