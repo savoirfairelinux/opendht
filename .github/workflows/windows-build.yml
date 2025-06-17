@@ -1,0 +1,249 @@
+name: Windows Build
+
+on: 
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  VCPKG_VERSION: "2025.04.09"
+  VCPKG_INSTALLATION_ROOT: "C:\\vcpkg"
+  VCPKG_DISABLE_METRICS: "1"
+  VCPKG_INSTALLED_DIR: ${{ github.workspace }}\vcpkg_installed
+
+jobs:
+  prepare-dependencies:
+    name: Prepare Windows Dependencies
+    runs-on: windows-latest
+    outputs:
+      vcpkg_cache_key: ${{ steps.generate_cache_key.outputs.key }}
+    strategy:
+      matrix:
+        arch: [x64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Cache Key
+        id: generate_cache_key
+        shell: pwsh
+        run: |
+          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflow/windows-build.yml') }}"
+          echo "key=$key_value" >> $env:GITHUB_OUTPUT
+
+      - name: Cache vcpkg installed packages
+        id: cache-vcpkg
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          key: ${{ steps.generate_cache_key.outputs.key }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-
+
+      - name: Setup vcpkg and install dependencies
+        run: |
+          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          vcpkg install `
+            --recurse `
+            --clean-after-build `
+            --triplet=${{ matrix.arch }}-windows `
+            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
+            --x-feature=test
+        shell: pwsh
+
+  build-windows:
+    name: Windows MSVC Build
+    runs-on: windows-latest
+    needs: prepare-dependencies
+    
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+        arch: [x64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore vcpkg installed packages
+        id: cache-vcpkg-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          key: ${{ needs.prepare-dependencies.outputs.vcpkg_cache_key }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          mkdir build -ErrorAction SilentlyContinue
+          cmake -B build `
+            -S . `
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows `
+            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DVCPKG_MANIFEST_FEATURES=test `
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -DBUILD_TESTING=ON `
+            -DOPENDHT_PROXY_CLIENT=ON `
+            -DOPENDHT_PROXY_SERVER=ON `
+            -DOPENDHT_C=ON `
+            -DOPENDHT_TOOLS=ON `
+            -DOPENDHT_PYTHON=OFF `
+            -DOPENDHT_PEER_DISCOVERY=ON `
+            -DOPENDHT_HTTP=ON `
+            -A ${{ matrix.arch }}
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ matrix.build_type }} --parallel 4
+          # Copy vcpkg installed libraries to the build directory
+          Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\${{ matrix.arch }}-windows\lib\*.lib" -Destination "build" -Force
+          Copy-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}\${{ matrix.arch }}-windows\bin\*.dll" -Destination "build" -Force
+
+      - name: Test
+        if: matrix.build_type == 'Release'
+        run: |
+          cd build
+          ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+
+      - name: Upload build artifacts
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: opendht-windows-${{ matrix.arch }}-${{ matrix.build_type }}
+          path: |
+            build/**/*.exe
+            build/**/*.dll
+            build/**/*.lib
+          retention-days: 7
+
+  build-windows-mingw:
+    name: Windows MinGW Build
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        build_type: [Release]
+        #build_type: [Debug, Release]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-cppunit
+            mingw-w64-x86_64-readline
+            mingw-w64-x86_64-ncurses
+            mingw-w64-x86_64-gnutls
+            mingw-w64-x86_64-nettle
+            mingw-w64-x86_64-jsoncpp
+            mingw-w64-x86_64-fmt
+            mingw-w64-x86_64-asio
+            mingw-w64-x86_64-argon2
+            mingw-w64-x86_64-openssl
+            mingw-w64-clang-x86_64-msgpack-cxx
+
+      - name: Prepare dependencies from source (expected-lite, llhttp, restinio)
+        shell: msys2 {0}
+        env:
+          LLHTTP_VERSION: "v9.2.1"
+          RESTINIO_VERSION: "0.7.6"
+          EXPECTED_LITE_URL: "https://raw.githubusercontent.com/martinmoene/expected-lite/master/include/nonstd/expected.hpp"
+        run: |
+          MSYS2_SYSROOT=$(cygpath -u "$MSYSTEM_PREFIX")
+
+          # Install expected-lite header
+          mkdir -p ${MSYS2_SYSROOT}/include/nonstd
+          curl -L "${EXPECTED_LITE_URL}" -o ${MSYS2_SYSROOT}/include/nonstd/expected.hpp
+
+          # Build and install llhttp
+          mkdir llhttp
+          curl -L "https://github.com/nodejs/llhttp/archive/refs/tags/release/${LLHTTP_VERSION}.tar.gz" -o llhttp.tar.gz
+          tar -xzf llhttp.tar.gz -C llhttp --strip-components=1
+          cd llhttp
+          cmake -G "MinGW Makefiles" \
+                -DCMAKE_INSTALL_PREFIX=${MSYS2_SYSROOT} \
+                -DCMAKE_BUILD_TYPE=Release .
+          cmake --build . --parallel 2
+          cmake --install .
+          cd ..
+          rm -rf llhttp*
+          
+          # Build and install restinio
+          mkdir restinio && cd restinio
+          curl -L "https://github.com/Stiffstream/restinio/releases/download/v${RESTINIO_VERSION}/restinio-${RESTINIO_VERSION}.tar.bz2" -o restinio.tar.bz2
+          tar -xjf restinio.tar.bz2
+          cd restinio-${RESTINIO_VERSION}/dev
+          cmake -G "MinGW Makefiles" \
+                -DCMAKE_INSTALL_PREFIX=${MSYS2_SYSROOT} \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DRESTINIO_TEST=Off -DRESTINIO_SAMPLE=Off -DRESTINIO_BENCHMARK=Off \
+                -DRESTINIO_WITH_SOBJECTIZER=Off \
+                -DRESTINIO_DEP_STANDALONE_ASIO=system -DRESTINIO_DEP_LLHTTP=system \
+                -DRESTINIO_DEP_FMT=system -DRESTINIO_DEP_EXPECTED_LITE=system .
+          cmake --install .
+          cd ../../..
+          rm -rf restinio*
+
+          # Copy msgpack-cxx headers
+          mkdir -p ${MSYS2_SYSROOT}/include/msgpack
+          cp -r /clang64/include/msgpack/* ${MSYS2_SYSROOT}/include/msgpack/
+          cp /clang64/include/msgpack.hpp ${MSYS2_SYSROOT}/include/msgpack.hpp
+
+      - name: Build with MinGW
+        shell: msys2 {0}
+        run: |
+          mkdir build_mingw
+          cd build_mingw
+          cmake .. \
+            -G "MinGW Makefiles" \
+            -DHAVE_MSGPACKCXX=ON \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBUILD_TESTING=ON \
+            -DOPENDHT_PROXY_CLIENT=ON \
+            -DOPENDHT_PROXY_SERVER=ON \
+            -DOPENDHT_C=ON \
+            -DOPENDHT_TOOLS=ON \
+            -DOPENDHT_PYTHON=OFF \
+            -DOPENDHT_PEER_DISCOVERY=ON \
+            -DOPENDHT_HTTP=ON
+          cmake --build . --parallel 4
+
+      #- name: Test MinGW Build
+      #  shell: msys2 {0}
+      #  run: |
+      #    cd build_mingw
+      #    ctest --output-on-failure --parallel 4
+
+      - name: Upload MinGW artifacts
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: opendht-windows-mingw-${{ matrix.build_type }}
+          path: |
+            build_mingw/**/*.exe
+            build_mingw/**/*.dll
+            build_mingw/**/*.a
+          retention-days: 7

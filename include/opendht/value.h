@@ -91,7 +91,7 @@ using EditPolicy = std::function<bool(InfoHash key, const std::shared_ptr<Value>
 
 static constexpr const size_t MAX_VALUE_SIZE {1024 * 64};
 
-struct OPENDHT_PUBLIC ValueType {
+struct ValueType {
     typedef uint16_t Id;
 
     static bool DEFAULT_STORE_POLICY(InfoHash, const std::shared_ptr<Value>& v, const InfoHash&, const SockAddr&);
@@ -114,7 +114,7 @@ struct OPENDHT_PUBLIC ValueType {
     }
 
     // Generic value type
-    static const ValueType USER_DATA;
+    OPENDHT_PUBLIC static const ValueType USER_DATA;
 
 
     Id id {0};

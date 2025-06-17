@@ -41,7 +41,11 @@ DhtProxyTester::setUp() {
 
     nodeProxy = std::make_shared<dht::DhtRunner>();
     nodeProxy->run(0, clientConfig);
-    nodeProxy->bootstrap(nodePeer.getBound());
+
+    auto bound = nodePeer.getBound();
+    if (bound.isUnspecified())
+        bound.setLoopback();
+    nodeProxy->bootstrap(bound);
 
     //auto serverCAIdentity = dht::crypto::generateEcIdentity("DHT Node CA");
 

@@ -27,6 +27,10 @@ extern "C" {
 #include <gnutls/gnutls.h>
 }
 
+#ifdef _WIN32
+#include <ConsoleApi2.h>
+#endif
+
 #include <set>
 #include <thread> // std::this_thread::sleep_for
 
@@ -515,8 +519,15 @@ void cmd_loop(std::shared_ptr<DhtRunner>& node, dht_params& params
 int
 main(int argc, char **argv)
 {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
 #ifdef _MSC_VER
-    gnutls_global_init();
+    if (auto err = gnutls_global_init()) {
+        std::cerr << "Failed to initialize GnuTLS: " << gnutls_strerror(err) << std::endl;
+        return EXIT_FAILURE;
+    }
 #endif
     auto params = parseArgs(argc, argv);
     if (params.help) {

@@ -26,6 +26,7 @@
 #include <process.h>
 #include <direct.h>
 #include <fcntl.h>
+#include <synchapi.h>
 
 #define R_OK    4
 #define W_OK    2
@@ -49,5 +50,7 @@
 #define inline __inline
 typedef int mode_t;
 #include <BaseTsd.h>
+
+#define usleep(x) Sleep((x) / 1000)
 
 #endif

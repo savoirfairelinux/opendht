@@ -55,7 +55,10 @@ main(int argc, char **argv)
         return 0;
     }
 #ifdef _MSC_VER
-    gnutls_global_init();
+    if (auto err = gnutls_global_init()) {
+        std::cerr << "Failed to initialize GnuTLS: " << gnutls_strerror(err) << std::endl;
+        return EXIT_FAILURE;
+    }
 #endif
 
     DhtRunner dht;
