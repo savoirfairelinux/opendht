@@ -214,7 +214,7 @@ if (NOT MSVC)
             endif()
             set(http_lib "-lllhttp")
 
-            if (NOT Jsoncpp_FOUND)
+            if (NOT jsoncpp_FOUND)
                 message(SEND_ERROR "Jsoncpp is required for DHT proxy support")
             endif()
             if (OPENDHT_PROXY_OPENSSL)
