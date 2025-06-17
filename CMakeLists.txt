@@ -125,12 +125,19 @@ if (NOT MSVC)
 
         # Workaround for msgpack-cxx
         set(FETCHCONTENT_QUIET FALSE)
+        FetchContent_Declare(boost
+            URL https://archives.boost.io/release/1.82.0/source/boost_1_82_0.zip
+            URL_HASH SHA256=f7c9e28d242abcd7a2c1b962039fcdd463ca149d1883c3a950bbcc0ce6f7c6d9
+            OVERRIDE_FIND_PACKAGE
+        ) # Dependency for msgpack-c
         FetchContent_Declare(msgpack-c
             GIT_REPOSITORY "https://github.com/msgpack/msgpack-c.git"
             GIT_TAG        "cpp-6.1.1"
             FIND_PACKAGE_ARGS NAMES msgpack-c
         )
-        FetchContent_MakeAvailable(msgpack-c)
+        FetchContent_MakeAvailable(boost msgpack-c)
+        
+        set(BOOST_ROOT ${boost_SOURCE_DIR})
         
         find_package(msgpack-c CONFIG REQUIRED)
         include_directories(${MSGPACK_INCLUDEDIR} ${msgpack-c_SOURCE_DIR}/include)
