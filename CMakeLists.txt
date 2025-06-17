@@ -696,6 +696,9 @@ if (BUILD_TESTING)
         ${CMAKE_THREAD_LIBS_INIT}
         ${cppunit_LIBRARIES}
     )
+    if(MSVC AND NOT BUILD_SHARED_LIBS)
+        set_target_properties(opendht_unit_tests PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
     add_test(TEST opendht_unit_tests)
 endif()
 
