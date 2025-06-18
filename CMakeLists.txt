@@ -181,7 +181,7 @@ if (NOT MSVC)
         find_package(fmt)
         
         if (OPENDHT_HTTP)
-            find_package(Restinio REQUIRED)
+            find_package(restinio CONFIG REQUIRED)
 
             # llhttp
             find_path(LLHTTP_INCLUDE_DIR llhttp.h)
