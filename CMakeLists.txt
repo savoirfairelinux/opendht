@@ -628,7 +628,7 @@ else()
             target_link_libraries(opendht
                 PUBLIC restinio::restinio)
             if (OPENDHT_PROXY_OPENSSL)
-                target_link_libraries(opendht PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+                target_link_libraries(opendht PUBLIC ${OPENSSL_LIBRARIES})
             endif()
             if(BUILD_SHARED_LIBS)
                 target_link_libraries(opendht PRIVATE llhttp_shared)
