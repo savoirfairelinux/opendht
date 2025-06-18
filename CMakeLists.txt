@@ -349,6 +349,9 @@ else () # MSVC
     
     find_package(fmt CONFIG REQUIRED)
     include_directories(${FMT_INCLUDEDIR})
+    
+    find_package(unofficial-readline-win32 CONFIG REQUIRED)
+    include_directories(${READLINE_INCLUDEDIR})
 
     if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
         find_package(asio CONFIG REQUIRED)
@@ -616,7 +619,7 @@ if (MSVC)
     message(STATUS "Used GnuTLS library: ${GNUTLS_LIBRARIES}")
     message(STATUS "Used NETTLE library: ${NETTLE_LIBRARY}")
     if(BUILD_SHARED_LIBS)
-        target_link_libraries(opendht PRIVATE ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC jsoncpp_lib ${GNUTLS_LIBRARIES} fmt::fmt wsock32 ws2_32)
+        target_link_libraries(opendht PRIVATE ${NETTLE_LIBRARY} unofficial::argon2::libargon2 msgpack-cxx PUBLIC jsoncpp_lib ${GNUTLS_LIBRARIES} unofficial::readline-win32::readline fmt::fmt wsock32 ws2_32)
     else()
         find_library(TASN1_LIBRARY NAMES tasn1 libtasn1 tasn1d REQUIRED) # Workaround for vcpkg directory misplacement
         target_link_libraries(opendht PUBLIC ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} ${GNUTLS_LIBRARIES} ${NETTLE_LIBRARY} ${TASN1_LIBRARY} unofficial::argon2::libargon2 jsoncpp_static fmt::fmt-header-only wsock32 ws2_32)
@@ -741,7 +744,7 @@ if (OPENDHT_C)
     )
     target_compile_definitions(opendht-c PRIVATE OPENDHT_C_BUILD)
     target_link_libraries(opendht-c PRIVATE opendht)
-    if(MSVC AND OPENDHT_TOOLS)
+    if(OPENDHT_TOOLS)
         target_link_libraries(opendht-c PUBLIC ${READLINE_LIBRARIES})
     endif()
     if (BUILD_SHARED_LIBS)
