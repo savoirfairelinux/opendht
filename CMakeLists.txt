@@ -626,12 +626,15 @@ else()
         endif ()
         if (OPENDHT_HTTP)
             target_link_libraries(opendht
-                PUBLIC restinio::restinio
-                PRIVATE llhttp::llhttp)
+                PUBLIC restinio::restinio)
             if (OPENDHT_PROXY_OPENSSL)
                 target_link_libraries(opendht PUBLIC OpenSSL::SSL OpenSSL::Crypto)
             endif()
-            target_link_libraries(opendht PUBLIC llhttp::llhttp_static)
+            if(BUILD_SHARED_LIBS)
+                target_link_libraries(opendht PRIVATE llhttp_shared)
+            else()
+                target_link_libraries(opendht PRIVATE llhttp_static)
+            endif()
         endif()
     else ()
         target_link_libraries(opendht
