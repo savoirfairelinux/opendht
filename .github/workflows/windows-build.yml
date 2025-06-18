@@ -47,6 +47,7 @@ jobs:
             ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-
 
       - name: Setup vcpkg and install dependencies
+        if: steps.cache-vcpkg.outputs.cache-hit != 'true'
         run: |
           New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
           vcpkg install `
@@ -56,6 +57,51 @@ jobs:
             --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
             --x-feature=test
         shell: pwsh
+
+  prepare-static-dependencies:
+    name: Prepare Windows Static Dependencies
+    runs-on: windows-latest
+    outputs:
+      vcpkg_static_cache_key: ${{ steps.generate_static_cache_key.outputs.key }}
+    strategy:
+      matrix:
+        arch: [x64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Cache Key for Static Libs
+        id: generate_static_cache_key
+        shell: pwsh
+        run: |
+          $key_value = "${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-${{ hashFiles('.github/workflows/windows-build.yml') }}"
+          echo "key=$key_value" >> $env:GITHUB_OUTPUT
+
+      - name: Cache vcpkg static installed packages
+        id: cache-vcpkg-static
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          key: ${{ steps.generate_static_cache_key.outputs.key }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-
+
+      - name: Setup vcpkg and install static dependencies
+        if: steps.cache-vcpkg-static.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -Path "${{ env.VCPKG_INSTALLED_DIR }}" -ItemType Directory -Force
+          vcpkg install `
+            --recurse `
+            --clean-after-build `
+            --triplet=${{ matrix.arch }}-windows-static-release `
+            --x-install-root=${{ env.VCPKG_INSTALLED_DIR }} `
+            --x-feature=test
 
   build-windows:
     name: Windows MSVC Build
@@ -126,6 +172,74 @@ jobs:
           path: |
             build/**/*.exe
             build/**/*.dll
+            build/**/*.lib
+          retention-days: 7
+
+  build-windows-static:
+    name: Windows Static MSVC Build
+    runs-on: windows-latest
+    needs: prepare-static-dependencies
+    strategy:
+      matrix:
+        build_type: [Release]
+        arch: [x64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore vcpkg static installed packages
+        id: cache-vcpkg-static-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_INSTALLED_DIR }}
+          key: ${{ needs.prepare-static-dependencies.outputs.vcpkg_static_cache_key }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+            ${{ runner.os }}-vcpkg-${{ env.VCPKG_VERSION }}-${{ matrix.arch }}-static-
+      
+      - name: Configure CMake for Static Build
+        shell: pwsh
+        run: |
+          mkdir build -ErrorAction SilentlyContinue
+          cmake -B build `
+            -S . `
+            -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_INSTALLATION_ROOT }}/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.arch }}-windows-static-release `
+            -DVCPKG_INSTALLED_DIR=${{ env.VCPKG_INSTALLED_DIR }} `
+            -DVCPKG_MANIFEST_FEATURES=test `
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DBUILD_TESTING=ON `
+            -DOPENDHT_PROXY_CLIENT=ON `
+            -DOPENDHT_PROXY_SERVER=ON `
+            -DOPENDHT_C=ON `
+            -DOPENDHT_TOOLS=ON `
+            -DOPENDHT_PYTHON=OFF `
+            -DOPENDHT_PEER_DISCOVERY=ON `
+            -DOPENDHT_HTTP=ON `
+            -A ${{ matrix.arch }}
+
+      - name: Build Static
+        shell: pwsh
+        run: |
+          cmake --build build --config ${{ matrix.build_type }} --parallel 4
+
+      - name: Test Static Build
+        shell: pwsh
+        run: |
+          cd build
+          ctest --build-config ${{ matrix.build_type }} --output-on-failure --parallel 4
+
+      - name: Upload static build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opendht-windows-static-${{ matrix.arch }}-${{ matrix.build_type }}
+          path: |
+            build/**/*.exe
             build/**/*.lib
           retention-days: 7
 

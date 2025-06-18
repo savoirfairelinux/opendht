@@ -27,7 +27,6 @@
       "name": "msvc",
       "generator": "Visual Studio 17 2022",
       "inherits": "default",
-      "binaryDir": "${sourceDir}/build-vs",
       "cacheVariables": {
         "BUILD_TESTING": true,
         "VCPKG_MANIFEST_FEATURES": "test",
