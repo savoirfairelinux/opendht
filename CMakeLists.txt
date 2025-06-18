@@ -627,7 +627,7 @@ else()
         if (OPENDHT_HTTP)
             target_link_libraries(opendht
                 PUBLIC restinio::restinio
-                PRIVATE llhttp::llhttp_static)
+                PRIVATE llhttp::llhttp)
             if (OPENDHT_PROXY_OPENSSL)
                 target_link_libraries(opendht PUBLIC OpenSSL::SSL OpenSSL::Crypto)
             endif()
