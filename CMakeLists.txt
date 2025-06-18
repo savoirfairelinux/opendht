@@ -182,33 +182,7 @@ if (NOT MSVC)
         
         if (OPENDHT_HTTP)
             find_package(restinio CONFIG REQUIRED)
-
-            # llhttp
-            find_path(LLHTTP_INCLUDE_DIR llhttp.h)
-            find_library(LLHTTP_LIBRARY NAMES llhttp libllhttp)
-            if (LLHTTP_INCLUDE_DIR AND LLHTTP_LIBRARY)
-                message(STATUS "Found llhttp ${LLHTTP_INCLUDE_DIR} ${LLHTTP_LIBRARY}")
-                add_library(llhttp_static STATIC IMPORTED)
-                set_target_properties(llhttp_static PROPERTIES
-                    IMPORTED_LOCATION ${LLHTTP_LIBRARY}
-                    INTERFACE_INCLUDE_DIRECTORIES ${LLHTTP_INCLUDE_DIR}
-                )
-                set(llhttp_target llhttp_static)
-            else()
-                FetchContent_Declare(llhttp-local URL "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.1.tar.gz")
-                if (BUILD_SHARED_LIBS)
-                    set(BUILD_SHARED_LIBS ON CACHE INTERNAL "")
-                else()
-                    set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
-                    set(BUILD_STATIC_LIBS ON CACHE INTERNAL "")
-                endif()
-                FetchContent_MakeAvailable(llhttp-local)
-                if (BUILD_SHARED_LIBS)
-                    set(llhttp_target llhttp_shared)
-                else()
-                    set(llhttp_target llhttp_static)
-                endif()
-            endif()
+            find_package(llhttp CONFIG REQUIRED)
             set(http_lib "-lllhttp")
 
             if (NOT jsoncpp_FOUND)
