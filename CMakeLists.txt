@@ -112,7 +112,7 @@ if(WIN32) # https://stackoverflow.com/a/40217291/9560245
     get_WIN32_WINNT(WINNT_VERSION)
     message(STATUS "Windows NT version detection: ${WINNT_VERSION}")
     if(NOT MSVC)
-        add_definitions(-D_WIN32_WINNT=${WINNT_VERSION} -DWINVER==${WINNT_VERSION})
+        add_definitions(-D_WIN32_WINNT=${WINNT_VERSION} -DWINVER=${WINNT_VERSION})
     endif()
 
     set(CMAKE_DEBUG_POSTFIX "")
@@ -130,7 +130,7 @@ if (NOT MSVC)
         set(FETCHCONTENT_QUIET FALSE)
         FetchContent_Declare(msgpack-c
             GIT_REPOSITORY "https://github.com/msgpack/msgpack-c.git"
-            GIT_TAG        "cpp-6.1.1"
+            GIT_TAG        "cpp-7.0.0"
             FIND_PACKAGE_ARGS NAMES msgpack-c 
         )
         set(MSGPACK_USE_BOOST OFF CACHE INTERNAL "Workaround for Boost")
@@ -156,7 +156,7 @@ if (NOT MSVC)
         include_directories(${JSONCPP_INCLUDE_DIRS})
         
         find_package(fmt CONFIG REQUIRED)
-        include_directories(${FMT_INCLUDEDIR} ${fmt_SOURCE_DIR}/include)
+        include_directories(${FMT_INCLUDEDIR})
         
         if (OPENDHT_TOOLS)
             find_package (Readline 6 REQUIRED)
@@ -624,6 +624,7 @@ if (MSVC)
 			OUTPUT_NAME "libopendht"
 			MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 		)
+    endif()
     if (OPENDHT_HTTP)
         target_link_libraries(opendht
             PUBLIC restinio::restinio
@@ -658,8 +659,10 @@ else()
             ${CMAKE_THREAD_LIBS_INIT}
             PkgConfig::GnuTLS
             fmt::fmt
-            ${READLINE_LIBRARIES}
         )
+    if(OPENDHT_TOOLS)
+        target_link_libraries(opendht PUBLIC ${READLINE_LIBRARIES})
+    endif()
     endif()
     if (OPENDHT_HTTP)
         target_link_libraries(opendht PUBLIC ${llhttp_target})
