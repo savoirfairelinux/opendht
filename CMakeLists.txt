@@ -810,9 +810,9 @@ if (BUILD_TESTING)
         ${cppunit_LIBRARIES}
     )
     if (OPENDHT_PROXY_OPENSSL)
-        if (NOT MSVC AND MINGW) # MSYS2
+        if (WIN32 AND MINGW) # MSYS2
             target_link_libraries(opendht_unit_tests PRIVATE ${OPENSSL_LIBRARIES})
-        else() # Clang on UNIX-pkgconfig
+        elseif(NOT MSVC) # Clang on UNIX-pkgconfig
             target_link_libraries(opendht_unit_tests PRIVATE PkgConfig::OPENSSL)
         endif()
     endif()
