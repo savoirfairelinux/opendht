@@ -626,7 +626,7 @@ else()
                 target_link_libraries(opendht PUBLIC ${OPENSSL_LIBRARIES} Crypt32)
             endif()
         endif()
-    else ()
+    else () # UNIX / LLVM
         target_link_libraries(opendht
             PRIVATE
             PkgConfig::argon2
@@ -636,14 +636,14 @@ else()
             PkgConfig::GnuTLS
             fmt::fmt
         )
-    if(OPENDHT_TOOLS)
-        target_link_libraries(opendht PUBLIC ${READLINE_LIBRARIES})
-    endif()
-    endif()
-    if (OPENDHT_HTTP)
-        target_link_libraries(opendht PUBLIC ${llhttp_target})
-        if (OPENDHT_PROXY_OPENSSL)
-            target_link_libraries(opendht PUBLIC ${OPENSSL_LIBRARIES})
+        if(OPENDHT_TOOLS)
+            target_link_libraries(opendht PUBLIC ${READLINE_LIBRARIES})
+        endif()
+        if (OPENDHT_HTTP)
+            target_link_libraries(opendht PUBLIC ${llhttp_target})
+            if (OPENDHT_PROXY_OPENSSL)
+                target_link_libraries(opendht PUBLIC PkgConfig::OPENSSL)
+            endif()
         endif()
     endif()
     if (Jsoncpp_FOUND)
