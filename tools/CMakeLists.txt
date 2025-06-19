@@ -45,6 +45,8 @@ if (OPENDHT_C)
         if(NOT BUILD_SHARED_LIBS)
             set_target_properties(dhtcnode PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
         endif()
+        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /experimental:c11atomics")
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /experimental:c11atomics")
     endif()
 endif ()
 
