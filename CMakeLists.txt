@@ -809,8 +809,12 @@ if (BUILD_TESTING)
         ${CMAKE_THREAD_LIBS_INIT}
         ${cppunit_LIBRARIES}
     )
-    if (NOT MSVC AND OPENDHT_PROXY_OPENSSL)
-        target_link_libraries(opendht_unit_tests PRIVATE ${OPENSSL_LIBRARIES})
+    if (OPENDHT_PROXY_OPENSSL)
+        if (NOT MSVC AND MINGW) # MSYS2
+            target_link_libraries(opendht_unit_tests PRIVATE ${OPENSSL_LIBRARIES})
+        else() # Clang on UNIX-pkgconfig
+            target_link_libraries(opendht_unit_tests PRIVATE PkgConfig::OPENSSL)
+        endif()
     endif()
     add_test(TEST opendht_unit_tests)
 endif()
