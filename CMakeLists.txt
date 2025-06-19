@@ -806,6 +806,9 @@ if (BUILD_TESTING)
         ${CMAKE_THREAD_LIBS_INIT}
         ${cppunit_LIBRARIES}
     )
+    if (OPENDHT_PROXY_OPENSSL)
+        target_link_libraries(opendht_unit_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    endif()
     add_test(TEST opendht_unit_tests)
 endif()
 
