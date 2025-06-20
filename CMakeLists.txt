@@ -53,7 +53,7 @@ option (OPENDHT_DOCUMENTATION "Create and install the HTML based API documentati
 # Build flags
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED on)
-if(MSVC AND NOT BUILD_SHARED_LIBS AND NOT CMAKE_MSVC_RUNTIME_LIBRARY)
+if(MSVC AND NOT BUILD_SHARED_LIBS AND NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
@@ -565,7 +565,7 @@ install (TARGETS opendht
     RUNTIME_DEPENDENCY_SET opendht_rdeps
     EXPORT opendht
 )
-if (WIN32 AND DEFINED CMAKE_TOOLCHAIN_FILE AND CMAKE_TOOLCHAIN_FILE MATCHES "vcpkg")
+if (WIN32)
     install(RUNTIME_DEPENDENCY_SET opendht_rdeps
         PRE_EXCLUDE_REGEXES
             "api-ms-win-.*\\.dll"
