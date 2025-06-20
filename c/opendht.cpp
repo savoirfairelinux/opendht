@@ -268,6 +268,11 @@ dht_publickey* dht_certificate_get_publickey(const dht_certificate* c) {
     return reinterpret_cast<dht_publickey*>(new PubkeySp(cert->getSharedPublicKey()));
 }
 
+#ifdef __cplusplus
+} // extern "C"
+// Function with internal C++ linkage
+#endif
+
 // dht::crypto::Identity
 inline dht::crypto::Identity dht_identity_from_c(const dht_identity* cid) {
     dht::crypto::Identity id {};
@@ -284,6 +289,10 @@ inline dht_identity dht_identity_to_c(const dht::crypto::Identity& id) {
     cid.certificate = id.second ? reinterpret_cast<dht_certificate*>(new CertSp(id.second)) : NULL;
     return cid;
 }
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 OPENDHT_C_PUBLIC dht_identity dht_identity_generate(const char* common_name, const dht_identity* ca) {
     return dht_identity_to_c(dht::crypto::generateIdentity(common_name, dht_identity_from_c(ca)));
