@@ -20,13 +20,13 @@ project (opendht
     HOMEPAGE_URL "https://opendht.net/"
 )
 
-set(POSSIBLE_PKGCONFIG ON)
+set(POSSIBLE_PKGCONFIG OFF)
 include(CMakePackageConfigHelpers)
 include(CMakeDependentOption)
 include(CheckIncludeFileCXX)
 if(NOT MSVC)
     include(FindPkgConfig)
-    set(POSSIBLE_PKGCONFIG OFF)
+    set(POSSIBLE_PKGCONFIG ON)
 endif()
 include(cmake/CheckAtomic.cmake)
 include(CTest)
@@ -135,12 +135,21 @@ if (NOT MSVC)
         pkg_search_module (argon2 REQUIRED IMPORTED_TARGET libargon2)
         set(argon2_lib ", libargon2")
         # jsoncpp
-        pkg_search_module(Jsoncpp REQUIRED IMPORTED_TARGET jsoncpp)
-            
+        pkg_search_module (Jsoncpp IMPORTED_TARGET jsoncpp)
+        if(Jsoncpp_FOUND)
+            if(APPLE)
+                set(JSONCPP_LIBRARIES PkgConfig::Jsoncpp)
+            else()
+                set(JSONCPP_LIBRARIES ${Jsoncpp_LIBRARIES})
+            endif()
+            set(JSONCPP_INCLUDE_DIRS ${Jsoncpp_INCLUDE_DIRS})
+            set(JSONCPP_FOUND ${Jsoncpp_FOUND})
+            include_directories(${JSONCPP_INCLUDE_DIRS})
+        endif()
         #  libfmt 
-        pkg_search_module(fmt REQUIRED IMPORTED_TARGET fmt)
+        pkg_search_module (fmt REQUIRED IMPORTED_TARGET fmt)
         # libreadline
-        if (OPENDHT_TOOLS)   
+        if (OPENDHT_TOOLS AND NOT APPLE)   
             pkg_search_module(readline REQUIRED IMPORTED_TARGET readline)
             message(STATUS "libreadline: version ${readline_VERSION}")
             set(READLINE_VERSION ${readline_VERSION})
@@ -152,7 +161,7 @@ if (NOT MSVC)
         # ASIO
         if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
             pkg_search_module(asio REQUIRED IMPORTED_TARGET asio)
-            set(ASIO_INCLUDE_DIR ${ASIO_INCLUDE_DIRS})
+            set(ASIO_INCLUDE_DIR ${asio_INCLUDE_DIRS})
             message(STATUS "Found ASIO ${ASIO_INCLUDE_DIR}")
         else()
             message(STATUS "ASIO not required")
@@ -160,8 +169,10 @@ if (NOT MSVC)
         # llhttp
         if (OPENDHT_HTTP)
             pkg_search_module(LLHTTP IMPORTED_TARGET llhttp libllhttp)
-            message(STATUS "Found llhttp: ${LLHTTP_INCLUDE_DIRS}")
-            set(llhttp_target PkgConfig::LLHTTP)
+            set(LLHTTP_INCLUDE_DIR ${LLHTTP_INCLUDE_DIRS})
+            message(STATUS "Found llhttp: ${LLHTTP_INCLUDE_DIR}")
+            set(llhttp_target ${LLHTTP_LIBRARIES})
+            include_directories(${LLHTTP_INCLUDE_DIR})
         else ()
             set(OPENDHT_PROXY_OPENSSL OFF)
         endif ()
@@ -180,6 +191,7 @@ if (NOT MSVC)
         include_directories(${GNUTLS_INCLUDE_DIR})
         # jsoncpp
         find_package(jsoncpp CONFIG REQUIRED)
+        set(JSONCPP_FOUND TRUE)
         if (BUILD_SHARED_LIBS)
             get_target_property(JSONCPP_INCLUDE_DIRS jsoncpp_lib INTERFACE_INCLUDE_DIRECTORIES)
         else ()
@@ -207,6 +219,7 @@ if (NOT MSVC)
         # llhttp
         if (OPENDHT_HTTP)
             find_package(llhttp CONFIG REQUIRED)
+            include_directories(${LLHTTP_INCLUDE_DIR})
             set(llhttp_target llhttp::llhttp_static)
             if (OPENDHT_PROXY_OPENSSL)
                 find_package(openssl REQUIRED)
@@ -258,10 +271,8 @@ if (NOT MSVC)
             set(llhttp_target llhttp_static)
         elseif (OPENDHT_DOWNLOAD_DEPS)
             message(STATUS "Fallback mode specified, downloading llhttp")
-            FetchContent_Declare(llhttp-local 
+            FetchContent_Declare(llhttp-local REQUIRED
                 URL "https://github.com/nodejs/llhttp/archive/refs/tags/release/v9.2.1.tar.gz"
-                URL_HASH SHA256=3C163891446E529604B590F9AD097B2E98B5EF7E4D3DDCF1CF98B62CA668F23E
-                REQUIRED
             )
             if (BUILD_SHARED_LIBS)
                 set(BUILD_SHARED_LIBS ON CACHE INTERNAL "")
@@ -270,6 +281,8 @@ if (NOT MSVC)
                 set(BUILD_STATIC_LIBS ON CACHE INTERNAL "")
             endif()
             FetchContent_MakeAvailable(llhttp-local)
+            include_directories(${llhttp-local_SOURCE_DIR}/include)
+            link_directories(${llhttp-local_BINARY_DIR}) # MacOS library search workaround
             if (BUILD_SHARED_LIBS)
                 set(llhttp_target llhttp_shared)
             else()
@@ -282,7 +295,11 @@ if (NOT MSVC)
         find_package(restinio CONFIG REQUIRED)
     endif()
     # System-specific pipeline setup
-    # ---
+    if(APPLE)
+        if (OPENDHT_TOOLS)
+            find_package (Readline 6 REQUIRED)
+        endif ()
+    endif()
 else () # MSVC
     include_directories(src/compat/msvc)
     include_directories(src/compat/win32)
@@ -299,6 +316,7 @@ else () # MSVC
     include_directories(${MSGPACK_INCLUDEDIR})
     
     find_package(jsoncpp REQUIRED)
+    set(JSONCPP_FOUND TRUE)
     include_directories(${JSONCPP_INCLUDE_DIRS})
     
     find_package(fmt CONFIG REQUIRED)
@@ -362,12 +380,14 @@ else () # MSVC
 endif ()
 
 # Definitions
-add_definitions(-DOPENDHT_JSONCPP)
-set(jsoncpp_lib ", jsoncpp")
-list (APPEND opendht_SOURCES
-  src/base64.h
-  src/base64.cpp
-)
+if(JSONCPP_FOUND)
+    add_definitions(-DOPENDHT_JSONCPP)
+    set(jsoncpp_lib ", jsoncpp")
+    list (APPEND opendht_SOURCES
+        src/base64.h
+        src/base64.cpp
+    )
+endif()
 
 if (OPENDHT_HTTP OR OPENDHT_PEER_DISCOVERY)
     add_definitions(-DASIO_STANDALONE)
@@ -597,7 +617,7 @@ else()
                 ${CMAKE_THREAD_LIBS_INIT}
                 PkgConfig::GnuTLS
                 PkgConfig::fmt
-                PkgConfig::Jsoncpp
+                ${JSONCPP_LIBRARIES}
         )
         if(OPENDHT_TOOLS) 
             message(STATUS ${READLINE_LIBRARIES})
@@ -636,9 +656,8 @@ else()
     endif()
     if(OPENDHT_HTTP)
         target_link_libraries(opendht 
-            PRIVATE 
-                ${llhttp_target} 
-            PUBLIC 
+            PUBLIC # Required for linking tests
+                ${llhttp_target}  
                 restinio::restinio
     )
     endif()
@@ -650,9 +669,9 @@ else()
     # System-specific linker pipelines
     if (WIN32 AND MINGW) # MSYS2
         message(STATUS "Build pipeline: Windows/MSYS2-MinGW")
-        target_link_libraries(opendht PUBLIC msgpack-cxx wsock32 ws2_32)
+        target_link_libraries(opendht PUBLIC wsock32 ws2_32)
         if (NOT BUILD_SHARED_LIBS)
-            target_link_libraries(opendht PRIVATE msgpack-cxx ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} )
+            target_link_libraries(opendht PRIVATE ${Win32_STATIC_LIBRARIES} ${Win32_IMPORT_LIBRARIES} )
         endif ()
         if(OPENDHT_PROXY_OPENSSL)
             target_link_libraries(opendht PUBLIC Crypt32)
