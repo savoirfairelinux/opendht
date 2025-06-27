@@ -73,7 +73,7 @@ std::ostream& operator<< (std::ostream& s, const Value& v)
                 s << "data(" << v.user_type << "):";
             if (v.user_type == "text/plain") {
                 s << '"';
-                s.write((const char*)v.data.data(), v.data.size());
+                s.write(reinterpret_cast<const char*>(v.data.data()), v.data.size());
                 s << '"';
             } else if (v.data.size() < 1024) {
                 s << toHex(v.data.data(), v.data.size());
