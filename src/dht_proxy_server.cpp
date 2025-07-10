@@ -100,6 +100,47 @@ private:
     std::shared_ptr<Logger> m_logger;
 };
 
+
+std::string
+DhtProxyServer::ServerStats::toString() const
+{
+    auto ret = fmt::format("Listens: {}, Puts: {}, PushListeners: {}\n"
+                "Push requests in the last {}: [Android: {}], [iOS: {}], [Unified: {}]\n"
+                "Requests: {} per second.",
+                listenCount, putCount, pushListenersCount,
+                print_duration(lastUpdated - serverStartTime),
+                androidPush.toString(), iosPush.toString(), unifiedPush.toString(),
+                requestRate);
+    if (nodeInfo) {
+        auto& ipv4 = nodeInfo->ipv4;
+        if (ipv4.table_depth > 1)
+            ret += fmt::format("IPv4 Network estimation: {}\n", ipv4.getNetworkSizeEstimation());
+        auto& ipv6 = nodeInfo->ipv6;
+        if (ipv6.table_depth > 1)
+            ret += fmt::format("IPv6 Network estimation: {}\n", ipv6.getNetworkSizeEstimation());
+    }
+    return ret;
+}
+
+Json::Value
+DhtProxyServer::ServerStats::toJson() const
+{
+    Json::Value result;
+    result["listenCount"] = static_cast<Json::UInt64>(listenCount);
+    result["putCount"] = static_cast<Json::UInt64>(putCount);
+    result["totalPermanentPuts"] = static_cast<Json::UInt64>(totalPermanentPuts);
+    result["pushListenersCount"] = static_cast<Json::UInt64>(pushListenersCount);
+    result["serverStartTime"] = static_cast<Json::LargestInt>(to_time_t(serverStartTime));
+    result["lastUpdated"] = static_cast<Json::LargestInt>(to_time_t(lastUpdated));
+    result["androidPush"] = androidPush.toJson();
+    result["iosPush"] = iosPush.toJson();
+    result["unifiedPush"] = unifiedPush.toJson();
+    result["requestRate"] = requestRate;
+    if (nodeInfo)
+        result["nodeInfo"] = nodeInfo->toJson();
+    return result;
+}
+
 restinio::request_handling_status_t
 DhtProxyServer::serverError(restinio::request_t& request) {
     auto response = initHttpResponse(request.create_response(restinio::status_internal_server_error()));
