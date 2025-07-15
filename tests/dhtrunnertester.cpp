@@ -328,7 +328,7 @@ DhtRunnerTester::testIdOps() {
         cv.notify_all();
     });
 
-    node1.putEncrypted(key, node2.getPublicKey(), dht::Value("yo"), [&](bool ok){
+    node1.putEncrypted(key, node2.getPublicKey(), std::make_shared<dht::Value>("yo"), [&](bool ok){
         CPPUNIT_ASSERT(ok);
         std::lock_guard<std::mutex> lk(mutex);
         valueCount++;
