@@ -124,7 +124,7 @@ public:
         }
     };
 
-    struct ServerStats {
+    struct OPENDHT_PUBLIC ServerStats {
         /** Current number of listen operations */
         size_t listenCount {0};
         /** Current number of permanent put operations (hash used) */
