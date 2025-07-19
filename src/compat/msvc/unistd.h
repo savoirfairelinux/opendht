@@ -51,6 +51,4 @@
 typedef int mode_t;
 #include <BaseTsd.h>
 
-#define usleep(x) Sleep((x) / 1000)
-
 #endif
