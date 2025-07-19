@@ -85,4 +85,3 @@ build_dev
 build-*/
 install/
 vcpkg_installed/
-

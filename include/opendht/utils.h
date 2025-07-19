@@ -30,6 +30,11 @@
 
 #include <cstdarg>
 
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif // inet_pton() workaround for MSVC in Windows 10/11
+
 #define WANT4 1
 #define WANT6 2
 
