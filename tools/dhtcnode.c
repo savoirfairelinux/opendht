@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <stdatomic.h>
 #include <inttypes.h>
+#include <time.h>
 
 #ifdef _MSC_VER
 #include "wingetopt.h"
@@ -33,6 +34,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #ifdef _WIN32
+#include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -296,7 +298,12 @@ int main(int argc, char **argv)
 
     // Wait until shutdown callback is called
     while (!atomic_load(&ctx.stop)) {
-        usleep(10000);
+#ifdef _WIN32
+        Sleep(10);              // 10ms
+#else
+        struct timespec ts = {0, 10000000}; // 10ms
+        nanosleep(&ts, NULL);
+#endif
     }
     dht_runner_delete(runner);
     return EXIT_SUCCESS;

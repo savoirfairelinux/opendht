@@ -83,6 +83,7 @@ case "${host_os}" in
     ;;
   linux*)
     SYS=linux
+    CPPFLAGS="$CPPFLAGS -D_POSIX_C_SOURCE=200809L"
     ;;
   darwin*)
     SYS=darwin
